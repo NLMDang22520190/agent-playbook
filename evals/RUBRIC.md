@@ -41,7 +41,13 @@ mechanical part:
   `<workdir>` is a fresh fixture (`make-fixture.sh <workdir>`); stdout and stderr become the
   transcript `<workroot>/<E>.log`.
 - Presets: `opencode` runs `opencode run --auto`, `claude` runs `claude -p`, `codex` runs `codex exec`,
-  each inside the workdir with the prompt text. The claude and codex flags are unverified guesses.
+  each inside the workdir with the prompt text.
+  - `opencode`: verified from `opencode run --help` (v2.0.18, Windows).
+  - `claude`, `codex`: unverified guesses (their CLIs were not available to check the flags).
+- Safety: the presets auto-approve the agent's actions and do not sandbox it; `cd` into the workdir is
+  the only confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
 - Output: one line per check (`<E> PASS|FAIL|MANUAL <check>`) and a results file (default
-  `evals/results/<YYYY-MM-DD>-<harness or custom>.md`). Exit 0 all auto checks passed, 1 any FAIL,
-  2 usage. MANUAL items still need a human score with the table above.
+  `evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md`, so runs on the same day do not
+  overwrite each other). Exit 0 all auto checks passed, 1 any FAIL, 2 usage, 3 environment (node or
+  git missing, fixture or results file cannot be created). MANUAL items still need a human score with
+  the table above.

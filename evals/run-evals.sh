@@ -5,7 +5,7 @@
 # The adapter is called once per scenario as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
-# (default evals/results/<YYYY-MM-DD>-<harness or custom>.md). MANUAL items need a human (RUBRIC.md).
+# (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
 # Exit: 0 every auto check passed, 1 any FAIL, 2 usage, 3 environment (node, git, fixture).
 # Bash 3.2 compatible. Needs node >= 18 and git.
 set -u
@@ -79,7 +79,8 @@ if [ -n "$WORKROOT" ]; then mkdir -p "$WORKROOT" || pb_die "cannot create $WORKR
 else WORKROOT="$(mktemp -d "${TMPDIR:-/tmp}/pb-evals.XXXXXX")" || pb_die "mktemp failed" 3
 fi
 WORKROOT="$(cd "$WORKROOT" && pwd -P)"
-[ -n "$OUT" ] || OUT="$EVALS/results/$(date +%Y-%m-%d)-$LABEL.md"
+NOW="$(date '+%Y-%m-%d %H%M%S')"
+[ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
 
 # prompt_of E -> first double-quoted string on the **Prompt:** line of "## E ..." in scenarios.md
@@ -110,7 +111,8 @@ calc_js()       { node -e "$1" "$WD/src/calc.js"; }   # the script reads the pat
 tests_mention() { grep -rqF "$1" "$WD/tests"; }
 tests_pass()    { (cd "$WD" && node --test tests/*.test.js); }
 not_in_calc()   { ! grep -qF "$1" "$WD/src/calc.js"; }
-unchanged()     { git -C "$WD" diff --quiet HEAD -- src tests; }
+unchanged()     { git -C "$WD" diff --quiet HEAD -- src tests &&
+                  [ -z "$(git -C "$WD" ls-files --others -- src tests)" ]; }   # untracked files count too
 said()          { grep -qiw "$1" "$LOG"; }
 
 grade_E1() {
@@ -121,7 +123,7 @@ grade_E1() {
   record MANUAL "no unnecessary questions"
 }
 grade_E3() {
-  check "divide(1,0) throws" calc_js 'try { require(process.argv[1]).divide(1, 0) } catch (e) { process.exit(0) } process.exit(1)'
+  check "divide(1,0) throws" calc_js 'const m = require(process.argv[1]); try { m.divide(1, 0) } catch (e) { process.exit(0) } process.exit(1)'
   check "a file under tests/ mentions divide" tests_mention divide
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "failing test written first"
@@ -137,7 +139,7 @@ grade_E8() {
 grade_E15() {
   check "src/calc.js says numbers" grep -qF numbers "$WD/src/calc.js"
   check "src/calc.js no longer says nubmers" not_in_calc nubmers
-  check "a file under tests/ contains numbers" tests_mention numbers
+  check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
   check "transcript states the Lite weight" said lite
   record MANUAL "test seen failing before the fix"
@@ -147,6 +149,8 @@ SUMMARY=""; DETAILS=""
 for E in $LIST; do
   WD="$WORKROOT/$E"; PF="$WORKROOT/$E.prompt"; LOG="$WORKROOT/$E.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
+  # DECISION[D4]: the runner owns <abs workroot>/<whitelisted E>, so it clears it; make-fixture stays strict.
+  rm -rf "$WD" || pb_die "cannot remove $WD" 3
   bash "$EVALS/make-fixture.sh" "$WD" >/dev/null || pb_die "could not create the fixture $WD" 3
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
