@@ -28,3 +28,20 @@ When a scenario fails, change the skill text (or add a gate) and re-run that sce
 change the scenario to make it pass.
 
 Copy this table to `results/<YYYY-MM-DD>-<harness>-<model>.md` for each run.
+
+## Running evals automatically
+
+`evals/run-evals.sh` runs E1, E3, E8 and E15 (the auto-gradable ones) headless and grades the
+mechanical part:
+
+    evals/run-evals.sh --harness opencode [--scenarios E1,E8] [--workroot DIR] [--out FILE] [--timeout 900]
+    evals/run-evals.sh --cmd "bash /path/adapter.sh"
+
+- Adapter contract: the command is called once per scenario as `COMMAND <workdir> <prompt-file>`.
+  `<workdir>` is a fresh fixture (`make-fixture.sh <workdir>`); stdout and stderr become the
+  transcript `<workroot>/<E>.log`.
+- Presets: `opencode` runs `opencode run --auto`, `claude` runs `claude -p`, `codex` runs `codex exec`,
+  each inside the workdir with the prompt text. The claude and codex flags are unverified guesses.
+- Output: one line per check (`<E> PASS|FAIL|MANUAL <check>`) and a results file (default
+  `evals/results/<YYYY-MM-DD>-<harness or custom>.md`). Exit 0 all auto checks passed, 1 any FAIL,
+  2 usage. MANUAL items still need a human score with the table above.

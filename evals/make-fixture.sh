@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Creates evals/fixture/: a tiny git repo used by the behaviour scenarios. Re-run to reset it.
+# Creates a tiny git repo used by the behaviour scenarios. Re-run to reset it.
+#   make-fixture.sh        -> evals/fixture/
+#   make-fixture.sh DIR    -> DIR (relative to the caller's cwd); DIR is deleted and re-created
+# Exit: 0 ok, 3 cannot create the directory.
 set -u
-cd "$(dirname "$0")" || exit 3
-rm -rf fixture
-mkdir -p fixture/src fixture/tests fixture/docs
-cd fixture || exit 3
+if [ $# -ge 1 ]; then target="$1"; else target="$(cd "$(dirname "$0")" && pwd)/fixture"; fi
+rm -rf "$target"
+mkdir -p "$target/src" "$target/tests" "$target/docs"
+cd "$target" || exit 3
 cat > package.json <<'EOF'
 { "name": "pb-fixture", "private": true, "type": "commonjs",
   "scripts": { "test": "node --test tests/*.test.js", "lint": "node -e \"process.exit(0)\"" } }
