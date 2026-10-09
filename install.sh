@@ -12,7 +12,10 @@ BEGIN_PREFIX='<!-- BEGIN agent-playbook'
 END_LINE='<!-- END agent-playbook -->'
 MARKER='.playbook-managed'
 
-CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0
+CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0
+# Every successful install is recorded here so `update` can refresh all targets
+# (WSL home, Windows home in copy mode, ...). Tests point it elsewhere.
+REGISTRY="${PLAYBOOK_REGISTRY:-$REPO/.install-targets}"
 PROBLEMS=0
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TMPS=""
@@ -29,6 +32,8 @@ Commands
   uninstall   remove only what this installer created
   status      one line per harness: installed | partial | not installed
   doctor      verify links, copies, blocks and known pitfalls (exit 1 on problems)
+  update      fetch release tags, show the changelog, check out the newest (or --to TAG)
+              and re-install every recorded target; --check only reports
 
 Options
   --harness LIST   claude,codex,opencode | all   (install: auto-detected from ~/.claude,
@@ -38,6 +43,8 @@ Options
   --dry-run        print what would change, change nothing
   --force          move conflicting foreign files/dirs to ~/.agents/playbook-backups
   --yes            do not ask for confirmation (required when stdin is not a terminal)
+  --to TAG         update: release to check out (rollback: --to v0.1.0)
+  --check          update: only report whether a newer release exists
 EOF
 }
 
@@ -52,7 +59,7 @@ mktmp() { local t; t="$(mktemp "${TMPDIR:-/tmp}/pbinst.XXXXXX")" || die "mktemp 
 # ---------- argument parsing ----------
 CMD="${1:-}"
 case "$CMD" in
-  install|uninstall|status|doctor) shift ;;
+  install|uninstall|status|doctor|update) shift ;;
   help|-h|--help|"") usage; exit 0 ;;
   *) err "unknown command: $CMD"; usage >&2; exit 2 ;;
 esac
@@ -64,12 +71,15 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
     --yes|-y) YES=1 ;;
+    --to) [ $# -ge 2 ] || die "--to needs a tag" 2; TO="$2"; shift ;;
+    --check) CHECK=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" 2 ;;
   esac
   shift
 done
 [ -n "$H" ] || die "cannot determine home directory; pass --home" 2
+if [ -d "$H" ]; then H="$(cd "$H" && pwd)"; fi   # absolute (logical) path for the registry
 
 # ---------- paths ----------
 STABLE="$H/.agents/playbook"
@@ -324,6 +334,37 @@ confirm() {
   die "non-interactive session: pass --yes to proceed (or --dry-run to preview)" 2
 }
 
+# ---------- registry of install targets (home <TAB> harness-list <TAB> link|copy) ----------
+registry_harness() { awk -F '\t' -v h="$1" '$1 == h { print $2; exit }' "$REGISTRY" 2>/dev/null; }
+registry_write() { # home harness-list mode   (empty harness-list = drop the entry)
+  local tmp
+  tmp="$(mktmp)"
+  { [ -f "$REGISTRY" ] && awk -F '\t' -v h="$1" '$1 != h && $0 != ""' "$REGISTRY"
+    [ -n "$2" ] && printf '%s\t%s\t%s\n' "$1" "$2" "$3"; } > "$tmp"
+  if ! cat "$tmp" > "$REGISTRY" 2>/dev/null; then warn "could not write the install registry $REGISTRY (update will not know about $1)"; fi
+}
+registry_add() { # home harness-list mode
+  [ "$DRY" -eq 1 ] && return 0
+  local old h merged=""
+  old="$(registry_harness "$1")"
+  for h in claude codex opencode; do
+    case ",$old,$2," in *",$h,"*) merged="$merged,$h" ;; esac
+  done
+  registry_write "$1" "${merged#,}" "$3"
+}
+registry_drop() { # home [harness-list]  (no list = whole entry)
+  [ "$DRY" -eq 1 ] && return 0
+  local old h left="" mode
+  old="$(registry_harness "$1")"
+  mode="$(awk -F '\t' -v h="$1" '$1 == h { print $3; exit }' "$REGISTRY" 2>/dev/null)"
+  if [ $# -ge 2 ]; then
+    for h in claude codex opencode; do
+      case ",$old," in *",$h,"*) case ",$2," in *",$h,"*) ;; *) left="$left,$h" ;; esac ;; esac
+    done
+  fi
+  registry_write "$1" "${left#,}" "$mode"
+}
+
 # ---------- commands ----------
 cmd_install() {
   local d s f conflicts=0 st
@@ -354,6 +395,7 @@ cmd_install() {
   if want codex && [ -s "$H/.codex/AGENTS.override.md" ]; then
     warn "$H/.codex/AGENTS.override.md is non-empty: Codex reads it INSTEAD of AGENTS.md, so the always-on block will not load until you move the block there or remove the override."
   fi
+  registry_add "$H" "$HARNESS" "$([ "$COPY" -eq 1 ] && echo copy || echo link)"
   say "done. Start a NEW session in your harness (skills are discovered at startup), then say: set up the playbook"
 }
 
@@ -384,6 +426,7 @@ cmd_uninstall() {
   else
     say "  keeping $STABLE (other harnesses still use it)"
   fi
+  registry_drop "$H" "$HARNESS"
   say "done. Your settings (~/.agents/playbook.conf) and backups (~/.agents/playbook-backups) were kept."
 }
 
@@ -474,9 +517,70 @@ cmd_doctor() {
   if [ "$PROBLEMS" -eq 0 ]; then say "doctor: healthy"; else say "doctor: $PROBLEMS problem(s)"; exit 1; fi
 }
 
+reinstall_targets() {
+  local entries line home hs mode flags fails=0
+  entries="$(cat "$REGISTRY" 2>/dev/null)"
+  if [ -z "$entries" ]; then
+    say "no recorded installs in $REGISTRY: run install once with your usual flags (it is recorded from then on)"
+    return 0
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    home="$(printf '%s\n' "$line" | cut -f1)"
+    hs="$(printf '%s\n' "$line" | cut -f2)"
+    mode="$(printf '%s\n' "$line" | cut -f3)"
+    if [ ! -d "$home" ]; then
+      say "  skipping $home (no longer exists; removed from the registry)"
+      registry_drop "$home"
+      continue
+    fi
+    flags=""
+    [ "$mode" = "copy" ] && flags="--copy"
+    say "== re-installing $home ($hs, $mode)"
+    # shellcheck disable=SC2086
+    if bash "$REPO/install.sh" install --home "$home" --harness "$hs" $flags --yes < /dev/null; then
+      bash "$REPO/install.sh" doctor --home "$home" --harness "$hs" < /dev/null || fails=$((fails + 1))
+    else
+      fails=$((fails + 1))
+    fi
+  done <<EOF
+$entries
+EOF
+  [ "$fails" -eq 0 ] || die "$fails target(s) failed after the update; see the output above" 1
+}
+
+cmd_update() {
+  local cur latest target
+  git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
+  git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
+  cur="$(git -C "$REPO" describe --tags --exact-match HEAD 2>/dev/null)" || cur="untagged ($(git -C "$REPO" rev-parse --short HEAD))"
+  latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"
+  [ -n "$latest" ] || die "no release tags (v*) found in $REPO" 2
+  target="${TO:-$latest}"
+  git -C "$REPO" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null 2>&1 || die "unknown release: $target (see: git -C $REPO tag -l)" 2
+  if [ "$CHECK" -eq 1 ]; then
+    if [ "$cur" = "$latest" ]; then say "agent-playbook $cur: up to date"
+    else say "agent-playbook: installed $cur, latest release $latest -> UPDATE AVAILABLE (run: $REPO/install.sh update)"; fi
+    return 0
+  fi
+  [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || die "the playbook repo $REPO has uncommitted changes; commit or stash them before updating" 1
+  say "agent-playbook: $cur -> $target"
+  say "---- CHANGELOG at $target ----"
+  git -C "$REPO" show "$target:CHANGELOG.md" 2>/dev/null | sed -n '1,30p'
+  say "------------------------------"
+  confirm
+  if [ "$DRY" -eq 1 ]; then say "dry run: would check out $target and re-install the recorded targets"; return 0; fi
+  git -C "$REPO" -c advice.detachedHead=false checkout -q "$target" || die "checkout of $target failed" 1
+  # From here on the files on disk are the new release: run its installer, not this process.
+  reinstall_targets
+  say "updated to $target. Start new harness sessions to load the new skills."
+}
+
+# Each branch exits immediately: `update` replaces this very file on disk while it runs.
 case "$CMD" in
-  install) cmd_install ;;
-  uninstall) cmd_uninstall ;;
-  status) cmd_status ;;
-  doctor) cmd_doctor ;;
+  install) cmd_install; exit $? ;;
+  uninstall) cmd_uninstall; exit $? ;;
+  status) cmd_status; exit $? ;;
+  doctor) cmd_doctor; exit $? ;;
+  update) cmd_update; exit $? ;;
 esac

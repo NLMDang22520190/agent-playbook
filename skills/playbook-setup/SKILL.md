@@ -39,7 +39,7 @@ agent-playbook repo. Do not improvise an installation.
    - where the tests live (to confirm the test-path pattern; see `references/questions.md`).
    Present every detection as a proposed default, with the file it came from.
 
-4. **Ask once, batched.** Use `references/questions.md`: at most 7 questions, each with a
+4. **Ask once, batched.** Use `references/questions.md`: at most 8 questions, each with a
    default and why it matters. Use the harness's structured question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip any question the inspection already answered beyond doubt.
@@ -56,7 +56,7 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set setup done --global
    ```
    Global keys: `language`, `harness`, `subagents`, `model_tester`, `model_implementer`,
-   `model_reviewer`, `autonomy`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   `model_reviewer`, `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `learnings_path`.
 
 7. **Verify and report.**

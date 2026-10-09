@@ -20,8 +20,12 @@ Change only what the request needs: no drive-by refactors, no new dependency wit
 ### TDD with separated roles
 For any change that adds or alters behaviour, or fixes a bug, use skill `playbook-tdd`: tests first, and the tester, implementer and reviewer are different agents or contexts. Exempt, but say so: docs-only, config-only and throwaway spikes.
 
-### Project learnings
+### When other skills overlap
+Other installed skills (for example Superpowers `test-driven-development`, `subagent-driven-development`, `brainstorming`) may cover the same work. Where they conflict, this playbook wins: tests are written by a tester role, never by the implementer; reviewers re-run the tests themselves; clarifying questions go in one batched message with defaults, not one per message. Use their techniques only where they do not contradict these rules.
+
+### Learnings and playbook feedback
 If `.agents/LEARNINGS.md` exists in the project, read it before starting. Record new lessons only through skill `playbook-learn` (user-approved, evidenced). Never write project lessons into this global block or into the playbook repo.
+When a playbook rule misfires, is missing or gets in the way, note it with skill `playbook-feedback`: capture quietly, ask the user at most once, at the end of a task.
 
 ### First run and precedence
 If `~/.agents/playbook.conf` does not exist, run skill `playbook-setup` once before substantial work. The user may decline: then run `~/.agents/playbook/scripts/conf.sh set setup declined`.

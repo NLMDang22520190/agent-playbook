@@ -3,6 +3,7 @@
 # the real home directory is never touched.
 . "$(dirname "$0")/lib.sh"
 INST() { bash "$PB_ROOT/install.sh" "$@"; }
+export PLAYBOOK_REGISTRY="$(mk_tmp)/registry"   # never write the real repo's .install-targets
 SENTENCE='Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.'
 BEGIN='<!-- BEGIN agent-playbook'
 END='<!-- END agent-playbook -->'

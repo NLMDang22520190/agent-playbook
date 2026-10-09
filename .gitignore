@@ -1,2 +1,3 @@
 .agents/handoff/
 evals/fixture/
+.install-targets

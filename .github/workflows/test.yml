@@ -1,0 +1,27 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Versions
+        run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
+      - name: Tests and static checks
+        run: bash tests/run-all.sh

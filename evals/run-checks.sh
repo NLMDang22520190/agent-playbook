@@ -35,18 +35,25 @@ grep -qF "$SENTENCE" "$g" && ok "contains the verbatim clarify sentence" || bad 
 l="$(wc -l < "$g" | tr -d ' ')"; b="$(wc -c < "$g" | tr -d ' ')"
 [ "$l" -le 60 ] && [ "$b" -le 5000 ] && ok "$g size ok ($l lines, $b bytes)" || bad "$g too big ($l lines, $b bytes; want <=60 / <=5000)"
 grep -Eq '^<!-- (BEGIN|END) agent-playbook' "$g" && bad "$g must not contain the managed markers" || ok "no managed markers inside the block source"
-for skill in playbook-tdd playbook-proof playbook-learn playbook-setup; do
+for skill in playbook-tdd playbook-proof playbook-learn playbook-setup playbook-feedback; do
   grep -q "$skill" "$g" && ok "block mentions $skill" || bad "$g does not mention $skill"
 done
+grep -q '^### When other skills overlap' "$g" && ok "block has the precedence section" || bad "$g lacks '### When other skills overlap'"
+for s in subagent-driven-development test-driven-development brainstorming; do
+  grep -q "$s" "$g" && ok "precedence names $s" || bad "precedence section does not name $s"
+done
+grep -q '^## E11 ' evals/scenarios.md && ok "eval E11 (overlapping skills) exists" || bad "evals/scenarios.md lacks E11"
+[ -f .github/workflows/test.yml ] && ok "CI workflow present" || bad "missing .github/workflows/test.yml"
+[ -f .github/ISSUE_TEMPLATE/playbook-feedback.md ] && ok "feedback issue template present" || bad "missing .github/ISSUE_TEMPLATE/playbook-feedback.md"
 
 echo "files"
 crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
 [ -z "$crlf" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
-for f in install.sh scripts/*.sh tests/*.sh evals/*.sh; do
+for f in install.sh scripts/*.sh tests/*.sh evals/*.sh tools/*.sh; do
   bash -n "$f" 2>/dev/null && ok "syntax: $f" || bad "bash -n failed: $f"
   [ "$(head -c 2 "$f")" = "#!" ] || bad "$f: missing shebang"
 done
-for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh; do
+for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh scripts/feedback.sh; do
   [ -x "$f" ] && ok "executable: $f" || bad "not executable: $f (chmod +x)"
 done
 if command -v shellcheck >/dev/null 2>&1; then

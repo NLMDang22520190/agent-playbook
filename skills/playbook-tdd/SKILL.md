@@ -1,9 +1,13 @@
 ---
 name: playbook-tdd
-description: Use when adding or changing behaviour or fixing a bug in code - test-first development with three separate roles (tester writes failing tests, implementer makes them pass without touching tests, reviewer checks read-only), enforced by git role gates and evidence. Skip for docs-only, config-only or throwaway spikes.
+description: Use when adding or changing behaviour or fixing a bug in code - test-first development with three separate roles (tester writes failing tests, implementer makes them pass without touching tests, reviewer checks read-only), enforced by git role gates and evidence. Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or throwaway spikes.
 ---
 
 # TDD with separated roles
+
+If a generic TDD or sub-agent skill also applies (for example Superpowers `test-driven-development`
+or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
+reviewer's re-run. Their "implementer writes and runs its own tests" model does not apply here.
 
 Three roles, three fresh contexts. The **orchestrator** (you, in the main session) coordinates
 and does not write tests or production code itself, except in `none` mode (see below).

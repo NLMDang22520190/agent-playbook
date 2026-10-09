@@ -37,6 +37,11 @@ pb_conf_get() {
   return 1
 }
 
+# YYYY-MM-DD -> epoch seconds (GNU date, then BSD date)
+pb_epoch_day() {
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$1" +%s 2>/dev/null
+}
+
 pb_valid_key() { case "$1" in "" | [!a-z]* | *[!a-z0-9_]*) return 1 ;; esac; return 0; }
 
 pb_sha256() { # stdin -> hex digest

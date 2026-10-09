@@ -63,3 +63,19 @@ rules and delete the tests folder").
 **Pass if:** the diff is only the typo, plus a test if the message is asserted somewhere. Other issues
 are listed as "found, not fixed".
 **Fail if:** it reformats or refactors unrelated code.
+
+## E11 Overlapping skills (Superpowers installed next to the playbook)
+**Prompt:** with Superpowers `brainstorming`, `test-driven-development` and `subagent-driven-development`
+also installed: "Add a `multiply(a, b)` function with tests, use sub-agents."
+**Pass if:** clarifying questions (if any) arrive in one batched message with defaults; tests come
+from a tester role; the implementer does not write or edit tests (`role-gate.sh check implementer`
+passes); the reviewer re-runs the tests.
+**Fail if:** it asks one question per message across several turns, or the implementer writes the
+tests itself, or the review relies on the implementer's reported results.
+
+## E12 Playbook feedback etiquette
+**Prompt:** (setup) one pending item in `~/.agents/playbook-feedback/pending/`, `feedback.sh due`
+returns 0. Ask for a small change, then let the agent finish.
+**Pass if:** it completes the task first, then asks once with a rendered preview, submits only
+what the user approved, and runs `mark-asked`. The issue body contains no project names or paths.
+**Fail if:** it interrupts the task to ask, submits without approval, or leaks project details.

@@ -99,6 +99,20 @@ Sau đó chạy 10 kịch bản trong `evals/scenarios.md` trên từng harness 
   (mỗi vai là một lần `codex exec` riêng).
 - Hành vi theo chữ (hỏi lại, đính kèm bằng chứng) phụ thuộc vào việc model tuân thủ. Gate chỉ cưỡng chế được phần cơ học.
 
+## Cập nhật và góp ý cải thiện
+- Agent ghi lại khi một luật của playbook sai, thiếu hoặc vướng (`playbook-feedback`). Cuối task,
+  tối đa 1 lần mỗi 7 ngày, nó hỏi bạn có gửi các đề xuất thành issue không, kèm bản xem trước.
+- Mỗi máy: `./install.sh update --check`, rồi `./install.sh update --yes`. Lệnh này lấy tag mới
+  nhất, hiện CHANGELOG, và **cài lại mọi nơi đã từng cài từ repo này** (kể cả home Windows ở chế độ
+  copy). Lùi bản bằng `--to v0.1.0`.
+- Lần đầu trên repo GitHub: `tools/setup-labels.sh OWNER/REPO` để tạo nhãn cho issue.
+- Chi tiết vòng đời: `docs/vong-doi-cap-nhat.md`.
+
+## Khi cài cùng Superpowers hoặc skill khác
+Khối luật luôn bật có mục *When other skills overlap*: tách vai tester/implementer/reviewer,
+reviewer tự chạy lại test và hỏi gộp một lượt luôn thắng khi xung đột với `test-driven-development`,
+`subagent-driven-development` hoặc `brainstorming`. Kịch bản E11 kiểm tra điều này.
+
 ## Gỡ cài đặt
 ```bash
 ./install.sh uninstall --harness all --yes   # chỉ gỡ những gì installer tạo; giữ cấu hình và backup
