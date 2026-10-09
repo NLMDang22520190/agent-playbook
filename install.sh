@@ -559,8 +559,17 @@ cmd_update() {
   target="${TO:-$latest}"
   git -C "$REPO" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null 2>&1 || die "unknown release: $target (see: git -C $REPO tag -l)" 2
   if [ "$CHECK" -eq 1 ]; then
-    if [ "$cur" = "$latest" ]; then say "agent-playbook $cur: up to date"
-    else say "agent-playbook: installed $cur, latest release $latest -> UPDATE AVAILABLE (run: $REPO/install.sh update)"; fi
+    # DECISION[D1]: compare commits, not tag names (two tags can share one commit).
+    if [ "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse "refs/tags/$latest^{commit}")" ]; then
+      say "agent-playbook $cur: up to date"
+    elif git -C "$REPO" merge-base --is-ancestor "refs/tags/$latest^{commit}" HEAD; then
+      say "agent-playbook: installed $cur is ahead of $latest by $(git -C "$REPO" rev-list --count "refs/tags/$latest^{commit}..HEAD") commit(s)"
+    elif git -C "$REPO" merge-base --is-ancestor HEAD "refs/tags/$latest^{commit}"; then
+      say "agent-playbook: installed $cur, latest release $latest -> UPDATE AVAILABLE (run: $REPO/install.sh update)"
+    else
+      # DECISION[D2]: diverged is information, not an update; updating would drop local commits.
+      say "agent-playbook: installed $cur has diverged from $latest (pick a release with: $REPO/install.sh update --to <tag>)"
+    fi
     return 0
   fi
   [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || die "the playbook repo $REPO has uncommitted changes; commit or stash them before updating" 1

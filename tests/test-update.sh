@@ -86,4 +86,69 @@ echo "uninstall drops the registry entry"
 run INST uninstall --home "$H2" --harness codex --yes
 assert_not_contains "registry no longer lists the home" "$(cat "$PLAYBOOK_REGISTRY")" "$H2"
 
+# --- update --check reports the relation between HEAD and the newest release (spec S1) ---
+# Separate origin so the flows above are untouched. History (B = untagged, Y = newest tag v0.3.0):
+#   v0.1.0 -- v0.2.0 -- B -- Y(v0.3.0)
+# Local-only commits in the client: two on top of Y (ahead), one on top of v0.2.0 (diverged).
+RO="$W/rel-origin.git"
+git clone -q --bare "$W/origin.git" "$RO"
+git clone -q "$RO" "$W/rel-src" 2>/dev/null
+( cd "$W/rel-src" && git checkout -q v0.2.0 &&
+  G commit -q --allow-empty -m behind &&
+  G commit -q --allow-empty -m r3 && G tag -a v0.3.0 -m v0.3.0 &&
+  G push -q origin HEAD:refs/heads/rel v0.3.0 ) || { echo "relation fixture setup failed"; exit 3; }
+R="$W/rel-client"
+git clone -q "$RO" "$R" 2>/dev/null
+( cd "$R" && git fetch -q --tags origin ) || { echo "relation client setup failed"; exit 3; }
+RINST() { bash "$R/install.sh" "$@"; }
+rco() { ( cd "$R" && git checkout -q "$1" ) || { echo "checkout $1 failed"; exit 3; }; }
+
+echo "check: HEAD on the newest release"
+rco v0.3.0
+run RINST update --check
+assert_rc "AC1 check on newest tag exits 0" 0
+assert_contains "AC1 HEAD at newest tag reports up to date" "$OUT" "up to date"
+assert_not_contains "AC1 HEAD at newest tag does not offer an update" "$OUT" "UPDATE AVAILABLE"
+
+echo "check: HEAD on an older release"
+rco v0.1.0
+run RINST update --check
+assert_rc "AC2 check on older tag exits 0" 0
+assert_contains "AC2 older tag reports UPDATE AVAILABLE" "$OUT" "UPDATE AVAILABLE"
+assert_contains "AC2 older tag names the newest tag" "$OUT" "v0.3.0"
+
+echo "check: untagged HEAD ahead of the newest release"
+rco v0.3.0
+( cd "$R" && G commit -q --allow-empty -m local1 && G commit -q --allow-empty -m local2 ) || { echo "ahead setup failed"; exit 3; }
+run RINST update --check
+assert_rc "AC3 ahead checkout exits 0" 0
+assert_not_contains "AC3 ahead checkout is not told to update" "$OUT" "UPDATE AVAILABLE"
+assert_contains "AC3 ahead checkout says ahead of the newest tag" "$OUT" "ahead of v0.3.0"
+assert_contains "AC3 ahead checkout states the commit count" "$OUT" "ahead of v0.3.0 by 2 commit"
+
+echo "check: untagged HEAD behind the newest release"
+rco "v0.3.0~1"
+run RINST update --check
+assert_rc "AC4 behind checkout exits 0" 0
+assert_contains "AC4 behind checkout reports UPDATE AVAILABLE" "$OUT" "UPDATE AVAILABLE"
+assert_contains "AC4 behind checkout names the newest tag" "$OUT" "v0.3.0"
+
+echo "check: untagged HEAD diverged from the newest release"
+rco v0.2.0
+( cd "$R" && G commit -q --allow-empty -m side ) || { echo "diverged setup failed"; exit 3; }
+run RINST update --check
+assert_rc "AC5 diverged checkout exits 0" 0
+assert_not_contains "AC5 diverged checkout is not told to update" "$OUT" "UPDATE AVAILABLE"
+assert_contains "AC5 diverged checkout says diverged from the newest tag" "$OUT" "diverged from v0.3.0"
+
+echo "check: two tags on the HEAD commit"
+# v0.3.1 is a lightweight tag on the same commit as the annotated v0.3.0; it is the newest by version.
+( cd "$W/rel-src" && G tag v0.3.1 v0.3.0^{} && G push -q origin v0.3.1 &&
+  cd "$R" && git fetch -q --tags origin ) || { echo "second tag setup failed"; exit 3; }
+rco v0.3.0
+run RINST update --check
+assert_rc "AC6 two tags on HEAD exits 0" 0
+assert_contains "AC6 HEAD carrying the newest tag's commit reports up to date" "$OUT" "up to date"
+assert_not_contains "AC6 HEAD carrying the newest tag's commit does not offer an update" "$OUT" "UPDATE AVAILABLE"
+
 t_summary
