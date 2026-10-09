@@ -33,8 +33,9 @@ run() { OUT="$("$@" 2>&1)"; RC=$?; }
 run_in() { local d="$1"; shift; OUT="$(cd "$d" && "$@" 2>&1)"; RC=$?; }
 
 mk_tmp() {
-  local d
-  d="$(mktemp -d "${TMPDIR:-/tmp}/pbtest.XXXXXX")" || exit 3
+  local d base="${TMPDIR:-/tmp}"
+  base="${base%/}"   # macOS TMPDIR ends with "/": avoid "//" paths that differ from normalised ones
+  d="$(mktemp -d "$base/pbtest.XXXXXX")" || exit 3
   T_TMPS="$T_TMPS $d"
   printf '%s\n' "$d"
 }
