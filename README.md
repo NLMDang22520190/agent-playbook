@@ -2,7 +2,7 @@
 
 # 🧭 agent-playbook
 
-**AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
+**AI SDLC, not AI slop.** One global skill pack for Claude Code, Codex and OpenCode.
 
 ![version](https://img.shields.io/badge/version-0.5.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-532-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
@@ -10,48 +10,48 @@
 
 ---
 
-Agent viết code rất nhanh, nhưng **nhanh mà không kiểm chứng thì thành slop**: test xanh trên màn hình sai, "xong rồi" mà chưa chạy lại, code và test do cùng một agent viết nên đồng ý với cùng một lỗi. agent-playbook đặt kỷ luật vào chỗ agent nào cũng đọc: một khối luật **luôn bật** trong file global của harness, năm skill dùng khi cần, và các **gate bằng máy** để kiểm chứng.
+Agents write code fast, but **fast without verification turns into slop**: tests green on the wrong screen, "done" without a fresh run, code and tests written by the same agent and agreeing on the same mistake. agent-playbook puts discipline where every agent reads it: an **always-on** rule block in each harness's global instruction file, five skills used when they apply, and **mechanical gates** that check the work.
 
 <p align="center">
   <img src="docs/flow.svg" alt="One change end to end: 1 Clarify by reversibility, 2 Spec with verbatim AC and source anchors, 3 RED by the tester, 4 GREEN by the implementer, 5 REVIEW read-only with UI check, 6 PROOF with fresh evidence, 7 LEARN and feedback. Git role gates between RED, GREEN and REVIEW." width="100%">
 </p>
 
-## Triết lý
+## Philosophy
 
-**1 · Làm rõ theo khả năng đảo ngược.** Đọc repo trước. Chỉ hỏi khi điểm mơ hồ *vừa quan trọng vừa khó đảo ngược*. Còn lại thì chọn mặc định, ghi vào `decisions.md`, đi tiếp và duyệt gộp ở cuối.
+**1 · Clarify by reversibility.** Read the repo first. Ask only when an ambiguity is *both material and hard to reverse*. Otherwise pick a default, log it in `decisions.md`, keep going, and review the defaults in one batch at the end.
 
-**2 · Bằng chứng cho mọi khẳng định.** Mỗi khẳng định có nhãn `[VERIFIED]` `[INFERRED]` `[UNVERIFIED]`. "Pass" phải có output của một lần chạy *trong phiên này*.
+**2 · Proof for every claim.** Claims carry `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`. "Passes" needs the output of a run *from this session*.
 
-**3 · Người viết test ≠ người viết code ≠ người review.** Ba vai, ba ngữ cảnh mới, và `role-gate.sh` chặn bằng git, không chỉ dặn bằng lời.
+**3 · Test author ≠ implementer ≠ reviewer.** Three roles, three fresh contexts, and `role-gate.sh` enforces it through git, not just through instructions.
 
-**4 · Học ở dự án, cải thiện ở gốc.** Bài học riêng của dự án vào `LEARNINGS.md`. Lỗ hổng của chính playbook thành issue (bạn duyệt), PR, release, rồi mọi máy `update`.
+**4 · Learn in the project, improve at the source.** Project lessons go to `LEARNINGS.md`. Gaps in the playbook itself become issues (you approve them), then a PR, a release, and every machine runs `update`.
 
-### Mỗi luật kèm lý do
+### Every rule carries its why
 
-| Luật | Vì sao có luật này |
+| Rule | Why it exists |
 |---|---|
-| Hỏi khi khó đảo ngược, còn lại thì ghi mặc định | Chờ những quyết định đảo ngược được làm chết tốc độ; đoán những quyết định không đảo ngược được gây làm lại hoặc gây hại. |
-| Bằng chứng từ lần chạy mới | Test từng xanh trên màn hình sai; một lời giải thích sai nhưng tự tin tốn của người sau cả ngày. |
-| Tách tester / implementer / reviewer | Agent tự viết cả code lẫn test sẽ viết test đồng ý với lỗi của chính nó. |
-| AC nguyên văn kèm anchor nguồn | Diễn giải lại yêu cầu là cách nhanh nhất để làm đúng thứ không ai yêu cầu. |
-| UI phải có người mở màn hình | Test xanh không cho biết màn hình có đúng hay không. |
-| Giữ phạm vi, không nới gate | Sửa ngoài yêu cầu trốn trong diff mà không ai review. Gate bị nới thì không còn bảo vệ ai. |
-| Playbook thắng khi skill khác chồng chéo | Hai skill ra lệnh ngược nhau thì hành vi thành ngẫu nhiên. |
+| Ask when hard to reverse, otherwise log a default | Waiting on choices that can be undone kills speed; guessing the ones that cannot causes rework or damage. |
+| Evidence from a fresh run | Tests have gone green on the wrong screen; a confident wrong explanation costs the next person a day. |
+| Separate tester / implementer / reviewer | An agent that writes both the code and its tests writes tests that agree with its own mistakes. |
+| Verbatim AC with source anchors | Paraphrasing a request is the fastest way to build what nobody asked for. |
+| UI changes need someone to look | Green tests cannot tell you the screen is right. |
+| Stay in scope, never loosen a gate | Unrequested changes hide in diffs nobody reviews. A loosened gate protects no one. |
+| The playbook wins when skills overlap | Two skills giving opposite orders make behaviour random. |
 
-## Bên trong có gì
+## What's inside
 
-| Thành phần | Kích hoạt | Làm gì |
+| Component | Triggers | Does |
 |---|---|---|
-| `AGENTS.global.md` | **mọi phiên** (installer chèn vào file global) | làm rõ theo khả năng đảo ngược · bằng chứng · phạm vi · thứ tự ưu tiên |
-| [`playbook-setup`](skills/playbook-setup/SKILL.md) | lần đầu, hoặc "set up the playbook" | nhận diện harness, đọc dự án, hỏi tối đa 8 câu có mặc định |
-| [`playbook-tdd`](skills/playbook-tdd/SKILL.md) | thêm hoặc sửa hành vi, sửa bug | spec có anchor, RED → GREEN theo lát, review, báo cáo cuối |
-| [`playbook-proof`](skills/playbook-proof/SKILL.md) | khi báo kết quả hoặc "xong" | nhãn tin cậy, bảng bằng chứng theo loại, Definition of Done |
-| [`playbook-learn`](skills/playbook-learn/SKILL.md) | khi bị sửa, khi gate fail có nguyên nhân | bài học cho dự án vào `.agents/LEARNINGS.md` (bạn duyệt) |
-| [`playbook-feedback`](skills/playbook-feedback/SKILL.md) | khi luật của playbook sai hoặc thiếu | ghi lặng lẽ, cuối task hỏi tối đa 1 lần, rồi tạo issue |
+| `AGENTS.global.md` | **every session** (the installer puts it in the global instruction file) | clarify by reversibility · proof · scope · precedence |
+| [`playbook-setup`](skills/playbook-setup/SKILL.md) | first run, or "set up the playbook" | detects the harness, reads the project, asks at most 8 questions with defaults |
+| [`playbook-tdd`](skills/playbook-tdd/SKILL.md) | adding or changing behaviour, fixing a bug | anchored spec, RED → GREEN per slice, review, final report |
+| [`playbook-proof`](skills/playbook-proof/SKILL.md) | reporting results or "done" | confidence labels, evidence by claim type, Definition of Done |
+| [`playbook-learn`](skills/playbook-learn/SKILL.md) | when you correct the agent, or a gate fails with a known cause | project lessons in `.agents/LEARNINGS.md` (you approve) |
+| [`playbook-feedback`](skills/playbook-feedback/SKILL.md) | when a playbook rule misfires or is missing | captures quietly, asks at most once at the end of a task, files an issue in your private feedback repo |
 
-Script (bash 3.2+, không phụ thuộc gì): `role-gate.sh` · `proof-run.sh` · `conf.sh` · `learn.sh` · `feedback.sh`.
+Scripts (bash 3.2+, no dependencies): `role-gate.sh` · `proof-run.sh` · `conf.sh` · `learn.sh` · `feedback.sh`.
 
-## Ba vai, một slice
+## Three roles, one slice
 
 ```mermaid
 sequenceDiagram
@@ -72,26 +72,26 @@ sequenceDiagram
   Note over O: role-gate check reviewer ✓ → final report
 ```
 
-| Vai | Được sửa | Gate chặn khi |
+| Role | May change | The gate fails when |
 |---|---|---|
-| Tester | chỉ file test | đụng vào code sản phẩm |
-| Implementer | chỉ code sản phẩm | sửa, xoá hoặc thêm bất kỳ file test nào kể từ commit RED |
-| Reviewer | không gì cả (chỉ báo cáo) | repo có bất kỳ thay đổi nào |
+| Tester | test files only | production code is touched |
+| Implementer | production code only | any test file is edited, deleted or added since the RED commit (test configuration counts as test) |
+| Reviewer | nothing (report only) | anything in the repo changed |
 
-### Mức độ theo rủi ro: không phải việc nào cũng cần 3 sub-agent
+### Weight by risk: not every change needs three sub-agents
 
-| Mức | Khi nào | Chạy gì | Chi phí đo được* |
+| Weight | When | What runs | Measured cost* |
 |---|---|---|---|
-| **Full** | API công khai, cấu trúc dữ liệu, migration, bảo mật, tiền, logic lõi; hoặc khi phân vân | 3 vai, 3 ngữ cảnh, gate sau mỗi lần bàn giao, **một review cho cả tính năng** | ~5 phút và ~225k token cho 3 vai (bản sửa v0.3.1) |
-| **Lite** | sửa nhỏ, đảo ngược được, ≤ 3 file và ≤ 100 dòng | một ngữ cảnh: test viết trước và thấy đỏ, `role-gate --base RED`, bằng chứng; không có reviewer | chỉ phần test trước và gate |
-| **Exempt** | docs, config không đổi hành vi, spike bỏ đi | không thêm test, nhưng phải nói rõ là được miễn | không đáng kể |
+| **Full** | public API, data shape, migrations, security, money, core logic; or when unsure | three roles, three contexts, a gate after every hand-off, **one review per feature** | ~5 min and ~225k tokens for the three roles (the v0.3.1 fix) |
+| **Lite** | small and reversible, ≤ 3 files and ≤ 100 lines (`role-gate.sh size` checks it) | one context: test written first and seen failing, `role-gate --base RED`, evidence; no reviewer | test-first plus the gate |
+| **Exempt** | docs, config that does not change behaviour, throwaway spikes | no new tests, but say so explicitly | negligible |
 
-Lite **tự nâng lên Full** khi đụng tới vùng khó đảo ngược, vượt giới hạn kích thước, hoặc nghi ngờ một test sai. Config làm đổi hành vi (feature flag, giá trị mặc định, phân quyền, deploy) **không được miễn**.
-<sub>* Số đo từ bản sửa v0.3.1, xem CHANGELOG. Chưa phải benchmark.</sub>
+Lite **escalates to Full** when it touches hard-to-reverse ground, outgrows the size limit, or a test looks wrong. Configuration that changes behaviour (feature flags, defaults, permissions, deploy settings) is **not exempt**.
+<sub>* Measured on the v0.3.1 fix, see the CHANGELOG. Not a benchmark.</sub>
 
-Harness có sub-agent thì mỗi vai là một sub-agent. Nếu không có thì mỗi vai chạy thành một phiên headless riêng. Trường hợp chỉ có một ngữ cảnh thì vẫn chạy được nhưng **được báo rõ** là chế độ yếu.
+If the harness has sub-agents, each role is a sub-agent. If not, each role runs as a separate headless session. With a single context only, it still runs, but the report says so: it is the weaker mode.
 
-## Hỏi hay tự quyết?
+## Ask or decide?
 
 ```mermaid
 flowchart LR
@@ -105,101 +105,113 @@ flowchart LR
   LOG --> SUM["Listed in the final summary<br/>for one batched review"]
 ```
 
-## Cài một lần, chạy ở mọi harness
+## Install once, run in every harness
 
 <p align="center">
   <img src="docs/architecture.svg" alt="One source, every harness, every project: the agent-playbook repo is installed into Claude Code, Codex and OpenCode; each project keeps playbook.conf, LEARNINGS.md and hand-off files; feedback becomes GitHub issues and tagged releases are installed with install.sh update." width="100%">
 </p>
 
-| Harness | Skills | Luật luôn bật |
+| Harness | Skills | Always-on rules |
 |---|---|---|
-| Claude Code | `~/.claude/skills/playbook-*` | khối được quản lý trong `~/.claude/CLAUDE.md` |
-| Codex CLI | `~/.agents/skills/playbook-*` | khối được quản lý trong `~/.codex/AGENTS.md` |
-| OpenCode | đọc sẵn cả hai thư mục trên | `~/.config/opencode/AGENTS.md`, hoặc fallback sang file của Claude |
+| Claude Code | `~/.claude/skills/playbook-*` | managed block in `~/.claude/CLAUDE.md` |
+| Codex CLI | `~/.agents/skills/playbook-*` | managed block in `~/.codex/AGENTS.md` |
+| OpenCode | reads both folders above | `~/.config/opencode/AGENTS.md`, or falls back to the Claude file |
 
 ```bash
 git clone https://github.com/NLMDang22520190/agent-playbook.git ~/agent-playbook
-cd ~/agent-playbook && bash tests/run-all.sh                 # phải xanh
-./install.sh install --harness all --dry-run                 # xem trước
+cd ~/agent-playbook && bash tests/run-all.sh                 # must be green
+./install.sh install --harness all --dry-run                 # preview
 ./install.sh install --harness all --yes && ./install.sh doctor
 ```
 
-**Windows, khi repo nằm trong WSL:** `./install.sh install --home /mnt/c/Users/<tên> --harness all --copy --yes`. Nếu repo nằm thẳng trên Windows thì dùng `.\install.ps1 install -Harness claude -Yes`.
+**Windows, repo inside WSL:** `./install.sh install --home /mnt/c/Users/<name> --harness all --copy --yes`. If the repo lives on Windows directly, use `.\install.ps1 install -Harness claude -Yes`.
 
-Installer chạy lặp lại an toàn, sao lưu file trước khi sửa, không ghi đè thứ gì không phải của nó, và ghi lại mọi nơi đã cài để `update` cập nhật hết. Xong thì mở **phiên mới** và nói *"set up the playbook"*.
+The installer is safe to re-run, backs files up before changing them, never overwrites anything it does not own, and records every target so `update` refreshes them all. Then open a **new session** and say *"set up the playbook"*.
 
-## Tự cải thiện từ việc dùng thật
+## Improves itself from real use
 
 ```mermaid
 flowchart TD
   A["Work session · any harness, any machine"] -- "a playbook rule misfired: capture quietly" --> B[("pending feedback")]
-  B -- "end of task, at most 1× / 7 days · you preview + approve" --> C["GitHub issue"]
+  B -- "end of task, at most 1× / 7 days · you preview + approve" --> C["GitHub issue (private feedback repo)"]
   C --> D["PR + eval scenario"]
   D --> E{"tests + review"}
-  E -- merge --> F["tag vX.Y.Z"]
+  E -- merge --> F["tag vX.Y.Z → CI creates the release"]
   F -- "install.sh update" --> G["every recorded install · WSL · Windows · ..."]
   G --> A
 ```
 
 ```bash
-./install.sh update --check      # có bản mới không?
-./install.sh update --yes        # hiện CHANGELOG, checkout tag, cài lại mọi nơi, doctor
-./install.sh update --to v0.2.0 --yes   # lùi bản
+./install.sh update --check             # is there a newer release?
+./install.sh update --yes               # show the CHANGELOG, check out the tag, re-install everywhere, doctor
+./install.sh update --to v0.2.0 --yes   # roll back
 ```
 
-Chi tiết: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md).
+`feedback.sh submit` refuses to post to a public repository (or one whose visibility it cannot read) unless you pass `--allow-public`. Details: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md) (Vietnamese).
 
-## Chất lượng, đo được
+## Behaviour evals
 
-| Chỉ số | Giá trị | Nguồn |
+Script tests prove the tools work; only behaviour evals show whether an agent actually follows the rules.
+`evals/run-evals.sh` runs scenarios E1, E3, E8 and E15 against a real harness in throw-away fixtures, grades the mechanical part (PASS / FAIL / MANUAL per check) and writes a results file:
+
+```bash
+evals/run-evals.sh --harness opencode --scenarios E1,E15,E8 --workroot /tmp/pb-evals-$(date +%s)
+evals/run-evals.sh --cmd "bash my-adapter.sh" ...   # adapter is called as: COMMAND <workdir> <prompt-file>
+```
+
+The presets do not sandbox the agent (the opencode preset auto-approves its actions): run them only in a throw-away workroot or a VM, never inside a real repo. Score the MANUAL items with [`evals/RUBRIC.md`](evals/RUBRIC.md).
+
+## Quality, measured
+
+| Metric | Value | Source |
 |---|---|---|
-| Test script, installer và công cụ | **532 passing** (conf 16 · evals 151 · feedback 82 · install 69 · learn 27 · proof-run 22 · release 22 · role-gate 83 · run-checks 13 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
-| Kiểm tra tĩnh | frontmatter, ngân sách độ dài, lý do của mỗi luật, CRLF, cú pháp, eval | `evals/run-checks.sh` |
-| Khối luôn bật | 40 / 60 dòng · 4.369 / 5.000 byte | `wc -l -c AGENTS.global.md` |
-| Description các skill | 1.541 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
-| CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools), mỗi push và PR; xem badge CI | `.github/workflows/test.yml` |
-| Kịch bản hành vi E1–E17 | *pending*: `evals/run-evals.sh` chấm tự động E1/E3/E8/E15; lần chạy thật đầu tiên (OpenCode) bị chặn vì API key không hợp lệ | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Script, installer and tool tests | **532 passing** (conf 16 · evals 151 · feedback 82 · install 69 · learn 27 · proof-run 22 · release 22 · role-gate 83 · run-checks 13 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
+| Always-on block | 40 / 60 lines · 4,369 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Skill descriptions | 1,541 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
+| CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
+| Behaviour scenarios E1–E17 | *pending*: `evals/run-evals.sh` auto-grades E1/E3/E8/E15; the first real run (OpenCode) was blocked by an invalid API key | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
-Chỉ số nào chưa đo thì không được coi là chỉ số.
+A metric that was not measured is not a metric.
 
-## Khi cài cùng Superpowers hoặc skill khác
+## Alongside Superpowers or other skill packs
 
-Khối luôn bật có mục *When other skills overlap*. Khi xung đột với `test-driven-development`, `subagent-driven-development` hoặc `brainstorming`, các luật sau luôn thắng: tách vai tester / implementer / reviewer, reviewer tự chạy lại test, và hỏi gộp một lượt có mặc định. Kịch bản E11 kiểm tra điều này.
+The always-on block has a *When other skills overlap* section. When it conflicts with `test-driven-development`, `subagent-driven-development` or `brainstorming`, these rules win: separate tester / implementer / reviewer, the reviewer re-runs the tests, and questions are batched in one message with defaults. Scenario E11 checks this.
 
-## Giới hạn (nói thẳng)
+## Limitations (stated plainly)
 
-- Ngữ cảnh mới nhưng cùng một model thì vẫn có điểm mù chung. Nên dùng model khác cho reviewer.
-- `role-gate.sh` phân loại test hay code theo đường dẫn (regex chỉnh được). Nó không bắt được việc implementer viết code riêng cho input của test; reviewer và mutation spot-check làm việc đó.
-- Luật viết bằng chữ (hỏi lại, đính kèm bằng chứng) phụ thuộc vào việc model có tuân thủ. Gate chỉ cưỡng chế được phần cơ học.
-- Codex chỉ có sub-agent khi bật tính năng multi-agent. Nếu không, playbook chạy ở chế độ `manual`.
+- Fresh contexts on the same model still share blind spots. Prefer a different model for the reviewer.
+- `role-gate.sh` tells tests from code by path (configurable regex). It cannot catch an implementer special-casing test inputs in production code; the reviewer and the mutation spot-check do that.
+- Rules written in prose (ask, attach evidence) depend on the model following them. The gates only enforce the mechanical part.
+- Codex only has sub-agents with its multi-agent feature enabled; otherwise the playbook runs in `manual` mode.
 
-## Cấu trúc repo
+## Repository layout
 
 ```
 agent-playbook/
-├── AGENTS.global.md        luật luôn bật (installer chèn vào file global của harness)
+├── AGENTS.global.md        always-on rules (the installer puts them in each harness's global file)
 ├── skills/                 setup · tdd (roles/, templates/, references/) · proof · learn · feedback
 ├── scripts/                role-gate · proof-run · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  532 test, chạy trong sandbox, không đụng HOME thật
-├── evals/                  run-evals.sh (chạy eval headless) · run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
-├── tools/setup-labels.sh   nhãn cho issue feedback
+├── tests/                  532 tests, run in sandboxes, never touch the real HOME
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
+├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag)
 └── docs/                   flow.svg · architecture.svg · tdd-huong-dan.md · harness-notes.md · vong-doi-cap-nhat.md
 ```
 
 ```bash
-./install.sh uninstall --harness all --yes   # chỉ gỡ những gì installer tạo; giữ cấu hình và backup
+./install.sh uninstall --harness all --yes   # removes only what the installer created; keeps config and backups
 ```
 
-## Ghi công
+## Credits
 
-Nội dung do repo này tự viết. Các ý tưởng được học hỏi từ:
-- [obra/superpowers](https://github.com/obra/superpowers): kỷ luật TDD và "evidence before claims".
-- [Agent Skills](https://agentskills.io) và [AGENTS.md](https://agents.md): các định dạng mở giúp một bộ skill chạy được trên nhiều harness.
-- [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills): thay đổi đúng chỗ, nêu rõ giả định.
-- [mattpocock/skills](https://github.com/mattpocock/skills): cách viết skill gọn.
-- Một playbook giao hàng B2B nội bộ: quyết định theo khả năng đảo ngược, mỗi luật kèm lý do, AC nguyên văn có anchor, và kiểm tra UI bằng mắt.
+The content is written for this repo. Ideas were learned from:
+- [obra/superpowers](https://github.com/obra/superpowers): TDD discipline and "evidence before claims".
+- [Agent Skills](https://agentskills.io) and [AGENTS.md](https://agents.md): the open formats that let one skill pack run across harnesses.
+- [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills): surgical changes, stated assumptions.
+- [mattpocock/skills](https://github.com/mattpocock/skills): concise skill writing.
+- An internal B2B delivery playbook: decide by reversibility, a why for every rule, verbatim AC with anchors, and looking at the UI.
 
 ## License
 
@@ -208,5 +220,5 @@ Nội dung do repo này tự viết. Các ý tưởng được học hỏi từ:
 ---
 
 <div align="center">
-<sub>agent-playbook · alpha · Hướng dẫn TDD cho người mới: <a href="docs/tdd-huong-dan.md">docs/tdd-huong-dan.md</a> · Ghi chú harness kèm nguồn: <a href="docs/harness-notes.md">docs/harness-notes.md</a></sub>
+<sub>agent-playbook · alpha · TDD guide for beginners (Vietnamese): <a href="docs/tdd-huong-dan.md">docs/tdd-huong-dan.md</a> · Harness notes with sources: <a href="docs/harness-notes.md">docs/harness-notes.md</a></sub>
 </div>
