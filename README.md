@@ -4,7 +4,7 @@
 
 **AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
 
-![version](https://img.shields.io/badge/version-0.3.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![tests](https://img.shields.io/badge/tests-249_passing_(local)-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange)
+![version](https://img.shields.io/badge/version-0.3.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![tests](https://img.shields.io/badge/tests-249_passing_(local)-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -180,6 +180,19 @@ agent-playbook/
 ```bash
 ./install.sh uninstall --harness all --yes   # chỉ gỡ những gì installer tạo; giữ cấu hình và backup
 ```
+
+## Ghi công
+
+Nội dung do repo này tự viết. Các ý tưởng được học hỏi từ:
+- [obra/superpowers](https://github.com/obra/superpowers): kỷ luật TDD và "evidence before claims".
+- [Agent Skills](https://agentskills.io) và [AGENTS.md](https://agents.md): các định dạng mở giúp một bộ skill chạy được trên nhiều harness.
+- [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills): thay đổi đúng chỗ, nêu rõ giả định.
+- [mattpocock/skills](https://github.com/mattpocock/skills): cách viết skill gọn.
+- Một playbook giao hàng B2B nội bộ: quyết định theo khả năng đảo ngược, mỗi luật kèm lý do, AC nguyên văn có anchor, và kiểm tra UI bằng mắt.
+
+## License
+
+[MIT](LICENSE)
 
 ---
 

@@ -4,7 +4,7 @@
 Phiên làm việc (Claude / Codex / OpenCode, máy nào cũng được)
   └─ skill playbook-feedback: ghi đề xuất có bằng chứng (thụ động, không ngắt việc)
        └─ cuối task, tối đa 1 lần mỗi feedback_interval_days: xem trước → bạn duyệt → feedback.sh submit
-            └─ issue trên repo private (kiểm tra trùng, nhãn harness/kind/source)
+            └─ issue trên repo playbook (kiểm tra trùng, nhãn harness/kind/source)
 Bạn triage (hằng tháng)
   └─ agent soạn PR: thay đổi skill + kịch bản eval tương ứng
        └─ CI (Ubuntu + macOS) chạy tests/run-all.sh → bạn review → merge
