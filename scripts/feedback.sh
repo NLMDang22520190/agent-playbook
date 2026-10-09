@@ -7,10 +7,13 @@
 #   feedback.sh render ID              issue title + body (for the user's preview)
 #   feedback.sh due                    exit 0 when it is time to ask the user, else 1
 #   feedback.sh mark-asked             remember that the user was asked today
-#   feedback.sh submit ID...|--all [--repo OWNER/REPO] [--dry-run]
+#   feedback.sh submit ID...|--all [--repo OWNER/REPO] [--dry-run] [--allow-public]
+#       submit only posts to a repo confirmed PRIVATE or INTERNAL; a PUBLIC repo or unknown
+#       visibility is refused (exit 5, also with --dry-run) unless --allow-public is given.
 #   feedback.sh discard ID
 # Storage: ~/.agents/playbook-feedback/{pending,sent,discarded}/<id>.md (key: value lines)
 # Exit: 0 ok | 1 not due / submit failures | 2 usage/validation | 3 gh unavailable | 4 duplicate
+#       5 submit refused: target repo is public or its visibility is unknown (no --allow-public)
 # Env: PLAYBOOK_GH (gh binary, tests), PLAYBOOK_DATE (YYYY-MM-DD, tests)
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -144,11 +147,12 @@ case "$cmd" in
     ;;
 
   submit)
-    repo=""; dry=0; all=0; ids=""
+    repo=""; dry=0; all=0; allow_public=0; ids=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --repo) [ $# -ge 2 ] || pb_die "--repo needs OWNER/REPO" 2; repo="$2"; shift ;;
         --dry-run) dry=1 ;;
+        --allow-public) allow_public=1 ;;
         --all) all=1 ;;
         -*) pb_die "unknown option: $1" 2 ;;
         *) ids="$ids $1" ;;
@@ -163,6 +167,17 @@ case "$cmd" in
     [ -n "$ids" ] || { echo "nothing to submit"; exit 0; }
     if ! command -v "$GH" >/dev/null 2>&1 && [ ! -x "$GH" ]; then
       pb_die "GitHub CLI not available ($GH): items stay pending; submit later from a machine with gh" 3
+    fi
+    # Visibility guard: checked once, before any item is processed.
+    # DECISION[D3] runs in --dry-run too, so a dry run predicts the real run.
+    if [ "$allow_public" -eq 0 ]; then
+      visibility="$("$GH" repo view "$repo" --json visibility --jq .visibility 2>/dev/null)" || visibility=""
+      case "$visibility" in
+        PRIVATE|INTERNAL) ;;
+        PUBLIC) pb_die "$repo is a public repository: not submitting (items stay pending). Use a private repo, or pass --allow-public to post publicly" 5 ;;
+        # DECISION[D1] unknown visibility (query failed or printed nothing) fails closed, like public.
+        *) pb_die "visibility of $repo is unknown (gh repo view failed or printed nothing): not submitting (items stay pending). Pass --allow-public to post anyway" 5 ;;
+      esac
     fi
     failures=0
     for id in $ids; do

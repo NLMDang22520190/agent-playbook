@@ -12,7 +12,7 @@ Ask only what inspection could not settle. Every question has a default; "defaul
 | 6 | `autonomy` (global) | What may I do without asking? `ask-before-commit` / `commit-locally` / `full` (push, PR) | `ask-before-commit` | The TDD flow commits RED/GREEN checkpoints. With `ask-before-commit` it asks once per task. |
 | 7 | `test_path_regex` (project) | Tests live in `<dirs>`. Does the default pattern recognise them? | the built-in default (only ask if detection shows a mismatch) | The role gate uses it to tell tests from production code. |
 
-| 8 | `feedback_repo` (global), `feedback_interval_days` (global) | Where should playbook improvement proposals go, and how often may I ask? | the playbook repo's `origin` (`git -C "$(dirname "$(readlink ~/.agents/playbook/scripts)")" remote get-url origin`, as OWNER/REPO); `7` days | `playbook-feedback` sends approved proposals there as issues. |
+| 8 | `feedback_repo` (global), `feedback_interval_days` (global) | Where should playbook improvement proposals go, and how often may I ask? | a **private** repo the user owns (OWNER/REPO; suggest creating one, e.g. `gh repo create OWNER/playbook-feedback --private`), never the public playbook repo; `7` days | `playbook-feedback` sends approved proposals there as issues. `submit` refuses (exit 5) a public repo or one whose visibility it cannot read, unless `--allow-public` is passed. |
 
 Optional, only when relevant:
 - `learnings_path` (project): default `.agents/LEARNINGS.md`.
