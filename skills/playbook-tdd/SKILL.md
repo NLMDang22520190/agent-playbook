@@ -21,6 +21,10 @@ and does not write tests or production code itself, except in `none` mode (see b
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
 Prompt rules alone are not enough. The gate runs after every role hand-back.
 
+**Why:** an agent that writes both code and tests writes tests that agree with its own mistakes,
+and a test nobody saw fail proves nothing. Separate contexts plus a git gate make "the tests were
+changed to pass" impossible to miss.
+
 New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation spot-check are in
 `references/test-quality.md`.
 
@@ -36,11 +40,15 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 ## Workflow
 
 ### Phase 1: Spec (orchestrator)
-Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the goal, acceptance criteria with
-ids (AC1…), non-goals, constraints, and **slices**. A slice is one observable behaviour, about 1 to 5
-tests. Order the slices so each one builds on the previous. Apply the clarify rule: inspect, then
-ask only the questions that change the assertions. Get the user's OK on the AC list when the
-request was ambiguous.
+Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, acceptance criteria with
+ids (AC1…) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
+constraints, and **slices**. A slice is one observable behaviour, about 1 to 5 tests. Order the
+slices so each one builds on the previous. Nothing goes into the spec that the source did not say.
+
+Gaps, by reversibility: ask (one batched message) only about those that change assertions AND are
+hard to reverse; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
+`templates/decisions.md`, and mark the code `DECISION[Dn]`. Get the user's OK on the AC list when
+the request was ambiguous. Re-read the AC table before each commit.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
 For slice S:
@@ -73,8 +81,9 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
 ### Phase 4: Close-out (orchestrator)
 - Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- Fill `templates/final-report.md`: AC to tests to evidence, review verdict, assumptions,
-  found-not-fixed, and the [UNVERIFIED] list.
+- Fill `templates/final-report.md`: AC to tests to evidence, review verdict, assumptions, the
+  logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
+  [UNVERIFIED] list.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
 
@@ -98,11 +107,11 @@ model, the mutation spot-check, and the user's own review of the AC table reduce
 remove it.
 
 ## Stop and ask the user when
-- the AC are ambiguous in a way that changes assertions;
+- an ambiguity changes assertions and is hard to reverse (reversible ones: log a default instead);
 - a dispute is still open after 2 rounds;
 - making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
 - baseline failures make the RED/GREEN signal unreadable.
 
 ## Hand-off files (`.agents/handoff/`, git-ignored)
-`01-spec.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
+`01-spec.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
 · `evidence/*.log`. Templates are in `templates/`.

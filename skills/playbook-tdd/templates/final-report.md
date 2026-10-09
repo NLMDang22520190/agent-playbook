@@ -20,6 +20,10 @@ Verdict: ... (model: ...). Findings resolved: ... Open: ...
 ## Assumptions
 - ...
 
+## Logged defaults (from decisions.md, for one batched review)
+| ID | Default taken | How to undo | Status |
+|---|---|---|---|
+
 ## Found, not fixed / [UNVERIFIED]
 - ...
 

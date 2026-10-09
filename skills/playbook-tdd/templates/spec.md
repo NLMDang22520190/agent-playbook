@@ -1,11 +1,21 @@
 # 01 - Spec: <feature or bug>
 
+## Source
+Where the request comes from: issue/ticket URL, user story id, the user's chat message (quoted),
+design or prototype files. Nothing goes into this spec that the source did not say; gaps become
+questions (hard to reverse) or logged defaults in `decisions.md` (reversible).
+
 ## Goal
 <one or two sentences: who gets what>
 
 ## Acceptance criteria
-- AC1: Given <state>, when <action>, then <observable result>.
-- AC2: ...
+Copy the wording **verbatim** from the source when it exists; rephrase only into Given/When/Then and
+keep the original next to it. Each AC points back to where it came from.
+
+| AC | Criterion (Given / When / Then) | Source anchor (verbatim quote + where) |
+|---|---|---|
+| AC1 | Given <state>, when <action>, then <observable result>. | "Customers can cancel within 24h" (issue #42, 2nd bullet) |
+| AC2 | ... | `design/checkout.fig` frame "Cancel" · label text "Cancel order" |
 
 ## Non-goals
 - ...
@@ -21,6 +31,6 @@
 | S2 | <variation> | AC2 | |
 | S3 | <error path> | AC3 | |
 
-## Assumptions (confirmed / open)
-- [confirmed] ...
-- [open] ... (default if no answer: ...)
+## Open questions and logged defaults
+- [ask] ... (hard to reverse; default if no answer: ...)
+- [default D1] see `decisions.md`

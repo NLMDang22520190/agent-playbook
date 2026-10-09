@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-10-09
+Four lessons adopted from an internal B2B delivery playbook, kept project-neutral:
+- **Decide by reversibility.** The clarify rule now asks only about ambiguities that are material
+  AND hard to reverse; reversible gaps get a default logged in `.agents/handoff/decisions.md`
+  (template, `DECISION[Dn]` markers) and are reviewed in one batch. Eval E13.
+- **Every rule carries its why.** Each always-on section has a `Why:` line; each skill states its
+  `**Why:**`. Rules without a reason become candidates for removal during feedback triage.
+- **AC verbatim with source anchors.** `spec.md` starts from the source and keeps each AC's
+  original wording and where it came from; testers name tests by AC id and assert on literal copy.
+- **UI changes need someone to look.** The reviewer opens the running app at mobile width first,
+  then desktop, compares copy and flow with the source anchors, keeps a screenshot per AC, and
+  never approves a UI AC it could not open. Eval E14.
+
 ## 0.2.0 - 2026-10-09
 - Precedence over overlapping skills: the always-on block and `playbook-tdd` state that the
   playbook's role split, reviewer re-run and batched questions win over Superpowers

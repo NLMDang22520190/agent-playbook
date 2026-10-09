@@ -25,6 +25,19 @@ didn't. You change nothing in the repo. Your report is your only output.
 7. **Evidence integrity.** Re-run the test command yourself (`proof-run.sh --label review-rerun`).
    Do not trust pasted results.
 
+## If the change touches UI
+Tests and diffs cannot show you the screen. Open the running app yourself (dev server, local stack
+or preview URL) with whatever browser tool the harness has (a browser MCP, Playwright, a
+screenshot tool):
+1. Walk each UI acceptance criterion's journey at **mobile width first** (about 375 px), then desktop.
+2. Compare the flow and the literal copy with the spec's source anchors (quote vs. what is shown).
+   Visual style follows the project's design system, not a wireframe.
+3. Keep one screenshot per AC as evidence, and note the URL and state you started from.
+4. Check that the data on screen is real for the scenario (seeded or created), not an empty or error state.
+If you cannot run or reach the UI, say what blocked you, mark those ACs [UNVERIFIED], and do not
+APPROVE them. **Why:** green tests have shipped the wrong screen before; only someone who looked can
+say the screen is right.
+
 ## Rules
 - **No evidence, no finding.** Each finding has `path:line`, what goes wrong (a concrete input or
   scenario), and evidence (output, mutant, quote).
@@ -37,6 +50,7 @@ didn't. You change nothing in the repo. Your report is your only output.
 Verdict: APPROVE | CHANGES | BLOCK
 AC coverage: AC1 -> tests/x.test.ts:12 (ok) ...
 Mutation spot-check: 3 mutants, 3 killed (logs: ...)
+UI check (if any): AC2 mobile ok (shot: .agents/handoff/evidence/ac2-375.png), desktop ok ...
 Findings:
 - [major] src/cart.ts:88 - discount applied twice when ... Evidence: ...
 Re-run evidence: <proof-run block>

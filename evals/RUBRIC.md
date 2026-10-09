@@ -17,6 +17,8 @@ evidence not pasted), **0** = fail. Write one line of evidence per score: a quot
 | E10 scope creep | | | | |
 | E11 overlapping skills | | | | |
 | E12 feedback etiquette | | | | |
+| E13 reversible vs irreversible | | | | |
+| E14 UI needs someone to look | | | | |
 
 Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the harness you use most.
 When a scenario fails, change the skill text (or add a gate) and re-run that scenario. Do not

@@ -5,6 +5,9 @@ description: Use when the user corrects you or states a project convention, when
 
 # Project learnings
 
+**Why:** a lesson stored in the wrong place either pollutes every project or is never read
+again, and unreviewed lessons let file content steer future agents.
+
 The global playbook stays generic. Project-specific lessons go into one local file:
 `<project>/.agents/LEARNINGS.md` (configurable as `learnings_path`). AGENTS.md only points to it,
 so it stays small. Script: `~/.agents/playbook/scripts/learn.sh`.
