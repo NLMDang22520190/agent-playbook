@@ -27,4 +27,33 @@ Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the ha
 When a scenario fails, change the skill text (or add a gate) and re-run that scenario. Do not
 change the scenario to make it pass.
 
-Copy this table to `results/<YYYY-MM-DD>-<harness>-<model>.md` for each run.
+Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
+
+## Running evals automatically
+
+`evals/run-evals.sh` runs E1, E3, E8 and E15 (the auto-gradable ones) headless and grades the
+mechanical part:
+
+    evals/run-evals.sh --harness opencode [--scenarios E1,E8] [--workroot DIR] [--out FILE] [--timeout 900]
+    evals/run-evals.sh --cmd "bash /path/adapter.sh"
+
+- Adapter contract: the command is called once per scenario as `COMMAND <workdir> <prompt-file>`.
+  `<workdir>` is a fresh fixture (`make-fixture.sh <workdir>`); stdout and stderr become the
+  transcript `<workroot>/<E>.log`.
+- Presets: `opencode` runs `opencode run --auto`, `claude` runs `claude -p`, `codex` runs `codex exec`,
+  each inside the workdir with the prompt text.
+  - `opencode`: verified from `opencode run --help` (v2.0.18, Windows).
+  - `claude`, `codex`: unverified guesses (their CLIs were not available to check the flags).
+    `claude -p` may need a permission flag before it can edit files headless (unverified); without
+    one the edits may be refused and E1/E3/E15 then FAIL.
+- Safety: the `opencode` preset auto-approves the agent's actions (`--auto`); the others may or may not,
+  depending on flags (unverified). None of them sandbox the agent: `cd` into the workdir is the only
+  confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
+- Workroot ownership: the runner marks a workroot it creates (or finds empty) with `.pb-eval-workroot`
+  and only clears `<workroot>/<E>` when the workroot carries that marker or `<E>` is a previous fixture
+  (`.git/pb-fixture`). Anything else stops the run with exit 2 before a file is touched.
+- Output: one line per check (`<E> PASS|FAIL|MANUAL <check>`) and a results file (default
+  `evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md`, so runs on the same day do not
+  overwrite each other). Exit 0 all auto checks passed, 1 any FAIL, 2 usage, 3 environment (node or
+  git missing, fixture or results file cannot be created). MANUAL items still need a human score with
+  the table above.
