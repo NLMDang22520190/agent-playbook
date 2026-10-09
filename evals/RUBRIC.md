@@ -46,8 +46,12 @@ mechanical part:
   - `claude`, `codex`: unverified guesses (their CLIs were not available to check the flags).
     `claude -p` may need a permission flag before it can edit files headless (unverified); without
     one the edits may be refused and E1/E3/E15 then FAIL.
-- Safety: the presets auto-approve the agent's actions and do not sandbox it; `cd` into the workdir is
-  the only confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
+- Safety: the `opencode` preset auto-approves the agent's actions (`--auto`); the others may or may not,
+  depending on flags (unverified). None of them sandbox the agent: `cd` into the workdir is the only
+  confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
+- Workroot ownership: the runner marks a workroot it creates (or finds empty) with `.pb-eval-workroot`
+  and only clears `<workroot>/<E>` when the workroot carries that marker or `<E>` is a previous fixture
+  (`.git/pb-fixture`). Anything else stops the run with exit 2 before a file is touched.
 - Output: one line per check (`<E> PASS|FAIL|MANUAL <check>`) and a results file (default
   `evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md`, so runs on the same day do not
   overwrite each other). Exit 0 all auto checks passed, 1 any FAIL, 2 usage, 3 environment (node or

@@ -6,7 +6,10 @@
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
 # (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
-# Exit: 0 every auto check passed, 1 any FAIL, 2 usage, 3 environment (node, git, fixture).
+# Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
+# <workroot>/<E> is only cleared when that marker exists or <E> is a previous fixture (.git/pb-fixture).
+# Exit: 0 every auto check passed, 1 any FAIL, 2 usage or a workroot/<E> the runner does not own,
+#       3 environment (node, git, fixture).
 # Bash 3.2 compatible. Needs node >= 18 and git.
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
