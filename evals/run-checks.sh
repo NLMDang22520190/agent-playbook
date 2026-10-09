@@ -109,14 +109,14 @@ for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh sc
   [ -x "$f" ] && ok "executable: $f" || bad "not executable: $f (chmod +x)"
 done
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck -S warning install.sh scripts/*.sh && ok "shellcheck (warning level)" || bad "shellcheck reported warnings"
+  shellcheck -S warning install.sh scripts/*.sh tools/*.sh evals/*.sh && ok "shellcheck (warning level)" || bad "shellcheck reported warnings"
 else
   echo "  skip shellcheck not installed"
 fi
 
 echo "eval scenarios"
 n=0
-while IFS= read -r h; do
+while IFS= read -r _; do
   n=$((n + 1))
 done < <(grep -E '^## E[0-9]+' evals/scenarios.md)
 for k in 'Prompt:' 'Pass if:' 'Fail if:'; do
