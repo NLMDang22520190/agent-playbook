@@ -245,7 +245,7 @@ make_item() { # src dst (as link or copy)
 }
 
 place_skill() { # dir name
-  local dir="$1" name="$2" src="$REPO/skills/$2" dst="$1/$2" st
+  local dir="$1" src="$REPO/skills/$2" dst="$1/$2" st
   st="$(skill_state "$dst" "$src")"
   case "$st:$COPY" in
     ok:0|copy-ok:1) say "  =  $dst (unchanged)"; return 0 ;;

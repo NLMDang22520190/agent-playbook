@@ -4,7 +4,7 @@
 
 **AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
 
-![version](https://img.shields.io/badge/version-0.3.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![tests](https://img.shields.io/badge/tests-249_passing_(local)-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.3.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-249-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -146,7 +146,7 @@ Chi tiết: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md).
 | Kiểm tra tĩnh | frontmatter, ngân sách độ dài, lý do của mỗi luật, CRLF, cú pháp, eval | `evals/run-checks.sh` |
 | Khối luôn bật | 40 / 60 dòng · 4.047 / 5.000 byte | `wc -l -c AGENTS.global.md` |
 | Description các skill | 1.497 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
-| CI (Ubuntu + macOS / bash 3.2) | *chưa chạy*: GitHub Actions đang bị chặn bởi billing | `.github/workflows/test.yml` |
+| CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools), mỗi push và PR; xem badge CI | `.github/workflows/test.yml` |
 | Kịch bản hành vi E1–E14 | *pending*: cần chạy trên từng harness | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 Chỉ số nào chưa đo thì không được coi là chỉ số.
