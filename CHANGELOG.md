@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- docs: visual README (badges, `docs/flow.svg`, `docs/architecture.svg` with dark mode, Mermaid diagrams for roles, reversibility and the update loop, measured quality table).
+
 ## 0.3.0 - 2026-10-09
 Four lessons adopted from an internal B2B delivery playbook, kept project-neutral:
 - **Decide by reversibility.** The clarify rule now asks only about ambiguities that are material
