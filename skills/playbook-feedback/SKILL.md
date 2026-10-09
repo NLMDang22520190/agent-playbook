@@ -1,6 +1,6 @@
 ---
 name: playbook-feedback
-description: Use when a playbook rule or skill misfired, was missing, contradicted another skill or slowed real work down - quietly capture an evidenced improvement proposal, and at the end of a task (at most once per interval) offer to send pending proposals as GitHub issues to the playbook repo after the user previewed them.
+description: Use when a playbook rule or skill misfired, was missing, contradicted another skill or slowed real work down - quietly capture an evidenced improvement proposal, and at the end of a task (at most once per interval) offer to send pending proposals as GitHub issues to the user's private feedback repo after the user previewed them.
 ---
 
 # Playbook feedback
