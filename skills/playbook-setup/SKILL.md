@@ -5,6 +5,9 @@ description: Use once per machine or project to configure the agent playbook - w
 
 # Playbook setup
 
+**Why:** the other skills run real commands and pick real capabilities; guessed values make
+gates run the wrong thing silently.
+
 Goal: one short round of questions that produces `~/.agents/playbook.conf` (global) and, inside a
 project, `<project>/.agents/playbook.conf`. The other playbook skills read these values. Detect
 what you can, propose defaults, guess nothing silently.

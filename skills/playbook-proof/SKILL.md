@@ -5,6 +5,9 @@ description: Use when stating results, diagnoses, comparisons or recommendations
 
 # Proof for every claim
 
+**Why:** green that nobody looked at has shipped the wrong screen before, and a plausible
+invention written into a handoff costs the next session a day.
+
 **Rule:** a claim without evidence the reader can check is a guess. Label it as one, or go get the evidence.
 
 ## Confidence labels

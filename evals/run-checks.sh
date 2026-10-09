@@ -46,6 +46,26 @@ grep -q '^## E11 ' evals/scenarios.md && ok "eval E11 (overlapping skills) exist
 [ -f .github/workflows/test.yml ] && ok "CI workflow present" || bad "missing .github/workflows/test.yml"
 [ -f .github/ISSUE_TEMPLATE/playbook-feedback.md ] && ok "feedback issue template present" || bad "missing .github/ISSUE_TEMPLATE/playbook-feedback.md"
 
+echo "v0.3 rules"
+# 1. reversibility-based clarify rule + decision ledger
+grep -qi 'reversib' "$g" && ok "block has the reversibility rule" || bad "$g lacks the reversibility rule"
+grep -q 'decisions.md' "$g" && ok "block names the decision ledger" || bad "$g does not name .agents/handoff/decisions.md"
+[ -f skills/playbook-tdd/templates/decisions.md ] && ok "decision ledger template exists" || bad "missing skills/playbook-tdd/templates/decisions.md"
+grep -q 'templates/decisions.md' skills/playbook-tdd/SKILL.md && ok "playbook-tdd uses the ledger" || bad "playbook-tdd does not reference templates/decisions.md"
+# 2. every always-on section and every skill carries its why
+secs="$(grep -c '^### ' "$g")"; whys="$(grep -c '^Why: ' "$g")"
+[ "$secs" -eq "$whys" ] && ok "each of $secs always-on sections has a Why: line" || bad "$g: $secs sections but $whys 'Why: ' lines"
+for f in skills/*/SKILL.md; do
+  grep -q '\*\*Why:\*\*' "$f" && ok "$(basename "$(dirname "$f")"): states its why" || bad "$f has no **Why:** line"
+done
+# 3. AC verbatim with source anchors
+grep -q 'Source anchor' skills/playbook-tdd/templates/spec.md && ok "spec template has source anchors" || bad "spec.md lacks a 'Source anchor' column"
+grep -qi 'verbatim' skills/playbook-tdd/templates/spec.md && ok "spec template asks for verbatim AC" || bad "spec.md does not ask for verbatim wording"
+# 4. behavioural check for UI changes
+grep -q '^## If the change touches UI' skills/playbook-tdd/roles/reviewer.md && ok "reviewer has the UI section" || bad "reviewer.md lacks '## If the change touches UI'"
+grep -qi 'mobile' skills/playbook-tdd/roles/reviewer.md && ok "UI check starts at mobile width" || bad "reviewer.md does not mention mobile width"
+for e in E13 E14; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exists" || bad "evals/scenarios.md lacks $e"; done
+
 echo "files"
 crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
 [ -z "$crlf" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"

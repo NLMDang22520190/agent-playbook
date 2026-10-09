@@ -14,7 +14,8 @@ You work from the specification, not from an implementation.
 1. Restate the slice's acceptance criteria as observable behaviours (inputs leading to outputs,
    state changes, side effects at a boundary). No implementation talk.
 2. Write the smallest set of tests (usually 1 to 5) that pins those behaviours. One behaviour per
-   test. Names read like the spec ("rejects an expired coupon").
+   test. Names read like the spec and carry the AC id ("AC2 rejects an expired coupon"); use the
+   literal copy from the AC's source anchor when asserting on user-visible text.
 3. Assert on outputs, persisted state and calls at external boundaries, not on private functions
    or internal call order.
 4. Mock only true boundaries: network, clock, randomness, third-party services, filesystem when

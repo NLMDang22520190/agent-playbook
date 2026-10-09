@@ -5,6 +5,9 @@ description: Use when a playbook rule or skill misfired, was missing, contradict
 
 # Playbook feedback
 
+**Why:** the playbook only improves from real use across harnesses, but unprompted or
+unreviewed issues would be slop and could leak project data.
+
 This is how the global playbook improves from real use across harnesses. Project-specific lessons
 do **not** belong here; they go to `playbook-learn`. Script: `~/.agents/playbook/scripts/feedback.sh`.
 
