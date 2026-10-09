@@ -80,6 +80,7 @@ run bash "$GATE" check wizard;                  assert_rc "unknown role exits 2"
 run bash "$GATE" check tester --base no-such-ref; assert_rc "bad --base exits 3" 3
 
 echo "AC1 test configuration counts as test"
+N="$(mk_tmp)"; cd "$N" || exit 3   # leave $R: its .agents/playbook.conf overrides the default regex
 for f in jest.config.js jest.config.ts vitest.config.mts playwright.config.ts cypress.config.js \
          karma.conf.js .mocharc.yml pytest.ini src/__snapshots__/a.test.js.snap x/y.snap \
          phpunit.xml phpunit.xml.dist; do
