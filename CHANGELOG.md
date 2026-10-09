@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 - 2026-10-09
+- security(feedback): `feedback.sh submit` now checks the target repo's visibility once, before any
+  item is processed, and refuses (exit 5, items stay pending) when the repo is public or its
+  visibility cannot be determined, also in `--dry-run`; `--allow-public` is the explicit opt-in.
+  The setup default for `feedback_repo` is a private repo the user owns, never the public playbook repo.
+  Full weight: tester / implementer / reviewer sub-agents; 24 new assertions seen failing first;
+  review APPROVE with 5/5 mutants killed and bypass probes (case, whitespace, CRLF, config repo) refused.
+
 ## 0.4.0 - 2026-10-09
 Make the discipline cheaper where mistakes are cheap:
 - **Full / Lite weight by risk.** `playbook-tdd` picks a weight before Phase 1 and states the reason.

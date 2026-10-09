@@ -13,6 +13,12 @@ cat > "$STUB/gh" <<'EOF'
 #!/usr/bin/env bash
 printf 'ARGS:' >> "$GH_LOG"; printf ' %s' "$@" >> "$GH_LOG"; printf '\n' >> "$GH_LOG"
 case "$1 $2" in
+  "repo view")
+    # Visibility of the target repo. Default PRIVATE; GH_VISIBILITY="" models empty output,
+    # GH_VIS_FAIL=1 models a failing query (both = unknown visibility).
+    [ "${GH_VIS_FAIL:-0}" = "1" ] && { echo "could not resolve to a Repository" >&2; exit 1; }
+    v="${GH_VISIBILITY-PRIVATE}"
+    [ -n "$v" ] && echo "$v" ;;
   "issue list")
     if [ "${GH_DUP:-0}" = "1" ]; then printf '7\t%s\thttps://github.com/o/r/issues/7\n' "${GH_DUP_TITLE:-x}"; fi ;;
   "issue create")
@@ -136,6 +142,76 @@ run bash "$FB" submit --all
 assert_rc "submit --all ok" 0
 assert_eq "both remaining items submitted" "2" "$(grep -c 'issue create' "$GH_LOG")"
 assert_eq "nothing pending" "0" "$(ls "$D/pending" | wc -l | tr -d ' ')"
+
+echo "submit: public repository guard"
+fresh() { cap "$1"; id_of "$OUT"; }   # capture a new pending item and print its id
+: > "$GH_LOG"
+
+IDP="$(fresh "Guard case private repo")"
+: > "$GH_LOG"
+GH_VISIBILITY=PRIVATE run bash "$FB" submit "$IDP" --repo o/r
+assert_rc "AC3 private repo -> submit ok" 0
+assert_contains "AC3 visibility of the target repo is checked" "$(cat "$GH_LOG")" "repo view o/r"
+assert_contains "AC3 private repo -> duplicate search still runs" "$(cat "$GH_LOG")" "issue list --repo o/r"
+assert_contains "AC3 private repo -> issue created with labels" "$(cat "$GH_LOG")" "--label feedback"
+assert_no_path "AC3 private repo -> item no longer pending" "$D/pending/$IDP.md"
+assert_file "AC3 private repo -> item moved to sent" "$D/sent/$IDP.md"
+
+IDI="$(fresh "Guard case internal repo")"
+: > "$GH_LOG"
+GH_VISIBILITY=INTERNAL run bash "$FB" submit "$IDI" --repo o/r
+assert_rc "AC3 INTERNAL repo counts as not public -> submit ok" 0
+assert_contains "AC3 INTERNAL repo -> issue created" "$(cat "$GH_LOG")" "issue create --repo o/r"
+
+IDG="$(fresh "Guard case public repo")"
+: > "$GH_LOG"
+GH_VISIBILITY=PUBLIC run bash "$FB" submit "$IDG" --repo o/r
+assert_rc "AC1 public repo without --allow-public -> exit 5" 5
+assert_contains "AC1 refusal message mentions public" "$OUT" "public"
+assert_not_contains "AC1 public repo -> no issue created" "$(cat "$GH_LOG")" "issue create"
+assert_file "AC1 public repo -> item stays pending" "$D/pending/$IDG.md"
+
+IDD="$(fresh "Guard case public dry run")"
+: > "$GH_LOG"
+GH_VISIBILITY=PUBLIC run bash "$FB" submit "$IDD" --repo o/r --dry-run
+assert_rc "AC5 public repo --dry-run without --allow-public -> exit 5" 5
+assert_not_contains "AC5 dry-run on public repo -> no issue created" "$(cat "$GH_LOG")" "issue create"
+assert_file "AC5 dry-run on public repo -> item stays pending" "$D/pending/$IDD.md"
+
+IDU="$(fresh "Guard case visibility query fails")"
+: > "$GH_LOG"
+GH_VIS_FAIL=1 run bash "$FB" submit "$IDU" --repo o/r
+assert_rc "AC4 visibility query fails -> exit 5" 5
+assert_contains "AC4 query fails -> message says visibility is unknown" "$OUT" "unknown"
+assert_not_contains "AC4 query fails -> no issue created" "$(cat "$GH_LOG")" "issue create"
+assert_file "AC4 query fails -> item stays pending" "$D/pending/$IDU.md"
+
+IDE="$(fresh "Guard case visibility empty")"
+: > "$GH_LOG"
+GH_VISIBILITY="" run bash "$FB" submit "$IDE" --repo o/r
+assert_rc "AC4 visibility query prints nothing -> exit 5" 5
+assert_contains "AC4 empty answer -> message says visibility is unknown" "$OUT" "unknown"
+assert_not_contains "AC4 empty answer -> no issue created" "$(cat "$GH_LOG")" "issue create"
+assert_file "AC4 empty answer -> item stays pending" "$D/pending/$IDE.md"
+
+IDO="$(fresh "Guard case public opt in")"
+: > "$GH_LOG"
+GH_VISIBILITY=PUBLIC run bash "$FB" submit "$IDO" --repo o/r --allow-public
+assert_rc "AC2 public repo with --allow-public -> exit 0" 0
+assert_contains "AC2 --allow-public -> issue created" "$(cat "$GH_LOG")" "issue create --repo o/r"
+assert_no_path "AC2 --allow-public -> item no longer pending" "$D/pending/$IDO.md"
+assert_file "AC2 --allow-public -> item moved to sent" "$D/sent/$IDO.md"
+
+IDA1="$(fresh "Guard case all one")"
+IDA2="$(fresh "Guard case all two")"
+: > "$GH_LOG"
+GH_VISIBILITY=PUBLIC run bash "$FB" submit --all
+assert_rc "AC6 --all on public repo without --allow-public -> exit 5" 5
+assert_contains "AC6 --all refusal mentions public" "$OUT" "public"
+assert_not_contains "AC6 --all on public repo -> no issue created" "$(cat "$GH_LOG")" "issue create"
+assert_not_contains "AC6 --all refuses before any item is processed (no duplicate search)" "$(cat "$GH_LOG")" "issue list"
+assert_file "AC6 first item stays pending" "$D/pending/$IDA1.md"
+assert_file "AC6 second item stays pending" "$D/pending/$IDA2.md"
 
 echo "discard"
 cap "Throwaway idea"
