@@ -51,6 +51,8 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass (this is what proves you did not bend the test after seeing it fail).
+   `role-gate.sh size --base $RED` is the machine check of the Lite limits (≤ 3 production files,
+   ≤ 100 changed lines); if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
    logic is recommended.
 5. Final report with `Weight: Lite` and the line "no independent review". If the user wants one,

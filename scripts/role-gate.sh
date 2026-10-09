@@ -2,6 +2,16 @@
 # Mechanical enforcement of role separation in the TDD workflow.
 #   role-gate.sh check <tester|implementer|reviewer> [--base REF]
 #   role-gate.sh classify <path>        prints "test" or "code"
+#   role-gate.sh size [--base REF] [--max-files N] [--max-lines M]
+#                                       Lite size check (defaults 3 files, 100 lines)
+#
+# Test paths include test configuration and snapshots (jest/vitest/playwright/cypress
+# config, karma.conf, .mocharc, pytest.ini, phpunit.xml, __snapshots__/, *.snap).
+#
+# size counts production files (non-test, outside .agents/handoff/) changed since REF
+# (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines
+# (git diff --numstat; a binary file counts as 1 line; an untracked file counts all its
+# lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
 #
 # What each role may change (relative to REF, default HEAD; includes staged, unstaged
 # and untracked files):
@@ -14,7 +24,7 @@
 set -u
 . "$(dirname "$0")/lib.sh"
 
-DEFAULT_REGEX='(^|/)(test|tests|__tests__|spec|specs|e2e|__mocks__|fixtures|testdata)(/|$)|(\.test\.|\.spec\.|_test\.|_spec\.)|(^|/)test_[^/]*$|(^|/)conftest\.py$|\.feature$|Tests?\.(java|kt|cs|swift)$'
+DEFAULT_REGEX='(^|/)(test|tests|__tests__|spec|specs|e2e|__mocks__|fixtures|testdata|__snapshots__)(/|$)|(\.test\.|\.spec\.|_test\.|_spec\.)|(^|/)test_[^/]*$|(^|/)conftest\.py$|\.feature$|Tests?\.(java|kt|cs|swift)$|(^|/)(jest|vitest|playwright|cypress)\.config\.[^/]+$|(^|/)karma\.conf\.[^/]+$|(^|/)\.mocharc(\.[^/]+)?$|(^|/)pytest\.ini$|(^|/)phpunit\.xml(\.dist)?$|\.snap$'
 
 test_regex() { pb_conf_get test_path_regex "$DEFAULT_REGEX"; }
 
@@ -76,7 +86,57 @@ EOF
     fi
     printf 'OK: role gate passed for %s (%d file(s) checked, base=%s)\n' "$role" "$checked" "$base"
     ;;
+  size)
+    base="HEAD"; max_files=3; max_lines=100
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --base)      [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
+        --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
+        --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
+        *) pb_die "unknown option: $1" 2 ;;
+      esac
+      shift
+    done
+    for n in "$max_files" "$max_lines"; do
+      case "$n" in ''|*[!0-9]*) pb_die "limit must be a non-negative integer: $n" 2 ;; esac
+    done
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
+    git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
+    top="$(git rev-parse --show-toplevel)"
+    cd "$top" || pb_die "cannot enter $top" 3
+
+    # one "added<TAB>deleted<TAB>path" line per file; untracked files diffed against /dev/null
+    stats="$( git -c core.quotepath=off diff --numstat --no-renames "$base" --
+              git -c core.quotepath=off ls-files --others --exclude-standard |
+                while IFS= read -r u; do
+                  [ -n "$u" ] || continue
+                  counts="$(git diff --no-index --numstat -- /dev/null "$u" | cut -f1,2)"
+                  [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+                  printf '%s\t%s\n' "$counts" "$u"
+                done )"
+
+    files=0
+    lines=0
+    while IFS=$'\t' read -r added deleted f; do
+      [ -n "$f" ] || continue
+      case "$f" in .agents/handoff/*) continue ;; esac
+      [ "$(classify "$f")" = "code" ] || continue
+      files=$((files + 1))
+      if [ "$added" = "-" ]; then
+        lines=$((lines + 1))
+      else
+        lines=$((lines + added + deleted))
+      fi
+    done <<EOF
+$stats
+EOF
+    printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
+    if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
+      printf 'over the Lite size limit: escalate to Full\n'
+      exit 1
+    fi
+    ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] | classify <path>" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2
     ;;
 esac
