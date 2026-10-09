@@ -22,8 +22,8 @@ Change only what the request needs: no drive-by refactors, no new dependency wit
 Why: unrequested changes hide in diffs nobody asked to review, and a weakened gate stops protecting anyone.
 
 ### TDD with separated roles
-For any change that adds or alters behaviour, or fixes a bug, use skill `playbook-tdd`: tests first, and the tester, implementer and reviewer are different agents or contexts. Exempt, but say so: docs-only, config-only and throwaway spikes.
-Why: an agent that writes both the code and its tests writes tests that agree with its own mistakes.
+For any change that adds or alters behaviour, or fixes a bug, use skill `playbook-tdd`, always tests first, at a weight chosen by risk and stated with its reason: **Full** (tester, implementer and reviewer are different agents or contexts) for hard-to-reverse ground or core logic, and whenever unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes. Exempt, but say so: docs-only, config-only without behaviour change, and throwaway spikes.
+Why: an agent that writes both the code and its tests writes tests that agree with its own mistakes; separate contexts cost minutes, so spend them where a mistake is expensive.
 
 ### When other skills overlap
 Other installed skills (for example Superpowers `test-driven-development`, `subagent-driven-development`, `brainstorming`) may cover the same work. Where they conflict, this playbook wins: tests are written by a tester role, never by the implementer; reviewers re-run the tests themselves; clarifying questions go in one batched message with defaults, not one per message. Use their techniques only where they do not contradict these rules.

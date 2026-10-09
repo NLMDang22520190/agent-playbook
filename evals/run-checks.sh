@@ -66,6 +66,23 @@ grep -q '^## If the change touches UI' skills/playbook-tdd/roles/reviewer.md && 
 grep -qi 'mobile' skills/playbook-tdd/roles/reviewer.md && ok "UI check starts at mobile width" || bad "reviewer.md does not mention mobile width"
 for e in E13 E14; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exists" || bad "evals/scenarios.md lacks $e"; done
 
+echo "v0.4 weights"
+T=skills/playbook-tdd/SKILL.md
+# 1. Full / Lite chosen by risk, with escalation
+grep -q '\*\*Full\*\*' "$g" && grep -q '\*\*Lite\*\*' "$g" && ok "block names the Full and Lite weights" || bad "$g lacks **Full** / **Lite**"
+grep -q '^## Pick the weight' "$T" && ok "playbook-tdd has 'Pick the weight'" || bad "$T lacks '## Pick the weight'"
+grep -qi 'escalate to Full' "$T" && ok "Lite escalates to Full" || bad "$T does not say when to escalate to Full"
+grep -q '^### Lite workflow' "$T" && ok "playbook-tdd describes the Lite workflow" || bad "$T lacks '### Lite workflow'"
+grep -q 'Weight:' skills/playbook-tdd/templates/final-report.md && ok "final report records the weight" || bad "final-report.md lacks 'Weight:'"
+grep -q 'Weight:' skills/playbook-tdd/templates/spec.md && ok "spec records the weight" || bad "spec.md lacks 'Weight:'"
+# 2. one review per feature
+grep -q 'One reviewer per feature' "$T" && ok "review is batched per feature" || bad "$T lacks 'One reviewer per feature'"
+# 5. exemptions spelled out
+grep -q '^### Exempt' "$T" && ok "playbook-tdd spells out the exemptions" || bad "$T lacks '### Exempt'"
+for w in docs-only config-only spike; do grep -qi "$w" "$T" && ok "exemption covers $w" || bad "$T exemptions do not cover $w"; done
+grep -qi 'not exempt' "$T" && ok "exemptions say what is NOT exempt" || bad "$T does not say what is not exempt"
+for e in E15 E16 E17; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exists" || bad "evals/scenarios.md lacks $e"; done
+
 echo "files"
 crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
 [ -z "$crlf" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"

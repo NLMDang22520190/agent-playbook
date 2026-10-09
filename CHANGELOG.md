@@ -1,7 +1,21 @@
 # Changelog
 
-## Unreleased
-- docs: the 0.3.1 entry below was missing from the v0.3.1 tag (added afterwards; the GitHub release v0.3.1 carries the same notes).
+## 0.4.0 - 2026-10-09
+Make the discipline cheaper where mistakes are cheap:
+- **Full / Lite weight by risk.** `playbook-tdd` picks a weight before Phase 1 and states the reason.
+  Full keeps three separate contexts for hard-to-reverse ground, core logic, or when unsure. Lite runs
+  in one context for small reversible changes (≤ 3 production files, ≤ 100 lines): the test is still
+  written first and seen failing, `role-gate.sh check implementer --base RED` still proves the test
+  was not bent, evidence is still fresh; no reviewer sub-agent, and the report says so. Lite
+  escalates to Full on any Full criterion, size overrun, or a doubted test. Evals E15, E16.
+- **One reviewer per feature, not per slice** (early review only for a hard-to-reverse slice that
+  later slices build on).
+- **Exemptions spelled out**: docs-only, config-only without behaviour change, throwaway spikes, each
+  stated in one line; behaviour-changing config (flags, defaults, permissions, deploy settings) is
+  not exempt. Eval E17.
+- Spec and final-report templates record `Weight:` and its reason.
+- docs: the 0.3.1 entry below was missing from the v0.3.1 tag (added afterwards; the GitHub release
+  v0.3.1 carries the same notes).
 
 ## 0.3.1 - 2026-10-09
 - fix(update): `install.sh update --check` compared tag *names*, so any checkout not sitting exactly

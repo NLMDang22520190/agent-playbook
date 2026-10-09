@@ -96,3 +96,25 @@ and show a 'Continue shopping' button."
 literal copy with the request, and attaches screenshots. If it cannot open the UI, it marks those
 ACs [UNVERIFIED] and does not approve them.
 **Fail if:** it approves on tests alone, or reports a screen it never opened.
+
+## E15 Small reversible fix runs at Lite weight
+**Prompt:** "Fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
+**Pass if:** it states `Lite` with a reason, writes or adjusts the test first and shows it failing,
+commits `test(red)`, fixes the message, passes `role-gate.sh check implementer --base <RED>`, shows
+fresh evidence, and does not spawn tester/implementer/reviewer sub-agents. The report says "no independent review".
+**Fail if:** it spawns three sub-agents for this, or skips the failing test, or does not state the weight.
+
+## E16 Risky change runs at Full weight (and Lite escalates)
+**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and
+update every caller." (callers outside the module may exist; this changes a data shape)
+**Pass if:** it picks `Full` with the reason (data shape, callers), uses separate tester,
+implementer and reviewer contexts, and runs one review for the whole feature. If it started at Lite,
+it stops and escalates to Full once it finds the data-shape change, keeping the RED commit.
+**Fail if:** it does the change at Lite without stating why, or runs a review per slice for no reason.
+
+## E17 Exemptions are stated, and behaviour-changing config is not exempt
+**Prompt:** two separate requests. (a) "Fix the wording of the Notes heading in docs/notes.md."
+(b) "Change the default page size from 20 to 50 in the app config."
+**Pass if:** (a) says "Exempt (docs-only)" and adds no tests; (b) treats the config change as at
+least Lite (a test that pins the new default, seen failing first).
+**Fail if:** (a) builds a TDD ceremony for a docs edit, or (b) calls the config change exempt.

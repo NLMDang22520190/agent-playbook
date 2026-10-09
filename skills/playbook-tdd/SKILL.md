@@ -1,6 +1,6 @@
 ---
 name: playbook-tdd
-description: Use when adding or changing behaviour or fixing a bug in code - test-first development with three separate roles (tester writes failing tests, implementer makes them pass without touching tests, reviewer checks read-only), enforced by git role gates and evidence. Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or throwaway spikes.
+description: Use when adding or changing behaviour or fixing a bug in code - test-first development with three separate roles (tester writes failing tests, implementer makes them pass without touching tests, reviewer checks read-only), enforced by git role gates and evidence; Full or Lite weight by risk. Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or throwaway spikes.
 ---
 
 # TDD with separated roles
@@ -9,8 +9,9 @@ If a generic TDD or sub-agent skill also applies (for example Superpowers `test-
 or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
 reviewer's re-run. Their "implementer writes and runs its own tests" model does not apply here.
 
-Three roles, three fresh contexts. The **orchestrator** (you, in the main session) coordinates
-and does not write tests or production code itself, except in `none` mode (see below).
+At **Full** weight: three roles, three fresh contexts. The **orchestrator** (you, in the main
+session) coordinates and does not write tests or production code itself, except in `none` mode
+(see below). **Lite** weight runs the same discipline in one context (see "Pick the weight").
 
 | Role | Writes | Must not | Prompt |
 |---|---|---|---|
@@ -27,6 +28,44 @@ changed to pass" impossible to miss.
 
 New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation spot-check are in
 `references/test-quality.md`.
+
+## Pick the weight (before Phase 1)
+
+| Weight | Use it when | What runs |
+|---|---|---|
+| **Full** | the change touches hard-to-reverse ground (public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
+| **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
+| **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
+
+State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
+choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
+limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
+continue with separate roles from there.
+
+**Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
+reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
+
+### Lite workflow
+1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`.
+2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
+   Commit `test(red): ...` and note the sha as `RED`.
+3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
+   must pass (this is what proves you did not bend the test after seeing it fail).
+4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
+   logic is recommended.
+5. Final report with `Weight: Lite` and the line "no independent review". If the user wants one,
+   run Phase 3 on the result.
+
+### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
+- **docs-only**: README, comments, guides; no executable or configuration change.
+- **config-only** that does not change runtime behaviour: formatting, editor or lint settings, CI
+  caching.
+- **throwaway spike**: on a branch that will be deleted, to learn something; the real change is
+  then redone at Lite or Full.
+
+**Not exempt:** configuration that changes behaviour (feature flags, environment defaults, routing,
+permissions, build or deploy settings), generated code that ships, "small" fixes in business logic,
+and anything in the Full column. These are at least Lite.
 
 ## Preconditions
 - git repo with a clean tree or a known baseline (`git status`).
@@ -72,9 +111,11 @@ For slice S:
    `--base $RED`), and green again afterwards.
 
 ### Phase 3: Review (reviewer, read-only)
-After the last slice (or after each risky slice), start a fresh reviewer with `roles/reviewer.md`.
+**One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
+`roles/reviewer.md` for the whole diff. Review a single slice early only when that slice alone is
+hard to reverse (a migration, a public API change) and later slices build on it.
 Prefer a different model (`conf.sh get model_reviewer`). Give it the spec, the base sha from before
-slice 1, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
+slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
 

@@ -4,7 +4,7 @@
 
 **AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
 
-![version](https://img.shields.io/badge/version-0.3.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-249-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.4.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-268-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -78,6 +78,17 @@ sequenceDiagram
 | Implementer | chỉ code sản phẩm | sửa, xoá hoặc thêm bất kỳ file test nào kể từ commit RED |
 | Reviewer | không gì cả (chỉ báo cáo) | repo có bất kỳ thay đổi nào |
 
+### Mức độ theo rủi ro: không phải việc nào cũng cần 3 sub-agent
+
+| Mức | Khi nào | Chạy gì | Chi phí đo được* |
+|---|---|---|---|
+| **Full** | API công khai, cấu trúc dữ liệu, migration, bảo mật, tiền, logic lõi; hoặc khi phân vân | 3 vai, 3 ngữ cảnh, gate sau mỗi lần bàn giao, **một review cho cả tính năng** | ~5 phút và ~225k token cho 3 vai (bản sửa v0.3.1) |
+| **Lite** | sửa nhỏ, đảo ngược được, ≤ 3 file và ≤ 100 dòng | một ngữ cảnh: test viết trước và thấy đỏ, `role-gate --base RED`, bằng chứng; không có reviewer | chỉ phần test trước và gate |
+| **Exempt** | docs, config không đổi hành vi, spike bỏ đi | không thêm test, nhưng phải nói rõ là được miễn | không đáng kể |
+
+Lite **tự nâng lên Full** khi đụng tới vùng khó đảo ngược, vượt giới hạn kích thước, hoặc nghi ngờ một test sai. Config làm đổi hành vi (feature flag, giá trị mặc định, phân quyền, deploy) **không được miễn**.
+<sub>* Số đo từ bản sửa v0.3.1, xem CHANGELOG. Chưa phải benchmark.</sub>
+
 Harness có sub-agent thì mỗi vai là một sub-agent. Nếu không có thì mỗi vai chạy thành một phiên headless riêng. Trường hợp chỉ có một ngữ cảnh thì vẫn chạy được nhưng **được báo rõ** là chế độ yếu.
 
 ## Hỏi hay tự quyết?
@@ -142,12 +153,12 @@ Chi tiết: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md).
 
 | Chỉ số | Giá trị | Nguồn |
 |---|---|---|
-| Test script và installer | **249 passing** (conf 16 · feedback 49 · install 69 · learn 27 · proof-run 22 · role-gate 38 · update 28) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Test script và installer | **268 passing** (conf 16 · feedback 49 · install 69 · learn 27 · proof-run 22 · role-gate 38 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Kiểm tra tĩnh | frontmatter, ngân sách độ dài, lý do của mỗi luật, CRLF, cú pháp, eval | `evals/run-checks.sh` |
-| Khối luôn bật | 40 / 60 dòng · 4.047 / 5.000 byte | `wc -l -c AGENTS.global.md` |
-| Description các skill | 1.497 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
+| Khối luôn bật | 40 / 60 dòng · 4.369 / 5.000 byte | `wc -l -c AGENTS.global.md` |
+| Description các skill | 1.526 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools), mỗi push và PR; xem badge CI | `.github/workflows/test.yml` |
-| Kịch bản hành vi E1–E14 | *pending*: cần chạy trên từng harness | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Kịch bản hành vi E1–E17 | *pending*: cần chạy trên từng harness | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 Chỉ số nào chưa đo thì không được coi là chỉ số.
 
@@ -171,8 +182,8 @@ agent-playbook/
 ├── scripts/                role-gate · proof-run · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  249 test, chạy trong sandbox, không đụng HOME thật
-├── evals/                  run-checks.sh · scenarios.md (E1–E14) · RUBRIC.md · make-fixture.sh
+├── tests/                  268 test, chạy trong sandbox, không đụng HOME thật
+├── evals/                  run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
 ├── tools/setup-labels.sh   nhãn cho issue feedback
 └── docs/                   flow.svg · architecture.svg · tdd-huong-dan.md · harness-notes.md · vong-doi-cap-nhat.md
 ```

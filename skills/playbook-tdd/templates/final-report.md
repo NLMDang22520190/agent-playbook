@@ -1,6 +1,7 @@
 # 06 - Final report: <feature or bug>
 
 **Result:** <one sentence>
+**Weight:** Full | Lite (no independent review) | Exempt (docs-only / config-only / spike) · reason: <one line>
 **Mode:** native | manual | none (degraded: roles shared one context)
 
 ## AC to tests to evidence

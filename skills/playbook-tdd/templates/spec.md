@@ -8,6 +8,8 @@ questions (hard to reverse) or logged defaults in `decisions.md` (reversible).
 ## Goal
 <one or two sentences: who gets what>
 
+**Weight:** Full | Lite · reason: <e.g. "Lite: one module, reversible, 2 files"> (escalate to Full if that stops being true)
+
 ## Acceptance criteria
 Copy the wording **verbatim** from the source when it exists; rephrase only into Given/When/Then and
 keep the original next to it. Each AC points back to where it came from.
