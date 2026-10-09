@@ -72,4 +72,12 @@ assert_rc "AC5 without PyYAML the parse check does not fail the run" 0
 SKIPLINE="$(printf '%s\n' "$OUT" | grep -i 'skip' | grep -i 'yaml')"
 assert_contains "AC5 without PyYAML a skip note mentioning yaml is printed" "$(printf '%s' "$SKIPLINE" | tr 'A-Z' 'a-z')" "yaml"
 
+# Without PyYAML the explicit unquoted ': ' check alone must still catch the bad description.
+C="$(mk_copy)"
+set_line "$C" description 'description: Use when stating results. Note: keep it short.'
+OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" 2>&1)"; RC=$?; only_problems
+assert_rc "AC5 without PyYAML an unquoted description containing ': ' still fails (exit 1)" 1
+assert_contains "AC5 without PyYAML the failure says unquoted" "$OUT" "unquoted"
+assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKILL"
+
 t_summary
