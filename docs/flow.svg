@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" role="img" aria-labelledby="t d">
+  <title id="t">agent-playbook: one change, end to end</title>
+  <desc id="d">Seven steps for every change. 1 Clarify: inspect first; ask once only when an ambiguity is material and hard to reverse, otherwise log a default in decisions.md. 2 Spec: acceptance criteria verbatim with source anchors, slices of one to five tests. 3 RED: the tester writes tests from the spec only and shows them failing for the right reason; the tester role gate passes. 4 GREEN: the implementer writes the least code to pass and never edits tests; the implementer role gate passes against the RED commit. 5 REVIEW: a read-only reviewer re-runs the tests, checks mutants and, for UI, opens the screen at mobile then desktop width. 6 PROOF: fresh test, lint and typecheck runs as evidence blocks. 7 LEARN: project lessons go to LEARNINGS.md and playbook feedback becomes a GitHub issue after the user approves. Always on in every session: clarify by reversibility, proof for every claim, scope discipline, and the playbook wins over overlapping skills.</desc>
+  <defs>
+    <style>
+      :root {
+        --bg: #F7F8FC; --card: #FFFFFF; --ink: #1C2333; --muted: #5B6478; --line: #DDE2EE;
+        --c1: #4F5BD5; --c2: #4F5BD5; --c3: #D64545; --c4: #1F9D63; --c5: #8A4FD0; --c6: #C98A00; --c7: #12898F;
+        --soft1: #ECEEFC; --soft3: #FCEAEA; --soft4: #E5F6EE; --soft5: #F2EAFB; --soft6: #FBF2DC; --soft7: #E2F4F5;
+        --band: #1C2333; --band-ink: #F7F8FC; --gate: #FFFFFF;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0F131C; --card: #171D2A; --ink: #E8ECF6; --muted: #A3ACC2; --line: #2A3347;
+          --c1: #8C95FF; --c2: #8C95FF; --c3: #FF7B7B; --c4: #4FD39A; --c5: #C29BFF; --c6: #F2C04D; --c7: #4CCFD6;
+          --soft1: #1E2445; --soft3: #3A1C1F; --soft4: #12301F; --soft5: #2A1F42; --soft6: #352A0E; --soft7: #0E3033;
+          --band: #E8ECF6; --band-ink: #0F131C; --gate: #171D2A;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: var(--ink); }
+      .bg { fill: var(--bg); }
+      .h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+      .sub { font-size: 14.5px; fill: var(--muted); }
+      .card { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+      .num { font-size: 15px; font-weight: 800; fill: #FFFFFF; }
+      .ct { font-size: 18px; font-weight: 800; letter-spacing: 0.4px; }
+      .role { font-size: 12.5px; font-style: italic; fill: var(--muted); }
+      .li { font-size: 13px; }
+      .gate { font-size: 12px; font-weight: 700; }
+      .band { fill: var(--band); }
+      .bt { font-size: 14px; fill: var(--band-ink); }
+      .btb { font-size: 14px; font-weight: 800; fill: var(--band-ink); }
+      .arrow { fill: none; stroke: var(--muted); stroke-width: 2; }
+      .ah { fill: var(--muted); }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" width="1280" height="560" rx="18"/>
+  <text class="h1" x="40" y="58">One change, end to end</text>
+  <text class="sub" x="40" y="84">Every feature or bug fix, in any harness. Three roles in separate contexts; git gates check the hand-offs.</text>
+
+  <!-- cards: x = 31 + i*176, width 162 -->
+  <g>
+    <rect class="card" x="31" y="116" width="162" height="262" rx="14"/>
+    <rect x="31" y="116" width="162" height="8" rx="4" fill="var(--c1)"/>
+    <circle cx="57" cy="152" r="14" fill="var(--c1)"/><text class="num" x="57" y="157" text-anchor="middle">1</text>
+    <text class="ct" x="79" y="158">CLARIFY</text>
+    <text class="role" x="47" y="184">always on</text>
+    <text class="li" x="47" y="212">inspect before asking</text>
+    <text class="li" x="47" y="234">material + hard to</text>
+    <text class="li" x="47" y="252">reverse → ask once</text>
+    <text class="li" x="47" y="274">else: default →</text>
+    <text class="li" x="47" y="292">decisions.md</text>
+    <rect x="45" y="330" width="134" height="30" rx="8" fill="var(--soft1)"/>
+    <text class="gate" x="112" y="350" text-anchor="middle" fill="var(--c1)">DECISION[Dn] in code</text>
+  </g>
+  <g>
+    <rect class="card" x="207" y="116" width="162" height="262" rx="14"/>
+    <rect x="207" y="116" width="162" height="8" rx="4" fill="var(--c2)"/>
+    <circle cx="233" cy="152" r="14" fill="var(--c2)"/><text class="num" x="233" y="157" text-anchor="middle">2</text>
+    <text class="ct" x="255" y="158">SPEC</text>
+    <text class="role" x="223" y="184">orchestrator</text>
+    <text class="li" x="223" y="212">AC copied verbatim</text>
+    <text class="li" x="223" y="234">+ source anchor each</text>
+    <text class="li" x="223" y="256">non-goals</text>
+    <text class="li" x="223" y="278">slices of 1–5 tests</text>
+    <rect x="221" y="330" width="134" height="30" rx="8" fill="var(--soft1)"/>
+    <text class="gate" x="288" y="350" text-anchor="middle" fill="var(--c2)">01-spec.md</text>
+  </g>
+  <g>
+    <rect class="card" x="383" y="116" width="162" height="262" rx="14"/>
+    <rect x="383" y="116" width="162" height="8" rx="4" fill="var(--c3)"/>
+    <circle cx="409" cy="152" r="14" fill="var(--c3)"/><text class="num" x="409" y="157" text-anchor="middle">3</text>
+    <text class="ct" x="431" y="158">RED</text>
+    <text class="role" x="399" y="184">tester · fresh context</text>
+    <text class="li" x="399" y="212">tests from spec only</text>
+    <text class="li" x="399" y="234">fail for the right</text>
+    <text class="li" x="399" y="252">reason, shown</text>
+    <text class="li" x="399" y="274">commit test(red)</text>
+    <rect x="397" y="330" width="134" height="30" rx="8" fill="var(--soft3)"/>
+    <text class="gate" x="464" y="350" text-anchor="middle" fill="var(--c3)">gate: tester ✓</text>
+  </g>
+  <g>
+    <rect class="card" x="559" y="116" width="162" height="262" rx="14"/>
+    <rect x="559" y="116" width="162" height="8" rx="4" fill="var(--c4)"/>
+    <circle cx="585" cy="152" r="14" fill="var(--c4)"/><text class="num" x="585" y="157" text-anchor="middle">4</text>
+    <text class="ct" x="607" y="158">GREEN</text>
+    <text class="role" x="575" y="184">implementer</text>
+    <text class="li" x="575" y="212">least code to pass</text>
+    <text class="li" x="575" y="234">never edits a test</text>
+    <text class="li" x="575" y="256">test looks wrong?</text>
+    <text class="li" x="575" y="274">→ dispute, stop</text>
+    <rect x="573" y="330" width="134" height="30" rx="8" fill="var(--soft4)"/>
+    <text class="gate" x="640" y="350" text-anchor="middle" fill="var(--c4)">gate: --base RED ✓</text>
+  </g>
+  <g>
+    <rect class="card" x="735" y="116" width="162" height="262" rx="14"/>
+    <rect x="735" y="116" width="162" height="8" rx="4" fill="var(--c5)"/>
+    <circle cx="761" cy="152" r="14" fill="var(--c5)"/><text class="num" x="761" y="157" text-anchor="middle">5</text>
+    <text class="ct" x="783" y="158">REVIEW</text>
+    <text class="role" x="751" y="184">reviewer · read-only</text>
+    <text class="li" x="751" y="212">re-runs the tests</text>
+    <text class="li" x="751" y="234">mutants killed?</text>
+    <text class="li" x="751" y="256">UI: open the screen,</text>
+    <text class="li" x="751" y="274">mobile → desktop</text>
+    <rect x="749" y="330" width="134" height="30" rx="8" fill="var(--soft5)"/>
+    <text class="gate" x="816" y="350" text-anchor="middle" fill="var(--c5)">gate: reviewer ✓</text>
+  </g>
+  <g>
+    <rect class="card" x="911" y="116" width="162" height="262" rx="14"/>
+    <rect x="911" y="116" width="162" height="8" rx="4" fill="var(--c6)"/>
+    <circle cx="937" cy="152" r="14" fill="var(--c6)"/><text class="num" x="937" y="157" text-anchor="middle">6</text>
+    <text class="ct" x="959" y="158">PROOF</text>
+    <text class="role" x="927" y="184">orchestrator</text>
+    <text class="li" x="927" y="212">fresh test · lint ·</text>
+    <text class="li" x="927" y="230">typecheck runs</text>
+    <text class="li" x="927" y="252">AC → test → log</text>
+    <text class="li" x="927" y="274">defaults to review</text>
+    <rect x="925" y="330" width="134" height="30" rx="8" fill="var(--soft6)"/>
+    <text class="gate" x="992" y="350" text-anchor="middle" fill="var(--c6)">proof-run.sh</text>
+  </g>
+  <g>
+    <rect class="card" x="1087" y="116" width="162" height="262" rx="14"/>
+    <rect x="1087" y="116" width="162" height="8" rx="4" fill="var(--c7)"/>
+    <circle cx="1113" cy="152" r="14" fill="var(--c7)"/><text class="num" x="1113" y="157" text-anchor="middle">7</text>
+    <text class="ct" x="1135" y="158">LEARN</text>
+    <text class="role" x="1103" y="184">after the task</text>
+    <text class="li" x="1103" y="212">project lesson →</text>
+    <text class="li" x="1103" y="230">LEARNINGS.md</text>
+    <text class="li" x="1103" y="252">playbook gap →</text>
+    <text class="li" x="1103" y="270">issue (you approve)</text>
+    <rect x="1101" y="330" width="134" height="30" rx="8" fill="var(--soft7)"/>
+    <text class="gate" x="1168" y="350" text-anchor="middle" fill="var(--c7)">learn · feedback</text>
+  </g>
+
+  <!-- arrows between cards -->
+  <path class="arrow" d="M193 247 L205 247" marker-end="url(#a)"/>
+  <path class="arrow" d="M369 247 L381 247" marker-end="url(#a)"/>
+  <path class="arrow" d="M545 247 L557 247" marker-end="url(#a)"/>
+  <path class="arrow" d="M721 247 L733 247" marker-end="url(#a)"/>
+  <path class="arrow" d="M897 247 L909 247" marker-end="url(#a)"/>
+  <path class="arrow" d="M1073 247 L1085 247" marker-end="url(#a)"/>
+  <!-- loop: one slice at a time -->
+  <path class="arrow" d="M640 380 C640 408 464 408 464 384" marker-end="url(#a)"/>
+  <text class="role" x="552" y="420" text-anchor="middle">next slice</text>
+
+  <rect class="band" x="31" y="440" width="1218" height="44" rx="12"/>
+  <text class="btb" x="51" y="468">Always on, every session</text>
+  <text class="bt" x="252" y="468">clarify by reversibility  ·  proof for every claim  ·  scope discipline  ·  the playbook wins over overlapping skills</text>
+  <text class="sub" x="40" y="520">Mechanical, not just prompts: role-gate.sh checks git diffs per role · proof-run.sh keeps exit code + log sha256 · run-checks.sh guards the playbook itself</text>
+</svg>

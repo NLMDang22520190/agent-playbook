@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="t d">
+  <title id="t">agent-playbook: one source, every harness, every project</title>
+  <desc id="d">The agent-playbook git repository is the single source: the always-on block, five skills, scripts and the installer. install.sh links or copies them into each harness on the machine: Claude Code gets a managed block in ~/.claude/CLAUDE.md and skills in ~/.claude/skills; Codex gets ~/.codex/AGENTS.md and ~/.agents/skills; OpenCode reads ~/.config/opencode/AGENTS.md or falls back to the Claude file, and reads both skill folders. Inside each project the agents keep .agents/playbook.conf, .agents/LEARNINGS.md and the hand-off folder with the spec, the decision ledger and evidence logs. Approved feedback becomes issues on the private GitHub repository; merged pull requests are tagged as releases, and install.sh update re-installs every recorded target.</desc>
+  <defs>
+    <style>
+      :root {
+        --bg: #F7F8FC; --card: #FFFFFF; --ink: #1C2333; --muted: #5B6478; --line: #DDE2EE;
+        --repo: #4F5BD5; --repo-soft: #ECEEFC; --h: #1F9D63; --h-soft: #E5F6EE; --p: #C98A00; --p-soft: #FBF2DC;
+        --gh: #1C2333; --gh-ink: #F7F8FC;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0F131C; --card: #171D2A; --ink: #E8ECF6; --muted: #A3ACC2; --line: #2A3347;
+          --repo: #8C95FF; --repo-soft: #1E2445; --h: #4FD39A; --h-soft: #12301F; --p: #F2C04D; --p-soft: #352A0E;
+          --gh: #E8ECF6; --gh-ink: #0F131C;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: var(--ink); }
+      .bg { fill: var(--bg); }
+      .h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+      .sub { font-size: 14.5px; fill: var(--muted); }
+      .col { font-size: 13px; font-weight: 800; letter-spacing: 1.2px; fill: var(--muted); }
+      .card { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+      .t { font-size: 17px; font-weight: 800; }
+      .m { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+      .s { font-size: 13px; fill: var(--muted); }
+      .lbl { font-size: 12.5px; font-weight: 700; fill: var(--muted); }
+      .arrow { fill: none; stroke: var(--muted); stroke-width: 2; }
+      .ah { fill: var(--muted); }
+      .gh { fill: var(--gh); }
+      .ght { font-size: 16px; font-weight: 800; fill: var(--gh-ink); }
+      .ghs { font-size: 13.5px; fill: var(--gh-ink); }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" width="1280" height="640" rx="18"/>
+  <text class="h1" x="40" y="58">One source, every harness, every project</text>
+  <text class="sub" x="40" y="84">Edit the repo once; install.sh puts it where each agent looks. Project knowledge stays in the project.</text>
+
+  <text class="col" x="40" y="124">ONE SOURCE</text>
+  <text class="col" x="470" y="124">ON THIS MACHINE</text>
+  <text class="col" x="930" y="124">IN EACH PROJECT</text>
+
+  <!-- repo -->
+  <rect class="card" x="40" y="138" width="360" height="300" rx="14"/>
+  <rect x="40" y="138" width="360" height="8" rx="4" fill="var(--repo)"/>
+  <text class="t" x="60" y="178">agent-playbook (git, private)</text>
+  <rect x="58" y="196" width="324" height="50" rx="8" fill="var(--repo-soft)"/>
+  <text class="m" x="72" y="217">AGENTS.global.md</text>
+  <text class="s" x="72" y="236">always-on block · 40/60 lines</text>
+  <rect x="58" y="254" width="324" height="50" rx="8" fill="var(--repo-soft)"/>
+  <text class="m" x="72" y="275">skills/  setup · tdd · proof · learn · feedback</text>
+  <text class="s" x="72" y="294">roles, templates, references</text>
+  <rect x="58" y="312" width="324" height="50" rx="8" fill="var(--repo-soft)"/>
+  <text class="m" x="72" y="333">scripts/  role-gate · proof-run · conf</text>
+  <text class="m" x="72" y="352">          learn · feedback</text>
+  <rect x="58" y="370" width="324" height="50" rx="8" fill="var(--repo-soft)"/>
+  <text class="m" x="72" y="391">install.sh  install · update · doctor</text>
+  <text class="s" x="72" y="410">symlink, or --copy for Windows homes</text>
+
+  <!-- harnesses -->
+  <rect class="card" x="470" y="138" width="390" height="92" rx="14"/>
+  <rect x="470" y="138" width="8" height="92" rx="4" fill="var(--h)"/>
+  <text class="t" x="492" y="166">Claude Code</text>
+  <text class="m" x="492" y="190">~/.claude/CLAUDE.md   managed block</text>
+  <text class="m" x="492" y="211">~/.claude/skills/playbook-*</text>
+
+  <rect class="card" x="470" y="242" width="390" height="92" rx="14"/>
+  <rect x="470" y="242" width="8" height="92" rx="4" fill="var(--h)"/>
+  <text class="t" x="492" y="270">Codex CLI</text>
+  <text class="m" x="492" y="294">~/.codex/AGENTS.md    managed block</text>
+  <text class="m" x="492" y="315">~/.agents/skills/playbook-*</text>
+
+  <rect class="card" x="470" y="346" width="390" height="92" rx="14"/>
+  <rect x="470" y="346" width="8" height="92" rx="4" fill="var(--h)"/>
+  <text class="t" x="492" y="374">OpenCode</text>
+  <text class="m" x="492" y="398">~/.config/opencode/AGENTS.md (or</text>
+  <text class="m" x="492" y="419">falls back to Claude's) · both skill dirs</text>
+
+  <!-- project -->
+  <rect class="card" x="930" y="138" width="310" height="300" rx="14"/>
+  <rect x="930" y="138" width="310" height="8" rx="4" fill="var(--p)"/>
+  <text class="t" x="950" y="178">your-project/.agents/</text>
+  <rect x="948" y="196" width="274" height="50" rx="8" fill="var(--p-soft)"/>
+  <text class="m" x="962" y="217">playbook.conf</text>
+  <text class="s" x="962" y="236">test / lint / typecheck commands</text>
+  <rect x="948" y="254" width="274" height="50" rx="8" fill="var(--p-soft)"/>
+  <text class="m" x="962" y="275">LEARNINGS.md</text>
+  <text class="s" x="962" y="294">evidenced, approved, max 40</text>
+  <rect x="948" y="312" width="274" height="108" rx="8" fill="var(--p-soft)"/>
+  <text class="m" x="962" y="333">handoff/  (git-ignored)</text>
+  <text class="m" x="962" y="354">  01-spec.md · decisions.md</text>
+  <text class="m" x="962" y="375">  02-tests · 03-impl · 05-review</text>
+  <text class="m" x="962" y="396">  evidence/*.log + sha256</text>
+
+  <!-- arrows repo -> harnesses -->
+  <path class="arrow" d="M400 230 C435 230 435 184 466 184" marker-end="url(#a)"/>
+  <path class="arrow" d="M400 288 L466 288" marker-end="url(#a)"/>
+  <path class="arrow" d="M400 346 C435 346 435 392 466 392" marker-end="url(#a)"/>
+  <text class="lbl" x="404" y="270">install</text>
+  <!-- harness -> project -->
+  <path class="arrow" d="M860 288 L926 288" marker-end="url(#a)"/>
+  <text class="lbl" x="866" y="278">reads at</text>
+  <text class="lbl" x="866" y="306">task start</text>
+
+  <!-- GitHub -->
+  <rect class="gh" x="40" y="490" width="1200" height="96" rx="14"/>
+  <text class="ght" x="64" y="526">GitHub · NLMDang22520190/agent-playbook</text>
+  <text class="ghs" x="64" y="556">issues  ←  feedback.sh submit (only what you approved)      PR + eval  →  CI  →  merge  →  tag vX.Y.Z      →  install.sh update re-installs every recorded target</text>
+  <path class="arrow" d="M1085 438 L1085 486" marker-end="url(#a)"/>
+  <text class="lbl" x="1093" y="468">feedback</text>
+  <path class="arrow" d="M220 486 L220 442" marker-end="url(#a)"/>
+  <text class="lbl" x="228" y="468">update (tags)</text>
+</svg>
