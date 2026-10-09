@@ -4,7 +4,7 @@
 
 **AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
 
-![version](https://img.shields.io/badge/version-0.3.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-249-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.3.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-249-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
