@@ -25,3 +25,25 @@ jobs:
         run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
       - name: Tests and static checks
         run: bash tests/run-all.sh
+
+  release:
+    # Only for v* tag pushes, after the tests pass. Never overwrites an existing release.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag matches VERSION and CHANGELOG.md
+        run: tools/check-release.sh "$GITHUB_REF_NAME"
+      - name: Create the GitHub Release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::release $GITHUB_REF_NAME already exists; not overwriting it"
+          else
+            tools/check-release.sh --notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi

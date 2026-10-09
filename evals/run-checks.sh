@@ -10,6 +10,8 @@ SENTENCE='Before making any changes, inspect the relevant context and identify a
 
 echo "skills"
 desc_total=0
+have_yaml=0
+if python3 -c 'import yaml' >/dev/null 2>&1; then have_yaml=1; else echo "  skip yaml frontmatter parse: python3 with PyYAML not available"; fi
 for d in skills/*/; do
   s="${d%/}"; n="$(basename "$s")"; f="$s/SKILL.md"
   [ -f "$f" ] || { bad "$s has no SKILL.md"; continue; }
@@ -18,6 +20,19 @@ for d in skills/*/; do
   desc="$(sed -n '2,10{s/^description: *//p;}' "$f" | head -n 1)"
   [ "$name" = "$n" ] && ok "$n: name matches directory" || bad "$f: name '$name' != dir '$n'"
   printf '%s' "$name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' || bad "$f: name violates ^[a-z0-9]+(-[a-z0-9]+)*$"
+  # An unquoted value containing ': ' is not valid YAML (some harnesses then drop the skill).
+  for kv in "name:$name" "description:$desc"; do
+    k="${kv%%:*}"; v="${kv#*:}"
+    case "$v" in \"*|\'*) ;; *': '*) bad "$f: unquoted $k contains ': ' (quote the value)" ;; esac
+  done
+  if [ "$have_yaml" -eq 1 ]; then
+    if awk 'NR == 1 { next } /^---$/ { exit } { print }' "$f" |
+      python3 -c 'import sys, yaml; yaml.safe_load(sys.stdin)' >/dev/null 2>&1; then
+      ok "$n: frontmatter parses as YAML"
+    else
+      bad "$f: frontmatter does not parse as YAML (PyYAML)"
+    fi
+  fi
   len=${#desc}
   if [ "$len" -ge 1 ] && [ "$len" -le 450 ]; then ok "$n: description $len chars (<=450)"; else bad "$f: description length $len (want 1..450, spec max 1024)"; fi
   desc_total=$((desc_total + len))
