@@ -75,10 +75,25 @@ if [ -n "$TIMEOUT" ]; then
   fi
 fi
 
-if [ -n "$WORKROOT" ]; then mkdir -p "$WORKROOT" || pb_die "cannot create $WORKROOT" 3
-else WORKROOT="$(mktemp -d "${TMPDIR:-/tmp}/pb-evals.XXXXXX")" || pb_die "mktemp failed" 3
+NEW_ROOT=0   # 1 when the runner creates the workroot or finds it empty
+if [ -n "$WORKROOT" ]; then
+  if [ ! -e "$WORKROOT" ]; then NEW_ROOT=1
+  elif [ -d "$WORKROOT" ] && [ -z "$(ls -A "$WORKROOT")" ]; then NEW_ROOT=1
+  fi
+  mkdir -p "$WORKROOT" || pb_die "cannot create $WORKROOT" 3
+else WORKROOT="$(mktemp -d "${TMPDIR:-/tmp}/pb-evals.XXXXXX")" || pb_die "mktemp failed" 3; NEW_ROOT=1
 fi
 WORKROOT="$(cd "$WORKROOT" && pwd -P)"
+# DECISION[D6]: <workroot>/<E> is deleted only if it is a previous fixture (.git/pb-fixture) or the
+# workroot is runner-owned (marker .pb-eval-workroot); otherwise refuse before touching anything.
+if [ "$NEW_ROOT" = 1 ]; then
+  : > "$WORKROOT/.pb-eval-workroot" || pb_die "cannot write $WORKROOT/.pb-eval-workroot" 3
+fi
+for e in $LIST; do
+  if [ -e "$WORKROOT/$e" ] && [ ! -f "$WORKROOT/$e/.git/pb-fixture" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
+    pb_die "refusing to delete $WORKROOT/$e: not a previous fixture (.git/pb-fixture) and the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
+  fi
+done
 NOW="$(date '+%Y-%m-%d %H%M%S')"
 [ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
@@ -149,7 +164,7 @@ SUMMARY=""; DETAILS=""
 for E in $LIST; do
   WD="$WORKROOT/$E"; PF="$WORKROOT/$E.prompt"; LOG="$WORKROOT/$E.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
-  # DECISION[D4]: the runner owns <abs workroot>/<whitelisted E>, so it clears it; make-fixture stays strict.
+  # DECISION[D4]: the runner clears <abs workroot>/<whitelisted E> (ownership checked above, D6); make-fixture stays strict.
   rm -rf "$WD" || pb_die "cannot remove $WD" 3
   bash "$EVALS/make-fixture.sh" "$WD" >/dev/null || pb_die "could not create the fixture $WD" 3
   prompt="$(prompt_of "$E")"

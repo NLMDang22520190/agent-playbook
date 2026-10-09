@@ -2,7 +2,7 @@
 # Creates a tiny git repo used by the behaviour scenarios. Re-run to reset it.
 #   make-fixture.sh        -> evals/fixture/
 #   make-fixture.sh DIR    -> DIR (relative to the caller's cwd); DIR is deleted and re-created
-# DIR is refused (exit 2, nothing written) when it is empty, /, $HOME, the caller's cwd, or an existing
+# DIR is refused (exit 2, nothing written) when it is empty, the filesystem root (/, //, /./), $HOME, the caller's cwd, or an existing
 # non-empty directory that is not a previous fixture (marker .git/pb-fixture).
 # Exit: 0 ok, 2 refused target, 3 cannot create the directory.
 set -u
@@ -27,7 +27,7 @@ if [ $# -ge 1 ]; then
   target="$1"
   [ -n "$target" ] || refuse "empty directory name"
   target="$(abs_path "$1")" || { target="$1"; refuse "cannot resolve the path"; }
-  [ "$target" != / ] || refuse "it is /"
+  case "$target" in *[!/]*) ;; *) refuse "it is the filesystem root" ;; esac   # /, // (pwd -P keeps //), /./
   home="$(cd "${HOME:-/}" 2>/dev/null && pwd -P)"
   [ "$target" != "$home" ] || refuse "it is \$HOME"
   [ "$target" != "$(pwd -P)" ] || refuse "it is the current directory"

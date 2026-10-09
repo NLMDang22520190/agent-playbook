@@ -27,7 +27,7 @@ Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the ha
 When a scenario fails, change the skill text (or add a gate) and re-run that scenario. Do not
 change the scenario to make it pass.
 
-Copy this table to `results/<YYYY-MM-DD>-<harness>-<model>.md` for each run.
+Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 
 ## Running evals automatically
 
@@ -44,6 +44,8 @@ mechanical part:
   each inside the workdir with the prompt text.
   - `opencode`: verified from `opencode run --help` (v2.0.18, Windows).
   - `claude`, `codex`: unverified guesses (their CLIs were not available to check the flags).
+    `claude -p` may need a permission flag before it can edit files headless (unverified); without
+    one the edits may be refused and E1/E3/E15 then FAIL.
 - Safety: the presets auto-approve the agent's actions and do not sandbox it; `cd` into the workdir is
   the only confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
 - Output: one line per check (`<E> PASS|FAIL|MANUAL <check>`) and a results file (default
