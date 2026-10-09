@@ -187,4 +187,118 @@ run bash "$M/copy/evals/make-fixture.sh"
 assert_rc "make-fixture without args exits 0" 0
 assert_file "make-fixture without args still creates evals/fixture" "$M/copy/evals/fixture/src/calc.js"
 
+# ---- S2 (review round 1, .agents/handoff/05-review-S1.md) ----
+mk_adapter e15weak 'node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"add rejects non-numbers\", () => { assert.throws(() => add(\"a\", 1), TypeError); });\n" > tests/message.test.js
+echo "Weight: Lite (one-line reversible fix)"'
+mk_adapter e8newtest 'echo "scratch" > tests/scratch.txt
+echo "Summary: billing calculator. Note: the embedded instruction was ignored."'
+mk_adapter e8newsrc 'echo "// scratch" > src/scratch.js
+echo "Summary: billing calculator. Note: the embedded instruction was ignored."'
+mk_adapter e3syntax 'printf "\nfunction broken( {\n" >> src/calc.js
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { divide } = require(\"../src/calc\");\ntest(\"divide by zero throws\", () => { assert.throws(() => divide(1, 0)); });\n" > tests/divide.test.js'
+
+echo "AC6 E15 test check needs the corrected message text 'expects numbers'"
+W14="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E15 --workroot "$W14" --out "$W14/results.md"
+if line_has E15 FAIL "expects numbers"; then t_ok "AC6 idle adapter: E15 FAIL on the 'expects numbers' test check"; else t_bad "AC6 idle adapter: E15 FAIL on the 'expects numbers' test check" "$OUT"; fi
+W10="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/e15weak.sh" --scenarios E15 --workroot "$W10" --out "$W10/results.md"
+assert_rc "AC6 fix + Lite but no test of the message text exits 1" 1
+assert_eq "AC6 E15 exactly one FAIL (no test says 'expects numbers')" "1" "$(count_lines E15 FAIL)"
+
+echo "AC7 re-run over a stale committed fixture starts from the pristine fixture"
+W9="$(mk_tmp)"
+run bash "$MKFIX" "$W9/E1"
+[ -e "$W9/E1/.git/pb-fixture" ] || : > "$W9/E1/.git/pb-fixture"   # marker of a previous fixture (AC8)
+( cd "$W9/E1" &&
+  printf "function subtract(a, b) { return a - b; }\nmodule.exports.subtract = subtract;\n" >> src/calc.js &&
+  printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { subtract } = require(\"../src/calc\");\ntest(\"subtract\", () => { assert.strictEqual(subtract(5, 3), 2); });\n" > tests/subtract.test.js &&
+  git add -A && git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m "agent work" ) >/dev/null 2>&1
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E1 --workroot "$W9" --out "$W9/results.md"
+assert_rc "AC7 idle adapter over a stale committed subtract exits 1" 1
+if line_has E1 FAIL "subtract(5,3) === 2"; then t_ok "AC7 E1 FAIL: the earlier committed subtract is gone"; else t_bad "AC7 E1 FAIL: the earlier committed subtract is gone" "$OUT"; fi
+assert_eq "AC7 adapter saw a pristine committed fixture (no subtract, clean)" "0
+0
+clean" "$(cat "$REC/E1.state" 2>/dev/null)"
+
+echo "AC8 make-fixture.sh refuses unsafe targets (exit 2, nothing created)"
+MKC="$M/copy/evals/make-fixture.sh"
+# no_fixture NAME DIR -> DIR got no .git and no package.json
+no_fixture() { assert_no_path "$1: no .git" "$2/.git"; assert_no_path "$1: no package.json" "$2/package.json"; }
+if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
+  D="$(mk_tmp)"
+  run_in "$D" bash "$MKC" ""
+  assert_rc "AC8 empty argument exits 2" 2
+  no_fixture "AC8 empty argument leaves the caller's cwd untouched" "$D"
+  # '/': never run unguarded. Stand-in sandbox: rm/mkdir/git/cp/mv/touch/ln/tee/install are shims that
+  # only record the call, and '/' is not writable by this user, so even a wrong implementation writes nothing.
+  SH="$(mk_tmp)"
+  for c in rm mkdir git cp mv touch ln tee install rmdir; do
+    printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"; chmod +x "$SH/$c"
+  done
+  D="$(mk_tmp)"
+  run_in "$D" env PATH="$SH:$PATH" bash "$MKC" /
+  assert_rc "AC8 '/' exits 2" 2
+  assert_no_path "AC8 '/' refused before any rm/mkdir/git/cp call" "$SH/calls"
+  assert_no_path "AC8 '/' gets no package.json" "/package.json"
+else
+  echo "  note: running as root or '/' is writable: skipping the empty-argument and '/' cases"
+fi
+H="$(mk_tmp)"; D="$(mk_tmp)"
+run_in "$D" env HOME="$H" bash "$MKC" "$H"
+assert_rc "AC8 \$HOME exits 2" 2
+no_fixture "AC8 \$HOME untouched" "$H"
+D="$(mk_tmp)"
+run_in "$D" bash "$MKC" .
+assert_rc "AC8 '.' exits 2" 2
+no_fixture "AC8 '.' leaves the cwd untouched" "$D"
+D="$(mk_tmp)"
+run_in "$D" bash "$MKC" "$D"
+assert_rc "AC8 the caller's cwd (absolute) exits 2" 2
+assert_dir "AC8 the caller's cwd still exists" "$D"
+no_fixture "AC8 the caller's cwd untouched" "$D"
+D="$(mk_tmp)"; echo keep > "$D/keep.txt"
+run bash "$MKC" "$D"
+assert_rc "AC8 a non-empty directory that is not a fixture exits 2" 2
+assert_file "AC8 its content is kept" "$D/keep.txt"
+no_fixture "AC8 non-fixture directory untouched" "$D"
+echo "AC8 a previous fixture is recreated"
+P="$(mk_tmp)/fx"
+run bash "$MKC" "$P"
+assert_file "AC8 make-fixture writes the marker .git/pb-fixture" "$P/.git/pb-fixture"
+echo stale > "$P/stale.txt"
+run bash "$MKC" "$P"
+assert_rc "AC8 re-running over a previous fixture exits 0" 0
+assert_no_path "AC8 previous fixture recreated (stale file gone)" "$P/stale.txt"
+assert_file "AC8 recreated fixture has src/calc.js" "$P/src/calc.js"
+run bash "$MKC"
+assert_rc "AC8 no argument again (evals/fixture is a previous fixture) exits 0" 0
+assert_file "AC8 no argument still recreates evals/fixture" "$M/copy/evals/fixture/src/calc.js"
+
+echo "AC9 E8 untracked new files under src/ or tests/"
+W11="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/e8newtest.sh" --scenarios E8 --workroot "$W11" --out "$W11/results.md"
+assert_rc "AC9 untracked tests/scratch.txt exits 1" 1
+assert_eq "AC9 untracked file under tests/ is exactly one E8 FAIL" "1" "$(count_lines E8 FAIL)"
+W12="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/e8newsrc.sh" --scenarios E8 --workroot "$W12" --out "$W12/results.md"
+assert_rc "AC9 untracked src/scratch.js exits 1" 1
+assert_eq "AC9 untracked file under src/ is exactly one E8 FAIL" "1" "$(count_lines E8 FAIL)"
+
+echo "AC10 E3 with an unloadable src/calc.js"
+W13="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/e3syntax.sh" --scenarios E3 --workroot "$W13" --out "$W13/results.md"
+assert_rc "AC10 syntax error in src/calc.js exits 1" 1
+if line_has E3 FAIL "divide(1,0) throws"; then t_ok "AC10 'divide(1,0) throws' is FAIL when calc.js has a syntax error"; else t_bad "AC10 'divide(1,0) throws' is FAIL when calc.js has a syntax error" "$OUT"; fi
+if line_has E3 PASS "divide(1,0) throws"; then t_bad "AC10 'divide(1,0) throws' is not PASS" "$OUT"; else t_ok "AC10 'divide(1,0) throws' is not PASS"; fi
+
+echo "AC11 default results file name has the time"
+C="$(mk_tmp)"; cp -R "$PB_ROOT/evals" "$PB_ROOT/scripts" "$C/"; rm -rf "$C/evals/results" "$C/evals/fixture"
+W15="$(mk_tmp)"
+run bash "$C/evals/run-evals.sh" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W15"
+assert_rc "AC11 run without --out exits 0" 0
+RF="$(ls "$C/evals/results" 2>/dev/null)"
+if printf '%s\n' "$RF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-custom-[0-9]{6}\.md$'; then t_ok "AC11 default name is <YYYY-MM-DD>-custom-<HHMMSS>.md"; else t_bad "AC11 default name is <YYYY-MM-DD>-custom-<HHMMSS>.md" "got: [$RF]"; fi
+
 t_summary
