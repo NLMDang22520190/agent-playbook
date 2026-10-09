@@ -60,7 +60,7 @@ echo "fixed the typo"'
 printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$A/hang.sh"
 
 echo "AC1-AC4 good adapter, default scenarios (E1,E3,E8,E15)"
-W1="$(mk_tmp)"
+W1="$(mk_tmp)"; : > "$W1/.pb-eval-workroot"   # runner-owned workroot (AC13), so stale E1 may be cleared
 mkdir -p "$W1/E1"; echo leftover > "$W1/E1/stale.txt"   # stale content must not survive
 run bash "$RUNNER" --cmd "bash $A/good.sh" --workroot "$W1" --out "$W1/results.md"
 G_OUT="$OUT"
@@ -300,5 +300,62 @@ run bash "$C/evals/run-evals.sh" --cmd "bash $A/idle.sh" --scenarios E8 --workro
 assert_rc "AC11 run without --out exits 0" 0
 RF="$(ls "$C/evals/results" 2>/dev/null)"
 if printf '%s\n' "$RF" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-custom-[0-9]{6}\.md$'; then t_ok "AC11 default name is <YYYY-MM-DD>-custom-<HHMMSS>.md"; else t_bad "AC11 default name is <YYYY-MM-DD>-custom-<HHMMSS>.md" "got: [$RF]"; fi
+
+# ---- S3 (review round 2, .agents/handoff/05-review-S2.md) ----
+echo "AC12 make-fixture.sh refuses an existing git repo that is not a previous fixture"
+GR="$(mk_tmp)/repo"; mk_repo "$GR"
+run bash "$MKC" "$GR"
+assert_rc "AC12 git repo without .git/pb-fixture exits 2" 2
+assert_file "AC12 its committed file is kept" "$GR/src/app.js"
+assert_dir "AC12 its .git is kept" "$GR/.git"
+assert_contains "AC12 git log still shows the commit" "$(git -C "$GR" log --oneline 2>&1)" "init"
+assert_no_path "AC12 no fixture written into it" "$GR/package.json"
+
+echo "AC13 the runner only deletes a <workroot>/<E> it owns"
+W16="$(mk_tmp)"; mkdir -p "$W16/E1"; echo keep > "$W16/E1/keep.txt"
+rm -f "$REC/E1.args"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E1 --workroot "$W16" --out "$W16/results.md"
+assert_rc "AC13 unowned workroot with a non-fixture E1/ exits 2" 2
+assert_file "AC13 the non-fixture E1/ content is kept" "$W16/E1/keep.txt"
+assert_no_path "AC13 adapter not called for the unowned E1/" "$REC/E1.args"
+assert_no_path "AC13 a non-empty unowned workroot does not get the marker" "$W16/.pb-eval-workroot"
+if printf '%s\n' "$OUT" | grep -qF "$W16/E1" || printf '%s\n' "$OUT" | grep -qF "$(physdir "$W16")/E1"; then
+  t_ok "AC13 the refusal names the directory"; else t_bad "AC13 the refusal names the directory" "$OUT"; fi
+W17="$(mk_tmp)"; : > "$W17/.pb-eval-workroot"; mkdir -p "$W17/E1"; echo leftover > "$W17/E1/stale.txt"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E1 --workroot "$W17" --out "$W17/results.md"
+assert_rc "AC13 runner-owned workroot: stale E1/ replaced, idle run exits 1" 1
+assert_no_path "AC13 runner-owned workroot: stale file gone" "$W17/E1/stale.txt"
+assert_file "AC13 runner-owned workroot: fresh fixture (marker .git/pb-fixture)" "$W17/E1/.git/pb-fixture"
+assert_eq "AC13 runner-owned workroot: adapter saw a pristine fixture" "0
+0
+clean" "$(cat "$REC/E1.state" 2>/dev/null)"
+W18="$(mk_tmp)"
+run bash "$MKFIX" "$W18/E1"; echo leftover > "$W18/E1/stale.txt"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E1 --workroot "$W18" --out "$W18/results.md"
+assert_rc "AC13 previous fixture in an unowned workroot is still reset: exits 1" 1
+assert_no_path "AC13 previous fixture reset (stale file gone)" "$W18/E1/stale.txt"
+W19="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W19" --out "$W19/results.md"
+assert_file "AC13 an empty --workroot gets the marker .pb-eval-workroot" "$W19/.pb-eval-workroot"
+W20="$(mk_tmp)/new-root"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W20" --out "$W20.results.md"
+assert_file "AC13 a --workroot the runner creates gets the marker" "$W20/.pb-eval-workroot"
+
+echo "AC14 root spellings refused by the root check ('filesystem root')"
+if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
+  for spelling in / // /./; do
+    SH="$(mk_tmp)"   # same record-and-fail command shims as the AC8 '/' test
+    for c in rm mkdir git cp mv touch ln tee install rmdir; do
+      printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"; chmod +x "$SH/$c"
+    done
+    D="$(mk_tmp)"
+    run_in "$D" env PATH="$SH:$PATH" bash "$MKC" "$spelling"
+    assert_rc "AC14 '$spelling' exits 2" 2
+    assert_contains "AC14 '$spelling' message says filesystem root" "$OUT" "filesystem root"
+    assert_no_path "AC14 '$spelling' refused before any rm/mkdir/git/cp call" "$SH/calls"
+  done
+else
+  echo "  note: running as root or '/' is writable: skipping the root-spelling cases"
+fi
 
 t_summary
