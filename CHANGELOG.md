@@ -1,7 +1,17 @@
 # Changelog
 
 ## Unreleased
-- docs: visual README (badges, `docs/flow.svg`, `docs/architecture.svg` with dark mode, Mermaid diagrams for roles, reversibility and the update loop, measured quality table).
+- docs: the 0.3.1 entry below was missing from the v0.3.1 tag (added afterwards; the GitHub release v0.3.1 carries the same notes).
+
+## 0.3.1 - 2026-10-09
+- fix(update): `install.sh update --check` compared tag *names*, so any checkout not sitting exactly
+  on the newest tag was told "UPDATE AVAILABLE", even a development checkout ahead of it. It now
+  compares commits and reports: up to date (same commit, also when two tags share it), ahead of
+  the newest tag by N commits, behind (UPDATE AVAILABLE), or diverged (pick a release with `--to`).
+  Built with the playbook's own three-role flow: 7 assertions written first by a tester sub-agent
+  and seen failing, the fix by a separate implementer sub-agent, read-only review with 4/4 mutants killed.
+- Known, not fixed: when two tags share HEAD's commit the message may name the older tag (the status is correct).
+- docs: visual README, MIT license and credits, live CI badge; CI runs on Ubuntu (shellcheck) and macOS (bash 3.2).
 
 ## 0.3.0 - 2026-10-09
 Four lessons adopted from an internal B2B delivery playbook, kept project-neutral:
