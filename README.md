@@ -4,7 +4,7 @@
 
 **AI SDLC, không phải AI slop.** Một bộ skill global dùng chung cho Claude Code, Codex và OpenCode.
 
-![version](https://img.shields.io/badge/version-0.4.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-268-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.5.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-532-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -153,12 +153,12 @@ Chi tiết: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md).
 
 | Chỉ số | Giá trị | Nguồn |
 |---|---|---|
-| Test script và installer | **268 passing** (conf 16 · feedback 49 · install 69 · learn 27 · proof-run 22 · role-gate 38 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Test script, installer và công cụ | **532 passing** (conf 16 · evals 151 · feedback 82 · install 69 · learn 27 · proof-run 22 · release 22 · role-gate 83 · run-checks 13 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Kiểm tra tĩnh | frontmatter, ngân sách độ dài, lý do của mỗi luật, CRLF, cú pháp, eval | `evals/run-checks.sh` |
 | Khối luôn bật | 40 / 60 dòng · 4.369 / 5.000 byte | `wc -l -c AGENTS.global.md` |
-| Description các skill | 1.526 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
+| Description các skill | 1.541 / 2.000 ký tự (Codex cắt danh sách skill quá dài) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools), mỗi push và PR; xem badge CI | `.github/workflows/test.yml` |
-| Kịch bản hành vi E1–E17 | *pending*: cần chạy trên từng harness | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Kịch bản hành vi E1–E17 | *pending*: `evals/run-evals.sh` chấm tự động E1/E3/E8/E15; lần chạy thật đầu tiên (OpenCode) bị chặn vì API key không hợp lệ | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 Chỉ số nào chưa đo thì không được coi là chỉ số.
 
@@ -182,8 +182,8 @@ agent-playbook/
 ├── scripts/                role-gate · proof-run · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  268 test, chạy trong sandbox, không đụng HOME thật
-├── evals/                  run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
+├── tests/                  532 test, chạy trong sandbox, không đụng HOME thật
+├── evals/                  run-evals.sh (chạy eval headless) · run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
 ├── tools/setup-labels.sh   nhãn cho issue feedback
 └── docs/                   flow.svg · architecture.svg · tdd-huong-dan.md · harness-notes.md · vong-doi-cap-nhat.md
 ```

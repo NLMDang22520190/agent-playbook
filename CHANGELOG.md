@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 - 2026-10-09
+- **Behaviour-eval runner** `evals/run-evals.sh`: runs E1/E3/E8/E15 against a real harness (presets for
+  opencode/claude/codex, or a `--cmd` adapter called as `COMMAND <workdir> <prompt-file>`) in throw-away
+  fixtures, grades the mechanical part (PASS/FAIL/MANUAL) and writes a results file. Deletion-safe:
+  `make-fixture.sh` refuses empty, root (`/`, `//`, `/./`), `$HOME`, the cwd and any non-fixture
+  directory (marker `.git/pb-fixture`); the runner only clears `<workroot>/<E>` it owns
+  (`.pb-eval-workroot`). Three review rounds (CHANGES, CHANGES, APPROVE); mutant m10, which could
+  delete a real repository through a broken guard, is now killed.
+- **role-gate**: test configuration counts as test (`jest/vitest/playwright/cypress` configs,
+  `karma.conf.*`, `.mocharc*`, `pytest.ini`, `phpunit.xml[.dist]`, `__snapshots__/`, `*.snap`), so an
+  implementer cannot weaken tests through config. New `role-gate.sh size [--base REF]` checks the Lite
+  limits (default 3 production files, 100 lines; exit 1 says "escalate to Full").
+- **Releases**: `tools/check-release.sh vX.Y.Z` (VERSION matches, CHANGELOG has the entry, `--notes`
+  prints it); CI runs it on `v*` tags and creates the GitHub Release from the CHANGELOG (job-scoped
+  `contents: write`, never overwrites).
+- **run-checks**: unquoted `name`/`description` containing `: ` fails (the YAML trap that silently drops
+  a skill in OpenCode); frontmatter is parsed with PyYAML when available; shellcheck also covers
+  `tools/` and `evals/`.
+- Full weight throughout: separate tester / implementer / reviewer sub-agents, one dispute (a test ran
+  inside a repo whose config overrode the regex) resolved by a fresh tester.
+
 ## 0.4.1 - 2026-10-09
 - security(feedback): `feedback.sh submit` now checks the target repo's visibility once, before any
   item is processed, and refuses (exit 5, items stay pending) when the repo is public or its
