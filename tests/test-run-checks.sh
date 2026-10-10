@@ -113,14 +113,10 @@ assert_contains "outside git, working-tree CRLF still fails" "$OUT" "docs/plain-
 
 # when `cat` fails, the one-pass CR scan must fall back to the per-file check, not report "no CR"
 C="$(mk_copy)"
-printf 'no git here
-' > "$C/docs/catfail-crlf.md"
-FB="$(mk_tmp)"; printf '#!/bin/sh
-exit 1
-' > "$FB/cat"; chmod +x "$FB/cat"
+printf 'no git here\r\n' > "$C/docs/catfail-crlf.md"
+FB="$(mk_tmp)"; printf '#!/bin/sh\nexit 1\n' > "$FB/cat"; chmod +x "$FB/cat"
 run env PATH="$FB:$PATH" bash "$C/evals/run-checks.sh"
-assert_contains "CRLF file still reported when cat fails" "$(printf '%s
-' "$OUT" | grep 'CRLF found in:')" "docs/catfail-crlf.md"
+assert_contains "CRLF file still reported when cat fails" "$(printf '%s\n' "$OUT" | grep 'CRLF found in:')" "docs/catfail-crlf.md"
 
 
 echo "#12b quoted name matches its directory"

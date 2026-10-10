@@ -227,13 +227,11 @@ assert_rc "AC1.1 check with invalid harness exits 2" 2
 
 echo "role-model.sh check: empty generic value"
 reset
-printf 'model_reviewer=
-' > "$G"
+printf 'model_reviewer=\n' > "$G"
 role check
 assert_rc "an empty generic value is still reported: exit 1" 1
 assert_contains "the empty generic key is named" "$OUT" "model_reviewer"
 assert_contains "the empty generic key warns" "$OUT" "warning"
-assert_contains "the empty generic key names its origin: global" "$(printf '%s
-' "$OUT" | grep 'model_reviewer')" "global"
+assert_contains "the empty generic key names its origin: global" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "global"
 
 t_summary
