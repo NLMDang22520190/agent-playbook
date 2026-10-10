@@ -13,7 +13,7 @@
   forms like `0.9.0--rc.1` are refused), and the always-on badge must show the block's real line count.
 - **Live release output**: `release.sh` streams the suite (tee) and still uses run-all's exit status.
 - test-run-checks counts its PyYAML-dependent assertions as skipped, so passed + skipped is the same on
-  every OS (1380 on WSL and on Git Bash for this release's tests).
+  every OS (checked on WSL and Git Bash).
 - Built at Full weight: Sonnet tester, Opus reviewer (APPROVE, 3 minor findings fixed in a second test
   round: shadowing note, line count without a final newline, notes on stdout pinned).
 
