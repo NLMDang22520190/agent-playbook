@@ -43,6 +43,7 @@ jobs:
         shell: bash   # Git Bash; never the WSL launcher
     env:
       PB_SHARD: ${{ matrix.shard }}
+      PB_JOBS: '6'   # process start-up, not CPU, is the Windows bottleneck
     steps:
       - uses: actions/checkout@v5
         with:
