@@ -27,7 +27,24 @@ VERSION="$(tr -d '[:space:]' < "$HERE/../VERSION" 2>/dev/null)"
 [ -n "$VERSION" ] || VERSION="unknown"
 SECRET_RE='sk-[A-Za-z0-9]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{12,}|(password|passwd|secret|token|api[_-]?key)[[:space:]]*[=:]'
 
-field() { sed -n "s/^$2: //p" "$1" | head -n 1; }
+# load_item FILE -> sets F_<key> for every "key: value" line, with no subprocess per field
+# (each $(sed ...) costs a fork, which is slow on Windows/Git Bash).
+load_item() {
+  F_id=""; F_date=""; F_skill=""; F_kind=""; F_source=""; F_harness=""; F_model=""; F_version=""
+  F_summary=""; F_observed=""; F_expected=""; F_evidence=""; F_proposal=""; F_eval=""
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "id: "*) F_id="${line#id: }" ;;           "date: "*) F_date="${line#date: }" ;;
+      "skill: "*) F_skill="${line#skill: }" ;;  "kind: "*) F_kind="${line#kind: }" ;;
+      "source: "*) F_source="${line#source: }" ;; "harness: "*) F_harness="${line#harness: }" ;;
+      "model: "*) F_model="${line#model: }" ;;  "version: "*) F_version="${line#version: }" ;;
+      "summary: "*) F_summary="${line#summary: }" ;; "observed: "*) F_observed="${line#observed: }" ;;
+      "expected: "*) F_expected="${line#expected: }" ;; "evidence: "*) F_evidence="${line#evidence: }" ;;
+      "proposal: "*) F_proposal="${line#proposal: }" ;; "eval: "*) F_eval="${line#eval: }" ;;
+    esac
+  done < "$1"
+}
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 find_item() { # id [dirs...] -> path
   local id="$1" d; shift
@@ -37,17 +54,17 @@ find_item() { # id [dirs...] -> path
 }
 
 render_body() { # file
-  local f="$1"
+  load_item "$1"
   {
-    printf '<!-- agent-playbook-feedback v1 id=%s -->\n' "$(field "$f" id)"
-    printf '**Skill:** %s · **Kind:** %s · **Source:** %s\n' "$(field "$f" skill)" "$(field "$f" kind)" "$(field "$f" source)"
+    printf '<!-- agent-playbook-feedback v1 id=%s -->\n' "$F_id"
+    printf '**Skill:** %s · **Kind:** %s · **Source:** %s\n' "$F_skill" "$F_kind" "$F_source"
     printf '**Harness / model:** %s / %s · **Playbook version:** %s · **Captured:** %s\n\n' \
-      "$(field "$f" harness)" "$(field "$f" model)" "$(field "$f" version)" "$(field "$f" date)"
-    printf '### What happened\n%s\n\n' "$(field "$f" observed)"
-    printf '### Expected\n%s\n\n' "$(field "$f" expected)"
-    printf '### Evidence\n%s\n\n' "$(field "$f" evidence)"
-    printf '### Proposed change\n%s\n\n' "$(field "$f" proposal)"
-    printf '### Eval that would catch this\n%s\n' "$(field "$f" eval)"
+      "$F_harness" "$F_model" "$F_version" "$F_date"
+    printf '### What happened\n%s\n\n' "$F_observed"
+    printf '### Expected\n%s\n\n' "$F_expected"
+    printf '### Evidence\n%s\n\n' "$F_evidence"
+    printf '### Proposed change\n%s\n\n' "$F_proposal"
+    printf '### Eval that would catch this\n%s\n' "$F_eval"
   } | pb_redact
 }
 
@@ -89,7 +106,8 @@ case "$cmd" in
     want="$(lower "$summary")"
     for f in "$DIR"/pending/*.md "$DIR"/sent/*.md; do
       [ -f "$f" ] || continue
-      if [ "$(field "$f" skill)" = "$skill" ] && [ "$(lower "$(field "$f" summary)")" = "$want" ]; then
+      load_item "$f"
+      if [ "$F_skill" = "$skill" ] && [ "$(lower "$F_summary")" = "$want" ]; then
         echo "duplicate: $(basename "$f" .md) already has this summary for $skill" >&2
         exit 4
       fi
@@ -113,14 +131,16 @@ case "$cmd" in
     for f in "$DIR"/pending/*.md; do
       [ -f "$f" ] || continue
       found=1
-      printf '%s  [%s] (%s, %s) %s\n' "$(field "$f" id)" "$(field "$f" skill)" "$(field "$f" kind)" "$(field "$f" harness)" "$(field "$f" summary)"
+      load_item "$f"
+      printf '%s  [%s] (%s, %s) %s\n' "$F_id" "$F_skill" "$F_kind" "$F_harness" "$F_summary"
     done
     [ "$found" -eq 1 ] || echo "no pending playbook feedback"
     ;;
 
   render)
     f="$(find_item "${1:-}" pending sent discarded)" || pb_die "no such feedback item: ${1:-}" 2
-    printf 'TITLE: [%s] %s\n\n' "$(field "$f" skill)" "$(field "$f" summary)"
+    load_item "$f"
+    printf 'TITLE: [%s] %s\n\n' "$F_skill" "$F_summary"
     render_body "$f"
     ;;
 
@@ -182,8 +202,9 @@ case "$cmd" in
     failures=0
     for id in $ids; do
       f="$(find_item "$id" pending)" || { echo "skip: $id is not pending" >&2; failures=$((failures + 1)); continue; }
-      title="[$(field "$f" skill)] $(field "$f" summary)"
-      dup="$("$GH" issue list --repo "$repo" --state all --search "$(field "$f" summary) in:title" --limit 20 \
+      load_item "$f"
+      title="[$F_skill] $F_summary"
+      dup="$("$GH" issue list --repo "$repo" --state all --search "$F_summary in:title" --limit 20 \
               --json number,title,url --jq '.[] | "\(.number)\t\(.title)\t\(.url)"' 2>/dev/null |
              awk -F '\t' -v t="$(lower "$title")" 'tolower($2) == t { print $1 "\t" $3; exit }')"
       if [ -n "$dup" ]; then
@@ -195,7 +216,7 @@ case "$cmd" in
         fi
         continue
       fi
-      labels="--label feedback --label harness:$(field "$f" harness) --label kind:$(field "$f" kind) --label source:$(field "$f" source)"
+      labels="--label feedback --label harness:$F_harness --label kind:$F_kind --label source:$F_source"
       if [ "$dry" -eq 1 ]; then
         echo "would create in $repo: $title  ($labels)"
         continue
