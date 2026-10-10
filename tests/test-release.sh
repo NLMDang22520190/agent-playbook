@@ -102,4 +102,9 @@ else
   echo "  skip AC4 static check: PyYAML not available"
 fi
 
+
+echo "#12a a tag with a newline is a usage error"
+run bash "$D/tools/check-release.sh" "$(printf 'v1.2.3\nx')"
+assert_rc "AC12a.1 check-release: tag with a newline exits 2" 2
+
 t_summary
