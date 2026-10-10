@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.0 - 2026-10-10
+- **`tools/ship.sh PR vX.Y.Z [--yes]`**: one command from a green PR to installed release: refuses a
+  dirty tree and any PR that is not OPEN/CLEAN, asks before the merge and before the tag (a terminal is
+  required unless `--yes`), runs `release.sh` (dry run first), waits for the CI run of the tag's commit,
+  checks the GitHub Release and runs `install.sh update --yes`.
+- **Release checks**: the README metrics row `Always-on block | L / 60 lines · B / 5,000 bytes` must
+  match `AGENTS.global.md` (spacing tolerant; an unreadable row is refused, not skipped).
+- **Eval auth errors**: transcripts saying "not logged in" or `authentication_failed` mark the scenario
+  ERROR even when the adapter exits 0. First real run with Claude Code 2.1.295 headless: all four
+  scenarios ERROR because the standalone CLI was not logged in — the runner refused to grade them.
+- **Gate notes** show control characters in config values as `?`.
+- **Shorter always-on block and skill descriptions** (same rules): block 4,759 → 4,699 bytes, descriptions
+  1,541 → about 1,370 characters.
+- Tests: the test-update fixture copy keeps files whose names start with `-`.
+- Built at Full weight: Sonnet tester (2 rounds), Opus reviewer (CHANGES: stale README byte count,
+  metrics-row spacing, CI run picked by tag commit, empty/null run list, dirty tree; all fixed test-first).
+
 ## 0.10.0 - 2026-10-10
 - **Project config no longer breaks gates and releases**: `conf.sh set ... --project` adds
   `.agents/playbook.conf` to the repo's local exclude file (once, with a notice) when the file is neither
