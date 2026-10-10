@@ -126,4 +126,33 @@ checks "$C"
 assert_rc "AC12b.2 quoted name passes run-checks" 0
 assert_not_contains "AC12b.2 no name-mismatch failure for a quoted name" "$OUT" "name '"
 
+echo "v0.13.0 AC6.1 regex repeat bounds above 255 (BSD/macOS RE_DUP_MAX) are refused"
+# The bound is built at run time: a literal one in this file would fail the real run-checks.
+# bound_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
+bound_case() {
+  local name="$1" rel="$2" line="$3" expect="$4"
+  C="$(mk_copy)"
+  mkdir -p "$C/$(dirname "$rel")"
+  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
+  checks "$C"
+  if [ "$expect" = fail ]; then
+    assert_rc "AC6.1 $name: exit 1" 1
+    assert_contains "AC6.1 $name: names file:line" "$OUT" "$rel:3"
+  else
+    assert_rc "AC6.1 $name: exit 0" 0
+    assert_not_contains "AC6.1 $name: the file is not named" "$OUT" "$rel"
+  fi
+}
+BIG=$((255 + 45)); EDGE=$((255 + 1)); TOP=255
+bound_case "tests/ file, upper bound over the limit" tests/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
+bound_case "evals/ file, upper bound over the limit" evals/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
+bound_case "single bound over the limit" tests/zz-bound.sh "grep -E 'a{${BIG}}' f" fail
+bound_case "just above the limit 256"  tests/zz-bound.sh "grep -E 'a{0,${EDGE}}' f" fail
+bound_case "four-digit bound"          tests/zz-bound.sh "grep -E 'a{0,${TOP}0}' f" fail
+bound_case "both numbers high"         tests/zz-bound.sh "grep -E 'a{${BIG},$((BIG + 100))}' f" fail
+bound_case "exactly 255 passes"        tests/zz-bound.sh "grep -E 'a{0,${TOP}}' f" pass
+bound_case "single {255} passes"       tests/zz-bound.sh "grep -E 'a{${TOP}}' f" pass
+bound_case "small bounds pass"         tests/zz-bound.sh "grep -E 'a{1,100}b{3}' f" pass
+bound_case "a bash brace list is not a bound" tests/zz-bound.sh "echo {1,2,3} {a,b}" pass
+
 t_summary

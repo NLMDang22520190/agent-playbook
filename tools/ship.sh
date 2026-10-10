@@ -27,6 +27,9 @@ done
 case "$pr" in *[!0123456789]*) usage ;; esac
 case "$tag" in *$'\n'*) usage ;; esac
 printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || usage
+tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
+case "$tries" in '' | *[!0123456789]*) usage ;; esac
+case "$secs" in '' | *[!0123456789]*) usage ;; esac
 
 ask() { # question -> 0 on y/yes; refuses without a terminal
   [ "$yes" = 1 ] && return 0
@@ -40,6 +43,12 @@ ask() { # question -> 0 on y/yes; refuses without a terminal
 
 # a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
 [ -z "$(git status --porcelain)" ] || fail "work tree is not clean (commit or stash first)"
+# merge from main: on a detached HEAD (left by install.sh update) gh merges on GitHub, then fails locally
+cur="$(git symbolic-ref -q --short HEAD || echo 'detached HEAD')"
+if [ "$cur" != main ]; then
+  step "switch to main (was $cur)"
+  git switch -q main || fail "cannot switch to main (checked out in another worktree?)"
+fi
 
 step "check PR #$pr"
 st="$(gh pr view "$pr" --json state,mergeStateStatus --jq '.state + " " + .mergeStateStatus')" || fail "cannot read PR #$pr"
@@ -63,8 +72,6 @@ bash tools/release.sh "$tag"; rc=$?
 
 step "wait for the CI run of $tag"
 sha="$(git rev-parse "$tag^{commit}" 2>/dev/null)" || fail "tag $tag not found locally after release.sh"
-tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
-case "$tries$secs" in *[!0123456789]*) usage ;; esac
 run=""; n=0
 while [ "$n" -lt "$tries" ]; do   # the run can take a few seconds to appear; only the run for this tag's commit
   run="$(gh run list --branch "$tag" --commit "$sha" --event push --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
@@ -80,4 +87,7 @@ gh release view "$tag" >/dev/null || fail "GitHub Release $tag not found"
 
 step "update the installs"
 ./install.sh update --yes || fail "install.sh update failed"
+# install.sh update checks out the tag; the development checkout goes back to main
+git switch -q main || fail "installed, but could not switch back to main"
+echo "back on branch main"
 echo "shipped $tag"

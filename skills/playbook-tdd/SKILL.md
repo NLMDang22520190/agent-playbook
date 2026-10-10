@@ -40,13 +40,14 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 
 | Weight | Use it when | What runs |
 |---|---|---|
-| **Full** | the change touches hard-to-reverse ground (public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
+| **Full** | the change touches hard-to-reverse ground (a change to an existing public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
 **Decide consistently.** Code is critical when the repo's documentation or notes say it serves billing, payments, auth or personal data.
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
-A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite.
+A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
+A new exported function counts as additive: it changes no existing public API.
 The weight line quotes the file:line or rule that decided it.
 
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
