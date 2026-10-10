@@ -1,6 +1,6 @@
 ---
 name: playbook-setup
-description: Use once per machine or project to configure the agent playbook - when ~/.agents/playbook.conf is missing, when the user asks to set up or reconfigure the playbook, or when the harness, models or test commands changed. Not for ordinary coding tasks.
+description: Use once per machine or project to configure the agent playbook - when ~/.agents/playbook.conf is missing, the user asks to set it up or reconfigure it, or the harness, models or test commands changed. Not for ordinary coding.
 ---
 
 # Playbook setup

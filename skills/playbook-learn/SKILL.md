@@ -1,6 +1,6 @@
 ---
 name: playbook-learn
-description: Use when the user corrects you or states a project convention, when a gate fails and the root cause is found, or when a review confirms a recurring mistake - record a short, evidenced, user-approved lesson in the project's .agents/LEARNINGS.md. Also to read, prune or retire project learnings.
+description: Use when the user corrects you or states a project convention, a gate failure's root cause is found, or a review confirms a recurring mistake - record a short, evidenced, user-approved lesson in .agents/LEARNINGS.md; also to read, prune or retire learnings.
 ---
 
 # Project learnings

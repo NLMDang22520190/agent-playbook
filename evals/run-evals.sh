@@ -191,7 +191,7 @@ for E in $LIST; do
   herr=""
   if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then herr="timed out after ${TIMEOUT}s"
   elif [ "$rc" -ne 0 ]; then herr="adapter exited $rc"
-  elif grep -qiE 'invalid x-api-key|invalid api key|unauthori[sz]ed|authentication failed|(^|[^0-9])401([^0-9]|$)' "$LOG"; then
+  elif grep -qiE 'invalid x-api-key|invalid api key|unauthori[sz]ed|authentication failed|authentication_failed|not logged in|(^|[^0-9])401([^0-9]|$)' "$LOG"; then
     herr="auth or harness error in the transcript"
   fi
   if [ -n "$herr" ]; then

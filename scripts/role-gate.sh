@@ -90,9 +90,11 @@ case "$cmd" in
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     # a config file can move the gate: show where the regexes come from, before the verdict
-    [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$TEST_RE"
-    [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$INFRA_RE"
-    [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$INFRA_SHADOW"
+    # control characters (ESC, CR, ...) in a value could hide or rewrite the note in a terminal: show them as ?
+    shown() { printf '%s' "$1" | LC_ALL=C tr '\000-\037\177' '?'; }
+    [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$(shown "$TEST_RE")"
+    [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$(shown "$INFRA_RE")"
+    [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$(shown "$INFRA_SHADOW")"
 
     changed="$( { git -c core.quotepath=off diff --name-only --no-renames "$base" --
                   git -c core.quotepath=off ls-files --others --exclude-standard; } | sort -u )"

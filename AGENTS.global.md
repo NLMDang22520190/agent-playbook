@@ -17,7 +17,7 @@ Why: agents that followed only this summary skipped the procedures the skills ho
 
 ### Proof for every claim
 - Label non-trivial claims: [VERIFIED] you ran or read it in this session and show the evidence, [INFERRED] reasoned from stated facts, [UNVERIFIED] not checked.
-- Claims about code cite `path:line` that you read this session. "Passes", "works", "fixed" need the output of a run from this session (`~/.agents/playbook/scripts/proof-run.sh`). Facts about external libraries, APIs and versions cite official docs (URL and version).
+- Code claims cite `path:line` read this session. "Passes", "works", "fixed" need run output from this session (`~/.agents/playbook/scripts/proof-run.sh`). Library, API and version facts cite official docs (URL and version).
 - No evidence means say "unverified". Never fill gaps with plausible guesses. Details: skill `playbook-proof`.
 Why: tests have gone green on the wrong screen, and a confident wrong explanation costs the next person a day.
 
@@ -30,7 +30,7 @@ For any change that adds or alters behaviour, or fixes a bug, use skill `playboo
 Why: an agent that writes both the code and its tests writes tests that agree with its own mistakes; separate contexts cost minutes, so spend them where a mistake is expensive.
 
 ### When other skills overlap
-Other installed skills (for example Superpowers `test-driven-development`, `subagent-driven-development`, `brainstorming`) may cover the same work. Where they conflict, this playbook wins: tests are written by a tester role, never by the implementer; reviewers re-run the tests themselves; clarifying questions go in one batched message with defaults, not one per message. Use their techniques only where they do not contradict these rules.
+Other skills (e.g. Superpowers `test-driven-development`, `subagent-driven-development`, `brainstorming`) may cover the same work. Where they conflict, this playbook wins: tests are written by a tester role, never by the implementer; reviewers re-run the tests themselves; clarifying questions go in one batched message with defaults, not one per message. Use their techniques only where they do not contradict these rules.
 Why: two skills giving opposite orders make behaviour random.
 
 ### Learnings and playbook feedback

@@ -1,6 +1,6 @@
 ---
 name: playbook-proof
-description: Use when stating results, diagnoses, comparisons or recommendations, or before saying work is done, fixed or passing - attach verifiable evidence (command output from this session, file:line, official docs) and label confidence. Also for reviewing someone else's claims.
+description: Use when stating results, diagnoses or recommendations, or before saying work is done, fixed or passing - attach evidence (command output from this session, file:line, official docs) and label confidence; also to review others' claims.
 ---
 
 # Proof for every claim
