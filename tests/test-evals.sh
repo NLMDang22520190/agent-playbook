@@ -168,7 +168,7 @@ if command -v timeout >/dev/null 2>&1; then
   run bash "$RUNNER" --cmd "bash $A/hang.sh" --scenarios E1 --workroot "$W8" --out "$W8/results.md" --timeout 2
   el=$((SECONDS - t0))
   if [ "$el" -lt 25 ] && [ "$(count_lines E1 ERROR)" -ge 1 ]; then t_ok "AC5 --timeout stops a hung adapter and marks it ERROR (${el}s)"; else t_bad "AC5 --timeout stops a hung adapter and marks it ERROR" "took ${el}s; output: $OUT"; fi
-  assert_rc "AC5 timed-out scenario exits 1" 1
+  assert_rc "AC5 timed-out scenario exits 4 (harness error)" 4
 else
   echo "  note: 'timeout' not on PATH, skipping the --timeout assertion"
 fi
