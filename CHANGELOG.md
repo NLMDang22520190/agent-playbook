@@ -3,13 +3,16 @@
 ## 0.5.1 - 2026-10-10
 Windows without WSL, verified on Windows 11 (Git for Windows, `core.autocrlf=true`):
 - `install.ps1` and `install.sh --copy` install and pass `doctor` (first real run of `install.ps1`).
-- `evals/run-checks.sh` judges CRLF by what git stores (`git ls-files --eol`, `i/crlf`/`i/mixed`) for
-  tracked files; working-tree CRLF from Windows checkouts is no longer a failure. Untracked files and
-  non-git copies are still read as they are. Lite weight escalated once: a test asserted an
-  unreachable case (`eol=lf` normalises CRLF on add); a fresh tester rewrote it with `-text`, and a
-  mutant of the index check proves it bites.
-- Test suites run in `--copy` mode where symlinks are unavailable (`MODEFLAG`, `assert_installed`), and
-  the run-checks tests restore stored LF bytes in their copies, so the whole suite passes in Git Bash.
+- `evals/run-checks.sh` CRLF check fixed for Git Bash. Root cause: MSYS grep handles a CR pattern in
+  text mode, so `grep -rIl $'\r'` matched either nothing or every file (CI listed every file as CRLF).
+  CR is now detected with `tr -cd '\r'`. Tracked files are judged by what git stores
+  (`git ls-files --eol`, `i/crlf`/`i/mixed`), untracked files and non-git copies by their bytes.
+  A first diagnosis ("Windows checkouts convert to CRLF") was wrong: the checkout and the copies were
+  LF all along; the helper added for it was reverted. Lite weight, escalated once to a fresh tester
+  when a test asserted an unreachable case (`eol=lf` normalises CRLF on add); the rewritten case
+  (`-text`) kills a mutant of the index check.
+- Test suites run in `--copy` mode where symlinks are unavailable (`MODEFLAG`, `assert_installed`),
+  so the whole suite runs in Git Bash.
 - CI runs on `windows-latest` (Git Bash) next to Ubuntu and macOS.
 - Docs: Windows setup in the README; `playbook-setup` warns that `bash` in PowerShell may be the WSL launcher.
 
