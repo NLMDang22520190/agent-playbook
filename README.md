@@ -4,7 +4,7 @@
 
 **AI SDLC, not AI slop.** One global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.5.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-532-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.6.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-839-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -89,6 +89,15 @@ sequenceDiagram
 Lite **escalates to Full** when it touches hard-to-reverse ground, outgrows the size limit, or a test looks wrong. Configuration that changes behaviour (feature flags, defaults, permissions, deploy settings) is **not exempt**.
 <sub>* Measured on the v0.3.1 fix, see the CHANGELOG. Not a benchmark.</sub>
 
+### Spending tokens where they buy safety
+
+- **A model per role, per harness.** Setup lists the models your harness offers and recommends: a strong model (or another vendor) for the reviewer, mid-tier for the implementer, mid- or low-tier for the tester; you accept or pick. `scripts/role-model.sh <role> --harness <h>` resolves it (`model_<role>_<harness>` → `model_<role>` → `session`).
+- **Focused tests in sub-agents,** one fresh full run (test, lint, typecheck) by the orchestrator at close-out.
+- **The reviewer's checklist is in the tester's prompt** ("make every check able to fail"), so fewer review rounds come back.
+- **Cohesive slices** of 1–5 tests, and every sub-agent prompt built from `templates/role-prompt.md` (fixed text first) so prompt caching can reuse it.
+- **Mechanical steps are scripts:** `scripts/tdd-step.sh red|green` (gate + evidence + optional commit), `tools/release.sh` for maintainers.
+- **Cost is measured:** `scripts/cost.sh add` per role run, `cost.sh summary` in the final report. v0.6.0 itself: 11 sub-agent runs, 891k tokens (tester and implementer on Sonnet, reviewer on Opus).
+
 If the harness has sub-agents, each role is a sub-agent. If not, each role runs as a separate headless session. With a single context only, it still runs, but the report says so: it is the weaker mode.
 
 ## Ask or decide?
@@ -169,7 +178,7 @@ The presets do not sandbox the agent (the opencode preset auto-approves its acti
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **532 passing** (conf 16 · evals 151 · feedback 82 · install 69 · learn 27 · proof-run 22 · release 22 · role-gate 83 · run-checks 13 · update 47) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **839 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 40 / 60 lines · 4,369 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,541 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
@@ -198,7 +207,7 @@ agent-playbook/
 ├── scripts/                role-gate · proof-run · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  532 tests, run in sandboxes, never touch the real HOME
+├── tests/                  839 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
 ├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag)
 └── docs/                   flow.svg · architecture.svg · tdd-huong-dan.md · harness-notes.md · vong-doi-cap-nhat.md

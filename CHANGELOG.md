@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 - 2026-10-10
+Cost levers that keep every rule (tester ≠ implementer ≠ reviewer at Full, test-first, fresh full evidence at close-out, gates):
+- **Model per role, per harness**: `scripts/role-model.sh` (`model_<role>_<harness>` → `model_<role>` → `session`);
+  `playbook-tdd` passes it to each harness (Claude Code Agent `model`, OpenCode per-role agent in `opencode.json`,
+  `codex exec -m`). **Setup asks for the models per role and writes a recommendation table first** (reviewer:
+  strongest available or another vendor; implementer: mid-tier; tester: mid/low-tier; with reasons and relative
+  cost), ranking only from what the harness reports; the user accepts or picks.
+- **Focused tests in sub-agents**; the orchestrator runs the full suite once at close-out, and a failing close-out
+  sends the work back into a new RED/GREEN round.
+- **Tester checklist** `## Make every check able to fail` (mutants, environment overrides, destructive targets, boundaries).
+- **Slice size** guidance and **`templates/role-prompt.md`** (fixed text first, per-slice variables last) for prompt caching.
+- **Scripts**: `scripts/tdd-step.sh red|green` (gate + proof-run + optional `--commit`, never commits `.agents/handoff/`,
+  notes when it adds it to `.git/info/exclude`); `tools/release.sh` (checks + tests + tag, `--dry-run`).
+- **Cost**: `scripts/cost.sh add|summary`; the final report has `## Cost`.
+- Built at Full weight with the levers applied: 11 sub-agent runs, 891,089 tokens (tester 5 × Sonnet, implementer 5 × Sonnet,
+  reviewer 1 × Opus). Two disputes resolved by fresh testers (origin default branch in a fixture; handoff files in commits);
+  one review round (tester checklist gaps, exclude notice); the tracked-handoff test turned a "dead code" finding into a pinned guard.
+
 ## 0.5.1 - 2026-10-10
 Windows without WSL, verified on Windows 11 (Git for Windows, `core.autocrlf=true`):
 - `install.ps1` and `install.sh --copy` install and pass `doctor` (first real run of `install.ps1`).
