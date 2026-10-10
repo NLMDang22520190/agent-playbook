@@ -106,7 +106,15 @@ echo "files"
 # CR is detected with tr, not grep: MSYS grep (Git Bash) handles a CR pattern in text mode and either
 # matches nothing or everything. Binary files are skipped (grep -I with an empty pattern is reliable).
 has_cr() { [ -n "$(tr -cd '\r' < "$1" | head -c 1)" ]; }
-cr_files() { while IFS= read -r f; do [ -f "$f" ] && grep -Iq '' "$f" && has_cr "$f" && printf '%s\n' "$f"; done; }
+# cr_files: one pass over all files first (the usual case has no CR at all); only then per file,
+# which costs three processes each and is slow on Git Bash.
+cr_files() {
+  local f list=()
+  while IFS= read -r f; do [ -f "$f" ] && list+=("$f"); done
+  [ "${#list[@]}" -gt 0 ] || return 0
+  [ -n "$(cat -- "${list[@]}" | tr -cd '\r' | head -c 1)" ] || return 0
+  for f in "${list[@]}"; do grep -Iq '' "$f" && has_cr "$f" && printf '%s\n' "$f"; done
+}
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   crlf="$( { git ls-files --eol | awk '$1 ~ /^i\/(crlf|mixed)$/ { print $NF }'
             git ls-files -o --exclude-standard | cr_files; } | sort -u | tr '\n' ' ')"
@@ -116,7 +124,8 @@ fi
 [ -z "${crlf// /}" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
 for f in install.sh scripts/*.sh tests/*.sh evals/*.sh tools/*.sh; do
   bash -n "$f" 2>/dev/null && ok "syntax: $f" || bad "bash -n failed: $f"
-  [ "$(head -c 2 "$f")" = "#!" ] || bad "$f: missing shebang"
+  sb=""; IFS= read -r -n 2 sb < "$f"   # builtin read: no head process per file
+  [ "$sb" = "#!" ] || bad "$f: missing shebang"
 done
 for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh scripts/feedback.sh; do
   [ -x "$f" ] && ok "executable: $f" || bad "not executable: $f (chmod +x)"
