@@ -207,11 +207,11 @@ jwchk() { if wsec | tr '\n' ' ' | grep -qiE -- "$2"; then t_ok "$1"; else t_bad 
 if jsec "$SCEN" '^## E1 ' | grep -qiE -- 'asks nothing \(or at most one question that really matters\)'; then t_ok 'R1.1 E1 Pass-if parenthesis "(or at most one question that really matters)" is uninterrupted'; else t_bad 'R1.1 E1 Pass-if parenthesis "(or at most one question that really matters)" is uninterrupted' 'text between "really" and "matters)"'; fi
 check_sec 'R1.1 E1 still mentions the weight note after the Pass-if sentence' "$SCEN" "$E1" 'weight'
 # finding 2: the Lite case is narrow, "critical" is defined by the repo's docs, Full/Lite cannot be swapped
-jwchk 'R1.2 Lite case is an internal or private additive change' 'additive[^.]{0,300}(internal|private)|(internal|private)[^.]{0,300}additive'
-jwchk 'R1.2 Lite case: no change or removal of an existing public API' 'additive[^.]{0,300}public api'
-jwchk 'R1.2 Lite case: no change to an existing data shape' 'additive[^.]{0,300}data shape'
-jwchk 'R1.2 Lite case: no money movement' 'additive[^.]{0,300}money'
-jwchk 'R1.2 the additive case ends in Lite (not Full)' 'additive[^.]{0,400}is lite'
+jwchk 'R1.2 Lite case is an internal or private additive change' 'additive[^.]{0,255}(internal|private)|(internal|private)[^.]{0,255}additive'
+jwchk 'R1.2 Lite case: no change or removal of an existing public API' 'additive[^.]{0,255}public api'
+jwchk 'R1.2 Lite case: no change to an existing data shape' 'additive[^.]{0,255}data shape'
+jwchk 'R1.2 Lite case: no money movement' 'additive[^.]{0,255}money'
+jwchk 'R1.2 the additive case ends in Lite (not Full)' 'additive[^.]{0,255}is lite'
 jwchk 'R1.2 "critical" is defined by what the repo docs or notes say' 'critical[^.]{0,200}(docs|notes)|(docs|notes)[^.]{0,120}critical'
 jwchk 'R1.2 Full sentence: Full when the change alters existing behaviour (M1: not swapped with Lite)' '(^|[.*] +)full (when|if|for)[^.]{0,80}(alter|chang|remov)[^.]{0,40}existing behaviou?r'
 # finding 3: injection rule keeps its core and names the exceptions
