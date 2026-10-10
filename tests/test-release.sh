@@ -61,6 +61,58 @@ done
 run bash "$D/tools/check-release.sh"
 assert_rc "AC3 no tag argument: exit 2" 2
 
+echo "README version badge (v0.9.0 AC7.1)"
+# mk_rel_readme VERSION README_TEXT -> like mk_rel, with a README.md next to VERSION (changelog has 1.2.3)
+mk_rel_readme() {
+  local d; d="$(mk_rel "$1" "$CL")"
+  printf '%s' "$2" > "$d/README.md"
+  printf '%s\n' "$d"
+}
+BADGE_OK='# demo
+![version](https://img.shields.io/badge/version-1.2.3-4F5BD5) ![tests](https://img.shields.io/badge/tests-5-1F9D63)
+'
+D="$(mk_rel_readme 1.2.3 "$BADGE_OK")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 README badge equals VERSION: exit 0" 0
+
+D="$(mk_rel_readme 1.2.3 '![version](https://img.shields.io/badge/version-1.2.2-4F5BD5)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 README badge 1.2.2 vs VERSION 1.2.3: exit 1" 1
+assert_contains "AC7.1 mismatch message names README" "$OUT" "README"
+assert_contains "AC7.1 mismatch message names the badge version" "$OUT" "1.2.2"
+assert_contains "AC7.1 mismatch message names VERSION's version" "$OUT" "1.2.3"
+
+D="$(mk_rel_readme 1.2.3 '![version](https://img.shields.io/badge/version-1.2.30-4F5BD5)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 badge 1.2.30 is not 1.2.3 (no prefix match): exit 1" 1
+
+D="$(mk_rel_readme 1.2.3 '![version](https://img.shields.io/badge/version-1.2.3)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 badge without a colour suffix and equal to VERSION: exit 0" 0
+
+D="$(mk_rel_readme 1.2.3 '![version](https://img.shields.io/badge/version-0.1.0-4F5BD5)
+')"
+run bash "$D/tools/check-release.sh" --notes v1.2.3
+assert_rc "AC7.1 --notes also refuses a stale README badge: exit 1" 1
+
+D="$(mk_rel_readme 1.2.3 '# demo, no badge here. version 9.9.9 in prose does not count.
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 README without a version badge: no check, exit 0" 0
+
+D="$(mk_rel 1.2.3 "$CL")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 no README.md at all: no check, exit 0" 0
+
+D="$(mk_rel_readme 1.2.4 '![version](https://img.shields.io/badge/version-1.2.4-4F5BD5)
+')"
+run bash "$D/tools/check-release.sh" v1.2.4
+assert_rc "AC7.1 matching badge does not hide a missing CHANGELOG entry: exit 1" 1
+assert_contains "AC7.1 the CHANGELOG problem is still reported" "$OUT" "CHANGELOG"
+
 echo "release notes (AC3 --notes)"
 D="$(mk_rel 1.2.3 "$CL")"
 NOTES="$(bash "$D/tools/check-release.sh" --notes v1.2.3 2>/dev/null)"; RC=$?
@@ -99,7 +151,7 @@ EOF
   WFTEXT="$(grep -F check-release.sh "$WF")"
   assert_contains "AC4 release job checks the pushed tag" "$WFTEXT" 'tools/check-release.sh "$GITHUB_REF_NAME"'
 else
-  echo "  skip AC4 static check: PyYAML not available"
+  t_skip 5 "AC4 static check of .github/workflows/test.yml: PyYAML not available"
 fi
 
 

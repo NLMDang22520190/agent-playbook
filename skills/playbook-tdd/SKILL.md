@@ -22,6 +22,13 @@ session) coordinates and does not write tests or production code itself, except 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
 Prompt rules alone are not enough. The gate runs after every role hand-back.
 
+Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
+`test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
+implementer may change. Order for an infra change: the tester first writes the tests that exercise
+the infra change and sees them fail (`check tester`, commit RED); then a different context makes the
+infra change and passes `role-gate.sh check infra --base $RED`. Without the key, infra files count as
+tests, as before.
+
 **Why:** an agent that writes both code and tests writes tests that agree with its own mistakes,
 and a test nobody saw fail proves nothing. Separate contexts plus a git gate make "the tests were
 changed to pass" impossible to miss.

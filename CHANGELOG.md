@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0 - 2026-10-10
+- **Load the skill, not the summary**: a new always-on section tells the agent to load the skill a
+  rule names (Claude Code: the `Skill` tool; Codex/OpenCode: read its `SKILL.md`) and say which one it
+  loaded. `/skill-doctor` had shown playbook-tdd, -proof, -learn and -feedback with 0 uses in 7 days:
+  agents followed the summary and skipped the procedures. New eval E19; E15 now also FAILs when the
+  transcript shows no load of playbook-tdd. The `claude` eval preset runs
+  `claude -p --output-format stream-json --verbose` so tool calls reach the transcript.
+- **Test infrastructure gets its own role** (opt-in): project key `test_infra_regex`; matching paths
+  classify as `infra`; `role-gate.sh check infra` allows only them, and the tester and implementer may
+  not change them. An invalid `test_path_regex` or `test_infra_regex` now stops the gate with exit 3
+  instead of letting every file through.
+- **README numbers are checked at release**: `check-release.sh` compares the README version badge with
+  `VERSION`; `release.sh` compares every README test count with passed + skipped from the run.
+- **test-run-all cannot hang**: every run-all call is guarded (`timeout`, or a polling watchdog that
+  kills the process group); `PB_FORCE_WATCHDOG=1` exercises the watchdog on every OS.
+- **Windows**: role-gate tests no longer depend on git's CRLF warnings (`core.autocrlf=true`);
+  test-release counts its PyYAML-dependent assertions as skipped instead of dropping them; fewer
+  processes in install.sh and the test-update fixture copy.
+- Built at Full weight: Sonnet tester, Opus reviewer (2 rounds: APPROVE with 2 recommended fixes, then
+  APPROVE). The first Windows run found two problems WSL could not show (a reduced-PATH fixture that
+  breaks Git Bash DLL loading, CRLF warnings in byte-exact gate output); both fixed before release.
+
 ## 0.8.0 - 2026-10-10
 - **Generic model keys are visible and no longer written** (from playbook feedback: a Codex
   setup run wrote `model_tester=...`, which then applied to OpenCode too): `role-model.sh check

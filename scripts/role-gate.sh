@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Mechanical enforcement of role separation in the TDD workflow.
-#   role-gate.sh check <tester|implementer|reviewer> [--base REF]
-#   role-gate.sh classify <path>        prints "test" or "code"
+#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF]
+#   role-gate.sh classify <path>        prints "infra", "test" or "code"
 #   role-gate.sh size [--base REF] [--max-files N] [--max-lines M]
 #                                       Lite size check (defaults 3 files, 100 lines)
 #
@@ -21,6 +21,10 @@
 #   tester       only test paths            -> production code changed = violation
 #   implementer  only non-test paths        -> any test path changed (even deleted) = violation
 #   reviewer     nothing                    -> any change = violation
+#   infra        only test-infra paths      -> any test or code path changed = violation
+# Test infrastructure (runners, shared test helpers) is opt-in: project key test_infra_regex (ERE on
+# repo-relative paths, empty = off). Matching paths classify as "infra" (before the test regex); the
+# tester and the implementer may not change them, and size counts them like production files.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref)
@@ -29,13 +33,24 @@ set -u
 
 DEFAULT_REGEX='(^|/)(test|tests|__tests__|spec|specs|e2e|__mocks__|fixtures|testdata|__snapshots__)(/|$)|(\.test\.|\.spec\.|_test\.|_spec\.)|(^|/)test_[^/]*$|(^|/)conftest\.py$|\.feature$|Tests?\.(java|kt|cs|swift)$|(^|/)(jest|vitest|playwright|cypress)\.config\.[^/]+$|(^|/)karma\.conf\.[^/]+$|(^|/)\.mocharc(\.[^/]+)?$|(^|/)pytest\.ini$|(^|/)phpunit\.xml(\.dist)?$|\.snap$'
 
-test_regex() { pb_conf_get test_path_regex "$DEFAULT_REGEX"; }
+# Read both regexes once per run, and refuse an invalid one: grep exits 2 on a bad pattern, which
+# would otherwise read as "no match" and let every file through (fail open).
+TEST_RE="$(pb_conf_get test_path_regex "$DEFAULT_REGEX")"
+INFRA_RE="$(pb_conf_get test_infra_regex "")"
+valid_re() { printf 'x\n' | grep -Eq -- "$1" 2>/dev/null; [ $? -ne 2 ]; }
 
 classify() {
-  if printf '%s\n' "$1" | grep -Eq -- "$(test_regex)"; then echo test; else echo code; fi
+  if [ -n "$INFRA_RE" ] && printf '%s\n' "$1" | grep -Eq -- "$INFRA_RE"; then echo infra; return; fi
+  if printf '%s\n' "$1" | grep -Eq -- "$TEST_RE"; then echo test; else echo code; fi
 }
 
 cmd="${1:-}"
+case "$cmd" in
+  classify | check | size)
+    valid_re "$TEST_RE" || pb_die "invalid test_path_regex (grep -E rejects it): $TEST_RE" 3
+    if [ -n "$INFRA_RE" ]; then valid_re "$INFRA_RE" || pb_die "invalid test_infra_regex (grep -E rejects it): $INFRA_RE" 3; fi
+    ;;
+esac
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
@@ -46,7 +61,7 @@ case "$cmd" in
   check)
     role="${1:-}"
     [ $# -gt 0 ] && shift
-    case "$role" in tester|implementer|reviewer) ;; *) pb_die "role must be tester|implementer|reviewer" 2 ;; esac
+    case "$role" in tester|implementer|reviewer|infra) ;; *) pb_die "role must be tester|implementer|reviewer|infra" 2 ;; esac
     base="HEAD"
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -72,8 +87,9 @@ case "$cmd" in
       kind="$(classify "$f")"
       bad=0
       case "$role" in
-        tester)      [ "$kind" = "code" ] && bad=1 ;;
-        implementer) [ "$kind" = "test" ] && bad=1 ;;
+        tester)      [ "$kind" != "test" ] && bad=1 ;;
+        implementer) [ "$kind" != "code" ] && bad=1 ;;
+        infra)       [ "$kind" != "infra" ] && bad=1 ;;
         reviewer)    bad=1 ;;
       esac
       if [ "$bad" -eq 1 ]; then
@@ -123,7 +139,7 @@ EOF
     while IFS=$'\t' read -r added deleted f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
-      [ "$(classify "$f")" = "code" ] || continue
+      [ "$(classify "$f")" != "test" ] || continue   # code and infra count
       files=$((files + 1))
       if [ "$added" = "-" ]; then
         lines=$((lines + 1))

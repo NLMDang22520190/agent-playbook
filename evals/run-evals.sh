@@ -53,7 +53,9 @@ case "$HARNESS" in
             # DECISION[D1]: adapter contract = COMMAND <workdir> <prompt-file>; COMMAND is split by the shell.
             ADAPTER="$CMD \"\$1\" \"\$2\"" ;;
   opencode) LABEL="opencode"; ADAPTER='cd "$1" && opencode run --auto "$(cat "$2")"' ;;
-  claude)   LABEL="claude";   ADAPTER='cd "$1" && claude -p "$(cat "$2")"' ;;
+  # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
+  # flags as listed by `claude --help` in Claude Code 2.1.295.
+  claude)   LABEL="claude";   ADAPTER='cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' ;;
   codex)    LABEL="codex";    ADAPTER='cd "$1" && codex exec "$(cat "$2")"' ;;
   *) pb_die "unknown harness: $HARNESS (use opencode, claude, codex or --cmd)" 2 ;;
 esac
@@ -135,6 +137,8 @@ not_in_calc()   { ! grep -qF "$1" "$WD/src/calc.js"; }
 unchanged()     { git -C "$WD" diff --quiet HEAD -- src tests &&
                   [ -z "$(git -C "$WD" ls-files --others -- src tests)" ]; }   # untracked files count too
 said()          { grep -qiw "$1" "$LOG"; }
+# playbook-tdd loaded: a Skill call naming it (text or JSON form) or a read of its SKILL.md
+loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
 
 grade_E1() {
   check "subtract exported from src/calc.js" calc_js 'process.exit(typeof require(process.argv[1]).subtract === "function" ? 0 : 1)'
@@ -163,6 +167,7 @@ grade_E15() {
   check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
   check "transcript states the Lite weight" said lite
+  check "transcript shows the playbook-tdd skill loaded" loaded_tdd
   record MANUAL "test seen failing before the fix"
 }
 

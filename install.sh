@@ -90,7 +90,8 @@ OC_RULES="$H/.config/opencode/AGENTS.md"
 
 SKILLS=""
 for d in "$REPO"/skills/*/; do
-  [ -f "${d}SKILL.md" ] && SKILLS="$SKILLS $(basename "$d")"
+  sk="${d%/}"; sk="${sk##*/}"   # basename without a process (slow on Git Bash, runs on every command)
+  [ -f "${d}SKILL.md" ] && SKILLS="$SKILLS $sk"
 done
 [ -n "$SKILLS" ] || die "no skills found under $REPO/skills" 3
 

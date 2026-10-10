@@ -135,4 +135,101 @@ run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC12a.2 behind origin without a prior fetch is refused (dry run) -> exit 1" 1
 assert_eq "AC12a.2 dry run leaves refs/remotes/origin/main unchanged" "$BEFORE" "$(git -C "$C" rev-parse refs/remotes/origin/main)"
 
+
+echo "README test counts (v0.9.0 AC7.2)"
+# set_readme TEXT -> committed + pushed README.md in $C, and a run-all stub that prints suite summaries
+# (a.sh 5 passed; b.sh 3 passed + 2 skipped; c.sh 1 passed => passed+skipped total 11, passed only 9)
+set_readme() {
+  printf '%s' "$1" > "$C/README.md"
+  cat > "$C/tests/run-all.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "== tests/test-a.sh"
+echo "test-a.sh: 5 passed, 0 failed"
+echo "== tests/test-b.sh"
+echo "test-b.sh: 3 passed, 0 failed, 2 skipped"
+echo "== tests/test-c.sh"
+echo "test-c.sh: 1 passed, 0 failed"
+echo "== evals/run-checks.sh (static skill checks)"
+echo "run-checks: all ok"
+echo "ALL GREEN"
+exit 0
+STUB
+  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main )
+}
+README_OK='# demo
+![tests](https://img.shields.io/badge/tests-11-1F9D63)
+| Script tests | **11 passing** (see run-all) |
+Every one of the 11 tests, run in sandboxes.
+'
+setup; set_readme "$README_OK"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 all three README numbers equal passed+skipped (11): dry run exit 0" 0
+assert_contains "AC7.2 dry run still reaches 'would tag'" "$OUT" "would tag"
+setup; set_readme "$README_OK"
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC7.2 matching README numbers: real release exit 0" 0
+assert_contains "AC7.2 the tag is created" "$(tags_of "$C")" "v1.2.3"
+
+setup; set_readme '![tests](https://img.shields.io/badge/tests-9-1F9D63)
+'
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC7.2 badge 9 (passed only, skipped not added) vs 11 -> refused, exit 1" 1
+assert_contains "AC7.2 refusal names README" "$OUT" "README"
+assert_contains "AC7.2 refusal names the README number" "$OUT" "9"
+assert_contains "AC7.2 refusal names the real total" "$OUT" "11"
+assert_eq "AC7.2 refusal creates no tag" "" "$(tags_of "$C")$(origin_tags)"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 --dry-run refuses on the same mismatch: exit 1" 1
+assert_not_contains "AC7.2 --dry-run mismatch does not print 'would tag'" "$OUT" "would tag"
+
+setup; set_readme '![tests](https://img.shields.io/badge/tests-12-1F9D63)
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 badge 12 (too high) vs 11 -> exit 1" 1
+
+setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
+| Script tests | **10 passing** |
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 only the '**N passing**' number is stale -> exit 1" 1
+assert_contains "AC7.2 names the stale number 10" "$OUT" "10"
+
+setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
+Every one of the 8 tests, run in sandboxes.
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 only the 'N tests, run in sandboxes' number is stale -> exit 1" 1
+assert_contains "AC7.2 names the stale number 8" "$OUT" "8"
+
+setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
+| Script tests | **11 passing** |
+Every one of the 11 tests, run in sandboxes.
+**3 passing** in some unrelated old table
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 every occurrence is checked, a second stale '**3 passing**' -> exit 1" 1
+
+setup; set_readme '# demo
+Version 0.9.0 has 40 files. We run 3 jobs. Issue #120 is closed.
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 README without the three count patterns: no check, exit 0" 0
+
+setup
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 no README.md at all: no check, exit 0" 0
+
+setup; printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "test-b.sh: 6 passed, 0 failed, 1 skipped"\nexit 1\n' > "$C/tests/run-all.sh"
+printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
+( cd "$C" && G add -A && G commit -qm red && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 a failing suite is refused before (and regardless of) the README check" 1
+
+setup
+printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "test-b.sh: 6 passed, 0 failed, 1 skipped"\nexit 0\n' > "$C/tests/run-all.sh"
+printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
+( cd "$C" && G add -A && G commit -qm other-totals && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC7.2 totals are summed over suite lines (4+6+1 = 11): exit 0" 0
+
 t_summary
