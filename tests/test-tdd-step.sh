@@ -136,6 +136,28 @@ assert_contains "AC3 green --commit (handoff present): the production change is 
 assert_eq "AC3 green --commit never commits .agents/handoff/" "" "$(printf '%s\n' "$FILES" | grep '^\.agents/handoff/')"
 assert_eq "AC3 green --commit: no handoff file is tracked" "" "$(git -C "$R" ls-files .agents/handoff)"
 
+echo "--commit announces the .git/info/exclude edit"
+R="$(fresh)"
+printf 'test("n", () => { throw new Error("x"); });\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "add new" --commit -- sh -c 'exit 1'
+assert_rc "AC3 red --commit in a repo without the ignore -> exit 0" 0
+assert_contains "AC3 red --commit prints a notice naming .git/info/exclude" "$OUT" ".git/info/exclude"
+
+echo "--commit in a project that TRACKS .agents/handoff/ (documented: tracked change stays in the work tree, uncommitted, still modified)"
+R="$(fresh)"
+mkdir -p "$R/.agents/handoff"; printf 'v1\n' > "$R/.agents/handoff/notes.md"
+git -C "$R" add -A && git -C "$R" commit -q -m "track handoff notes"
+printf 'v2\n' > "$R/.agents/handoff/notes.md"
+printf 'test("n", () => { throw new Error("x"); });\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "add new" --commit -- sh -c 'exit 1'
+assert_rc "AC3 red --commit with a tracked handoff file -> exit 0" 0
+FILES="$(git -C "$R" show --name-only --format= HEAD)"
+assert_contains "AC3 tracked handoff: the test change is committed" "$FILES" "tests/new.test.js"
+assert_eq "AC3 tracked handoff: red step does not commit the tracked handoff change" "" "$(printf '%s\n' "$FILES" | grep '^\.agents/handoff/')"
+assert_eq "AC3 tracked handoff: the file content is untouched in the work tree" "v2" "$(cat "$R/.agents/handoff/notes.md")"
+assert_contains "AC3 tracked handoff: still listed as modified afterwards" "$(git -C "$R" status --porcelain)" ".agents/handoff/notes.md"
+assert_eq "AC3 tracked handoff: still tracked" ".agents/handoff/notes.md" "$(git -C "$R" ls-files .agents/handoff)"
+
 echo "environment"
 D="$(mk_tmp)"
 run_in "$D" bash "$STEP" red --message m -- sh -c 'exit 1'

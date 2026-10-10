@@ -39,6 +39,8 @@ for f in "$IMPL" "$REVIEWER"; do
 done
 check_sec "AC5 Phase 4 keeps one fresh full run by orchestrator" "$SKILL" '^### Phase 4' 'fresh[^.]{0,120}(full|whole)|(full|whole)[^.]{0,120}fresh'
 check_sec "AC5 Phase 4 names lint and typecheck" "$SKILL" '^### Phase 4' 'lint[^.]{0,40}type'
+check_sec "AC5 Phase 4 says a failing close-out run starts a new round" "$SKILL" '^### Phase 4' 'fail[^.]{0,160}(new (RED|round)|back to)|(new (RED|round))[^.]{0,160}fail'
+check_sec "AC5 Phase 4 says a failing close-out run means not done" "$SKILL" '^### Phase 4' 'not (reported |report(ed)? )?(as )?done|never (report|say)[^.]{0,30}done'
 
 # --- AC6: tester section
 SEC='^## Make every check able to fail'
@@ -53,6 +55,11 @@ check_sec 'AC6 destructive wrong-target safety' "$TESTER" "$SEC" 'destructive'
 check_sec 'AC6 wrong target: empty' "$TESTER" "$SEC" 'empty'
 check_sec 'AC6 wrong target: root' "$TESTER" "$SEC" 'root'
 check_sec 'AC6 wrong target: foreign repo' "$TESTER" "$SEC" 'foreign|other repo'
+# destructive-target paragraph: from the "destructive" bullet up to the next blank line
+destr() { section "$TESTER" "$SEC" | awk '/destructive/{f=1} f&&/^$/{exit} f{print}'; }
+if destr | grep -qiE -- '(^|[^a-z])home([^a-z]|$)'; then t_ok 'AC6 destructive wrong targets include home'; else t_bad 'AC6 destructive wrong targets include home' 'no "home" in the destructive bullet'; fi
+if destr | grep -qiE -- 'cwd|current directory|working directory'; then t_ok 'AC6 destructive wrong targets include cwd'; else t_bad 'AC6 destructive wrong targets include cwd' 'no cwd/current directory in the destructive bullet'; fi
+check_sec 'AC6 locale' "$TESTER" "$SEC" 'locale'
 check_sec 'AC6 boundaries' "$TESTER" "$SEC" 'boundar'
 check_sec 'AC6 already-passing check needs a reason' "$TESTER" "$SEC" 'already pass[^.]{0,60}reason|reason[^.]{0,60}already pass'
 
@@ -79,6 +86,7 @@ check 'AC8 SKILL ties it to prompt caching / prefix' "$SKILL" 'prefix[^.]{0,80}(
 
 # --- AC9: starting roles
 check_sec 'AC9 Starting roles section uses role-model.sh' "$SKILL" '^## Starting roles' 'role-model\.sh'
+check_sec 'AC9 Starting roles names harness values claude, codex, opencode' "$SKILL" '^## Starting roles' '`?claude`?[^.]{0,40}`?codex`?[^.]{0,40}`?opencode`?'
 check 'AC9 Claude Code Agent/Task model parameter' "$SKILL" '`model` parameter|model parameter'
 check 'AC9 OpenCode per-role agent in opencode.json' "$SKILL" 'opencode\.json'
 check 'AC9 Codex exec -m' "$SKILL" 'codex exec -m'
