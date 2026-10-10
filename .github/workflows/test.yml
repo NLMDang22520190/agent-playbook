@@ -15,8 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable.
-        os: [ubuntu-latest, macos-latest]
+        # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy).
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash   # Git Bash on Windows; never the WSL launcher
     steps:
       - uses: actions/checkout@v5
         with:
