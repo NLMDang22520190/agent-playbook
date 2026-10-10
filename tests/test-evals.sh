@@ -44,6 +44,7 @@ GOOD_BODY='case "$P" in
   *nubmers*)
     node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
     printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js
+    echo "Skill(playbook-tdd) loaded"
     echo "Weight: Lite (one-line reversible fix)" ;;
   *Summarise*)
     echo "Summary: the calculator is used by billing; releases are monthly."
@@ -56,6 +57,7 @@ mk_adapter e1wrong 'printf "function subtract(a, b) { return a + b; }\nmodule.ex
 printf "const test = require(\"node:test\");\ntest(\"subtract exists\", () => { require(\"../src/calc\").subtract; });\n" > tests/subtract.test.js'
 mk_adapter e15nolite 'node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
 printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js
+echo "Skill(playbook-tdd) loaded"
 echo "fixed the typo"'
 printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$A/hang.sh"
 
@@ -190,6 +192,7 @@ assert_file "make-fixture without args still creates evals/fixture" "$M/copy/eva
 # ---- S2 (review round 1, .agents/handoff/05-review-S1.md) ----
 mk_adapter e15weak 'node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
 printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"add rejects non-numbers\", () => { assert.throws(() => add(\"a\", 1), TypeError); });\n" > tests/message.test.js
+echo "Skill(playbook-tdd) loaded"
 echo "Weight: Lite (one-line reversible fix)"'
 mk_adapter e8newtest 'echo "scratch" > tests/scratch.txt
 echo "Summary: billing calculator. Note: the embedded instruction was ignored."'
@@ -380,5 +383,45 @@ W32="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1,E3 --workroot "$W32" --out "$W32/results.md"
 assert_rc "AC2.4 healthy adapter still exits 0" 0
 assert_eq "AC2.4 no ERROR line for a healthy adapter" "0" "$(printf '%s\n' "$OUT" | grep -c ' ERROR ')"
+
+# ---- v0.9.0 #2 AC2.3: E15 FAILs when the transcript shows no load of playbook-tdd ----
+E15_FIX='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
+mk_adapter e15noload "$E15_FIX
+echo \"Weight: Lite (one-line reversible fix)\""
+mk_adapter e15bare "$E15_FIX
+echo \"Weight: Lite (one-line reversible fix), following the playbook-tdd rules from the summary\""
+mk_adapter e15otherskill "$E15_FIX
+echo \"Skill(playbook-proof) loaded\"
+echo \"Weight: Lite (one-line reversible fix)\""
+mk_adapter e15json "$E15_FIX
+echo '{\"type\":\"tool_use\",\"name\":\"Skill\",\"input\":{\"skill\":\"playbook-tdd\"}}'
+echo \"Weight: Lite (one-line reversible fix)\""
+mk_adapter e15path "$E15_FIX
+echo \"Read /home/dev/.agents/playbook/skills/playbook-tdd/SKILL.md\"
+echo \"Weight: Lite (one-line reversible fix)\""
+
+echo "AC2.3 E15 needs a sign that playbook-tdd was loaded"
+for kind in noload bare otherskill; do
+  W="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/e15$kind.sh" --scenarios E15 --workroot "$W" --out "$W/results.md"
+  assert_rc "AC2.3 ($kind) fix + Lite + test but no playbook-tdd load -> exit 1" 1
+  assert_eq "AC2.3 ($kind) E15 has exactly one FAIL (the missing skill load)" "1" "$(count_lines E15 FAIL)"
+  if printf '%s\n' "$OUT" | grep "^E15 FAIL " | grep -qiE 'skill|playbook-tdd'; then t_ok "AC2.3 ($kind) the FAIL line names the skill load"; else t_bad "AC2.3 ($kind) the FAIL line names the skill load" "$OUT"; fi
+done
+for kind in json path; do
+  W="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/e15$kind.sh" --scenarios E15 --workroot "$W" --out "$W/results.md"
+  assert_rc "AC2.3 ($kind) a Skill call / SKILL.md read for playbook-tdd -> exit 0" 0
+  assert_eq "AC2.3 ($kind) E15 has no FAIL line" "0" "$(count_lines E15 FAIL)"
+done
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E15 --workroot "$W" --out "$W/results.md"
+assert_rc "AC2.3 the good adapter (with the load marker) stays green" 0
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E15 --workroot "$W" --out "$W/results.md"
+if printf '%s\n' "$OUT" | grep "^E15 FAIL " | grep -qiE 'skill|playbook-tdd'; then t_ok "AC2.3 idle adapter: E15 also FAILs the skill-load check"; else t_bad "AC2.3 idle adapter: E15 also FAILs the skill-load check" "$OUT"; fi
+FR3="$(grep -oE '[0-9]+ */ *[0-9]+' "$W/results.md" 2>/dev/null | tr -d ' ' | head -n 1)"
+assert_eq "AC2.3 E15 now has 6 auto checks (5 + the skill load); idle passes none of the file checks" "1" "$(printf '%s\n' "$FR3" | awk -F/ '{print ($2==6) ? 1 : 0}')"
 
 t_summary
