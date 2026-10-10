@@ -23,6 +23,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$tag" ] || usage
+case "$tag" in *$'\n'*) echo "tag contains a newline" >&2; usage ;; esac   # grep matches per line
 printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag '$tag' is not vX.Y.Z" >&2; usage; }
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "not a git work tree" >&2; exit 3; }
@@ -31,8 +32,10 @@ bash tools/check-release.sh "$tag" || refuse "tools/check-release.sh failed"
 
 [ -z "$(git status --porcelain)" ] || refuse "work tree is not clean (untracked files count)"
 [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || refuse "HEAD is not on main"
-git fetch -q origin || { echo "cannot fetch origin" >&2; exit 3; }
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main 2>/dev/null)" ] || refuse "main is not equal to origin/main"
+# Read origin's main without updating local refs (also in --dry-run).
+remote_main="$(git ls-remote origin refs/heads/main 2>/dev/null | cut -f1)"
+[ -n "$remote_main" ] || { echo "cannot read main from origin" >&2; exit 3; }
+[ "$(git rev-parse HEAD)" = "$remote_main" ] || refuse "main is not equal to origin/main"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && refuse "tag $tag already exists"
 
 bash tests/run-all.sh || refuse "tests/run-all.sh failed"
