@@ -160,7 +160,7 @@ flowchart TD
 ./install.sh update --to v0.2.0 --yes   # roll back
 ```
 
-`feedback.sh submit` refuses to post to a public repository (or one whose visibility it cannot read) unless you pass `--allow-public`. Details: [`docs/vong-doi-cap-nhat.md`](docs/vong-doi-cap-nhat.md) (Vietnamese).
+`feedback.sh submit` refuses to post to a public repository (or one whose visibility it cannot read) unless you pass `--allow-public`. Details: [`docs/update-lifecycle.md`](docs/update-lifecycle.md).
 
 ## Behaviour evals
 
@@ -210,7 +210,7 @@ agent-playbook/
 ├── tests/                  839 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E17) · RUBRIC.md · make-fixture.sh
 ├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag)
-└── docs/                   flow.svg · architecture.svg · tdd-huong-dan.md · harness-notes.md · vong-doi-cap-nhat.md
+└── docs/                   flow.svg · architecture.svg · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md
 ```
 
 ```bash
@@ -233,5 +233,5 @@ The content is written for this repo. Ideas were learned from:
 ---
 
 <div align="center">
-<sub>agent-playbook · alpha · TDD guide for beginners (Vietnamese): <a href="docs/tdd-huong-dan.md">docs/tdd-huong-dan.md</a> · Harness notes with sources: <a href="docs/harness-notes.md">docs/harness-notes.md</a></sub>
+<sub>agent-playbook · alpha · TDD guide for beginners: <a href="docs/tdd-for-beginners.md">docs/tdd-for-beginners.md</a> · Harness notes with sources: <a href="docs/harness-notes.md">docs/harness-notes.md</a></sub>
 </div>
