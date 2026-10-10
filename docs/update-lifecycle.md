@@ -44,7 +44,9 @@ Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E1
 One command for the merge, step 3 and step 4 on the development machine, once the PR is open and its CI is green:
 `tools/ship.sh <PR> vX.Y.Z` (asks before the merge and before the tag; `--yes` only when you already
 agreed). It merges, runs `release.sh` (dry run first), waits for the tag's CI, checks the GitHub Release
-and runs `install.sh update --yes`.
+and runs `install.sh update --yes`, then switches the checkout back to `main`. On the development machine
+the default (symlink) install points into this checkout, so whatever branch it is on is what your harnesses
+load: work on features in a separate worktree, or install with `--copy` if you want the installed skills pinned.
 
 ## Automatic update reminders (optional)
 Linux / WSL (cron, every Monday at 9:00):
