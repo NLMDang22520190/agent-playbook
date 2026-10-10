@@ -285,4 +285,84 @@ assert_rc "AC7.2 always-on badge but no AGENTS.global.md: exit 1" 1
 assert_contains "AC7.2 the missing file is named" "$OUT" "AGENTS.global.md"
 assert_not_contains "AC7.2 no raw shell error leaks" "$OUT" "No such file"
 
+echo "v0.11.0 AC5.1: README metrics row 'Always-on block | L / 60 lines · B / 5,000 bytes'"
+# mk_metrics NLINES WIDTH ROWTEXT [nofinalnl] -> release root whose AGENTS.global.md has NLINES lines of WIDTH bytes
+# each (newline included) and whose README.md holds ROWTEXT after a valid version badge.
+mk_metrics() {
+  local d; d="$(mk_rel_readme 1.2.3 "![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)
+$3
+")"
+  awk -v n="$1" -v w="$2" 'BEGIN { for (i = 1; i <= n; i++) printf "%-" (w - 1) "s\n", "rule " i }' > "$d/AGENTS.global.md"
+  if [ "${4:-}" = nofinalnl ]; then printf '%s' "$(cat "$d/AGENTS.global.md")" > "$d/AGENTS.global.md"; fi
+  printf '%s\n' "$d"
+}
+# row L B -> the README table row with B shown the way the README prints it (thousands comma from 1,000)
+row() {
+  local b="$2"
+  [ "$b" -ge 1000 ] && b="${b%???},${b: -3}"
+  printf '| Always-on block | %s / 60 lines · %s / 5,000 bytes | `wc -l -c AGENTS.global.md` |' "$1" "$b"
+}
+rowplain() { printf '| Always-on block | %s / 60 lines · %s / 5,000 bytes | `wc -l -c AGENTS.global.md` |' "$1" "$2"; }
+
+D="$(mk_metrics 20 80 "$(row 20 1600)")"
+assert_eq "fixture: 1600 bytes" "1600" "$(wc -c < "$D/AGENTS.global.md" | tr -d ' ')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 matching L=20 and B=1,600 (thousands comma): exit 0" 0
+D="$(mk_metrics 20 80 "$(rowplain 20 1600)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 matching L and B written without a comma (1600): exit 0" 0
+D="$(mk_metrics 5 80 "$(row 5 400)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 matching L=5 and B=400 (under 1,000): exit 0" 0
+D="$(mk_metrics 20 80 "$(row 21 1600)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 wrong L (row 21, real 20), matching B: exit 1" 1
+assert_contains "AC5.1 wrong L names the README row" "$OUT" "Always-on block"
+assert_contains "AC5.1 wrong L names the README number" "$OUT" "21"
+assert_contains "AC5.1 wrong L names the real line count" "$OUT" "20"
+D="$(mk_metrics 20 80 "$(row 20 1601)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 wrong B (row 1,601, real 1600), matching L: exit 1" 1
+assert_contains "AC5.1 wrong B names the README row" "$OUT" "Always-on block"
+assert_contains "AC5.1 wrong B names the README number" "$OUT" "1,601"
+case "$OUT" in *1600*|*1,600*) t_ok "AC5.1 wrong B names the real byte count" ;; *) t_bad "AC5.1 wrong B names the real byte count" "output: $OUT" ;; esac
+D="$(mk_metrics 20 80 "$(rowplain 20 1601)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 wrong B written without a comma: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 20 1500)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 B too low by 100: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 20 160)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 B=160 is not a prefix match of 1600: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 20 1600 | sed 's/1,600/16,000/')")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 B=16,000 is not a suffix match of 1,600: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 21 1601)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 both numbers wrong: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 20 1600)" nofinalnl)"
+assert_eq "fixture: no final newline" "19" "$(wc -l < "$D/AGENTS.global.md" | tr -d ' ')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 no final newline: B=1,600 would count a newline that is not there: exit 1" 1
+D="$(mk_metrics 20 80 "$(row 20 1599)" nofinalnl)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 no final newline: L=20 and B=1,599 match: exit 0" 0
+D="$(mk_metrics 20 80 "$(row 19 1599)" nofinalnl)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 no final newline: L=19 (wc -l style) is wrong: exit 1" 1
+D="$(mk_metrics 20 80 "| Other row | 99 / 60 lines · 1 / 5,000 bytes | x |")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 other rows are not checked: exit 0" 0
+D="$(mk_metrics 20 80 "Prose: the Always-on block is 99 / 60 lines · 1 / 5,000 bytes today.")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 prose that is not a table row is not checked: exit 0" 0
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC5.1 no metrics row (and no AGENTS.global.md): no check, exit 0" 0
+D="$(mk_metrics 20 80 "$(row 21 1601)")"
+run bash "$D/tools/check-release.sh" --notes v1.2.3
+assert_rc "AC5.1 --notes also refuses a stale metrics row: exit 1" 1
+
 t_summary

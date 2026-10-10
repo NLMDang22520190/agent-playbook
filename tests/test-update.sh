@@ -11,9 +11,30 @@ fi
 # copy the working tree (tracked + untracked, non-ignored; listed-but-missing files skipped) in a few
 # processes: a builtin loop filters the list, one tar pipe copies (keeps exec bits). Spawning
 # mkdir+cp per file is very slow on Git Bash.
-( cd "$PB_ROOT" && git ls-files -co --exclude-standard ) | while IFS= read -r f; do
-  [ -f "$PB_ROOT/$f" ] && printf '%s\n' "$f"
-done | ( cd "$PB_ROOT" && tar -cf - -T - ) | ( cd "$SRC" && tar -xf - )
+# Paths are prefixed with "./": GNU tar reads a listed name that starts with "-" as an option (v0.11.0 AC9.1).
+# copy_tree SRCDIR DESTDIR
+copy_tree() {
+  ( cd "$1" && git ls-files -co --exclude-standard ) | while IFS= read -r f; do
+    [ -f "$1/$f" ] && printf './%s\n' "$f"
+  done | ( cd "$1" && tar -cf - -T - ) | ( cd "$2" && tar -xf - )
+}
+copy_tree "$PB_ROOT" "$SRC"
+
+echo "v0.11.0 AC9.1 fixture copy keeps files whose names start with '-'"
+DS="$W/dashsrc"; DD="$W/dashdst"; mkdir -p "$DS/sub" "$DD"
+( cd "$DS" && git init -q && printf 'a\n' > normal.txt && printf 'b\n' > ./-dash.txt && printf 'c\n' > sub/-in.txt &&
+  printf 'd\n' > ./--long.txt && git add -A &&
+  git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -qm init &&
+  printf 'e\n' > ./-untracked.txt ) || { echo "dash fixture setup failed"; exit 3; }
+copy_tree "$DS" "$DD"
+assert_file "AC9.1 normal.txt is copied" "$DD/normal.txt"
+assert_file "AC9.1 tracked -dash.txt is copied" "$DD/-dash.txt"
+assert_file "AC9.1 tracked --long.txt (looks like a long option) is copied" "$DD/--long.txt"
+assert_file "AC9.1 sub/-in.txt (dash name in a subdirectory) is copied" "$DD/sub/-in.txt"
+assert_file "AC9.1 untracked -untracked.txt is copied" "$DD/-untracked.txt"
+assert_eq "AC9.1 the copied dash file has the right content" "b" "$(cat "$DD/-dash.txt" 2>/dev/null)"
+assert_eq "AC9.1 the copy holds exactly the 5 files (no stray entries)" "5" "$(cd "$DD" && find . -type f | wc -l | tr -d ' ')"
+assert_file "AC9.1 the real fixture copy still has install.sh" "$SRC/install.sh"
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 ( cd "$SRC" && git init -q && printf '0.1.0\n' > VERSION && G add -A && G commit -qm r1 && G tag -a v0.1.0 -m v0.1.0 &&
   printf '0.2.0\n' > VERSION &&
