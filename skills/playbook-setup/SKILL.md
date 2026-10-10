@@ -33,6 +33,11 @@ agent-playbook repo. Do not improvise an installation.
 
    State your conclusion. It is confirmed in step 4.
 
+   On Windows, check which `bash` you get: `bash --version` must mention `msys`/`mingw` (Git Bash).
+   `C:\Windows\System32\bash.exe` is the WSL launcher and would run the playbook scripts inside WSL
+   against the wrong home. If so, call Git Bash by its full path (usually
+   `"C:\Program Files\Git\bin\bash.exe"`) and say so in the summary.
+
 3. **Inspect the project before asking** (skip outside a project):
    - test/lint/typecheck commands: `package.json` scripts, `Makefile`, `justfile`, `pyproject.toml`
      / `tox.ini` / `noxfile.py`, `go.mod`, `Cargo.toml`, `build.gradle*` / `pom.xml`, `composer.json`,

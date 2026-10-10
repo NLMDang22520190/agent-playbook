@@ -27,6 +27,21 @@ assert_rc() { # name expected_rc (uses $RC)
   if [ "$RC" = "$2" ]; then t_ok "$1"; else t_bad "$1" "expected exit $2 got $RC; output: $OUT"; fi
 }
 
+# Symlinks: Windows (Git Bash) without symlink rights cannot create them. Tests that install use
+# MODEFLAG ("" or "--copy") and assert_installed, so the same suite runs in either mode.
+pb_probe_symlink() {
+  local d; d="$(mktemp -d "${TMPDIR:-/tmp}/pbprobe.XXXXXX")" || return 1
+  ln -s "$d" "$d/link" 2>/dev/null && [ -L "$d/link" ]; local rc=$?
+  rm -rf "$d"; return $rc
+}
+if pb_probe_symlink; then SYMLINKS=1; MODEFLAG=""; else SYMLINKS=0; MODEFLAG="--copy"; fi
+# assert_installed name path source -> a symlink to source (link mode) or an equal copy (copy mode)
+assert_installed() {
+  if [ "$SYMLINKS" = 1 ]; then assert_link_to "$1" "$2" "$3"; return; fi
+  if [ -e "$2" ] && [ ! -L "$2" ] && diff -r -q --exclude=.playbook-managed "$3" "$2" >/dev/null 2>&1; then
+    t_ok "$1 (copy mode)"; else t_bad "$1 (copy mode)" "$2 is not an equal copy of $3"; fi
+}
+
 # run CMD...  -> sets OUT (stdout+stderr) and RC
 run() { OUT="$("$@" 2>&1)"; RC=$?; }
 # run_in DIR CMD... -> same, executed in DIR (a subshell around `run` would lose OUT/RC)

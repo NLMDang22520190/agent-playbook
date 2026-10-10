@@ -2,7 +2,8 @@
 # Tests for install.sh. Everything runs against throw-away --home sandboxes;
 # the real home directory is never touched.
 . "$(dirname "$0")/lib.sh"
-INST() { bash "$PB_ROOT/install.sh" "$@"; }
+INST() { bash "$PB_ROOT/install.sh" "$@" $MODEFLAG; }   # MODEFLAG=--copy where symlinks are unavailable
+[ "$SYMLINKS" = 1 ] || echo "note: symlinks unavailable here (Windows?): install tests run in --copy mode"
 export PLAYBOOK_REGISTRY="$(mk_tmp)/registry"   # never write the real repo's .install-targets
 SENTENCE='Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.'
 BEGIN='<!-- BEGIN agent-playbook'
@@ -31,17 +32,17 @@ assert_no_path "dry-run created no ~/.agents" "$H/.agents"
 assert_no_path "dry-run created no ~/.claude" "$H/.claude"
 assert_no_path "dry-run created no ~/.codex" "$H/.codex"
 
-echo "install claude + codex (symlinks)"
+echo "install claude + codex (symlinks, or copies where unavailable)"
 H="$(mk_tmp)"
 mkdir -p "$H/.claude/skills/other-skill" "$H/.claude"
 printf '# my own rules\n' > "$H/.claude/CLAUDE.md"
 run INST install --home "$H" --harness claude,codex --yes
 assert_rc "install ok" 0
-assert_link_to "claude: tdd skill linked" "$H/.claude/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
-assert_link_to "claude: setup skill linked" "$H/.claude/skills/playbook-setup" "$PB_ROOT/skills/playbook-setup"
-assert_link_to "codex: tdd skill linked under ~/.agents/skills" "$H/.agents/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
-assert_link_to "stable scripts path" "$H/.agents/playbook/scripts" "$PB_ROOT/scripts"
-assert_link_to "stable templates path" "$H/.agents/playbook/templates" "$PB_ROOT/templates"
+assert_installed "claude: tdd skill linked" "$H/.claude/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
+assert_installed "claude: setup skill linked" "$H/.claude/skills/playbook-setup" "$PB_ROOT/skills/playbook-setup"
+assert_installed "codex: tdd skill linked under ~/.agents/skills" "$H/.agents/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
+assert_installed "stable scripts path" "$H/.agents/playbook/scripts" "$PB_ROOT/scripts"
+assert_installed "stable templates path" "$H/.agents/playbook/templates" "$PB_ROOT/templates"
 assert_dir "foreign skill untouched" "$H/.claude/skills/other-skill"
 assert_no_path "no opencode-specific skills dir" "$H/.config/opencode/skills"
 assert_contains "claude global keeps user text" "$(cat "$H/.claude/CLAUDE.md")" "# my own rules"
@@ -76,7 +77,7 @@ assert_contains "drift message" "$OUT" "drift"
 run INST install --home "$H" --harness claude --yes
 run INST doctor --home "$H" --harness claude
 assert_rc "re-install repairs drift" 0
-rm "$H/.claude/skills/playbook-proof"
+rm -rf "$H/.claude/skills/playbook-proof"
 run INST doctor --home "$H" --harness claude
 assert_rc "doctor detects a missing skill link" 1
 run INST install --home "$H" --harness claude --yes
@@ -101,7 +102,7 @@ assert_no_path "no duplicate skills for opencode" "$H/.agents/skills/playbook-td
 H="$(mk_tmp)"
 run INST install --home "$H" --harness opencode --yes
 assert_rc "opencode only ok" 0
-assert_link_to "opencode-only uses ~/.agents/skills" "$H/.agents/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
+assert_installed "opencode-only uses ~/.agents/skills" "$H/.agents/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
 assert_contains "opencode-only gets its own rules file" "$(cat "$H/.config/opencode/AGENTS.md")" "$SENTENCE"
 run INST doctor --home "$H" --harness opencode
 assert_rc "doctor ok for opencode only" 0
@@ -129,7 +130,7 @@ if [ "$RC" -ne 0 ]; then t_ok "install refuses without --force"; else t_bad "ins
 assert_eq "user's directory untouched" "mine" "$(cat "$H/.claude/skills/playbook-tdd/SKILL.md")"
 run INST install --home "$H" --harness claude --yes --force
 assert_rc "--force proceeds" 0
-assert_link_to "--force replaced it with a link" "$H/.claude/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
+assert_installed "--force replaced it with a link" "$H/.claude/skills/playbook-tdd" "$PB_ROOT/skills/playbook-tdd"
 FOUND="$(grep -rl '^mine$' "$H/.agents/playbook-backups" 2>/dev/null | head -1)"
 if [ -n "$FOUND" ]; then t_ok "--force kept the old directory in backups"; else t_bad "--force kept the old directory in backups"; fi
 

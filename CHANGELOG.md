@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1 - 2026-10-10
+Windows without WSL, verified on Windows 11 (Git for Windows, `core.autocrlf=true`):
+- `install.ps1` and `install.sh --copy` install and pass `doctor` (first real run of `install.ps1`).
+- `evals/run-checks.sh` CRLF check fixed for Git Bash. Root cause: MSYS grep handles a CR pattern in
+  text mode, so `grep -rIl $'\r'` matched either nothing or every file (CI listed every file as CRLF).
+  CR is now detected with `tr -cd '\r'`. Tracked files are judged by what git stores
+  (`git ls-files --eol`, `i/crlf`/`i/mixed`), untracked files and non-git copies by their bytes.
+  A first diagnosis ("Windows checkouts convert to CRLF") was wrong: the checkout and the copies were
+  LF all along; the helper added for it was reverted. Lite weight, escalated once to a fresh tester
+  when a test asserted an unreachable case (`eol=lf` normalises CRLF on add); the rewritten case
+  (`-text`) kills a mutant of the index check.
+- Test suites run in `--copy` mode where symlinks are unavailable (`MODEFLAG`, `assert_installed`),
+  so the whole suite runs in Git Bash.
+- CI runs on `windows-latest` (Git Bash) next to Ubuntu and macOS.
+- Docs: Windows setup in the README; `playbook-setup` warns that `bash` in PowerShell may be the WSL launcher.
+
 ## 0.5.0 - 2026-10-09
 - **Behaviour-eval runner** `evals/run-evals.sh`: runs E1/E3/E8/E15 against a real harness (presets for
   opencode/claude/codex, or a `--cmd` adapter called as `COMMAND <workdir> <prompt-file>`) in throw-away

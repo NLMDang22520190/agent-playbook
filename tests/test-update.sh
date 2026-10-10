@@ -22,7 +22,7 @@ git clone -q "$W/origin.git" "$W/client" 2>/dev/null
 C="$W/client"
 ( cd "$C" && git checkout -q v0.1.0 )
 export PLAYBOOK_REGISTRY="$W/registry"
-INST() { bash "$C/install.sh" "$@"; }
+INST() { bash "$C/install.sh" "$@" $MODEFLAG; }   # --copy where symlinks are unavailable
 hdr() { grep -o 'BEGIN agent-playbook v[0-9.]*' "$1" | head -n 1; }
 
 echo "registry"
