@@ -41,8 +41,11 @@ if [ -r README.md ]; then
   # the metrics row "| Always-on block | L / 60 lines · B / 5,000 bytes |" must show the real size
   row="$(grep -E '^\| *Always-on block *\|' README.md | head -n 1)"
   if [ -n "$row" ]; then
-    rl="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ / 60 lines' | head -n 1)"; rl="${rl%% *}"
-    rb="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ / 5,000 bytes' | head -n 1)"; rb="${rb%% *}"; rbn="${rb//,/}"   # rb as written (for the message), rbn without commas
+    rl="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ +/ +60 lines' | head -n 1)"; rl="${rl%% *}"
+    rb="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ +/ +5,000 bytes' | head -n 1)"; rb="${rb%% *}"; rbn="${rb//,/}"   # rb as written (for the message), rbn without commas
+    if [ -z "$rl" ] || [ -z "$rb" ]; then
+      echo "README.md metrics row 'Always-on block' cannot be read (want 'L / 60 lines · B / 5,000 bytes'): $row" >&2; exit 1
+    fi
     al="$(awk 'END { print NR }' AGENTS.global.md 2>/dev/null)"
     ab="$(wc -c < AGENTS.global.md 2>/dev/null | tr -d ' ')"
     if [ -n "$rl" ] && [ "$rl" != "$al" ]; then

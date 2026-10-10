@@ -5,7 +5,9 @@
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
 # Questions need a terminal on stdin; --yes answers them (use only when the user already said yes).
-# Exit: 0 shipped, 1 refused or a step failed (release.sh's own status is passed on), 2 usage.
+# Exit: 0 shipped, 1 refused or a step failed (release.sh's own status is passed on), 2 usage,
+#       3 cannot enter the repository.
+# Waiting for the tag's CI run: PB_SHIP_WAIT_TRIES (default 12) x PB_SHIP_WAIT_SECS (default 5).
 set -u
 cd "$(dirname "$0")/.." || exit 3
 
@@ -36,6 +38,9 @@ ask() { # question -> 0 on y/yes; refuses without a terminal
   return 1
 }
 
+# a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
+[ -z "$(git status --porcelain)" ] || fail "work tree is not clean (commit or stash first)"
+
 step "check PR #$pr"
 st="$(gh pr view "$pr" --json state,mergeStateStatus --jq '.state + " " + .mergeStateStatus')" || fail "cannot read PR #$pr"
 set -- $st
@@ -57,12 +62,17 @@ bash tools/release.sh "$tag"; rc=$?
 [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh exited $rc" >&2; exit "$rc"; }
 
 step "wait for the CI run of $tag"
+sha="$(git rev-parse "$tag^{commit}" 2>/dev/null)" || fail "tag $tag not found locally after release.sh"
+tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
+case "$tries$secs" in *[!0123456789]*) usage ;; esac
 run=""; n=0
-while [ -z "$run" ] && [ "$n" -lt 12 ]; do   # the run can take a few seconds to appear
-  run="$(gh run list --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null)"
-  [ -n "$run" ] || { n=$((n + 1)); sleep 5; }
+while [ "$n" -lt "$tries" ]; do   # the run can take a few seconds to appear; only the run for this tag's commit
+  run="$(gh run list --branch "$tag" --commit "$sha" --event push --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+  [ "$run" = null ] && run=""
+  [ -n "$run" ] && break
+  n=$((n + 1)); [ "$n" -lt "$tries" ] && sleep "$secs"
 done
-[ -n "$run" ] || fail "no CI run found for $tag"
+[ -n "$run" ] || fail "no CI run found for $tag (commit $sha)"
 gh run watch "$run" --exit-status || fail "CI run $run for $tag failed"
 
 step "check the release"
