@@ -42,7 +42,7 @@ removed). Model: the CLI default for the account (not pinned). Timeout 900 s per
    The precedence rule (user's instruction first) and TDD rule need a sentence on this case.
 4. Runner: the `401` marker must not match ids (fixed in v0.11.1).
 
-## Run 3 (v0.12.0 wording installed temporarily), E1, E3, E8 — one run each
+## Run 3 (v0.12.0 draft wording at 258f6ac installed temporarily), E1, E3, E8 — one run each
 
 | Scenario | Auto | Manual | Evidence |
 |---|---|---|---|
