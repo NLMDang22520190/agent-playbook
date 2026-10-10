@@ -101,11 +101,15 @@ for e in E15 E16 E17; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exi
 echo "files"
 # CRLF: judge what git stores. On Windows, core.autocrlf converts tracked LF files to CRLF in the
 # working tree; that is not a repo problem. Untracked files, and copies outside git, are read as they are.
+# CR is detected with tr, not grep: MSYS grep (Git Bash) handles a CR pattern in text mode and either
+# matches nothing or everything. Binary files are skipped (grep -I with an empty pattern is reliable).
+has_cr() { [ -n "$(tr -cd '\r' < "$1" | head -c 1)" ]; }
+cr_files() { while IFS= read -r f; do [ -f "$f" ] && grep -Iq '' "$f" && has_cr "$f" && printf '%s\n' "$f"; done; }
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   crlf="$( { git ls-files --eol | awk '$1 ~ /^i\/(crlf|mixed)$/ { print $NF }'
-            git ls-files -o --exclude-standard -z | xargs -0 grep -IlZ $'\r' 2>/dev/null | tr '\0' '\n'; } | sort -u | tr '\n' ' ')"
+            git ls-files -o --exclude-standard | cr_files; } | sort -u | tr '\n' ' ')"
 else
-  crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
+  crlf="$(find . -path ./.git -prune -o -type f -print | sed 's#^\./##' | cr_files | tr '\n' ' ')"
 fi
 [ -z "${crlf// /}" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
 for f in install.sh scripts/*.sh tests/*.sh evals/*.sh tools/*.sh; do
