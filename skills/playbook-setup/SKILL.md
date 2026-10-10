@@ -60,6 +60,8 @@ agent-playbook repo. Do not improvise an installation.
    low-tier, each with a reason and its relative cost. Label any sample table "example". The user
    accepts it or picks others. Store each pick with
    `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer).
+   Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
+   never write keys that are not documented in step 6 (no harness-specific extras).
 
 5. **Non-interactive run** (CI, `claude -p`, `codex exec`, `opencode run`, or no reply possible):
    do not block. Write the defaults, add `setup=defaults-noninteractive`, and list every
@@ -72,12 +74,14 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set test_cmd "pnpm test" --project     # per-project values: --project
    bash $C set setup done --global
    ```
-   Global keys: `language`, `harness`, `subagents`, `model_tester`, `model_implementer`,
-   `model_reviewer`, per-harness `model_<role>_<harness>`, `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>`
+   (the generic `model_tester`, `model_implementer`, `model_reviewer` are legacy: read as a fallback, not written), `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `learnings_path`.
 
 7. **Verify and report.**
    - `bash $C list` and paste the output.
+   - `bash ~/.agents/playbook/scripts/role-model.sh check`: it must say "no generic model keys";
+     otherwise tell the user which generic keys exist and offer to move them to per-harness keys.
    - Check that the always-on block is loaded: look for the `<!-- BEGIN agent-playbook` line in the
      global file of this harness (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
      `~/.config/opencode/AGENTS.md`, which falls back to `~/.claude/CLAUDE.md`). If it is missing,
