@@ -93,9 +93,12 @@ C="$(mk_git_copy)"
 to_crlf "$C/README.md"; to_crlf "$C/.gitattributes"
 checks "$C"
 assert_not_contains "CRLF only in the working tree of a tracked LF file is not a failure" "$OUT" "CRLF found"
+# "* text=auto eol=lf" would normalise CRLF to LF on add, so override it for this file
+# (-text) to really store CRLF in the index.
 C="$(mk_git_copy)"
+printf 'docs/crlf-note.md -text\n' >> "$C/.gitattributes"
 printf 'line one\r\nline two\r\n' > "$C/docs/crlf-note.md"
-( cd "$C" && git add docs/crlf-note.md && git commit -q -m crlf ) >/dev/null 2>&1
+( cd "$C" && git add .gitattributes docs/crlf-note.md && git commit -q -m crlf ) >/dev/null 2>&1
 checks "$C"
 assert_rc "CRLF stored in the git index fails" 1
 assert_contains "the failure names the CRLF file" "$OUT" "docs/crlf-note.md"
