@@ -8,8 +8,11 @@
 # (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
 # Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
 # <workroot>/<E> is only cleared when that marker exists or <E> is a previous fixture (.git/pb-fixture).
+# Harness errors: an adapter that exits non-zero (timeout 124, not found 127, ...) or whose transcript shows an
+# auth failure (invalid API key, unauthorized, 401) makes the scenario ERROR; it is not graded (a dead agent
+# must not "pass" E8 by changing nothing).
 # Exit: 0 every auto check passed, 1 any FAIL, 2 usage or a workroot/<E> the runner does not own,
-#       3 environment (node, git, fixture).
+#       3 environment (node, git, fixture), 4 any scenario ERROR (harness failure: the run is unreliable).
 # Bash 3.2 compatible. Needs node >= 18 and git.
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
@@ -163,7 +166,7 @@ grade_E15() {
   record MANUAL "test seen failing before the fix"
 }
 
-SUMMARY=""; DETAILS=""
+SUMMARY=""; DETAILS=""; ANY_ERROR=0
 for E in $LIST; do
   WD="$WORKROOT/$E"; PF="$WORKROOT/$E.prompt"; LOG="$WORKROOT/$E.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
@@ -180,10 +183,23 @@ for E in $LIST; do
     bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
   fi
   rc=$?
-  if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then
-    record FAIL "adapter finished within the timeout"
-  elif [ "$rc" -ne 0 ]; then
-    printf 'note: %s adapter exited %s (see %s)\n' "$E" "$rc" "$LOG" >&2
+  herr=""
+  if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then herr="timed out after ${TIMEOUT}s"
+  elif [ "$rc" -ne 0 ]; then herr="adapter exited $rc"
+  elif grep -qiE 'invalid x-api-key|invalid api key|unauthori[sz]ed|authentication failed|(^|[^0-9])401([^0-9]|$)' "$LOG"; then
+    herr="auth or harness error in the transcript"
+  fi
+  if [ -n "$herr" ]; then
+    printf '%s ERROR harness: %s (see %s)\n' "$E" "$herr" "$LOG"
+    ANY_ERROR=1
+    SUMMARY="$SUMMARY| $E | ERROR | - |
+"
+    DETAILS="$DETAILS
+## $E
+
+ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
+"
+    continue
   fi
   "grade_$E"
   SUMMARY="$SUMMARY| $E | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') |
@@ -209,4 +225,5 @@ done
   printf '%s' "$DETAILS"
 } > "$OUT" || pb_die "cannot write $OUT" 3
 printf 'results: %s\n' "$OUT"
+[ "$ANY_ERROR" = 1 ] && exit 4
 exit "$ANY_FAIL"
