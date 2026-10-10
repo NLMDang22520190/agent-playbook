@@ -478,4 +478,20 @@ assert_contains "AC2.4 preset passes --verbose" "$ARGS1" "--verbose"
 assert_contains "AC2.4 the prompt is still passed" "$ARGS1" "Summarise docs/notes.md."
 rm -f "$FA"
 
+
+# ---- v0.11.1: "401" inside a UUID is not an auth error (found by the first real eval run) ----
+echo "AC401 a uuid containing 401 is not a harness error; a real 401 still is"
+HU="$(mk_tmp)"
+printf '#!/usr/bin/env bash\necho "{\\"type\\":\\"assistant\\",\\"uuid\\":\\"db111a99-9071-401e-9abb-40344c86c523\\"}"\nexit 0\n' > "$HU/uuid401.sh"
+printf '#!/usr/bin/env bash\necho "API Error: 401 Unauthorized"\nexit 0\n' > "$HU/real401.sh"
+printf '#!/usr/bin/env bash\necho "request failed with status 401"\nexit 0\n' > "$HU/status401.sh"
+W40="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HU/uuid401.sh" --scenarios E8 --workroot "$W40" --out "$W40/results.md"
+assert_eq "AC401 uuid with -401e- is not ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c 'E8 ERROR')"
+assert_rc "AC401 uuid with -401e- -> graded normally (exit 0, E8 idle passes)" 0
+W41="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HU/status401.sh" --scenarios E8 --workroot "$W41" --out "$W41/results.md"
+assert_rc "AC401 'status 401' is still a harness error -> exit 4" 4
+assert_contains "AC401 'status 401' marks E8 ERROR" "$OUT" "E8 ERROR harness"
+
 t_summary
