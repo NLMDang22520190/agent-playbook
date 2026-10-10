@@ -214,10 +214,31 @@ assert_rc "AC8.1 PB_SHARD unset: exit 0" 0
 assert_eq "AC8.1 PB_SHARD unset runs all suites" "a b c d e " "$(ran_suites)"
 assert_file "AC8.1 PB_SHARD unset runs run-checks" "$D/rc-ran"
 echo "AC8.1 invalid PB_SHARD values exit 2 and run nothing"
-for bad in 0/3 4/3 x 1/0 3 2/1 /3 1/ -1/3 1/-3 a/b 1/3/5 "1/ 3"; do
+for bad in 0/3 4/3 x 1/0 3 2/1 /3 1/ -1/3 1/-3 a/b 1/3/5 "1/ 3" 08/9 1/08 09/09 01/3; do
   shard_run "$bad"
   assert_rc "AC8.1 PB_SHARD=[$bad]: exit 2" 2
   if [ ! -e "$D/log" ] && [ ! -e "$D/rc-ran" ]; then t_ok "AC8.1 PB_SHARD=[$bad]: no suite and no run-checks ran"; else t_bad "AC8.1 PB_SHARD=[$bad]: no suite and no run-checks ran" "ran: $(ran_suites)"; fi
+done
+
+echo "AC8.1 PB_SHARD does not leak into the runs and suites that run-all starts"
+# The caller's PB_SHARD must be consumed by run-all: a suite it starts sees PB_SHARD unset, so a nested
+# run-all (a suite that itself runs a copy, like this file does) runs ALL of its suites.
+for sh in 1/3 2/3; do
+  N="$(mk_tmp)"; mk_tree "$N" 0.1 0.1 "x y z"
+  D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+  for n in a b; do
+    cat > "$D/tests/test-$n.sh" <<SUITE
+#!/usr/bin/env bash
+echo "\${PB_SHARD:-unset}" >> "$D/seen"
+echo "start $n" >> "$D/log"
+bash "$N/tests/run-all.sh" >/dev/null 2>&1
+exit \$?
+SUITE
+  done
+  guarded 60 env PB_JOBS=2 PB_SHARD="$sh" bash "$D/tests/run-all.sh"
+  assert_rc "AC8.1 leak [$sh]: outer shard with a nested run-all exits 0" 0
+  assert_eq "AC8.1 leak [$sh]: the suite run-all started sees PB_SHARD unset" "unset" "$(sort -u "$D/seen" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+  assert_eq "AC8.1 leak [$sh]: the nested run-all (no PB_SHARD of its own) ran all 3 of its suites" "x y z " "$(grep '^start ' "$N/log" 2>/dev/null | sed 's/^start //' | sort | tr '\n' ' ')"
 done
 
 t_summary
