@@ -7,6 +7,9 @@
 #
 # Test paths include test configuration and snapshots (jest/vitest/playwright/cypress
 # config, karma.conf, .mocharc, pytest.ini, phpunit.xml, __snapshots__/, *.snap).
+# *.snap counts as a test file anywhere: a snapshot is a test expectation, and an implementer who
+# rewrites it makes a failing test pass without changing behaviour. A project whose *.snap files
+# are not tests (e.g. Ubuntu snap packages) sets its own test_path_regex.
 #
 # size counts production files (non-test, outside .agents/handoff/) changed since REF
 # (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines

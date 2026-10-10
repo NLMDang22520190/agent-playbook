@@ -36,3 +36,6 @@ git ls-files | head -200 | while read -r f; do printf '%s %s\n' "$(bash $G class
 ```
 If real test files show as `code`, or production files show as `test`, propose a project
 `test_path_regex` (an ERE matched against repo-relative paths) and show it working on 3 samples.
+The default treats every `*.snap` and `__snapshots__/` file as a test (snapshots are test
+expectations, so an implementer must not rewrite them); if the project has `.snap` files that are
+not tests (for example Ubuntu snap packages), propose a regex without the bare `\.snap$`.
