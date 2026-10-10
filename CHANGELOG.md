@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1 - 2026-10-10
+Windows without WSL, verified on Windows 11 (Git for Windows, `core.autocrlf=true`):
+- `install.ps1` and `install.sh --copy` install and pass `doctor` (first real run of `install.ps1`).
+- `evals/run-checks.sh` judges CRLF by what git stores (`git ls-files --eol`, `i/crlf`/`i/mixed`) for
+  tracked files; working-tree CRLF from Windows checkouts is no longer a failure. Untracked files and
+  non-git copies are still read as they are. Lite weight escalated once: a test asserted an
+  unreachable case (`eol=lf` normalises CRLF on add); a fresh tester rewrote it with `-text`, and a
+  mutant of the index check proves it bites.
+- Test suites run in `--copy` mode where symlinks are unavailable (`MODEFLAG`, `assert_installed`), and
+  the run-checks tests restore stored LF bytes in their copies, so the whole suite passes in Git Bash.
+- CI runs on `windows-latest` (Git Bash) next to Ubuntu and macOS.
+- Docs: Windows setup in the README; `playbook-setup` warns that `bash` in PowerShell may be the WSL launcher.
+
 ## 0.5.0 - 2026-10-09
 - **Behaviour-eval runner** `evals/run-evals.sh`: runs E1/E3/E8/E15 against a real harness (presets for
   opencode/claude/codex, or a `--cmd` adapter called as `COMMAND <workdir> <prompt-file>`) in throw-away

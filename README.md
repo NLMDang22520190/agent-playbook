@@ -4,7 +4,7 @@
 
 **AI SDLC, not AI slop.** One global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.5.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-532-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.5.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code_·_Codex_·_OpenCode-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-532-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-40%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -124,7 +124,11 @@ cd ~/agent-playbook && bash tests/run-all.sh                 # must be green
 ./install.sh install --harness all --yes && ./install.sh doctor
 ```
 
-**Windows, repo inside WSL:** `./install.sh install --home /mnt/c/Users/<name> --harness all --copy --yes`. If the repo lives on Windows directly, use `.\install.ps1 install -Harness claude -Yes`.
+**Windows.** Two supported setups, both verified on Windows 11:
+- *Without WSL* (needs [Git for Windows](https://git-scm.com/download/win)): clone anywhere and run `.\install.ps1 install -Harness claude,codex,opencode -Yes` from PowerShell. It finds Git Bash itself and installs in copy mode (Windows does not grant symlink rights by default). Re-run it after each `git pull`, or use `update` from Git Bash.
+- *Repo inside WSL, harness on Windows*: `./install.sh install --home /mnt/c/Users/<name> --harness all --copy --yes`.
+
+Caveat: in PowerShell, `bash` usually resolves to `C:\Windows\System32\bash.exe`, which is the **WSL launcher**, not Git Bash. Agents on Windows should run the playbook scripts with Git Bash (`"C:\Program Files\Git\bin\bash.exe" ~/.agents/playbook/scripts/...`); Claude Code's own shell tool already is Git Bash.
 
 The installer is safe to re-run, backs files up before changing them, never overwrites anything it does not own, and records every target so `update` refreshes them all. Then open a **new session** and say *"set up the playbook"*.
 
@@ -169,7 +173,7 @@ The presets do not sandbox the agent (the opencode preset auto-approves its acti
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 40 / 60 lines · 4,369 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,541 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
-| CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
+| CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) + Windows (Git Bash, copy mode) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
 | Behaviour scenarios E1–E17 | *pending*: `evals/run-evals.sh` auto-grades E1/E3/E8/E15; the first real run (OpenCode) was blocked by an invalid API key | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 A metric that was not measured is not a metric.
