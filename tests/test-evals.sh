@@ -170,7 +170,7 @@ if command -v timeout >/dev/null 2>&1; then
   if [ "$el" -lt 25 ] && [ "$(count_lines E1 ERROR)" -ge 1 ]; then t_ok "AC5 --timeout stops a hung adapter and marks it ERROR (${el}s)"; else t_bad "AC5 --timeout stops a hung adapter and marks it ERROR" "took ${el}s; output: $OUT"; fi
   assert_rc "AC5 timed-out scenario exits 4 (harness error)" 4
 else
-  t_skip 1 "'timeout' not on PATH: the --timeout assertion"
+  t_skip 2 "'timeout' not on PATH: the --timeout assertions"
 fi
 
 echo "AC5 make-fixture.sh target directory"

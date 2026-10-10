@@ -79,4 +79,22 @@ assert_eq "AC1.2 near-miss key model_testers prints nothing" "" "$ERR"
 ERR="$(cd "$P" && bash "$CONF" set model_reviewer pm --project 2>&1 >/dev/null)"
 assert_contains "AC1.2 warning also for --project" "$ERR" "applies to every harness"
 
+echo "pb_conf_read lookup"
+printf 'dup=first
+other=x
+dup=second
+nonl=tail' > "$H/.agents/playbook.conf"
+run bash "$CONF" get dup
+assert_eq "duplicate key: the last value wins" "second" "$OUT"
+run bash "$CONF" get nonl
+assert_eq "final line without trailing newline is read" "tail" "$OUT"
+printf '
+emptyv=
+' >> "$H/.agents/playbook.conf"
+run bash "$CONF" get emptyv
+assert_rc "empty value: key present exits 0" 0
+assert_eq "empty value is returned as empty" "" "$OUT"
+run bash "$CONF" get absentkey
+assert_rc "absent key still exits 1" 1
+
 t_summary
