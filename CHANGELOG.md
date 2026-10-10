@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 - 2026-10-10
+- **Evals mark harness errors instead of grading them**: `evals/run-evals.sh` reports `ERROR` (not FAIL) when the
+  adapter exits non-zero, times out, or the transcript shows an auth error (`invalid x-api-key`, `401`, ...), and
+  exits 4 when any scenario hit one. A broken API key no longer looks like a playbook regression.
+- **Faster on Windows**: `feedback.sh` reads each item once into variables instead of one `sed` per field
+  (Git Bash `test-feedback.sh`: 92 s → 54 s); `tests/run-all.sh` runs suites in parallel batches
+  (`PB_JOBS`, default 4, ordered output; WSL: 42.8 s → 29.1 s).
+- **Locale-safe patterns**: `sed`/`grep` name and key patterns use POSIX classes (`[[:lower:][:digit:]]`) instead
+  of `[a-z0-9]` ranges.
+- fix: `tools/release.sh --dry-run` no longer runs `git fetch` (reads `origin/main` with `git ls-remote`);
+  `release.sh` and `check-release.sh` reject a tag containing a newline; `install.sh update` names the newest tag
+  when several tags point at the same commit; `run-checks.sh` accepts a quoted `name:`/`description:` value.
+  Not changed: `*.snap` stays a test path for the role gate (snapshot files are test expectations).
+- Docs: the TDD beginner guide and the update lifecycle are now in English
+  (`docs/tdd-for-beginners.md`, `docs/update-lifecycle.md`), translation only.
+- Built at Lite weight per item (small, reversible); one escalation to a fresh tester when an old assert
+  (timeout → exit 1) contradicted the new spec.
+
 ## 0.6.0 - 2026-10-10
 Cost levers that keep every rule (tester ≠ implementer ≠ reviewer at Full, test-first, fresh full evidence at close-out, gates):
 - **Model per role, per harness**: `scripts/role-model.sh` (`model_<role>_<harness>` → `model_<role>` → `session`);
