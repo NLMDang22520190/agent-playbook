@@ -52,6 +52,15 @@ agent-playbook repo. Do not improvise an installation.
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip any question the inspection already answered beyond doubt.
 
+   **Models per role** (question 4): list the models the harness reports (Claude Code: the model
+   choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
+   configured models in `~/.codex/config.toml`). Rank only from what the harness reports or the
+   user says; never call a model "strongest" without that basis. Print a recommendation table:
+   reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or
+   low-tier, each with a reason and its relative cost. Label any sample table "example". The user
+   accepts it or picks others. Store each pick with
+   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer).
+
 5. **Non-interactive run** (CI, `claude -p`, `codex exec`, `opencode run`, or no reply possible):
    do not block. Write the defaults, add `setup=defaults-noninteractive`, and list every
    assumption in your final message.
@@ -64,7 +73,7 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set setup done --global
    ```
    Global keys: `language`, `harness`, `subagents`, `model_tester`, `model_implementer`,
-   `model_reviewer`, `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   `model_reviewer`, per-harness `model_<role>_<harness>`, `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `learnings_path`.
 
 7. **Verify and report.**

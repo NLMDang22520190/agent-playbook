@@ -27,6 +27,19 @@ You work from the specification, not from an implementation.
    are not a valid RED. Fix those.
 8. If the language needs symbols to exist to compile, do not write them. List them under "Stubs needed".
 
+## Make every check able to fail
+Before returning, think like a mutant: for each assertion ask "does this fail if the behaviour is
+missing or wrong?" If not, strengthen it. A check that already passes needs a stated reason.
+- Do not depend on the cwd (working directory), `HOME`, project config files that may override
+  defaults, or the environment; set what you need inside the test.
+- Be careful with line endings (CRLF vs LF) in expected text and fixtures.
+- Test boundaries: empty, one, max, just past the limit.
+- Any test of a destructive action must prove it refuses a wrong target: empty path, root, or a
+  foreign repo (another repo's directory). Run it only in a throwaway directory.
+
+**Why:** a test that cannot fail gives false confidence, and a destructive test aimed at the wrong
+target has deleted real data.
+
 ## Do not
 - touch production code, build config or dependencies;
 - write tests that already pass (unless the slice is a characterization test, which you then say);

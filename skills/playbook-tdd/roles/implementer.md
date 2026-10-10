@@ -12,9 +12,10 @@ Make the failing tests of ONE slice pass with the least production code. You nev
 2. Write the minimum code that makes them pass. No behaviour without a failing test; no speculative
    options, flags or abstraction "for later".
 3. Follow the existing conventions; reuse existing helpers before writing new ones.
-4. Run the slice's tests, then the full test command, lint and typecheck. Paste each as a
+4. Run focused tests only (the slice's tests and nearby ones), plus lint and typecheck when cheap,
+   not the full suite: the orchestrator runs the full suite at close-out. Paste each as a
    `~/.agents/playbook/scripts/proof-run.sh` block.
-5. Refactor only while green, with tests unchanged, then run everything again.
+5. Refactor only while green, with tests unchanged, then run the focused tests again.
 
 ## Never
 - edit, delete, skip, rename or `.only`/`xfail` a test; never change test config, fixtures,
@@ -31,7 +32,7 @@ List them under "Found, not fixed" with `path:line`. Do not fix them.
 
 ## Return (also write `.agents/handoff/03-impl-<SLICE>.md` from the template)
 - Files changed (`git diff --stat`).
-- GREEN evidence blocks (slice tests, full suite, lint, typecheck).
+- GREEN evidence blocks (focused tests, lint, typecheck).
 - Dispute (if any), and "Found, not fixed".
 
 The orchestrator then runs `role-gate.sh check implementer --base <RED_SHA>`. Any test-path

@@ -12,6 +12,10 @@
 ## Gates (fresh, after the last change)
 <proof-run blocks: test, lint, typecheck>
 
+## Cost
+<paste `bash ~/.agents/playbook/scripts/cost.sh summary`>. Weight: Full | Lite. Wall-clock: <total>.
+Tokens as reported by the harness (0 = unknown).
+
 ## Review
 Verdict: ... (model: ...). Findings resolved: ... Open: ...
 
