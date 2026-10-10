@@ -10,7 +10,7 @@ G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=
 setup() {
   local w; w="$(mk_tmp)"
   O="$w/origin.git"; C="$w/clone"
-  git init -q --bare "$O"
+  git init -q --bare "$O"; git -C "$O" symbolic-ref HEAD refs/heads/main   # independent of init.defaultBranch
   mkdir -p "$C/tools" "$C/tests" "$C/scripts"
   cp "$PB_ROOT/tools/check-release.sh" "$C/tools/"
   cp "$PB_ROOT/scripts/lib.sh" "$C/scripts/"
@@ -66,7 +66,7 @@ assert_rc "AC4 refuses when main is ahead of origin/main -> exit 1" 1
 assert_eq "AC4 ahead-of-origin creates no tag" "" "$(tags_of "$C")$(origin_tags)"
 
 setup
-W2="$(mk_tmp)"; git clone -q "$O" "$W2/other" 2>/dev/null
+W2="$(mk_tmp)"; git clone -q -b main "$O" "$W2/other" || echo "fixture clone failed"
 ( cd "$W2/other" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   printf 'y\n' > other.txt && git add -A && git commit -qm upstream && git push -q origin main )
 ( cd "$C" && git fetch -q origin )

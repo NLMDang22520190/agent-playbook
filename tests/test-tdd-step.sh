@@ -115,6 +115,27 @@ run_in "$R" bash "$STEP" green --base HEAD --message m
 assert_rc "AC3 green without -- -> exit 2" 2
 assert_eq "AC3 usage errors commit nothing" "$H0" "$(head_of "$R")"
 
+echo "--commit never commits .agents/handoff/ (project without a .gitignore entry)"
+R="$(fresh)"
+assert_eq "AC3 handoff sandbox has no .gitignore" "" "$(ls -A "$R" | grep -x '.gitignore')"
+mkdir -p "$R/.agents/handoff"; printf 'evidence\n' > "$R/.agents/handoff/evidence-red.log"
+printf 'test("n", () => { throw new Error("x"); });\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "add new" --commit -- sh -c 'exit 1'
+assert_rc "AC3 red --commit with a handoff file present -> exit 0" 0
+FILES="$(git -C "$R" show --name-only --format= HEAD)"
+assert_contains "AC3 red --commit (handoff present): the test change is committed" "$FILES" "tests/new.test.js"
+assert_eq "AC3 red --commit never commits .agents/handoff/" "" "$(printf '%s\n' "$FILES" | grep '^\.agents/handoff/')"
+assert_eq "AC3 red --commit: no handoff file is tracked" "" "$(git -C "$R" ls-files .agents/handoff)"
+B2="$(head_of "$R")"
+printf 'evidence\n' > "$R/.agents/handoff/evidence-green.log"
+printf 'module.exports = 2;\n' > "$R/src/app.js"
+run_in "$R" bash "$STEP" green --base "$B2" --message "make it pass" --commit -- true
+assert_rc "AC3 green --commit with a handoff file present -> exit 0" 0
+FILES="$(git -C "$R" show --name-only --format= HEAD)"
+assert_contains "AC3 green --commit (handoff present): the production change is committed" "$FILES" "src/app.js"
+assert_eq "AC3 green --commit never commits .agents/handoff/" "" "$(printf '%s\n' "$FILES" | grep '^\.agents/handoff/')"
+assert_eq "AC3 green --commit: no handoff file is tracked" "" "$(git -C "$R" ls-files .agents/handoff)"
+
 echo "environment"
 D="$(mk_tmp)"
 run_in "$D" bash "$STEP" red --message m -- sh -c 'exit 1'
