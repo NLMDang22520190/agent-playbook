@@ -15,8 +15,11 @@ if [ -n "$SHARD" ]; then
   SK="${SHARD%/*}"; SN="${SHARD#*/}"
   case "$SK" in '' | *[!0123456789]*) bad_shard ;; esac
   case "$SN" in '' | *[!0123456789]*) bad_shard ;; esac
+  case "$SK$SN" in 0* ) bad_shard ;; esac
+  case "$SN" in 0*) bad_shard ;; esac   # leading zeros would be read as octal by $(( ))
   [ "$SK" -ge 1 ] && [ "$SN" -ge 1 ] && [ "$SK" -le "$SN" ] || bad_shard
 fi
+unset PB_SHARD   # suites (and run-all copies they start) always see a full run
 JOBS="${PB_JOBS:-4}"
 case "$JOBS" in '' | *[!0123456789]* | 0) JOBS=1 ;; esac
 base="${TMPDIR:-/tmp}"; base="${base%/}"
