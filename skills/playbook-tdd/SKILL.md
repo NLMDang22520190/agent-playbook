@@ -1,6 +1,6 @@
 ---
 name: playbook-tdd
-description: Use when adding or changing behaviour or fixing a bug in code - test-first development with three separate roles (tester writes failing tests, implementer makes them pass without touching tests, reviewer checks read-only), enforced by git role gates and evidence; Full or Lite weight by risk. Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or throwaway spikes.
+description: Use when adding or changing behaviour or fixing a bug in code - test-first with separate roles (tester writes failing tests, implementer passes them without touching tests, reviewer checks read-only), enforced by git role gates and evidence; Full or Lite weight by risk. Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or spikes.
 ---
 
 # TDD with separated roles

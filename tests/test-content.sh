@@ -165,4 +165,7 @@ SETUPALL="$(cat "$SETUP" "$QUESTIONS" 2>/dev/null)"
 case "$SETUPALL" in *test_infra_regex*) t_ok 'AC4.6 playbook-setup lists test_infra_regex' ;; *) t_bad 'AC4.6 playbook-setup lists test_infra_regex' 'key absent from SKILL.md and references/questions.md' ;; esac
 check 'AC4.6 playbook-setup SKILL.md lists test_infra_regex as a project key' "$SETUP" 'test_infra_regex'
 
+# --- v0.11.0 AC6.2: the lifecycle doc names the one-command release path
+check 'AC6.2 docs/update-lifecycle.md mentions tools/ship.sh' "$PB_ROOT/docs/update-lifecycle.md" 'tools/ship\.sh'
+
 t_summary

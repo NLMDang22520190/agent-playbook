@@ -386,6 +386,40 @@ run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1,E3 --workroot "$W32" -
 assert_rc "AC2.4 healthy adapter still exits 0" 0
 assert_eq "AC2.4 no ERROR line for a healthy adapter" "0" "$(printf '%s\n' "$OUT" | grep -c ' ERROR ')"
 
+# ---- v0.11.0 AC1.1: a logged-out CLI is a harness error even when the adapter exits 0 ----
+echo "v0.11.0 AC1.1 not-logged-in transcripts are harness errors"
+printf '#!/usr/bin/env bash\necho "Not logged in \xc2\xb7 Please run /login"\nexit 0\n' > "$HE/notlogged.sh"
+printf '#!/usr/bin/env bash\necho "{\\"type\\":\\"result\\",\\"is_error\\":true,\\"error\\":\\"authentication_failed\\"}"\nexit 0\n' > "$HE/authjson.sh"
+printf '#!/usr/bin/env bash\necho "Not logged in"\nexit 0\n' > "$HE/notlogged-plain.sh"
+W33="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/notlogged.sh" --scenarios E1 --workroot "$W33" --out "$W33/results.md"
+assert_rc "AC1.1 'Not logged in · Please run /login' with exit 0 -> runner exit 4" 4
+assert_contains "AC1.1 E1 marked ERROR harness on the login message" "$OUT" "E1 ERROR harness"
+assert_eq "AC1.1 E1 not graded (no FAIL line) after the login message" "0" "$(count_lines E1 FAIL)"
+assert_eq "AC1.1 E1 not graded (no PASS line) after the login message" "0" "$(count_lines E1 PASS)"
+assert_contains "AC1.1 results table shows ERROR for the login message" "$(cat "$W33/results.md" 2>/dev/null)" "ERROR"
+W34="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/authjson.sh" --scenarios E3 --workroot "$W34" --out "$W34/results.md"
+assert_rc "AC1.1 JSON \"error\":\"authentication_failed\" with exit 0 -> runner exit 4" 4
+assert_contains "AC1.1 E3 marked ERROR harness on authentication_failed" "$OUT" "E3 ERROR harness"
+assert_eq "AC1.1 E3 not graded after authentication_failed" "0" "$(count_lines E3 FAIL)"
+W35="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/notlogged-plain.sh" --scenarios E8 --workroot "$W35" --out "$W35/results.md"
+assert_rc "AC1.1 plain 'Not logged in' with exit 0 -> runner exit 4" 4
+assert_contains "AC1.1 E8 marked ERROR harness on plain 'Not logged in'" "$OUT" "E8 ERROR harness"
+# one bad scenario among good ones: only that one is ERROR (per scenario, not the whole run)
+W36="$(mk_tmp)"
+printf '#!/usr/bin/env bash\ncase "$(cat "$2")" in *divide*) echo "Not logged in \xc2\xb7 Please run /login" ;; *) bash %s "$@" ;; esac\nexit 0\n' "$A/good.sh" > "$HE/mixed.sh"
+run bash "$RUNNER" --cmd "bash $HE/mixed.sh" --scenarios E1,E3 --workroot "$W36" --out "$W36/results.md"
+assert_rc "AC1.1 one logged-out scenario among healthy ones -> exit 4" 4
+assert_eq "AC1.1 only the logged-out scenario (E3) is ERROR" "1" "$(printf '%s\n' "$OUT" | grep -c ' ERROR ')"
+assert_contains "AC1.1 the healthy scenario E1 is still graded" "$OUT" "E1 PASS"
+# harmless prose about being logged in / authentication must not be a harness error
+W37="$(mk_tmp)"
+printf '#!/usr/bin/env bash\necho "the user is logged in; authentication works"\nexit 0\n' > "$HE/benign.sh"
+run bash "$RUNNER" --cmd "bash $HE/benign.sh" --scenarios E1 --workroot "$W37" --out "$W37/results.md"
+assert_eq "AC1.1 'logged in' / 'authentication' prose is not a harness error" "0" "$(printf '%s\n' "$OUT" | grep -c ' ERROR ')"
+
 # ---- v0.9.0 #2 AC2.3: E15 FAILs when the transcript shows no load of playbook-tdd ----
 E15_FIX='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
 printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'

@@ -496,4 +496,47 @@ assert_eq "AC1.2 stderr is empty on a passing check" "" "$SE"
 SE="$(bash "$GATE" check tester 2>&1 >/dev/null)"
 assert_not_contains "AC1.2 stderr has no note on a failing check" "$SE" "note:"
 
+# ---- v0.11.0 AC8.1: control characters in a config value are shown as '?' in the note ----
+echo "v0.11.0 AC8.1 control characters in note values"
+ESC="$(printf '\033')"; CR="$(printf '\r')"; TAB9="$(printf '\t')"; DEL="$(printf '\177')"
+R="$(conf_repo 'test_path_regex=^chec\033ks/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_rc "AC8.1 ESC inside a still-valid regex: the gate still runs (exit 0)" 0
+N1="$(notes_of)"
+assert_eq "AC8.1 ESC byte replaced by ? in the note" "note: test_path_regex from the project conf: ^chec?ks/" "$N1"
+assert_not_contains "AC8.1 no raw ESC byte reaches the terminal" "$OUT" "$ESC"
+R="$(conf_repo 'test_path_regex=^ch\recks/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+N1="$(notes_of)"
+assert_eq "AC8.1 CR inside the value replaced by ?" "note: test_path_regex from the project conf: ^ch?ecks/" "$N1"
+assert_not_contains "AC8.1 no raw CR in the output (it could overwrite the line)" "$OUT" "$CR"
+assert_eq "AC8.1 the note is still a single line" "1" "$(printf '%s\n' "$OUT" | grep -c '^note:')"
+R="$(conf_repo 'test_path_regex=^a\tb/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC8.1 TAB (0x09) replaced by ?" "note: test_path_regex from the project conf: ^a?b/" "$(notes_of)"
+R="$(conf_repo 'test_path_regex=^a\177b/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC8.1 DEL (0x7F) replaced by ?" "note: test_path_regex from the project conf: ^a?b/" "$(notes_of)"
+R="$(conf_repo 'test_path_regex=^a\033\033b/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC8.1 every control byte is replaced (two ESC -> two ?)" "note: test_path_regex from the project conf: ^a??b/" "$(notes_of)"
+R="$(conf_repo 'test_path_regex=^checks/\ntest_infra_regex=^ci\033/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_contains "AC8.1 test_infra_regex note is cleaned too" "$(notes_of)" "test_infra_regex from the project conf: ^ci?/"
+assert_not_contains "AC8.1 no raw ESC in the infra note output" "$OUT" "$ESC"
+assert_contains "AC8.1 the clean test_path_regex note beside it is unchanged" "$(notes_of)" "test_path_regex from the project conf: ^checks/"
+G_HOME="$(mk_tmp)"; mkdir -p "$G_HOME/.agents"; printf 'test_path_regex=^g\033checks/\n' > "$G_HOME/.agents/playbook.conf"
+R="$(conf_repo '')"; cd "$R" || exit 3
+run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" check implementer
+assert_eq "AC8.1 global-conf value is cleaned too" "note: test_path_regex from the global conf: ^g?checks/" "$(notes_of)"
+R="$(conf_repo 'test_path_regex=^chec\033ks/\n')"; cd "$R" || exit 3
+run bash "$GATE" check tester
+assert_not_contains "AC8.1 no raw ESC in the tester output either" "$OUT" "$ESC"
+R="$(conf_repo 'test_path_regex=^caf\xc3\xa9 \[x\]/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC8.1 printable value (space, brackets, UTF-8) is unchanged" "note: test_path_regex from the project conf: ^café \\[x\\]/" "$(notes_of)"
+R="$(conf_repo 'test_path_regex=^checks/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC8.1 plain printable value unchanged" "note: test_path_regex from the project conf: ^checks/" "$(notes_of)"
+
 t_summary

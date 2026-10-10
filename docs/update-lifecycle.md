@@ -41,6 +41,11 @@ Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E1
    the tests again and the `release` job publishes the GitHub Release from the CHANGELOG entry.
 4. On each machine: `install.sh update --yes`.
 
+One command for the merge, step 3 and step 4 on the development machine, once the PR is open and its CI is green:
+`tools/ship.sh <PR> vX.Y.Z` (asks before the merge and before the tag; `--yes` only when you already
+agreed). It merges, runs `release.sh` (dry run first), waits for the tag's CI, checks the GitHub Release
+and runs `install.sh update --yes`.
+
 ## Automatic update reminders (optional)
 Linux / WSL (cron, every Monday at 9:00):
 ```

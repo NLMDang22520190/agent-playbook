@@ -38,6 +38,23 @@ if [ -r README.md ]; then
     echo "README.md version badge is $v but VERSION is $file_ver" >&2
     exit 1
   done
+  # the metrics row "| Always-on block | L / 60 lines · B / 5,000 bytes |" must show the real size
+  row="$(grep -E '^\| *Always-on block *\|' README.md | head -n 1)"
+  if [ -n "$row" ]; then
+    rl="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ +/ +60 lines' | head -n 1)"; rl="${rl%% *}"
+    rb="$(printf '%s\n' "$row" | grep -oE '[0-9,]+ +/ +5,000 bytes' | head -n 1)"; rb="${rb%% *}"; rbn="${rb//,/}"   # rb as written (for the message), rbn without commas
+    if [ -z "$rl" ] || [ -z "$rb" ]; then
+      echo "README.md metrics row 'Always-on block' cannot be read (want 'L / 60 lines · B / 5,000 bytes'): $row" >&2; exit 1
+    fi
+    al="$(awk 'END { print NR }' AGENTS.global.md 2>/dev/null)"
+    ab="$(wc -c < AGENTS.global.md 2>/dev/null | tr -d ' ')"
+    if [ -n "$rl" ] && [ "$rl" != "$al" ]; then
+      echo "README.md metrics row 'Always-on block' says $rl lines but AGENTS.global.md has ${al:-no} lines" >&2; exit 1
+    fi
+    if [ -n "$rb" ] && [ "$rbn" != "$ab" ]; then
+      echo "README.md metrics row 'Always-on block' says $rb bytes but AGENTS.global.md has ${ab:-no} bytes" >&2; exit 1
+    fi
+  fi
   # the always-on badge "always--on_block-N%2F60_lines" must show the block's real line count
   for b in $(grep -oE 'always--on_block-[0-9]+%2F60_lines' README.md); do
     n="${b#always--on_block-}"; n="${n%%%*}"

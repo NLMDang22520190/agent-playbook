@@ -55,7 +55,7 @@ case "$cmd" in
          ! git -C "$root" check-ignore -q .agents/playbook.conf 2>/dev/null; then
         excl="$(git -C "$root" rev-parse --git-path info/exclude 2>/dev/null)"
         case "$excl" in /*|?:*) ;; *) excl="$root/$excl" ;; esac
-        if [ -n "$excl" ] && mkdir -p "$(dirname "$excl")"; then
+        if mkdir -p "$(dirname "$excl")"; then
           if [ -s "$excl" ] && [ -n "$(tail -c 1 "$excl")" ]; then printf '\n' >> "$excl"; fi
           printf '.agents/playbook.conf\n' >> "$excl" &&
             echo "notice: added .agents/playbook.conf to $excl (local exclude, not .gitignore)" >&2
