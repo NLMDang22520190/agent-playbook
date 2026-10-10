@@ -11,6 +11,10 @@ mk_copy() {
   ( cd "$PB_ROOT" &&
     git ls-files -co --exclude-standard | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done |
     tar -cf - -T - ) | ( cd "$d" && tar -xf - )
+  # Windows checkouts (core.autocrlf) hold CRLF in the working tree for files git stores as LF;
+  # restore the stored bytes so the copy matches the repository, as on Linux/macOS.
+  ( cd "$PB_ROOT" && git ls-files --eol 2>/dev/null | awk '$1 == "i/lf" && $2 == "w/crlf" { print $NF }' ) |
+    while IFS= read -r f; do [ -f "$d/$f" ] && tr -d '\r' < "$d/$f" > "$d/$f.lf" && mv "$d/$f.lf" "$d/$f"; done
   printf '%s\n' "$d"
 }
 # set_line DIR KEY LINE -> replace the first "KEY:" line of the frontmatter of $SKILL with LINE
