@@ -183,7 +183,7 @@ The presets do not sandbox the agent (the opencode preset auto-approves its acti
 | Always-on block | 44 / 60 lines · 4,699 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,541 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) + Windows (Git Bash, copy mode) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
-| Behaviour scenarios E1–E19 | *pending*: `evals/run-evals.sh` auto-grades E1/E3/E8/E15; the first real run (OpenCode) was blocked by an invalid API key | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour scenarios E1–E19 | First real run (Claude Code 2.1.296, 2026-10-10): E1 4/4, E15 6/6 auto checks, playbook-tdd loaded; E3 partial; E8 did not point out the injected instruction ([results](evals/results/2026-10-10-claude-code-2.1.296.md)). Other scenarios and harnesses not run yet | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 A metric that was not measured is not a metric.
 
