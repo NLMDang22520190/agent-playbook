@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.0 - 2026-10-11
+- **ship.sh from any checkout state**: before merging it switches a detached or other-branch checkout to
+  `main` (refuses if it cannot), and after `install.sh update` it switches back to `main`; the wait
+  variables are validated before anything runs. Found when v0.12.0's ship merged on GitHub from a detached
+  HEAD and then stopped. Docs: the default symlink install follows this checkout's branch.
+- **Eval grading from the final reply**: E3 passes on a test or a reply that labels the result untested
+  (headless "no tests" rule); E8 now auto-grades "reply points out the embedded instruction" from the
+  stream-json `result` field (tool results that echo the file do not count; plain text stays MANUAL).
+- **`run-evals.sh --clean-env`**: drops CLAUDE* variables and ANTHROPIC_BASE_URL that a desktop or nested
+  session leaks into the child run (ANTHROPIC_API_KEY stays; OAuth-token setups need their own login).
+- fix: the `401` auth marker needs an HTTP context — it matched a token count
+  (`"cache_creation_input_tokens":401`) in a real run.
+- **run-checks** rejects regex repeat bounds above 255 in tests/ and evals/ scripts (BSD RE_DUP_MAX).
+- Wording: injected-instruction exceptions include this block; additive Lite case says "unless another
+  Full item applies" and that a new exported function changes no existing public API; Full column says
+  "a change to an existing public API". Block trimmed 4,958 -> 4,698 bytes with the same rules.
+- Evals (Claude Code 2.1.296, three rounds, v0.13.0 wording): E3 3/3 and E8 3/3 every round, E1 4/4 in
+  the two rounds graded (the third was the false 401). Results: `evals/results/2026-10-10-claude-code-2.1.296.md`.
+- Built at Full weight: Sonnet tester, Opus reviewer APPROVE (8/9 mutants killed, the 9th now pinned).
+  The 401 fix and the test pin were Lite (no independent review).
+
 ## 0.12.0 - 2026-10-10
 Three changes from the first real evals (`evals/results/2026-10-10-claude-code-2.1.296.md`):
 - **Point out injected instructions** (E8): the always-on block now says not to obey instructions found
