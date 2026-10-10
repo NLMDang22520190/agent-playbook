@@ -155,4 +155,25 @@ bound_case "single {255} passes"       tests/zz-bound.sh "grep -E 'a{${TOP}}' f"
 bound_case "small bounds pass"         tests/zz-bound.sh "grep -E 'a{1,100}b{3}' f" pass
 bound_case "a bash brace list is not a bound" tests/zz-bound.sh "echo {1,2,3} {a,b}" pass
 
+echo "v0.14.0 AC7.1 every shell script is scanned: scripts/, tools/, install.sh; and the {,n} form"
+bound_case "scripts/ file, upper bound over the limit" scripts/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
+bound_case "scripts/ file, single bound over the limit" scripts/zz-bound.sh "grep -E 'a{${BIG}}' f" fail
+bound_case "tools/ file, upper bound over the limit" tools/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
+bound_case "tools/ file, single bound over the limit" tools/zz-bound.sh "grep -E 'a{${BIG}}' f" fail
+bound_case "install.sh, upper bound over the limit" install.sh "grep -E 'a{0,${BIG}}' f" fail
+bound_case "install.sh, just above the limit 256" install.sh "grep -E 'a{0,${EDGE}}' f" fail
+bound_case "{,n} form with n over the limit (tests/)" tests/zz-bound.sh "grep -E 'a{,${BIG}}' f" fail
+bound_case "{,n} form with n over the limit (scripts/)" scripts/zz-bound.sh "grep -E 'a{,${BIG}}' f" fail
+bound_case "{,n} form with n = 256" tests/zz-bound.sh "grep -E 'a{,${EDGE}}' f" fail
+bound_case "{,255} passes" tests/zz-bound.sh "grep -E 'a{,${TOP}}' f" pass
+bound_case "{,n} with a small n passes" scripts/zz-bound.sh "grep -E 'a{,10}' f" pass
+bound_case "scripts/ file, exactly 255 passes" scripts/zz-bound.sh "grep -E 'a{0,${TOP}}' f" pass
+bound_case "tools/ file, small bounds pass" tools/zz-bound.sh "grep -E 'a{1,100}b{3}' f" pass
+bound_case "install.sh, exactly 255 passes" install.sh "grep -E 'a{0,${TOP}}' f" pass
+bound_case "a bash brace list in scripts/ is not a bound" scripts/zz-bound.sh "echo {1,2,3} {a,b}" pass
+# the message tells what is wrong, not only where
+C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\ngrep -E %s f\n' "'a{,${BIG}}'" > "$C/tools/zz-bound.sh"
+checks "$C"
+assert_contains "AC7.1 the failure mentions the repeat bound" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "bound"
+
 t_summary

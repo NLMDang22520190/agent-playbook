@@ -81,6 +81,11 @@ case "$1 $2" in
     echo "merge-at $(git rev-parse --abbrev-ref HEAD 2>&1)" >> "$FAKE_LOG"
     ( cd "$FAKE_ORIGIN_WORK" &&
       git pull -q --ff-only origin main >/dev/null 2>&1
+      case "${FAKE_REWRITE_SHIP:-}" in
+        exit99) printf 'exit 99\n' > tools/ship.sh ;;
+        trunc)  head -c 300 tools/ship.sh > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
+        grow)   { cat tools/ship.sh; printf '\necho "ship.sh from the merge commit"; exit 98\n'; } > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
+      esac
       echo merged > "merged-${3}.txt" && git add -A &&
       git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -qm "merge PR $3" &&
       git push -q origin HEAD:main >/dev/null 2>&1 ) || exit 1
@@ -157,6 +162,30 @@ sys.exit(os.WEXITSTATUS(st) if os.WIFEXITED(st) else 128 + os.WTERMSIG(st))
 EOF
 chmod +x "$BIN/gh" "$W/release.stub" "$W/install.stub"
 
+# ---- fake git front: real git, plus a faithful "git pull rewrites the running script in place" ----
+# git normally replaces a file by unlinking it and creating a new one, so a bash that already has the old
+# tools/ship.sh open keeps reading the old inode and never notices the pull. Other tools (and Windows/macOS
+# checkouts, editors, rsync) rewrite the SAME inode. This front end reproduces that: before a "git pull" in the
+# fixture repo it hard-links tools/ship.sh, and after the pull it writes the pulled content into that old inode.
+# A ship.sh that is read line by line while it runs then sees the new content at its old offset.
+REAL_GIT="$(command -v git)"
+cat > "$BIN/git" <<EOF
+#!/usr/bin/env bash
+REAL="$REAL_GIT"
+if [ -n "\${FAKE_INPLACE:-}" ] && [ -n "\${FAKE_SHIP_REPO:-}" ] && [ -f tools/ship.sh ] && [ tools/ship.sh -ef "\$FAKE_SHIP_REPO/tools/ship.sh" ]; then
+  case " \$* " in
+    *" pull "*)
+      keep="\$FAKE_SHIP_REPO/../ship.keep"; rm -f "\$keep"
+      ln tools/ship.sh "\$keep" 2>/dev/null
+      "\$REAL" "\$@"; rc=\$?
+      if [ -f "\$keep" ] && ! [ tools/ship.sh -ef "\$keep" ]; then cat tools/ship.sh > "\$keep" 2>/dev/null; fi
+      exit \$rc ;;
+  esac
+fi
+exec "\$REAL" "\$@"
+EOF
+chmod +x "$BIN/git"
+
 # fx -> fresh fixture: $F/origin.git, $F/repo (on branch feat/x, main pushed), $F/work (clone used by the fake merge)
 FXN=0
 fx() {
@@ -176,6 +205,7 @@ fx() {
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
   export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3
+  export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
   export PATH="$BIN:$ORIG_PATH"
 }
 ORIG_PATH="$PATH"
@@ -195,7 +225,8 @@ steps() {
   ' "$FAKE_LOG" | uniq | tr '\n' ' ' | sed 's/ $//'
 }
 logged() { grep -c -- "$1" "$FAKE_LOG" 2>/dev/null || true; }
-FULL="view merge dry release runlist runwatch relview install"
+FULL="view merge dry release runlist runwatch relview install"          # with the questions: the dry run is kept
+FULL_YES="view merge release runlist runwatch relview install"          # --yes: the dry run is skipped (v0.14.0 AC2.1)
 
 echo "AC6.1 the script exists"
 assert_file "AC6.1 tools/ship.sh exists" "$SHIP"
@@ -204,14 +235,17 @@ echo "AC6.1 --yes: the whole flow, in order"
 fx
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 --yes full flow exits 0" 0
-assert_eq "AC6.1 order: view, merge, release dry run, release, CI list, CI watch, release view, install" "$FULL" "$(steps)"
+assert_eq "AC6.1/AC2.1 order with --yes: view, merge, release, CI list, CI watch, release view, install (no dry run)" "$FULL_YES" "$(steps)"
 assert_contains "AC6.1 pr view is asked about PR 12" "$(grep '^gh pr view' "$FAKE_LOG" | head -n 1)" "12"
 L="$(grep '^gh pr merge' "$FAKE_LOG")"
 assert_contains "AC6.1 merges PR 12" "$L" "pr merge 12"
 assert_contains "AC6.1 merge uses --merge" "$L" "--merge"
 assert_contains "AC6.1 merge deletes the branch" "$L" "--delete-branch"
-assert_eq "AC6.1 dry run is exactly 'release.sh v1.2.3 --dry-run', on main with the merge pulled" \
-  "release.sh v1.2.3 --dry-run | branch=main merged=yes" "$(grep '^release.sh .*--dry-run' "$FAKE_LOG")"
+assert_eq "AC2.1 --yes: no release.sh --dry-run call at all" "0" "$(logged '^release.sh .*--dry-run')"
+assert_eq "AC2.1 --yes: release.sh is called exactly once" "1" "$(logged '^release.sh')"
+SKIPLINE="$(printf '%s\n' "$OUT" | grep '^== ' | grep -i 'dry' | grep -i 'skip')"
+if [ -n "$SKIPLINE" ]; then t_ok "AC2.1 --yes: a '== ' line says the dry run is skipped"; else t_bad "AC2.1 --yes: a '== ' line says the dry run is skipped" "'== ' lines: $(printf '%s\n' "$OUT" | grep '^== ' | tr '\n' '|')"; fi
+assert_eq "AC2.1 --yes: exactly one '== ' line talks about the dry run" "1" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -ci 'dry')"
 assert_eq "AC6.1 real release is exactly 'release.sh v1.2.3', on main with the merge pulled" \
   "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 assert_contains "AC6.1 CI run is looked up by the tag" "$(grep '^gh run list' "$FAKE_LOG" | head -n 1)" "--branch v1.2.3"
@@ -262,13 +296,13 @@ echo "AC6.1 a failing release.sh stops ship.sh with its status"
 fx
 export FAKE_REL_DRY_RC=7
 sh_run 12 v1.2.3 --yes
-assert_rc "AC6.1 dry run failing with 7: ship.sh exits 7" 7
-assert_eq "AC6.1 failing dry run: the real release is not run, nor anything after" "view merge dry" "$(steps)"
+assert_rc "AC2.1 --yes never runs the dry run, so a dry run that would fail with 7 does not matter: exit 0" 0
+assert_eq "AC2.1 --yes with a failing dry-run stub: the full flow without dry run" "$FULL_YES" "$(steps)"
 fx
 export FAKE_REL_REAL_RC=5
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 real release failing with 5: ship.sh exits 5" 5
-assert_eq "AC6.1 failing release: no CI wait, no release view, no install" "view merge dry release" "$(steps)"
+assert_eq "AC6.1 failing release: no CI wait, no release view, no install" "view merge release" "$(steps)"
 
 echo "AC6.1 CI and release checks"
 fx
@@ -276,13 +310,13 @@ export FAKE_GH_FAIL="runwatch"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 failed CI run: exit 1" 1
 assert_contains "AC6.1 failed CI run: the message names the run" "$OUT" "4242"
-assert_eq "AC6.1 failed CI run: no release view, no install" "view merge dry release runlist runwatch" "$(steps)"
+assert_eq "AC6.1 failed CI run: no release view, no install" "view merge release runlist runwatch" "$(steps)"
 fx
 export FAKE_GH_FAIL="relview"
 sh_run 12 v1.2.3 --yes
 if [ "$RC" -ne 0 ]; then t_ok "AC6.1 missing GitHub release: non-zero exit"; else t_bad "AC6.1 missing GitHub release: non-zero exit" "exit $RC; output: $OUT"; fi
 assert_contains "AC6.1 missing release: the message names the tag" "$OUT" "v1.2.3"
-assert_eq "AC6.1 missing release: install is not run" "view merge dry release runlist runwatch relview" "$(steps)"
+assert_eq "AC6.1 missing release: install is not run" "view merge release runlist runwatch relview" "$(steps)"
 fx
 export FAKE_GH_FAIL="merge"
 sh_run 12 v1.2.3 --yes
@@ -309,7 +343,7 @@ for mode in empty null; do
   assert_rc "R1 run list $mode: exit 1" 1
   assert_contains "R1 run list $mode: says no CI run found" "$OUT" "no CI run found"
   assert_contains "R1 run list $mode: names the tag" "$OUT" "v1.2.3"
-  assert_eq "R1 run list $mode: never calls run watch, release view or install" "view merge dry release runlist" "$(steps)"
+  assert_eq "R1 run list $mode: never calls run watch, release view or install" "view merge release runlist" "$(steps)"
   assert_eq "R1 run list $mode: no 'run watch' call at all" "0" "$(logged '^gh run watch')"
   if [ "$(logged '^gh run list')" -ge 2 ]; then t_ok "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)"; else t_bad "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)" "run list calls: $(logged '^gh run list')"; fi
 done
@@ -320,7 +354,7 @@ sh_run 12 v1.2.3 --yes
 assert_rc "R1 gh run list failing: exit 1" 1
 assert_contains "R1 gh run list failing: the gh error is shown, not hidden" "$OUT" "simulated runlist failure"
 assert_contains "R1 gh run list failing: same refusal, no CI run found" "$OUT" "no CI run found"
-assert_eq "R1 gh run list failing: no watch, no release view, no install" "view merge dry release runlist" "$(steps)"
+assert_eq "R1 gh run list failing: no watch, no release view, no install" "view merge release runlist" "$(steps)"
 unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
 
 echo "review round 1: a dirty work tree is refused before anything changes"
@@ -365,7 +399,7 @@ fx   # default fixture: the clone is on the branch feat/x
 sh_run 12 v1.2.3 --yes
 assert_rc "AC1.1 on another branch: exit 0" 0
 assert_eq "AC1.1 on another branch: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
-assert_eq "AC1.1 on another branch: the full flow ran" "$FULL" "$(steps)"
+assert_eq "AC1.1 on another branch: the full flow ran" "$FULL_YES" "$(steps)"
 if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 on another branch: a '== ' line before the merge says it switches to main"
 else t_bad "AC1.1 on another branch: a '== ' line before the merge says it switches to main" "output before the merge: $(before_merge)"; fi
 fx
@@ -374,7 +408,7 @@ assert_eq "AC1.1 fixture check: the clone starts on a detached HEAD" "HEAD" "$(c
 sh_run 12 v1.2.3 --yes
 assert_rc "AC1.1 detached HEAD: exit 0" 0
 assert_eq "AC1.1 detached HEAD: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
-assert_eq "AC1.1 detached HEAD: the full flow ran" "$FULL" "$(steps)"
+assert_eq "AC1.1 detached HEAD: the full flow ran" "$FULL_YES" "$(steps)"
 assert_eq "AC1.1 detached HEAD: the local main got the merge" "$(git -C "$F/origin.git" rev-parse main)" "$(cd "$F/repo" && git rev-parse HEAD)"
 if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 detached HEAD: a '== ' line before the merge says it switches to main"
 else t_bad "AC1.1 detached HEAD: a '== ' line before the merge says it switches to main" "output before the merge: $(before_merge)"; fi
@@ -427,6 +461,25 @@ sh_run 12 v1.2.3 --yes
 unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
 assert_rc "AC1.3 valid integers still ship" 0
 
+echo "v0.14.0 AC1.1 ship survives the merge commit rewriting tools/ship.sh while it runs"
+# the whole body is a function, called by the last line, so bash has read all of it before `git pull` runs
+LASTLINE="$(grep -v '^[[:space:]]*$' "$SHIP" 2>/dev/null | tail -n 1)"
+assert_eq "AC1.1 the last line of tools/ship.sh is exactly: main \"\$@\"; exit \$?" 'main "$@"; exit $?' "$LASTLINE"
+assert_eq "AC1.1 tools/ship.sh defines main() exactly once" "1" "$(grep -cE '^main *\(\) *\{' "$SHIP" 2>/dev/null)"
+assert_eq "AC1.1 main is called exactly once (nothing else calls it)" "1" "$(grep -cE '^main( |$)' "$SHIP" 2>/dev/null | head -n 1)"
+for mode in exit99 trunc grow; do
+  fx
+  export FAKE_REWRITE_SHIP="$mode"
+  sh_run 12 v1.2.3 --yes
+  export FAKE_REWRITE_SHIP=""
+  assert_eq "AC1.1 [$mode] the merge commit really rewrote tools/ship.sh in the fixture (fixture check)" "1" \
+    "$([ "$(cd "$F/repo" && git rev-parse HEAD:tools/ship.sh)" != "$(git hash-object "$SHIP")" ] && echo 1 || echo 0)"
+  assert_rc "AC1.1 [$mode] ship still exits 0 although tools/ship.sh was replaced mid-run" 0
+  assert_eq "AC1.1 [$mode] every step still ran, in order" "$FULL_YES" "$(steps)"
+  assert_contains "AC1.1 [$mode] the last message is still printed" "$OUT" "shipped v1.2.3"
+  assert_eq "AC1.1 [$mode] the clone still ends on main" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+done
+
 # ---- prompts, through a pseudo-terminal ----
 PTY_OK=0
 if [ -z "${PB_NO_PTY:-}" ] && command -v python3 >/dev/null 2>&1; then
@@ -448,6 +501,9 @@ pty_block() {
   assert_eq "AC6.1 answers y, y: the full flow ran in order" "$FULL" "$(steps)"
   assert_contains "AC6.1 the first question is 'merge PR #12?'" "$OUT" "merge PR #12? [y/N]"
   assert_contains "AC6.1 the second question is 'tag and push v1.2.3?'" "$OUT" "tag and push v1.2.3? [y/N]"
+  assert_eq "AC2.1 with the questions the dry run stays: exactly 'release.sh v1.2.3 --dry-run', on main with the merge pulled" \
+    "release.sh v1.2.3 --dry-run | branch=main merged=yes" "$(grep '^release.sh .*--dry-run' "$FAKE_LOG")"
+  assert_eq "AC2.1 with the questions: no '== ' line says the dry run is skipped" "0" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -i 'dry' | grep -ci 'skip')"
   fx
   pty_ship yes yes -- 12 v1.2.3
   assert_rc "AC6.1 answers yes, yes: exit 0" 0
@@ -468,8 +524,14 @@ pty_block() {
   assert_rc "AC6.1 second answer empty: exit 1" 1
   assert_eq "AC6.1 second answer empty: did not tag" "view merge dry" "$(steps)"
   fx
+  export FAKE_REL_DRY_RC=7
+  pty_ship y y -- 12 v1.2.3
+  assert_rc "AC2.1 with the questions a failing dry run (7) still stops ship.sh with its status" 7
+  assert_eq "AC2.1 with the questions a failing dry run: no real release, nothing after" "view merge dry" "$(steps)"
+  fx
   pty_ship -- 12 v1.2.3 --yes
   assert_rc "AC6.1 --yes on a terminal: exit 0 without any answer" 0
+  assert_eq "AC2.1 --yes on a terminal: no dry run either" "$FULL_YES" "$(steps)"
   assert_not_contains "AC6.1 --yes on a terminal: no question is printed" "$OUT" "[y/N]"
   fx
   export FAKE_GH_STATE=MERGED
@@ -477,7 +539,7 @@ pty_block() {
   assert_rc "AC6.1 a merged PR is refused before any question" 1
   assert_not_contains "AC6.1 refusal comes before the first question" "$OUT" "[y/N]"
 }
-PTY_N=29
+PTY_N=34
 if [ "$PTY_OK" = 1 ]; then pty_block; else t_skip "$PTY_N" "AC6.1 prompt assertions need python3 with a pty (not available here)"; fi
 
 t_summary

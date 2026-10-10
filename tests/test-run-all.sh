@@ -157,4 +157,67 @@ else
   t_skip 1 "'pgrep' not on PATH: the no-leftover-sleeper assertion"
 fi
 
+echo "v0.14.0 AC8.1 PB_SHARD=k/n runs only its share of the suites"
+# shard_run K/N [NAMES] [ENV...] -> fresh tree (default suites a..e), run-checks stub leaves $D/rc-ran; sets D, OUT, RC.
+# Suites are listed in sorted order: a b c d e; position i (1-based) belongs to shard k when (i-1) % n == k-1.
+shard_run() {
+  local sh="$1" names="${2:-a b c d e}"; shift 2 2>/dev/null || shift $#
+  D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "$names"
+  printf '#!/usr/bin/env bash\necho x > "%s/rc-ran"\necho "run-checks: all ok"\n' "$D" > "$D/evals/run-checks.sh"
+  guarded 60 env PB_JOBS=2 PB_SHARD="$sh" "$@" bash "$D/tests/run-all.sh"
+}
+# ran_suites -> the suites that ran, sorted, e.g. "a d "  (from the log the suites write)
+ran_suites() { grep '^start ' "$D/log" 2>/dev/null | sed 's/^start //' | sort | tr '\n' ' '; }
+headings() { printf '%s\n' "$OUT" | grep -E '^== tests/test-' | sed 's#^== tests/test-##; s#\.sh$##' | tr '\n' ' '; }
+ALL=""
+for k in 1 2 3; do
+  shard_run "$k/3"
+  assert_rc "AC8.1 PB_SHARD=$k/3 with passing suites: exit 0" 0
+  r="$(ran_suites)"
+  case "$k" in 1) want="a d " ;; 2) want="b e " ;; 3) want="c " ;; esac
+  assert_eq "AC8.1 PB_SHARD=$k/3 runs exactly its suites" "$want" "$r"
+  assert_eq "AC8.1 PB_SHARD=$k/3 prints only its suites" "$want" "$(headings)"
+  assert_contains "AC8.1 PB_SHARD=$k/3 ends with ALL GREEN" "$OUT" "ALL GREEN"
+  if [ "$k" = 1 ]; then
+    assert_file "AC8.1 PB_SHARD=1/3 runs evals/run-checks.sh" "$D/rc-ran"
+    assert_contains "AC8.1 PB_SHARD=1/3 shows the run-checks output" "$OUT" "run-checks: all ok"
+  else
+    assert_no_path "AC8.1 PB_SHARD=$k/3 does not run evals/run-checks.sh" "$D/rc-ran"
+    assert_not_contains "AC8.1 PB_SHARD=$k/3 does not show run-checks output" "$OUT" "run-checks: all ok"
+  fi
+  ALL="$ALL$r"
+done
+assert_eq "AC8.1 the three shards together ran every suite once (no overlap, nothing missing)" "a b c d e " "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+shard_run "1/1"
+assert_eq "AC8.1 PB_SHARD=1/1 runs all suites" "a b c d e " "$(ran_suites)"
+assert_file "AC8.1 PB_SHARD=1/1 runs run-checks" "$D/rc-ran"
+shard_run "1/2"; assert_eq "AC8.1 PB_SHARD=1/2 runs positions 1,3,5" "a c e " "$(ran_suites)"
+shard_run "2/2"; assert_eq "AC8.1 PB_SHARD=2/2 runs positions 2,4" "b d " "$(ran_suites)"
+shard_run "2/3" "a b c d e f g"; assert_eq "AC8.1 7 suites, shard 2/3: b e" "b e " "$(ran_suites)"
+shard_run "3/3" "a b c d e f g"; assert_eq "AC8.1 7 suites, shard 3/3: c f" "c f " "$(ran_suites)"
+shard_run "1/3" "a b c d e f g"; assert_eq "AC8.1 7 suites, shard 1/3: a d g" "a d g " "$(ran_suites)"
+# a failing suite fails the shard it belongs to, and only that one
+shard_run "1/3" "a b c d e" FAIL_d=1
+assert_rc "AC8.1 a failing suite (d) in shard 1/3 -> exit 1" 1
+assert_contains "AC8.1 failing shard ends with FAILURES" "$OUT" "FAILURES"
+shard_run "2/3" "a b c d e" FAIL_d=1
+assert_rc "AC8.1 the failing suite d belongs to shard 1/3: shard 2/3 stays green (exit 0)" 0
+# more shards than suites: an empty shard is not an error
+shard_run "3/3" "a b"
+assert_rc "AC8.1 a shard without suites (3/3 over 2 suites) exits 0" 0
+assert_eq "AC8.1 an empty shard runs no suite" "" "$(ran_suites)"
+# unset: unchanged
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2
+printf '#!/usr/bin/env bash\necho x > "%s/rc-ran"\necho "run-checks: all ok"\n' "$D" > "$D/evals/run-checks.sh"
+guarded 60 env -u PB_SHARD PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC8.1 PB_SHARD unset: exit 0" 0
+assert_eq "AC8.1 PB_SHARD unset runs all suites" "a b c d e " "$(ran_suites)"
+assert_file "AC8.1 PB_SHARD unset runs run-checks" "$D/rc-ran"
+echo "AC8.1 invalid PB_SHARD values exit 2 and run nothing"
+for bad in 0/3 4/3 x 1/0 3 2/1 /3 1/ -1/3 1/-3 a/b 1/3/5 "1/ 3"; do
+  shard_run "$bad"
+  assert_rc "AC8.1 PB_SHARD=[$bad]: exit 2" 2
+  if [ ! -e "$D/log" ] && [ ! -e "$D/rc-ran" ]; then t_ok "AC8.1 PB_SHARD=[$bad]: no suite and no run-checks ran"; else t_bad "AC8.1 PB_SHARD=[$bad]: no suite and no run-checks ran" "ran: $(ran_suites)"; fi
+done
+
 t_summary
