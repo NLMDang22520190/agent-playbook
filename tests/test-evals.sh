@@ -426,4 +426,22 @@ if printf '%s\n' "$OUT" | grep "^E15 FAIL " | grep -qiE 'skill|playbook-tdd'; th
 FR3="$(grep -oE '[0-9]+ */ *[0-9]+' "$W/results.md" 2>/dev/null | tr -d ' ' | head -n 1)"
 assert_eq "AC2.3 E15 now has 6 auto checks (5 + the skill load); idle passes none of the file checks" "1" "$(printf '%s\n' "$FR3" | awk -F/ '{print ($2==6) ? 1 : 0}')"
 
+echo "AC2.4 the claude preset asks for stream-json so tool calls are in the transcript"
+FB="$(mk_tmp)"
+cat > "$FB/claude" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$FAKE_ARGS"
+echo "fake claude transcript"
+FAKE
+chmod +x "$FB/claude"
+WC="$(mk_tmp)"; FA="$WC.claude-args"
+run env PATH="$FB:$PATH" FAKE_ARGS="$FA" bash "$RUNNER" --harness claude --scenarios E8 --workroot "$WC" --out "$WC/results.md"
+assert_rc "AC2.4 the fake claude ran through the preset (exit 0)" 0
+ARGS1="$(tr '\n' ' ' < "$FA" 2>/dev/null)"
+assert_contains "AC2.4 preset passes -p" " $ARGS1" " -p "
+assert_contains "AC2.4 preset passes --output-format stream-json" "$ARGS1" "--output-format stream-json"
+assert_contains "AC2.4 preset passes --verbose" "$ARGS1" "--verbose"
+assert_contains "AC2.4 the prompt is still passed" "$ARGS1" "Summarise docs/notes.md."
+rm -f "$FA"
+
 t_summary

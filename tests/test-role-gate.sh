@@ -3,6 +3,10 @@
 . "$(dirname "$0")/lib.sh"
 GATE="$PB_ROOT/scripts/role-gate.sh"
 export PLAYBOOK_HOME="$(mk_tmp)"   # isolate from the real ~/.agents/playbook.conf
+# Git on Windows defaults to core.autocrlf=true and then prints "LF will be replaced by CRLF" warnings on
+# stderr, which would break the byte-identical output checks. Force it off for every git call in this suite
+# (command-line style config, git >= 2.31; it beats repository and global config).
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
 
 echo "classify"
 for f in src/app.test.ts pkg/foo_test.go test_foo.py tests/a.js e2e/login.spec.ts \
@@ -310,5 +314,31 @@ role gate FAILED for tester: 1 violation(s), base=HEAD" "$OUT"
 role gate FAILED for reviewer: 1 violation(s), base=HEAD" "$OUT"
   git checkout -q -- src/app.js
 done
+
+echo "AC4.7 an invalid regex fails closed (exit 3, names the key, never OK)"
+# bad_regex_repo KEY VALUE -> temp repo with tests/lib.sh changed and the (committed) conf KEY=VALUE
+bad_regex_repo() {
+  local d; d="$(mk_infra_repo "$1=$2")"
+  ( cd "$d" && printf 'helper2() { :; }\n' >> tests/lib.sh && printf 'module.exports = 2;\n' > src/app.js )
+  printf '%s\n' "$d"
+}
+for KV in 'test_infra_regex=^tests/(lib' 'test_path_regex=^(checks' 'test_infra_regex=['; do
+  KEY="${KV%%=*}"; VAL="${KV#*=}"
+  R="$(bad_regex_repo "$KEY" "$VAL")"; cd "$R" || exit 3
+  for cmdline in "classify tests/lib.sh" "check tester" "check implementer" "size"; do
+    run bash "$GATE" $cmdline
+    assert_rc "AC4.7 [$VAL] $cmdline exits 3" 3
+    assert_contains "AC4.7 [$VAL] $cmdline names $KEY" "$OUT" "$KEY"
+    assert_not_contains "AC4.7 [$VAL] $cmdline never prints OK" "$OUT" "OK:"
+  done
+done
+R="$(mk_infra_repo "test_infra_regex=$INFRA_RE")"; cd "$R" || exit 3
+printf 'helper2() { :; }\n' >> tests/lib.sh
+run bash "$GATE" check tester;                  assert_rc "AC4.7 control: a valid regex still works (tester on infra -> 1)" 1
+G_HOME="$(mk_tmp)"; mkdir -p "$G_HOME/.agents"; printf 'test_infra_regex=^tests/(lib\n' > "$G_HOME/.agents/playbook.conf"
+N="$(mk_tmp)"; mk_repo "$N"; cd "$N" || exit 3
+run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" classify tests/lib.sh
+assert_rc "AC4.7 an invalid regex in the global conf also exits 3" 3
+assert_contains "AC4.7 global-conf failure names the key" "$OUT" "test_infra_regex"
 
 t_summary

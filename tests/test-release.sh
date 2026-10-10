@@ -151,7 +151,7 @@ EOF
   WFTEXT="$(grep -F check-release.sh "$WF")"
   assert_contains "AC4 release job checks the pushed tag" "$WFTEXT" 'tools/check-release.sh "$GITHUB_REF_NAME"'
 else
-  echo "  skip AC4 static check: PyYAML not available"
+  t_skip 5 "AC4 static check of .github/workflows/test.yml: PyYAML not available"
 fi
 
 

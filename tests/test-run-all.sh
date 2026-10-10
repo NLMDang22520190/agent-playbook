@@ -4,21 +4,37 @@
 . "$(dirname "$0")/lib.sh"
 
 # guarded SECS CMD... -> runs CMD with a time limit; sets OUT (stdout+stderr) and RC (124 when the limit hit).
-# Uses `timeout` when it is on PATH, else a bash watchdog: a background sleeper that kills CMD after SECS.
+# Uses `timeout` when it is on PATH, else a bash watchdog; PB_FORCE_WATCHDOG=1 forces the watchdog (so it is
+# testable on every OS without touching PATH). The watchdog polls (no background sleeper to leave behind),
+# runs CMD in its own process group (set -m) and, on timeout, kills that group, then CMD itself.
 # Output goes to a file, never a pipe, so a leftover grandchild cannot keep the caller waiting.
 guarded() {
-  local secs="$1" f pid wd; shift
+  local secs="$1" f pid t0 had_m=0; shift
   f="$(mktemp "${TMPDIR:-/tmp}/pbguard.XXXXXX")" || exit 3
   T_TMPS="$T_TMPS $f $f.timeout"
-  if command -v timeout >/dev/null 2>&1; then
+  if [ -z "${PB_FORCE_WATCHDOG:-}" ] && command -v timeout >/dev/null 2>&1; then
     timeout "$secs" "$@" >"$f" 2>&1 </dev/null; RC=$?
   else
+    case $- in *m*) had_m=1 ;; esac
+    set -m
     "$@" >"$f" 2>&1 </dev/null &
     pid=$!
-    ( sleep "$secs"; : > "$f.timeout"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
-    wd=$!
+    [ "$had_m" = 1 ] || set +m
+    t0=$SECONDS
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ $((SECONDS - t0)) -ge "$secs" ]; then
+        : > "$f.timeout"
+        kill -TERM -- "-$pid" 2>/dev/null
+        command -v pkill >/dev/null 2>&1 && pkill -P "$pid" 2>/dev/null
+        kill -TERM "$pid" 2>/dev/null
+        sleep 0.2
+        kill -KILL -- "-$pid" 2>/dev/null
+        kill -KILL "$pid" 2>/dev/null
+        break
+      fi
+      sleep 0.1
+    done
     wait "$pid" 2>/dev/null; RC=$?
-    kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
     [ -e "$f.timeout" ] && RC=124
   fi
   OUT="$(cat "$f")"
@@ -104,33 +120,41 @@ assert_rc "AC6.3 a suite that dies without an exit code -> run-all finishes and 
 assert_contains "AC6.3 dead-suite run ends with FAILURES" "$OUT" "FAILURES"
 assert_contains "AC6.3 suites after the dead one still ran" "$(cat "$D/log" 2>/dev/null)" "end e"
 
-echo "AC5.1 the guard turns a never-ending run-all into a FAIL, also without timeout"
-# bin dir with only the tools run-all.sh, the stub suites and the guard need: no `timeout`
-NOTO="$(mk_tmp)"
-for c in bash env sh cat sleep mktemp rm rmdir mkdir mv basename dirname touch ls sort tail head tr grep sed awk cut wc kill date uname true false printf echo test id; do
-  p="$(command -v "$c" 2>/dev/null)"
-  case "$p" in /*) ln -s "$p" "$NOTO/$c" 2>/dev/null || cp "$p" "$NOTO/$c" 2>/dev/null ;; esac
-done
-if [ -n "$(PATH="$NOTO" command -v timeout 2>/dev/null)" ]; then
-  t_bad "AC5.1 fixture PATH has no timeout" "timeout found in the restricted PATH: $(PATH="$NOTO" command -v timeout)"
-else
-  t_ok "AC5.1 fixture PATH has no timeout"
-fi
+echo "AC5.1 the guard turns a never-ending run-all into a FAIL, on the watchdog path (PB_FORCE_WATCHDOG=1)"
 # a copy of run-all whose suite a never exits (sleeps 40 s; the guard must cut it at 3 s)
 D="$(mk_tmp)"; mk_tree "$D" 40 0.1 "a b"
-OLDP="$PATH"; PATH="$NOTO"; t0=$SECONDS
-guarded 3 "$BASH" "$D/tests/run-all.sh"
-el=$((SECONDS - t0)); PATH="$OLDP"
+t0=$SECONDS
+PB_FORCE_WATCHDOG=1 guarded 3 "$BASH" "$D/tests/run-all.sh"
+el=$((SECONDS - t0))
 assert_eq "AC5.1 watchdog path: a hung run-all is reported as RC 124 (a FAIL), not left running" "124" "$RC"
 if [ "$el" -lt 15 ]; then t_ok "AC5.1 watchdog path ends the hung run within the limit (${el}s of a 3 s limit, run-all would take 40 s)"; else t_bad "AC5.1 watchdog path ends the hung run within the limit" "took ${el}s"; fi
 assert_contains "AC5.1 the guard says it killed the run" "$OUT" "killed after 3s"
 # a run-all that finishes in time is not touched by the watchdog
 D="$(mk_tmp)"; mk_tree "$D" 0.2 0.1 "a b"
-PATH="$NOTO"; guarded 20 "$BASH" "$D/tests/run-all.sh"; PATH="$OLDP"
+PB_FORCE_WATCHDOG=1 guarded 20 "$BASH" "$D/tests/run-all.sh"
 assert_rc "AC5.1 watchdog path: a healthy run-all finishes normally (exit 0)" 0
 assert_contains "AC5.1 watchdog path: the healthy run output is kept" "$OUT" "ALL GREEN"
 D="$(mk_tmp)"; mk_tree "$D" 0.2 0.1 "a b"
-PATH="$NOTO"; guarded 20 env FAIL_b=1 "$BASH" "$D/tests/run-all.sh"; PATH="$OLDP"
+PB_FORCE_WATCHDOG=1 guarded 20 env FAIL_b=1 "$BASH" "$D/tests/run-all.sh"
 assert_rc "AC5.1 watchdog path: a failing run-all keeps its own exit code (1, not 124)" 1
+
+echo "AC5.2 the guard leaves no process behind"
+PF="$(mk_tmp)"
+PB_FORCE_WATCHDOG=1 guarded 2 "$BASH" -c 'sleep 60 & echo $! > "$1/child"; echo $$ > "$1/self"; wait' x "$PF"
+assert_rc "AC5.2 the killed command reports RC 124" 124
+sleep 0.5
+CH="$(cat "$PF/child" 2>/dev/null)"; SF="$(cat "$PF/self" 2>/dev/null)"
+if [ -n "$CH" ] && ! kill -0 "$CH" 2>/dev/null; then t_ok "AC5.2 the killed run's child (sleep 60) is gone"; else t_bad "AC5.2 the killed run's child (sleep 60) is gone" "pid [$CH] still alive or not recorded"; fi
+if [ -n "$SF" ] && ! kill -0 "$SF" 2>/dev/null; then t_ok "AC5.2 the killed run itself is gone"; else t_bad "AC5.2 the killed run itself is gone" "pid [$SF] still alive or not recorded"; fi
+[ -n "$CH" ] && kill -9 "$CH" 2>/dev/null
+# a healthy call must not leave a watchdog sleeper either: this shell has no child processes afterwards
+PB_FORCE_WATCHDOG=1 guarded 30 "$BASH" -c 'exit 0'
+sleep 0.3
+if command -v pgrep >/dev/null 2>&1; then
+  KIDS="$(pgrep -P $$ -x sleep 2>/dev/null | tr '\n' ' ')"   # sleepers only: the $(...) subshell itself is a child
+  if [ -z "${KIDS// /}" ]; then t_ok "AC5.2 no watchdog sleeper is left running after guarded calls"; else t_bad "AC5.2 no watchdog sleeper is left running after guarded calls" "sleep children of the test shell: $KIDS"; fi
+else
+  t_skip 1 "'pgrep' not on PATH: the no-leftover-sleeper assertion"
+fi
 
 t_summary
