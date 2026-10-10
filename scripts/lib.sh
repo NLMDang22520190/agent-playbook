@@ -19,12 +19,15 @@ pb_conf_global()  { printf '%s/.agents/playbook.conf' "$(pb_home)"; }
 pb_conf_project() { printf '%s/.agents/playbook.conf' "$(pb_root_dir)"; }
 
 # pb_conf_read FILE KEY -> last value of KEY in FILE (key=value lines, no quoting, no eval)
+# Pure bash (no sed/grep/tail): every conf lookup used to start three processes, which is slow on Git Bash.
 pb_conf_read() {
   [ -f "$1" ] || return 1
-  local v
-  v="$(sed -n "s/^$2=//p" "$1" | tail -n 1)"
+  local line v="" found=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in "$2="*) v="${line#"$2="}"; found=0 ;; esac
+  done < "$1"
   # distinguish "key absent" from "key present with empty value"
-  grep -q "^$2=" "$1" || return 1
+  [ "$found" = 0 ] || return 1
   printf '%s' "$v"
 }
 
