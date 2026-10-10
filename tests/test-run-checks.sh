@@ -25,6 +25,14 @@ add_line() {
 # checks DIR -> run run-checks.sh in DIR; OUT keeps only non-"ok" lines (FAIL, skip, summary) to keep failures readable
 only_problems() { OUT="$(printf '%s\n' "$OUT" | grep -v '^  ok ')"; }
 checks() { run bash "$1/evals/run-checks.sh"; only_problems; }
+# mk_git_copy -> a copy of the working tree committed into a fresh git repo with LF in the index
+mk_git_copy() {
+  local d; d="$(mk_copy)"
+  ( cd "$d" && git init -q && git config core.autocrlf false && git config user.email t@example.invalid &&
+    git config user.name tester && git config commit.gpgsign false && git add -A && git commit -q -m copy ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+to_crlf() { sed 's/$/\r/' "$1" > "$1.crlf" && mv "$1.crlf" "$1"; }
 
 echo "frontmatter checks (AC5)"
 C="$(mk_copy)"
@@ -79,5 +87,25 @@ OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" 2>&1)"; RC=$?; only_prob
 assert_rc "AC5 without PyYAML an unquoted description containing ': ' still fails (exit 1)" 1
 assert_contains "AC5 without PyYAML the failure says unquoted" "$OUT" "unquoted"
 assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKILL"
+
+echo "CRLF check judges what git stores (Windows checkouts convert to CRLF)"
+C="$(mk_git_copy)"
+to_crlf "$C/README.md"; to_crlf "$C/.gitattributes"
+checks "$C"
+assert_not_contains "CRLF only in the working tree of a tracked LF file is not a failure" "$OUT" "CRLF found"
+C="$(mk_git_copy)"
+printf 'line one\r\nline two\r\n' > "$C/docs/crlf-note.md"
+( cd "$C" && git add docs/crlf-note.md && git commit -q -m crlf ) >/dev/null 2>&1
+checks "$C"
+assert_rc "CRLF stored in the git index fails" 1
+assert_contains "the failure names the CRLF file" "$OUT" "docs/crlf-note.md"
+C="$(mk_git_copy)"
+printf 'untracked\r\n' > "$C/docs/untracked-crlf.md"
+checks "$C"
+assert_contains "an untracked CRLF file still fails" "$OUT" "docs/untracked-crlf.md"
+C="$(mk_copy)"
+printf 'no git here\r\n' > "$C/docs/plain-crlf.md"
+checks "$C"
+assert_contains "outside git, working-tree CRLF still fails" "$OUT" "docs/plain-crlf.md"
 
 t_summary
