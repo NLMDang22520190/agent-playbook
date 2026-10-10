@@ -46,7 +46,8 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 
 **Decide consistently.** Code is critical when the repo's documentation or notes say it serves billing, payments, auth or personal data.
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
-A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite.
+A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
+A new exported function counts as additive: it changes no existing public API.
 The weight line quotes the file:line or rule that decided it.
 
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
