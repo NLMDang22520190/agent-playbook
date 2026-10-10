@@ -31,6 +31,8 @@ assert_eq "global unaffected outside project" "en" "$OUT"
 
 run bash "$CONF" set "Bad Key" x --global
 assert_rc "invalid key rejected" 2
+run bash "$CONF" set BADKEY x --global
+assert_rc "uppercase key rejected (no locale-dependent ranges)" 2
 run bash "$CONF" set k "line1
 line2" --global
 assert_rc "multi-line value rejected" 2
