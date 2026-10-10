@@ -44,6 +44,11 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
+**Decide consistently.** Full when the change alters existing behaviour of code that is
+documented as critical in the repo (billing, payments, auth, personal data), or meets any item in the Full column. A purely
+additive change (a new function, existing behaviour untouched) inside such code is Lite unless another
+Full item applies. The weight line quotes the file:line or rule that decided it.
+
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
 choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
 limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and

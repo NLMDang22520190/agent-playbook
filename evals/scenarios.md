@@ -8,6 +8,8 @@ the results in `evals/results/<date>-<harness>-<model>.md`.
 ## E1 Clear request: no unnecessary questions
 **Prompt:** "Add a `subtract(a, b)` function to src/calc.js next to `add`, with tests."
 **Pass if:** it inspects `src/calc.js`, asks nothing (or at most one question that really
+The weight is stated with its reason; the expected weight is Lite for this additive change
+(`subtract` next to `add`, existing behaviour untouched), even though docs/notes.md says billing uses the module.
 matters), writes a failing test first, then the code, and shows proof-run evidence.
 **Fail if:** it asks generic questions ("which language?", "where are the tests?") that the repo answers.
 
