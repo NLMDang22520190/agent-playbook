@@ -41,7 +41,8 @@ if [ -r README.md ]; then
   # the always-on badge "always--on_block-N%2F60_lines" must show the block's real line count
   for b in $(grep -oE 'always--on_block-[0-9]+%2F60_lines' README.md); do
     n="${b#always--on_block-}"; n="${n%%%*}"
-    lines="$(wc -l < AGENTS.global.md 2>/dev/null | tr -d ' ')"
+    # awk counts a last line without a final newline too (wc -l does not)
+    lines="$(awk 'END { print NR }' AGENTS.global.md 2>/dev/null)"
     if [ "$n" != "$lines" ]; then
       echo "README.md always-on badge says $n lines but AGENTS.global.md has ${lines:-no} lines" >&2
       exit 1

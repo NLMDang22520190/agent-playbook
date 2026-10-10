@@ -44,8 +44,12 @@ conf_src() {
 }
 TEST_RE="$DEFAULT_REGEX"; TEST_SCOPE=""
 if conf_src test_path_regex; then TEST_RE="$SRC_VAL"; TEST_SCOPE="$SRC_SCOPE"; fi
-INFRA_RE=""; INFRA_SCOPE=""
+INFRA_RE=""; INFRA_SCOPE=""; INFRA_SHADOW=""
 if conf_src test_infra_regex; then INFRA_RE="$SRC_VAL"; INFRA_SCOPE="$SRC_SCOPE"; fi
+# an empty project value switches off a non-empty global one: worth a note (it moves the gate)
+if [ -z "$INFRA_RE" ] && [ "$INFRA_SCOPE" = project ]; then
+  INFRA_SHADOW="$(pb_conf_read "$(pb_conf_global)" test_infra_regex)" || INFRA_SHADOW=""
+fi
 valid_re() { printf 'x\n' | grep -Eq -- "$1" 2>/dev/null; [ $? -ne 2 ]; }
 
 classify() {
@@ -88,6 +92,7 @@ case "$cmd" in
     # a config file can move the gate: show where the regexes come from, before the verdict
     [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$TEST_RE"
     [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$INFRA_RE"
+    [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$INFRA_SHADOW"
 
     changed="$( { git -c core.quotepath=off diff --name-only --no-renames "$base" --
                   git -c core.quotepath=off ls-files --others --exclude-standard; } | sort -u )"
