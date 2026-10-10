@@ -77,6 +77,8 @@ case "$1 $2" in
     if [ -n "$fields" ]; then emit "$(json_obj)"; else printf 'title:\tfake\nstate:\t%s\n' "${FAKE_GH_STATE:-OPEN}"; fi ;;
   "pr merge")
     failing merge && exit 1
+    # where the clone is when GitHub merges (a detached HEAD makes the real gh fail locally after the merge)
+    echo "merge-at $(git rev-parse --abbrev-ref HEAD 2>&1)" >> "$FAKE_LOG"
     ( cd "$FAKE_ORIGIN_WORK" &&
       git pull -q --ff-only origin main >/dev/null 2>&1
       echo merged > "merged-${3}.txt" && git add -A &&
@@ -114,6 +116,8 @@ EOF
 cat > "$W/install.stub" <<'EOF'
 #!/usr/bin/env bash
 echo "install.sh $*" >> "$FAKE_LOG"
+# the real install.sh update checks out the release tag: the dev clone is left on a detached HEAD
+[ -n "${FAKE_INSTALL_DETACH:-}" ] && git -C "$(dirname "$0")" checkout -q --detach
 exit "${FAKE_INSTALL_RC:-0}"
 EOF
 # ---- pseudo-terminal driver: answers each "[y/N]" prompt with the next argument before "--" ----
@@ -352,6 +356,76 @@ usage_case "unknown option (--force)" 12 v1.2.3 --force
 usage_case "unknown option before the arguments (--bogus)" --bogus 12 v1.2.3
 assert_eq "AC6.1 usage errors: gh, release.sh and install.sh were never called" "" "$(steps)"
 assert_eq "AC6.1 usage errors: the log is empty" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
+
+echo "v0.13.0 AC1.1 ship merges from main, whatever the clone was on"
+merge_at() { grep '^merge-at ' "$FAKE_LOG" | head -n 1; }
+# lines printed before the merge step
+before_merge() { printf '%s\n' "$OUT" | awk '/^== merge PR/ { exit } { print }'; }
+fx   # default fixture: the clone is on the branch feat/x
+sh_run 12 v1.2.3 --yes
+assert_rc "AC1.1 on another branch: exit 0" 0
+assert_eq "AC1.1 on another branch: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
+assert_eq "AC1.1 on another branch: the full flow ran" "$FULL" "$(steps)"
+if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 on another branch: a '== ' line before the merge says it switches to main"
+else t_bad "AC1.1 on another branch: a '== ' line before the merge says it switches to main" "output before the merge: $(before_merge)"; fi
+fx
+( cd "$F/repo" && git checkout -q --detach )
+assert_eq "AC1.1 fixture check: the clone starts on a detached HEAD" "HEAD" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC1.1 detached HEAD: exit 0" 0
+assert_eq "AC1.1 detached HEAD: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
+assert_eq "AC1.1 detached HEAD: the full flow ran" "$FULL" "$(steps)"
+assert_eq "AC1.1 detached HEAD: the local main got the merge" "$(git -C "$F/origin.git" rev-parse main)" "$(cd "$F/repo" && git rev-parse HEAD)"
+if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 detached HEAD: a '== ' line before the merge says it switches to main"
+else t_bad "AC1.1 detached HEAD: a '== ' line before the merge says it switches to main" "output before the merge: $(before_merge)"; fi
+fx
+( cd "$F/repo" && git switch -q main )
+sh_run 12 v1.2.3 --yes
+assert_rc "AC1.1 already on main: exit 0" 0
+assert_eq "AC1.1 already on main: gh pr merge ran on main" "merge-at main" "$(merge_at)"
+echo "AC1.1 the switch to main fails: refuse before merging"
+for start in branch detached; do
+  fx
+  [ "$start" = detached ] && ( cd "$F/repo" && git checkout -q --detach )
+  before="$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+  # main is checked out in a second work tree, so 'git switch main' fails in the clone
+  git -C "$F/repo" worktree add -q "$F/wt" main >/dev/null 2>&1
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC1.1 ($start) switch to main impossible: exit 1" 1
+  assert_eq "AC1.1 ($start) switch impossible: gh pr merge never called" "0" "$(logged '^gh pr merge')"
+  assert_eq "AC1.1 ($start) switch impossible: no release, no install" "0" "$(logged '^release.sh\|^install.sh')"
+  assert_eq "AC1.1 ($start) switch impossible: origin main is untouched" "0" "$(git -C "$F/origin.git" ls-tree -r --name-only main | grep -c '^merged-')"
+  assert_eq "AC1.1 ($start) switch impossible: the clone stays where it was" "$before" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+done
+
+echo "v0.13.0 AC1.2 after install.sh update the clone is back on main"
+fx
+export FAKE_INSTALL_DETACH=1
+sh_run 12 v1.2.3 --yes
+unset FAKE_INSTALL_DETACH
+assert_rc "AC1.2 install leaves a detached HEAD: ship still exits 0" 0
+assert_eq "AC1.2 the clone ends on main, not on a detached HEAD" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+AFTER_INSTALL="$(printf '%s\n' "$OUT" | awk 'f { print } /^== update the installs/ { f = 1 }')"
+assert_contains "AC1.2 the output after the install step names the branch it ends on" "$AFTER_INSTALL" "main"
+fx
+sh_run 12 v1.2.3 --yes
+assert_eq "AC1.2 install leaves the branch alone: still on main" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+
+echo "v0.13.0 AC1.3 invalid PB_SHIP_WAIT_* values exit 2 before anything is called"
+for kv in "TRIES=abc" "TRIES=-1" "TRIES=1.5" "SECS=x" "SECS=-2" "SECS=0.5" "TRIES=4x"; do
+  fx
+  export "PB_SHIP_WAIT_${kv%%=*}=${kv#*=}"
+  sh_run 12 v1.2.3 --yes
+  unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
+  assert_rc "AC1.3 PB_SHIP_WAIT_$kv: exit 2" 2
+  assert_eq "AC1.3 PB_SHIP_WAIT_$kv: gh, release.sh and install.sh were never called" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
+  assert_eq "AC1.3 PB_SHIP_WAIT_$kv: origin main is untouched" "0" "$(git -C "$F/origin.git" ls-tree -r --name-only main | grep -c '^merged-')"
+done
+fx
+export PB_SHIP_WAIT_TRIES=3 PB_SHIP_WAIT_SECS=0
+sh_run 12 v1.2.3 --yes
+unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
+assert_rc "AC1.3 valid integers still ship" 0
 
 # ---- prompts, through a pseudo-terminal ----
 PTY_OK=0
