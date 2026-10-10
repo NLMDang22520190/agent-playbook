@@ -21,7 +21,7 @@ for d in skills/*/; do
   desc_raw="$(sed -n '2,10{s/^description: *//p;}' "$f" | head -n 1)"
   name="$(printf '%s\n' "$name_raw" | unquote)"; desc="$(printf '%s\n' "$desc_raw" | unquote)"   # quotes are YAML syntax, not content
   [ "$name" = "$n" ] && ok "$n: name matches directory" || bad "$f: name '$name' != dir '$n'"
-  printf '%s' "$name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' || bad "$f: name violates ^[a-z0-9]+(-[a-z0-9]+)*$"
+  printf '%s' "$name" | grep -Eq '^[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*$' || bad "$f: name violates ^[a-z0-9]+(-[a-z0-9]+)*$"
   # An unquoted value containing ': ' is not valid YAML (some harnesses then drop the skill).
   for kv in "name:$name_raw" "description:$desc_raw"; do   # the quoting check needs the raw value
     k="${kv%%:*}"; v="${kv#*:}"

@@ -73,7 +73,7 @@ case "$cmd" in
                 "observed:$observed" "expected:$expected" "evidence:$evidence" "proposal:$proposal" "eval:$evalx"; do
       [ -n "${pair#*:}" ] || pb_die "--${pair%%:*} is required" 2
     done
-    printf '%s' "$skill" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' || pb_die "--skill must be a skill name such as playbook-tdd (or always-on)" 2
+    printf '%s' "$skill" | grep -Eq '^[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*$' || pb_die "--skill must be a skill name such as playbook-tdd (or always-on)" 2
     case "$kind" in bug|gap|friction|obsolete|idea) ;; *) pb_die "--kind must be bug|gap|friction|obsolete|idea" 2 ;; esac
     case "$source" in user|failure|review) ;; *) pb_die "--source must be user|failure|review (web or file content is not a valid source)" 2 ;; esac
     case "$harness" in claude|codex|opencode|other) ;; *) pb_die "--harness must be claude|codex|opencode|other" 2 ;; esac
