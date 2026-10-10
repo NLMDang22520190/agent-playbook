@@ -4,16 +4,18 @@
 Work session (Claude / Codex / OpenCode, any machine)
   └─ skill playbook-feedback: record evidenced proposals (passively, without interrupting the work)
        └─ end of task, at most once per feedback_interval_days: preview → you approve → feedback.sh submit
-            └─ issue on the playbook repo (duplicate check, labels harness/kind/source)
+            └─ issue on your private feedback repo (feedback_repo; submit refuses a public repo)
+               (duplicate check, labels harness/kind/source)
 You triage (monthly)
-  └─ an agent drafts a PR: the skill change + its eval scenario
-       └─ CI (Ubuntu + macOS) runs tests/run-all.sh → you review → merge
-            └─ bump VERSION, update CHANGELOG, tag vX.Y.Z, push the tag
+  └─ an agent drafts a PR: the skill change + its eval scenario + VERSION/CHANGELOG
+       └─ CI (Ubuntu + macOS + Windows Git Bash, all required on main) runs tests/run-all.sh → you review → merge
+            └─ tools/release.sh vX.Y.Z tags main and pushes the tag
+                 └─ CI on the tag re-runs the tests; the release job creates the GitHub Release
 Each machine
   └─ install.sh update --check  (cron / Task Scheduler / by hand)
        └─ install.sh update --yes → check out the tag → re-install every target recorded in .install-targets → doctor
             (roll back: install.sh update --to vX.Y.Z --yes)
-Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E12 in full on each harness
+Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E18 in full on each harness
 ```
 
 ## Principles
@@ -26,12 +28,18 @@ Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E1
   checks out a tag (detached HEAD), which suits machines that only use the playbook.
 
 ## Releasing a new version (on the development machine)
-```bash
-bash tests/run-all.sh                     # must be green
-# edit VERSION + CHANGELOG.md
-git commit -am "release: vX.Y.Z" && git tag -a vX.Y.Z -m vX.Y.Z
-git push origin main vX.Y.Z               # CI runs on the tag
-```
+1. On the feature branch: edit `VERSION`, add the `## X.Y.Z - date` entry to `CHANGELOG.md`, then run
+   `bash tools/check-release.sh vX.Y.Z` (VERSION and CHANGELOG agree) and `bash tests/run-all.sh` (must be green).
+2. Open a PR. CI must pass on all three OS before `main` accepts the merge.
+3. After the merge, on an up-to-date `main`:
+   ```bash
+   bash tools/release.sh vX.Y.Z --dry-run    # checks + full suite, prints what it would tag and push
+   bash tools/release.sh vX.Y.Z              # tags HEAD of main and pushes the tag
+   ```
+   `release.sh` refuses when `check-release.sh` fails, the tree is not clean, HEAD is not on `main`,
+   `main` differs from `origin/main`, the tag already exists, or the suite fails. CI on the tag runs
+   the tests again and the `release` job publishes the GitHub Release from the CHANGELOG entry.
+4. On each machine: `install.sh update --yes`.
 
 ## Automatic update reminders (optional)
 Linux / WSL (cron, every Monday at 9:00):

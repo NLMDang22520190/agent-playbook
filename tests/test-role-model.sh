@@ -136,4 +136,102 @@ unset PLAYBOOK_HARNESS
 role tester --harness
 assert_rc "AC1 --harness without value exits 2" 2
 
+# --- #1 AC1.1: `check` reports generic model keys
+echo "role-model.sh check (#1 AC1.1)"
+reset
+role check
+assert_rc "AC1.1 no generic keys -> exit 0" 0
+assert_contains "AC1.1 no generic keys -> says so" "$OUT" "no generic model keys"
+printf 'model_tester_codex=cx\nmodel_reviewer_opencode=rx\n' > "$G"
+role check
+assert_rc "AC1.1 per-harness keys alone -> exit 0" 0
+assert_contains "AC1.1 per-harness keys alone -> no generic keys" "$OUT" "no generic model keys"
+assert_not_contains "AC1.1 per-harness keys are not warnings" "$OUT" "warning"
+
+for r in tester implementer reviewer; do
+  reset
+  printf 'model_%s=val-%s\n' "$r" "$r" > "$G"
+  role check
+  assert_rc "AC1.1 generic $r -> exit 1" 1
+  assert_contains "AC1.1 generic $r named" "$OUT" "model_$r"
+  assert_contains "AC1.1 generic $r value shown" "$OUT" "val-$r"
+  assert_contains "AC1.1 generic $r says warning" "$OUT" "warning"
+  assert_contains "AC1.1 generic $r says applies to every harness" "$OUT" "applies to every harness"
+  assert_contains "AC1.1 generic $r suggests per-harness key" "$OUT" "model_${r}_"
+  assert_not_contains "AC1.1 generic $r not reported as no-keys" "$OUT" "no generic model keys"
+  for o in tester implementer reviewer; do
+    [ "$o" = "$r" ] && continue
+    assert_not_contains "AC1.1 only $r reported (not $o)" "$OUT" "model_$o"
+  done
+done
+
+reset
+printf 'model_tester=tmod\nmodel_implementer=imod\nmodel_reviewer=rmod\n' > "$G"
+role check
+assert_rc "AC1.1 three generic keys -> exit 1" 1
+assert_eq "AC1.1 one warning line per key" "3" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+assert_contains "AC1.1 implementer line carries its own value" "$(printf '%s\n' "$OUT" | grep 'model_implementer')" "imod"
+assert_contains "AC1.1 reviewer line carries its own value" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "rmod"
+assert_not_contains "AC1.1 tester line has only its own value" "$(printf '%s\n' "$OUT" | grep 'model_tester')" "imod"
+
+reset
+printf 'model_tester=tmod\n' > "$G"
+role check --harness codex
+assert_rc "AC1.1 --harness: exit 1" 1
+assert_contains "AC1.1 --harness fills the suggestion" "$OUT" "model_tester_codex"
+export PLAYBOOK_HARNESS=opencode
+role check
+assert_contains "AC1.1 PLAYBOOK_HARNESS fills the suggestion" "$OUT" "model_tester_opencode"
+role check --harness codex
+assert_contains "AC1.1 --harness beats PLAYBOOK_HARNESS in suggestion" "$OUT" "model_tester_codex"
+assert_not_contains "AC1.1 --harness beats PLAYBOOK_HARNESS (no opencode)" "$OUT" "model_tester_opencode"
+unset PLAYBOOK_HARNESS
+
+reset
+printf 'model_tester=gmod\n' > "$G"
+role check
+assert_contains "AC1.1 global key names global" "$(printf '%s\n' "$OUT" | grep 'model_tester')" "global"
+assert_not_contains "AC1.1 global key does not say project" "$(printf '%s\n' "$OUT" | grep 'model_tester')" "project"
+reset
+printf 'model_reviewer=pmod\n' > "$L"
+role check
+assert_rc "AC1.1 project-only generic key -> exit 1" 1
+assert_contains "AC1.1 project key reported with value" "$OUT" "pmod"
+assert_contains "AC1.1 project key names project" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "project"
+assert_not_contains "AC1.1 project key does not say global" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "global"
+reset
+printf 'model_tester=gmod\n' > "$G"
+printf 'model_reviewer=pmod\n' > "$L"
+role check
+assert_eq "AC1.1 global + project keys both reported" "2" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+
+# existing commands keep their exact output when generic keys exist
+reset
+printf 'model_tester=tmod\nmodel_reviewer=rmod\n' > "$G"
+role tester
+assert_eq "AC1.1 tester output unchanged with generic keys" "tmod" "$OUT"
+role list
+assert_eq "AC1.1 list output unchanged with generic keys" "tester=tmod
+implementer=session
+reviewer=rmod" "$OUT"
+ERR="$(cd "$P" && bash "$RM" tester 2>&1 >/dev/null)"
+assert_eq "AC1.1 tester prints nothing on stderr with generic keys" "" "$ERR"
+ERR="$(cd "$P" && bash "$RM" list 2>&1 >/dev/null)"
+assert_eq "AC1.1 list prints nothing on stderr with generic keys" "" "$ERR"
+
+reset
+role check --bogus
+assert_rc "AC1.1 check with unknown option exits 2" 2
+role check --harness "Bad Name"
+assert_rc "AC1.1 check with invalid harness exits 2" 2
+
+echo "role-model.sh check: empty generic value"
+reset
+printf 'model_reviewer=\n' > "$G"
+role check
+assert_rc "an empty generic value is still reported: exit 1" 1
+assert_contains "the empty generic key is named" "$OUT" "model_reviewer"
+assert_contains "the empty generic key warns" "$OUT" "warning"
+assert_contains "the empty generic key names its origin: global" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "global"
+
 t_summary

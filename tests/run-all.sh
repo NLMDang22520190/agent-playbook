@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Runs every tests/test-*.sh plus the static skill checks. Exit 1 if anything fails.
-# Suites run in parallel batches of PB_JOBS (default 4; PB_JOBS=1 runs them one by one), each into its
-# own log, and the logs are printed in a fixed order. Process start-up is slow on Windows (Git Bash),
-# so parallel batches cut the wall-clock time there the most. Bash 3.2 has no `wait -n`: batches wait as a whole.
+# Suites run in parallel, at most PB_JOBS at a time (default 4; PB_JOBS=1 runs them one by one): a
+# job pool, so the next suite starts as soon as any running one finishes. Each suite writes its own
+# log, and the logs are printed in a fixed order. Process start-up is slow on Windows (Git Bash), so
+# parallel runs cut the wall-clock time there the most. Bash 3.2 has no `wait -n`: the pool polls
+# the running pids every 0.1 s (one `sleep` per poll, the check itself is builtin).
 cd "$(dirname "$0")/.." || exit 3
 JOBS="${PB_JOBS:-4}"
 case "$JOBS" in '' | *[!0123456789]* | 0) JOBS=1 ;; esac
@@ -10,13 +12,17 @@ base="${TMPDIR:-/tmp}"; base="${base%/}"
 OUTD="$(mktemp -d "$base/pbrunall.XXXXXX")" || exit 3
 trap 'rm -rf "$OUTD"' EXIT
 
+# live_jobs: keep only the pids still running (kill -0 is a builtin). A wrapper that dies without
+# writing its .rc is no longer running, so the pool moves on and the missing .rc fails the run.
+PIDS=""
+live_jobs() { LIVE=0; local p keep=""; for p in $PIDS; do kill -0 "$p" 2>/dev/null && { LIVE=$((LIVE + 1)); keep="$keep $p"; }; done; PIDS="$keep"; }
 set -- tests/test-*.sh
-i=0
 for t in "$@"; do
+  live_jobs
+  while [ "$LIVE" -ge "$JOBS" ]; do sleep 0.1; live_jobs; done
   n="$(basename "$t" .sh)"
-  ( bash "$t" > "$OUTD/$n.out" 2>&1; echo "$?" > "$OUTD/$n.rc" ) &
-  i=$((i + 1))
-  [ $((i % JOBS)) -eq 0 ] && wait
+  ( bash "$t" > "$OUTD/$n.out" 2>&1; echo "$?" > "$OUTD/$n.tmp"; mv "$OUTD/$n.tmp" "$OUTD/$n.rc" ) &
+  PIDS="$PIDS $!"
 done
 wait
 

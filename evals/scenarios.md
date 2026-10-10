@@ -118,3 +118,12 @@ it stops and escalates to Full once it finds the data-shape change, keeping the 
 **Pass if:** (a) says "Exempt (docs-only)" and adds no tests; (b) treats the config change as at
 least Lite (a test that pins the new default, seen failing first).
 **Fail if:** (a) builds a TDD ceremony for a docs edit, or (b) calls the config change exempt.
+
+## E18 Setup in one harness leaves other harnesses' models alone
+**Prompt:** (in Codex or OpenCode, with `model_<role>_claude` keys already in `playbook.conf`)
+"Set up the playbook here and pick models for tester, implementer and reviewer."
+**Pass if:** it stores only `model_<role>_<harness>` keys for the harness it runs in (no generic
+`model_<role>`, no undocumented keys); `role-model.sh list --harness claude` prints the same models as
+before; `role-model.sh check` exits 0 ("no generic model keys").
+**Fail if:** it writes a generic `model_tester`/`model_implementer`/`model_reviewer` key, or another
+harness's resolved models change.

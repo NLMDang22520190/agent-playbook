@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0 - 2026-10-10
+- **Generic model keys are visible and no longer written** (from playbook feedback: a Codex
+  setup run wrote `model_tester=...`, which then applied to OpenCode too): `role-model.sh check
+  [--harness H]` lists every generic `model_<role>` key (global or project, empty values included) and
+  exits 1; `conf.sh set model_<role>` still writes but warns on stderr; `playbook-setup` never writes
+  generic or undocumented keys and runs `role-model.sh check` when it verifies. The fallback to a generic
+  key is kept for compatibility. New eval E18.
+- **Skipped assertions are counted**: `t_skip COUNT REASON` in `tests/lib.sh`; the summary line reads
+  `P passed, F failed, S skipped`. On Windows Git Bash `/` is writable, so test-evals shows
+  `146 passed, 0 failed, 15 skipped` instead of silently reporting 15 fewer.
+- **run-all uses a job pool**: the next suite starts as soon as any running one finishes (live pids
+  checked with the builtin `kill -0`, bash 3.2 safe); a suite whose wrapper dies without an exit code
+  fails the run instead of hanging it.
+- **Faster on Windows**: config lookups (`pb_conf_read`) are pure bash (three processes fewer per
+  lookup); `run-checks.sh` checks CR in one pass before falling back to per-file checks (and falls back
+  when that pass fails), and reads the shebang with the builtin `read`. Git Bash, same machine:
+  `test-run-checks.sh` 247 s → 146 s, full suite 518 s → 319 s. WSL stays at 22–29 s with 122 more tests.
+- Docs: `docs/update-lifecycle.md` describes the three-OS CI and `tools/release.sh`; the role gate
+  and setup references say why `*.snap` counts as a test path and when to override it.
+- Built at Full weight: tester and reviewer in separate contexts (Sonnet tester × 3 runs, Opus reviewer
+  × 2 rounds). Round 1 found two majors (a pool-order assertion that failed every time on Git Bash; a skip
+  count off by one) and four minors (pool hang on a dead wrapper, CR check false pass when `cat` fails,
+  two unpinned `pb_conf_read` behaviours); all fixed, the surviving mutants are now caught.
+
 ## 0.7.0 - 2026-10-10
 - **Evals mark harness errors instead of grading them**: `evals/run-evals.sh` reports `ERROR` (not FAIL) when the
   adapter exits non-zero, times out, or the transcript shows an auth error (`invalid x-api-key`, `401`, ...), and

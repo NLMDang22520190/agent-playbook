@@ -115,4 +115,17 @@ check 'AC11 setup lists configured models for Codex' "$SETUP" 'configured models
 check 'AC11 setup stores with conf.sh' "$SETUP" 'conf\.sh[^.]{0,120}model_|model_[^.]{0,120}conf\.sh'
 check 'AC11 setup lets user accept or pick others' "$SETUP" 'accept[^.]{0,80}(pick|choose|other)'
 
+# --- #1 AC1.3 / AC1.4: setup never writes generic model keys; E18 scenario
+check 'AC1.3 setup runs role-model.sh check' "$SETUP" 'role-model\.sh check'
+check 'AC1.3 setup says never write generic model_<role> keys' "$SETUP" 'never[^.]{0,80}generic[^.]{0,80}model_<role>|generic[^.]{0,80}model_<role>[^.]{0,80}never'
+check 'AC1.3 setup says never write undocumented keys' "$SETUP" 'never[^.]{0,60}(not documented|undocumented)|never[^.]{0,60}keys[^.]{0,40}not (listed|documented)'
+check 'AC1.3 setup marks generic keys legacy' "$SETUP" 'legacy'
+check 'AC1.3 legacy mention is near the generic model keys' "$SETUP" 'model_(tester|implementer|reviewer)[^.]{0,200}legacy|legacy[^.]{0,200}model_(tester|implementer|reviewer)'
+check 'AC1.3 legacy keys are read, not written' "$SETUP" 'read[^.]{0,40}not written|legacy[^.]{0,120}(read|fallback)'
+SCEN="$PB_ROOT/evals/scenarios.md"
+check 'AC1.4 scenarios has an E18 heading' "$SCEN" '^## E18 '
+check 'AC1.4 E18 mentions role-model.sh check' "$SCEN" 'role-model\.sh check'
+check_sec 'AC1.4 E18 section covers list --harness unchanged' "$SCEN" '^## E18 ' 'list --harness'
+check_sec 'AC1.4 E18 section covers model_<role>_<harness> storage' "$SCEN" '^## E18 ' 'model_<role>_'
+
 t_summary

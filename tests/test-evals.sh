@@ -170,7 +170,7 @@ if command -v timeout >/dev/null 2>&1; then
   if [ "$el" -lt 25 ] && [ "$(count_lines E1 ERROR)" -ge 1 ]; then t_ok "AC5 --timeout stops a hung adapter and marks it ERROR (${el}s)"; else t_bad "AC5 --timeout stops a hung adapter and marks it ERROR" "took ${el}s; output: $OUT"; fi
   assert_rc "AC5 timed-out scenario exits 4 (harness error)" 4
 else
-  echo "  note: 'timeout' not on PATH, skipping the --timeout assertion"
+  t_skip 2 "'timeout' not on PATH: the --timeout assertions"
 fi
 
 echo "AC5 make-fixture.sh target directory"
@@ -243,7 +243,7 @@ if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
   assert_no_path "AC8 '/' refused before any rm/mkdir/git/cp call" "$SH/calls"
   assert_no_path "AC8 '/' gets no package.json" "/package.json"
 else
-  echo "  note: running as root or '/' is writable: skipping the empty-argument and '/' cases"
+  t_skip 6 "running as root or '/' is writable: the AC8 empty-argument and '/' cases"
 fi
 H="$(mk_tmp)"; D="$(mk_tmp)"
 run_in "$D" env HOME="$H" bash "$MKC" "$H"
@@ -355,7 +355,7 @@ if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
     assert_no_path "AC14 '$spelling' refused before any rm/mkdir/git/cp call" "$SH/calls"
   done
 else
-  echo "  note: running as root or '/' is writable: skipping the root-spelling cases"
+  t_skip 9 "running as root or '/' is writable: the AC14 root-spelling cases (3 spellings x 3)"
 fi
 
 

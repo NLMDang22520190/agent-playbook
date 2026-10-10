@@ -46,6 +46,10 @@ case "$cmd" in
       printf '%s=%s\n' "$key" "$value" > "$tmp"
     fi
     cat "$tmp" > "$file" && rm -f "$tmp"
+    case "$key" in
+      model_tester | model_implementer | model_reviewer)
+        echo "warning: $key applies to every harness; prefer model_<role>_<harness> (e.g. ${key}_claude)" >&2 ;;
+    esac
     ;;
   list)
     g="$(pb_conf_global)"; p="$(pb_conf_project)"

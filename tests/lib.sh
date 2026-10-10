@@ -3,10 +3,13 @@
 PB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 T_PASS=0
 T_FAIL=0
+T_SKIP=0
 T_TMPS=""
 
 t_ok()  { T_PASS=$((T_PASS + 1)); printf '  ok   %s\n' "$1"; }
 t_bad() { T_FAIL=$((T_FAIL + 1)); printf '  FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; return 0; }
+# t_skip COUNT REASON: COUNT assertions not run here (shown in the summary, never a failure)
+t_skip() { T_SKIP=$((T_SKIP + $1)); printf '  skip %s (%d assertions)\n' "$2" "$1"; }
 
 assert_eq() { # name expected actual
   if [ "$2" = "$3" ]; then t_ok "$1"; else t_bad "$1" "expected [$2] got [$3]"; fi
@@ -73,6 +76,10 @@ mk_repo() {
 }
 
 t_summary() {
-  printf '%s: %d passed, %d failed\n' "$(basename "$0")" "$T_PASS" "$T_FAIL"
+  if [ "$T_SKIP" -gt 0 ]; then
+    printf '%s: %d passed, %d failed, %d skipped\n' "$(basename "$0")" "$T_PASS" "$T_FAIL" "$T_SKIP"
+  else
+    printf '%s: %d passed, %d failed\n' "$(basename "$0")" "$T_PASS" "$T_FAIL"
+  fi
   [ "$T_FAIL" -eq 0 ]
 }
