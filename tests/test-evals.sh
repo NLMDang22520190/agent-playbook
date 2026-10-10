@@ -591,4 +591,22 @@ assert_contains "AC9.1 without the flag the API key is kept" "$ENVT" "ANTHROPIC_
 run bash "$RUNNER" --help
 assert_contains "AC9.1 the usage text documents --clean-env" "$OUT" "--clean-env"
 
+
+# ---- v0.13.0: a token count of 401 in a stream-json usage block is not an auth error (found by a real run) ----
+echo "AC401b token counts of 401 are not harness errors"
+HV="$(mk_tmp)"
+printf '#!/usr/bin/env bash\necho "{\\"type\\":\\"assistant\\",\\"usage\\":{\\"input_tokens\\":2,\\"cache_creation_input_tokens\\":401,\\"output_tokens\\":7}}"\nexit 0\n' > "$HV/tok401.sh"
+printf '#!/usr/bin/env bash\necho "API Error: 401 Unauthorized"\nexit 0\n' > "$HV/api401.sh"
+printf '#!/usr/bin/env bash\necho "{\\"type\\":\\"result\\",\\"is_error\\":true,\\"error\\":\\"HTTP 401\\"}"\nexit 0\n' > "$HV/http401.sh"
+W42="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HV/tok401.sh" --scenarios E8 --workroot "$W42" --out "$W42/results.md"
+assert_eq "AC401b token count 401 is not ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c 'E8 ERROR')"
+assert_rc "AC401b token count 401 -> graded normally (exit 0)" 0
+W43="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HV/api401.sh" --scenarios E8 --workroot "$W43" --out "$W43/results.md"
+assert_rc "AC401b '401 Unauthorized' is still a harness error -> exit 4" 4
+W44="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HV/http401.sh" --scenarios E8 --workroot "$W44" --out "$W44/results.md"
+assert_rc "AC401b 'HTTP 401' is still a harness error -> exit 4" 4
+
 t_summary
