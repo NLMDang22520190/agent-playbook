@@ -99,8 +99,15 @@ grep -qi 'not exempt' "$T" && ok "exemptions say what is NOT exempt" || bad "$T 
 for e in E15 E16 E17; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exists" || bad "evals/scenarios.md lacks $e"; done
 
 echo "files"
-crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
-[ -z "$crlf" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
+# CRLF: judge what git stores. On Windows, core.autocrlf converts tracked LF files to CRLF in the
+# working tree; that is not a repo problem. Untracked files, and copies outside git, are read as they are.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  crlf="$( { git ls-files --eol | awk '$1 ~ /^i\/(crlf|mixed)$/ { print $NF }'
+            git ls-files -o --exclude-standard -z | xargs -0 grep -IlZ $'\r' 2>/dev/null | tr '\0' '\n'; } | sort -u | tr '\n' ' ')"
+else
+  crlf="$(grep -rIl $'\r' --exclude-dir=.git . 2>/dev/null || true)"
+fi
+[ -z "${crlf// /}" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
 for f in install.sh scripts/*.sh tests/*.sh evals/*.sh tools/*.sh; do
   bash -n "$f" 2>/dev/null && ok "syntax: $f" || bad "bash -n failed: $f"
   [ "$(head -c 2 "$f")" = "#!" ] || bad "$f: missing shebang"
