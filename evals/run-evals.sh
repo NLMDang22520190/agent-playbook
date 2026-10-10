@@ -53,7 +53,9 @@ case "$HARNESS" in
             # DECISION[D1]: adapter contract = COMMAND <workdir> <prompt-file>; COMMAND is split by the shell.
             ADAPTER="$CMD \"\$1\" \"\$2\"" ;;
   opencode) LABEL="opencode"; ADAPTER='cd "$1" && opencode run --auto "$(cat "$2")"' ;;
-  claude)   LABEL="claude";   ADAPTER='cd "$1" && claude -p "$(cat "$2")"' ;;
+  # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
+  # flags as listed by `claude --help` in Claude Code 2.1.295.
+  claude)   LABEL="claude";   ADAPTER='cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' ;;
   codex)    LABEL="codex";    ADAPTER='cd "$1" && codex exec "$(cat "$2")"' ;;
   *) pb_die "unknown harness: $HARNESS (use opencode, claude, codex or --cmd)" 2 ;;
 esac

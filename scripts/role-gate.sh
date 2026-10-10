@@ -33,16 +33,24 @@ set -u
 
 DEFAULT_REGEX='(^|/)(test|tests|__tests__|spec|specs|e2e|__mocks__|fixtures|testdata|__snapshots__)(/|$)|(\.test\.|\.spec\.|_test\.|_spec\.)|(^|/)test_[^/]*$|(^|/)conftest\.py$|\.feature$|Tests?\.(java|kt|cs|swift)$|(^|/)(jest|vitest|playwright|cypress)\.config\.[^/]+$|(^|/)karma\.conf\.[^/]+$|(^|/)\.mocharc(\.[^/]+)?$|(^|/)pytest\.ini$|(^|/)phpunit\.xml(\.dist)?$|\.snap$'
 
-test_regex() { pb_conf_get test_path_regex "$DEFAULT_REGEX"; }
-infra_regex() { pb_conf_get test_infra_regex ""; }
+# Read both regexes once per run, and refuse an invalid one: grep exits 2 on a bad pattern, which
+# would otherwise read as "no match" and let every file through (fail open).
+TEST_RE="$(pb_conf_get test_path_regex "$DEFAULT_REGEX")"
+INFRA_RE="$(pb_conf_get test_infra_regex "")"
+valid_re() { printf 'x\n' | grep -Eq -- "$1" 2>/dev/null; [ $? -ne 2 ]; }
 
 classify() {
-  local ir; ir="$(infra_regex)"
-  if [ -n "$ir" ] && printf '%s\n' "$1" | grep -Eq -- "$ir"; then echo infra; return; fi
-  if printf '%s\n' "$1" | grep -Eq -- "$(test_regex)"; then echo test; else echo code; fi
+  if [ -n "$INFRA_RE" ] && printf '%s\n' "$1" | grep -Eq -- "$INFRA_RE"; then echo infra; return; fi
+  if printf '%s\n' "$1" | grep -Eq -- "$TEST_RE"; then echo test; else echo code; fi
 }
 
 cmd="${1:-}"
+case "$cmd" in
+  classify | check | size)
+    valid_re "$TEST_RE" || pb_die "invalid test_path_regex (grep -E rejects it): $TEST_RE" 3
+    if [ -n "$INFRA_RE" ]; then valid_re "$INFRA_RE" || pb_die "invalid test_infra_regex (grep -E rejects it): $INFRA_RE" 3; fi
+    ;;
+esac
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
