@@ -180,7 +180,7 @@ The presets do not sandbox the agent (the opencode preset auto-approves its acti
 |---|---|---|
 | Script, installer and tool tests | **1399 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 44 / 60 lines · 4,369 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 44 / 60 lines · 4,759 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,541 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) + Windows (Git Bash, copy mode) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
 | Behaviour scenarios E1–E19 | *pending*: `evals/run-evals.sh` auto-grades E1/E3/E8/E15; the first real run (OpenCode) was blocked by an invalid API key | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
