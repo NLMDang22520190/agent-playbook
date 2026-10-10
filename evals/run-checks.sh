@@ -112,7 +112,8 @@ cr_files() {
   local f list=()
   while IFS= read -r f; do [ -f "$f" ] && list+=("$f"); done
   [ "${#list[@]}" -gt 0 ] || return 0
-  [ -n "$(cat -- "${list[@]}" | tr -cd '\r' | head -c 1)" ] || return 0
+  # if cat fails (e.g. argument list too long), emit a CR so the per-file check below runs
+  [ -n "$( { cat -- "${list[@]}" || printf '\r'; } 2>/dev/null | tr -cd '\r' | head -c 1)" ] || return 0
   for f in "${list[@]}"; do grep -Iq '' "$f" && has_cr "$f" && printf '%s\n' "$f"; done
 }
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

@@ -49,11 +49,10 @@ if [ "$cmd" = "check" ]; then
     if [ "$origin" = global ]; then f="$g"; else f="$p"; [ "$p" = "$g" ] && continue; fi
     [ -f "$f" ] || continue
     for r in tester implementer reviewer; do
-      v="$(sed -n "s/^model_$r=//p" "$f" | tail -n 1)"
-      [ -n "$v" ] || continue
+      v="$(pb_conf_read "$f" "model_$r")" || continue   # an empty value counts: it overrides "session" too
       found=1
-      printf 'warning: model_%s=%s (%s) applies to every harness; use model_%s_%s instead
-'         "$r" "$v" "$origin" "$r" "${harness:-<harness>}"
+      printf 'warning: model_%s=%s (%s) applies to every harness; use model_%s_%s instead\n' \
+        "$r" "$v" "$origin" "$r" "${harness:-<harness>}"
     done
   done
   [ "$found" = 1 ] && exit 1
