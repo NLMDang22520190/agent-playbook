@@ -222,4 +222,9 @@ assert_file "moved to discarded" "$D/discarded/$ID5.md"
 run bash "$FB" discard nope
 assert_rc "discard unknown id -> exit 2" 2
 
+
+echo "#11 skill names are lowercase only (locale-independent check)"
+cap "Uppercase skill name" --skill Playbook-TDD
+assert_rc "#11 uppercase skill name rejected" 2
+
 t_summary
