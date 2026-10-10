@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 - 2026-10-10
+- **Project config no longer breaks gates and releases**: `conf.sh set ... --project` adds
+  `.agents/playbook.conf` to the repo's local exclude file (once, with a notice) when the file is neither
+  tracked nor ignored. Before, `playbook-setup` writing `test_cmd --project` left an untracked file that
+  role gates counted as a code change and `release.sh` refused as a dirty tree.
+- **A moved gate is visible**: `role-gate.sh check` prints a `note:` line for each `test_path_regex` /
+  `test_infra_regex` that comes from a config file (scope and value), and when an empty project
+  `test_infra_regex` switches off a global one. Without those keys the output is unchanged.
+- **Empty `test_path_regex` fails closed** (exit 3): it matched every path, so the tester could change code.
+- **Every README badge is checked at release**: all version badges must equal `VERSION` (pre-release
+  forms like `0.9.0--rc.1` are refused), and the always-on badge must show the block's real line count.
+- **Live release output**: `release.sh` streams the suite (tee) and still uses run-all's exit status.
+- test-run-checks counts its PyYAML-dependent assertions as skipped, so passed + skipped is the same on
+  every OS (1380 on WSL and on Git Bash for this release's tests).
+- Built at Full weight: Sonnet tester, Opus reviewer (APPROVE, 3 minor findings fixed in a second test
+  round: shadowing note, line count without a final newline, notes on stdout pinned).
+
 ## 0.9.0 - 2026-10-10
 - **Load the skill, not the summary**: a new always-on section tells the agent to load the skill a
   rule names (Claude Code: the `Skill` tool; Codex/OpenCode: read its `SKILL.md`) and say which one it
