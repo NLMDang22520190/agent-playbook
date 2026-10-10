@@ -97,4 +97,86 @@ assert_eq "empty value is returned as empty" "" "$OUT"
 run bash "$CONF" get absentkey
 assert_rc "absent key still exits 1" 1
 
+echo "v0.10.0 AC1.1 a project conf is kept out of git status"
+# no CRLF warnings from git on Windows: they would land in the stderr we compare
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
+# excl_of REPO -> absolute path of the repo's local exclude file
+excl_of() { ( cd "$1" && p="$(git rev-parse --git-path info/exclude)" && case "$p" in /*) printf '%s' "$p" ;; *) printf '%s/%s' "$1" "$p" ;; esac ); }
+# excl_count FILE -> how many lines are exactly the project conf path (0 when the file is missing)
+excl_count() { if [ -f "$1" ]; then grep -cx '\.agents/playbook\.conf' "$1" || true; else echo 0; fi; }
+
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"
+ERR="$(cd "$R" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"; RC=$?; OUT="$ERR"
+assert_rc "AC1.1 set --project in a git repo exits 0" 0
+assert_file "AC1.1 the project conf is written" "$R/.agents/playbook.conf"
+assert_eq "AC1.1 the exclude file gets the conf path exactly once" "1" "$(excl_count "$EX")"
+assert_contains "AC1.1 the notice goes to stderr and names the exclude file" "$ERR" "info/exclude"
+assert_contains "AC1.1 the notice names the excluded conf" "$ERR" ".agents/playbook.conf"
+assert_eq "AC1.1 git status --porcelain stays clean" "" "$(cd "$R" && git status --porcelain)"
+OUTONLY="$(cd "$R" && bash "$CONF" set other x --project 2>/dev/null)"
+assert_eq "AC1.1 nothing is printed on stdout" "" "$OUTONLY"
+run_in "$R" bash "$CONF" get language
+assert_eq "AC1.1 the value is still stored and read" "fr" "$OUT"
+( cd "$R" && bash "$CONF" set language de --project ) >/dev/null 2>&1
+( cd "$R" && bash "$CONF" set third 3 --project ) >/dev/null 2>&1
+assert_eq "AC1.1 repeated sets do not duplicate the exclude line" "1" "$(excl_count "$EX")"
+assert_eq "AC1.1 git status stays clean after repeated sets" "" "$(cd "$R" && git status --porcelain)"
+ERR="$(cd "$R" && bash "$CONF" set language it --project 2>&1 >/dev/null)"
+assert_not_contains "AC1.1 no second notice once the line is there" "$ERR" "info/exclude"
+
+# an existing exclude file without a final newline keeps its own line intact
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"
+printf 'keepme' > "$EX"
+( cd "$R" && bash "$CONF" set language fr --project ) >/dev/null 2>&1
+assert_eq "AC1.1 the conf line lands on its own line after an unterminated line" "1" "$(excl_count "$EX")"
+assert_eq "AC1.1 the earlier unterminated line is preserved" "1" "$(grep -cx 'keepme' "$EX" || true)"
+assert_eq "AC1.1 git status clean with that exclude file" "" "$(cd "$R" && git status --porcelain)"
+
+# the local exclude file (or its directory) may not exist yet
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"; rm -rf "$(dirname "$EX")"
+( cd "$R" && bash "$CONF" set language fr --project ) >/dev/null 2>&1
+assert_eq "AC1.1 a missing exclude file is created with the line" "1" "$(excl_count "$EX")"
+assert_eq "AC1.1 git status clean after creating the exclude file" "" "$(cd "$R" && git status --porcelain)"
+
+# from a subdirectory the repo's exclude is used (project root = git top-level)
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"
+( cd "$R/src" && bash "$CONF" set language fr --project ) >/dev/null 2>&1
+assert_eq "AC1.1 set from a subdirectory excludes the top-level conf once" "1" "$(excl_count "$EX")"
+assert_eq "AC1.1 git status clean (subdirectory run)" "" "$(cd "$R" && git status --porcelain)"
+
+# a tracked (team-shared) project conf is left alone
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"
+mkdir -p "$R/.agents"; printf 'language=en\n' > "$R/.agents/playbook.conf"
+( cd "$R" && git add -A && git commit -q -m "team conf" )
+ERR="$(cd "$R" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"; RC=$?; OUT="$ERR"
+assert_rc "AC1.1 set --project on a tracked conf exits 0" 0
+assert_eq "AC1.1 a tracked conf gets no exclude line" "0" "$(excl_count "$EX")"
+assert_not_contains "AC1.1 a tracked conf gets no exclude notice" "$ERR" "exclude"
+assert_contains "AC1.1 the tracked conf is still edited (shows as modified)" "$(cd "$R" && git status --porcelain)" "playbook.conf"
+
+# already ignored (by .gitignore): no redundant line
+for pat in '.agents/' '.agents/playbook.conf'; do
+  R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"
+  printf '%s\n' "$pat" > "$R/.gitignore"; ( cd "$R" && git add .gitignore && git commit -q -m ignore )
+  ERR="$(cd "$R" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"; RC=$?; OUT="$ERR"
+  assert_rc "AC1.1 [.gitignore: $pat] set --project exits 0" 0
+  assert_eq "AC1.1 [.gitignore: $pat] already ignored: no exclude line added" "0" "$(excl_count "$EX")"
+  assert_not_contains "AC1.1 [.gitignore: $pat] already ignored: no exclude notice" "$ERR" "exclude"
+done
+
+# outside git: nothing to exclude, no error
+N="$(mk_tmp)"
+ERR="$(cd "$N" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"; RC=$?; OUT="$ERR"
+assert_rc "AC1.1 outside git: set --project exits 0" 0
+assert_eq "AC1.1 outside git: no stderr output at all" "" "$ERR"
+assert_file "AC1.1 outside git: the conf is still written" "$N/.agents/playbook.conf"
+assert_no_path "AC1.1 outside git: no .git is invented" "$N/.git"
+
+# --global never edits excludes, even from inside a repo
+R="$(mk_tmp)"; mk_repo "$R"; EX="$(excl_of "$R")"; BEFORE="$(cat "$EX" 2>/dev/null)"
+ERR="$(cd "$R" && bash "$CONF" set language vi --global 2>&1 >/dev/null)"
+assert_eq "AC1.1 --global prints no notice" "" "$ERR"
+assert_eq "AC1.1 --global leaves the exclude file untouched" "$BEFORE" "$(cat "$EX" 2>/dev/null)"
+assert_eq "AC1.1 --global adds no exclude line" "0" "$(excl_count "$EX")"
+
 t_summary

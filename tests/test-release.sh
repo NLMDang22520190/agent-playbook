@@ -159,4 +159,114 @@ echo "#12a a tag with a newline is a usage error"
 run bash "$D/tools/check-release.sh" "$(printf 'v1.2.3\nx')"
 assert_rc "AC12a.1 check-release: tag with a newline exits 2" 2
 
+
+echo "v0.10.0 AC7.1 every version badge is checked"
+B_OK='![version](https://img.shields.io/badge/version-1.2.3-4F5BD5)'
+B_OLD='![old](https://img.shields.io/badge/version-1.2.2-4F5BD5)'
+D="$(mk_rel_readme 1.2.3 "$B_OK $B_OLD
+")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 second badge on the same line is stale (1.2.2): exit 1" 1
+assert_contains "AC7.1 the stale second badge is named" "$OUT" "1.2.2"
+D="$(mk_rel_readme 1.2.3 "# demo
+$B_OK
+text between
+$B_OLD
+")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 second badge on a later line is stale: exit 1" 1
+assert_contains "AC7.1 the stale later badge is named" "$OUT" "1.2.2"
+D="$(mk_rel_readme 1.2.3 "$B_OLD
+$B_OK
+")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 first badge stale, second fine: exit 1" 1
+D="$(mk_rel_readme 1.2.3 "$B_OK
+![again](https://img.shields.io/badge/version-1.2.3-orange) ![x](https://img.shields.io/badge/version-1.2.3)
+")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 three correct badges (colour suffixes and none): exit 0" 0
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3--rc.1-orange)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 pre-release badge 1.2.3--rc.1 is a mismatch: exit 1" 1
+assert_contains "AC7.1 the pre-release mismatch names README" "$OUT" "README"
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3.1-orange)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 badge 1.2.3.1 is a mismatch: exit 1" 1
+D="$(mk_rel_readme 1.2.3 "$B_OK"'
+![v](https://img.shields.io/badge/version-1.2.3--rc.1-orange)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 a good first badge does not hide a later pre-release badge: exit 1" 1
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3.1)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 badge 1.2.3.1 without a colour is also a mismatch: exit 1" 1
+for tail in ')' '"' '?style=flat' ' ' '>'; do
+  D="$(mk_rel_readme 1.2.3 "![v](https://img.shields.io/badge/version-1.2.3${tail}
+")"
+  run bash "$D/tools/check-release.sh" v1.2.3
+  assert_rc "AC7.1 version followed by [$tail] (cannot continue a version): exit 0" 0
+done
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5) and badge/tests-5 and a prose badge/version note
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.1 non-version badges and prose do not trip the check: exit 0" 0
+D="$(mk_rel_readme 1.2.3 "$B_OLD
+")"
+run bash "$D/tools/check-release.sh" --notes v1.2.3
+assert_rc "AC7.1 --notes also refuses a stale second-kind badge: exit 1" 1
+
+echo "v0.10.0 AC7.2 the always-on badge equals the AGENTS.global.md line count"
+# mk_rel_agents N_LINES README_TEXT -> like mk_rel_readme, plus an AGENTS.global.md with exactly N_LINES lines
+mk_rel_agents() {
+  local d; d="$(mk_rel_readme 1.2.3 "$2")"
+  seq 1 "$1" | sed 's/^/rule /' > "$d/AGENTS.global.md"
+  printf '%s\n' "$d"
+}
+AO() { printf '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5) ![always-on](https://img.shields.io/badge/always--on_block-%s%%2F60_lines-C98A00)\n' "$1"; }
+D="$(mk_rel_agents 37 "$(AO 37)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 37 equals the 37-line AGENTS.global.md: exit 0" 0
+D="$(mk_rel_agents 41 "$(AO 37)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 37 vs 41 lines: exit 1" 1
+assert_contains "AC7.2 the mismatch names the badge number" "$OUT" "37"
+assert_contains "AC7.2 the mismatch names the real line count" "$OUT" "41"
+D="$(mk_rel_agents 33 "$(AO 37)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 37 vs 33 lines (too high): exit 1" 1
+assert_contains "AC7.2 too-high mismatch names 33" "$OUT" "33"
+D="$(mk_rel_agents 44 "$(AO 4)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 4 is not a prefix match of 44 lines: exit 1" 1
+D="$(mk_rel_agents 4 "$(AO 44)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 44 vs 4 lines: exit 1" 1
+D="$(mk_rel_agents 60 "$(AO 60)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 60 equals a 60-line file: exit 0" 0
+D="$(mk_rel_agents 41 "$(AO 37)")"
+run bash "$D/tools/check-release.sh" --notes v1.2.3
+assert_rc "AC7.2 --notes also refuses a stale always-on badge: exit 1" 1
+D="$(mk_rel_agents 41 "$(AO 41)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 matching always-on badge with a good changelog: exit 0" 0
+D="$(mk_rel_agents 41 '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5) ![t](https://img.shields.io/badge/tests-5-1F9D63)
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 no always-on badge: no line count check, exit 0" 0
+D="$(mk_rel_readme 1.2.3 '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)
+Prose: the always-on block is 99 lines long.
+')"
+seq 1 5 > "$D/AGENTS.global.md"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 prose about the block is not a badge: exit 0" 0
+D="$(mk_rel_agents 41 "$(AO 41)")"
+printf '%s' "$(AO 37)" >> "$D/README.md"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 a second, stale always-on badge is also checked: exit 1" 1
+
 t_summary

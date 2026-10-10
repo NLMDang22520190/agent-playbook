@@ -341,4 +341,126 @@ run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" classify tests/lib.sh
 assert_rc "AC4.7 an invalid regex in the global conf also exits 3" 3
 assert_contains "AC4.7 global-conf failure names the key" "$OUT" "test_infra_regex"
 
+
+# ---- v0.10.0 AC1.2: the gate shows where a moved regex comes from ----
+# conf_repo CONFTEXT -> repo with src/app.js changed (a code change), conf committed (so it is no change itself)
+conf_repo() {
+  local d; d="$(mk_tmp)"; mk_repo "$d"
+  ( cd "$d" && mkdir -p .agents && printf '%b' "$1" > .agents/playbook.conf && git add -A && git commit -q -m conf &&
+    printf 'module.exports = 2;\n' > src/app.js )
+  printf '%s\n' "$d"
+}
+# notes_of -> the note: lines of $OUT
+notes_of() { printf '%s\n' "$OUT" | grep '^note:' || true; }
+
+echo "AC1.2 note lines for config-file regexes"
+R="$(conf_repo 'test_path_regex=^checks/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_rc "AC1.2 implementer on code with a project test_path_regex passes" 0
+N1="$(notes_of)"
+assert_contains "AC1.2 note names the key" "$N1" "test_path_regex"
+assert_contains "AC1.2 note names the project scope" "$N1" "project"
+assert_contains "AC1.2 note shows the value" "$N1" "^checks/"
+assert_not_contains "AC1.2 no note for the key that is not set" "$N1" "test_infra_regex"
+assert_eq "AC1.2 exactly one note line" "1" "$(printf '%s\n' "$N1" | grep -c '^note:')"
+assert_eq "AC1.2 the note is the first line, before the verdict" "note:" "$(printf '%s\n' "$OUT" | head -n 1 | cut -c1-5)"
+assert_eq "AC1.2 the verdict line follows unchanged" "OK: role gate passed for implementer (1 file(s) checked, base=HEAD)" "$(printf '%s\n' "$OUT" | tail -n 1)"
+
+R="$(conf_repo 'test_infra_regex=^ci/\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+N1="$(notes_of)"
+assert_contains "AC1.2 infra note names the key" "$N1" "test_infra_regex"
+assert_contains "AC1.2 infra note names the project scope" "$N1" "project"
+assert_contains "AC1.2 infra note shows the value" "$N1" "^ci/"
+assert_not_contains "AC1.2 infra only: no test_path_regex note" "$N1" "test_path_regex"
+
+R="$(conf_repo 'test_path_regex=^checks/\ntest_infra_regex=^ci/\n')"; cd "$R" || exit 3
+run bash "$GATE" check tester
+assert_rc "AC1.2 tester changing code still fails" 1
+assert_eq "AC1.2 both keys: two note lines" "2" "$(notes_of | grep -c '^note:')"
+assert_contains "AC1.2 both keys: path note present" "$(notes_of)" "test_path_regex"
+assert_contains "AC1.2 both keys: infra note present" "$(notes_of)" "test_infra_regex"
+FIRSTV="$(printf '%s\n' "$OUT" | grep -n '^VIOLATION' | head -n 1 | cut -d: -f1)"
+LASTN="$(printf '%s\n' "$OUT" | grep -n '^note:' | tail -n 1 | cut -d: -f1)"
+if [ -n "$FIRSTV" ] && [ -n "$LASTN" ] && [ "$LASTN" -lt "$FIRSTV" ]; then t_ok "AC1.2 notes come before the VIOLATION lines"; else t_bad "AC1.2 notes come before the VIOLATION lines" "notes at $LASTN, violation at $FIRSTV in [$OUT]"; fi
+assert_contains "AC1.2 the violation itself is still reported" "$OUT" "VIOLATION (tester): src/app.js [code]"
+run bash "$GATE" check reviewer
+assert_contains "AC1.2 reviewer also shows the notes" "$OUT" "note:"
+
+echo "AC1.2 global scope and precedence"
+G_HOME="$(mk_tmp)"; mkdir -p "$G_HOME/.agents"; printf 'test_path_regex=^gchecks/\ntest_infra_regex=^gci/\n' > "$G_HOME/.agents/playbook.conf"
+N="$(mk_tmp)"; mk_repo "$N"; cd "$N" || exit 3; printf 'module.exports = 2;\n' > src/app.js
+run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" check implementer
+assert_rc "AC1.2 global regexes: implementer on code passes" 0
+GN="$(notes_of)"
+assert_eq "AC1.2 global: two note lines" "2" "$(printf '%s\n' "$GN" | grep -c '^note:')"
+assert_contains "AC1.2 global note shows the global scope" "$GN" "global"
+assert_not_contains "AC1.2 global note is not labelled project" "$GN" "project"
+assert_contains "AC1.2 global note shows the path value" "$GN" "^gchecks/"
+assert_contains "AC1.2 global note shows the infra value" "$GN" "^gci/"
+# project value wins over the global one: the note shows the effective source
+R="$(conf_repo 'test_path_regex=^pchecks/\n')"; cd "$R" || exit 3
+run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" check implementer
+PN="$(notes_of | grep test_path_regex)"
+assert_contains "AC1.2 project value wins: project scope shown" "$PN" "project"
+assert_contains "AC1.2 project value wins: its value shown" "$PN" "^pchecks/"
+assert_not_contains "AC1.2 project value wins: the shadowed global value is not shown" "$PN" "^gchecks/"
+assert_contains "AC1.2 the global-only infra key is still noted as global" "$(notes_of | grep test_infra_regex)" "global"
+
+echo "AC1.2 no note, output unchanged"
+R="$(conf_repo 'language=vi\nmodel_tester_claude=x\n')"; cd "$R" || exit 3
+run bash "$GATE" check implementer
+assert_eq "AC1.2 other keys only: implementer output byte-identical to v0.9.0" "OK: role gate passed for implementer (1 file(s) checked, base=HEAD)" "$OUT"
+run bash "$GATE" check tester
+assert_eq "AC1.2 other keys only: tester output byte-identical to v0.9.0" "VIOLATION (tester): src/app.js [code]
+role gate FAILED for tester: 1 violation(s), base=HEAD" "$OUT"
+R="$(conf_repo 'test_path_regex=^checks/\ntest_infra_regex=^ci/\n')"; cd "$R" || exit 3
+run bash "$GATE" classify checks/a.rb
+assert_eq "AC1.2 classify prints only the class, even with notes-worthy keys" "test" "$OUT"
+run bash "$GATE" classify ci/x.sh
+assert_eq "AC1.2 classify infra prints only the class" "infra" "$OUT"
+run bash "$GATE" size
+assert_eq "AC1.2 size output unchanged with the keys set" "files: 1/3 lines: 2/100 (base=HEAD)" "$OUT"
+
+# ---- v0.10.0 AC5.1: an empty test_path_regex fails closed ----
+echo "AC5.1 empty test_path_regex"
+# empty_repo CONFTEXT -> repo with a code change and a test change, conf committed
+empty_repo() {
+  local d; d="$(conf_repo "$1")"
+  ( cd "$d" && printf 'test("x", () => { /* edited */ });\n' > tests/app.test.js )
+  printf '%s\n' "$d"
+}
+check_empty() { # label  -> run the three commands in the current dir with the current env prefix in "$@"
+  local label="$1"; shift
+  for cmdline in "classify src/app.js" "classify tests/app.test.js" "check tester" "check implementer" "check reviewer" "size"; do
+    run "$@" bash "$GATE" $cmdline
+    assert_rc "AC5.1 [$label] $cmdline exits 3" 3
+    assert_contains "AC5.1 [$label] $cmdline names the key" "$OUT" "test_path_regex"
+    assert_contains "AC5.1 [$label] $cmdline says it is empty" "$OUT" "empty"
+    assert_contains "AC5.1 [$label] $cmdline says to unset it" "$OUT" "unset"
+    assert_not_contains "AC5.1 [$label] $cmdline never prints OK" "$OUT" "OK:"
+  done
+}
+R="$(empty_repo 'test_path_regex=\n')"; cd "$R" || exit 3
+check_empty "project" env
+R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; printf 'module.exports = 2;\n' > src/app.js
+G_HOME="$(mk_tmp)"; mkdir -p "$G_HOME/.agents"; printf 'test_path_regex=\n' > "$G_HOME/.agents/playbook.conf"
+check_empty "global" env PLAYBOOK_HOME="$G_HOME"
+# an empty project value shadows a non-empty global one: still fails closed
+R="$(empty_repo 'test_path_regex=\n')"; cd "$R" || exit 3
+G2="$(mk_tmp)"; mkdir -p "$G2/.agents"; printf 'test_path_regex=^checks/\n' > "$G2/.agents/playbook.conf"
+run env PLAYBOOK_HOME="$G2" bash "$GATE" classify src/app.js
+assert_rc "AC5.1 empty project value wins over a non-empty global one: exit 3" 3
+# a non-empty project value wins over an empty global one: works
+R="$(conf_repo 'test_path_regex=^checks/\n')"; cd "$R" || exit 3
+run env PLAYBOOK_HOME="$G_HOME" bash "$GATE" classify checks/a.rb
+assert_eq "AC5.1 non-empty project value beats an empty global one" "test" "$OUT"
+# unset key stays the default; an empty infra regex stays off
+R="$(conf_repo 'language=vi\n')"; cd "$R" || exit 3
+run bash "$GATE" classify tests/app.test.js; assert_eq "AC5.1 unset key: default regex still applies" "test" "$OUT"
+R="$(conf_repo 'test_infra_regex=\n')"; cd "$R" || exit 3
+run bash "$GATE" classify tests/app.test.js; assert_eq "AC5.1 empty test_infra_regex stays off (classify)" "test" "$OUT"
+assert_rc "AC5.1 empty test_infra_regex stays off (exit 0)" 0
+run bash "$GATE" check implementer;          assert_rc "AC5.1 empty test_infra_regex stays off (check works)" 0
+
 t_summary

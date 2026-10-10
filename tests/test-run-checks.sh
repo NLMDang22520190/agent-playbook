@@ -67,7 +67,7 @@ if python3 -c 'import yaml' >/dev/null 2>&1; then
   assert_rc "AC5 frontmatter that PyYAML cannot parse fails (exit 1)" 1
   assert_contains "AC5 parse failure names the SKILL.md" "$OUT" "$SKILL"
 else
-  echo "  skip AC5 PyYAML parse test: python3 -c 'import yaml' failed"
+  t_skip 2 "AC5 PyYAML parse test: python3 -c 'import yaml' failed"
 fi
 
 # Without PyYAML the parse check is skipped with a printed note, the rest still runs.
