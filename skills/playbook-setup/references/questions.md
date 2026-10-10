@@ -7,7 +7,7 @@ Ask only what inspection could not settle. Every question has a default; "defaul
 | 1 | `language` (global) | Which language should I answer in? | the language of the user's message | Skill files stay in English for model stability; answers follow this. |
 | 2 | `harness` (global) | I detected `<harness>`. Correct? | the detection | Picks the sub-agent mechanism and the global instruction file. |
 | 3 | `subagents` (global) | Can I start isolated sub-agents here? `native` / `manual` (separate sessions or headless CLI runs) / `none` | `native` for Claude Code and OpenCode; for Codex `native` only when the multi-agent feature is on, else `manual` | Role separation (tester / implementer / reviewer) depends on it. `none` = degraded mode, reported as such. |
-| 4 | `model_reviewer` (global, also `model_tester`, `model_implementer`) | Which model for each role? | `session` (same as the session) for all; recommend a different model or vendor for the reviewer | A different reviewer model reduces shared blind spots. |
+| 4 | `model_<role>_<harness>` (global; also the older `model_<role>`) | Which model for each role (tester, implementer, reviewer) on this harness? List what the harness reports (Claude Code: the Agent tool's model choices; OpenCode: `opencode models`; Codex: its configured models), print a recommendation table with a reason and relative cost per role, and let the user accept or pick others. | `session` (no override) for all if the harness reports nothing; otherwise the recommendation: reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or low-tier (rank only from what the harness or user says) | A different, stronger reviewer reduces shared blind spots; cheaper models for the tester and implementer cut cost. Stored with `conf.sh set model_<role>_<harness> <m> --global`. |
 | 5 | `test_cmd`, `lint_cmd`, `typecheck_cmd` (project) | I found `<commands>` in `<file>`. Use them? | the detection | The gates and the evidence run these exact commands. |
 | 6 | `autonomy` (global) | What may I do without asking? `ask-before-commit` / `commit-locally` / `full` (push, PR) | `ask-before-commit` | The TDD flow commits RED/GREEN checkpoints. With `ask-before-commit` it asks once per task. |
 | 7 | `test_path_regex` (project) | Tests live in `<dirs>`. Does the default pattern recognise them? | the built-in default (only ask if detection shows a mismatch) | The role gate uses it to tell tests from production code. |
@@ -24,7 +24,7 @@ Optional, only when relevant:
 > 1. Language for answers: **Vietnamese** (from your message)?
 > 2. Harness: **Codex CLI** (I see `apply_patch` and `~/.codex`)?
 > 3. Sub-agents: multi-agent is not enabled in `~/.codex/config.toml`, so **manual** (each role in a separate `codex exec` run)?
-> 4. Models: **same as session** for all roles? (A different model for the reviewer is recommended.)
+> 4. Models: **same as session** for all roles? (A recommendation table follows from `codex` configured models; a different model for the reviewer is recommended.)
 > 5. Commands from `package.json`: test `pnpm test`, lint `pnpm lint`, typecheck `pnpm tsc --noEmit`?
 > 6. Autonomy: **ask before commit**?
 

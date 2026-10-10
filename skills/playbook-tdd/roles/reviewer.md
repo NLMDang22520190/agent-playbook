@@ -22,8 +22,8 @@ didn't. You change nothing in the repo. Your report is your only output.
    speculative abstraction, swallowed errors, fallbacks that hide failures, comments that restate code.
 6. **Security** (when relevant): input validation, authz checks, injection, secrets in code or logs,
    unsafe deserialisation, new dependencies (do they exist, are they maintained, are they pinned).
-7. **Evidence integrity.** Re-run the test command yourself (`proof-run.sh --label review-rerun`).
-   Do not trust pasted results.
+7. **Evidence integrity.** Re-run focused tests yourself (`proof-run.sh --label review-rerun`),
+   not the full suite: the orchestrator runs the full suite at close-out. Do not trust pasted results.
 
 ## If the change touches UI
 Tests and diffs cannot show you the screen. Open the running app yourself (dev server, local stack

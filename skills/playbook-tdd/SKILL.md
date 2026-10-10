@@ -69,6 +69,15 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
 permissions, build or deploy settings), generated code that ships, "small" fixes in business logic,
 and anything in the Full column. These are at least Lite.
 
+## Slice size
+A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices (a single
+test per round trip multiplies the startup cost of every role) and avoid slices that bundle
+unrelated behaviours. Split a slice when it touches more than one public surface (for example a
+CLI flag and a file format, or two endpoints).
+
+**Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low
+without hiding which behaviour broke.
+
 ## Preconditions
 - git repo with a clean tree or a known baseline (`git status`).
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
@@ -122,7 +131,12 @@ Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the l
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
 
 ### Phase 4: Close-out (orchestrator)
-- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change.
+- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change. Sub-agents
+  ran focused tests only; this orchestrator run is the full suite. If it fails, the work goes back
+  into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
+- Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
+  --seconds <S> --model <M> --weight <Full|Lite>`, with tokens as the harness reports them (`0` if unknown,
+  never a guess). Then put `cost.sh summary` into the final report.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
 - Fill `templates/final-report.md`: AC to tests to evidence, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
@@ -131,12 +145,24 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
 - Do not push or open a PR unless `autonomy=full` or the user asked.
 
 ## Starting roles per harness (`conf.sh get subagents`)
+Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
+(`--harness` takes `claude`, `codex` or `opencode`: the harness you are running in)
+and pass it when starting the role. `session` means do not override the session model. Build every
+sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
+the fixed prefix is identical across runs and can be cached. For the mechanical RED or GREEN step
+(gate, then the test command as evidence, optional checkpoint commit) use
+`bash ~/.agents/playbook/scripts/tdd-step.sh red|green`.
+
+**Why:** the reviewer should be a different, stronger model, and an unchanged prompt prefix is
+cheaper to reuse than a rewritten one.
+
 - **native**: spawn a sub-agent per role, each with a fresh context. Pass the full text of the role
   file plus paths of the allowed inputs, not your own conversation or opinions about the solution.
-  - Claude Code: the `Agent`/`Task` tool (general-purpose for tester and implementer). For the
+  - Claude Code: the `Agent`/`Task` tool; pass the resolved model in its `model` parameter (general-purpose for tester and implementer). For the
     reviewer a read-only agent type is fine: it returns the report text and you save it.
-  - OpenCode: the `task` tool (a general sub-agent; an explore/read-only one for the reviewer).
-  - Codex: native only with the multi-agent feature enabled. Otherwise use manual mode.
+  - OpenCode: the `task` tool (a general sub-agent; an explore/read-only one for the reviewer). A model per role needs a
+    per-role agent in `opencode.json`, each with its own `model`.
+  - Codex: native only with the multi-agent feature enabled. Otherwise use manual mode (`codex exec -m <model>` per role).
 - **manual**: run each role as a separate headless process or a new session, with the prompt
   built from the role file and the handoff paths. For example `claude -p "<prompt>"`,
   `codex exec "<prompt>"`, `opencode run "<prompt>"`. Flags differ by version: check `--help`.
