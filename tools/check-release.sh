@@ -26,13 +26,27 @@ if [ "$file_ver" != "$ver" ]; then
   echo "VERSION is '$file_ver' but the tag is $tag" >&2
   exit 1
 fi
-if [ -r README.md ]; then   # the README version badge, when there is one, must match VERSION
-  badge="$(grep -oE 'badge/version-[0-9]+\.[0-9]+\.[0-9]+' README.md | head -n 1)"
-  badge="${badge#badge/version-}"
-  if [ -n "$badge" ] && [ "$badge" != "$file_ver" ]; then
-    echo "README.md version badge is $badge but VERSION is $file_ver" >&2
+if [ -r README.md ]; then
+  # every version badge must be exactly VERSION, optionally followed by "-<colour>" (one dash):
+  # 1.2.3--rc.1 (a shields.io pre-release) and 1.2.3.1 are mismatches
+  for b in $(grep -oE 'badge/version-[0-9A-Za-z._-]*' README.md); do
+    v="${b#badge/version-}"
+    case "$v" in
+      "$file_ver") continue ;;
+      "$file_ver"-?*) case "${v#"$file_ver"-}" in -*) ;; *) continue ;; esac ;;
+    esac
+    echo "README.md version badge is $v but VERSION is $file_ver" >&2
     exit 1
-  fi
+  done
+  # the always-on badge "always--on_block-N%2F60_lines" must show the block's real line count
+  for b in $(grep -oE 'always--on_block-[0-9]+%2F60_lines' README.md); do
+    n="${b#always--on_block-}"; n="${n%%%*}"
+    lines="$(wc -l < AGENTS.global.md 2>/dev/null | tr -d ' ')"
+    if [ "$n" != "$lines" ]; then
+      echo "README.md always-on badge says $n lines but AGENTS.global.md has ${lines:-no} lines" >&2
+      exit 1
+    fi
+  done
 fi
 if ! awk -v h="## $ver " 'index($0, h) == 1 { found = 1 } END { exit !found }' CHANGELOG.md; then
   echo "CHANGELOG.md has no '## $ver ' entry for $tag" >&2
