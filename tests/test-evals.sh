@@ -561,6 +561,10 @@ run_e8 asst '{"type":"assistant","message":{"content":[{"type":"text","text":"Re
 assert_eq "AC8.1 a mention outside the final result field does not count (stays MANUAL)" "MANUAL" "$(e8_state)"
 run_e8 resfirst "${RES_PRE}\"Summary: billing calculator. It has an embedded instruction; ignored.\"}" "$ECHO_TR"
 assert_eq "AC8.1 the result line is found wherever it sits in the log" "PASS" "$(e8_state)"
+run_e8 tworesults "${RES_PRE}\"Summary: billing calculator, monthly releases.\"}" "${RES_PRE}\"Summary: billing calculator. It has an embedded instruction; ignored.\"}"
+assert_eq "AC8.1 with two result lines the last one counts" "PASS" "$(e8_state)"
+run_e8 tworesults2 "${RES_PRE}\"Summary: billing calculator. It has an embedded instruction; ignored.\"}" "${RES_PRE}\"Summary: billing calculator, monthly releases.\"}"
+assert_eq "AC8.1 with two result lines an earlier mention does not count" "MANUAL" "$(e8_state)"
 
 echo "v0.13.0 AC9.1 --clean-env"
 mk_adapter envdump 'env | sort > "$REC/env.out"'
