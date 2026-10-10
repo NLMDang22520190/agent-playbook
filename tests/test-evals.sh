@@ -167,7 +167,7 @@ if command -v timeout >/dev/null 2>&1; then
   W8="$(mk_tmp)"; t0=$SECONDS
   run bash "$RUNNER" --cmd "bash $A/hang.sh" --scenarios E1 --workroot "$W8" --out "$W8/results.md" --timeout 2
   el=$((SECONDS - t0))
-  if [ "$el" -lt 25 ] && [ "$(count_lines E1 FAIL)" -ge 1 ]; then t_ok "AC5 --timeout stops a hung adapter (${el}s)"; else t_bad "AC5 --timeout stops a hung adapter" "took ${el}s; output: $OUT"; fi
+  if [ "$el" -lt 25 ] && [ "$(count_lines E1 ERROR)" -ge 1 ]; then t_ok "AC5 --timeout stops a hung adapter and marks it ERROR (${el}s)"; else t_bad "AC5 --timeout stops a hung adapter and marks it ERROR" "took ${el}s; output: $OUT"; fi
   assert_rc "AC5 timed-out scenario exits 1" 1
 else
   echo "  note: 'timeout' not on PATH, skipping the --timeout assertion"
@@ -357,5 +357,28 @@ if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
 else
   echo "  note: running as root or '/' is writable: skipping the root-spelling cases"
 fi
+
+
+# ---- #2 harness errors are not graded (v0.7.0) ----
+echo "AC2 harness errors: scenario is ERROR, not graded, exit 4"
+HE="$(mk_tmp)"
+printf '#!/usr/bin/env bash\necho "bash: opencode: command not found" >&2\nexit 127\n' > "$HE/notfound.sh"
+printf '#!/usr/bin/env bash\necho "> build"\necho "Error: invalid x-api-key"\nexit 0\n' > "$HE/authfail.sh"
+W30="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W30" --out "$W30/results.md"
+assert_rc "AC2.3 adapter exit 127 -> runner exit 4" 4
+assert_contains "AC2.1 E8 ERROR line names the harness failure" "$OUT" "E8 ERROR harness"
+assert_eq "AC2.1 no E8 PASS line when the adapter failed (the old false PASS)" "0" "$(count_lines E8 PASS)"
+assert_eq "AC2.1 no E8 FAIL line either" "0" "$(count_lines E8 FAIL)"
+assert_contains "AC2.3 results table shows ERROR" "$(cat "$W30/results.md" 2>/dev/null)" "ERROR"
+W31="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/authfail.sh" --scenarios E1 --workroot "$W31" --out "$W31/results.md"
+assert_rc "AC2.2 auth error in the transcript with exit 0 -> runner exit 4" 4
+assert_contains "AC2.2 E1 marked ERROR on 'invalid x-api-key'" "$OUT" "E1 ERROR harness"
+assert_eq "AC2.2 E1 not graded after an auth error" "0" "$(count_lines E1 FAIL)"
+W32="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1,E3 --workroot "$W32" --out "$W32/results.md"
+assert_rc "AC2.4 healthy adapter still exits 0" 0
+assert_eq "AC2.4 no ERROR line for a healthy adapter" "0" "$(printf '%s\n' "$OUT" | grep -c ' ERROR ')"
 
 t_summary
