@@ -14,6 +14,9 @@ Cost levers that keep every rule (tester ≠ implementer ≠ reviewer at Full, t
 - **Scripts**: `scripts/tdd-step.sh red|green` (gate + proof-run + optional `--commit`, never commits `.agents/handoff/`,
   notes when it adds it to `.git/info/exclude`); `tools/release.sh` (checks + tests + tag, `--dry-run`).
 - **Cost**: `scripts/cost.sh add|summary`; the final report has `## Cost`.
+- fix: shell `case` patterns used `[a-z]` ranges, which follow the locale's collation on bash 3.2
+  (macOS, en_US.UTF-8: `BAD` matched `[a-z]`); `pb_valid_key` and `valid_harness` now list the characters.
+  Found by the first macOS CI run of `role-model.sh`.
 - Built at Full weight with the levers applied: 11 sub-agent runs, 891,089 tokens (tester 5 × Sonnet, implementer 5 × Sonnet,
   reviewer 1 × Opus). Two disputes resolved by fresh testers (origin default branch in a fixture; handoff files in commits);
   one review round (tester checklist gaps, exclude notice); the tracked-handoff test turned a "dead code" finding into a pinned guard.

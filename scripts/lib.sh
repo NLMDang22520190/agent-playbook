@@ -42,7 +42,7 @@ pb_epoch_day() {
   date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$1" +%s 2>/dev/null
 }
 
-pb_valid_key() { case "$1" in "" | [!a-z]* | *[!a-z0-9_]*) return 1 ;; esac; return 0; }
+pb_valid_key() { case "$1" in "" | [!abcdefghijklmnopqrstuvwxyz]* | *[!abcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;; esac; return 0; }
 
 pb_sha256() { # stdin -> hex digest
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'

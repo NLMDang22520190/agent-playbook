@@ -9,7 +9,7 @@
 set -u
 . "$(dirname "$0")/lib.sh"
 
-valid_harness() { case "$1" in "" | *[!a-z0-9-]*) return 1 ;; esac; return 0; }
+valid_harness() { case "$1" in "" | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;; esac; return 0; }
 
 model_for() { # role harness
   local v=""
