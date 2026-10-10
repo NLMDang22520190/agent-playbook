@@ -3,8 +3,8 @@
 # Suites run in parallel, at most PB_JOBS at a time (default 4; PB_JOBS=1 runs them one by one): a
 # job pool, so the next suite starts as soon as any running one finishes. Each suite writes its own
 # log, and the logs are printed in a fixed order. Process start-up is slow on Windows (Git Bash), so
-# parallel runs cut the wall-clock time there the most. Bash 3.2 has no `wait -n`: the pool polls the
-# finished-suite markers, counted with a glob (no subprocess per poll).
+# parallel runs cut the wall-clock time there the most. Bash 3.2 has no `wait -n`: the pool polls
+# the running pids every 0.1 s (one `sleep` per poll, the check itself is builtin).
 cd "$(dirname "$0")/.." || exit 3
 JOBS="${PB_JOBS:-4}"
 case "$JOBS" in '' | *[!0123456789]* | 0) JOBS=1 ;; esac
@@ -12,15 +12,17 @@ base="${TMPDIR:-/tmp}"; base="${base%/}"
 OUTD="$(mktemp -d "$base/pbrunall.XXXXXX")" || exit 3
 trap 'rm -rf "$OUTD"' EXIT
 
-count_done() { DONE=0; local f; for f in "$OUTD"/*.rc; do [ -e "$f" ] && DONE=$((DONE + 1)); done; }
+# live_jobs: keep only the pids still running (kill -0 is a builtin). A wrapper that dies without
+# writing its .rc is no longer running, so the pool moves on and the missing .rc fails the run.
+PIDS=""
+live_jobs() { LIVE=0; local p keep=""; for p in $PIDS; do kill -0 "$p" 2>/dev/null && { LIVE=$((LIVE + 1)); keep="$keep $p"; }; done; PIDS="$keep"; }
 set -- tests/test-*.sh
-started=0
 for t in "$@"; do
-  count_done
-  while [ $((started - DONE)) -ge "$JOBS" ]; do sleep 0.1; count_done; done
+  live_jobs
+  while [ "$LIVE" -ge "$JOBS" ]; do sleep 0.1; live_jobs; done
   n="$(basename "$t" .sh)"
   ( bash "$t" > "$OUTD/$n.out" 2>&1; echo "$?" > "$OUTD/$n.tmp"; mv "$OUTD/$n.tmp" "$OUTD/$n.rc" ) &
-  started=$((started + 1))
+  PIDS="$PIDS $!"
 done
 wait
 
