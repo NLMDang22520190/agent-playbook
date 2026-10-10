@@ -85,6 +85,10 @@ case "$1 $2" in
     echo "merged pull request #$3" ;;
   "run list")
     failing runlist && exit 1
+    case "${FAKE_RUN_LIST:-}" in
+      empty) emit "[]"; exit 0 ;;
+      null) echo null; exit 0 ;;
+    esac
     if [ -n "$fields" ]; then emit "[$(json_obj)]"; else printf 'in_progress\t\tfake run\tCI-fake\t%s\tpush\t4242\t5s\n' "${FAKE_TAG:-v1.2.3}"; fi ;;
   "run watch")
     failing runwatch && { echo "Run CI-fake (4242) failed" >&2; exit 1; }
@@ -104,7 +108,7 @@ m=no; ls merged-*.txt >/dev/null 2>&1 && m=yes
 echo "release.sh $* | branch=$(git rev-parse --abbrev-ref HEAD) merged=$m" >> "$FAKE_LOG"
 case " $* " in
   *" --dry-run "*) exit "${FAKE_REL_DRY_RC:-0}" ;;
-  *) exit "${FAKE_REL_REAL_RC:-0}" ;;
+  *) rc="${FAKE_REL_REAL_RC:-0}"; [ "$rc" = 0 ] && git tag "$1" 2>/dev/null; exit "$rc" ;;
 esac
 EOF
 cat > "$W/install.stub" <<'EOF'
@@ -280,6 +284,58 @@ export FAKE_GH_FAIL="merge"
 sh_run 12 v1.2.3 --yes
 if [ "$RC" -ne 0 ]; then t_ok "AC6.1 gh pr merge failing: non-zero exit"; else t_bad "AC6.1 gh pr merge failing: non-zero exit" "exit $RC; output: $OUT"; fi
 assert_eq "AC6.1 gh pr merge failing: release.sh is not run" "view merge" "$(steps)"
+
+echo "review round 1: the CI run is looked up by tag, tag commit and event"
+fx
+sh_run 12 v1.2.3 --yes
+assert_rc "R1 full flow still exits 0 (the stub release.sh tags locally)" 0
+RL="$(grep '^gh run list' "$FAKE_LOG" | head -n 1)"
+TAGSHA="$(cd "$F/repo" && git rev-parse 'v1.2.3^{commit}' 2>/dev/null)"
+assert_eq "R1 fixture: the tag points at the merged main" "$(cd "$F/repo" && git rev-parse HEAD)" "$TAGSHA"
+assert_contains "R1 run list has --branch v1.2.3" "$RL" "--branch v1.2.3"
+assert_contains "R1 run list has --commit <sha of the tag>" "$RL" "--commit $TAGSHA"
+assert_contains "R1 run list has --event push" "$RL" "--event push"
+
+echo "review round 1: no CI run found (empty list, null, gh failure)"
+export PB_SHIP_WAIT_TRIES=2 PB_SHIP_WAIT_SECS=0
+for mode in empty null; do
+  fx
+  export FAKE_RUN_LIST="$mode"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "R1 run list $mode: exit 1" 1
+  assert_contains "R1 run list $mode: says no CI run found" "$OUT" "no CI run found"
+  assert_contains "R1 run list $mode: names the tag" "$OUT" "v1.2.3"
+  assert_eq "R1 run list $mode: never calls run watch, release view or install" "view merge dry release runlist" "$(steps)"
+  assert_eq "R1 run list $mode: no 'run watch' call at all" "0" "$(logged '^gh run watch')"
+  if [ "$(logged '^gh run list')" -ge 2 ]; then t_ok "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)"; else t_bad "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)" "run list calls: $(logged '^gh run list')"; fi
+done
+unset FAKE_RUN_LIST
+fx
+export FAKE_GH_FAIL="runlist"
+sh_run 12 v1.2.3 --yes
+assert_rc "R1 gh run list failing: exit 1" 1
+assert_contains "R1 gh run list failing: the gh error is shown, not hidden" "$OUT" "simulated runlist failure"
+assert_contains "R1 gh run list failing: same refusal, no CI run found" "$OUT" "no CI run found"
+assert_eq "R1 gh run list failing: no watch, no release view, no install" "view merge dry release runlist" "$(steps)"
+unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
+
+echo "review round 1: a dirty work tree is refused before anything changes"
+fx
+printf 'edit
+' >> "$F/repo/VERSION"
+sh_run 12 v1.2.3 --yes
+assert_rc "R1 modified tracked file: exit 1" 1
+assert_contains "R1 modified tracked file: says the tree is not clean" "$OUT" "not clean"
+assert_eq "R1 modified tracked file: no gh pr merge, no release" "0" "$(logged '^gh pr merge')"
+assert_eq "R1 modified tracked file: nothing after the check" "" "$(steps | sed 's/^view$//')"
+fx
+printf 'x
+' > "$F/repo/untracked-file.txt"
+sh_run 12 v1.2.3 --yes
+assert_rc "R1 untracked file: exit 1" 1
+assert_contains "R1 untracked file: says the tree is not clean" "$OUT" "not clean"
+assert_eq "R1 untracked file: no gh pr merge" "0" "$(logged '^gh pr merge')"
+assert_eq "R1 untracked file: no release.sh or install.sh call" "0" "$(logged '^release.sh\|^install.sh')"
 
 echo "AC6.1 usage errors exit 2 and touch nothing"
 fx

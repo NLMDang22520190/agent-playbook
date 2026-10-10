@@ -351,6 +351,30 @@ assert_rc "AC5.1 no final newline: L=20 and B=1,599 match: exit 0" 0
 D="$(mk_metrics 20 80 "$(row 19 1599)" nofinalnl)"
 run bash "$D/tools/check-release.sh" v1.2.3
 assert_rc "AC5.1 no final newline: L=19 (wc -l style) is wrong: exit 1" 1
+# review round 1: spacing around the numbers
+D="$(mk_metrics 20 80 '| Always-on block |  99  / 60 lines · 9,999  /  5,000 bytes | x |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 extra spaces around wrong numbers are still checked: exit 1" 1
+assert_contains "R1 extra spaces: names the row" "$OUT" "Always-on block"
+D="$(mk_metrics 20 80 '| Always-on block |  20  / 60 lines · 1,600  /  5,000 bytes | x |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 extra spaces around matching numbers: exit 0" 0
+D="$(mk_metrics 20 80 '|  Always-on block  |  99 /  60 lines · 1,600 / 5,000 bytes |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 extra spaces, wrong L only: exit 1" 1
+D="$(mk_metrics 20 80 '| Always-on block | 20 / 60 lines · 9,999  / 5,000 bytes |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 two spaces before the slash, wrong B only: exit 1" 1
+D="$(mk_metrics 20 80 '| Always-on block | many lines |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 a row whose numbers cannot be parsed: exit 1, not skipped" 1
+assert_contains "R1 unparsable row: names the row" "$OUT" "Always-on block"
+D="$(mk_metrics 20 80 '| Always-on block | 20 / 60 lines · lots of bytes |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 only the bytes cannot be parsed: exit 1" 1
+D="$(mk_metrics 20 80 '| Always-on block | lots of lines · 1,600 / 5,000 bytes |')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "R1 only the lines cannot be parsed: exit 1" 1
 D="$(mk_metrics 20 80 "| Other row | 99 / 60 lines · 1 / 5,000 bytes | x |")"
 run bash "$D/tools/check-release.sh" v1.2.3
 assert_rc "AC5.1 other rows are not checked: exit 0" 0
