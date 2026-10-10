@@ -8,10 +8,12 @@ mkdir -p "$SRC"
 if ! (cd "$PB_ROOT" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
   echo "skip: $PB_ROOT is not a git checkout"; t_summary; exit 0
 fi
+# copy the working tree (tracked + untracked, non-ignored; listed-but-missing files skipped) in a few
+# processes: a builtin loop filters the list, one tar pipe copies (keeps exec bits). Spawning
+# mkdir+cp per file is very slow on Git Bash.
 ( cd "$PB_ROOT" && git ls-files -co --exclude-standard ) | while IFS= read -r f; do
-  [ -f "$PB_ROOT/$f" ] || continue
-  mkdir -p "$SRC/$(dirname "$f")" && cp -p "$PB_ROOT/$f" "$SRC/$f"
-done
+  [ -f "$PB_ROOT/$f" ] && printf '%s\n' "$f"
+done | ( cd "$PB_ROOT" && tar -cf - -T - ) | ( cd "$SRC" && tar -xf - )
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 ( cd "$SRC" && git init -q && printf '0.1.0\n' > VERSION && G add -A && G commit -qm r1 && G tag -a v0.1.0 -m v0.1.0 &&
   printf '0.2.0\n' > VERSION &&

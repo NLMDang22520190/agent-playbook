@@ -238,8 +238,9 @@ if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
   # only record the call, and '/' is not writable by this user, so even a wrong implementation writes nothing.
   SH="$(mk_tmp)"
   for c in rm mkdir git cp mv touch ln tee install rmdir; do
-    printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"; chmod +x "$SH/$c"
+    printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"
   done
+  chmod +x "$SH"/*
   D="$(mk_tmp)"
   run_in "$D" env PATH="$SH:$PATH" bash "$MKC" /
   assert_rc "AC8 '/' exits 2" 2
@@ -349,8 +350,9 @@ if [ "$(id -u)" != 0 ] && [ ! -w / ]; then
   for spelling in / // /./; do
     SH="$(mk_tmp)"   # same record-and-fail command shims as the AC8 '/' test
     for c in rm mkdir git cp mv touch ln tee install rmdir; do
-      printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"; chmod +x "$SH/$c"
+      printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\nexit 1\n' "$c" "$SH" > "$SH/$c"
     done
+    chmod +x "$SH"/*
     D="$(mk_tmp)"
     run_in "$D" env PATH="$SH:$PATH" bash "$MKC" "$spelling"
     assert_rc "AC14 '$spelling' exits 2" 2
