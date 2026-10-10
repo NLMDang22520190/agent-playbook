@@ -46,6 +46,22 @@ case "$cmd" in
       printf '%s=%s\n' "$key" "$value" > "$tmp"
     fi
     cat "$tmp" > "$file" && rm -f "$tmp"
+    if [ "$scope" = "project" ]; then
+      # keep a local, untracked project conf out of `git status` (role gates and release.sh read it as a
+      # change): local exclude file, not .gitignore; a tracked (team-shared) conf is left alone
+      root="$(pb_root_dir)"
+      if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+         ! git -C "$root" ls-files --error-unmatch .agents/playbook.conf >/dev/null 2>&1 &&
+         ! git -C "$root" check-ignore -q .agents/playbook.conf 2>/dev/null; then
+        excl="$(git -C "$root" rev-parse --git-path info/exclude 2>/dev/null)"
+        case "$excl" in /*|?:*) ;; *) excl="$root/$excl" ;; esac
+        if [ -n "$excl" ] && mkdir -p "$(dirname "$excl")"; then
+          if [ -s "$excl" ] && [ -n "$(tail -c 1 "$excl")" ]; then printf '\n' >> "$excl"; fi
+          printf '.agents/playbook.conf\n' >> "$excl" &&
+            echo "notice: added .agents/playbook.conf to $excl (local exclude, not .gitignore)" >&2
+        fi
+      fi
+    fi
     case "$key" in
       model_tester | model_implementer | model_reviewer)
         echo "warning: $key applies to every harness; prefer model_<role>_<harness> (e.g. ${key}_claude)" >&2 ;;

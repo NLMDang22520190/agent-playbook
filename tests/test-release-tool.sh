@@ -232,4 +232,79 @@ printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.m
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC7.2 totals are summed over suite lines (4+6+1 = 11): exit 0" 0
 
+
+echo "v0.10.0 AC8.1 the suite output is streamed, the exit status is run-all's"
+# a stub that prints, then reports its own status; messages are distinctive
+setup
+printf '#!/usr/bin/env bash\necho "STUB-LINE-ONE"\necho "STUB-LINE-TWO"\necho "STUB-STDERR-LINE" >&2\nexit 0\n' > "$C/tests/run-all.sh"
+( cd "$C" && G commit -qam stub-out && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC8.1 a printing stub that passes: dry run exit 0" 0
+assert_contains "AC8.1 stub stdout appears in the release output" "$OUT" "STUB-LINE-ONE"
+assert_contains "AC8.1 the later stub line appears too" "$OUT" "STUB-LINE-TWO"
+assert_contains "AC8.1 stub stderr appears in the release output" "$OUT" "STUB-STDERR-LINE"
+assert_eq "AC8.1 each stub line is shown once (not tee'd and cat'ed again)" "1" "$(printf '%s\n' "$OUT" | grep -c 'STUB-LINE-ONE')"
+assert_contains "AC8.1 the dry run still ends with 'would tag'" "$OUT" "would tag"
+
+setup
+printf '#!/usr/bin/env bash\necho "STUB-FAIL-OUT"\nexit 1\n' > "$C/tests/run-all.sh"
+( cd "$C" && G commit -qam stub-red && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC8.1 a failing stub that prints is refused (status from run-all, not tee): exit 1" 1
+assert_contains "AC8.1 the failing stub's output is still shown" "$OUT" "STUB-FAIL-OUT"
+assert_contains "AC8.1 the refusal is reported" "$OUT" "refused"
+assert_eq "AC8.1 a failing printing stub creates no tag" "" "$(tags_of "$C")$(origin_tags)"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC8.1 failing printing stub is refused in a dry run too: exit 1" 1
+assert_not_contains "AC8.1 refused dry run does not print 'would tag'" "$OUT" "would tag"
+
+setup
+printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "STUB-SEVEN"\nexit 7\n' > "$C/tests/run-all.sh"
+( cd "$C" && G commit -qam stub-seven && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC8.1 a stub exiting 7 is refused with 1 (the release.sh refusal code)" 1
+assert_eq "AC8.1 a stub exiting 7 creates no tag" "" "$(tags_of "$C")$(origin_tags)"
+
+# the README count check reads the streamed log, including a final line without a newline
+setup
+printf '#!/usr/bin/env bash\necho "test-a.sh: 5 passed, 0 failed"\necho "test-b.sh: 3 passed, 0 failed, 2 skipped"\nprintf "test-c.sh: 1 passed, 0 failed"\nexit 0\n' > "$C/tests/run-all.sh"
+printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
+( cd "$C" && G add -A && G commit -qm count-ok && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC8.1 count check works on streamed output (5+3+2+1 = 11, last line unterminated): exit 0" 0
+printf '![tests](https://img.shields.io/badge/tests-10-1F9D63)\n' > "$C/README.md"
+( cd "$C" && G commit -qam count-bad && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC8.1 count check still refuses a wrong README number on streamed output: exit 1" 1
+assert_contains "AC8.1 the refusal names the README number" "$OUT" "10"
+assert_contains "AC8.1 the refusal names the real total" "$OUT" "11"
+
+# liveness: the first stub line must be visible while the stub is still running.
+# The stub waits for a go-file (no timing guess); it gives up after ~60s so a buffering implementation cannot hang.
+setup
+GO="$(mk_tmp)/go"
+cat > "$C/tests/run-all.sh" <<STUB
+#!/usr/bin/env bash
+echo "LIVE-FIRST"
+i=0
+while [ ! -e "$GO" ] && [ \$i -lt 600 ]; do sleep 0.1; i=\$((i + 1)); done
+echo "LIVE-SECOND"
+exit 0
+STUB
+( cd "$C" && G commit -qam live-stub && git push -q origin main )
+LOUT="$(mk_tmp)/out"; : > "$LOUT"
+( cd "$C" && bash tools/release.sh v1.2.3 --dry-run > "$LOUT" 2>&1; echo $? > "$LOUT.rc" ) &
+LPID=$!
+SEEN=0; n=0
+while [ $n -lt 300 ]; do   # up to ~30s for a slow Windows box
+  if grep -q 'LIVE-FIRST' "$LOUT" 2>/dev/null; then SEEN=1; break; fi
+  sleep 0.1; n=$((n + 1))
+done
+: > "$GO"   # release the stub whatever happened
+wait "$LPID"
+if [ "$SEEN" = 1 ]; then t_ok "AC8.1 the first stub line is visible while the suite is still running"; else t_bad "AC8.1 the first stub line is visible while the suite is still running" "no LIVE-FIRST in the output before the stub finished (output is buffered until the end)"; fi
+assert_contains "AC8.1 the whole stub output arrives" "$(cat "$LOUT")" "LIVE-SECOND"
+assert_eq "AC8.1 the live run still exits 0" "0" "$(cat "$LOUT.rc" 2>/dev/null)"
+assert_contains "AC8.1 the live run still ends with 'would tag'" "$(cat "$LOUT")" "would tag"
+
 t_summary

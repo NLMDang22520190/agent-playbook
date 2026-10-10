@@ -35,8 +35,21 @@ DEFAULT_REGEX='(^|/)(test|tests|__tests__|spec|specs|e2e|__mocks__|fixtures|test
 
 # Read both regexes once per run, and refuse an invalid one: grep exits 2 on a bad pattern, which
 # would otherwise read as "no match" and let every file through (fail open).
-TEST_RE="$(pb_conf_get test_path_regex "$DEFAULT_REGEX")"
-INFRA_RE="$(pb_conf_get test_infra_regex "")"
+# conf_src KEY -> sets SRC_VAL and SRC_SCOPE (project before global, like pb_conf_get); exit 1 if unset
+conf_src() {
+  SRC_VAL=""; SRC_SCOPE=""
+  if SRC_VAL="$(pb_conf_read "$(pb_conf_project)" "$1")"; then SRC_SCOPE=project; return 0; fi
+  if SRC_VAL="$(pb_conf_read "$(pb_conf_global)" "$1")"; then SRC_SCOPE=global; return 0; fi
+  SRC_VAL=""; return 1
+}
+TEST_RE="$DEFAULT_REGEX"; TEST_SCOPE=""
+if conf_src test_path_regex; then TEST_RE="$SRC_VAL"; TEST_SCOPE="$SRC_SCOPE"; fi
+INFRA_RE=""; INFRA_SCOPE=""; INFRA_SHADOW=""
+if conf_src test_infra_regex; then INFRA_RE="$SRC_VAL"; INFRA_SCOPE="$SRC_SCOPE"; fi
+# an empty project value switches off a non-empty global one: worth a note (it moves the gate)
+if [ -z "$INFRA_RE" ] && [ "$INFRA_SCOPE" = project ]; then
+  INFRA_SHADOW="$(pb_conf_read "$(pb_conf_global)" test_infra_regex)" || INFRA_SHADOW=""
+fi
 valid_re() { printf 'x\n' | grep -Eq -- "$1" 2>/dev/null; [ $? -ne 2 ]; }
 
 classify() {
@@ -47,6 +60,8 @@ classify() {
 cmd="${1:-}"
 case "$cmd" in
   classify | check | size)
+    # an empty test_path_regex would match every path: every file a test (fail open for the tester)
+    [ -n "$TEST_RE" ] || pb_die "test_path_regex is empty in the $TEST_SCOPE conf; unset it to use the default" 3
     valid_re "$TEST_RE" || pb_die "invalid test_path_regex (grep -E rejects it): $TEST_RE" 3
     if [ -n "$INFRA_RE" ]; then valid_re "$INFRA_RE" || pb_die "invalid test_infra_regex (grep -E rejects it): $INFRA_RE" 3; fi
     ;;
@@ -74,6 +89,10 @@ case "$cmd" in
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
+    # a config file can move the gate: show where the regexes come from, before the verdict
+    [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$TEST_RE"
+    [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$INFRA_RE"
+    [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$INFRA_SHADOW"
 
     changed="$( { git -c core.quotepath=off diff --name-only --no-renames "$base" --
                   git -c core.quotepath=off ls-files --others --exclude-standard; } | sort -u )"

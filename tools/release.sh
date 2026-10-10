@@ -40,8 +40,7 @@ git rev-parse -q --verify "refs/tags/$tag" >/dev/null && refuse "tag $tag alread
 
 suite_log="$(mktemp "${TMPDIR:-/tmp}/pbrelease.XXXXXX")" || { echo "mktemp failed" >&2; exit 3; }
 trap 'rm -f "$suite_log"' EXIT
-bash tests/run-all.sh > "$suite_log" 2>&1; suite_rc=$?
-cat "$suite_log"
+bash tests/run-all.sh 2>&1 | tee "$suite_log"; suite_rc=${PIPESTATUS[0]}   # live output, run-all's status
 [ "$suite_rc" -eq 0 ] || refuse "tests/run-all.sh failed"
 # README test counts (badge, "**N passing**", "N tests, run in sandboxes") must equal passed + skipped.
 total="$(grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' "$suite_log" |
