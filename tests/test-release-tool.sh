@@ -121,4 +121,18 @@ run_in "$C" bash tools/release.sh v1.2.3 v1.2.4
 assert_rc "AC4 two tags -> exit 2" 2
 assert_eq "AC4 usage errors create no tag" "" "$(tags_of "$C")$(origin_tags)"
 
+
+echo "#12a release.sh: newline tag, and no ref updates while checking origin"
+setup
+run_in "$C" bash tools/release.sh "$(printf 'v1.2.3\nx')" --dry-run
+assert_rc "AC12a.1 release.sh: tag with a newline exits 2" 2
+setup
+W3="$(mk_tmp)"; git clone -q -b main "$O" "$W3/other" || echo "fixture clone failed"
+( cd "$W3/other" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+  printf 'z\n' > z.txt && git add -A && git commit -qm upstream2 && git push -q origin main )
+BEFORE="$(git -C "$C" rev-parse refs/remotes/origin/main)"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC12a.2 behind origin without a prior fetch is refused (dry run) -> exit 1" 1
+assert_eq "AC12a.2 dry run leaves refs/remotes/origin/main unchanged" "$BEFORE" "$(git -C "$C" rev-parse refs/remotes/origin/main)"
+
 t_summary

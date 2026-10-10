@@ -50,8 +50,8 @@ case "$cmd" in
   list)
     g="$(pb_conf_global)"; p="$(pb_conf_project)"
     {
-      [ -f "$g" ] && sed -n '/^[a-z][a-z0-9_]*=/{s/$/  [global]/;p;}' "$g"
-      [ -f "$p" ] && [ "$p" != "$g" ] && sed -n '/^[a-z][a-z0-9_]*=/{s/$/  [project]/;p;}' "$p"
+      [ -f "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_]*=/{s/$/  [global]/;p;}' "$g"
+      [ -f "$p" ] && [ "$p" != "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_]*=/{s/$/  [project]/;p;}' "$p"
     } | awk '{
         k = $0; sub(/=.*/, "", k)
         last[k] = $0

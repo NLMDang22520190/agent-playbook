@@ -553,7 +553,8 @@ cmd_update() {
   local cur latest target
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
-  cur="$(git -C "$REPO" describe --tags --exact-match HEAD 2>/dev/null)" || cur="untagged ($(git -C "$REPO" rev-parse --short HEAD))"
+  cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
+  [ -n "$cur" ] || cur="untagged ($(git -C "$REPO" rev-parse --short HEAD))"
   latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"
   [ -n "$latest" ] || die "no release tags (v*) found in $REPO" 2
   target="${TO:-$latest}"

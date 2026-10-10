@@ -49,4 +49,10 @@ run_in "$P" bash "$CONF" list
 assert_contains "list shows origin" "$OUT" "language=fr"
 assert_contains "list marks project origin" "$OUT" "project"
 
+
+echo "#11 list ignores keys that are not lowercase"
+printf 'BADKEY=x\n' >> "$H/.agents/playbook.conf"
+run bash "$CONF" list
+assert_not_contains "#11 list skips an uppercase key line" "$OUT" "BADKEY"
+
 t_summary

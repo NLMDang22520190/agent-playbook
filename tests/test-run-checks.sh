@@ -111,4 +111,12 @@ printf 'no git here\r\n' > "$C/docs/plain-crlf.md"
 checks "$C"
 assert_contains "outside git, working-tree CRLF still fails" "$OUT" "docs/plain-crlf.md"
 
+
+echo "#12b quoted name matches its directory"
+C="$(mk_copy)"
+set_line "$C" name 'name: "playbook-proof"'
+checks "$C"
+assert_rc "AC12b.2 quoted name passes run-checks" 0
+assert_not_contains "AC12b.2 no name-mismatch failure for a quoted name" "$OUT" "name '"
+
 t_summary

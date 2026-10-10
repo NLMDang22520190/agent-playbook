@@ -14,6 +14,7 @@ notes=0
 if [ "${1:-}" = "--notes" ]; then notes=1; shift; fi
 [ "$#" -eq 1 ] || usage
 tag="$1"
+case "$tag" in *$'\n'*) echo "tag contains a newline" >&2; exit 2 ;; esac   # grep matches per line
 printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag '$tag' is not vX.Y.Z" >&2; usage; }
 ver="${tag#v}"
 

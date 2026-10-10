@@ -16,12 +16,14 @@ for d in skills/*/; do
   s="${d%/}"; n="$(basename "$s")"; f="$s/SKILL.md"
   [ -f "$f" ] || { bad "$s has no SKILL.md"; continue; }
   [ "$(head -n 1 "$f")" = "---" ] || bad "$f: frontmatter must start on line 1"
-  name="$(sed -n '2,10{s/^name: *//p;}' "$f" | head -n 1)"
-  desc="$(sed -n '2,10{s/^description: *//p;}' "$f" | head -n 1)"
+  unquote() { sed -E "s/^\"(.*)\"[[:space:]]*$/\\1/; s/^'(.*)'[[:space:]]*$/\\1/"; }
+  name_raw="$(sed -n '2,10{s/^name: *//p;}' "$f" | head -n 1)"
+  desc_raw="$(sed -n '2,10{s/^description: *//p;}' "$f" | head -n 1)"
+  name="$(printf '%s\n' "$name_raw" | unquote)"; desc="$(printf '%s\n' "$desc_raw" | unquote)"   # quotes are YAML syntax, not content
   [ "$name" = "$n" ] && ok "$n: name matches directory" || bad "$f: name '$name' != dir '$n'"
-  printf '%s' "$name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' || bad "$f: name violates ^[a-z0-9]+(-[a-z0-9]+)*$"
+  printf '%s' "$name" | grep -Eq '^[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*$' || bad "$f: name violates ^[a-z0-9]+(-[a-z0-9]+)*$"
   # An unquoted value containing ': ' is not valid YAML (some harnesses then drop the skill).
-  for kv in "name:$name" "description:$desc"; do
+  for kv in "name:$name_raw" "description:$desc_raw"; do   # the quoting check needs the raw value
     k="${kv%%:*}"; v="${kv#*:}"
     case "$v" in \"*|\'*) ;; *': '*) bad "$f: unquoted $k contains ': ' (quote the value)" ;; esac
   done

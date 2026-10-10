@@ -150,5 +150,6 @@ run RINST update --check
 assert_rc "AC6 two tags on HEAD exits 0" 0
 assert_contains "AC6 HEAD carrying the newest tag's commit reports up to date" "$OUT" "up to date"
 assert_not_contains "AC6 HEAD carrying the newest tag's commit does not offer an update" "$OUT" "UPDATE AVAILABLE"
+assert_contains "AC12b.1 up-to-date message names the newest tag on HEAD (v0.3.1)" "$OUT" "v0.3.1"
 
 t_summary
