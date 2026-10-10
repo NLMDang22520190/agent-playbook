@@ -132,7 +132,8 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
 
 ### Phase 4: Close-out (orchestrator)
 - Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change. Sub-agents
-  ran focused tests only; this orchestrator run is the full suite.
+  ran focused tests only; this orchestrator run is the full suite. If it fails, the work goes back
+  into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
   --seconds <S> --model <M> --weight <Full|Lite>`, with tokens as the harness reports them (`0` if unknown,
   never a guess). Then put `cost.sh summary` into the final report.
@@ -145,6 +146,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
 
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
+(`--harness` takes `claude`, `codex` or `opencode`: the harness you are running in)
 and pass it when starting the role. `session` means do not override the session model. Build every
 sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
 the fixed prefix is identical across runs and can be cached. For the mechanical RED or GREEN step

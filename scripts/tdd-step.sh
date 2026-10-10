@@ -7,6 +7,7 @@
 #        as "test(red): M" and prints RED=<sha>.
 # green: role-gate.sh check implementer --base REF, then proof-run.sh --label green -- CMD. Passes
 #        only if the gate passes AND CMD exits 0. --commit commits all changes as "feat(green): M".
+# --commit adds .agents/handoff/ to .git/info/exclude when not ignored (prints a notice).
 # Without --commit nothing is committed; the commit command is printed instead (ask-before-commit).
 # Runs in the current project (git top-level). Gate and evidence output pass through.
 # Exit codes: 0 pass, 1 gate or expectation failed (nothing committed), 2 usage,
@@ -67,8 +68,8 @@ if [ "$commit" -eq 1 ]; then
   if ! git check-ignore -q .agents/handoff/x 2>/dev/null; then
     excl="$(git rev-parse --git-path info/exclude 2>/dev/null)" || excl=""
     if [ -n "$excl" ]; then
-      mkdir -p "$(dirname "$excl")" && printf '%s
-' '.agents/handoff/' >> "$excl"
+      mkdir -p "$(dirname "$excl")" && printf '%s\n' '.agents/handoff/' >> "$excl" \
+        && echo "notice: added .agents/handoff/ to $excl (local exclude, not .gitignore)"
     fi
   fi
   git add -A || pb_die "git add failed" 3
