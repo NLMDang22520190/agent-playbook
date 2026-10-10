@@ -11,6 +11,10 @@ How to apply it:
 - End the work summary with the assumptions and logged defaults.
 Why: waiting on choices that can be undone kills speed; guessing the ones that cannot causes rework or damage.
 
+### Load the skill, not the summary
+Before doing work that a skill named here covers, load that skill (Claude Code: the `Skill` tool; Codex/OpenCode: read its `SKILL.md`) and say which skill you loaded. This block is a summary, not the procedure: role prompts, templates and checklists live in the skill.
+Why: agents that followed only this summary skipped the procedures the skills hold.
+
 ### Proof for every claim
 - Label non-trivial claims: [VERIFIED] you ran or read it in this session and show the evidence, [INFERRED] reasoned from stated facts, [UNVERIFIED] not checked.
 - Claims about code cite `path:line` that you read this session. "Passes", "works", "fixed" need the output of a run from this session (`~/.agents/playbook/scripts/proof-run.sh`). Facts about external libraries, APIs and versions cite official docs (URL and version).

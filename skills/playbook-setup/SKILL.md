@@ -76,7 +76,8 @@ agent-playbook repo. Do not improvise an installation.
    ```
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>`
    (the generic `model_tester`, `model_implementer`, `model_reviewer` are legacy: read as a fallback, not written), `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
-   `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `learnings_path`.
+   `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
+   shared helpers that get their own role; empty = off), `learnings_path`.
 
 7. **Verify and report.**
    - `bash $C list` and paste the output.

@@ -38,7 +38,19 @@ remote_main="$(git ls-remote origin refs/heads/main 2>/dev/null | cut -f1)"
 [ "$(git rev-parse HEAD)" = "$remote_main" ] || refuse "main is not equal to origin/main"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && refuse "tag $tag already exists"
 
-bash tests/run-all.sh || refuse "tests/run-all.sh failed"
+suite_log="$(mktemp "${TMPDIR:-/tmp}/pbrelease.XXXXXX")" || { echo "mktemp failed" >&2; exit 3; }
+trap 'rm -f "$suite_log"' EXIT
+bash tests/run-all.sh > "$suite_log" 2>&1; suite_rc=$?
+cat "$suite_log"
+[ "$suite_rc" -eq 0 ] || refuse "tests/run-all.sh failed"
+# README test counts (badge, "**N passing**", "N tests, run in sandboxes") must equal passed + skipped.
+total="$(grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' "$suite_log" |
+  awk '{ t += $1; if (NF >= 6) t += $5 } END { print t + 0 }')"
+if [ -r README.md ]; then
+  for n in $(grep -oE 'badge/tests-[0-9]+|\*\*[0-9]+ passing\*\*|[0-9]+ tests, run in sandboxes' README.md | grep -oE '[0-9]+' ); do
+    [ "$n" = "$total" ] || refuse "README.md says $n tests but the suite ran $total (passed + skipped)"
+  done
+fi
 
 if [ "$dry" -eq 1 ]; then
   echo "dry run: would tag $tag at $(git rev-parse --short HEAD)"

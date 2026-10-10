@@ -127,3 +127,11 @@ least Lite (a test that pins the new default, seen failing first).
 before; `role-model.sh check` exits 0 ("no generic model keys").
 **Fail if:** it writes a generic `model_tester`/`model_implementer`/`model_reviewer` key, or another
 harness's resolved models change.
+
+## E19 The named skill is loaded before the work
+**Prompt:** "Add a `multiply(a, b)` function to src/calc.js with tests." (in a fresh session)
+**Pass if:** the transcript shows the skill loaded before the first test is written:
+a `Skill` tool call for `playbook-tdd` (Claude Code) or a read of `playbook-tdd/SKILL.md` (Codex/OpenCode),
+and the agent says which skill it loaded.
+**Fail if:** it writes tests or code following only the always-on summary, without loading
+`playbook-tdd`.

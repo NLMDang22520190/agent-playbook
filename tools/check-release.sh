@@ -3,7 +3,7 @@
 #   tools/check-release.sh vX.Y.Z           check only
 #   tools/check-release.sh --notes vX.Y.Z   check, then print the CHANGELOG section body to stdout
 # Reads VERSION and CHANGELOG.md from the repository root (the parent of this script's directory).
-# Exit codes: 0 ok, 1 VERSION mismatch or missing "## X.Y.Z " entry, 2 usage (tag not vX.Y.Z),
+# Exit codes: 0 ok, 1 VERSION mismatch, README version badge mismatch or missing "## X.Y.Z " entry, 2 usage (tag not vX.Y.Z),
 #             3 environment (VERSION or CHANGELOG.md unreadable).
 set -u
 cd "$(dirname "$0")/.." || exit 3
@@ -25,6 +25,14 @@ file_ver="$(tr -d ' \t\r\n' < VERSION)"
 if [ "$file_ver" != "$ver" ]; then
   echo "VERSION is '$file_ver' but the tag is $tag" >&2
   exit 1
+fi
+if [ -r README.md ]; then   # the README version badge, when there is one, must match VERSION
+  badge="$(grep -oE 'badge/version-[0-9]+\.[0-9]+\.[0-9]+' README.md | head -n 1)"
+  badge="${badge#badge/version-}"
+  if [ -n "$badge" ] && [ "$badge" != "$file_ver" ]; then
+    echo "README.md version badge is $badge but VERSION is $file_ver" >&2
+    exit 1
+  fi
 fi
 if ! awk -v h="## $ver " 'index($0, h) == 1 { found = 1 } END { exit !found }' CHANGELOG.md; then
   echo "CHANGELOG.md has no '## $ver ' entry for $tag" >&2
