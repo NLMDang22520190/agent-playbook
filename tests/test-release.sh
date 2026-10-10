@@ -269,4 +269,20 @@ printf '%s' "$(AO 37)" >> "$D/README.md"
 run bash "$D/tools/check-release.sh" v1.2.3
 assert_rc "AC7.2 a second, stale always-on badge is also checked: exit 1" 1
 
+echo "v0.10.0 AC7.2 round 2: no final newline, missing AGENTS.global.md"
+D="$(mk_rel_agents 37 "$(AO 37)")"
+printf '%s' "$(cat "$D/AGENTS.global.md")" > "$D/AGENTS.global.md"   # same 37 lines, no final newline
+assert_eq "fixture: the file has no final newline" "36" "$(wc -l < "$D/AGENTS.global.md" | tr -d ' ')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 37 real lines without a final newline equal badge 37: exit 0" 0
+D="$(mk_rel_agents 37 "$(AO 36)")"
+printf '%s' "$(cat "$D/AGENTS.global.md")" > "$D/AGENTS.global.md"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 badge 36 vs 37 real lines (no final newline): exit 1" 1
+D="$(mk_rel_readme 1.2.3 "$(AO 37)")"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "AC7.2 always-on badge but no AGENTS.global.md: exit 1" 1
+assert_contains "AC7.2 the missing file is named" "$OUT" "AGENTS.global.md"
+assert_not_contains "AC7.2 no raw shell error leaks" "$OUT" "No such file"
+
 t_summary

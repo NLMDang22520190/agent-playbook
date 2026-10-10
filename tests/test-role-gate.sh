@@ -463,4 +463,37 @@ run bash "$GATE" classify tests/app.test.js; assert_eq "AC5.1 empty test_infra_r
 assert_rc "AC5.1 empty test_infra_regex stays off (exit 0)" 0
 run bash "$GATE" check implementer;          assert_rc "AC5.1 empty test_infra_regex stays off (check works)" 0
 
+# ---- v0.10.0 round 2: shadowing empty infra regex, notes on stdout ----
+echo "AC1.2 an empty project test_infra_regex shadowing a global one is noted"
+R="$(conf_repo 'test_infra_regex=\n')"; cd "$R" || exit 3
+( mkdir -p tests && printf 'helper() { :; }\n' > tests/lib.sh && git add -A && git commit -q -m lib ) >/dev/null
+printf 'helper2() { :; }\n' >> tests/lib.sh
+G3="$(mk_tmp)"; mkdir -p "$G3/.agents"; printf 'test_infra_regex=^tests/lib\\.sh$\n' > "$G3/.agents/playbook.conf"
+run env PLAYBOOK_HOME="$G3" bash "$GATE" check tester
+assert_rc "AC1.2 shadowed: tester editing tests/lib.sh passes (infra is off)" 0
+SN="$(notes_of | grep test_infra_regex)"
+assert_contains "AC1.2 shadowed: a note names test_infra_regex" "$SN" "test_infra_regex"
+assert_contains "AC1.2 shadowed: the note says it is empty" "$SN" "empty"
+assert_contains "AC1.2 shadowed: the note says it is the project conf" "$SN" "project"
+case "$SN" in *override*|*shadow*|*off*) t_ok "AC1.2 shadowed: the note says it overrides / switches off the global value" ;; *) t_bad "AC1.2 shadowed: the note says it overrides / switches off the global value" "note: [$SN]" ;; esac
+assert_contains "AC1.2 shadowed: the note mentions the global value" "$SN" "global"
+assert_eq "AC1.2 shadowed: the note is first, before the verdict" "note:" "$(printf '%s\n' "$OUT" | head -n 1 | cut -c1-5)"
+# no global value: the v0.9 byte-identical behaviour (empty infra regex is silent)
+run bash "$GATE" check tester
+assert_eq "AC1.2 empty project value with no global value stays silent" "OK: role gate passed for tester (1 file(s) checked, base=HEAD)" "$OUT"
+# empty global value and empty project value: nothing to shadow
+G4="$(mk_tmp)"; mkdir -p "$G4/.agents"; printf 'test_infra_regex=\n' > "$G4/.agents/playbook.conf"
+run env PLAYBOOK_HOME="$G4" bash "$GATE" check tester
+assert_eq "AC1.2 empty project over empty global stays silent" "OK: role gate passed for tester (1 file(s) checked, base=HEAD)" "$OUT"
+
+echo "AC1.2 notes go to stdout, not stderr"
+R="$(conf_repo 'test_path_regex=^checks/\ntest_infra_regex=^ci/\n')"; cd "$R" || exit 3
+SO="$(bash "$GATE" check implementer 2>/dev/null)"
+SE="$(bash "$GATE" check implementer 2>&1 >/dev/null)"
+assert_contains "AC1.2 stdout carries the test_path_regex note" "$SO" "note:"
+assert_eq "AC1.2 stdout carries both notes" "2" "$(printf '%s\n' "$SO" | grep -c '^note:')"
+assert_eq "AC1.2 stderr is empty on a passing check" "" "$SE"
+SE="$(bash "$GATE" check tester 2>&1 >/dev/null)"
+assert_not_contains "AC1.2 stderr has no note on a failing check" "$SE" "note:"
+
 t_summary
