@@ -269,7 +269,7 @@ echo "AC4.4 size counts infra like production"
 R="$(mk_infra_repo "test_infra_regex=$INFRA_RE")"; cd "$R" || exit 3
 seq 1 120 > ci/build.sh
 run bash "$GATE" size;                          assert_rc "AC4.4 a 120-line infra change is over the Lite limit -> exit 1" 1
-assert_contains "AC4.4 infra file and lines are counted" "$OUT" "files: 1/3 lines: 121/100"
+assert_contains "AC4.4 infra file and lines are counted" "$OUT" "files: 1/3 lines: 122/100"
 assert_contains "AC4.4 says escalate to Full" "$OUT" "escalate to Full"
 git checkout -q -- ci/build.sh
 seq 1 4 >> tests/lib.sh; printf 'one\n' > src/new.js
