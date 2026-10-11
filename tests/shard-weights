@@ -1,0 +1,20 @@
+# Seconds per suite on the windows-latest CI runner (shard jobs, PB_JOBS=6), PR #20 run 38102392798.
+# Used by tests/run-all.sh to balance PB_SHARD; refresh from the '== tests/test-x.sh (N s)' headings.
+test-evals.sh 392
+test-run-checks.sh 246
+test-ship.sh 202
+test-role-gate.sh 162
+test-release-tool.sh 110
+test-run-all.sh 102
+test-update.sh 70
+test-install.sh 58
+test-release.sh 44
+test-feedback.sh 41
+test-tdd-step.sh 39
+test-conf.sh 39
+test-role-model.sh 29
+test-learn.sh 28
+test-cost.sh 17
+test-content.sh 17
+test-proof-run.sh 11
+test-lib.sh 3
