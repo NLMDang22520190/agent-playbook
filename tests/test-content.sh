@@ -246,4 +246,52 @@ jwchk 'v13 AC4.2 the Full side stays: alters or removes existing behaviour is Fu
 # --- v0.13.0 AC5.1: the always-on block fits with headroom
 BLOCK_BYTES="$(wc -c < "$BLOCK" | tr -d ' ')"
 if [ "$BLOCK_BYTES" -le 4700 ]; then t_ok "v13 AC5.1 AGENTS.global.md is <= 4700 bytes ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 AGENTS.global.md is <= 4700 bytes" "$BLOCK_BYTES bytes"; fi
+
+# --- v0.14.0 AC8.2: Windows runs as 3 shard jobs plus an aggregator named exactly `test (windows-latest)`
+WF="$PB_ROOT/.github/workflows/test.yml"
+# wf_jobs -> job ids (2-space indent under jobs:)
+wf_jobs() { awk '/^jobs:/ { j = 1; next } j && /^[^ #]/ { j = 0 } j && /^  [A-Za-z0-9_-]+:[ ]*$/ { sub(/^  /, ""); sub(/:.*/, ""); print }' "$WF" 2>/dev/null; }
+# wf_block ID -> the lines of that job
+wf_block() { awk -v id="$1" '/^jobs:/ { j = 1; next } j && /^[^ #]/ { j = 0 } j && /^  [A-Za-z0-9_-]+:[ ]*$/ { f = ($0 == "  " id ":") } f { print }' "$WF" 2>/dev/null; }
+# wf_name ID -> the job's name: value without quotes ("" when none)
+wf_name() { wf_block "$1" | grep -m1 '^    name:' | sed 's/^    name:[[:space:]]*//; s/[[:space:]]*$//; s/^"\(.*\)"$/\1/; s/^'"'"'\(.*\)'"'"'$/\1/'; }
+# wf_needs ID -> the text of the job's needs: key (inline or list), one line
+wf_needs() { wf_block "$1" | awk '/^    needs:/ { f = 1; print; next } f && /^    [A-Za-z]/ { exit } f { print }' | tr '\n' ' '; }
+AGG=""; SHARD=""; MAIN=""
+for id in $(wf_jobs); do
+  [ "$(wf_name "$id")" = "test (windows-latest)" ] && AGG="$id"
+done
+for id in $(wf_jobs); do
+  b="$(wf_block "$id")"
+  case "$b" in *PB_SHARD*) case "$b" in *windows-latest*) [ "$id" != "$AGG" ] && SHARD="$id" ;; esac ;; esac
+  case "$b" in *macos-latest*) MAIN="$id" ;; esac
+done
+NAMED="$(for id in $(wf_jobs); do wf_name "$id"; done | grep -cxF 'test (windows-latest)')"
+assert_eq "v14 AC8.2 exactly one job has the name: exactly 'test (windows-latest)' (what branch protection requires)" "1" "$NAMED"
+if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD ($SHARD)"; else t_bad "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD" "aggregator [$AGG]; jobs: $(wf_jobs | tr '\n' ' ')"; fi
+SB="$(wf_block "${SHARD:-__none__}")"
+assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
+assert_contains "v14 AC8.2 the shard matrix has 1/3" "$SB" "1/3"
+assert_contains "v14 AC8.2 the shard matrix has 2/3" "$SB" "2/3"
+assert_contains "v14 AC8.2 the shard matrix has 3/3" "$SB" "3/3"
+if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
+assert_contains "v14 AC8.2 the shard job still runs tests/run-all.sh" "$SB" "tests/run-all.sh"
+assert_contains "v14 AC8.2 a failing shard does not cancel the others (fail-fast: false)" "$SB" "fail-fast: false"
+AB="$(wf_block "${AGG:-__none__}")"
+NEEDS_AGG="$(wf_needs "${AGG:-__none__}")"
+assert_contains "v14 AC8.2 the aggregator needs the shard job" "$NEEDS_AGG" "${SHARD:-__none__}"
+if printf '%s\n' "$AB" | grep -Eq '^    if:.*always\(\)'; then t_ok "v14 AC8.2 the aggregator has if: always() (it fails instead of being skipped)"; else t_bad "v14 AC8.2 the aggregator has if: always()" "block: $AB"; fi
+if printf '%s\n' "$AB" | grep -Eq "needs\.${SHARD:-__none__}\.result"; then t_ok "v14 AC8.2 the aggregator reads the shard result (needs.$SHARD.result)"; else t_bad "v14 AC8.2 the aggregator reads the shard result (needs.$SHARD.result)" "block: $AB"; fi
+if printf '%s\n' "$AB" | grep -Eq 'exit 1'; then t_ok "v14 AC8.2 the aggregator can fail (exit 1)"; else t_bad "v14 AC8.2 the aggregator can fail (exit 1)" "block: $AB"; fi
+assert_not_contains "v14 AC8.2 the aggregator does not run the suites itself" "$AB" "tests/run-all.sh"
+assert_contains "v14 AC8.2 the aggregator runs on a cheap runner, not windows" "$(printf '%s\n' "$AB" | grep 'runs-on')" "ubuntu"
+MB="$(wf_block "${MAIN:-__none__}")"
+assert_contains "v14 AC8.2 the main test matrix keeps ubuntu-latest" "$MB" "ubuntu-latest"
+assert_contains "v14 AC8.2 the main test matrix keeps macos-latest" "$MB" "macos-latest"
+assert_not_contains "v14 AC8.2 the main test matrix no longer has windows-latest" "$MB" "windows-latest"
+assert_contains "v14 AC8.2 the main test job still runs tests/run-all.sh" "$MB" "tests/run-all.sh"
+if [ -n "$MAIN" ] && [ "$MAIN" != "$SHARD" ] && [ "$MAIN" != "$AGG" ]; then t_ok "v14 AC8.2 the main test job ($MAIN) is separate from the shards and the aggregator"; else t_bad "v14 AC8.2 the main test job is separate from the shards and the aggregator" "main [$MAIN] shard [$SHARD] agg [$AGG]"; fi
+NEEDS_REL="$(wf_needs release)"
+assert_contains "v14 AC8.2 the release job needs the aggregator" "$NEEDS_REL" "${AGG:-__none__}"
+assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEEDS_REL" "${MAIN:-__none__}"
 t_summary

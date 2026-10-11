@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.14.0 - 2026-10-11
+- **ship.sh cannot be broken by its own `git pull`**: the whole body runs from `main "$@"; exit $?`, so a
+  rewritten file mid-run changes nothing (a test rewrites the fixture's ship.sh during the merge).
+- **Faster CI**: Windows runs as three parallel shards (`PB_SHARD=k/n` in `tests/run-all.sh`, `PB_JOBS=6`)
+  plus an aggregator job still named `test (windows-latest)`, so branch protection is unchanged. First
+  sharded run: 215–254 s per shard against about 300 s for the single job. `ship --yes` skips the
+  duplicate local dry run (the real `release.sh` runs the same checks and suite before tagging).
+- **Eval grading**: E3 on a plain-text transcript without a test is MANUAL (the log can echo the block's
+  "label the result untested"); E8 matches specific phrases only; E1 adds "reply states the weight";
+  each scenario's `total_cost_usd` is printed as `<E> COST` and summed in a Cost (USD) column.
+- **run-checks** scans every shell script for regex bounds above 255, including `{,n}`.
+- fix (found in review): `PB_SHARD` leaked into suites and nested run-all copies; run-all now unsets it
+  after reading it, and leading zeros are refused.
+- Built at Full weight: Sonnet tester (2 rounds), implementer for code, the run-all changes committed
+  under `check infra`, Opus reviewer (CHANGES: the PB_SHARD leak, which the first sharded CI run also hit).
+
 ## 0.13.0 - 2026-10-11
 - **ship.sh from any checkout state**: before merging it switches a detached or other-branch checkout to
   `main` (refuses if it cannot), and after `install.sh update` it switches back to `main`; the wait

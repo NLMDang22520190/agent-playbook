@@ -138,9 +138,9 @@ else
 fi
 
 # BSD regex (macOS) rejects repeat bounds above RE_DUP_MAX (255): such a pattern never matches there
-big="$(grep -nE '\{[0-9]+(,[0-9]*)?\}' tests/*.sh evals/*.sh 2>/dev/null |
+big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null |
   awk -F: '{ line = $0; sub(/^[^:]*:[^:]*:/, "", line)
-             while (match(line, /\{[0-9]+(,[0-9]*)?\}/)) { b = substr(line, RSTART + 1, RLENGTH - 2); line = substr(line, RSTART + RLENGTH)
+             while (match(line, /\{([0-9]+(,[0-9]*)?|,[0-9]+)\}/)) { b = substr(line, RSTART + 1, RLENGTH - 2); line = substr(line, RSTART + RLENGTH)
                n = split(b, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 > 255) { print $1 ":" $2; break } } }' | sort -u | tr '\n' ' ')"
 [ -z "$big" ] && ok "regex repeat bounds <= 255 (BSD RE_DUP_MAX)" || bad "regex repeat bound above 255 (BSD/macOS never matches) at: $big"
 
