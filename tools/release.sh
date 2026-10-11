@@ -43,7 +43,7 @@ trap 'rm -f "$suite_log"' EXIT
 bash tests/run-all.sh 2>&1 | tee "$suite_log"; suite_rc=${PIPESTATUS[0]}   # live output, run-all's status
 [ "$suite_rc" -eq 0 ] || refuse "tests/run-all.sh failed"
 # README test counts (badge, "**N passing**", "N tests, run in sandboxes") must equal passed + skipped.
-total="$(grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' "$suite_log" |
+total="$(grep -E '^[^[:space:]]+\.sh: [0-9]+ passed, [0-9]+ failed' "$suite_log" | grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' |
   awk '{ t += $1; if (NF >= 6) t += $5 } END { print t + 0 }')"
 if [ -r README.md ]; then
   for n in $(grep -oE 'badge/tests-[0-9]+|\*\*[0-9]+ passing\*\*|[0-9]+ tests, run in sandboxes' README.md | grep -oE '[0-9]+' ); do
