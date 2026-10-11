@@ -13,6 +13,12 @@ cat > "$BIN/gh" <<'FAKE'
 printf '%s\n' "$*" >> "$GH_DIR/calls"
 if [ -n "${GH_FAIL:-}" ]; then echo "gh: simulated failure" >&2; exit 1; fi
 [ "$1" = auth ] && exit 0
+if [ "$1" = api ]; then   # gh api repos/OWNER/NAME/actions/jobs/ID/logs
+  id="$(printf '%s' "$2" | sed -n 's#^repos/[^/]*/[^/]*/actions/jobs/\([0-9][0-9]*\)/logs$#\1#p')"
+  [ -n "$id" ] || { echo "fake gh: unsupported api path $2" >&2; exit 64; }
+  cat "$GH_DIR/apilog-$id.txt" 2>/dev/null || { echo "gh: HTTP 404" >&2; exit 1; }
+  exit 0
+fi
 if [ "$1" != run ] || [ "$2" != view ]; then echo "fake gh: unsupported: $*" >&2; exit 64; fi
 shift 2
 job=""; json=""; run=""
@@ -191,4 +197,27 @@ assert_eq "AC2.1 a failing shard log leaves the weights file untouched (no parti
 assert_eq "AC2.1 no temp file is left next to it" "weights" "$(ls -A "$D7")"
 
 assert_eq "AC2.1 the real tests/shard-weights was never touched by these runs" "$RW0" "$(cksum < "$PB_ROOT/tests/shard-weights" 2>/dev/null)"
+
+# ---- v0.16.0 (found on a real run): gh 2.45 prints an EMPTY log for `run view --job --log`;
+# the tool then reads the job log through the API (repos/OWNER/NAME/actions/jobs/ID/logs) ----
+echo "empty run-view log -> API fallback"
+printf '{"jobs":[%s,%s]}\n' "$(job 971 'windows shard 1/2')" "$(job 972 'windows shard 2/2')" > "$GD/jobs-7771.json"
+: > "$GD/log-971.txt"; : > "$GD/log-972.txt"
+printf 'windows shard 1/2\tTests\t2026-10-11T10:00:00Z == tests/test-api-a.sh (61 s)\n' > "$GD/apilog-971.txt"
+printf '== tests/test-api-b.sh (42 s)\n' > "$GD/apilog-972.txt"
+OUTF="$(mk_tmp)/w"
+runt bash "$TOOL" 7771 --repo acme/pb --out "$OUTF"
+assert_rc "API fallback: exit 0" 0
+assert_eq "API fallback: weights come from the API logs" "test-api-a.sh 61
+test-api-b.sh 42" "$(data "$OUTF")"
+assert_eq "API fallback: the API path names the repo and job" "2" "$(grep -c -E '^api repos/acme/pb/actions/jobs/97[12]/logs' "$GD/calls")"
+OUTF2="$(mk_tmp)/w"
+runt bash "$TOOL" 7771 --out "$OUTF2"
+assert_eq "API fallback without --repo uses {owner}/{repo}" "2" "$(grep -c -F 'api repos/{owner}/{repo}/actions/jobs/' "$GD/calls")"
+rm -f "$GD/apilog-972.txt"
+OUTF3="$(mk_tmp)/w"; printf 'old\n' > "$OUTF3"
+runt bash "$TOOL" 7771 --repo acme/pb --out "$OUTF3"
+assert_rc "API fallback failing for one job -> exit 3" 3
+assert_eq "API fallback failing: file untouched" "old" "$(cat "$OUTF3")"
+
 t_summary
