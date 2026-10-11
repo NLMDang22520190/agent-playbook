@@ -171,11 +171,11 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na
+  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
-      json) T_json="$v" ;; result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
+      result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;;
     esac
