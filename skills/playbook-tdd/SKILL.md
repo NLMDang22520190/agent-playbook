@@ -180,9 +180,8 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   never a guess). Then put `cost.sh summary` into the final report.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
 - For a user-visible change (UI, HTTP API, CLI output, file format) the gates also include one real
-  observation of the real behaviour, made in this session: a screenshot or browser read for a UI, a
-  curl call for an HTTP API, the CLI command for a CLI. Paste it as evidence. Unit tests alone are not
-  enough for it. If it cannot be run, say so under "Not checked" in the report.
+  observation of the real behaviour in this session (screenshot or browser read, curl, the CLI command),
+  as `playbook-proof` describes; unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence with a confidence for each AC, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
@@ -196,9 +195,11 @@ Do not defend the result and do not patch at once.
 1. Restate in two lines what the user expected and what was delivered.
 2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified
    live, real bug. Give the evidence for that cause (a command and its output, or a file:line).
-3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix.
+3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only
+   (Exempt) misread, fix it and re-check the result against the request; no test is needed.
 4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and
-   propose a regression eval scenario in the item.
+   propose a regression eval scenario in the item. If the cause is specific to this project, propose a
+   lesson with `playbook-learn` instead.
 
 **Why:** a patch without a named cause fixes one symptom and repeats the miss; the named cause shows
 which step of the playbook let it through.

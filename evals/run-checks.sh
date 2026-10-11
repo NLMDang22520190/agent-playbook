@@ -153,9 +153,11 @@ si=-i   # spelled through a variable so this file does not trip its own check
 [ -z "$gsed" ] && ok "sed $si has a suffix (BSD sed)" || bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"
 
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
-# Comments (from a # at the start or after a blank) are ignored. The names are spelled in pieces so this file does not trip its own check.
-ggnu="$(awk 'function hit(n) { out = out FILENAME ":" FNR " (" n ") " }
-  { line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
+# Comments (from a # at the start or after a blank) are ignored. A line may opt out with "# gnu-ok: <reason>" (a non-blank reason, that line only).
+# The names are spelled in pieces so this file does not trip its own check.
+ggnu="$(awk 'function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
+  { ex = ($0 ~ /(^|[[:space:]])#[[:space:]]*gnu-ok:[[:space:]]*[^[:space:]]/)
+    line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
     b = "(^|[^[:alnum:]_-])"; fl = "([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+-"
     if (line ~ (b "grep" fl "[[:alpha:]]*P")) hit("grep " "-P")
     if (line ~ (b "readlink" fl "[[:alpha:]]*f")) hit("readlink " "-f")

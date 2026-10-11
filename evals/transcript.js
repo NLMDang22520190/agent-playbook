@@ -47,14 +47,28 @@ function bashWritesSrc(cmd) {
   }
   return done();
 }
-// does a shell command run proof-run.sh? Split into simple commands at ; & | ( and newlines (linear), then the command word
-// (after env assignments and time/env/sudo/nohup/exec) is proof-run.sh, or a shell whose first non-flag word is
+// does a shell command run proof-run.sh? Split into simple commands at ; & | ( ) { } backticks and newlines (linear), then skip
+// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec/command with their flags and arguments;
+// the command word is proof-run.sh, or a shell whose first non-flag word is
 function runsProof(cmd) {
   const isP = t => /(^|\/)proof-run\.sh$/.test(t);
-  for (const seg of cmd.split(/[;&|(\n]+/)) {
+  const RESERVED = /^(if|then|do|else|elif|while|until|!)$/;
+  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec|command)$/;
+  const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/ };
+  for (const seg of cmd.split(/[;&|(){}`\n]+/)) {
     const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
     let k = 0;
-    while (k < w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[k]) || /^(time|env|sudo|nohup|exec)$/.test(w[k]))) k++;
+    while (k < w.length) {
+      const base = w[k].replace(/^.*\//, "");
+      if (RESERVED.test(w[k]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[k])) { k++; continue; }
+      if (PREFIX.test(base)) {
+        k++;
+        while (k < w.length && /^-/.test(w[k])) k += FLAGARG[base] && FLAGARG[base].test(w[k]) ? 2 : 1;
+        if (base === "timeout") k++;   // the duration
+        continue;
+      }
+      break;
+    }
     if (k >= w.length) continue;
     if (isP(w[k])) return true;
     if (/(^|\/)(ba|z)?sh$/.test(w[k])) {
