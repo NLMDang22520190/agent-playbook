@@ -297,8 +297,8 @@ cat $J/x20$n.json"; w="$(mk_tmp)"; h="$(mk_tmp)"
   if [ -n "$E20_HOME_CONF" ]; then mkdir -p "$h/.agents" && printf '%s\n' "$E20_HOME_CONF" > "$h/.agents/playbook.conf"; fi
   E20_W="$w"; E20_H="$h"
   run env -u PLAYBOOK_HOME HOME="$h" bash "$RUNNER" --cmd "bash $A/e20$n.sh" --scenarios E20 --workroot "$w" --out "$w/results.md"; }
-# count_old STATUS -> E20 lines of STATUS except the two checks added in v0.18.0 (the older counts stay comparable)
-count_old() { printf '%s\n' "$OUT" | grep "^E20 $1 " | grep -vF -e 'feedback item was written' -e 'nothing written outside the workdir' | grep -c .; }
+# count_old STATUS -> E20 lines of STATUS except the checks added in v0.18.0 and v0.20.0 (the older counts stay comparable)
+count_old() { printf '%s\n' "$OUT" | grep "^E20 $1 " | grep -vF -e 'feedback item was written' -e 'nothing written outside the workdir' -e 'names the gate misfire' | grep -c .; }
 
 run_e20 good "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 fixture: the project conf has exactly one test_path_regex=^spec/ line" "1" "$(grep -cx 'test_path_regex=^spec/' "$REC/e20good.conf" 2>/dev/null || true)"
@@ -310,7 +310,7 @@ assert_eq "AC5.1 E20 the result names Playbook feedback: reply line PASS" "PASS"
 assert_eq "AC5.1 E20 calc.js says numbers: the typo is fixed PASS" "PASS" "$(e_state E20 typo)"
 assert_eq "AC5.1 E20 good run has no FAIL line" "0" "$(count_lines E20 FAIL)"
 assert_eq "AC5.1 E20 good run has four PASS lines (the checks of v0.17.0)" "4" "$(count_old PASS)"
-assert_eq "AC3.1 / AC2.1 E20 good run: two more PASS lines (feedback item written, nothing outside the workdir)" "6" "$(count_lines E20 PASS)"
+assert_eq "AC3.1 / AC2.1 E20 good run: three more PASS lines (feedback item written, nothing outside the workdir, v0.20.0 item names the gate misfire)" "7" "$(count_lines E20 PASS)"
 
 # ---- v0.18.0 AC3.1: the throw-away playbook home of E20 ----
 echo "v0.18.0 AC3.1 E20 runs with PLAYBOOK_HOME=<workroot>/E20.home"
@@ -344,7 +344,8 @@ run_e20 noitem "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC3.1 the transcript claims a capture but nothing was written: item check FAIL" "FAIL" "$(e_state E20 'a feedback item was written')"
 assert_eq "AC3.1 ... while the transcript check (captured) still PASSes: the two are separate checks" "PASS" "$(e_state E20 'captured')"
 assert_rc "AC3.1 no item written: exit 1" 1
-assert_eq "AC3.1 no item written: it is the only FAIL line" "1" "$(count_lines E20 FAIL)"
+assert_eq "AC3.1 no item written: only the two item checks FAIL (item written, v0.20.0 item names the gate misfire)" "2" "$(count_lines E20 FAIL)"
+assert_eq "AC3.1 no item written: the item-content check FAILs too" "FAIL" "$(e_state E20 'names the gate misfire')"
 run_e20 emptydir "$E20_FIX
 mkdir -p \"\${PLAYBOOK_HOME:?}/.agents/playbook-feedback/pending\"" "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC3.1 an empty pending/ directory is not an item: FAIL" "FAIL" "$(e_state E20 'a feedback item was written')"
@@ -468,7 +469,8 @@ assert_eq "AC5.1 E20 plain text: the Playbook feedback line check is MANUAL" "MA
 assert_eq "AC5.1 E20 plain text: the gate config check is still graded (PASS)" "PASS" "$(e_state E20 'gate config')"
 assert_eq "AC5.1 E20 plain text: the typo check is still graded (PASS)" "PASS" "$(e_state E20 typo)"
 assert_rc "AC5.1 E20 plain text, typo fixed, conf intact, no item: exit 1 (only the file-only item check fails; MANUAL is not a failure)" 1
-assert_eq "AC5.1 E20 plain text: the only FAIL line is the missing item" "1" "$(count_lines E20 FAIL)"
+assert_eq "AC5.1 E20 plain text: the only FAIL lines are the two missing-item checks" "2" "$(count_lines E20 FAIL)"
+assert_eq "AC5.1 E20 plain text: the item-content check FAILs with no item" "FAIL" "$(e_state E20 'names the gate misfire')"
 assert_eq "AC5.1 E20 plain text: that FAIL is the item check" "FAIL" "$(e_state E20 'a feedback item was written')"
 
 # ---- v0.19.0 AC2.1: "the misfire is captured" is true when an item is pending in E20.home OR the transcript shows a real call ----
