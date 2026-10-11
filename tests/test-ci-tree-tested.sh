@@ -41,21 +41,24 @@ NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "win
 put() { printf '%s\n' "$2" | tr -d '\r' > "$DATA/$(printf '%s' "$1" | tr '/' '_')"; }
 put_runs() { put_raw "repos/$R/actions/workflows/test.yml/runs" "$1" "$2"; }
 put_raw() { printf '%s\n' "$3" > "$DATA/$(printf '%s' "$1" | tr '/' '_')_hs_$2"; }
-pull_json() { # NUMBER HEADSHA [REPO]
-  printf '{"number":%s,"head":{"sha":"%s","repo":{"full_name":"%s"}}}' "$1" "$2" "${3:-$R}"
+pull_json() { # NUMBER HEADSHA [REPO]  (REPO "null" = a deleted head repository)
+  if [ "${3:-}" = null ]; then printf '{"number":%s,"head":{"sha":"%s","repo":null}}' "$1" "$2"
+  else printf '{"number":%s,"head":{"sha":"%s","repo":{"full_name":"%s"}}}' "$1" "$2" "${3:-$R}"; fi
 }
-run_json() { # ID HEADSHA [CONCLUSION]
-  printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s"}' "$1" "$2" "${3:-success}"
+run_json() { # ID HEADSHA [CONCLUSION] [BASEREF]  (the run's pull_requests[] hold the PR with its base branch)
+  printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":[{"number":7,"base":{"ref":"%s"}}]}' "$1" "$2" "${3:-success}" "${4:-main}"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
 jobs_json() { # MODE NAME: MODE ok (all six success) | skipped|failure|cancelled NAME | missing NAME
-  local mode="${1:-ok}" bad="${2:-}" out="" sep="" n c
+  local mode="${1:-ok}" bad="${2:-}" out="" sep="" n c st
   for n in "${NAMES[@]}"; do
     c=success
     if [ "$n" = "$bad" ]; then
       case "$mode" in missing) continue ;; *) c="$mode" ;; esac
     fi
-    out="$out$sep{\"name\":\"$n\",\"status\":\"completed\",\"conclusion\":\"$c\"}"; sep=","
+    st=completed
+    if [ "$n" = "$bad" ] && [ "$mode" = notcompleted ]; then c=success; st=in_progress; fi
+    out="$out$sep{\"name\":\"$n\",\"status\":\"$st\",\"conclusion\":\"$c\"}"; sep=","
   done
   # jobs that are not required checks never matter (the PR run skips reuse and main-ci)
   out="$out$sep{\"name\":\"reuse\",\"status\":\"completed\",\"conclusion\":\"skipped\"},{\"name\":\"main-ci\",\"status\":\"completed\",\"conclusion\":\"skipped\"}"
@@ -279,6 +282,51 @@ nothing "only the eleventh run passes (beyond the bound of 10)"
 assert_eq "AC6.1 the jobs of the eleventh run were never requested" "0" "$(logged "runs/2011/jobs")"
 assert_eq "AC6.1 the jobs of the twelfth run were never requested" "0" "$(logged "runs/2012/jobs")"
 assert_eq "AC6.1 the jobs of the tenth run were requested" "1" "$(logged "runs/2010/jobs")"
+
+echo "AC6.1 review lows: the run must belong to a PR whose base is main"
+world; put_runs "$HEAD" "$(runs_json 1 "$(run_json 111 "$HEAD" success develop)")"
+tool "$SHA" --repo "$R"
+nothing "a run of a PR whose base is develop (a stacked PR retargeted to main later)"
+world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success","pull_requests":[]}')"
+tool "$SHA" --repo "$R"
+nothing "a run with an empty pull_requests array"
+world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success"}')"
+tool "$SHA" --repo "$R"
+nothing "a run without a pull_requests field"
+world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success","pull_requests":[{"number":3,"base":{"ref":"develop"}},{"number":7,"base":{"ref":"main"}}]}')"
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a run whose pull_requests include one with base main passes" "111" "$OUT"
+world; put_runs "$HEAD" "$(runs_json 2 "$(run_json 2001 "$HEAD" success develop),$(run_json 2002 "$HEAD" success main)")"
+put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a develop-based run first, a main-based run second: prints the second" "2002" "$OUT"
+
+echo "AC6.1 review lows: a deleted head repository"
+world; put "repos/$R/commits/$SHA/pulls" "[$(pull_json 7 "$HEAD" null)]"
+tool "$SHA" --repo "$R"
+nothing "a PR whose head.repo is null"
+assert_eq "AC6.1 a PR whose head.repo is null: its runs are never looked up" "0" "$(logged "head_sha=$HEAD")"
+world; put "repos/$R/commits/$SHA/pulls" "[$(pull_json 7 "$(h40 60)" null),$(pull_json 8 "$HEAD")]"
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a null-repo PR first, a same-repo PR second: the second is used" "111" "$OUT"
+
+echo "AC6.1 review lows: a job that succeeded but did not complete"
+for n in "${NAMES[@]}"; do
+  world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json notcompleted "$n")"
+  tool "$SHA" --repo "$R"
+  nothing "job [$n] conclusion success but status in_progress"
+done
+
+echo "AC6.1 review lows: a run row whose head_sha is not the PR head"
+world; put_runs "$HEAD" "$(runs_json 1 "$(run_json 111 "$(h40 77)")")"
+tool "$SHA" --repo "$R"
+nothing "the only run row has another head_sha"
+world; put_runs "$HEAD" "$(runs_json 2 "$(run_json 2001 "$(h40 77)"),$(run_json 2002 "$HEAD")")"
+put "repos/$R/actions/runs/2001/jobs" "$(jobs_json ok)"
+put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a row with another head_sha is ignored, the next row is used" "2002" "$OUT"
+assert_eq "AC6.1 the ignored row's jobs were never read" "0" "$(logged "runs/2001/jobs")"
 
 echo "AC6.1 usage: exit 2"
 : > "$LOG"

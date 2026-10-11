@@ -132,7 +132,7 @@ case "$1 $2" in
       bad) echo "this is not json"; exit 0 ;;
     esac
     iso() { local s=$((36000 + $1)); printf '2026-10-11T%02d:%02d:%02dZ' $((s / 3600)) $((s % 3600 / 60)) $((s % 60)); }
-    job() { printf '{"databaseId":%s,"name":"%s","status":"%s","conclusion":"success","startedAt":"%s","completedAt":"%s"}' "$1" "$2" "$3" "$4" "$5"; }
+    job() { printf '{"databaseId":%s,"name":"%s","status":"%s","conclusion":"%s","startedAt":"%s","completedAt":"%s"}' "$1" "$2" "$3" "${6:-success}" "$4" "$5"; }
     jobs=""; sep=""; i=0
     if [ "${FAKE_SHARDS:-}" != none ]; then
       # other jobs of the same run: they are not shards and must not count
@@ -142,6 +142,7 @@ case "$1 $2" in
         i=$((i + 1))
         case "$d" in
           running) jobs="$jobs$sep$(job $((9100 + i)) "windows shard $i/3" in_progress "$(iso 0)" '0001-01-01T00:00:00Z')" ;;
+          skip) jobs="$jobs$sep$(job $((9100 + i)) "windows shard $i/3" completed "$(iso 0)" "$(iso 1)" skipped)" ;;
           *) jobs="$jobs$sep$(job $((9100 + i)) "windows shard $i/3" completed "$(iso 0)" "$(iso "$d")")" ;;
         esac
         sep=","
@@ -1011,4 +1012,24 @@ export FAKE_SHARDS_7777=none FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200" F
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.3 CI failed: ship exits 1" 1
 assert_eq "AC6.3 CI failed: ci-tree-tested.sh does not run" "0" "$(tree_calls | wc -l | tr -d ' ')"
+echo "v0.22.3 review Low-3: shard jobs that were skipped (conclusion skipped, with a completedAt) are not completed shards"
+fx
+export FAKE_SHARDS_7777="skip,skip,skip" FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200"
+sh_run 12 v1.2.3 --yes
+TAGSHA="$(cd "$F/repo" && git rev-parse 'v1.2.3^{commit}' 2>/dev/null)"
+assert_rc "Low-3 three skipped shard jobs on main: exit 0" 0
+assert_eq "Low-3 three skipped shard jobs on main: ci-tree-tested.sh runs" "1" "$(tree_calls | wc -l | tr -d ' ')"
+assert_contains "Low-3 ... for the release commit" "$(tree_calls)" "$TAGSHA"
+assert_eq "Low-3 ... and the hint names the PR run (5555)" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s): run tools/shard-weights.sh 5555')"
+assert_not_contains "Low-3 ... never the main run (7777): skipped jobs have no timings" "$OUT" "shard-weights.sh 7777"
+fx
+export FAKE_SHARDS_7777="skip,skip,skip" FAKE_TREE_RUN=
+sh_run 12 v1.2.3 --yes
+assert_eq "Low-3 three skipped shards and no PR run: the tool was asked" "1" "$(tree_calls | wc -l | tr -d ' ')"
+assert_eq "Low-3 ... no hint and no refresh" "0 0" "$(unb) $(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+fx
+export FAKE_SHARDS_7777="300,skip,skip" FAKE_TREE_RUN=
+sh_run 12 v1.2.3 --yes
+assert_eq "Low-3 one real shard and two skipped ones: fewer than 2 count, the tool is asked" "1" "$(tree_calls | wc -l | tr -d ' ')"
+
 t_summary
