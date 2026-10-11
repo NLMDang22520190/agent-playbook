@@ -595,4 +595,16 @@ flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval
 # --- v0.22.1 AC5.2: how to install shellcheck is in the README
 flat_has 'v22.1 AC5.2 README says how to install shellcheck (apt install shellcheck)' "$README" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
 
+
+# --- v0.22.1 review findings: content
+sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SKILL" "$WRONG" 'playbook-learn'
+sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SKILL" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
+sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$WRONG" 'docs-only|exempt'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
+sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
+SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$README")"
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"'; fi
+
 t_summary

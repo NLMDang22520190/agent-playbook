@@ -99,4 +99,35 @@ e5_reply mixed 'Tests: 4 passed, 1 failed: subtract.'; assert_eq "AC6.2 'Tests: 
 run_x E5 claimneg "true" "$INIT" "$RUN_T" "$(res 'Nothing failed. All tests pass.')"
 assert_eq "AC6.2 'Nothing failed. All tests pass.': claims everything passes, FAIL" "FAIL" "$(e_state E5 "$K_CLAIM")"
 
+
+echo "v0.22.1 review: ran_tests for runs wrapped in subshells, groups, control flow, prefixes, backticks"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV ran_tests: a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF2'
+(cd /w && bash proof-run.sh)
+{ bash proof-run.sh; }
+if bash proof-run.sh --label x; then echo ok; fi
+for i in 1 2; do bash proof-run.sh --label $i; done
+! bash proof-run.sh --label x
+sudo -u dev bash proof-run.sh --label x
+env -i PATH=/bin bash proof-run.sh --label x
+timeout 600 bash proof-run.sh --label x
+nice -n 5 bash proof-run.sh --label x
+`bash proof-run.sh --label x`
+EOF2
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV ran_tests: not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF2'
+sudo cat proof-run.sh
+(cd /w && cat proof-run.sh)
+{ ls proof-run.sh; }
+if [ -f proof-run.sh ]; then echo ok; fi
+timeout 5 head proof-run.sh
+nice -n 5 diff a.sh proof-run.sh
+env -i PATH=/bin ls scripts/proof-run.sh
+`cat proof-run.sh`
+EOF2
+
 t_summary

@@ -301,4 +301,26 @@ C="$(mk_copy)"
 run bash "$C/evals/run-checks.sh"
 assert_rc "AC5.1 the real tree passes run-checks" 0
 assert_contains "AC5.1 the ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
+
+# ---- v0.22.1 review: an explicit exemption marker, and no GNU flag hidden in a variable ----
+echo "v0.22.1 review: gnu-ok marker"
+MK='# gnu-ok:'
+gnu_case "marker with a reason exempts the line"            scripts/zz-gnu.sh "$DT $DD yesterday >/dev/null $MK BSD fallback follows" pass
+gnu_case "marker with a reason, readlink, in install.sh"    install.sh        "$RL $FF \"\$0\" >/dev/null $MK checked on Linux only" pass
+gnu_case "marker with a reason after a pipe and a cluster"  tests/zz-gnu.sh   "cat f | $G -n${PF#-} 'a' >/dev/null $MK PCRE needed here" pass
+gnu_case "the same line without the marker is flagged"      scripts/zz-gnu.sh "$DT $DD yesterday >/dev/null" fail "$DT $DD"
+gnu_case "marker with no reason is still flagged"           scripts/zz-gnu.sh "$DT $DD yesterday >/dev/null $MK" fail "$DT $DD"
+gnu_case "marker followed only by blanks is still flagged"  evals/zz-gnu.sh   "$ST $CC %Y f >/dev/null $MK   " fail "$ST $CC"
+gnu_case "marker without the colon is still flagged"        tools/zz-gnu.sh   "$XA $XR echo </dev/null # gnu-ok reason" fail "$XA $XR"
+gnu_case "marker text without a leading # is still flagged" tests/zz-gnu.sh   "$RL $FF \"\$0\" >/dev/null gnu-ok: reason" fail "$RL $FF"
+gnu_case "a marker on another line does not exempt this one" tests/zz-gnu.sh  "$RL $FF \"\$0\" >/dev/null
+true $MK unrelated" fail "$RL $FF"
+LIBF="$PB_ROOT/scripts/lib.sh"
+ED="$(awk '/^pb_epoch_day\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "$LIBF")"
+assert_contains "RV pb_epoch_day has the GNU date call written literally" "$ED" "$DT -u $DD "
+GL="$(printf '%s\n' "$ED" | grep -F -- "$DT -u $DD " | head -n 1)"
+assert_contains "RV pb_epoch_day: that GNU call carries the gnu-ok marker with a reason" "$GL" "# gnu-ok: "
+HID="$(grep -nE '^[[:space:]]*(local +)?[A-Za-z_][A-Za-z0-9_]*=-[A-Za-z]([[:space:]]|$)' "$PB_ROOT"/scripts/*.sh 2>/dev/null)"
+assert_eq "RV no line in scripts/*.sh assigns a short flag to a variable to hide it" "" "$HID"
+
 t_summary
