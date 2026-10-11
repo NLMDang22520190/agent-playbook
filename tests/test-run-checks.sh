@@ -185,7 +185,7 @@ checks "$C"
 assert_contains "AC7.1 the failure mentions the repeat bound" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "bound"
 
 
-echo "v0.21.0 AC2.1 GNU-only sed -i (no attached suffix) is refused; BSD sed needs one"
+echo "v0.21.0 AC2.1 GNU-only in-place sed (no attached suffix) is refused; BSD sed needs one"
 # The commands are built at run time: a literal one in this file would fail the real run-checks.
 SD=sed; FI=-i
 # sed_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
@@ -220,7 +220,7 @@ sed_case "attached suffix .bak, -E before"        tests/zz-sed.sh "$SD -E $FI.ba
 sed_case "a comment line mentioning it"           tests/zz-sed.sh "# do not use $SD $FI \"s/...\"" pass
 sed_case "a trailing comment mentioning it"       tests/zz-sed.sh "foo   # node, not $SD $FI: BSD" pass
 sed_case "sed without -i"                         tests/zz-sed.sh "$SD -n 's/a/b/p' f" pass
-sed_case "grep -i is not sed -i"                  tests/zz-sed.sh "grep $FI x f" pass
+sed_case "grep -i is not in-place sed"                tests/zz-sed.sh "grep $FI x f" pass
 sed_case "sed -e script, no -i at all"           tests/zz-sed.sh "$SD -e 's/a/b/' f" pass
 # the message tells what is wrong, not only where
 C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$SD $FI 's/a/b/' f" > "$C/tests/zz-sed.sh"
