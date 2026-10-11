@@ -714,7 +714,7 @@ assert_eq "AC4.1 exactly one lookup of the push-to-main run" "1" "$(shard_calls 
 assert_contains "AC4.1 the lookup is for branch main" "$(shard_calls)" "--branch main"
 assert_contains "AC4.1 the lookup is for event push" "$(shard_calls)" "--event push"
 assert_contains "AC4.1 the lookup is for the release commit (the tag's commit)" "$(shard_calls)" "--commit $TAGSHA"
-assert_eq "AC4.1 the jobs of that run are read once: gh run view 7777 --json jobs" "1" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
+assert_eq "AC4.1/AC3.1 unbalanced: the jobs of that run are read twice, ship's own read and shard-weights.sh's: gh run view 7777 --json jobs" "2" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
 WATCHN="$(grep -n '^gh run watch' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"; VIEWN="$(grep -n '^gh run view' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
 if [ -n "$WATCHN" ] && [ -n "$VIEWN" ] && [ "$VIEWN" -gt "$WATCHN" ]; then t_ok "AC4.1 the shard jobs are read after the CI run was watched"; else t_bad "AC4.1 the shard jobs are read after the CI run was watched" "watch at log line [$WATCHN], run view at [$VIEWN]"; fi
 fx
@@ -730,6 +730,7 @@ for sh in "100,120,110" "150,100" "100,100,100" "300"; do
   assert_rc "AC4.1 shards [$sh]: exit 0" 0
   assert_eq "AC4.1 shards [$sh]: no unbalanced line (longest is not more than 1.5x the shortest)" "0" "$(unb)"
   assert_eq "AC4.1 shards [$sh]: the jobs were looked at (one gh run view)" "1" "$(logged '^gh run view')"
+  assert_eq "AC4.1/AC3.1 shards [$sh]: balanced, the jobs of the run are read exactly once (no refresh read)" "1" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
 done
 fx
 export FAKE_SHARDS="151,100"
