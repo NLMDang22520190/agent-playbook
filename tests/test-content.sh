@@ -436,4 +436,8 @@ for f in "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT"; do
   flat_has "v19 AC3.1 $b: or the system temp dir" "$f" 'temp(orary)? (dir|folder)|\$TMPDIR|/tmp'
 done
 
+# --- v0.20.0 AC4.1: the Lite final report always has a "Playbook feedback:" line (the captured id, or "none")
+sec_flat_has 'v20 AC4.1 Lite step 5: the final report always has a Playbook feedback line' "$SKILL" '^### Lite workflow' 'always[^.]{0,200}Playbook feedback|Playbook feedback[^.]{0,200}always'
+sec_flat_has 'v20 AC4.1 Lite step 5: the line says none when nothing was captured' "$SKILL" '^### Lite workflow' 'Playbook feedback[^.]{0,200}[^[:alnum:]]none[^[:alnum:]]|[^[:alnum:]]none[^[:alnum:]][^.]{0,200}Playbook feedback'
+
 t_summary

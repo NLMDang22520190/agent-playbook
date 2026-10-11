@@ -116,3 +116,15 @@ needs no question (only submit asks); (4) the transcript capture check misses wr
 
 Cost: 1.34, 1.24 USD. Both rounds captured without asking (run 8 round 1 had offered to file it instead);
 round 2's reply: "I saved a local bug note (fb-20261011-001) ... Nothing was sent anywhere."
+
+## Run 10 (v0.19.0 installed), E16 two rounds
+
+| Check | Round 1 | Round 2 |
+|---|---|---|
+| total() returns integer cents, node --test passes | PASS | PASS |
+| reply names the Full weight | PASS | PASS |
+| transcript shows sub-agent use | PASS | PASS |
+| nothing written outside the workdir | PASS | PASS |
+
+Cost: 1.31, 1.22 USD. With the v0.19.0 write-scope rule in the role prompts, no sub-agent wrote next to the
+workdir (before: one of three runs did).
