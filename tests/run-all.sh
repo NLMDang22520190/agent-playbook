@@ -68,5 +68,12 @@ if [ "$SK" -eq 1 ]; then
   echo "== evals/run-checks.sh (static skill checks)"
   bash evals/run-checks.sh || fail=1
 fi
-if [ "$fail" -eq 0 ]; then echo "ALL GREEN"; else echo "FAILURES"; fi
+if [ "$fail" -eq 0 ]; then echo "ALL GREEN"; else echo "FAILURES"
+  # most failing assertions got nothing at all: the machine, not the code, is the likely cause
+  nf="$(cat "$OUTD"/*.out 2>/dev/null | grep -c '^  FAIL ')"
+  ne="$(cat "$OUTD"/*.out 2>/dev/null | grep -c ' got \[\]$')"
+  if [ "$ne" -ge 20 ] && [ $((ne * 2)) -ge "$nf" ]; then
+    echo "hint: $ne of $nf failing assertions got empty output, likely an environment problem (machine restart, missing node, full disk); re-run one suite alone to confirm"
+  fi
+fi
 exit "$fail"
