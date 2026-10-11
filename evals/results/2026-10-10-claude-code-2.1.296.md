@@ -64,3 +64,14 @@ choice stable.
 Cost: about USD 0.25 per round for E3+E8 and USD 0.37–0.47 for E1 (total about USD 2.3).
 Weight choice for E1 was Lite in the two rounds that stated it with a reason (`docs/notes.md:2` plus the
 additive rule); round 3's reply did not name the weight in its first lines (not graded).
+
+## Run 6 (v0.15.0 installed, v0.16.0 graders, `--clean-env`), E16 and E19, two rounds
+
+| Scenario | Round 1 | Round 2 | Cost (USD) | Notes |
+|---|---|---|---|---|
+| E19 | 5/5 | 5/5 | 0.52, 0.42 | playbook-tdd loaded before the first tests/ write in both rounds |
+| E16 | 1/4 | 1/4 | 0.26, 0.19 | both rounds stopped to ask before changing money code (no callers found, rounding unknown): the always-on rule says to ask on money and data shape, but the run was headless and nobody could answer |
+
+Finding: E16 as written cannot pass headless. The agent cannot tell it is headless, so "ask when hard
+to reverse" wins over "headless: do not block". Next: give E16's prompt the answers (unit and
+rounding, "no callers outside this repo") or mark it interactive-only.
