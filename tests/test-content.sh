@@ -440,4 +440,70 @@ done
 sec_flat_has 'v20 AC4.1 Lite step 5: the final report always has a Playbook feedback line' "$SKILL" '^### Lite workflow' 'always[^.]{0,200}Playbook feedback|Playbook feedback[^.]{0,200}always'
 sec_flat_has 'v20 AC4.1 Lite step 5: the line says none when nothing was captured' "$SKILL" '^### Lite workflow' 'Playbook feedback[^.]{0,200}[^[:alnum:]]none[^[:alnum:]]|[^[:alnum:]]none[^[:alnum:]][^.]{0,200}Playbook feedback'
 
+
+# --- v0.22.0 AC2: understanding before code (templates/spec.md, playbook-tdd Lite step 1 and Phase 1)
+SPEC_T="$TDD/templates/spec.md"
+SPEC_REV="$TDD/roles/spec-reviewer.md"
+l_und="$(line_of "$SPEC_T" '^## Understanding')"
+l_ac="$(line_of "$SPEC_T" '^## Acceptance criteria')"
+l_imp="$(line_of "$SPEC_T" '^## Impact')"
+if [ -n "$l_und" ] && [ -n "$l_ac" ] && [ "$l_und" -lt "$l_ac" ]; then t_ok 'v22 AC2.1 spec template: ## Understanding comes before ## Acceptance criteria'; else t_bad 'v22 AC2.1 spec template: ## Understanding comes before ## Acceptance criteria' "Understanding line [$l_und], Acceptance criteria line [$l_ac]"; fi
+sec_flat_has 'v22 AC2.1 Understanding: the request restated in your own words' "$SPEC_T" '^## Understanding' 'restat|own words|rephras'
+sec_flat_has 'v22 AC2.1 Understanding: a scan log' "$SPEC_T" '^## Understanding' 'scan log|search log'
+sec_flat_has 'v22 AC2.1 Understanding: the scan log has each command' "$SPEC_T" '^## Understanding' 'command'
+sec_flat_has 'v22 AC2.1 Understanding: the scan log has the hit counts' "$SPEC_T" '^## Understanding' 'hit count|hits|number of (hits|matches)|match(es)? count'
+sec_flat_has 'v22 AC2.1 Understanding: files read are listed' "$SPEC_T" '^## Understanding' 'files? read|read files|read:'
+sec_flat_has 'v22 AC2.1 Understanding: other readings of the request and why this one' "$SPEC_T" '^## Understanding' 'other reading|alternative reading|other interpretation|another reading'
+sec_flat_has 'v22 AC2.1 Understanding: in scope' "$SPEC_T" '^## Understanding' 'in scope|in-scope'
+sec_flat_has 'v22 AC2.1 Understanding: out of scope' "$SPEC_T" '^## Understanding' 'out of scope|out-of-scope'
+exact_heading 'v22 AC2.2 spec template has the exact heading ## Impact' "$SPEC_T" '## Impact'
+sec_flat_has 'v22 AC2.2 Impact: who calls or uses what changes' "$SPEC_T" '^## Impact' 'calls?|callers?|uses|users of|call sites?'
+sec_flat_has 'v22 AC2.2 Impact: the search command' "$SPEC_T" '^## Impact' 'search|grep|command'
+sec_flat_has 'v22 AC2.2 Impact: hits with file:line' "$SPEC_T" '^## Impact' 'file:line|hits?'
+if [ -n "$l_imp" ] && [ -n "$l_ac" ] && [ "$l_imp" -lt "$l_ac" ]; then t_ok 'v22 AC2.2 spec template: ## Impact also comes before the acceptance criteria'; else t_bad 'v22 AC2.2 spec template: ## Impact also comes before the acceptance criteria' "Impact line [$l_imp], Acceptance criteria line [$l_ac]"; fi
+
+# lite_step N -> the text of step N of the Lite workflow (from "N. " up to the next numbered step)
+lite_step() { section "$SKILL" '^### Lite workflow' | awk -v n="$1" 'BEGIN { p = "^" n "\\. " } $0 ~ p { f = 1; print; next } f && /^[0-9]+\. / { exit } f { print }'; }
+lite_has() { # NAME STEP PATTERN
+  if lite_step "$2" | tr '\n' ' ' | tr -s ' ' | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in Lite step $2"; fi
+}
+ASK_FIRST='(ambiguous|ambiguity).{0,200}hard[- ]to[- ]reverse.{0,200}before (any|writing|you write|touching|the first).{0,40}(code|test|line)|hard[- ]to[- ]reverse.{0,200}(ambiguous|ambiguity).{0,200}before (any|writing|you write|touching|the first).{0,40}(code|test|line)'
+lite_has 'v22 AC2.3 Lite step 1 requires the Understanding section' 1 'Understanding'
+lite_has 'v22 AC2.3 Lite step 1 requires the Impact section' 1 'Impact'
+lite_has 'v22 AC2.3 Lite step 1: a few lines each' 1 'few lines|short|brief'
+lite_has 'v22 AC2.3 Lite step 1: an ambiguous, hard-to-reverse reading is asked before any code' 1 "$ASK_FIRST"
+lite_has 'v22 AC2.3 Lite step 1: the question is one batched message' 1 'batch|one (question|message)'
+sec_flat_has 'v22 AC2.3 Phase 1 requires the Understanding section' "$SKILL" '^### Phase 1' 'Understanding'
+sec_flat_has 'v22 AC2.3 Phase 1 requires the Impact section' "$SKILL" '^### Phase 1' 'Impact'
+sec_flat_has 'v22 AC2.3 Phase 1: an ambiguous, hard-to-reverse reading is asked before any code' "$SKILL" '^### Phase 1' "$ASK_FIRST"
+sec_flat_has 'v22 AC2.3 Phase 1: that question is one batched message' "$SKILL" '^### Phase 1' 'batch'
+
+# --- v0.22.0 AC3: the spec reviewer role, run before the first tester
+assert_file 'v22 AC3.1 skills/playbook-tdd/roles/spec-reviewer.md exists' "$SPEC_REV"
+flat_has 'v22 AC3.1 spec-reviewer is read-only' "$SPEC_REV" 'read-only|read only'
+flat_has 'v22 AC3.1 spec-reviewer changes nothing in the repo (besides its own report)' "$SPEC_REV" 'change nothing|changes? no (file|code)|do not (change|edit|modify)|never (change|edit|modify)'
+flat_has 'v22 AC3.1 spec-reviewer takes the raw request verbatim' "$SPEC_REV" 'raw request.{0,120}verbatim|verbatim.{0,120}(raw )?request'
+flat_has 'v22 AC3.1 spec-reviewer reads 01-spec.md' "$SPEC_REV" '01-spec\.md'
+flat_has 'v22 AC3.1 spec-reviewer re-runs the impact and scan searches' "$SPEC_REV" 're-?run.{0,120}(search|scan|grep|impact)|(search|scan|grep|impact).{0,80}re-?run'
+flat_has 'v22 AC3.1 spec-reviewer compares every request sentence with the ACs' "$SPEC_REV" '(every|each).{0,60}sentence.{0,160}(AC|acceptance)|sentence by sentence'
+flat_has 'v22 AC3.1 spec-reviewer verdict OK' "$SPEC_REV" '(^|[^[:alnum:]])OK([^[:alnum:]]|$)'
+flat_has 'v22 AC3.1 spec-reviewer verdict REVISE' "$SPEC_REV" '(^|[^[:alnum:]])REVISE([^[:alnum:]]|$)'
+flat_has 'v22 AC3.1 spec-reviewer lists findings' "$SPEC_REV" 'findings?'
+flat_has 'v22 AC3.1 spec-reviewer writes .agents/handoff/01b-spec-review.md' "$SPEC_REV" '\.agents/handoff/01b-spec-review\.md'
+flat_has 'v22 AC3.1 spec-reviewer gate: role-gate.sh check reviewer' "$SPEC_REV" 'role-gate\.sh check reviewer'
+flat_has 'v22 AC3.1 spec-reviewer writes only inside the repository (scratch under .agents/handoff)' "$SPEC_REV" '\.agents/handoff'
+sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer' "$SKILL" '^### Phase 1' 'spec[- ]review'
+sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer BEFORE the first tester' "$SKILL" '^### Phase 1' 'spec[- ]review.{0,200}before.{0,60}(first )?tester|before.{0,60}(first )?tester.{0,120}spec[- ]review|tester.{0,60}(only )?after.{0,80}spec[- ]review'
+sec_flat_has 'v22 AC3.2 Phase 1: a REVISE verdict goes back to the spec' "$SKILL" '^### Phase 1' 'REVISE.{0,160}(spec|back)'
+sec_flat_has 'v22 AC3.2 Phase 1 names the spec-reviewer role file or its report' "$SKILL" '^### Phase 1' 'roles/spec-reviewer|01b-spec-review|spec-reviewer'
+
+# --- v0.22.0 AC4: request coverage before "done"
+exact_heading 'v22 AC4.1 final-report template has the exact heading ## Request coverage' "$FINAL" '## Request coverage'
+sec_flat_has 'v22 AC4.1 Request coverage: each sentence of the raw request verbatim' "$FINAL" '^## Request coverage' '(each|every).{0,60}sentence.{0,80}(raw )?request.{0,80}verbatim|verbatim.{0,120}sentence|sentence.{0,80}verbatim'
+sec_flat_has 'v22 AC4.1 Request coverage: done, with where (file:line or AC)' "$FINAL" '^## Request coverage' 'done.{0,80}(file:line|AC|where)'
+sec_flat_has 'v22 AC4.1 Request coverage: read as ...' "$FINAL" '^## Request coverage' 'read as'
+sec_flat_has 'v22 AC4.1 Request coverage: not done' "$FINAL" '^## Request coverage' 'not done'
+sec_flat_has 'v22 AC4.1 Phase 4 requires the request coverage' "$SKILL" '^### Phase 4' 'request coverage'
+lite_has 'v22 AC4.1 Lite step 5 requires the request coverage' 5 'request coverage'
+
 t_summary
