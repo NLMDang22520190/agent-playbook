@@ -49,5 +49,5 @@ dir="$(dirname "$out")"
 tmp="$(mktemp "$dir/.shard-weights.XXXXXX")" || exit 3
 { printf '# Seconds per suite on the windows-latest CI runner (shard jobs), run %s.\n' "$run"
   printf '# Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.\n'
-  printf '%s\n' "$body"; } > "$tmp" && mv "$tmp" "$out" || { rm -f "$tmp"; exit 3; }
+  printf '%s\n' "$body"; } > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$out" || { rm -f "$tmp"; exit 3; }
 echo "wrote $out ($(printf '%s\n' "$body" | wc -l | tr -d ' ') suites, run $run)"

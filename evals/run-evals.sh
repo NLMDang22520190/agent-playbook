@@ -153,7 +153,7 @@ said()          { grep -qiw "$1" "$LOG"; }
 # result_text -> the "result" field of a stream-json "type":"result" line (exit 3 when there is none)
 result_text()   { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.result === "string") r = o.result } catch (e) {} } if (r === null) process.exit(3); process.stdout.write(r)' "$LOG"; }
 # result_ok -> 0 when the last stream-json result line is not an error (is_error false, or subtype success)
-result_ok()     { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result") r = o } catch (e) {} } const st = r ? String(r.subtype || "") : ""; process.exit(r && r.is_error !== true && !/^error/.test(st) && (r.is_error === false || st === "success") ? 0 : 1)' "$LOG" 2>/dev/null; }
+result_ok()     { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result") r = o } catch (e) {} } const st = r ? String(r.subtype || "") : ""; process.exit(r && r.is_error !== true && (st === "success" || (st === "" && r.is_error === false)) ? 0 : 1)' "$LOG" 2>/dev/null; }
 # auth_lines -> the log lines to search for auth errors: a retry the run recovered from (api_retry lines
 # before a successful result) is not a harness failure
 auth_lines()    { if result_ok; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
@@ -163,9 +163,9 @@ e19_order()     { node -e 'let json=false, i=0, skill=-1, write=-1; for (const l
 # subagent_used -> 0 when a tool_use block's own name is Agent or Task (names inside its input do not count)
 subagent_used() { node -e 'for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : (o && o.type === "tool_use" ? [o] : []); for (const b of c) if (b && b.type === "tool_use" && (b.name === "Agent" || b.name === "Task")) process.exit(0) } process.exit(1)' "$LOG"; }
 # names_full TEXT -> 0 when the word Full appears at least once not preceded by "not"/"no"
-names_full()    { node -e 'const s = process.argv[1]; const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)' "$1"; }
+names_full()    { printf '%s' "$1" | node -e 'const s = require("fs").readFileSync(0, "utf8"); const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)'; }
 # untested_label TEXT -> 0 when the reply labels the change untested ("has no tests", "no test covering it", ...)
-untested_label() { node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*failing)|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(process.argv[1]) ? 0 : 1)' "$1"; }
+untested_label() { printf '%s' "$1" | node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*failing)|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(require("fs").readFileSync(0, "utf8")) ? 0 : 1)'; }
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { node -e 'let c=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.total_cost_usd === "number") c = o.total_cost_usd } catch (e) {} } if (c === null) process.exit(3); process.stdout.write(String(c))' "$LOG"; }
 loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
