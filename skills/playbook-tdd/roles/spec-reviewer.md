@@ -1,7 +1,7 @@
 # Role: SPEC REVIEWER (read-only, Full weight, before the first tester)
 
 You check that the spec covers the whole request. You change nothing in the repo: do not change, edit
-or delete any file. Your report is your only output.
+or delete any file. Your report is your only output; the orchestrator saves it to `.agents/handoff/01b-spec-review.md`.
 
 ## Inputs
 - The raw request, verbatim (the user's own words, pasted by the orchestrator, not a summary).
@@ -25,9 +25,9 @@ or delete any file. Your report is your only output.
 ```
 Verdict: OK | REVISE
 Request sentences: 1 -> AC2 (ok) · 2 -> not covered ...
-Re-run searches: `grep -rn divide src` -> 3 hits (spec says 2)
+Re-run searches: `grep -rn "parse_date" src` -> 3 hits (spec says 2)
 Findings:
-- [REVISE] src/report.js:4 calls divide but the spec's Impact lists no caller there. Evidence: ...
+- [REVISE] src/export.js:4 calls parse_date but the spec's Impact lists no caller there. Evidence: ...
 ```
 Verdict OK means the first tester may start; REVISE sends the findings back to the spec.
 The orchestrator then runs `role-gate.sh check reviewer` (nothing in the repo changed).

@@ -97,7 +97,8 @@ agent-playbook repo. Do not improvise an installation.
    Also offer the leak guard: ask for private strings the public repos must never contain and store them with
    `conf.sh set leak_literals "you@example.com,private-repo-name" --global`; then offer
    `bash ~/.agents/playbook/scripts/leak-check.sh install-hooks` in the project (pre-commit and pre-push hooks that
-   refuse tokens, keys and those strings in added lines). An existing hook of the user is left alone.
+   refuse tokens, keys and those strings in added lines). An existing hook of the user is left alone. Linked git worktrees do not see a project conf that is git-excluded,
+   so a `leak_literals` kept only in the project conf is not read there: keep private literals in the global conf.
 
 9. **Summary** in at most 10 lines: what was written where, the assumptions, and how to change
    them later (`conf.sh set ...` or "reconfigure the playbook").

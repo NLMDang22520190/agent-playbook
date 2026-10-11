@@ -122,8 +122,8 @@ in one batched question.
 
 **Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
 context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
-sentence with the ACs. It writes `.agents/handoff/01b-spec-review.md`; check it with
-`role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
+sentence with the ACs. Its report is its only output: the orchestrator saves the report to `.agents/handoff/01b-spec-review.md` and
+runs `role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
 rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
 
 Gaps, by reversibility: ask (one batched message) only about those that change assertions AND are

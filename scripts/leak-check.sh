@@ -8,9 +8,9 @@
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
 # Patterns: github-token, anthropic-key, aws-key, private-key (built in), plus the conf keys
 #   leak_patterns  (ERE, alternatives separated by |)         reported as user-pattern
-#   leak_literals  (comma-separated FIXED strings)             reported as user-literal
+#   leak_literals  (comma-separated FIXED strings, case-insensitive)   reported as user-literal
 # read from the global conf (PLAYBOOK_HOME or HOME) and the project conf.
-# A hit prints "file:line: <pattern name> <first 4 chars>***" (never the full match) and exits 1.
+# A hit prints "file:line: <pattern name> <first 4 chars>***" (a match of 8 characters or fewer: just ***) and exits 1.
 # Exit: 0 clean ("leak-check: clean"), 1 a hit (or, for install-hooks, a hook left alone), 2 usage, 3 not a git repo or git failed.
 # Bash 3.2 and BSD tool compatible.
 set -u
@@ -32,7 +32,7 @@ trap cleanup EXIT
 scan_text() {
   grep -a -n -o "$2" -e "$3" "$TMP/txt" 2>/dev/null |
     awk -v name="$1" 'NR == FNR { loc[FNR] = $0; next }
-      { n = $0; sub(/:.*/, "", n); m = $0; sub(/^[0-9]+:/, "", m); print loc[n] ": " name " " substr(m, 1, 4) "***" }' "$TMP/idx" - >> "$TMP/found"
+      { n = $0; sub(/:.*/, "", n); m = $0; sub(/^[0-9]+:/, "", m); print loc[n] ": " name " " (length(m) <= 8 ? "" : substr(m, 1, 4)) "***" }' "$TMP/idx" - >> "$TMP/found"
 }
 
 # conf_values KEY -> the global then the project value of KEY, one per line (empty ones left out)
@@ -65,7 +65,7 @@ EOF
       [ -n "$pat" ] || continue
       while IFS= read -r lit; do
         [ -n "$lit" ] || continue
-        scan_text user-literal -F "$lit"
+        scan_text user-literal -Fi "$lit"
       done <<EOF2
 $(printf '%s\n' "$pat" | tr ',' '\n')
 EOF2
@@ -74,8 +74,9 @@ $(conf_values leak_literals)
 EOF3
   fi
   if [ -s "$TMP/found" ]; then
-    LC_ALL=C sort -u "$TMP/found"
-    printf 'leak-check: %s finding(s); the matches are masked above\n' "$(wc -l < "$TMP/found" | tr -d ' ')"
+    LC_ALL=C sort -u "$TMP/found" > "$TMP/shown"
+    cat "$TMP/shown"
+    printf 'leak-check: %s finding(s); the matches are masked above\n' "$(wc -l < "$TMP/shown" | tr -d ' ')"
     return 1
   fi
   echo "leak-check: clean"
@@ -85,11 +86,15 @@ EOF3
 # diff_to_added FILE -> idx and txt from a unified diff (-U0) of FILE: the added lines only
 diff_to_added() {
   awk -v idx="$TMP/idx" -v txt="$TMP/txt" '
-    /^diff --git / { hdr = 1; file = ""; next }
+    /^diff --(git|cc|combined) / { hdr = 1; file = ""; next }
     hdr && /^\+\+\+ / { f = $0; sub(/^\+\+\+ /, "", f); sub(/\t.*$/, "", f)
       if (f == "/dev/null") file = ""; else { sub(/^b\//, "", f); file = f }; next }
-    /^@@ / { hdr = 0; s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[ ,].*$/, "", s); ln = s + 0; next }
-    !hdr && /^\+/ { if (file != "") { print file ":" ln >> idx; print substr($0, 2) >> txt }; ln++; next }
+    /^@@+ / { hdr = 0; np = 0; while (substr($0, np + 1, 1) == "@") np++; np--   # columns: one per parent
+      s = $0; sub(/ @@+.*$/, "", s); sub(/^.* \+/, "", s); sub(/,.*$/, "", s); ln = s + 0; next }
+    !hdr && !/^\\/ { p = substr($0, 1, np)
+      if (index(p, "-")) next                                       # not in the result
+      if (p ~ /^\++$/ && file != "") { print file ":" ln >> idx; print substr($0, np + 1) >> txt }
+      ln++; next }
   ' "$1"
   : >> "$TMP/idx"; : >> "$TMP/txt"
 }
@@ -111,16 +116,16 @@ do_scan() {
   case "$mode" in
     staged)
       in_repo
-      git -c core.quotePath=false diff --cached -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ > "$TMP/diff" 2>/dev/null ||
+      git -c core.quotePath=false diff --cached --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ > "$TMP/diff" 2>/dev/null ||
         { echo "leak-check: git diff failed" >&2; exit 3; }
       diff_to_added "$TMP/diff" ;;
     range|unpushed)
       in_repo
       if [ "$mode" = range ]; then
-        git -c core.quotePath=false log -p -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" -- > "$TMP/diff" 2>/dev/null ||
+        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for range $val" >&2; exit 3; }
       else
-        git -c core.quotePath=false log -p -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not --remotes -- > "$TMP/diff" 2>/dev/null ||
+        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not --remotes -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for $val" >&2; exit 3; }
       fi
       diff_to_added "$TMP/diff" ;;
@@ -160,7 +165,7 @@ parse_repo() { # args after the command -> REPO
 hook_head() { # the first lines of a hook
   local lc="$SELF_DIR/leak-check.sh"
   lc="$(printf '%s' "$lc" | sed "s/'/'\\\\''/g")"
-  printf '#!/bin/sh\n%s\n# Installed by leak-check.sh install-hooks; leak-check.sh uninstall-hooks removes it.\nLC='"'"'%s'"'"'\n[ -f "$LC" ] || exit 0\n' "$MARKER" "$lc"
+  printf '#!/bin/sh\n%s\n# Installed by leak-check.sh install-hooks; leak-check.sh uninstall-hooks removes it.\nLC='"'"'%s'"'"'\n[ -f "$LC" ] || { echo "leak-check: $LC is missing; the hook refuses. Run leak-check.sh uninstall-hooks, or install-hooks again from a current checkout." >&2; exit 1; }\n' "$MARKER" "$lc"
 }
 
 install_hooks() {

@@ -20,6 +20,33 @@ const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 const WRAP = /\b(?:ba|z)?sh((?:\s+(?:[-+][a-zA-Z]*[oO]\s+[a-z_]+|--(?:rcfile|init-file)\s+[^\s"'-][^\s"']*|--?[a-zA-Z][a-zA-Z-]*))+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
 const unwrap1 = s => s.replace(WRAP, (m, f, d, q) => (!/(?:^|\s)-[a-z]*c/.test(f) ? m : d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
 const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u === s) break; s = u; } return s; };
+// a path under src/ (not under node_modules/)
+const isSrc = p => /(^|\/)src\//.test(p) && !/(^|\/)node_modules\//.test(p);
+// does a shell command write under src/? Quote-aware tokens (linear: no nested unbounded quantifiers), split into
+// simple commands at ; & | and newlines; redirects, tee, mv/cp targets and sed/perl in-place edits count
+function bashWritesSrc(cmd) {
+  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n]|[^\s;&|<>"']+/g) || [];
+  const bare = t => t.replace(/^["']|["']$/g, "");
+  let words = [];
+  const done = () => {
+    const w = words; words = [];
+    if (!w.length) return false;
+    const verb = bare(w[0]).replace(/^.*\//, ""), args = w.slice(1), plain = args.filter(a => !/^-/.test(a));
+    const flags = args.filter(a => /^-/.test(a));
+    if (verb === "tee") return plain.some(a => isSrc(bare(a)));
+    if (verb === "mv" || verb === "cp") return plain.length > 0 && isSrc(bare(plain[plain.length - 1]));
+    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => isSrc(bare(a)));
+    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => isSrc(bare(a)));
+    return false;
+  };
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
+    if (t === ">" || t === ">>") { if (k + 1 < toks.length && isSrc(bare(toks[k + 1]))) return true; k++; continue; }
+    if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return true; continue; }
+    words.push(t);
+  }
+  return done();
+}
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
@@ -37,11 +64,12 @@ for (const line of text.split(/\r?\n/)) {
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
-    if (b.name === "Write" || b.name === "Edit") {   // the spec file, and the first edit under src/
-      const p = fp.replace(/\\/g, "/");
-      if (/(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p) && specw < 0) specw = i;
-      if (/(^|\/)src\//.test(p) && srcw < 0) srcw = i;
+    if (b.name === "Write" || b.name === "Edit" || b.name === "MultiEdit" || b.name === "NotebookEdit") {   // the spec file, and the first write under src/
+      const p = String(b.name === "NotebookEdit" ? inp.notebook_path || "" : fp).replace(/\\/g, "/");
+      if (b.name !== "NotebookEdit" && /(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p) && specw < 0) specw = i;
+      if (isSrc(p) && srcw < 0) srcw = i;
     }
+    if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
