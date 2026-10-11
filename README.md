@@ -223,7 +223,7 @@ agent-playbook/
 
 CI cancels superseded runs of the same PR (concurrency, never on main or tags) and every job has a timeout.
 
-A main push reuses a green same-repo PR run of the identical tree (a merge commit or a squash of an up-to-date PR) and skips its own suites; `tools/ci-tree-tested.sh` finds that run through `gh api` only. Rebase merges always run the tests, and so does any merge of a PR that is not up to date.
+A main push reuses a green same-repo PR run of the identical tree (a merge commit or a squash of an up-to-date PR) and skips its own suites; `tools/ci-tree-tested.sh` finds that run through `gh api` only. A rebase merge reuses a PR run only when its single resulting commit has the PR head tree and its parent is P, the base the PR head was last updated on; a rebase of several commits, and any merge of a PR that is not up to date, run the tests.
 `tools/bsd-check.sh [SUITE...]` runs the suites (default: all) with one-true-awk (`original-awk` or `nawk`) first on PATH, the awk macOS ships (`sudo apt install original-awk` on Ubuntu or WSL).
 
 Local setup for the static checks: `run-checks.sh` runs shellcheck when it is installed (`sudo apt install shellcheck` on Ubuntu or WSL,

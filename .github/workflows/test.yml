@@ -34,6 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           run="$(bash tools/ci-tree-tested.sh "${{ github.sha }}" --repo "$GITHUB_REPOSITORY")" || run=""
+          case "$run" in *[!0-9]*) run= ;; esac
           echo "reused run: ${run:-none}"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 

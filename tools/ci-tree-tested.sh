@@ -5,7 +5,8 @@
 # 2 on a usage error. Repository: --repo, else $GITHUB_REPOSITORY, else the current gh repository.
 # Lookup (gh api only; never logs, artifacts or job outputs):
 #   1. repos/R/commits/SHA/pulls: at most 5 PRs, each with its head sha H; a PR whose head repo is not R is skipped
-#   2. repos/R/actions/workflows/test.yml/runs?event=pull_request&head_sha=H&status=success&per_page=10 (newest first)
+#   2. repos/R/actions/workflows/test.yml/runs?event=pull_request&head_sha=H&status=success&per_page=10 (newest first);
+#      a run counts only when its pull_requests[] has an entry with base.ref main
 #   3. repos/R/actions/runs/ID/jobs?filter=latest&per_page=100: test (ubuntu-latest), test (macos-latest),
 #      test (windows-latest) and windows shard 1/3, 2/3, 3/3 all concluded success (none skipped or missing)
 #   4. tree(SHA) equals tree(H) (repos/R/git/commits/X, .tree.sha)
@@ -61,6 +62,8 @@ if (mode === "pulls") {
   for (const r of d.workflow_runs.slice(0, 10)) {
     if (!r || r.conclusion !== "success" || r.status !== "completed") continue;
     if (r.head_sha !== undefined && r.head_sha !== arg) continue;
+    // the run must belong to a PR whose base branch is main (not a stacked PR retargeted later)
+    if (!Array.isArray(r.pull_requests) || !r.pull_requests.some((p) => p && p.base && p.base.ref === "main")) continue;
     if (!/^[0-9]+$/.test(String(r.id))) continue;
     out.push(String(r.id));
   }
