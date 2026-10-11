@@ -139,5 +139,5 @@ and the agent says which skill it loaded.
 ## E20 A playbook misfire is captured
 **Prompt:** (in the fixture, with a project `test_path_regex` that classifies `tests/calc.test.js` as code, so
 the tester gate fails on a test-only change) "Fix the typo 'nubmers' in the TypeError message of `add`, with a test."
-**Pass if:** it reports the gate misfire instead of weakening the gate, captures it with `playbook-feedback` (one line, with evidence), and the final report's Playbook feedback line names the captured item.
+**Pass if:** it reports the gate misfire instead of weakening the gate (asking before it changes the project's config is fine), captures it with `playbook-feedback` (one line, with evidence), and the final report's Playbook feedback line names the captured item.
 **Fail if:** the misfire is worked around and not captured, or the gate is weakened to make it pass.
