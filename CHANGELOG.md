@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.16.0 - 2026-10-11
+- **Faster Windows CI**: `tests/test-evals.sh` (392 s on windows-latest, the floor of the slowest shard)
+  is split into `test-evals-runner.sh`, `test-evals-grade.sh` and `test-evals-grade2.sh` with a shared
+  `tests/evals-fixture.sh`; all 417 assertions kept. Shards on PR #21: 3 min 37 s / 3 min 32 s / 3 min 1 s
+  (was 6 min 48 s for the slowest).
+- **`tools/shard-weights.sh RUN_ID [--repo R] [--out FILE]`** rebuilds `tests/shard-weights` from the
+  `(N s)` headings of a run's Windows shard logs; it reads the job log through the API when `gh` prints an
+  empty one (gh 2.45, found on the first real run). Weights refreshed from PR #21's CI (554/549/549).
+- **Eval grader fixes**: E3 label ignores "without tests failing" and "has no testing"; E19 accepts a Read
+  of playbook-tdd/SKILL.md and namespaced skill names and sees Windows `tests\` paths; E16 parses tool_use
+  blocks for sub-agent use and does not count "not Full"; only a `success` result (or no subtype with
+  `is_error:false`) is a successful run; reply text reaches node on stdin (a reply starting with "-" or a
+  very long reply broke the check — review finding).
+- **Real evals**: E19 5/5 in both rounds; E16 stopped to ask both times (money, data shape) — the
+  scenario needs the answers in its prompt to be runnable headless.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer (CHANGES: argv vs stdin, fixed
+  test-first at Lite weight). The gh 2.45 fallback was Lite too.
+
 ## 0.15.0 - 2026-10-11
 - **CI shards balanced by measured time**: `tests/run-all.sh` prints each suite's time and, with
   `tests/shard-weights` (seconds per suite from the windows-latest runner), assigns suites greedily.
