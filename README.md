@@ -221,6 +221,9 @@ agent-playbook/
 
 ## Development
 
+CI cancels superseded runs of the same PR (concurrency, never on main or tags) and every job has a timeout.
+`tools/bsd-check.sh [SUITE...]` runs the suites (default: all) with one-true-awk (`original-awk` or `nawk`) first on PATH, the awk macOS ships (`sudo apt install original-awk` on Ubuntu or WSL).
+
 Local setup for the static checks: `run-checks.sh` runs shellcheck when it is installed (`sudo apt install shellcheck` on Ubuntu or WSL,
 `brew install shellcheck` on macOS) and skips it otherwise. It also refuses GNU-only options that macOS lacks (grep with the PCRE flag, readlink canonicalise, date with a string, stat with a format flag, find with a print format, xargs with no-run-if-empty, sed extended).
 
