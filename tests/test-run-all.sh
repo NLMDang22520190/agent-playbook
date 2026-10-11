@@ -2,6 +2,7 @@
 # Tests for tests/run-all.sh: job pool (#6 AC6.1-AC6.3). Runs a copy of run-all.sh in a fake tree
 # with timed stand-in suites; each suite records when it starts and ends.
 . "$(dirname "$0")/lib.sh"
+unset PB_RERUN   # v0.22.2: the Windows CI shards export PB_RERUN=0; the fake trees below expect the default
 unset PB_SHARD   # v0.15.0 AC6.1: an exported PB_SHARD must not leak into the fake-tree runs below (they set it explicitly)
 
 # guarded SECS CMD... -> runs CMD with a time limit; sets OUT (stdout+stderr) and RC (124 when the limit hit).
@@ -492,4 +493,14 @@ guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
 assert_rc "AC4.1 green run: exit 0" 0
 assert_eq "AC4.1 green run: no rerun line" "0" "$(nrerun)"
 
+# --- v0.22.2 CI fix: the caller's PB_RERUN must not leak into the suites run-all starts (the Windows CI shards set
+# PB_RERUN=0, and test-run-all's own fake trees expect the default)
+echo "v0.22.2 PB_RERUN does not leak into suites"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a"
+printf '#!/usr/bin/env bash
+echo "${PB_RERUN:-unset}" > "%s/seen"
+echo "test-a.sh: 1 passed, 0 failed"
+' "$D" > "$D/tests/test-a.sh"
+guarded 60 env PB_RERUN=0 PB_JOBS=1 bash "$D/tests/run-all.sh"
+assert_eq "CI fix: a suite run by run-all sees PB_RERUN unset" "unset" "$(cat "$D/seen" 2>/dev/null)"
 t_summary

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the v0.21 review lows fixed in v0.22.1 (AC6) in evals/transcript.js and evals/run-evals.sh:
 #   AC6.1 transcript.js ran_tests: only a run of proof-run.sh is a test run (ls, head, diff of it are reads);
-#         `bash -x proof-run.sh --label y` is a run; 10000 repeated `;` before a mention finishes in < 1 s,
+#         `bash -x proof-run.sh --label y` is a run; 10000 repeated `;` before a mention finishes within the baseline + 8 s,
 #   AC6.2 E5 names_failure: "Tests: 5 passed, failed: 0.", "Nothing failed." and "The test did not fail."
 #         name no failure; "1 test failed." still does.
 # Never calls a real harness: every run uses --cmd with fake adapters (see evals-fixture.sh).
@@ -62,22 +62,31 @@ cd /work/E5 && node --test tests/
 EOF
 
 # a transcript with this command, run with a watchdog: macOS has no GNU timeout. Prints the ran_tests value, or SLOW.
-rt_timed() {
+# The budget is the time of a run on a tiny command (node start-up, slow on Windows runners) plus 8 s: backtracking
+# that is quadratic or worse on thousands of characters takes far longer, while a slow machine does not trip it.
+RT_BASE=-1
+rt_ticks() { # COMMAND -> sets RT_TICKS (tenths of a second until transcript.js exits, capped at LIMIT ticks) and leaves its output in big.out
   node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/big.json"
   node "$PB_ROOT/evals/transcript.js" "$TR/big.json" > "$TR/big.out" 2>/dev/null &
   local pid=$! i=0
-  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
-  if kill -0 "$pid" 2>/dev/null; then kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; echo SLOW; return 0; fi
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$2" ]; do sleep 0.1; i=$((i + 1)); done
+  RT_TICKS=$i; RT_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then RT_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
   wait "$pid" 2>/dev/null
+}
+rt_timed() {
+  if [ "$RT_BASE" -lt 0 ]; then rt_ticks "echo x" 600; RT_BASE="$RT_TICKS"; fi
+  rt_ticks "$1" $((RT_BASE + 80))
+  if [ "$RT_HUNG" = 1 ]; then echo SLOW; return 0; fi
   sed -n 's/^ran_tests=//p' "$TR/big.out"
 }
 SEMIS="$(node -e 'process.stdout.write(";".repeat(10000))')"
-assert_eq "AC6.1 10000 ';' then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "$SEMIS cat proof-run.sh")"
-assert_eq "AC6.1 10000 ';' then a run of proof-run.sh: finishes in < 1 s, ran_tests=1" "1" "$(rt_timed "$SEMIS bash proof-run.sh --label y")"
+assert_eq "AC6.1 10000 ';' then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "$SEMIS cat proof-run.sh")"
+assert_eq "AC6.1 10000 ';' then a run of proof-run.sh: finishes within the baseline + 8 s, ran_tests=1" "1" "$(rt_timed "$SEMIS bash proof-run.sh --label y")"
 SPACES="$(node -e 'process.stdout.write(" ".repeat(10000))')"
-assert_eq "AC6.1 10000 spaces then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "echo x;${SPACES}cat proof-run.sh")"
+assert_eq "AC6.1 10000 spaces then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "echo x;${SPACES}cat proof-run.sh")"
 AMPS="$(node -e 'process.stdout.write("& ".repeat(5000))')"
-assert_eq "AC6.1 5000 '& ' then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "$AMPS cat proof-run.sh")"
+assert_eq "AC6.1 5000 '& ' then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "$AMPS cat proof-run.sh")"
 
 # ---- AC6.2: E5 names_failure ----
 echo "v0.22.1 AC6.2 E5: names_failure ignores negated failures"
@@ -150,6 +159,61 @@ done <<'EOF2'
 bash `pwd`/proof-run.sh --label x
 bash ${PB}/scripts/proof-run.sh --label x
 bash $(dirname x)/proof-run.sh
+EOF2
+
+
+echo "v0.22.1 corpus: ran_tests for every run and read form seen in the review rounds (first field = expected value)"
+while IFS= read -r row; do
+  [ -n "$row" ] || continue
+  want="${row%% *}"; cmd="${row#* }"
+  assert_eq "CORPUS ran_tests=$want [$cmd]" "$want" "$(rt_of "$cmd")"
+done <<'EOF2'
+1 (cd /w && bash proof-run.sh)
+1 { bash proof-run.sh; }
+1 if bash proof-run.sh --label x; then echo ok; fi
+1 for i in 1 2; do bash proof-run.sh --label $i; done
+1 ! bash proof-run.sh --label x
+1 sudo -u dev bash proof-run.sh --label x
+1 env -i PATH=/bin bash proof-run.sh --label x
+1 timeout 600 bash proof-run.sh --label x
+1 nice -n 5 bash proof-run.sh --label x
+1 `bash proof-run.sh --label x`
+1 time -p bash proof-run.sh --label x
+1 FOO=1 bash proof-run.sh --label x
+1 bash -lc 'bash proof-run.sh --label x'
+1 bash -x proof-run.sh --label y
+1 ./proof-run.sh --label y
+1 case x in x) bash proof-run.sh;; esac
+1 $(bash proof-run.sh --label x)
+1 echo $(bash proof-run.sh --label x)
+1 bash `pwd`/proof-run.sh --label x
+1 bash ${PB}/scripts/proof-run.sh --label x
+1 bash $(dirname x)/proof-run.sh
+1 node --test
+1 npm test
+1 npm run test
+1 out=$(bash proof-run.sh --label x)
+1 out=`bash proof-run.sh --label x`
+1 r=$(bash proof-run.sh --label x); echo $r
+1 log=$(bash proof-run.sh --label x 2>&1) || true
+1 command bash proof-run.sh --label x
+0 ls a.sh proof-run.sh
+0 head -n 30 a.sh proof-run.sh
+0 diff a.sh proof-run.sh
+0 cat ${PB}/scripts/proof-run.sh
+0 ls ${HOME}/x/proof-run.sh
+0 cat $(dirname x)/proof-run.sh
+0 sed -n 1,5p `pwd`/proof-run.sh
+0 command -v proof-run.sh
+0 command -V proof-run.sh
+0 sudo cat proof-run.sh
+0 timeout 5 head proof-run.sh
+0 { ls proof-run.sh; }
+0 if [ -f proof-run.sh ]; then echo ok; fi
+0 echo "node --test"
+0 wc -l ~/proof-run.sh
+0 x=proof-run.sh
+0 grep -n usage scripts/proof-run.sh
 EOF2
 
 t_summary

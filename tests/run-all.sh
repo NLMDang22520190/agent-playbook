@@ -28,6 +28,7 @@ fi
 RERUN="${PB_RERUN:-1}"
 case "$RERUN" in 0) ;; *) RERUN=1 ;; esac
 unset PB_SHARD   # suites (and run-all copies they start) always see a full run
+unset PB_RERUN   # read above; the suites (and run-all copies they start) get the default
 JOBS="${PB_JOBS:-4}"
 case "$JOBS" in '' | *[!0123456789]* | 0) JOBS=1 ;; esac
 base="${TMPDIR:-/tmp}"; base="${base%/}"
