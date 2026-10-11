@@ -41,12 +41,15 @@ NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "win
 put() { printf '%s\n' "$2" | tr -d '\r' > "$DATA/$(printf '%s' "$1" | tr '/' '_')"; }
 put_runs() { put_raw "repos/$R/actions/workflows/test.yml/runs" "$1" "$2"; }
 put_raw() { printf '%s\n' "$3" > "$DATA/$(printf '%s' "$1" | tr '/' '_')_hs_$2"; }
-pull_json() { # NUMBER HEADSHA [REPO]  (REPO "null" = a deleted head repository)
-  if [ "${3:-}" = null ]; then printf '{"number":%s,"head":{"sha":"%s","repo":null}}' "$1" "$2"
-  else printf '{"number":%s,"head":{"sha":"%s","repo":{"full_name":"%s"}}}' "$1" "$2" "${3:-$R}"; fi
+pull_json() { # NUMBER HEADSHA [REPO] [BASEREF]  (REPO "null" = a deleted head repository; the PR is closed: it is merged)
+  local b="${4:-main}"
+  if [ "${3:-}" = null ]; then printf '{"number":%s,"state":"closed","base":{"ref":"%s"},"head":{"sha":"%s","repo":null}}' "$1" "$b" "$2"
+  else printf '{"number":%s,"state":"closed","base":{"ref":"%s"},"head":{"sha":"%s","repo":{"full_name":"%s"}}}' "$1" "$b" "$2" "${3:-$R}"; fi
 }
-run_json() { # ID HEADSHA [CONCLUSION] [BASEREF]  (the run's pull_requests[] hold the PR with its base branch)
-  printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":[{"number":7,"base":{"ref":"%s"}}]}' "$1" "$2" "${3:-success}" "${4:-main}"
+run_json() { # ID HEADSHA [CONCLUSION] [LISTED-BASEREF]  (pull_requests[] is empty: GitHub lists only OPEN PRs there)
+  local prs='[]'
+  [ -n "${4:-}" ] && prs="[{\"number\":7,\"base\":{\"ref\":\"$4\"}}]"
+  printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":%s}' "$1" "$2" "${3:-success}" "$prs"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
 jobs_json() { # MODE NAME: MODE ok (all six success) | skipped|failure|cancelled NAME | missing NAME
@@ -283,23 +286,28 @@ assert_eq "AC6.1 the jobs of the eleventh run were never requested" "0" "$(logge
 assert_eq "AC6.1 the jobs of the twelfth run were never requested" "0" "$(logged "runs/2012/jobs")"
 assert_eq "AC6.1 the jobs of the tenth run were requested" "1" "$(logged "runs/2010/jobs")"
 
-echo "AC6.1 review lows: the run must belong to a PR whose base is main"
+echo "AC6.1 D4: the base ref comes from the merged PR of step 1; the run's pull_requests (open PRs only) is not used"
+world
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a closed PR with base main whose run has pull_requests [] prints the run id" "111" "$OUT"
+world; put "repos/$R/commits/$SHA/pulls" "[$(pull_json 7 "$HEAD" "$R" develop)]"
+tool "$SHA" --repo "$R"
+nothing "a PR whose base.ref is develop"
+assert_eq "AC6.1 a PR based on develop: its runs are never queried" "0" "$(logged "head_sha=$HEAD")"
+assert_eq "AC6.1 a PR based on develop: no jobs call either" "0" "$(logged "/jobs")"
+world; put "repos/$R/commits/$SHA/pulls" "[$(pull_json 7 "$(h40 70)" "$R" develop),$(pull_json 8 "$HEAD")]"
+tool "$SHA" --repo "$R"
+assert_eq "AC6.1 a develop PR first, a main PR second: the second is used" "111" "$OUT"
+assert_eq "AC6.1 ... and the develop PR's head sha was never queried" "0" "$(logged "head_sha=$(h40 70)")"
 world; put_runs "$HEAD" "$(runs_json 1 "$(run_json 111 "$HEAD" success develop)")"
 tool "$SHA" --repo "$R"
-nothing "a run of a PR whose base is develop (a stacked PR retargeted to main later)"
-world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success","pull_requests":[]}')"
-tool "$SHA" --repo "$R"
-nothing "a run with an empty pull_requests array"
+assert_eq "AC6.1 a run whose pull_requests lists a develop base, but whose PR from step 1 has base main: still reused (the run field is ignored)" "111" "$OUT"
 world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success"}')"
 tool "$SHA" --repo "$R"
-nothing "a run without a pull_requests field"
-world; put_runs "$HEAD" "$(runs_json 1 '{"id":111,"head_sha":"'"$HEAD"'","event":"pull_request","status":"completed","conclusion":"success","pull_requests":[{"number":3,"base":{"ref":"develop"}},{"number":7,"base":{"ref":"main"}}]}')"
+assert_eq "AC6.1 a run without a pull_requests field: still reused" "111" "$OUT"
+world; put "repos/$R/commits/$SHA/pulls" '[{"number":7,"state":"closed","head":{"sha":"'"$HEAD"'","repo":{"full_name":"'"$R"'"}}}]'
 tool "$SHA" --repo "$R"
-assert_eq "AC6.1 a run whose pull_requests include one with base main passes" "111" "$OUT"
-world; put_runs "$HEAD" "$(runs_json 2 "$(run_json 2001 "$HEAD" success develop),$(run_json 2002 "$HEAD" success main)")"
-put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
-tool "$SHA" --repo "$R"
-assert_eq "AC6.1 a develop-based run first, a main-based run second: prints the second" "2002" "$OUT"
+nothing "a PR without a base ref"
 
 echo "AC6.1 review lows: a deleted head repository"
 world; put "repos/$R/commits/$SHA/pulls" "[$(pull_json 7 "$HEAD" null)]"
