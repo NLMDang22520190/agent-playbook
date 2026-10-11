@@ -26,9 +26,10 @@ const stripHeredocs = s => {
       continue;
     }
     out.push(line);
-    const re = /<<(?!<)(-?)[ \t]*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
+    // not a here-string (<<<); the word may be quoted ('W' or "W") or backslash-quoted (\W)
+    const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][A-Za-z0-9_]*)\2|\\?([A-Za-z_][A-Za-z0-9_]*))/g;
     let m;
-    while ((m = re.exec(line))) pending.push({ dash: m[1] === "-", word: m[3] });
+    while ((m = re.exec(line))) pending.push({ dash: m[1] === "-", word: m[3] || m[4] });
   }
   return out.join("\n");
 };
