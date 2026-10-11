@@ -10,6 +10,21 @@ questions (hard to reverse) or logged defaults in `decisions.md` (reversible).
 
 **Weight:** Full | Lite · reason: <e.g. "Lite: one module, reversible, 2 files"> (escalate to Full if that stops being true)
 
+## Understanding
+Fill this in before any test or code (Lite: a few lines).
+- **The request, restated in my own words:** ...
+- **Scan log:** each search command with its hit count, then the files read.
+  - `grep -rn "<term>" src` -> N hits
+  - Files read: `path`, `path`
+- **Other readings** of the request, and why I chose this one: ...
+- **In scope:** ...
+- **Out of scope:** ...
+A reading that is ambiguous and hard to reverse is asked before any code, in one batched question.
+
+## Impact
+Who calls or uses what changes. Give the search command, its hits, and file:line for each caller or user.
+- `grep -rn "<symbol>" .` -> N hits: `path:line` (what uses it) ...
+
 ## Acceptance criteria
 Copy the wording **verbatim** from the source when it exists; rephrase only into Given/When/Then and
 keep the original next to it. Each AC points back to where it came from.

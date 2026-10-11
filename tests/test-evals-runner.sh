@@ -470,7 +470,7 @@ assert_contains "AC3.x the idle run graded E19" "$OUT" "E19 "
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E6 --workroot "$W" --out "$W/results.md"
 assert_rc "AC3.x E6 (not auto-gradable) is still refused (exit 2)" 2
-assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20)"
+assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21)"
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
@@ -610,7 +610,7 @@ run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" -
 assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
 
 # ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
-# node evals/transcript.js LOG prints these nine KEY=VALUE lines (one each, nothing else; exit 0):
+# node evals/transcript.js LOG prints these ten KEY=VALUE lines (one each, nothing else; exit 0):
 #   json=1|0               LOG has stream-json lines (a line that parses as an object with a "type")
 #   result_ok=1|0          the last "result" line is not an error (is_error false, or subtype success), as run-evals.sh result_ok
 #   cost=<number>|         total_cost_usd of the last result line that has one, as JSON prints it; empty after "=" when none
@@ -620,6 +620,7 @@ assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(prin
 #   full_named=1|0|na      the result text names Full not preceded by not/no/never/without/isn't/is not; na without a result line
 #   untested_label=1|0|na  the result text labels the change untested; na without a result line
 #   ran_tests=1|0|na       (v0.21.0) a Bash tool_use that runs node --test, npm test, npm run test or proof-run.sh; na when json=0
+#   spec_first=1|0|na     (v0.22.0) a Write/Edit of a path ending .agents/handoff/01-spec.md comes before the first Write/Edit under src/ (1), after it or never (0); na when json=0
 # It also writes the result text to LOG.result (no trailing newline added); with no result line it removes a stale LOG.result.
 echo "v0.18.0 AC4.1 evals/transcript.js"
 TS="$PB_ROOT/evals/transcript.js"
@@ -643,8 +644,8 @@ kv() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
 nkeys() { printf '%s\n' "$OUT" | grep -c '^[a-z_]*='; }
 run node "$TS" "$TJ/pos.log"
 assert_rc "AC4.1 transcript.js on a stream-json log exits 0" 0
-assert_eq "AC4.1 output is exactly nine KEY=VALUE lines" "9" "$(nkeys)"
-assert_eq "AC4.1 and nothing else (no extra lines)" "9" "$(printf '%s\n' "$OUT" | grep -c .)"
+assert_eq "AC4.1 output is exactly ten KEY=VALUE lines" "10" "$(nkeys)"
+assert_eq "AC4.1 and nothing else (no extra lines)" "10" "$(printf '%s\n' "$OUT" | grep -c .)"
 assert_eq "AC4.1 pos: json=1" "1" "$(kv json)"
 assert_eq "AC4.1 pos: result_ok=1" "1" "$(kv result_ok)"
 assert_eq "AC4.1 pos: cost=0.1234" "0.1234" "$(kv cost)"
@@ -671,7 +672,7 @@ assert_eq "AC4.1 neg: <log>.result holds the result text" "Weight: Lite, not Ful
 echo stale > "$TJ/plain.log.result"
 run node "$TS" "$TJ/plain.log"
 assert_rc "AC4.1 transcript.js on a plain-text log exits 0" 0
-assert_eq "AC4.1 plain: nine keys" "9" "$(nkeys)"
+assert_eq "AC4.1 plain: ten keys" "10" "$(nkeys)"
 assert_eq "AC4.1 plain: json=0" "0" "$(kv json)"
 assert_eq "AC4.1 plain: result_ok=0" "0" "$(kv result_ok)"
 assert_eq "AC4.1 plain: cost empty" "" "$(kv cost)"

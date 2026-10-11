@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reads one eval transcript once and prints what the graders need, as KEY=VALUE lines:
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
-//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na
+//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
 "use strict";
@@ -11,7 +11,7 @@ if (!log) { console.error("usage: node evals/transcript.js <log>"); process.exit
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
 
-let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false;
+let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
@@ -20,6 +20,33 @@ const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 const WRAP = /\b(?:ba|z)?sh((?:\s+(?:[-+][a-zA-Z]*[oO]\s+[a-z_]+|--(?:rcfile|init-file)\s+[^\s"'-][^\s"']*|--?[a-zA-Z][a-zA-Z-]*))+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
 const unwrap1 = s => s.replace(WRAP, (m, f, d, q) => (!/(?:^|\s)-[a-z]*c/.test(f) ? m : d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
 const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u === s) break; s = u; } return s; };
+// a path under src/ (not under node_modules/)
+const isSrc = p => /(^|\/)src\//.test(p) && !/(^|\/)node_modules\//.test(p);
+// does a shell command write under src/? Quote-aware tokens (linear: no nested unbounded quantifiers), split into
+// simple commands at ; & | and newlines; redirects, tee, mv/cp targets and sed/perl in-place edits count
+function bashWritesSrc(cmd) {
+  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n]|[^\s;&|<>"']+/g) || [];
+  const bare = t => t.replace(/^["']|["']$/g, "");
+  let words = [];
+  const done = () => {
+    const w = words; words = [];
+    if (!w.length) return false;
+    const verb = bare(w[0]).replace(/^.*\//, ""), args = w.slice(1), plain = args.filter(a => !/^-/.test(a));
+    const flags = args.filter(a => /^-/.test(a));
+    if (verb === "tee") return plain.some(a => isSrc(bare(a)));
+    if (verb === "mv" || verb === "cp") return plain.length > 0 && isSrc(bare(plain[plain.length - 1]));
+    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => isSrc(bare(a)));
+    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => isSrc(bare(a)));
+    return false;
+  };
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
+    if (t === ">" || t === ">>") { if (k + 1 < toks.length && isSrc(bare(toks[k + 1]))) return true; k++; continue; }
+    if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return true; continue; }
+    words.push(t);
+  }
+  return done();
+}
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
@@ -37,6 +64,12 @@ for (const line of text.split(/\r?\n/)) {
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
+    if (b.name === "Write" || b.name === "Edit" || b.name === "MultiEdit" || b.name === "NotebookEdit") {   // the spec file, and the first write under src/
+      const p = String(b.name === "NotebookEdit" ? inp.notebook_path || "" : fp).replace(/\\/g, "/");
+      if (b.name !== "NotebookEdit" && /(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p) && specw < 0) specw = i;
+      if (isSrc(p) && srcw < 0) srcw = i;
+    }
+    if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
@@ -71,4 +104,5 @@ process.stdout.write([
   "full_named=" + (reply === null ? "na" : b(fullNamed(reply))),
   "untested_label=" + (reply === null ? "na" : b(untested(reply))),
   "ran_tests=" + (!json ? "na" : b(ran)),
+  "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
 ].join("\n") + "\n");

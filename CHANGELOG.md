@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.22.0 - 2026-10-11
+- **Leak guard**: `scripts/leak-check.sh scan --staged | --range A..B | --unpushed SHA | FILE...` flags added lines
+  with GitHub/Anthropic/AWS tokens, private-key headers, `leak_patterns` (ERE) and `leak_literals` (fixed strings,
+  case-insensitive) from the global and project conf; secrets are masked; binary files and merge commits are
+  scanned. `install-hooks` adds pre-commit and pre-push hooks that fail closed when the script is gone.
+- **Understanding before code**: the spec template opens with `## Understanding` (request restated, scan log with
+  commands and hit counts, other readings, scope) and `## Impact` (callers and uses, with the search); an
+  ambiguous, hard-to-reverse reading is asked before any code.
+- **Spec review (Full)**: a read-only spec reviewer (`roles/spec-reviewer.md`) compares the spec with the raw request
+  and re-runs the searches before the first tester; REVISE goes back to the spec.
+- **Request coverage**: the final report maps every sentence of the raw request to what was done, read as, or not done.
+- **E21** (auto-graded): rename with a hidden second call site; checks every call site, the Understanding section,
+  that the spec names the hidden file, and that the spec is written before the first src/ edit (transcript.js
+  `spec_first`, which also sees Bash, MultiEdit and NotebookEdit edits).
+- **`tools/readme-count.sh LOG`** writes the README test counts (passed + skipped), the same total release.sh checks.
+- Shard weights refreshed from run 38135232625 (ship flagged 254..427 s).
+- Built at Full weight: Sonnet tester, Sonnet implementer (separate agents), Opus reviewer (REQUEST_CHANGES on two
+  leak-guard holes, binary files passed as clean and a hook that failed open, plus minor items; fixed test-first).
+
 ## 0.21.0 - 2026-10-11
 - **Two more auto-graded scenarios**: E5 (the runner commits a change whose new test fails; checks the tests were
   run in the session, the reply reports the failure and does not claim everything passes; transcript.js key

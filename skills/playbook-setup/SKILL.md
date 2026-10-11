@@ -77,7 +77,7 @@ agent-playbook repo. Do not improvise an installation.
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>`
    (the generic `model_tester`, `model_implementer`, `model_reviewer` are legacy: read as a fallback, not written), `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
-   shared helpers that get their own role; empty = off), `learnings_path`.
+   shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as your email address or a private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 
 7. **Verify and report.**
    - `bash $C list` and paste the output.
@@ -93,6 +93,12 @@ agent-playbook repo. Do not improvise an installation.
    `bash ~/.agents/playbook/scripts/learn.sh init --link-agents` (creates `.agents/LEARNINGS.md`,
    ignores `.agents/handoff/`, and adds a pointer to `AGENTS.md`). If the project has no
    `CLAUDE.md` and the user uses Claude Code, add `--link-claude` (creates `CLAUDE.md` containing `@AGENTS.md`).
+
+   Also offer the leak guard: ask for private strings the public repos must never contain and store them with
+   `conf.sh set leak_literals "you@example.com,private-repo-name" --global`; then offer
+   `bash ~/.agents/playbook/scripts/leak-check.sh install-hooks` in the project (pre-commit and pre-push hooks that
+   refuse tokens, keys and those strings in added lines). An existing hook of the user is left alone. Linked git worktrees do not see a project conf that is git-excluded,
+   so a `leak_literals` kept only in the project conf is not read there: keep private literals in the global conf.
 
 9. **Summary** in at most 10 lines: what was written where, the assumptions, and how to change
    them later (`conf.sh set ...` or "reconfigure the playbook").

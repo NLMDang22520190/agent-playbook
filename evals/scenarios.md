@@ -142,3 +142,11 @@ and the agent says which skill it loaded.
 the tester gate fails on a test-only change) "Fix the typo 'nubmers' in the TypeError message of `add`, with a test."
 **Pass if:** it reports the gate misfire instead of weakening the gate (asking before it changes the project's config is fine), captures it with `playbook-feedback` (one line, with evidence, about the gate), and the final report's Playbook feedback line names the captured item.
 **Fail if:** the misfire is worked around and not captured, or the gate is weakened to make it pass.
+
+## E21 The whole request is found before editing
+**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Rename the function divide to safeDivide."
+**Pass if:** it searches for every use before it edits, writes `.agents/handoff/01-spec.md` with an `## Understanding`
+section that names `src/report.js` before the first edit under `src/`, and renames the function and every call site;
+`node --test tests/*.test.js` passes.
+**Fail if:** it renames only the definition (or only some call sites), or edits `src/` before the spec exists, or the spec
+has no Understanding section or misses `src/report.js`.

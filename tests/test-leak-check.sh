@@ -1,0 +1,556 @@
+#!/usr/bin/env bash
+# Tests for scripts/leak-check.sh (v0.22.0 AC1): a guard that refuses secrets and private literals in ADDED lines.
+#   leak-check.sh scan --staged | scan --range A..B | scan FILE...
+#   leak-check.sh install-hooks [--repo DIR] | uninstall-hooks [--repo DIR]
+# Contract the implementer must follow (spec AC1.1 to AC1.5):
+#   exit 0 + "leak-check: clean"; exit 1 on a hit, printing "file:line: <pattern name>" with the match masked
+#   (first 4 chars then ***, never the full secret); exit 2 usage; exit 3 not a git repo (--staged, --range).
+#   pattern names: github-token, anthropic-key, aws-key, private-key, user-pattern, user-literal.
+#   conf keys: leak_patterns (ERE), leak_literals (comma-separated FIXED strings), read from PLAYBOOK_HOME/HOME and the project.
+#   hooks: .git/hooks/pre-commit and pre-push carry the marker line "# agent-playbook leak-check"; an existing hook
+#   without the marker is left alone (exit 1, reported); re-running is idempotent; uninstall removes marked hooks only.
+# This repo is public: every secret below is built at run time from pieces, so no scanner finds a literal in this file.
+. "$(dirname "$0")/lib.sh"
+LC="$PB_ROOT/scripts/leak-check.sh"
+SETUP_MD="$PB_ROOT/skills/playbook-setup/SKILL.md"
+README="$PB_ROOT/README.md"
+MARK='# agent-playbook leak-check'
+
+export PLAYBOOK_HOME="$(mk_tmp)"
+PH="$PLAYBOOK_HOME"
+mkdir -p "$PH/.agents"
+unset GIT_DIR GIT_WORK_TREE
+
+# rep CHAR N -> N copies of CHAR
+rep() { local s; s="$(printf '%*s' "$2" '')"; printf '%s' "${s// /$1}"; }
+GH="ghp_$(rep a 36)"
+GHS="ghs_$(rep d 36)"
+GHPAT="github_pat_$(rep c 22)"
+ANT="sk-ant-$(rep b 24)"
+AWS="AKIA$(rep Q 16)"
+PEM="-----BEGIN RSA ""PRIVATE KEY-----"
+EML='dev@example.invalid'
+
+G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false "$@"; }
+# newrepo -> sets R (a fresh repo with one commit)
+newrepo() { R="$(mk_tmp)"; mk_repo "$R"; }
+# stage REPO FILE LINE... -> writes the lines to FILE (new content) and stages it
+stage() { local r="$1" f="$2"; shift 2; mkdir -p "$r/$(dirname "$f")"; printf '%s\n' "$@" > "$r/$f"; git -C "$r" add -- "$f"; }
+conf_global() { printf '%s\n' "$@" > "$PH/.agents/playbook.conf"; }
+
+assert_file "AC1.1 scripts/leak-check.sh exists" "$LC"
+
+echo "scan --staged: built-in patterns"
+for spec in "github-token|$GH" "github-token|$GHS" "github-token|$GHPAT" "anthropic-key|$ANT" "aws-key|$AWS" "private-key|$PEM"; do
+  name="${spec%%|*}"; sec="${spec#*|}"
+  newrepo
+  stage "$R" src/conf.txt 'harmless line' "token = $sec" 'tail'
+  run_in "$R" bash "$LC" scan --staged
+  assert_rc "AC1.1 staged $name [${sec:0:8}...]: exit 1" 1
+  assert_contains "AC1.1 staged $name: output names file:line and the pattern" "$OUT" "src/conf.txt:2: $name"
+  assert_not_contains "AC1.1 staged $name: the full secret is not printed" "$OUT" "$sec"
+  assert_not_contains "AC1.1 staged $name: not even the secret minus its first 4 chars" "$OUT" "${sec:4:20}"
+  assert_contains "AC1.1 staged $name: the match is masked with ***" "$OUT" "***"
+done
+newrepo
+stage "$R" a.txt "x $GH"
+run_in "$R" bash "$LC" scan --staged
+assert_contains "AC1.1 masked form is the first 4 chars then ***" "$OUT" "ghp_***"
+
+echo "scan --staged: boundaries of the built-in patterns"
+newrepo
+stage "$R" near.txt "gh35 ghp_$(rep a 35)" "ant19 sk-ant-$(rep b 19)" "aws15 AKIA$(rep Q 15)" "pat21 github_pat_$(rep c 21)" "plain BEGIN RSA PRIVATE KEY" "word skeleton-key-1234"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 one char short of every pattern (and look-alike words): clean, exit 0" 0
+assert_contains "AC1.2 clean run says 'leak-check: clean'" "$OUT" "leak-check: clean"
+newrepo
+stage "$R" two.txt "one $GH" 'between' "two $AWS"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 two secrets in one file: exit 1" 1
+assert_contains "AC1.1 first secret line reported" "$OUT" "two.txt:1: github-token"
+assert_contains "AC1.1 second secret line reported" "$OUT" "two.txt:3: aws-key"
+
+echo "scan --staged: only ADDED lines count"
+newrepo
+stage "$R" src/clean.txt 'a' 'b'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 clean staged change: exit 0" 0
+assert_contains "AC1.1 clean staged change: 'leak-check: clean'" "$OUT" "leak-check: clean"
+newrepo
+printf 'old\n%s\nold2\n' "$GH" > "$R/s.txt"; git -C "$R" add s.txt; G -C "$R" commit -q -m 'old secret' || true
+printf 'old\nold2\n' > "$R/s.txt"; git -C "$R" add s.txt
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 a secret only on a REMOVED line: clean, exit 0" 0
+assert_contains "AC1.1 removed-line secret: 'leak-check: clean'" "$OUT" "leak-check: clean"
+newrepo
+printf 'old\n%s\nold2\n' "$GH" > "$R/s.txt"; git -C "$R" add s.txt; G -C "$R" commit -q -m 'old secret' || true
+printf 'old\n%s\nold2\nnew line\n' "$GH" > "$R/s.txt"; git -C "$R" add s.txt
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 a secret on an unchanged context line, another line added: clean" 0
+newrepo
+printf '%s\n' "$GH" > "$R/gone.txt"; git -C "$R" add gone.txt; G -C "$R" commit -q -m 'add' || true
+git -C "$R" rm -q gone.txt
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 a staged deletion of a file that held a secret: clean" 0
+newrepo
+printf '%s\n' "$GH" > "$R/unstaged.txt"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 --staged looks at the index: an unstaged, untracked secret is not found" 0
+newrepo
+printf 'module.exports = 2;\n' > "$R/src/app.js"
+printf 'x %s\n' "$GH" >> "$R/src/app.js"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 a modified but unstaged tracked file: not found (index vs HEAD)" 0
+git -C "$R" add src/app.js
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.1 the same file once staged: exit 1" 1
+assert_contains "AC1.1 staged modification of a tracked file: reported at its new line number" "$OUT" "src/app.js:2: github-token"
+
+echo "scan --range A..B"
+newrepo
+c0="$(git -C "$R" rev-parse HEAD)"
+stage "$R" one.txt 'fine'; G -C "$R" commit -q -m clean1
+c1="$(git -C "$R" rev-parse HEAD)"
+stage "$R" two.txt 'fine' "secret $ANT"; G -C "$R" commit -q -m with-secret
+c2="$(git -C "$R" rev-parse HEAD)"
+stage "$R" three.txt 'fine again'; G -C "$R" commit -q -m clean3
+c3="$(git -C "$R" rev-parse HEAD)"
+run_in "$R" bash "$LC" scan --range "$c0..$c3"
+assert_rc "AC1.1 --range over three commits, one with a secret: exit 1" 1
+assert_contains "AC1.1 --range names the file:line and the pattern" "$OUT" "two.txt:2: anthropic-key"
+assert_not_contains "AC1.1 --range does not print the full secret" "$OUT" "$ANT"
+run_in "$R" bash "$LC" scan --range "$c0..$c1"
+assert_rc "AC1.1 --range over the clean commit only: exit 0" 0
+assert_contains "AC1.1 --range clean: 'leak-check: clean'" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --range "$c2..$c3"
+assert_rc "AC1.1 --range A..B excludes A: the secret commit is A, so clean" 0
+run_in "$R" bash "$LC" scan --range "$c1..$c2"
+assert_rc "AC1.1 --range ending at the secret commit: exit 1" 1
+run_in "$R" bash "$LC" scan --range "HEAD~3..HEAD"
+assert_rc "AC1.1 --range accepts symbolic refs (HEAD~3..HEAD): exit 1" 1
+run_in "$R" bash "$LC" scan --range
+assert_rc "AC1.1 --range without a value: usage, exit 2" 2
+
+echo "scan FILE..."
+D="$(mk_tmp)"
+printf 'ok\n%s\n' "$GH" > "$D/leaky.txt"
+printf 'ok\nstill ok\n' > "$D/fine.txt"
+run_in "$D" bash "$LC" scan leaky.txt
+assert_rc "AC1.1 scan FILE with a secret (not in a git repo): exit 1" 1
+assert_contains "AC1.1 scan FILE names file:line and the pattern" "$OUT" "leaky.txt:2: github-token"
+assert_not_contains "AC1.1 scan FILE does not print the full secret" "$OUT" "$GH"
+run_in "$D" bash "$LC" scan fine.txt
+assert_rc "AC1.1 scan FILE without a secret: exit 0" 0
+assert_contains "AC1.1 scan FILE clean: 'leak-check: clean'" "$OUT" "leak-check: clean"
+run_in "$D" bash "$LC" scan fine.txt leaky.txt
+assert_rc "AC1.1 scan with two files, one leaky: exit 1" 1
+assert_contains "AC1.1 scan with two files names the leaky one" "$OUT" "leaky.txt:2: github-token"
+assert_not_contains "AC1.1 scan with two files does not name the clean one" "$OUT" "fine.txt:"
+
+echo "user literals (leak_literals)"
+conf_global "leak_literals=$EML,secret-repo-name"
+newrepo
+stage "$R" notes.txt 'ping' "mail $EML here"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 a configured literal in a staged line: exit 1" 1
+assert_contains "AC1.3 reported as user-literal at file:line" "$OUT" "notes.txt:2: user-literal"
+assert_not_contains "AC1.3 the literal is masked, not printed in full" "$OUT" "$EML"
+newrepo
+stage "$R" notes.txt 'see secret-repo-name for details'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 the second literal of the comma list is checked too: exit 1" 1
+assert_contains "AC1.3 second literal reported as user-literal" "$OUT" "notes.txt:1: user-literal"
+newrepo
+stage "$R" notes.txt 'devXexample.invalid' 'dev at example dot invalid' 'secret_repo_name' 'secretXrepoXname'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 dots (and hyphens) in a literal match literally, not as regex: exit 0" 0
+assert_contains "AC1.3 near-miss literals: 'leak-check: clean'" "$OUT" "leak-check: clean"
+newrepo
+stage "$R" notes.txt 'nothing special here'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 literals configured but absent from the change: exit 0" 0
+conf_global 'leak_literals=p|q,a.b*c'
+newrepo
+stage "$R" notes.txt 'p' 'q' 'pq' 'axbbbc' 'a.b'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 literals with | and * are fixed strings (p, q, axbbbc, a.b do not match): exit 0" 0
+newrepo
+stage "$R" notes.txt 'x p|q y'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 the literal p|q itself matches: exit 1" 1
+assert_contains "AC1.3 p|q reported as user-literal" "$OUT" "notes.txt:1: user-literal"
+newrepo
+stage "$R" notes.txt 'x a.b*c y'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 the literal a.b*c itself matches: exit 1" 1
+conf_global 'leak_literals='
+newrepo
+stage "$R" notes.txt "mail $EML"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 an empty leak_literals checks nothing (an empty literal must not match every line): exit 0" 0
+rm -f "$PH/.agents/playbook.conf"
+
+echo "user patterns (leak_patterns)"
+conf_global 'leak_patterns=internal-[0-9]{3}|corp\.example'
+newrepo
+stage "$R" p.txt 'a' 'ticket internal-123 open'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 a configured pattern matches: exit 1" 1
+assert_contains "AC1.3 reported as user-pattern at file:line" "$OUT" "p.txt:2: user-pattern"
+newrepo
+stage "$R" p.txt 'see corp.example now'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 the second alternative of the pattern matches: exit 1" 1
+assert_contains "AC1.3 second alternative reported as user-pattern" "$OUT" "p.txt:1: user-pattern"
+newrepo
+stage "$R" p.txt 'internal-12 only' 'corpXexample'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 near misses of the pattern (repeat bound, escaped dot): exit 0" 0
+rm -f "$PH/.agents/playbook.conf"
+# project conf
+newrepo
+mkdir -p "$R/.agents"; printf 'leak_patterns=proj-[a-z]{4}-id\nleak_literals=proj-secret-name\n' > "$R/.agents/playbook.conf"
+stage "$R" q.txt 'x proj-abcd-id y'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 leak_patterns from the PROJECT conf is read: exit 1" 1
+assert_contains "AC1.3 project pattern reported as user-pattern" "$OUT" "q.txt:1: user-pattern"
+stage "$R" q.txt 'about proj-secret-name'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 leak_literals from the PROJECT conf is read: exit 1" 1
+assert_contains "AC1.3 project literal reported as user-literal" "$OUT" "q.txt:1: user-literal"
+stage "$R" q.txt 'nothing here'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 project conf present but no match: exit 0" 0
+# built-ins stay on when a conf exists
+conf_global "leak_literals=$EML"
+newrepo
+stage "$R" q.txt "k $GH"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.3 built-in patterns still apply when user keys are set: exit 1" 1
+assert_contains "AC1.3 built-in name kept with a user conf present" "$OUT" "q.txt:1: github-token"
+rm -f "$PH/.agents/playbook.conf"
+# HOME fallback, as the other scripts read the conf
+H2="$(mk_tmp)"; mkdir -p "$H2/.agents"; printf 'leak_literals=%s\n' "$EML" > "$H2/.agents/playbook.conf"
+newrepo
+stage "$R" q.txt "mail $EML"
+run_in "$R" env -u PLAYBOOK_HOME HOME="$H2" bash "$LC" scan --staged
+assert_rc "AC1.3 without PLAYBOOK_HOME the conf is read from HOME: exit 1" 1
+assert_contains "AC1.3 HOME conf literal reported as user-literal" "$OUT" "q.txt:1: user-literal"
+
+echo "usage and environment"
+newrepo
+run_in "$R" bash "$LC"
+assert_rc "AC1.1 no arguments: usage, exit 2" 2
+run_in "$R" bash "$LC" bogus
+assert_rc "AC1.1 unknown command: usage, exit 2" 2
+run_in "$R" bash "$LC" scan
+assert_rc "AC1.1 scan without a target: usage, exit 2" 2
+run_in "$R" bash "$LC" scan --bogus
+assert_rc "AC1.1 scan with an unknown option: usage, exit 2" 2
+NG="$(mk_tmp)"
+run_in "$NG" bash "$LC" scan --staged
+assert_rc "AC1.1 --staged outside a git repo: exit 3" 3
+run_in "$NG" bash "$LC" scan --range 'a..b'
+assert_rc "AC1.1 --range outside a git repo: exit 3" 3
+run_in "$NG" bash "$LC" install-hooks
+assert_rc "AC1.4 install-hooks outside a git repo: exit 3" 3
+
+echo "install-hooks / uninstall-hooks"
+newrepo
+HOOKS="$R/.git/hooks"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC1.4 install-hooks: exit 0" 0
+assert_file "AC1.4 pre-commit written" "$HOOKS/pre-commit"
+assert_file "AC1.4 pre-push written" "$HOOKS/pre-push"
+for h in pre-commit pre-push; do
+  assert_contains "AC1.4 $h carries the marker line" "$(cat "$HOOKS/$h" 2>/dev/null)" "$MARK"
+  if [ -x "$HOOKS/$h" ]; then t_ok "AC1.4 $h is executable"; else t_bad "AC1.4 $h is executable" "mode: $(ls -l "$HOOKS/$h" 2>&1)"; fi
+done
+assert_contains "AC1.4 pre-commit scans the staged change" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "--staged"
+assert_contains "AC1.4 pre-push scans a range" "$(cat "$HOOKS/pre-push" 2>/dev/null)" "--range"
+before_c="$(cksum < "$HOOKS/pre-commit" 2>/dev/null)"; before_p="$(cksum < "$HOOKS/pre-push" 2>/dev/null)"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC1.4 install-hooks again (idempotent): exit 0" 0
+assert_eq "AC1.4 re-running leaves pre-commit byte-identical" "$before_c" "$(cksum < "$HOOKS/pre-commit" 2>/dev/null)"
+assert_eq "AC1.4 re-running leaves pre-push byte-identical" "$before_p" "$(cksum < "$HOOKS/pre-push" 2>/dev/null)"
+assert_eq "AC1.4 pre-commit has the marker exactly once" "1" "$(grep -cF "$MARK" "$HOOKS/pre-commit" 2>/dev/null)"
+assert_eq "AC1.4 pre-push has the marker exactly once" "1" "$(grep -cF "$MARK" "$HOOKS/pre-push" 2>/dev/null)"
+
+# the pre-commit hook in action
+head0="$(git -C "$R" rev-parse HEAD)"
+stage "$R" bad.txt "k $GH"
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'add a secret'
+if [ "$RC" != 0 ]; then t_ok "AC1.4 a commit with a staged secret is rejected by the hook (exit $RC)"; else t_bad "AC1.4 a commit with a staged secret is rejected by the hook" "exit 0; output: $OUT"; fi
+assert_eq "AC1.4 the rejected commit was not created" "$head0" "$(git -C "$R" rev-parse HEAD)"
+assert_contains "AC1.4 the hook shows the finding" "$OUT" "bad.txt:1: github-token"
+assert_not_contains "AC1.4 the hook output never shows the full secret" "$OUT" "$GH"
+git -C "$R" rm -q --cached bad.txt; rm -f "$R/bad.txt"
+stage "$R" good.txt 'all fine'
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'clean change'
+assert_rc "AC1.4 a clean commit goes through the hook: exit 0" 0
+assert_eq "AC1.4 the clean commit exists" "clean change" "$(git -C "$R" log -1 --format=%s)"
+
+# an unmarked hook is left alone
+newrepo
+HOOKS="$R/.git/hooks"; mkdir -p "$HOOKS"
+printf '#!/bin/sh\necho my-own-hook\n' > "$HOOKS/pre-commit"; chmod +x "$HOOKS/pre-commit"
+mine="$(cksum < "$HOOKS/pre-commit")"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC1.4 an existing unmarked pre-commit: install-hooks exits 1" 1
+assert_eq "AC1.4 the unmarked pre-commit is untouched" "$mine" "$(cksum < "$HOOKS/pre-commit")"
+assert_not_contains "AC1.4 the unmarked pre-commit did not get the marker" "$(cat "$HOOKS/pre-commit")" "$MARK"
+assert_contains "AC1.4 the refusal names the hook that was left alone" "$OUT" "pre-commit"
+# --repo DIR from elsewhere
+newrepo
+run_in "$NG" bash "$LC" install-hooks --repo "$R"
+assert_rc "AC1.4 install-hooks --repo DIR (from outside the repo): exit 0" 0
+assert_contains "AC1.4 --repo DIR wrote the pre-commit into that repo" "$(cat "$R/.git/hooks/pre-commit" 2>/dev/null)" "$MARK"
+assert_contains "AC1.4 --repo DIR wrote the pre-push into that repo" "$(cat "$R/.git/hooks/pre-push" 2>/dev/null)" "$MARK"
+run_in "$NG" bash "$LC" uninstall-hooks --repo "$R"
+assert_rc "AC1.4 uninstall-hooks --repo DIR: exit 0" 0
+assert_no_path "AC1.4 uninstall removed the marked pre-commit" "$R/.git/hooks/pre-commit"
+assert_no_path "AC1.4 uninstall removed the marked pre-push" "$R/.git/hooks/pre-push"
+# uninstall touches marked hooks only
+newrepo
+HOOKS="$R/.git/hooks"
+run_in "$R" bash "$LC" install-hooks
+printf '#!/bin/sh\necho my-own-hook\n' > "$HOOKS/pre-commit"; chmod +x "$HOOKS/pre-commit"
+mine="$(cksum < "$HOOKS/pre-commit")"
+run_in "$R" bash "$LC" uninstall-hooks
+assert_no_path "AC1.4 uninstall removes the marked pre-push" "$HOOKS/pre-push"
+assert_file "AC1.4 uninstall keeps the unmarked pre-commit" "$HOOKS/pre-commit"
+assert_eq "AC1.4 the unmarked pre-commit is byte-identical after uninstall" "$mine" "$(cksum < "$HOOKS/pre-commit")"
+# after uninstall a secret commit is no longer blocked
+newrepo
+run_in "$R" bash "$LC" install-hooks
+run_in "$R" bash "$LC" uninstall-hooks
+stage "$R" bad.txt "k $GH"
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'now allowed'
+assert_rc "AC1.4 after uninstall-hooks nothing blocks the commit: exit 0" 0
+
+echo "the pre-push hook"
+newrepo
+BARE="$(mk_tmp)/remote.git"; git init -q --bare "$BARE"; git -C "$BARE" symbolic-ref HEAD refs/heads/main
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+git -C "$R" remote add origin "$BARE"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC1.4 pre-push setup: install-hooks exit 0" 0
+run_in "$R" git push -q origin main
+assert_rc "AC1.4 pushing a clean branch passes the pre-push hook: exit 0" 0
+pushed="$(git -C "$BARE" rev-parse --verify main 2>/dev/null)"
+assert_eq "AC1.4 the clean push reached the remote" "$(git -C "$R" rev-parse HEAD)" "$pushed"
+# a commit with a secret, made past the pre-commit hook, on an existing branch
+stage "$R" leak.txt "k $GH"
+G -C "$R" commit -q --no-verify -m 'leaky' || echo "fixture: commit --no-verify failed"
+leaky="$(git -C "$R" rev-parse HEAD)"
+run_in "$R" git push origin main
+if [ "$RC" != 0 ]; then t_ok "AC1.4 pushing a commit with a secret is blocked by the hook (exit $RC)"; else t_bad "AC1.4 pushing a commit with a secret is blocked by the hook" "exit 0; output: $OUT"; fi
+assert_eq "AC1.4 the blocked push did not move the remote branch" "$pushed" "$(git -C "$BARE" rev-parse --verify main 2>/dev/null)"
+assert_contains "AC1.4 the pre-push hook shows the finding" "$OUT" "leak.txt:1: github-token"
+assert_not_contains "AC1.4 the pre-push hook never shows the full secret" "$OUT" "$GH"
+# a NEW branch: its commits are those not on any remote
+run_in "$R" git push origin "HEAD:refs/heads/feature"
+if [ "$RC" != 0 ]; then t_ok "AC1.4 pushing a NEW branch holding the secret commit is blocked (exit $RC)"; else t_bad "AC1.4 pushing a NEW branch holding the secret commit is blocked" "exit 0; output: $OUT"; fi
+if git -C "$BARE" rev-parse --verify -q refs/heads/feature >/dev/null; then t_bad "AC1.4 the blocked new branch is not on the remote" "feature exists on the remote"; else t_ok "AC1.4 the blocked new branch is not on the remote"; fi
+# a new branch with only clean commits (the secret commit is not part of it) goes through
+git -C "$R" checkout -q -b cleanbranch "$pushed"
+stage "$R" fine.txt 'fine'
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'fine commit'
+assert_rc "AC1.4 pre-push setup: clean commit on a new branch: exit 0" 0
+run_in "$R" git push -q origin cleanbranch
+assert_rc "AC1.4 a new branch whose own commits are clean passes the pre-push hook: exit 0" 0
+if git -C "$BARE" rev-parse --verify -q refs/heads/cleanbranch >/dev/null; then t_ok "AC1.4 the clean new branch reached the remote"; else t_bad "AC1.4 the clean new branch reached the remote" "no refs/heads/cleanbranch"; fi
+# deleting a remote branch pushes no commits: nothing to scan
+run_in "$R" git push -q origin --delete cleanbranch
+assert_rc "AC1.4 deleting a remote branch is not blocked by the pre-push hook: exit 0" 0
+
+
+# ---- review round: binary files, fail-closed hooks, --unpushed, merge commits, masking, finding count, case ----
+echo "review 1: binary files are scanned"
+newrepo
+printf 'PK\000\000 token=%s \000\000\n' "$GH" > "$R/blob.bin"
+git -C "$R" add blob.bin
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV1 a staged binary file (NUL bytes) holding a token: scan --staged exits 1" 1
+assert_contains "RV1 the finding names the binary file" "$OUT" "blob.bin"
+assert_not_contains "RV1 the binary finding does not print the full secret" "$OUT" "$GH"
+newrepo
+rb0="$(git -C "$R" rev-parse HEAD)"
+printf 'PK\000\000 token=%s \000\000\n' "$GH" > "$R/blob.bin"
+git -C "$R" add blob.bin; G -C "$R" commit -q -m 'binary with a secret'
+run_in "$R" bash "$LC" scan --range "$rb0..HEAD"
+assert_rc "RV1 a binary file with a token in a commit: scan --range exits 1" 1
+assert_contains "RV1 --range names the binary file" "$OUT" "blob.bin"
+newrepo
+printf 'PK\000\000 no secret here \000\000\n' > "$R/clean.bin"; git -C "$R" add clean.bin
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV1 a clean binary file: exit 0" 0
+
+echo "review 2: a hook fails closed when its script is gone"
+newrepo
+CP="$(mk_tmp)"; cp -R "$PB_ROOT/scripts" "$CP/scripts"
+GONE="$(cd "$CP/scripts" && pwd -P)/leak-check.sh"
+run_in "$R" bash "$CP/scripts/leak-check.sh" install-hooks
+assert_rc "RV2 setup: install-hooks from a copy of scripts/: exit 0" 0
+rm -rf "$CP/scripts"
+stage "$R" fine.txt 'a clean change'
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'clean change'
+if [ "$RC" != 0 ]; then t_ok "RV2 a clean commit is refused when the hook's script is gone (exit $RC)"; else t_bad "RV2 a clean commit is refused when the hook's script is gone" "exit 0 (the hook fails open); output: $OUT"; fi
+assert_contains "RV2 the refusal names the missing script path" "$OUT" "$GONE"
+case "$OUT" in *uninstall-hooks*|*install-hooks*|*reinstall*) t_ok "RV2 the refusal suggests uninstall-hooks or reinstalling" ;; *) t_bad "RV2 the refusal suggests uninstall-hooks or reinstalling" "output: $OUT" ;; esac
+assert_eq "RV2 no commit was created" "init" "$(git -C "$R" log -1 --format=%s)"
+# the pre-push hook as well
+newrepo
+BARE2="$(mk_tmp)/remote.git"; git init -q --bare "$BARE2"; git -C "$BARE2" symbolic-ref HEAD refs/heads/main
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+git -C "$R" remote add origin "$BARE2"
+CP="$(mk_tmp)"; cp -R "$PB_ROOT/scripts" "$CP/scripts"
+run_in "$R" bash "$CP/scripts/leak-check.sh" install-hooks
+rm -rf "$CP/scripts"
+run_in "$R" git push -q origin main
+if [ "$RC" != 0 ]; then t_ok "RV2 a push is refused when the pre-push hook's script is gone (exit $RC)"; else t_bad "RV2 a push is refused when the pre-push hook's script is gone" "exit 0; output: $OUT"; fi
+if git -C "$BARE2" rev-parse --verify -q refs/heads/main >/dev/null; then t_bad "RV2 the refused push did not reach the remote" "main is on the remote"; else t_ok "RV2 the refused push did not reach the remote"; fi
+# the way out works: uninstall-hooks (from the real script) removes the broken hooks and the commit goes through
+run_in "$R" bash "$LC" uninstall-hooks
+stage "$R" fine.txt 'a clean change'
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'clean change'
+assert_rc "RV2 after uninstall-hooks the commit goes through: exit 0" 0
+
+echo "review 3: scan --unpushed SHA skips the commits that are on a remote"
+newrepo
+BARE3="$(mk_tmp)/remote.git"; git init -q --bare "$BARE3"; git -C "$BARE3" symbolic-ref HEAD refs/heads/main
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+git -C "$R" remote add origin "$BARE3"
+stage "$R" old.txt "old secret $GH"; G -C "$R" commit -q -m 'old commit with a secret'
+git -C "$R" push -q origin main
+git -C "$R" checkout -q -b newclean main
+stage "$R" new.txt 'a clean line'; G -C "$R" commit -q -m 'clean on top'
+run_in "$R" bash "$LC" scan --unpushed HEAD
+assert_rc "RV3 a new branch with one clean commit on top of a pushed secret: clean, exit 0" 0
+assert_contains "RV3 ... says 'leak-check: clean'" "$OUT" "leak-check: clean"
+git -C "$R" checkout -q -b newleak main
+stage "$R" new2.txt "new secret $AWS"; G -C "$R" commit -q -m 'new secret'
+run_in "$R" bash "$LC" scan --unpushed HEAD
+assert_rc "RV3 a new branch with a new secret commit: exit 1" 1
+assert_contains "RV3 the new secret is named" "$OUT" "new2.txt:1: aws-key"
+assert_not_contains "RV3 the old, already pushed secret is not reported" "$OUT" "old.txt"
+run_in "$R" bash "$LC" scan --unpushed
+assert_rc "RV3 --unpushed without a SHA: usage, exit 2" 2
+# the hook uses it: pushing the clean new branch works, pushing the leaky one is blocked
+run_in "$R" bash "$LC" install-hooks
+run_in "$R" git push -q origin newclean
+assert_rc "RV3 the pre-push hook lets the clean new branch through (the old pushed secret is not rescanned): exit 0" 0
+run_in "$R" git push origin newleak
+if [ "$RC" != 0 ]; then t_ok "RV3 the pre-push hook blocks the new branch with a new secret"; else t_bad "RV3 the pre-push hook blocks the new branch with a new secret" "exit 0; output: $OUT"; fi
+
+echo "review 4: merge commits are scanned (evil merges)"
+# (a) a secret in a file that only the merge commit adds
+newrepo
+BAREM="$(mk_tmp)/remote.git"; git init -q --bare "$BAREM"; git -C "$BAREM" symbolic-ref HEAD refs/heads/main
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+git -C "$R" remote add origin "$BAREM"; git -C "$R" push -q origin main
+mb="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q -b side; stage "$R" side.txt 'side work'; G -C "$R" commit -q -m side
+git -C "$R" checkout -q main; stage "$R" main.txt 'main work'; G -C "$R" commit -q -m mainwork
+G -C "$R" merge -q --no-ff --no-commit side >/dev/null 2>&1
+stage "$R" evil.txt "evil $GH"
+G -C "$R" commit -q -m 'evil merge' || echo "fixture: merge commit failed"
+run_in "$R" bash "$LC" scan --range "$mb..HEAD"
+assert_rc "RV4 a secret added by the merge commit itself: --range exits 1" 1
+assert_contains "RV4 --range names the file the merge added" "$OUT" "evil.txt"
+run_in "$R" bash "$LC" scan --unpushed HEAD
+assert_rc "RV4 a secret added by the merge commit itself: --unpushed exits 1" 1
+assert_contains "RV4 --unpushed names the file the merge added" "$OUT" "evil.txt"
+# (b) a secret in the conflict resolution
+newrepo
+BARE4="$(mk_tmp)/remote.git"; git init -q --bare "$BARE4"; git -C "$BARE4" symbolic-ref HEAD refs/heads/main
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+stage "$R" f.txt 'base line' 'tail'; G -C "$R" commit -q -m 'f base'
+git -C "$R" remote add origin "$BARE4"; git -C "$R" push -q origin main
+mb="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q -b side2; printf 'side line\ntail\n' > "$R/f.txt"; git -C "$R" add f.txt; G -C "$R" commit -q -m 'side edit'
+git -C "$R" checkout -q main; printf 'main line\ntail\n' > "$R/f.txt"; git -C "$R" add f.txt; G -C "$R" commit -q -m 'main edit'
+G -C "$R" merge -q side2 >/dev/null 2>&1
+printf 'resolved with %s\ntail\n' "$GH" > "$R/f.txt"; git -C "$R" add f.txt
+G -C "$R" commit -q -m 'resolve with a secret' || echo "fixture: conflict resolution commit failed"
+assert_eq "RV4 setup: the resolving commit is a merge (two parents)" "2" "$(git -C "$R" rev-list --parents -n 1 HEAD | wc -w | tr -d ' ' | awk '{ print $1 - 1 }')"
+run_in "$R" bash "$LC" scan --range "$mb..HEAD"
+assert_rc "RV4 a secret introduced in a conflict resolution: --range exits 1" 1
+assert_contains "RV4 --range names the resolved file" "$OUT" "f.txt"
+run_in "$R" bash "$LC" scan --unpushed HEAD
+assert_rc "RV4 a secret introduced in a conflict resolution: --unpushed exits 1" 1
+assert_contains "RV4 --unpushed names the resolved file" "$OUT" "f.txt"
+# a clean merge stays clean
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+mb="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q -b s3; stage "$R" s3.txt 'side'; G -C "$R" commit -q -m s3
+git -C "$R" checkout -q main; stage "$R" m3.txt 'main'; G -C "$R" commit -q -m m3
+G -C "$R" merge -q --no-ff -m 'clean merge' s3 >/dev/null 2>&1
+run_in "$R" bash "$LC" scan --range "$mb..HEAD"
+assert_rc "RV4 a clean merge: --range exits 0" 0
+
+echo "review 5: masking"
+conf_global 'leak_literals=ab12,abcd1234,qrstuvwxy'
+newrepo
+stage "$R" m.txt 'one ab12 here' 'two abcd1234 here' 'three qrstuvwxy here'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV5 short literals present: exit 1" 1
+assert_contains "RV5 the 4-char literal is reported at its line" "$OUT" "m.txt:1: user-literal"
+assert_contains "RV5 the 8-char literal is reported at its line" "$OUT" "m.txt:2: user-literal"
+assert_contains "RV5 the 9-char literal is reported at its line" "$OUT" "m.txt:3: user-literal"
+assert_not_contains "RV5 the 4-char literal ab12 does not appear in the output" "$OUT" "ab12"
+assert_not_contains "RV5 an 8-char match shows no characters (no 'abcd')" "$OUT" "abcd"
+assert_not_contains "RV5 an 8-char match shows no characters (no '1234')" "$OUT" "1234"
+assert_contains "RV5 an 8-char or shorter match is shown only as ***" "$OUT" "***"
+assert_contains "RV5 a match longer than 8 chars still shows the first 4 chars then ***" "$OUT" "qrst***"
+assert_not_contains "RV5 a longer match is not shown beyond its first 4 chars" "$OUT" "qrstu"
+conf_global 'leak_patterns=zq[0-9]{4}'
+newrepo
+stage "$R" m.txt 'x zq1234 y'
+run_in "$R" bash "$LC" scan --staged
+assert_not_contains "RV5 a 6-char pattern match shows no characters (no 'zq12')" "$OUT" "zq12"
+rm -f "$PH/.agents/playbook.conf"
+
+echo "review 6: the finding count equals the finding lines shown"
+nfind() { printf '%s\n' "$OUT" | grep -oE '[0-9]+ finding' | head -n 1 | grep -oE '[0-9]+'; }
+nlines() { printf '%s\n' "$OUT" | grep -cE '^[^ ]+:[0-9]+: '; }
+newrepo
+stage "$R" d.txt "twice $GH and again $GH"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV6 the same token twice on one line: exit 1" 1
+assert_eq "RV6 the duplicate is shown once (after dedupe)" "1" "$(nlines)"
+assert_eq "RV6 the printed count equals the number of finding lines (1)" "1" "$(nfind)"
+newrepo
+stage "$R" d.txt "one $GH" 'between' "two $GH" "three $AWS"
+run_in "$R" bash "$LC" scan --staged
+assert_eq "RV6 three findings on three lines: three finding lines" "3" "$(nlines)"
+assert_eq "RV6 the printed count is 3" "3" "$(nfind)"
+newrepo
+stage "$R" d.txt "tw $GH $GHS"
+run_in "$R" bash "$LC" scan --staged
+assert_eq "RV6 two different tokens on one line: the printed count equals the lines shown" "$(nlines)" "$(nfind)"
+
+echo "review 7: leak_literals match case-insensitively"
+conf_global "leak_literals=$EML"
+newrepo
+stage "$R" c.txt 'mail Dev@Example.Invalid today'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV7 a literal matches in another letter case: exit 1" 1
+assert_contains "RV7 reported as user-literal" "$OUT" "c.txt:1: user-literal"
+newrepo
+stage "$R" c.txt 'mail DEV@EXAMPLE.INVALID today'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV7 all capitals: exit 1" 1
+newrepo
+stage "$R" c.txt 'DevXExample.Invalid'
+run_in "$R" bash "$LC" scan --staged
+assert_rc "RV7 case-insensitive does not make the dot a wildcard: exit 0" 0
+rm -f "$PH/.agents/playbook.conf"
+
+echo "docs"
+if grep -q 'leak_literals' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-setup SKILL.md mentions leak_literals"; else t_bad "AC1.5 playbook-setup SKILL.md mentions leak_literals" "not in $SETUP_MD"; fi
+if grep -q 'install-hooks' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-setup SKILL.md mentions install-hooks"; else t_bad "AC1.5 playbook-setup SKILL.md mentions install-hooks" "not in $SETUP_MD"; fi
+if grep -qi 'leak-check' "$README" 2>/dev/null; then t_ok "AC1.5 README mentions leak-check"; else t_bad "AC1.5 README mentions leak-check" "not in $README"; fi
+
+t_summary
