@@ -127,6 +127,7 @@ case "$1 $2" in
       exit 0 ;;
     esac
     failing shardview && exit 1
+    rv="FAKE_SHARDS_$3"; if [ -n "${!rv:-}" ]; then FAKE_SHARDS="${!rv}"; fi   # per-run override (v0.22.3 AC6.3)
     case "${FAKE_SHARDS:-}" in
       bad) echo "this is not json"; exit 0 ;;
     esac
@@ -207,7 +208,14 @@ sys.stdout.buffer.write(out.replace(b"\r\n", b"\n"))
 sys.stdout.flush()
 sys.exit(os.WEXITSTATUS(st) if os.WIFEXITED(st) else 128 + os.WTERMSIG(st))
 EOF
-chmod +x "$BIN/gh" "$W/release.stub" "$W/install.stub"
+# ---- stub tools/ci-tree-tested.sh (v0.22.3 AC6.3): logs its arguments, prints $FAKE_TREE_RUN (nothing when empty), exits $FAKE_TREE_RC ----
+cat > "$W/ci.stub" <<'EOF'
+#!/usr/bin/env bash
+echo "ci-tree-tested.sh $*" >> "$FAKE_LOG"
+[ -n "${FAKE_TREE_RUN:-}" ] && echo "$FAKE_TREE_RUN"
+exit "${FAKE_TREE_RC:-0}"
+EOF
+chmod +x "$BIN/gh" "$W/release.stub" "$W/install.stub" "$W/ci.stub"
 
 # ---- fake git front: real git, plus a faithful "git pull rewrites the running script in place" ----
 # git normally replaces a file by unlinking it and creating a new one, so a bash that already has the old
@@ -249,6 +257,7 @@ fx_build() { # DIR -> the fixture in DIR
   printf '# old weights, run 1\ntest-big.sh 50\n' > "$F/repo/tests/shard-weights"
   cp -p "$W/release.stub" "$F/repo/tools/release.sh"
   cp -p "$W/install.stub" "$F/repo/install.sh"
+  cp -p "$W/ci.stub" "$F/repo/tools/ci-tree-tested.sh"
   printf '1.2.3\n' > "$F/repo/VERSION"
   ( cd "$F/repo" && git symbolic-ref HEAD refs/heads/main && git add -A &&
     GITID commit -qm init && git push -q -u origin main 2>/dev/null &&
@@ -266,7 +275,8 @@ fx() {
   git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
-  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS= FAKE_SHARD_LOG=
+  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS= FAKE_SHARD_LOG= FAKE_TREE_RUN= FAKE_TREE_RC=0
+  unset FAKE_SHARDS_7777 FAKE_SHARDS_5555 FAKE_SHARDS_9191
   export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
   export PATH="$BIN:$ORIG_PATH"
 }
@@ -911,4 +921,94 @@ pty_block() {
 PTY_N=38
 if [ "$PTY_OK" = 1 ]; then pty_block; else t_skip "$PTY_N" "AC6.1 prompt assertions need python3 with a pty (not available here)"; fi
 
+
+# ---- v0.22.3 AC6.3: a main push whose Windows shards were skipped (the tree was tested by a PR run) ----
+# The main push run then has fewer than 2 completed "windows shard K/N" jobs. ship runs tools/ci-tree-tested.sh for the
+# release commit (a stub in the fixture: it logs "ci-tree-tested.sh <args>" and prints $FAKE_TREE_RUN) and uses the PR run id
+# it prints for the shard hint and the weights refresh. No id: no hint, no refresh. FAKE_SHARDS_<run id> sets the jobs of one run.
+echo "v0.22.3 AC6.3 shards skipped on main: the PR run of the same tree is the data source"
+tree_calls() { grep '^ci-tree-tested.sh' "$FAKE_LOG"; }
+TREE_SKIPPED_MAIN=("none" "100" "100,running")
+fx
+export FAKE_SHARDS_7777=none FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200"
+sh_run 12 v1.2.3 --yes
+TAGSHA="$(cd "$F/repo" && git rev-parse 'v1.2.3^{commit}' 2>/dev/null)"
+assert_rc "AC6.3 skipped shards on main, an id from ci-tree-tested.sh: ship exits 0" 0
+assert_eq "AC6.3 the whole flow ran as before" "$FULL_YES" "$(steps)"
+assert_eq "AC6.3 ci-tree-tested.sh ran exactly once" "1" "$(tree_calls | wc -l | tr -d ' ')"
+assert_contains "AC6.3 ci-tree-tested.sh is given the release (merge) commit" "$(tree_calls)" "$TAGSHA"
+assert_eq "AC6.3 the tool is run after the tag's CI run was watched" "1" "$(awk '/^gh run watch/ { w = NR } /^ci-tree-tested.sh/ { if (w && NR > w) ok = 1 } END { print ok + 0 }' "$FAKE_LOG")"
+assert_eq "AC6.3 the hint names the PR run (5555), not the main run" "1" \
+  "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s): run tools/shard-weights.sh 5555')"
+assert_not_contains "AC6.3 the hint does not name the main run (7777)" "$OUT" "shard-weights.sh 7777"
+assert_eq "AC6.3 only one line talks about unbalanced shards" "1" "$(unb)"
+assert_eq "AC6.3 the weights refresh reads the PR run's jobs (gh run view 5555 ...)" "1" "$(( $(grep -c '^gh run view 5555 .*--json jobs' "$FAKE_LOG") >= 1 ))"
+assert_contains "AC6.3 the refresh reads a shard job log" "$(grep '^gh run view' "$FAKE_LOG")" "--job"
+assert_eq "AC6.3 one 'shard weights refreshed: copy ...' line" "1" "$(refreshed)"
+assert_file "AC6.3 .agents/handoff/shard-weights.next was written" "$F/repo/$WN"
+assert_contains "AC6.3 the weights file names the PR run (run 5555)" "$(cat "$F/repo/$WN" 2>/dev/null)" "run 5555"
+assert_eq "AC6.3 the weights file does not name the main run" "0" "$(grep -c 'run 7777' "$F/repo/$WN" 2>/dev/null || true)"
+assert_eq "AC6.3 tests/shard-weights is unchanged" "# old weights, run 1
+test-big.sh 50" "$(cat "$F/repo/tests/shard-weights")"
+assert_contains "AC6.3 shipped is still printed" "$OUT" "shipped v1.2.3"
+
+echo "v0.22.3 AC6.3 the PR run's shards are balanced: no hint, no refresh"
+for main_shards in "${TREE_SKIPPED_MAIN[@]}"; do
+  fx
+  export FAKE_SHARDS_7777="$main_shards" FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="100,110,120"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC6.3 main shards [$main_shards], balanced PR run: exit 0" 0
+  assert_eq "AC6.3 main shards [$main_shards]: ci-tree-tested.sh ran (fewer than 2 completed shard jobs)" "1" "$(tree_calls | wc -l | tr -d ' ')"
+  assert_eq "AC6.3 main shards [$main_shards], balanced PR run: no hint" "0" "$(unb)"
+  assert_eq "AC6.3 main shards [$main_shards], balanced PR run: no 'shard weights' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+  assert_eq "AC6.3 main shards [$main_shards], balanced PR run: no shard logs were fetched" "0" "$(logged '^gh run view .*--job')"
+done
+fx
+export FAKE_SHARDS_7777=none FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="250,100"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC6.3 another PR run (two shards, 250 s and 100 s): the hint names 5555" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 250 s): run tools/shard-weights.sh 5555')"
+
+echo "v0.22.3 AC6.3 no id from ci-tree-tested.sh: no hint, no refresh"
+for main_shards in "${TREE_SKIPPED_MAIN[@]}"; do
+  fx
+  export FAKE_SHARDS_7777="$main_shards" FAKE_TREE_RUN= FAKE_SHARDS_5555="300,100,200"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC6.3 main shards [$main_shards], no id: ship exits 0" 0
+  assert_eq "AC6.3 main shards [$main_shards], no id: the whole flow ran" "$FULL_YES" "$(steps)"
+  assert_eq "AC6.3 main shards [$main_shards], no id: ci-tree-tested.sh was asked once" "1" "$(tree_calls | wc -l | tr -d ' ')"
+  assert_eq "AC6.3 main shards [$main_shards], no id: no hint" "0" "$(unb)"
+  assert_eq "AC6.3 main shards [$main_shards], no id: no 'shard weights' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+  assert_no_path "AC6.3 main shards [$main_shards], no id: no .agents/handoff" "$F/repo/.agents/handoff"
+  assert_eq "AC6.3 main shards [$main_shards], no id: no run other than the main one is read" "0" "$(logged '^gh run view 5555')"
+  assert_contains "AC6.3 main shards [$main_shards], no id: shipped is still printed" "$OUT" "shipped v1.2.3"
+done
+echo "v0.22.3 AC6.3 ci-tree-tested.sh fails: ship goes on without a hint"
+fx
+export FAKE_SHARDS_7777=none FAKE_TREE_RUN= FAKE_TREE_RC=1 FAKE_SHARDS_5555="300,100,200"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC6.3 the tool exits 1: ship still exits 0" 0
+assert_eq "AC6.3 the tool exits 1: the whole flow ran" "$FULL_YES" "$(steps)"
+assert_eq "AC6.3 the tool exits 1: no hint and no refresh" "0 0" "$(unb) $(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+assert_contains "AC6.3 the tool exits 1: shipped is still printed" "$OUT" "shipped v1.2.3"
+
+echo "v0.22.3 AC6.3 the main push ran its shards: ci-tree-tested.sh is not needed"
+fx
+export FAKE_SHARDS="300,100,200" FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="500,100,100"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC6.3 three completed shards on main: exit 0" 0
+assert_eq "AC6.3 three completed shards on main: ci-tree-tested.sh does not run" "0" "$(tree_calls | wc -l | tr -d ' ')"
+assert_eq "AC6.3 three completed shards on main: the hint names the main run (7777), as before" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s): run tools/shard-weights.sh 7777')"
+assert_not_contains "AC6.3 three completed shards on main: the PR run (5555) is not used" "$OUT" "shard-weights.sh 5555"
+fx
+export FAKE_SHARDS="100,300" FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="500,100,100"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC6.3 two completed shards on main (the bound is 2): ci-tree-tested.sh does not run" "0" "$(tree_calls | wc -l | tr -d ' ')"
+assert_eq "AC6.3 two completed shards on main: the hint names the main run" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s): run tools/shard-weights.sh 7777')"
+
+echo "v0.22.3 AC6.3 the tag's CI failed: no PR run lookup"
+fx
+export FAKE_SHARDS_7777=none FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200" FAKE_GH_FAIL="runwatch"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC6.3 CI failed: ship exits 1" 1
+assert_eq "AC6.3 CI failed: ci-tree-tested.sh does not run" "0" "$(tree_calls | wc -l | tr -d ' ')"
 t_summary

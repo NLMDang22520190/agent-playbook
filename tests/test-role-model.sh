@@ -91,24 +91,26 @@ reset
 printf 'model_tester=t\nmodel_reviewer=r\nmodel_reviewer_codex=rc\n' > "$G"
 role list
 assert_rc "AC1 list exits 0" 0
-assert_eq "AC1 list prints three lines in order" "tester=t
+assert_eq "AC1 list prints the three role lines in order (first three lines)" "tester=t
 implementer=session
-reviewer=r" "$OUT"
+reviewer=r" "$(printf '%s
+' "$OUT" | head -n 3)"
 role list --harness codex
-assert_eq "AC1 list --harness applies per-harness keys" "tester=t
-implementer=session
-reviewer=rc" "$OUT"
+assert_eq "AC1 list --harness applies per-harness keys (reviewer line)" "reviewer=rc" "$(printf '%s
+' "$OUT" | grep -x 'reviewer=.*')"
 export PLAYBOOK_HARNESS=codex
 role list
-assert_eq "AC1 list honours PLAYBOOK_HARNESS" "tester=t
-implementer=session
-reviewer=rc" "$OUT"
+assert_eq "AC1 list honours PLAYBOOK_HARNESS (reviewer line)" "reviewer=rc" "$(printf '%s
+' "$OUT" | grep -x 'reviewer=.*')"
 unset PLAYBOOK_HARNESS
 reset
 role list
-assert_eq "AC1 list with no conf" "tester=session
-implementer=session
-reviewer=session" "$OUT"
+assert_eq "AC1 list with no conf (tester line)" "tester=session" "$(printf '%s
+' "$OUT" | grep -x 'tester=.*')"
+assert_eq "AC1 list with no conf (implementer line)" "implementer=session" "$(printf '%s
+' "$OUT" | grep -x 'implementer=.*')"
+assert_eq "AC1 list with no conf (reviewer line)" "reviewer=session" "$(printf '%s
+' "$OUT" | grep -x 'reviewer=.*')"
 
 # --- invalid input exits 2 and prints no model
 reset
@@ -211,9 +213,10 @@ printf 'model_tester=tmod\nmodel_reviewer=rmod\n' > "$G"
 role tester
 assert_eq "AC1.1 tester output unchanged with generic keys" "tmod" "$OUT"
 role list
-assert_eq "AC1.1 list output unchanged with generic keys" "tester=tmod
+assert_eq "AC1.1 list output unchanged with generic keys (first three lines)" "tester=tmod
 implementer=session
-reviewer=rmod" "$OUT"
+reviewer=rmod" "$(printf '%s
+' "$OUT" | head -n 3)"
 ERR="$(cd "$P" && bash "$RM" tester 2>&1 >/dev/null)"
 assert_eq "AC1.1 tester prints nothing on stderr with generic keys" "" "$ERR"
 ERR="$(cd "$P" && bash "$RM" list 2>&1 >/dev/null)"
@@ -234,4 +237,188 @@ assert_contains "the empty generic key is named" "$OUT" "model_reviewer"
 assert_contains "the empty generic key warns" "$OUT" "warning"
 assert_contains "the empty generic key names its origin: global" "$(printf '%s\n' "$OUT" | grep 'model_reviewer')" "global"
 
+
+# --- v0.22.3 AC3.1: roles reviewer_light and mechanical
+echo "role-model.sh v0.22.3 AC3.1: reviewer_light"
+reset
+role reviewer_light
+assert_rc "AC3.1 reviewer_light is a role: exit 0" 0
+assert_eq "AC3.1 reviewer_light with nothing configured -> session" "session" "$OUT"
+
+reset
+printf 'model_reviewer=rmod\n' > "$G"
+role reviewer_light
+assert_eq "AC3.1 reviewer_light falls back to the reviewer's model" "rmod" "$OUT"
+
+reset
+printf 'model_reviewer=rgen\nmodel_reviewer_codex=rcx\n' > "$G"
+role reviewer_light --harness codex
+assert_eq "AC3.1 the fallback is the reviewer's model for that harness (per-harness reviewer key)" "rcx" "$OUT"
+role reviewer_light
+assert_eq "AC3.1 the fallback without a harness is the generic reviewer model" "rgen" "$OUT"
+
+reset
+printf 'model_reviewer_codex=rcx\n' > "$G"
+role reviewer_light
+assert_eq "AC3.1 a per-harness reviewer key is not used without a harness -> session" "session" "$OUT"
+
+reset
+printf 'model_reviewer=rgen\nmodel_reviewer_light=lgen\n' > "$G"
+role reviewer_light
+assert_eq "AC3.1 generic reviewer_light beats the reviewer's model" "lgen" "$OUT"
+role reviewer
+assert_eq "AC3.1 the reviewer role itself is not affected by reviewer_light" "rgen" "$OUT"
+
+reset
+printf 'model_reviewer=rgen\nmodel_reviewer_light=lgen\nmodel_reviewer_light_codex=lcx\nmodel_reviewer_light_opencode=lox\n' > "$G"
+role reviewer_light --harness codex
+assert_eq "AC3.1 reviewer_light_<harness> beats generic reviewer_light" "lcx" "$OUT"
+role reviewer_light --harness opencode
+assert_eq "AC3.1 reviewer_light picks the key of the requested harness" "lox" "$OUT"
+role reviewer_light --harness claude-code
+assert_eq "AC3.1 a harness without its own light key falls back to generic reviewer_light" "lgen" "$OUT"
+export PLAYBOOK_HARNESS=codex
+role reviewer_light
+assert_eq "AC3.1 reviewer_light honours PLAYBOOK_HARNESS" "lcx" "$OUT"
+role reviewer_light --harness opencode
+assert_eq "AC3.1 --harness overrides PLAYBOOK_HARNESS for reviewer_light" "lox" "$OUT"
+unset PLAYBOOK_HARNESS
+
+reset
+printf 'model_reviewer_light=gl\n' > "$G"
+printf 'model_reviewer_light=pl\n' > "$L"
+role reviewer_light
+assert_eq "AC3.1 project reviewer_light overrides global" "pl" "$OUT"
+
+reset
+printf 'model_tester=t\nmodel_implementer=i\nmodel_mechanical=m\n' > "$G"
+role reviewer_light
+assert_eq "AC3.1 other roles' keys do not leak into reviewer_light" "session" "$OUT"
+
+echo "role-model.sh v0.22.3 AC3.1: mechanical"
+reset
+role mechanical
+assert_rc "AC3.1 mechanical is a role: exit 0" 0
+assert_eq "AC3.1 mechanical with nothing configured -> session" "session" "$OUT"
+
+reset
+printf 'model_tester=t\nmodel_implementer=i\nmodel_reviewer=r\nmodel_reviewer_light=l\n' > "$G"
+role mechanical
+assert_eq "AC3.1 mechanical never falls back to another role's model -> session" "session" "$OUT"
+
+reset
+printf 'model_mechanical=mgen\nmodel_mechanical_codex=mcx\nmodel_mechanical_opencode=mox\n' > "$G"
+role mechanical
+assert_eq "AC3.1 generic mechanical" "mgen" "$OUT"
+role mechanical --harness codex
+assert_eq "AC3.1 mechanical_<harness> beats generic mechanical" "mcx" "$OUT"
+role mechanical --harness opencode
+assert_eq "AC3.1 mechanical picks the key of the requested harness" "mox" "$OUT"
+role mechanical --harness claude-code
+assert_eq "AC3.1 a harness without its own mechanical key falls back to generic" "mgen" "$OUT"
+export PLAYBOOK_HARNESS=opencode
+role mechanical
+assert_eq "AC3.1 mechanical honours PLAYBOOK_HARNESS" "mox" "$OUT"
+unset PLAYBOOK_HARNESS
+
+reset
+printf 'model_mechanical_codex=mcx\n' > "$G"
+role mechanical
+assert_eq "AC3.1 a per-harness mechanical key is ignored without a harness -> session" "session" "$OUT"
+
+reset
+printf 'model_mechanical=gm\n' > "$G"
+printf 'model_mechanical=pm\n' > "$L"
+role mechanical
+assert_eq "AC3.1 project mechanical overrides global" "pm" "$OUT"
+
+role Mechanical
+assert_rc "AC3.1 role names are case-sensitive (Mechanical rejected)" 2
+role reviewer-light
+assert_rc "AC3.1 reviewer-light (hyphen) is not a role" 2
+
+echo "role-model.sh v0.22.3 AC3.1: list prints both new roles"
+reset
+printf 'model_tester=t\nmodel_reviewer=r\nmodel_reviewer_light=l\nmodel_mechanical=m\nmodel_reviewer_light_codex=lc\nmodel_mechanical_codex=mc\n' > "$G"
+role list
+assert_rc "AC3.1 list exits 0" 0
+assert_eq "AC3.1 list has the line reviewer_light=l" "reviewer_light=l" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
+assert_eq "AC3.1 list has the line mechanical=m" "mechanical=m" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
+assert_eq "AC3.1 list still has the line tester=t" "tester=t" "$(printf '%s\n' "$OUT" | grep -x 'tester=.*')"
+assert_eq "AC3.1 list still has the line reviewer=r" "reviewer=r" "$(printf '%s\n' "$OUT" | grep -x 'reviewer=.*')"
+role list --harness codex
+assert_eq "AC3.1 list --harness: reviewer_light line uses the per-harness key" "reviewer_light=lc" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
+assert_eq "AC3.1 list --harness: mechanical line uses the per-harness key" "mechanical=mc" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
+reset
+role list
+assert_eq "AC3.1 list with no conf: reviewer_light=session" "reviewer_light=session" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
+assert_eq "AC3.1 list with no conf: mechanical=session" "mechanical=session" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
+reset
+printf 'model_reviewer=rr\n' > "$G"
+role list
+assert_eq "AC3.1 list: reviewer_light shows the fallback to the reviewer's model" "reviewer_light=rr" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
+
+echo "role-model.sh v0.22.3 AC3.1: check warns about the generic keys of the new roles"
+reset
+printf 'model_reviewer_light_codex=lc\nmodel_mechanical_opencode=mo\n' > "$G"
+role check
+assert_rc "AC3.1 per-harness reviewer_light and mechanical keys alone -> exit 0" 0
+assert_contains "AC3.1 ... and the answer is the no-generic-keys line" "$OUT" "no generic model keys"
+reset
+printf 'model_reviewer_light=lval\n' > "$G"
+role check --harness codex
+assert_rc "AC3.1 generic model_reviewer_light -> exit 1" 1
+WL="$(printf '%s\n' "$OUT" | grep 'warning' | grep 'model_reviewer_light')"
+[ -n "$WL" ] && t_ok "AC3.1 a warning line names model_reviewer_light" || t_bad "AC3.1 a warning line names model_reviewer_light" "$OUT"
+assert_contains "AC3.1 the warning shows the value" "$WL" "lval"
+assert_contains "AC3.1 the warning says it applies to every harness" "$WL" "applies to every harness"
+assert_contains "AC3.1 the warning names the global origin" "$WL" "global"
+assert_contains "AC3.1 the warning suggests model_reviewer_light_<harness>" "$WL" "model_reviewer_light_codex"
+assert_eq "AC3.1 exactly one warning line for the one key" "1" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+reset
+printf 'model_mechanical=mval\n' > "$G"
+role check --harness codex
+assert_rc "AC3.1 generic model_mechanical -> exit 1" 1
+WM="$(printf '%s\n' "$OUT" | grep 'warning' | grep 'model_mechanical')"
+[ -n "$WM" ] && t_ok "AC3.1 a warning line names model_mechanical" || t_bad "AC3.1 a warning line names model_mechanical" "$OUT"
+assert_contains "AC3.1 the mechanical warning shows the value" "$WM" "mval"
+assert_contains "AC3.1 the mechanical warning suggests model_mechanical_<harness>" "$WM" "model_mechanical_codex"
+assert_eq "AC3.1 exactly one warning line for model_mechanical" "1" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+reset
+printf 'model_reviewer_light=pl\n' > "$L"
+role check
+assert_rc "AC3.1 a project-level generic model_reviewer_light -> exit 1" 1
+assert_contains "AC3.1 ... and the warning names the project origin" "$(printf '%s\n' "$OUT" | grep 'model_reviewer_light')" "project"
+reset
+printf 'model_tester=t\nmodel_implementer=i\nmodel_reviewer=r\nmodel_reviewer_light=l\nmodel_mechanical=m\n' > "$G"
+role check
+assert_rc "AC3.1 all five generic keys -> exit 1" 1
+assert_eq "AC3.1 one warning line per generic key (five)" "5" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+for k in model_tester model_implementer model_reviewer model_reviewer_light model_mechanical; do
+  if printf '%s\n' "$OUT" | grep 'warning' | grep -q "$k="; then t_ok "AC3.1 five keys: a warning for $k"; else t_bad "AC3.1 five keys: a warning for $k" "$OUT"; fi
+done
+reset
+printf 'model_reviewer=rmod\n' > "$G"
+role check
+assert_eq "AC3.1 model_reviewer alone: one warning, not two (reviewer_light is not reported)" "1" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
+
+echo "role-model.sh v0.22.3 AC3.2/AC3.3: instructions route the two roles"
+RMSKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+RMSETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
+rm_flat_has() { # NAME FILE PATTERN
+  if tr '\n' ' ' < "$2" 2>/dev/null | tr -s ' ' | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in the flattened $2"; fi
+}
+rm_flat_has "AC3.2 SKILL.md names the mechanical model" "$RMSKILL" 'mechanical'
+rm_flat_has "AC3.2 SKILL.md: mechanical work uses the mechanical model (role-model.sh mechanical or the word model)" "$RMSKILL" 'mechanical[^.]{0,200}(model|role-model)|(model|role-model)[^.]{0,120}mechanical'
+rm_flat_has "AC3.2 SKILL.md: release prep is mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}release|release[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: counts are mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}counts|counts[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: weights are mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}weights|weights[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: formatting is mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}formatting|formatting[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md names reviewer_light" "$RMSKILL" 'reviewer_light'
+rm_flat_has "AC3.2 SKILL.md: reviewer_light is for a diff that only touches tests, docs or skill text" "$RMSKILL" 'reviewer_light[^.]{0,250}(only|just)[^.]{0,120}(tests?|docs?|skill)|(only|just)[^.]{0,120}(tests?)[^.]{0,80}(docs?)[^.]{0,80}skill[^.]{0,200}reviewer_light'
+rm_flat_has "AC3.2 SKILL.md: code changes keep the reviewer model" "$RMSKILL" 'code[^.]{0,120}(keep|keeps|use|uses|stay|stays)[^.]{0,80}`?reviewer`?|`?reviewer`?[^.]{0,80}code (change|diff)'
+rm_flat_has "AC3.3 playbook-setup SKILL.md lists reviewer_light" "$RMSETUP" 'reviewer_light'
+rm_flat_has "AC3.3 playbook-setup SKILL.md lists mechanical" "$RMSETUP" 'mechanical'
+rm_flat_has "AC3.3 playbook-setup lists the keys with the per-harness form (model_reviewer_light_<harness>)" "$RMSETUP" 'model_reviewer_light_<harness>|model_reviewer_light_<h>|reviewer_light[^.]{0,80}<harness>'
+rm_flat_has "AC3.3 playbook-setup lists the per-harness mechanical key (model_mechanical_<harness>)" "$RMSETUP" 'model_mechanical_<harness>|model_mechanical_<h>|mechanical[^.]{0,80}<harness>'
 t_summary

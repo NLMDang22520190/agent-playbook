@@ -680,4 +680,85 @@ flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.m
 if grep -i 'concurrency' "$README" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts' 'no README line has both words'; fi
 sec_flat_has 'v22.2 AC7.1 README Development section mentions tools/bsd-check.sh' "$README" '^## Development' 'tools/bsd-check\.sh'
 
+
+# --- v0.22.3 AC2: context packs
+exact_heading 'v22.3 AC2.1 role-prompt.md has the heading "## 2b. Context pack"' "$RPROMPT" '## 2b. Context pack'
+L_SPEC="$(line_of "$RPROMPT" '## 2. Spec')"; L_PACK="$(line_of "$RPROMPT" '## 2b. Context pack')"; L_SLICE="$(line_of "$RPROMPT" '## 3. This slice')"
+if [ -n "$L_SPEC" ] && [ -n "$L_PACK" ] && [ -n "$L_SLICE" ] && [ "$L_SPEC" -lt "$L_PACK" ] && [ "$L_PACK" -lt "$L_SLICE" ]; then t_ok 'v22.3 AC2.1 the Context pack section sits between Spec and This slice'; else t_bad 'v22.3 AC2.1 the Context pack section sits between Spec and This slice' "spec line [$L_SPEC] pack line [$L_PACK] slice line [$L_SLICE]"; fi
+PK='^## 2b\. Context pack'
+sec_flat_has 'v22.3 AC2.1 pack: files with line ranges (path:line-line)' "$RPROMPT" "$PK" 'path:line-line|line ranges?'
+sec_flat_has 'v22.3 AC2.1 pack: the files to read' "$RPROMPT" "$PK" 'files?|paths?'
+sec_flat_has 'v22.3 AC2.1 pack: the functions or sections involved' "$RPROMPT" "$PK" 'functions?[^.]{0,40}sections?|sections?[^.]{0,40}functions?'
+sec_flat_has 'v22.3 AC2.1 pack: short excerpts' "$RPROMPT" "$PK" 'excerpts?'
+sec_flat_has 'v22.3 AC2.1 pack: the commands to run' "$RPROMPT" "$PK" 'commands?[^.]{0,30}run|run[^.]{0,30}commands?'
+sec_flat_has 'v22.3 AC2.1 pack: the role reads the pack first' "$RPROMPT" "$PK" 'read[^.]{0,40}pack first|pack first|first[^.]{0,40}read[^.]{0,40}pack'
+sec_flat_has 'v22.3 AC2.1 pack: other files only when the pack is not enough' "$RPROMPT" "$PK" 'not enough|insufficient|does not (cover|answer|contain)'
+flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$SKILL" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
+flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$SKILL" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$SKILL" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
+
+# --- v0.22.3 AC6.2: the reuse job of .github/workflows/test.yml (static checks)
+echo "v22.3 AC6.2 workflow: reuse job"
+if wf_jobs | grep -qxF reuse; then t_ok 'v22.3 AC6.2 a job reuse exists'; else t_bad 'v22.3 AC6.2 a job reuse exists' "jobs: $(wf_jobs | tr '\n' ' ')"; fi
+RB="$(wf_block reuse)"
+RUIF="$(wf_if reuse)"
+if printf '%s\n' "$RB" | grep -c '^    if:' | grep -qx 1; then t_ok 'v22.3 AC6.2 reuse has exactly one one-line if:'; else t_bad 'v22.3 AC6.2 reuse has exactly one one-line if:' "block: $RB"; fi
+if printf '%s\n' "$RUIF" | grep -Eq "github\.event_name[[:space:]]*==[[:space:]]*'push'"; then t_ok "v22.3 AC6.2 the reuse if: tests the push event"; else t_bad "v22.3 AC6.2 the reuse if: tests the push event" "if line: [$RUIF]"; fi
+if printf '%s\n' "$RUIF" | grep -Eq "github\.ref[[:space:]]*==[[:space:]]*'refs/heads/main'"; then t_ok "v22.3 AC6.2 the reuse if: tests the main ref"; else t_bad "v22.3 AC6.2 the reuse if: tests the main ref" "if line: [$RUIF]"; fi
+if [ -n "$RUIF" ] && not_tag "$RUIF"; then t_ok 'v22.3 AC6.2 the reuse if: excludes tags'; else t_bad 'v22.3 AC6.2 the reuse if: excludes tags' "if line: [$RUIF]"; fi
+assert_eq 'v22.3 AC6.2 reuse has timeout-minutes 5' "5" "$(wf_timeout reuse)"
+if printf '%s\n' "$RB" | grep -Eq '^    permissions:'; then t_ok 'v22.3 AC6.2 reuse has its own permissions: block'; else t_bad 'v22.3 AC6.2 reuse has its own permissions: block' "block: $RB"; fi
+if printf '%s\n' "$RB" | grep -Eq '^      actions:[[:space:]]*read[[:space:]]*$'; then t_ok 'v22.3 AC6.2 reuse has actions: read'; else t_bad 'v22.3 AC6.2 reuse has actions: read' "block: $RB"; fi
+if printf '%s\n' "$RB" | grep -Eq '^      contents:[[:space:]]*read[[:space:]]*$'; then t_ok 'v22.3 AC6.2 reuse has contents: read (decision D3)'; else t_bad 'v22.3 AC6.2 reuse has contents: read (decision D3)' "block: $RB"; fi
+if printf '%s' "$RB" | grep -Eq '^      [a-z-]+:[[:space:]]*write'; then t_bad 'v22.3 AC6.2 reuse has no write permission' "block: $RB"; else t_ok 'v22.3 AC6.2 reuse has no write permission'; fi
+if printf '%s\n' "$RB" | grep -Eq '^    outputs:'; then t_ok 'v22.3 AC6.2 reuse has outputs:'; else t_bad 'v22.3 AC6.2 reuse has outputs:' "block: $RB"; fi
+if printf '%s\n' "$RB" | grep -Eq '^      run:[[:space:]]*\$\{\{'; then t_ok 'v22.3 AC6.2 reuse outputs run'; else t_bad 'v22.3 AC6.2 reuse outputs run' "block: $RB"; fi
+assert_not_contains 'v22.3 AC6.2 the reuse block never names macos-latest' "$RB" 'macos-latest'
+assert_not_contains 'v22.3 AC6.2 the reuse block never names PB_SHARD' "$RB" 'PB_SHARD'
+assert_not_contains 'v22.3 AC6.2 the reuse block never names windows-latest' "$RB" 'windows-latest'
+assert_contains 'v22.3 AC6.2 reuse runs tools/ci-tree-tested.sh' "$RB" 'tools/ci-tree-tested.sh'
+assert_contains 'v22.3 AC6.2 reuse passes GH_TOKEN to gh' "$RB" 'GH_TOKEN'
+assert_not_contains 'v22.3 AC6.2 reuse does not run the suites' "$RB" 'tests/run-all.sh'
+assert_eq 'v22.3 AC6.2 MAIN detection still finds the test job (not reuse)' "test" "$MAIN"
+assert_eq 'v22.3 AC6.2 SHARD detection still finds windows-shard (not reuse)' "windows-shard" "$SHARD"
+
+echo "v22.3 AC6.2 workflow: test and windows-shard wait for reuse and run unless the tree was tested"
+NOREUSE_IF="if: \${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}"
+for id in test windows-shard; do
+  assert_contains "v22.3 AC6.2 job $id has needs: reuse" "$(wf_needs "$id")" "reuse"
+  assert_eq "v22.3 AC6.2 job $id has the exact one-line if: of the spec" "    $NOREUSE_IF" "$(wf_if "$id")"
+done
+
+echo "v22.3 AC6.2 workflow: the aggregator"
+AGGNEEDS="$(wf_needs "$AGG")"
+assert_contains "v22.3 AC6.2 the aggregator ($AGG) needs windows-shard" "$AGGNEEDS" "windows-shard"
+assert_contains "v22.3 AC6.2 the aggregator ($AGG) needs reuse (the needs context holds direct dependencies only)" "$AGGNEEDS" "reuse"
+case "$AGGNEEDS" in *"[windows-shard, reuse]"*) t_ok 'v22.3 AC6.2 the aggregator has needs: [windows-shard, reuse]' ;; *) t_bad 'v22.3 AC6.2 the aggregator has needs: [windows-shard, reuse]' "needs text: [$AGGNEEDS]" ;; esac
+for tok in 'needs.windows-shard.result' 'needs.reuse.result' 'needs.reuse.outputs.run'; do
+  assert_contains "v22.3 AC6.2 the aggregator reads $tok" "$AB" "$tok"
+done
+assert_contains "v22.3 AC6.2 the aggregator knows the skipped state of the shards" "$AB" 'skipped'
+assert_contains 'v22.3 AC6.2 the aggregator can still fail' "$AB" 'exit 1'
+assert_contains 'v22.3 AC6.2 the aggregator still has always()' "$(wf_if "$AGG")" 'always()'
+assert_eq 'v22.3 AC6.2 the aggregator still has timeout-minutes 5' "5" "$(wf_timeout "$AGG")"
+# the skip is allowed only together with a successful reuse and a non-empty run output: the pass logic names all three
+PASSLOGIC="$(printf '%s\n' "$AB" | grep -E 'success|skipped' | tr '\n' ' ')"
+case "$PASSLOGIC" in *needs.windows-shard.result*success*) t_ok 'v22.3 AC6.2 the aggregator passes on a successful shard result' ;; *) t_bad 'v22.3 AC6.2 the aggregator passes on a successful shard result' "logic: $PASSLOGIC" ;; esac
+case "$PASSLOGIC" in *skipped*needs.reuse.result*success*|*needs.reuse.result*success*skipped*|*skipped*success*) t_ok 'v22.3 AC6.2 the aggregator accepts skipped shards only next to a successful reuse' ;; *) t_bad 'v22.3 AC6.2 the aggregator accepts skipped shards only next to a successful reuse' "logic: $PASSLOGIC" ;; esac
+if printf '%s\n' "$AB" | grep -E 'needs\.reuse\.outputs\.run' | grep -Eq -- '-n|-z|!=|=='; then t_ok 'v22.3 AC6.2 the aggregator tests the reuse output for emptiness'; else t_bad 'v22.3 AC6.2 the aggregator tests the reuse output for emptiness' "block: $AB"; fi
+
+echo "v22.3 AC6.2 workflow: release and main-ci are unchanged"
+assert_contains 'v22.3 AC6.2 release keeps needs: [test, windows, main-ci]' "$(wf_needs release)" "[test, windows, main-ci]"
+assert_eq 'v22.3 AC6.2 the release if: is unchanged' "    if: \${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.main-ci.result == 'success' }}" "$(wf_if release)"
+assert_eq 'v22.3 AC6.2 main-ci still runs on v* tags only (unchanged if:)' "    if: startsWith(github.ref, 'refs/tags/v')" "$(wf_if main-ci)"
+assert_not_contains 'v22.3 AC6.2 main-ci does not depend on reuse' "$(wf_needs main-ci)" "reuse"
+assert_not_contains 'v22.3 AC6.2 only release has contents: write (reuse has none)' "$RB" 'contents: write'
+
+# --- v0.22.3 AC6.4: README
+echo "v22.3 AC6.4 README"
+flat_has 'v22.3 AC6.4 README: a main push reuses a green PR run' "$README" 'main push[^.]{0,250}reus|reus[^.]{0,250}main push'
+flat_has 'v22.3 AC6.4 README: the reused run is a same-repo PR run' "$README" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
+flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tree|same tree|tree[^.]{0,60}identical'
+flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
+flat_has 'v22.3 AC6.4 README: rebase merges always run the tests' "$README" 'rebase[^.]{0,200}always[^.]{0,80}(run|runs)[^.]{0,40}tests?|always[^.]{0,40}(run|runs)[^.]{0,40}tests?[^.]{0,120}rebase'
 t_summary
