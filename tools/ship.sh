@@ -49,7 +49,7 @@ main() {
     hr="$(gh run list --branch main --event push --commit "$hs" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null)" || return 0
     case "$hr" in '' | null | *[!0123456789]*) return 0 ;; esac
     hj="$(gh run view "$hr" --json jobs 2>/dev/null)" || return 0
-    ndone="$(printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { let n = 0; for (const j of JSON.parse(s).jobs || []) { if (/^windows shard \d+\/\d+$/.test(j.name || "") && j.completedAt && !/^0001-/.test(j.completedAt)) n++ } console.log(n) } catch (e) {} })' 2>/dev/null)" || ndone=""
+    ndone="$(printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { let n = 0; for (const j of JSON.parse(s).jobs || []) { if (/^windows shard \d+\/\d+$/.test(j.name || "") && j.conclusion === "success" && j.completedAt && !/^0001-/.test(j.completedAt)) n++ } console.log(n) } catch (e) {} })' 2>/dev/null)" || ndone=""
     case "$ndone" in '' | *[!0123456789]*) return 0 ;; esac
     if [ "$ndone" -lt 2 ]; then
       ci="$(bash tools/ci-tree-tested.sh "$hs" 2>/dev/null)" || ci=""

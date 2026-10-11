@@ -227,4 +227,58 @@ hd "captured run" 1 'out="$(bash proof-run.sh --label x)"'
 hd "a run after a heredoc has ended" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label x"
 hd "a run before a heredoc, the body mentions nothing" 1 "bash proof-run.sh --label x${NLC}cat <<EOF${NLC}notes${NLC}EOF"
 hd "a run with the heredoc terminator word later in the text is still a run" 1 "bash proof-run.sh --label x <<EOF${NLC}EOF${NLC}bash proof-run.sh --label y"
+echo "v0.22.1 corpus: ran_tests for every run and read form seen in the review rounds (first field = expected value)"
+while IFS= read -r row; do
+  [ -n "$row" ] || continue
+  want="${row%% *}"; cmd="${row#* }"
+  assert_eq "CORPUS ran_tests=$want [$cmd]" "$want" "$(rt_of "$cmd")"
+done <<'EOF2'
+1 (cd /w && bash proof-run.sh)
+1 { bash proof-run.sh; }
+1 if bash proof-run.sh --label x; then echo ok; fi
+1 for i in 1 2; do bash proof-run.sh --label $i; done
+1 ! bash proof-run.sh --label x
+1 sudo -u dev bash proof-run.sh --label x
+1 env -i PATH=/bin bash proof-run.sh --label x
+1 timeout 600 bash proof-run.sh --label x
+1 nice -n 5 bash proof-run.sh --label x
+1 `bash proof-run.sh --label x`
+1 time -p bash proof-run.sh --label x
+1 FOO=1 bash proof-run.sh --label x
+1 bash -lc 'bash proof-run.sh --label x'
+1 bash -x proof-run.sh --label y
+1 ./proof-run.sh --label y
+1 case x in x) bash proof-run.sh;; esac
+1 $(bash proof-run.sh --label x)
+1 echo $(bash proof-run.sh --label x)
+1 bash `pwd`/proof-run.sh --label x
+1 bash ${PB}/scripts/proof-run.sh --label x
+1 bash $(dirname x)/proof-run.sh
+1 node --test
+1 npm test
+1 npm run test
+1 out=$(bash proof-run.sh --label x)
+1 out=`bash proof-run.sh --label x`
+1 r=$(bash proof-run.sh --label x); echo $r
+1 log=$(bash proof-run.sh --label x 2>&1) || true
+1 command bash proof-run.sh --label x
+0 ls a.sh proof-run.sh
+0 head -n 30 a.sh proof-run.sh
+0 diff a.sh proof-run.sh
+0 cat ${PB}/scripts/proof-run.sh
+0 ls ${HOME}/x/proof-run.sh
+0 cat $(dirname x)/proof-run.sh
+0 sed -n 1,5p `pwd`/proof-run.sh
+0 command -v proof-run.sh
+0 command -V proof-run.sh
+0 sudo cat proof-run.sh
+0 timeout 5 head proof-run.sh
+0 { ls proof-run.sh; }
+0 if [ -f proof-run.sh ]; then echo ok; fi
+0 echo "node --test"
+0 wc -l ~/proof-run.sh
+0 x=proof-run.sh
+0 grep -n usage scripts/proof-run.sh
+EOF2
+
 t_summary

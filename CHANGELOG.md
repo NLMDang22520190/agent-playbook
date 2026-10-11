@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.22.3 - 2026-10-11
+- **A main push reuses a green PR run of the identical tree** (saves a full CI run per release):
+  `tools/ci-tree-tested.sh SHA` finds a same-repo PR with base main that contains SHA, a successful pull_request
+  run of its head with all six required jobs green, the same tree as SHA, and SHA's first parent an ancestor of the
+  head; gh api and git objects only, fail-closed. The workflow's `reuse` job (actions/contents read, numeric output
+  only) lets `test` and the Windows shards skip on main only then; a failed, skipped or empty reuse runs the tests;
+  the aggregator accepts skipped shards only with a successful, non-empty reuse. Proven on real data: merged PRs
+  #19-#30 each map to their own PR run. Rebase merges reuse only when the resulting commit has the head's tree.
+- **Cost ledger**: `cost.sh add --phase --rework --majors`, a per-phase summary, rework and review-major totals,
+  `summary --json`; old cost.tsv files keep their columns.
+- **Context packs**: the role prompt gets a `2b. Context pack` (paths and line ranges, excerpts, commands) built
+  once per slice from the spec's Impact and scan log.
+- **Model routing**: `role-model.sh` roles `reviewer_light` (test, docs or skill-only diffs) and `mechanical`
+  (release prep, counts, weights).
+- **`scripts/pr-body.sh`** builds a PR description from the spec and the final report (no vendor text).
+- **`run-evals.sh --max-cost USD`** stops before the next scenario once known costs reach the budget.
+- Built at Full weight with a spec review (two rounds; it found that a failed reuse job would have let tests be
+  skipped), Sonnet tester and implementer, Opus reviewer (three rounds; one Major found on real GitHub data:
+  a run's pull_requests lists only open PRs).
+
+## 0.22.2 - 2026-10-11
+Also ships everything listed under 0.22.1: the v0.22.1 tag has no GitHub Release, because a test with a 1 s
+budget failed on the Windows runner of its main CI run (node start-up alone takes most of a second there).
+- **Process rules**: a spec that replaces existing logic lists a `## Regression corpus` and the first RED covers it;
+  the implementer reports a gate that flags existing code and never hides the construct; testers prefer named-line
+  assertions over exact counts.
+- **Resume state**: `templates/state.md`; the orchestrator updates `.agents/handoff/state.md` after each phase and
+  reads it first when resuming.
+- **CI**: PR runs of the same PR cancel each other; runs on main and tags never do (group per ref and sha); every
+  job has a timeout; Windows shards turn the run-all re-run off.
+- **run-all re-runs failing suites alone** (PB_RERUN, up to 3) and classifies them: passed alone (flaky or load),
+  failed again (real), or skipped when the environment hint fired.
+- **ship refreshes shard weights** into `.agents/handoff/shard-weights.next` when the shards are unbalanced.
+- **`tools/bsd-check.sh`** runs suites with one-true-awk (as on macOS) first on PATH.
+- **`run-checks.sh --only SECTION`**: the run-checks tests run one section per case (679 s -> 136 s locally; 866 s
+  on Windows CI before).
+- **Timing tests** use a measured baseline plus 8 s instead of a fixed 1 s.
+- Built at Full weight with a spec review (two rounds; the "skip main tests" idea was deferred to v0.22.3 with a
+  safe design), Sonnet tester and implementer, Opus reviewer.
+
+## 0.22.1 - 2026-10-11
+- **Real behaviour, not only unit tests**: a user-visible change (UI, HTTP API, CLI output, file format) needs one
+  observation of the real behaviour in the session (screenshot or browser read, curl, the CLI command); when it
+  cannot be run, the report says so under "Not checked" (playbook-tdd Lite step 4 and Phase 4, playbook-proof).
+- **Honest final report**: `## Not checked`, a Confidence column per AC (high, medium, low and why) and a
+  `## Pre-mortem` (three ways it could still be wrong, each checked with a command; one line per risk at Lite).
+- **First-slice checkpoint**: in an interactive run, when slices repeat a pattern, the first finished slice is
+  shown and the rest waits for an OK; a non-interactive run logs the skip and continues.
+- **When the user says it is wrong**: restate expected vs delivered, classify the cause (misread, missed place,
+  wrong assumption, not verified live, real bug), fix test-first (a docs-only misread needs no test), send
+  project causes to playbook-learn and playbook gaps to playbook-feedback with a regression eval proposal.
+- **run-checks refuses more GNU-only options** (`grep -P`, `readlink -f`, `date -d`, `stat -c`, `find -printf`,
+  `xargs -r`, `sed -r`); a line can be exempted with `# gnu-ok: <reason>`. shellcheck install noted in README.
+- **Eval graders**: `ran_tests` counts proof-run.sh only when it runs (subshells, if/for, sudo/env/nice/timeout
+  prefixes, backticks) and never for reads (`cat`, `ls`, `head` of it, `command -v`); "failed: 0." and "nothing
+  failed" no longer count as a reported failure.
+- **README counts** read only suite summary lines (a test name with "N passed, M failed" no longer counts).
+- Built at Full weight: Sonnet tester and implementer (separate agents), Opus reviewer; three review rounds, each
+  fixed test-first.
+
 ## 0.22.0 - 2026-10-11
 - **Leak guard**: `scripts/leak-check.sh scan --staged | --range A..B | --unpushed SHA | FILE...` flags added lines
   with GitHub/Anthropic/AWS tokens, private-key headers, `leak_patterns` (ERE) and `leak_literals` (fixed strings,

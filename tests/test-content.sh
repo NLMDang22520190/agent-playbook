@@ -660,6 +660,10 @@ assert_eq 'v22.2 AC2.2 the aggregator (test (windows-latest)) has timeout-minute
 assert_eq 'v22.2 AC2.2 main-ci has timeout-minutes 30' "30" "$(wf_timeout main-ci)"
 assert_eq 'v22.2 AC2.2 release has timeout-minutes 10' "10" "$(wf_timeout release)"
 
+# AC8.3: the Windows shards turn the run-all re-run off (the full failure logs are already printed; re-runs could near the timeout)
+assert_contains "v22.2 AC8.3 the windows-shard job sets PB_RERUN: '0'" "$(wf_block "${SHARD:-__none__}")" "PB_RERUN: '0'"
+assert_not_contains "v22.2 AC8.3 the ubuntu/macos test job keeps the default re-run (no PB_RERUN)" "$(wf_block "${MAIN:-__none__}")" "PB_RERUN"
+
 # --- v0.22.2 AC6: resume state file
 STATE_T="$TDD/templates/state.md"
 assert_file 'v22.2 AC6.1 templates/state.md exists' "$STATE_T"
@@ -760,7 +764,6 @@ flat_has 'v22.3 AC6.4 README: a main push reuses a green PR run' "$README" 'main
 flat_has 'v22.3 AC6.4 README: the reused run is a same-repo PR run' "$README" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
 flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tree|same tree|tree[^.]{0,60}identical'
 flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
-flat_has 'v22.3 AC6.4 README: rebase merges always run the tests' "$README" 'rebase[^.]{0,200}always[^.]{0,80}(run|runs)[^.]{0,40}tests?|always[^.]{0,40}(run|runs)[^.]{0,40}tests?[^.]{0,120}rebase'
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
@@ -808,4 +811,13 @@ WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
 if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
+if flat "$README" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 README no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 README no longer says rebase merges always run the tests'; fi
+flat_has 'v22.3 review Low-2 README: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
+flat_has 'v22.3 review Low-2 README: ... and the PR head parent P' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
+echo "v22.3 review Low-4: the reuse step validates the run id before writing the output"
+RSTEP="$(wf_block reuse | awk '/id: tree/ { f = 1 } f { print }')"
+assert_contains 'v22.3 review Low-4 the reuse step has a numeric-only guard' "$RSTEP" '[!0-9]'
+GUARD_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 -F '[!0-9]' | cut -d: -f1)"
+OUT_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 'GITHUB_OUTPUT' | cut -d: -f1)"
+if [ -n "$GUARD_LN" ] && [ -n "$OUT_LN" ] && [ "$GUARD_LN" -lt "$OUT_LN" ]; then t_ok 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT'; else t_bad 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT' "guard line [$GUARD_LN] output line [$OUT_LN]"; fi
 t_summary

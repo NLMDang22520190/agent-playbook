@@ -77,16 +77,16 @@ function bashWritesSrc(cmd) {
   return done();
 }
 // does a shell command run proof-run.sh? Split into simple commands at ; & | ( ) { } backticks and newlines (linear), then skip
-// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec with their flags and arguments;
+// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec/command with their flags (command -v and -V are lookups) and arguments;
 // the command word is proof-run.sh, or a shell whose first non-flag word is
 function runsProof(cmd) {
   const isP = t => /(^|\/)proof-run\.sh$/.test(t);
   const RESERVED = /^(if|then|do|else|elif|while|until|!)$/;
-  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec)$/;
+  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec|command)$/;
   const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/ };
   // a substitution that is part of a word (${X}, or $(..) and `..` touching other characters) becomes one word character, so
   // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
-  const SEP = "[^\\s;&|(){}`]";
+  const SEP = "[^\\s;&|(){}`=]";   // = is not in the class: x=$(..) is a captured run, not a word
   const inword = new RegExp("\\$\\{[^}]{0,200}\\}|(?<=" + SEP + ")\\$\\([^()]{0,200}\\)|\\$\\([^()]{0,200}\\)(?=" + SEP + ")|(?<=" + SEP + ")`[^`]{0,200}`|`[^`]{0,200}`(?=" + SEP + ")", "g");
   // the command inside a substitution that touches word characters runs whatever surrounds it: check it on its own
   const inner = [];
@@ -99,6 +99,7 @@ function runsProof(cmd) {
       const base = w[k].replace(/^.*\//, "");
       if (RESERVED.test(w[k]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[k])) { k++; continue; }
       if (PREFIX.test(base)) {
+        if (base === "command" && /^-[vV]$/.test(w[k + 1] || "")) break;
         k++;
         while (k < w.length && /^-/.test(w[k])) k += FLAGARG[base] && FLAGARG[base].test(w[k]) ? 2 : 1;
         if (base === "timeout") k++;   // the duration

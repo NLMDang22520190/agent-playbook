@@ -34,6 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           run="$(bash tools/ci-tree-tested.sh "${{ github.sha }}" --repo "$GITHUB_REPOSITORY")" || run=""
+          case "$run" in *[!0-9]*) run= ;; esac
           echo "reused run: ${run:-none}"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
@@ -77,6 +78,7 @@ jobs:
         shell: bash   # Git Bash; never the WSL launcher
     env:
       PB_SHARD: ${{ matrix.shard }}
+      PB_RERUN: '0'   # the full failure logs are already printed; re-runs could near the job timeout
       PB_JOBS: '6'   # process start-up, not CPU, is the Windows bottleneck
     steps:
       - uses: actions/checkout@v5
