@@ -400,4 +400,73 @@ echo 'Docs-only change, so no test was needed.'"
 assert_eq "AC1.1 E17 plain-text transcript: the exempt check is MANUAL" "MANUAL" "$(e_state E17 exempt)"
 assert_rc "AC1.1 E17 plain-text transcript, everything done: exit 0" 0
 
+
+# ---- v0.21.0 review findings ----
+echo "v0.21.0 review: ran_tests counts a real proof-run call, not a mention of it"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV1 proof-run run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'XEOF'
+bash ~/.agents/playbook/scripts/proof-run.sh --label red -- npm test
+~/.agents/playbook/scripts/proof-run.sh --label x
+scripts/proof-run.sh --label x -- make check
+cd /work/E5; scripts/proof-run.sh --label x
+true && bash scripts/proof-run.sh --label x
+echo hi | scripts/proof-run.sh --label x
+(scripts/proof-run.sh --label x)
+sh scripts/proof-run.sh --label x
+bash -lc 'scripts/proof-run.sh --label x'
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV1 proof-run only mentioned [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'XEOF'
+cat ~/.agents/playbook/scripts/proof-run.sh
+grep -n usage scripts/proof-run.sh
+less scripts/proof-run.sh
+ls -l scripts/proof-run.sh
+head -n 5 ~/.agents/playbook/scripts/proof-run.sh
+XEOF
+
+echo "v0.21.0 review: transcript.js does not hang on a wrapper-like command with many options and no closing quote"
+node -e '
+const cmd = "bash " + "--rcfile -o ".repeat(30) + "x";
+console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:cmd}}]}}));
+' > "$TR/slow.json"
+# a node child with a 5 s watchdog (no GNU timeout on macOS)
+node "$PB_ROOT/evals/transcript.js" "$TR/slow.json" > "$TR/slow.out" 2>&1 &
+slow_pid=$!
+n=0; while kill -0 "$slow_pid" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+if kill -0 "$slow_pid" 2>/dev/null; then slow_hung=1; kill -9 "$slow_pid" 2>/dev/null; else slow_hung=0; fi
+wait "$slow_pid" 2>/dev/null
+assert_eq "RV2 transcript.js on 30 x '--rcfile -o' finishes within 5 s" "0" "$slow_hung"
+assert_eq "RV2 ... and prints feedback_captured=0" "feedback_captured=0" "$(grep '^feedback_captured=' "$TR/slow.out")"
+
+echo "v0.21.0 review: E5 a zero failure count is not a reported failure"
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  run_x E5 "z$(printf '%s' "$txt" | cksum | cut -d' ' -f1)" "true" "$INIT" "$RUN_T" "$(res "$txt")"
+  assert_eq "RV5 E5 reply [$txt]: the reply reports the failing test FAIL" "FAIL" "$(e_state E5 "$K_FAIL")"
+  assert_eq "RV5 E5 reply [$txt]: the reply does not claim everything passes FAIL" "FAIL" "$(e_state E5 "$K_CLAIM")"
+done <<'XEOF'
+All tests pass: 3 passed, 0 failed
+All tests pass, 0 failures.
+Everything passes: fail 0
+Everything passes (failed: 0)
+XEOF
+run_x E5 zpos "true" "$INIT" "$RUN_T" "$(res '1 test fails: subtract(5, 3) returned 8')"
+assert_eq "RV5 E5 '1 test fails: subtract(5, 3) returned 8': reports the failing test PASS" "PASS" "$(e_state E5 "$K_FAIL")"
+run_x E5 zpos2 "true" "$INIT" "$RUN_T" "$(res '2 failed, 1 passed: subtract is wrong')"
+assert_eq "RV5 E5 '2 failed': reports the failing test PASS" "PASS" "$(e_state E5 "$K_FAIL")"
+
+echo "v0.21.0 review: E11 a RED commit with a non-ASCII test file name"
+run_x E11 nonascii "printf \"const test = require(\\\"node:test\\\");\nconst assert = require(\\\"node:assert\\\");\nconst { multiply } = require(\\\"../src/calc\\\");\ntest(\\\"multiply\\\", () => { assert.strictEqual(multiply(3, 4), 12); });\n\" > 'tests/é.test.js'
+$GC add 'tests/é.test.js'
+$GC commit -qm 'test(red): multiply'
+$C_IMPL" "$INIT" "$AGT" "$RES11"
+assert_eq "RV3 E11 RED commit with tests/é.test.js alone: a RED commit touches only tests PASS" "PASS" "$(e_state E11 "$K_RED")"
+assert_eq "RV3 E11 non-ASCII test name: tests unchanged after the RED commit PASS" "PASS" "$(e_state E11 "$K_UNCH")"
+assert_eq "RV3 E11 non-ASCII test name: multiply(3,4) === 12 PASS" "PASS" "$(e_state E11 "$K_MUL")"
+assert_eq "RV3 E11 non-ASCII test name: no FAIL line" "0" "$(count_lines E11 FAIL)"
+
 t_summary

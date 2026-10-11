@@ -206,6 +206,8 @@ sed_case() {
 sed_case "double-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
 sed_case "single-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI 's/a/b/' f" fail
 sed_case "-E before -i"                           tests/zz-sed.sh "$SD -E $FI 's/a/b/' f" fail
+sed_case "long form --in-place"                  tests/zz-sed.sh "$SD --in-place 's/a/b/' f" fail
+sed_case "combined flags -Ei"                    tests/zz-sed.sh "$SD -E${FI#-} 's/a/b/' f" fail
 sed_case "-n before -i"                           tests/zz-sed.sh "$SD -n $FI 's/a/b/p' f" fail
 sed_case "mid-line after a semicolon"             tests/zz-sed.sh "x=1; $SD $FI \"s/a/b/\" f" fail
 sed_case "script quoted right after -i (double)"  tests/zz-sed.sh "$SD $FI\"s/a/b/\" f" fail
