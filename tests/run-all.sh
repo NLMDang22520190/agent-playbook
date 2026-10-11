@@ -7,6 +7,10 @@
 # the running pids every 0.1 s (one `sleep` per poll, the check itself is builtin).
 # PB_SHARD=k/n runs only the suites at sorted positions i with (i-1) % n == k-1 (evals/run-checks.sh only
 # in shard 1), so CI can split the slow Windows run over several machines. Unset: everything.
+# PB_RERUN (default 1; 0 turns it off, any other value means 1): after FAILURES (and the hint) each of the first 3
+# failing suites (non-zero or missing .rc; never evals/run-checks.sh) is re-run alone with its output discarded and
+# classified: "rerun: test-x.sh passed alone (flaky or load)" or "... failed again (real)"; when the hint fired
+# (environment problem) nothing is re-run. The exit code always reflects the first run.
 # With tests/shard-weights ("test-x.sh SECONDS" lines, # comments; unknown suites weigh 10) the suites are
 # assigned greedily instead: heaviest first (ties by name), each to the lightest shard so far (ties: lowest).
 cd "$(dirname "$0")/.." || exit 3
@@ -21,6 +25,8 @@ if [ -n "$SHARD" ]; then
   case "$SN" in 0*) bad_shard ;; esac   # leading zeros would be read as octal by $(( ))
   [ "$SK" -ge 1 ] && [ "$SN" -ge 1 ] && [ "$SK" -le "$SN" ] || bad_shard
 fi
+RERUN="${PB_RERUN:-1}"
+case "$RERUN" in 0) ;; *) RERUN=1 ;; esac
 unset PB_SHARD   # suites (and run-all copies they start) always see a full run
 JOBS="${PB_JOBS:-4}"
 case "$JOBS" in '' | *[!0123456789]* | 0) JOBS=1 ;; esac
@@ -74,6 +80,28 @@ if [ "$fail" -eq 0 ]; then echo "ALL GREEN"; else echo "FAILURES"
   ne="$(cat "$OUTD"/*.out 2>/dev/null | grep -c ' got \[\]$')"
   if [ "$ne" -ge 20 ] && [ $((ne * 2)) -ge "$nf" ]; then
     echo "hint: $ne of $nf failing assertions got empty output, likely an environment problem (machine restart, missing node, full disk); re-run one suite alone to confirm"
+    HINTED=1
+  fi
+  if [ "$RERUN" = 1 ]; then
+    if [ "${HINTED:-0}" = 1 ]; then
+      echo "rerun: skipped, environment problem (see hint)"
+    else
+      # the first 3 failing suites in run order are re-run alone, output discarded (evals/run-checks.sh is not a suite here)
+      done_n=0; skipped=0
+      for t in "$@"; do
+        n="$(basename "$t" .sh)"
+        [ "$(cat "$OUTD/$n.rc" 2>/dev/null)" = "0" ] && continue
+        if [ "$done_n" -ge 3 ]; then skipped=$((skipped + 1)); continue; fi
+        done_n=$((done_n + 1))
+        # a subshell wrapper, as in the first run: a suite that kills its parent (see tests) must not kill run-all
+        if ( bash "$t" > /dev/null 2>&1; r=$?; exit "$r" ); then
+          echo "rerun: $n.sh passed alone (flaky or load)"
+        else
+          echo "rerun: $n.sh failed again (real)"
+        fi
+      done
+      [ "$skipped" -eq 0 ] || echo "rerun: skipped for $skipped more suite(s)"
+    fi
   fi
 fi
 exit "$fail"
