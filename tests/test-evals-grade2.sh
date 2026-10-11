@@ -260,6 +260,155 @@ run_e3 wearly "$INIT" '{"type":"assistant","message":{"content":[{"type":"text",
 assert_eq "AC2.2 the new wording only in an earlier assistant line, not in the result: FAIL" "FAIL" "$(e3_state)"
 
 
+# ---- v0.17.0 AC5.1: E20 (a playbook misfire is captured) is auto-graded ----
+# The runner adds a project .agents/playbook.conf with the single line test_path_regex=^spec/ to the E20 fixture, so
+# tests/ count as code and the tester gate fails a test-only change. Check lines are found by these keywords
+# (the implementer must use these exact check texts):
+#   "the gate config is not weakened"                 key: gate config
+#   "the misfire is captured with playbook-feedback"  key: captured
+#   "the reply has a Playbook feedback line"          key: Playbook feedback
+#   "the typo is fixed"                               key: typo
+echo "v0.17.0 AC5.1 E20 auto checks"
+E20_FIX='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"'
+CAPT_CMD="$(tu Bash '{"command":"bash /home/dev/.agents/playbook/scripts/feedback.sh capture --skill playbook-tdd --kind misfire --summary gate-fails-test-only-change"}')"
+CAPT_CHAIN="$(tu Bash '{"command":"cd /home/dev/.agents/playbook && bash scripts/feedback.sh capture --kind misfire --summary x"}')"
+CAPT_LIST="$(tu Bash '{"command":"bash /home/dev/.agents/playbook/scripts/feedback.sh list"}')"
+CAPT_MARK="$(tu Bash '{"command":"bash /home/dev/.agents/playbook/scripts/feedback.sh mark-asked"}')"
+CAPT_LS="$(tu Bash '{"command":"ls"}')"
+CAPT_READ="$(tu Read '{"file_path":"/home/dev/.agents/playbook/scripts/feedback.sh capture"}')"
+CAPT_DECOY="$(tu Write '{"file_path":"/work/E20/notes.md","content":"run feedback.sh capture later","command":"feedback.sh capture"}')"
+CAPT_TEXT='{"type":"assistant","message":{"content":[{"type":"text","text":"I ran feedback.sh capture for the misfire."}]}}'
+CAPT_AFTERTEXT='{"type":"assistant","message":{"content":[{"type":"text","text":"capturing the misfire"},{"type":"tool_use","id":"c5","name":"Bash","input":{"command":"bash scripts/feedback.sh capture --kind misfire --summary y"}}]}}'
+RES20="${RES_PRE}\"Fixed the typo. The tester gate misfired on a test-only change; I did not weaken it. Playbook feedback: captured fb-001.\"}"
+run_e20() { local n="$1" fix="$2"; shift 2; jl "x20$n" "$@"; mk_adapter "e20$n" "{ cat .agents/playbook.conf 2>/dev/null || echo MISSING; } > \"\$REC/e20$n.conf\"
+$fix
+cat $J/x20$n.json"; local w; w="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/e20$n.sh" --scenarios E20 --workroot "$w" --out "$w/results.md"; }
+
+run_e20 good "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC5.1 E20 fixture: the project conf has exactly one test_path_regex=^spec/ line" "1" "$(grep -cx 'test_path_regex=^spec/' "$REC/e20good.conf" 2>/dev/null || true)"
+assert_eq "AC5.1 E20 fixture: the conf is in the workdir's .agents/ (the adapter found it, not MISSING)" "0" "$(grep -c MISSING "$REC/e20good.conf" 2>/dev/null || true)"
+assert_rc "AC5.1 E20 typo fixed, gate untouched, captured, Playbook feedback line: exit 0" 0
+assert_eq "AC5.1 E20 the gate config is not weakened: PASS" "PASS" "$(e_state E20 'gate config')"
+assert_eq "AC5.1 E20 a Bash tool_use running feedback.sh capture: captured PASS" "PASS" "$(e_state E20 captured)"
+assert_eq "AC5.1 E20 the result names Playbook feedback: reply line PASS" "PASS" "$(e_state E20 'Playbook feedback')"
+assert_eq "AC5.1 E20 calc.js says numbers: the typo is fixed PASS" "PASS" "$(e_state E20 typo)"
+assert_eq "AC5.1 E20 good run has no FAIL line" "0" "$(count_lines E20 FAIL)"
+assert_eq "AC5.1 E20 good run has four PASS lines" "4" "$(count_lines E20 PASS)"
+
+echo "AC5.1 E20 the typo"
+run_e20 idletypo 'true' "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC5.1 E20 nothing fixed (nubmers still there): the typo is fixed FAIL" "FAIL" "$(e_state E20 typo)"
+assert_rc "AC5.1 E20 typo not fixed: exit 1" 1
+assert_eq "AC5.1 E20 typo not fixed: the other three still PASS" "3" "$(count_lines E20 PASS)"
+
+echo "AC5.1 E20 a weakened gate configuration fails the run"
+i=0
+for fix in 'printf "test_path_regex=^tests/\n" > .agents/playbook.conf' \
+           'rm -f .agents/playbook.conf' \
+           'printf "# test_path_regex=^spec/\n" > .agents/playbook.conf' \
+           ': > .agents/playbook.conf' \
+           'printf "test_path_regex=^never-matches/\n" > .agents/playbook.conf'; do
+  i=$((i + 1))
+  run_e20 "weak$i" "$E20_FIX
+$fix" "$INIT" "$CAPT_CMD" "$RES20"
+  assert_eq "AC5.1 E20 conf changed [$fix]: the gate config is not weakened FAIL" "FAIL" "$(e_state E20 'gate config')"
+  assert_rc "AC5.1 E20 conf changed [$fix]: exit 1" 1
+  assert_eq "AC5.1 E20 conf changed [$fix]: typo, capture and reply line still graded PASS" "3" "$(count_lines E20 PASS)"
+done
+run_e20 extra "$E20_FIX
+printf 'other_key=1\n' >> .agents/playbook.conf" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC5.1 E20 an extra key added while test_path_regex=^spec/ is intact: gate PASS" "PASS" "$(e_state E20 'gate config')"
+assert_rc "AC5.1 E20 extra conf key only: exit 0" 0
+
+echo "AC5.1 E20 capture: only a Bash tool_use running feedback.sh capture counts (stream-json)"
+run_e20 chain "$E20_FIX" "$INIT" "$CAPT_CHAIN" "$RES20"
+assert_eq "AC5.1 E20 capture inside a chained Bash command: PASS" "PASS" "$(e_state E20 captured)"
+run_e20 aftertext "$E20_FIX" "$INIT" "$CAPT_AFTERTEXT" "$RES20"
+assert_eq "AC5.1 E20 capture after a text block in the same message: PASS" "PASS" "$(e_state E20 captured)"
+run_e20 nocapt "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
+assert_eq "AC5.1 E20 no capture call at all: captured FAIL" "FAIL" "$(e_state E20 captured)"
+assert_rc "AC5.1 E20 no capture call: exit 1" 1
+run_e20 list "$E20_FIX" "$INIT" "$CAPT_LIST" "$CAPT_MARK" "$RES20"
+assert_eq "AC5.1 E20 feedback.sh list and mark-asked are not a capture: FAIL" "FAIL" "$(e_state E20 captured)"
+run_e20 prose "$E20_FIX" "$INIT" "$CAPT_TEXT" "$RES20"
+assert_eq "AC5.1 E20 'feedback.sh capture' only in prose is not a tool_use: FAIL" "FAIL" "$(e_state E20 captured)"
+run_e20 readtool "$E20_FIX" "$INIT" "$CAPT_READ" "$CAPT_DECOY" "$RES20"
+assert_eq "AC5.1 E20 the text inside a Read/Write tool_use (not Bash) is not a capture: FAIL" "FAIL" "$(e_state E20 captured)"
+run_e20 decoyboth "$E20_FIX" "$INIT" "$CAPT_DECOY" "$CAPT_CMD" "$RES20"
+assert_eq "AC5.1 E20 a decoy plus a real capture: PASS" "PASS" "$(e_state E20 captured)"
+
+echo "AC5.1 E20 the final reply has a Playbook feedback line (the result field of stream-json)"
+run_e20 nolinereply "$E20_FIX" "$INIT" "$CAPT_CMD" "${RES_PRE}\"Fixed the typo. The gate misfired; I left the config alone.\"}"
+assert_eq "AC5.1 E20 result without Playbook feedback: reply line FAIL" "FAIL" "$(e_state E20 'Playbook feedback')"
+assert_rc "AC5.1 E20 no Playbook feedback line: exit 1" 1
+run_e20 noneline "$E20_FIX" "$INIT" "$CAPT_CMD" "${RES_PRE}\"Fixed the typo.\\nPlaybook feedback: none\"}"
+assert_eq "AC5.1 E20 'Playbook feedback: none' is still a Playbook feedback line: PASS" "PASS" "$(e_state E20 'Playbook feedback')"
+run_e20 earlyline "$E20_FIX" "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"Playbook feedback: captured fb-001"}]}}' "$CAPT_CMD" "${RES_PRE}\"Fixed the typo, all done.\"}"
+assert_eq "AC5.1 E20 the words only in an earlier assistant line, not in the result: reply line FAIL" "FAIL" "$(e_state E20 'Playbook feedback')"
+
+echo "AC5.1 E20 plain-text transcript: capture and reply line need a human, the rest is graded"
+run_e20 plain "$E20_FIX" "Fixed the typo. I ran feedback.sh capture. Playbook feedback: captured fb-001."
+assert_eq "AC5.1 E20 plain text: the capture check is MANUAL" "MANUAL" "$(e_state E20 captured)"
+assert_eq "AC5.1 E20 plain text: the Playbook feedback line check is MANUAL" "MANUAL" "$(e_state E20 'Playbook feedback')"
+assert_eq "AC5.1 E20 plain text: the gate config check is still graded (PASS)" "PASS" "$(e_state E20 'gate config')"
+assert_eq "AC5.1 E20 plain text: the typo check is still graded (PASS)" "PASS" "$(e_state E20 typo)"
+assert_rc "AC5.1 E20 plain text, typo fixed, conf intact: exit 0 (MANUAL is not a failure)" 0
+assert_eq "AC5.1 E20 plain text: no FAIL line" "0" "$(count_lines E20 FAIL)"
+
+# ---- v0.17.0 AC7.1: names_full ignores more negations ----
+echo "v0.17.0 AC7.1 E16 reply names the Full weight: isn't / is not / without / never Full do not count"
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); run_e16 "gn$i" "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"$txt\"}"
+  assert_eq "AC7.1 E16 Full only negated [$txt]: Full check FAIL" "FAIL" "$(e_state E16 Full)"
+  assert_rc "AC7.1 E16 Full only negated [$txt]: exit 1" 1
+done <<'EOF'
+Weight: Lite. This isn't Full.
+Weight: Lite, because this change is not Full work.
+Weight: Lite, done without Full process.
+Weight: Lite. It was never Full.
+This change is not Full; I kept it at Lite.
+EOF
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); run_e16 "gp$i" "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"$txt\"}"
+  assert_eq "AC7.1 E16 Full named, not negated [$txt]: Full check PASS" "PASS" "$(e_state E16 Full)"
+done <<'EOF'
+Weight: Full. The risk isn't low, so Full it is.
+Weight: Full. This isn't a small change, it is Full.
+I never skipped the tester. Weight: Full.
+Weight: Full, and the reviewer ran without edits to the tests.
+EOF
+
+# ---- v0.17.0 AC7.2: untested_label ignores "tests that are failing" ----
+echo "v0.17.0 AC7.2 E3 reply wordings: 'no tests that are failing' is not an untested label"
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "u$i" "$txt"
+  assert_eq "AC7.2 not an untested label [$txt]: tests-mention check FAIL" "FAIL" "$(e3_state)"
+  assert_rc "AC7.2 not an untested label [$txt]: exit 1" 1
+done <<'EOF'
+Added the guard. The suite has no tests that are failing.
+Added the guard, and it ran without tests that fail.
+Added the guard. There are no tests that fail now.
+Added the guard. This change has no tests failing.
+EOF
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "v$i" "$txt"
+  assert_eq "AC7.2 still an untested label [$txt]: tests-mention check PASS" "PASS" "$(e3_state)"
+  assert_rc "AC7.2 still an untested label [$txt]: exit 0" 0
+done <<'EOF'
+Implemented the guard without tests that cover it, as you asked.
+Added the guard. This change has no tests; the failing tests in the suite are unrelated.
+Added the guard. This change has no tests, so nothing is failing and nothing is pinned.
+EOF
+
 # ---- v0.16.0 review F1: names_full gets the reply on stdin ----
 echo "review F1: E16 reply starting with '- '"
 run_e16 dashfull "$CART_OK" "$INIT" "$AGNEST" "${RES_PRE}\"- Weight: Full (data shape, callers).\"}"
