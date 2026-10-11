@@ -153,13 +153,19 @@ said()          { grep -qiw "$1" "$LOG"; }
 # result_text -> the "result" field of a stream-json "type":"result" line (exit 3 when there is none)
 result_text()   { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.result === "string") r = o.result } catch (e) {} } if (r === null) process.exit(3); process.stdout.write(r)' "$LOG"; }
 # result_ok -> 0 when the last stream-json result line is not an error (is_error false, or subtype success)
-result_ok()     { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result") r = o } catch (e) {} } process.exit(r && r.is_error !== true && (r.is_error === false || r.subtype === "success") ? 0 : 1)' "$LOG" 2>/dev/null; }
+result_ok()     { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result") r = o } catch (e) {} } const st = r ? String(r.subtype || "") : ""; process.exit(r && r.is_error !== true && !/^error/.test(st) && (r.is_error === false || st === "success") ? 0 : 1)' "$LOG" 2>/dev/null; }
 # auth_lines -> the log lines to search for auth errors: a retry the run recovered from (api_retry lines
 # before a successful result) is not a harness failure
 auth_lines()    { if result_ok; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
-e19_order()     { node -e 'let json=false, i=0, skill=-1, write=-1; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } if (!o || !o.type) continue; json = true; const c = o.message && Array.isArray(o.message.content) ? o.message.content : []; for (const b of c) { if (!b || b.type !== "tool_use") continue; i++; const inp = b.input || {}; if (b.name === "Skill" && inp.skill === "playbook-tdd" && skill < 0) skill = i; if ((b.name === "Write" || b.name === "Edit") && /(^|\/)tests\//.test(String(inp.file_path || "")) && write < 0) write = i } } if (!json) process.exit(3); process.exit(skill > 0 && (write < 0 || skill < write) ? 0 : 1)' "$LOG"; }
+e19_order()     { node -e 'let json=false, i=0, skill=-1, write=-1; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } if (!o || !o.type) continue; json = true; const c = o.message && Array.isArray(o.message.content) ? o.message.content : []; for (const b of c) { if (!b || b.type !== "tool_use") continue; i++; const inp = b.input || {}; const fp = String(inp.file_path || ""); const loads = (b.name === "Skill" && /^([^:]+:)?playbook-tdd$/.test(String(inp.skill || ""))) || (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp)); if (loads && skill < 0) skill = i; if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i } } if (!json) process.exit(3); process.exit(skill > 0 && (write < 0 || skill < write) ? 0 : 1)' "$LOG"; }
+# subagent_used -> 0 when a tool_use block's own name is Agent or Task (names inside its input do not count)
+subagent_used() { node -e 'for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : (o && o.type === "tool_use" ? [o] : []); for (const b of c) if (b && b.type === "tool_use" && (b.name === "Agent" || b.name === "Task")) process.exit(0) } process.exit(1)' "$LOG"; }
+# names_full TEXT -> 0 when the word Full appears at least once not preceded by "not"/"no"
+names_full()    { node -e 'const s = process.argv[1]; const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)' "$1"; }
+# untested_label TEXT -> 0 when the reply labels the change untested ("has no tests", "no test covering it", ...)
+untested_label() { node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*failing)|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(process.argv[1]) ? 0 : 1)' "$1"; }
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { node -e 'let c=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.total_cost_usd === "number") c = o.total_cost_usd } catch (e) {} } if (c === null) process.exit(3); process.stdout.write(String(c))' "$LOG"; }
 loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
@@ -182,7 +188,7 @@ grade_E3() {
   local r
   if tests_mention divide; then record PASS "a file under tests/ mentions divide"
   elif r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'untested|has no tests?|no tests? (covers|covering)|not covered by (a )?tests?|without (a )?tests?'; then record PASS "a file under tests/ mentions divide"
+    if untested_label "$r"; then record PASS "a file under tests/ mentions divide"
     else record FAIL "a file under tests/ mentions divide"; fi
   else record MANUAL "a file under tests/ mentions divide"; fi
   check "node --test tests/*.test.js passes" tests_pass
@@ -204,8 +210,8 @@ grade_E16() {
   check "node --test tests/*.test.js passes" tests_pass
   local r
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qw Full; then record PASS "reply names the Full weight"; else record FAIL "reply names the Full weight"; fi
-    if grep -qE '"type":"tool_use"[^}]*"name":"(Agent|Task)"|"name":"(Agent|Task)"[^}]*"type":"tool_use"' "$LOG"; then
+    if names_full "$r"; then record PASS "reply names the Full weight"; else record FAIL "reply names the Full weight"; fi
+    if subagent_used; then
       record PASS "transcript shows sub-agent use (Agent or Task tool)"
     else record FAIL "transcript shows sub-agent use (Agent or Task tool)"; fi
   else
