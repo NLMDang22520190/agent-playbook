@@ -215,7 +215,8 @@ grade_E16() {
   record MANUAL "one review for the whole feature"
 }
 grade_E19() {
-  check "multiply exported and multiply(3,4) === 12" calc_js 'const m = require(process.argv[1]); process.exit(typeof m.multiply === "function" && m.multiply(3, 4) === 12 ? 0 : 1)'
+  check "multiply exported from src/calc.js" calc_js 'process.exit(typeof require(process.argv[1]).multiply === "function" ? 0 : 1)'
+  check "multiply(3,4) === 12" calc_js 'const m = require(process.argv[1]); process.exit(typeof m.multiply === "function" && m.multiply(3, 4) === 12 ? 0 : 1)'
   check "a file under tests/ mentions multiply" tests_mention multiply
   check "node --test tests/*.test.js passes" tests_pass
   e19_order; case $? in
