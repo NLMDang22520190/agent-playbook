@@ -25,6 +25,13 @@ A reading that is ambiguous and hard to reverse is asked before any code, in one
 Who calls or uses what changes. Give the search command, its hits, and file:line for each caller or user.
 - `grep -rn "<symbol>" .` -> N hits: `path:line` (what uses it) ...
 
+## Regression corpus
+Only when the change replaces or rewrites existing logic; otherwise write "none". List the old inputs and the
+earlier bugs the new code must still handle, each with its expected result. The first RED covers all of it.
+| Old input or earlier bug | Expected result | Where it is pinned today |
+|---|---|---|
+| <input, or "bug #12: ..."> | <expected output or behaviour> | `tests/...` or "not yet" |
+
 ## Acceptance criteria
 Copy the wording **verbatim** from the source when it exists; rephrase only into Given/When/Then and
 keep the original next to it. Each AC points back to where it came from.

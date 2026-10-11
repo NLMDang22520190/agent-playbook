@@ -117,6 +117,10 @@ ids (AC1…) copied **verbatim** from the source with a source anchor each (quot
 constraints, and **slices**. A slice is one observable behaviour, about 1 to 5 tests. Order the
 slices so each one builds on the previous. Nothing goes into the spec that the source did not say.
 
+**Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
+(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The first RED covers
+the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
+
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
 search command, its hit count and the files read, other readings and why this one, in and out of scope) and
 `## Impact` (who calls or uses what changes: command, hits, file:line). Search for every place the request
@@ -241,6 +245,12 @@ remove it.
 - making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
 - baseline failures make the RED/GREEN signal unreadable.
 
+## Resuming
+The orchestrator keeps `.agents/handoff/state.md` (from `templates/state.md`) up to date: it updates the file
+after each phase (spec, each RED, each GREEN, review, close-out) with the phase, the slice, the last sha per role,
+the next step and the open questions. When a session resumes or a context was lost, read `state.md` first, then
+the other hand-off files.
+
 ## Hand-off files (`.agents/handoff/`, git-ignored)
-`01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
+`state.md` · `01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
 · `evidence/*.log`. Templates are in `templates/`.

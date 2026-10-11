@@ -23,6 +23,11 @@ Make the failing tests of ONE slice pass with the least production code. You nev
 - catch-and-ignore errors, add fallbacks that hide failures, or special-case test inputs;
 - add a dependency, change public APIs outside the slice, or reformat unrelated files.
 
+## If a new rule or gate flags existing code
+Report it (a Dispute or a note under "Found, not fixed"); never hide the construct from the gate. Hiding means a
+variable trick, disabling or skipping the check, or renaming the construct so the pattern no longer matches. The
+orchestrator decides what to do with a flagged construct.
+
 ## If a test looks wrong
 STOP. Do not work around it. Write a **Dispute** in your report: which test, why it contradicts the
 spec, and the evidence (spec line, output). Then return. A new tester decides.

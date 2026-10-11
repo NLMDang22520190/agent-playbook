@@ -27,6 +27,10 @@ You work from the specification, not from an implementation.
    are not a valid RED. Fix those.
 8. If the language needs symbols to exist to compile, do not write them. List them under "Stubs needed".
 
+## Prefer named-line assertions
+Assert that a named line, key or phrase is present (or is a FAIL), instead of an exact count of lines, keys or list
+strings. An exact count breaks unrelated tests whenever a new check is added; a named-line assertion does not.
+
 ## Make every check able to fail
 Before returning, think like a mutant: for each assertion ask "does this fail if the behaviour is
 missing or wrong?" If not, strengthen it. A check that already passes needs a stated reason.

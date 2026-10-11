@@ -11,6 +11,7 @@
 # no CRLF warnings from git on Windows: the output is compared byte for byte
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
 SHIP="$PB_ROOT/tools/ship.sh"
+SHIPDIR="$PB_ROOT/tools"
 GITID() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 
 W="$(mk_tmp)"
@@ -20,7 +21,8 @@ BIN="$W/bin"; mkdir -p "$BIN"
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 # fake gh. Env: FAKE_LOG, FAKE_GH_STATE, FAKE_GH_MERGE_STATE, FAKE_GH_MERGE_COMMIT (sha of the PR's merge commit, empty = none),
-# FAKE_GH_FAIL (words: prview merge runlist runwatch relview shardlist shardview),
+# FAKE_GH_FAIL (words: prview merge runlist runwatch relview shardlist shardview shardlog),
+# FAKE_SHARD_LOG (none = the job log has no suite timings),
 # FAKE_ORIGIN_WORK (clone of origin used to simulate the merge),
 # FAKE_SHARD_LIST (empty|null: the main push run lookup finds nothing), FAKE_MAIN_RUN (its id, default 7777),
 # FAKE_SHARDS (comma list of "windows shard" job seconds, "running" = no finish time, "none" = no jobs, "bad" = not JSON).
@@ -118,6 +120,12 @@ case "$1 $2" in
     failing runwatch && { echo "Run CI-fake (4242) failed" >&2; exit 1; }
     echo "Run CI-fake (4242) completed with 'success'" ;;
   "run view")   # gh run view RUN --json jobs (--jq is ignored: the JSON comes back whole)
+    case " $* " in *" --job "*)   # gh run view --job ID --log: what tools/shard-weights.sh reads (v0.22.2 AC3)
+      failing shardlog && exit 1
+      case "${FAKE_SHARD_LOG:-}" in none) exit 0 ;; esac
+      printf '2026-10-11T10:00:00.0000000Z == tests/test-big.sh (120 s)\r\n2026-10-11T10:02:00.0000000Z == tests/test-small.sh (7 s)\r\n'
+      exit 0 ;;
+    esac
     failing shardview && exit 1
     case "${FAKE_SHARDS:-}" in
       bad) echo "this is not json"; exit 0 ;;
@@ -236,6 +244,9 @@ fx_build() { # DIR -> the fixture in DIR
   git clone -q "$F/origin.git" "$F/repo" 2>/dev/null
   mkdir -p "$F/repo/tools"
   [ -f "$SHIP" ] && cp -p "$SHIP" "$F/repo/tools/ship.sh"
+  [ -f "$SHIPDIR/shard-weights.sh" ] && cp -p "$SHIPDIR/shard-weights.sh" "$F/repo/tools/shard-weights.sh"
+  mkdir -p "$F/repo/tests"
+  printf '# old weights, run 1\ntest-big.sh 50\n' > "$F/repo/tests/shard-weights"
   cp -p "$W/release.stub" "$F/repo/tools/release.sh"
   cp -p "$W/install.stub" "$F/repo/install.sh"
   printf '1.2.3\n' > "$F/repo/VERSION"
@@ -255,7 +266,7 @@ fx() {
   git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
-  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS=
+  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS= FAKE_SHARD_LOG=
   export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
   export PATH="$BIN:$ORIG_PATH"
 }
@@ -703,7 +714,7 @@ assert_eq "AC4.1 exactly one lookup of the push-to-main run" "1" "$(shard_calls 
 assert_contains "AC4.1 the lookup is for branch main" "$(shard_calls)" "--branch main"
 assert_contains "AC4.1 the lookup is for event push" "$(shard_calls)" "--event push"
 assert_contains "AC4.1 the lookup is for the release commit (the tag's commit)" "$(shard_calls)" "--commit $TAGSHA"
-assert_eq "AC4.1 the jobs of that run are read once: gh run view 7777 --json jobs" "1" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
+assert_eq "AC4.1/AC3.1 unbalanced: the jobs of that run are read twice, ship's own read and shard-weights.sh's: gh run view 7777 --json jobs" "2" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
 WATCHN="$(grep -n '^gh run watch' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"; VIEWN="$(grep -n '^gh run view' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
 if [ -n "$WATCHN" ] && [ -n "$VIEWN" ] && [ "$VIEWN" -gt "$WATCHN" ]; then t_ok "AC4.1 the shard jobs are read after the CI run was watched"; else t_bad "AC4.1 the shard jobs are read after the CI run was watched" "watch at log line [$WATCHN], run view at [$VIEWN]"; fi
 fx
@@ -719,6 +730,7 @@ for sh in "100,120,110" "150,100" "100,100,100" "300"; do
   assert_rc "AC4.1 shards [$sh]: exit 0" 0
   assert_eq "AC4.1 shards [$sh]: no unbalanced line (longest is not more than 1.5x the shortest)" "0" "$(unb)"
   assert_eq "AC4.1 shards [$sh]: the jobs were looked at (one gh run view)" "1" "$(logged '^gh run view')"
+  assert_eq "AC4.1/AC3.1 shards [$sh]: balanced, the jobs of the run are read exactly once (no refresh read)" "1" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
 done
 fx
 export FAKE_SHARDS="151,100"
@@ -766,6 +778,69 @@ export FAKE_SHARDS="300,100" FAKE_GH_FAIL="runwatch"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC4.1 the tag's CI run failed: exit 1 as before" 1
 assert_eq "AC4.1 CI failed: no shard report (no hint, no gh run view)" "0 0" "$(unb) $(logged '^gh run view')"
+
+echo "v0.22.2 AC3 ship refreshes the shard weights when the shards are unbalanced"
+WN='.agents/handoff/shard-weights.next'
+refreshed() { printf '%s\n' "$OUT" | grep -cF 'shard weights refreshed: copy .agents/handoff/shard-weights.next to tests/shard-weights in the next PR'; }
+notref() { printf '%s\n' "$OUT" | grep -c 'shard weights not refreshed'; }
+subjects() { git -C "$1" log --format=%s main | tr '\n' '|'; }
+fx
+export FAKE_SHARDS="300,100,200"
+W_BEFORE="$(cat "$F/repo/tests/shard-weights")"
+assert_no_path "AC3.1 before the run there is no .agents/handoff in the fixture" "$F/repo/.agents/handoff"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC3.1 unbalanced: ship succeeds (exit 0)" 0
+assert_eq "AC3.1 unbalanced: the whole flow ran as before" "$FULL_YES" "$(steps)"
+assert_dir "AC3.1 unbalanced: .agents/handoff was created" "$F/repo/.agents/handoff"
+assert_file "AC3.1 unbalanced: .agents/handoff/shard-weights.next was written" "$F/repo/$WN"
+assert_eq "AC3.1 unbalanced: one 'shard weights refreshed: copy ...' line" "1" "$(refreshed)"
+assert_eq "AC3.1 unbalanced: no 'not refreshed' line" "0" "$(notref)"
+assert_contains "AC3.1 unbalanced: shipped is still printed" "$OUT" "shipped v1.2.3"
+WNTXT="$(cat "$F/repo/$WN" 2>/dev/null)"
+assert_contains "AC3.1 the weights file names the main push run (7777)" "$WNTXT" "run 7777"
+assert_contains "AC3.1 the weights file has the suite timings from the shard logs (test-big.sh 120)" "$WNTXT" "test-big.sh 120"
+assert_contains "AC3.1 the weights file has the other suite (test-small.sh 7)" "$WNTXT" "test-small.sh 7"
+assert_contains "AC3.1 the refresh reads the shard jobs of run 7777 (gh run view 7777 --json jobs)" "$(grep '^gh run view' "$FAKE_LOG")" "7777"
+assert_contains "AC3.1 the refresh reads a shard job log (gh run view --job)" "$(grep '^gh run view' "$FAKE_LOG")" "--job"
+assert_eq "AC3.1 tests/shard-weights is unchanged" "$W_BEFORE" "$(cat "$F/repo/tests/shard-weights")"
+assert_eq "AC3.1 git sees no change under tests/" "" "$(git -C "$F/repo" status --porcelain -- tests)"
+assert_eq "AC3.1 no commit was made on main (only init and the fake merge)" "merge PR 12|init|" "$(subjects "$F/repo")"
+assert_eq "AC3.1 nothing was pushed (origin main has only init and the fake merge)" "merge PR 12|init|" "$(subjects "$F/origin.git")"
+
+fx
+export FAKE_SHARDS="300,100,200" FAKE_GH_FAIL="shardlog"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC3.1 shard-weights.sh fails: ship still exits 0" 0
+assert_eq "AC3.1 shard-weights.sh fails: the flow ran" "$FULL_YES" "$(steps)"
+assert_eq "AC3.1 shard-weights.sh fails (gh exit 3): 'shard weights not refreshed (shard-weights.sh exit 3)'" "1" \
+  "$(printf '%s\n' "$OUT" | grep -cF 'shard weights not refreshed (shard-weights.sh exit 3)')"
+assert_eq "AC3.1 shard-weights.sh fails: no 'refreshed: copy' line" "0" "$(refreshed)"
+assert_no_path "AC3.1 shard-weights.sh fails: no .next file" "$F/repo/$WN"
+assert_contains "AC3.1 shard-weights.sh fails: shipped is still printed" "$OUT" "shipped v1.2.3"
+assert_eq "AC3.1 shard-weights.sh fails: tests/shard-weights is unchanged" "$W_BEFORE" "$(cat "$F/repo/tests/shard-weights")"
+
+fx
+export FAKE_SHARDS="300,100,200" FAKE_SHARD_LOG=none
+sh_run 12 v1.2.3 --yes
+assert_rc "AC3.1 no timings in the logs: ship still exits 0" 0
+assert_eq "AC3.1 no timings (shard-weights.sh exit 1): 'shard weights not refreshed (shard-weights.sh exit 1)'" "1" \
+  "$(printf '%s\n' "$OUT" | grep -cF 'shard weights not refreshed (shard-weights.sh exit 1)')"
+assert_eq "AC3.1 no timings: no 'refreshed: copy' line" "0" "$(refreshed)"
+
+echo "v0.22.2 AC3 balanced shards: no refresh"
+fx
+export FAKE_SHARDS="100,110,120"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC3.1 balanced: exit 0" 0
+assert_eq "AC3.1 balanced: no 'shard weights' line at all" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+assert_no_path "AC3.1 balanced: no .agents/handoff" "$F/repo/.agents/handoff"
+assert_eq "AC3.1 balanced: the shard logs were not fetched (no gh run view --job)" "0" "$(logged '^gh run view .*--job')"
+fx
+export FAKE_SHARDS="300,100,200" FAKE_GH_FAIL="shardview"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC3.1 no shard data (gh failed): no 'shard weights' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
+assert_no_path "AC3.1 no shard data: no .agents/handoff" "$F/repo/.agents/handoff"
+unset FAKE_SHARD_LOG
 
 # ---- prompts, through a pseudo-terminal ----
 PTY_OK=0

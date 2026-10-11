@@ -40,12 +40,23 @@ main() {
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing
   shard_hint() {
-    local hs hr hj
+    local hs hr hj out wrc
     hs="$(git rev-parse "$tag^{commit}" 2>/dev/null)" || return 0
     hr="$(gh run list --branch main --event push --commit "$hs" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null)" || return 0
     case "$hr" in '' | null | *[!0123456789]*) return 0 ;; esac
     hj="$(gh run view "$hr" --json jobs 2>/dev/null)" || return 0
-    printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { const d = []; for (const j of JSON.parse(s).jobs || []) { if (!/^windows shard \d+\/\d+$/.test(j.name || "") || !j.completedAt || /^0001-/.test(j.completedAt)) continue; const x = (Date.parse(j.completedAt) - Date.parse(j.startedAt)) / 1000; if (x >= 0) d.push(Math.round(x)) } if (d.length < 2) return; const lo = Math.min(...d), hi = Math.max(...d); if (hi > 1.5 * lo) console.log("shards unbalanced (" + lo + " s .. " + hi + " s): run tools/shard-weights.sh " + process.argv[1]) } catch (e) {} })' "$hr" 2>/dev/null || true
+    out="$(printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { const d = []; for (const j of JSON.parse(s).jobs || []) { if (!/^windows shard \d+\/\d+$/.test(j.name || "") || !j.completedAt || /^0001-/.test(j.completedAt)) continue; const x = (Date.parse(j.completedAt) - Date.parse(j.startedAt)) / 1000; if (x >= 0) d.push(Math.round(x)) } if (d.length < 2) return; const lo = Math.min(...d), hi = Math.max(...d); if (hi > 1.5 * lo) console.log("shards unbalanced (" + lo + " s .. " + hi + " s): run tools/shard-weights.sh " + process.argv[1]) } catch (e) {} })' "$hr" 2>/dev/null)" || true
+    [ -n "$out" ] || return 0
+    printf '%s\n' "$out"
+    # unbalanced: write fresh weights next to the handoff files; never commit, push or edit tests/shard-weights
+    mkdir -p .agents/handoff 2>/dev/null || return 0
+    wrc=0
+    bash tools/shard-weights.sh "$hr" --out .agents/handoff/shard-weights.next >/dev/null 2>&1 || wrc=$?
+    if [ "$wrc" -eq 0 ]; then
+      echo "shard weights refreshed: copy .agents/handoff/shard-weights.next to tests/shard-weights in the next PR"
+    else
+      echo "shard weights not refreshed (shard-weights.sh exit $wrc)"
+    fi
   }
 
   ask() { # question -> 0 on y/yes; refuses without a terminal

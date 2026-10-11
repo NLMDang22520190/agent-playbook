@@ -2,6 +2,7 @@
 # Tests for tests/run-all.sh: job pool (#6 AC6.1-AC6.3). Runs a copy of run-all.sh in a fake tree
 # with timed stand-in suites; each suite records when it starts and ends.
 . "$(dirname "$0")/lib.sh"
+unset PB_RERUN   # v0.22.2: the Windows CI shards export PB_RERUN=0; the fake trees below expect the default
 unset PB_SHARD   # v0.15.0 AC6.1: an exported PB_SHARD must not leak into the fake-tree runs below (they set it explicitly)
 
 # guarded SECS CMD... -> runs CMD with a time limit; sets OUT (stdout+stderr) and RC (124 when the limit hit).
@@ -396,4 +397,110 @@ guarded 60 env PB_JOBS=2 FAIL_a=1 bash "$D/tests/run-all.sh"
 assert_rc "AC8.1 a failing suite without FAIL assertions: exit 1" 1
 assert_eq "AC8.1 a failing suite without FAIL assertions: no hint" "0" "$(hints)"
 
+
+echo "v0.22.2 AC4 run-all re-runs a failing suite once, alone, and classifies it (flaky, real, environment)"
+# rr_always D N -> suite N always fails; rr_flaky D N -> suite N fails on its first run only (a marker file in D);
+# rr_nocode D N -> suite N kills its wrapper on the first run (no .rc is written) and passes afterwards.
+# Every run prints "suite N out", so a re-run that leaked its output would show it twice.
+rr_always() { printf '#!/usr/bin/env bash\necho "suite %s out"\necho "  FAIL real %s"\nexit 1\n' "$2" "$2" > "$1/tests/test-$2.sh"; }
+rr_flaky() { printf '#!/usr/bin/env bash\necho "suite %s out"\nif [ ! -e "%s/flaky-%s" ]; then : > "%s/flaky-%s"; echo "  FAIL flaky %s"; exit 1; fi\nexit 0\n' "$2" "$1" "$2" "$1" "$2" "$2" > "$1/tests/test-$2.sh"; }
+rr_nocode() { printf '#!/usr/bin/env bash\necho "suite %s out"\nif [ ! -e "%s/nocode-%s" ]; then : > "%s/nocode-%s"; kill -9 $PPID; fi\nexit 0\n' "$2" "$1" "$2" "$1" "$2" > "$1/tests/test-$2.sh"; }
+# rerun_lines -> every line of OUT that starts with "rerun:"
+rerun_lines() { printf '%s\n' "$OUT" | grep '^rerun:' || true; }
+nrerun() { printf '%s\n' "$OUT" | grep -c '^rerun:' || true; }
+has_line() { printf '%s\n' "$OUT" | grep -qxF -- "$1"; }
+line_no() { printf '%s\n' "$OUT" | grep -n -x -F -- "$1" | head -n 1 | cut -d: -f1; }
+headings() { printf '%s\n' "$OUT" | grep -c '^== tests/'; }
+
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_flaky "$D" a
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC4.4 a flaky suite: the exit code still reflects the first run (1)" 1
+assert_contains "AC4.1 a flaky suite: the run still ends in FAILURES" "$OUT" "FAILURES"
+if has_line "rerun: test-a.sh passed alone (flaky or load)"; then t_ok "AC4.1 a suite that passes alone: 'rerun: test-a.sh passed alone (flaky or load)'"; else t_bad "AC4.1 a suite that passes alone: 'rerun: test-a.sh passed alone (flaky or load)'" "rerun lines: $(rerun_lines)"; fi
+fl="$(line_no FAILURES)"; rl="$(line_no "rerun: test-a.sh passed alone (flaky or load)")"
+if [ -n "$fl" ] && [ -n "$rl" ] && [ "$rl" -gt "$fl" ]; then t_ok "AC4.1 the rerun line comes after FAILURES"; else t_bad "AC4.1 the rerun line comes after FAILURES" "FAILURES at [$fl], rerun at [$rl]"; fi
+assert_eq "AC4.1 the re-run adds no heading: still one '== tests/test-a.sh' line" "1" "$(printf '%s\n' "$OUT" | grep -c '^== tests/test-a.sh')"
+assert_eq "AC4.1 the re-run adds no '== tests/' heading (a and b only)" "2" "$(headings)"
+assert_eq "AC4.1 the re-run output is discarded: 'suite a out' appears once" "1" "$(printf '%s\n' "$OUT" | grep -c 'suite a out')"
+assert_eq "AC4.1 the re-run adds no summary line: one 'FAIL flaky a' only" "1" "$(printf '%s\n' "$OUT" | grep -c 'FAIL flaky a')"
+assert_eq "AC4.1 only the failing suite is re-run (one rerun line)" "1" "$(nrerun)"
+
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_always "$D" a
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC4.4 a suite that fails again: exit 1" 1
+if has_line "rerun: test-a.sh failed again (real)"; then t_ok "AC4.1 a suite that fails again: 'rerun: test-a.sh failed again (real)'"; else t_bad "AC4.1 a suite that fails again: 'rerun: test-a.sh failed again (real)'" "rerun lines: $(rerun_lines)"; fi
+assert_eq "AC4.1 a suite that fails again: 'suite a out' appears once (output discarded)" "1" "$(printf '%s\n' "$OUT" | grep -c 'suite a out')"
+assert_eq "AC4.1 a suite that fails again: no 'passed alone' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'passed alone')"
+
+echo "AC4.1 PB_RERUN"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_flaky "$D" a
+guarded 60 env PB_JOBS=2 PB_RERUN=0 bash "$D/tests/run-all.sh"
+assert_rc "AC4.1 PB_RERUN=0: exit 1" 1
+assert_eq "AC4.1 PB_RERUN=0: no rerun line at all" "0" "$(nrerun)"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_flaky "$D" a
+guarded 60 env PB_JOBS=2 PB_RERUN=yes bash "$D/tests/run-all.sh"
+assert_rc "AC4.1 PB_RERUN=yes: exit 1" 1
+if has_line "rerun: test-a.sh passed alone (flaky or load)"; then t_ok "AC4.1 PB_RERUN=yes counts as 1 (the suite is re-run)"; else t_bad "AC4.1 PB_RERUN=yes counts as 1 (the suite is re-run)" "rerun lines: $(rerun_lines)"; fi
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_flaky "$D" a
+guarded 60 env PB_JOBS=2 PB_RERUN=1 bash "$D/tests/run-all.sh"
+if has_line "rerun: test-a.sh passed alone (flaky or load)"; then t_ok "AC4.1 PB_RERUN=1: the suite is re-run"; else t_bad "AC4.1 PB_RERUN=1: the suite is re-run" "rerun lines: $(rerun_lines)"; fi
+
+echo "AC4.1 what is never re-run, and what is"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+printf '#!/usr/bin/env bash\necho x >> "%s/rc.log"\necho "run-checks: broken"\nexit 1\n' "$D" > "$D/evals/run-checks.sh"
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC4.1 a failing evals/run-checks.sh: exit 1" 1
+assert_eq "AC4.1 evals/run-checks.sh is run once, never re-run" "1" "$(wc -l < "$D/rc.log" | tr -d ' ')"
+assert_eq "AC4.1 a failing evals/run-checks.sh alone: no rerun line" "0" "$(nrerun)"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"; rr_nocode "$D" b
+guarded 60 env PB_JOBS=1 bash "$D/tests/run-all.sh"
+assert_rc "AC4.1 a suite without an .rc: the first run failed (exit 1)" 1
+if has_line "rerun: test-b.sh passed alone (flaky or load)"; then t_ok "AC4.1 a suite with a missing .rc is re-run"; else t_bad "AC4.1 a suite with a missing .rc is re-run" "rerun lines: $(rerun_lines); output: $OUT"; fi
+
+echo "AC4.2 environment class"
+hint_run 25 0 0 0
+assert_rc "AC4.2 hint fired: exit 1" 1
+assert_eq "AC4.2 hint fired: the hint is printed" "1" "$(hints)"
+if has_line "rerun: skipped, environment problem (see hint)"; then t_ok "AC4.2 hint fired: 'rerun: skipped, environment problem (see hint)'"; else t_bad "AC4.2 hint fired: 'rerun: skipped, environment problem (see hint)'" "rerun lines: $(rerun_lines)"; fi
+hl="$(printf '%s\n' "$OUT" | grep -n '^hint: ' | head -n 1 | cut -d: -f1)"; rl="$(line_no "rerun: skipped, environment problem (see hint)")"
+if [ -n "$hl" ] && [ -n "$rl" ] && [ "$rl" -gt "$hl" ]; then t_ok "AC4.1 the rerun line comes after the hint"; else t_bad "AC4.1 the rerun line comes after the hint" "hint at [$hl], rerun at [$rl]"; fi
+assert_eq "AC4.2 hint fired: no per-suite rerun line (one rerun line in all)" "1" "$(nrerun)"
+assert_eq "AC4.2 hint fired: no 'passed alone' or 'failed again'" "0" "$(printf '%s\n' "$OUT" | grep -c 'passed alone\|failed again')"
+
+echo "AC4.3 at most 3 suites are re-run"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b c d e"
+for n in a b c d e; do rr_always "$D" "$n"; done
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC4.3 five failing suites: exit 1" 1
+for n in a b c; do
+  if has_line "rerun: test-$n.sh failed again (real)"; then t_ok "AC4.3 suite $n (among the first 3 failing) is re-run"; else t_bad "AC4.3 suite $n (among the first 3 failing) is re-run" "rerun lines: $(rerun_lines)"; fi
+done
+for n in d e; do
+  assert_eq "AC4.3 suite $n (4th/5th failing) is not re-run" "0" "$(printf '%s\n' "$OUT" | grep -c "^rerun: test-$n.sh")"
+done
+if has_line "rerun: skipped for 2 more suite(s)"; then t_ok "AC4.3 'rerun: skipped for 2 more suite(s)'"; else t_bad "AC4.3 'rerun: skipped for 2 more suite(s)'" "rerun lines: $(rerun_lines)"; fi
+ra="$(line_no "rerun: test-a.sh failed again (real)")"; rb="$(line_no "rerun: test-b.sh failed again (real)")"; rc3="$(line_no "rerun: test-c.sh failed again (real)")"
+if [ -n "$ra" ] && [ -n "$rb" ] && [ -n "$rc3" ] && [ "$ra" -lt "$rb" ] && [ "$rb" -lt "$rc3" ]; then t_ok "AC4.1 the rerun lines come in run order (a, b, c)"; else t_bad "AC4.1 the rerun lines come in run order (a, b, c)" "lines a [$ra] b [$rb] c [$rc3]"; fi
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b c d e"
+for n in a b c; do rr_always "$D" "$n"; done
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_eq "AC4.3 exactly three failing suites: three rerun lines" "3" "$(nrerun)"
+assert_eq "AC4.3 exactly three failing suites: nothing is skipped" "0" "$(printf '%s\n' "$OUT" | grep -c 'rerun: skipped')"
+
+echo "AC4.1 a green run has no rerun lines"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC4.1 green run: exit 0" 0
+assert_eq "AC4.1 green run: no rerun line" "0" "$(nrerun)"
+
+# --- v0.22.2 CI fix: the caller's PB_RERUN must not leak into the suites run-all starts (the Windows CI shards set
+# PB_RERUN=0, and test-run-all's own fake trees expect the default)
+echo "v0.22.2 PB_RERUN does not leak into suites"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a"
+printf '#!/usr/bin/env bash
+echo "${PB_RERUN:-unset}" > "%s/seen"
+echo "test-a.sh: 1 passed, 0 failed"
+' "$D" > "$D/tests/test-a.sh"
+guarded 60 env PB_RERUN=0 PB_JOBS=1 bash "$D/tests/run-all.sh"
+assert_eq "CI fix: a suite run by run-all sees PB_RERUN unset" "unset" "$(cat "$D/seen" 2>/dev/null)"
 t_summary
