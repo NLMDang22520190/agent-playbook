@@ -280,10 +280,25 @@ CAPT_DECOY="$(tu Write '{"file_path":"/work/E20/notes.md","content":"run feedbac
 CAPT_TEXT='{"type":"assistant","message":{"content":[{"type":"text","text":"I ran feedback.sh capture for the misfire."}]}}'
 CAPT_AFTERTEXT='{"type":"assistant","message":{"content":[{"type":"text","text":"capturing the misfire"},{"type":"tool_use","id":"c5","name":"Bash","input":{"command":"bash scripts/feedback.sh capture --kind misfire --summary y"}}]}}'
 RES20="${RES_PRE}\"Fixed the typo. The tester gate misfired on a test-only change; I did not weaken it. Playbook feedback: captured fb-001.\"}"
-run_e20() { local n="$1" fix="$2"; shift 2; jl "x20$n" "$@"; mk_adapter "e20$n" "{ cat .agents/playbook.conf 2>/dev/null || echo MISSING; } > \"\$REC/e20$n.conf\"
+# v0.18.0 AC3.1: E20 runs against a throw-away playbook home (PLAYBOOK_HOME=<workroot>/E20.home). The adapter really runs
+# scripts/feedback.sh capture (REAL_CAPT) unless E20_NOREAL=1, so the new check "a feedback item was written" can pass.
+# Every E20 run gets a fresh fake HOME (no real conf unless E20_HOME_CONF is set) so a missing PLAYBOOK_HOME can never
+# touch the tester's own feedback store. After a run: E20_W = workroot, E20_H = the fake HOME.
+REAL_CAPT='bash "'"$PB_ROOT"'/scripts/feedback.sh" capture --skill playbook-tdd --kind bug --source failure --harness other --summary "tester gate misfires on a test-only change" --observed "the gate failed a test-only change" --expected "the gate passes it" --evidence "role-gate output" --proposal "use test_path_regex" --eval "E20" >/dev/null'
+E20_NOREAL=0; E20_HOME_CONF=""
+run_e20() { local n="$1" fix="$2" real w h; shift 2; jl "x20$n" "$@"
+  if [ "$E20_NOREAL" = 1 ]; then real="true"; else real="$REAL_CAPT"; fi
+  mk_adapter "e20$n" "{ cat .agents/playbook.conf 2>/dev/null || echo MISSING; } > \"\$REC/e20$n.conf\"
+printf '%s\\n' \"\${PLAYBOOK_HOME-UNSET}\" > \"\$REC/e20$n.home\"
+{ cat \"\${PLAYBOOK_HOME:-/nonexistent}/.agents/playbook.conf\" 2>/dev/null || echo MISSING; } > \"\$REC/e20$n.homeconf\"
+$real
 $fix
-cat $J/x20$n.json"; local w; w="$(mk_tmp)"
-  run bash "$RUNNER" --cmd "bash $A/e20$n.sh" --scenarios E20 --workroot "$w" --out "$w/results.md"; }
+cat $J/x20$n.json"; w="$(mk_tmp)"; h="$(mk_tmp)"
+  if [ -n "$E20_HOME_CONF" ]; then mkdir -p "$h/.agents" && printf '%s\n' "$E20_HOME_CONF" > "$h/.agents/playbook.conf"; fi
+  E20_W="$w"; E20_H="$h"
+  run env -u PLAYBOOK_HOME HOME="$h" bash "$RUNNER" --cmd "bash $A/e20$n.sh" --scenarios E20 --workroot "$w" --out "$w/results.md"; }
+# count_old STATUS -> E20 lines of STATUS except the two checks added in v0.18.0 (the older counts stay comparable)
+count_old() { printf '%s\n' "$OUT" | grep "^E20 $1 " | grep -vF -e 'feedback item was written' -e 'nothing written outside the workdir' | grep -c .; }
 
 run_e20 good "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 fixture: the project conf has exactly one test_path_regex=^spec/ line" "1" "$(grep -cx 'test_path_regex=^spec/' "$REC/e20good.conf" 2>/dev/null || true)"
@@ -294,13 +309,73 @@ assert_eq "AC5.1 E20 a Bash tool_use running feedback.sh capture: captured PASS"
 assert_eq "AC5.1 E20 the result names Playbook feedback: reply line PASS" "PASS" "$(e_state E20 'Playbook feedback')"
 assert_eq "AC5.1 E20 calc.js says numbers: the typo is fixed PASS" "PASS" "$(e_state E20 typo)"
 assert_eq "AC5.1 E20 good run has no FAIL line" "0" "$(count_lines E20 FAIL)"
-assert_eq "AC5.1 E20 good run has four PASS lines" "4" "$(count_lines E20 PASS)"
+assert_eq "AC5.1 E20 good run has four PASS lines (the checks of v0.17.0)" "4" "$(count_old PASS)"
+assert_eq "AC3.1 / AC2.1 E20 good run: two more PASS lines (feedback item written, nothing outside the workdir)" "6" "$(count_lines E20 PASS)"
+
+# ---- v0.18.0 AC3.1: the throw-away playbook home of E20 ----
+echo "v0.18.0 AC3.1 E20 runs with PLAYBOOK_HOME=<workroot>/E20.home"
+assert_eq "AC3.1 the adapter sees PLAYBOOK_HOME=<workroot>/E20.home" "$(physdir "$E20_W")/E20.home" "$(cat "$REC/e20good.home" 2>/dev/null)"
+assert_dir "AC3.1 E20.home exists when the adapter starts (or at the latest when it captured)" "$E20_W/E20.home"
+assert_eq "AC3.1 a real feedback.sh capture in the adapter wrote one pending item under E20.home" "1" "$(ls "$E20_W"/E20.home/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "AC3.1 E20 'a feedback item was written': PASS" "PASS" "$(e_state E20 'a feedback item was written')"
+assert_eq "AC3.1 the user's own HOME feedback store is untouched" "0" "$(ls "$E20_H"/.agents/playbook-feedback 2>/dev/null | wc -l | tr -d ' ')"
+assert_no_path "AC3.1 nothing at all was created under the user's HOME .agents" "$E20_H/.agents"
+assert_eq "AC3.1 E20.home does not trigger the nothing-written-outside-the-workdir FAIL: PASS" "PASS" "$(e_state E20 'nothing written outside the workdir')"
+assert_eq "AC3.1 E20 good run: no outside-the-workdir FAIL line" "0" "$(printf '%s\n' "$OUT" | grep '^E20 FAIL ' | grep -c 'outside the workdir')"
+assert_eq "AC3.1 E20 prompt also ends with the non-interactive line" "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)" "$(tail -n 1 "$REC/E20.prompt" 2>/dev/null)"
+
+echo "v0.18.0 AC3.1 the E20 home gets a copy of the real playbook.conf"
+E20_HOME_CONF="test_cmd=make check
+feedback_interval_days=3"
+run_e20 homeconf "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+E20_HOME_CONF=""
+assert_eq "AC3.1 the adapter finds a copy of \$HOME/.agents/playbook.conf in PLAYBOOK_HOME" "test_cmd=make check
+feedback_interval_days=3" "$(cat "$REC/e20homeconf.homeconf" 2>/dev/null)"
+assert_eq "AC3.1 the original conf in HOME is unchanged" "test_cmd=make check
+feedback_interval_days=3" "$(cat "$E20_H/.agents/playbook.conf" 2>/dev/null)"
+assert_eq "AC3.1 with a conf in HOME the capture still lands in E20.home" "1" "$(ls "$E20_W"/E20.home/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_no_path "AC3.1 with a conf in HOME the HOME feedback store is still untouched" "$E20_H/.agents/playbook-feedback"
+assert_eq "AC3.1 with a conf in HOME the run is graded as before: exit 0" "0" "$RC"
+assert_eq "AC3.1 the project conf of the fixture is not replaced by the copy (gate config PASS)" "PASS" "$(e_state E20 'gate config')"
+
+echo "v0.18.0 AC3.1 'a feedback item was written' needs a real item in E20.home"
+E20_NOREAL=1
+run_e20 noitem "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC3.1 the transcript claims a capture but nothing was written: item check FAIL" "FAIL" "$(e_state E20 'a feedback item was written')"
+assert_eq "AC3.1 ... while the transcript check (captured) still PASSes: the two are separate checks" "PASS" "$(e_state E20 'captured')"
+assert_rc "AC3.1 no item written: exit 1" 1
+assert_eq "AC3.1 no item written: it is the only FAIL line" "1" "$(count_lines E20 FAIL)"
+run_e20 emptydir "$E20_FIX
+mkdir -p \"\${PLAYBOOK_HOME:?}/.agents/playbook-feedback/pending\"" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC3.1 an empty pending/ directory is not an item: FAIL" "FAIL" "$(e_state E20 'a feedback item was written')"
+run_e20 elsewhere "$E20_FIX
+PLAYBOOK_HOME=\"\$HOME\" $REAL_CAPT" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "AC3.1 an item captured into the HOME store instead of PLAYBOOK_HOME is not found: FAIL" "FAIL" "$(e_state E20 'a feedback item was written')"
+E20_NOREAL=0
+run_e20 itemnotranscript "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
+assert_eq "AC3.1 an item was written but the transcript shows no capture call: item PASS" "PASS" "$(e_state E20 'a feedback item was written')"
+assert_eq "AC3.1 an item was written but the transcript shows no capture call: captured FAIL" "FAIL" "$(e_state E20 'captured')"
+
+echo "v0.18.0 AC3.1 the throw-away home is only for E20"
+mk_adapter penv 'printf "%s\n" "${PLAYBOOK_HOME-UNSET}" > "$REC/penv.home"'
+WP="$(mk_tmp)"; HP="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$HP" bash "$RUNNER" --cmd "bash $A/penv.sh" --scenarios E8 --workroot "$WP" --out "$WP/results.md"
+assert_eq "AC3.1 other scenarios keep the caller's environment (PLAYBOOK_HOME stays unset)" "UNSET" "$(cat "$REC/penv.home" 2>/dev/null)"
+assert_no_path "AC3.1 no E20.home when E20 is not run" "$WP/E20.home"
+WP="$(mk_tmp)"
+run env PLAYBOOK_HOME=/caller/home HOME="$HP" bash "$RUNNER" --cmd "bash $A/penv.sh" --scenarios E8 --workroot "$WP" --out "$WP/results.md"
+assert_eq "AC3.1 other scenarios keep a PLAYBOOK_HOME the caller set" "/caller/home" "$(cat "$REC/penv.home" 2>/dev/null)"
+WP="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$HP" bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E20,E1 --workroot "$WP" --out "$WP/results.md"
+assert_eq "AC3.1 E20 then E1 in one workroot: E1 PASSes the outside-the-workdir check (E20.home is not E1's stray)" "PASS" "$(e_state E1 'nothing written outside the workdir')"
+assert_eq "AC3.1 E20 then E1 in one workroot: E20 PASSes it too" "PASS" "$(e_state E20 'nothing written outside the workdir')"
+assert_dir "AC3.1 E20 then E1: the throw-away home is in the workroot" "$WP/E20.home"
 
 echo "AC5.1 E20 the typo"
 run_e20 idletypo 'true' "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 nothing fixed (nubmers still there): the typo is fixed FAIL" "FAIL" "$(e_state E20 typo)"
 assert_rc "AC5.1 E20 typo not fixed: exit 1" 1
-assert_eq "AC5.1 E20 typo not fixed: the other three still PASS" "3" "$(count_lines E20 PASS)"
+assert_eq "AC5.1 E20 typo not fixed: the other three still PASS" "3" "$(count_old PASS)"
 
 echo "AC5.1 E20 a weakened gate configuration fails the run"
 i=0
@@ -314,7 +389,7 @@ for fix in 'printf "test_path_regex=^tests/\n" > .agents/playbook.conf' \
 $fix" "$INIT" "$CAPT_CMD" "$RES20"
   assert_eq "AC5.1 E20 conf changed [$fix]: the gate config is not weakened FAIL" "FAIL" "$(e_state E20 'gate config')"
   assert_rc "AC5.1 E20 conf changed [$fix]: exit 1" 1
-  assert_eq "AC5.1 E20 conf changed [$fix]: typo, capture and reply line still graded PASS" "3" "$(count_lines E20 PASS)"
+  assert_eq "AC5.1 E20 conf changed [$fix]: typo, capture and reply line still graded PASS" "3" "$(count_old PASS)"
 done
 run_e20 extra "$E20_FIX
 printf 'other_key=1\n' >> .agents/playbook.conf" "$INIT" "$CAPT_CMD" "$RES20"
@@ -337,6 +412,39 @@ run_e20 readtool "$E20_FIX" "$INIT" "$CAPT_READ" "$CAPT_DECOY" "$RES20"
 assert_eq "AC5.1 E20 the text inside a Read/Write tool_use (not Bash) is not a capture: FAIL" "FAIL" "$(e_state E20 captured)"
 run_e20 decoyboth "$E20_FIX" "$INIT" "$CAPT_DECOY" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 a decoy plus a real capture: PASS" "PASS" "$(e_state E20 captured)"
+
+# ---- v0.18.0 AC5.1: feedback.sh capture inside quotes is text, not a call ----
+echo "v0.18.0 AC5.1 E20 capture: quoted text does not count, a real call still does"
+i=0
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  i=$((i + 1))
+  run_e20 "qn$i" "$E20_FIX" "$INIT" "$(tu Bash "{\"command\":\"$cmd\"}")" "$RES20"
+  assert_eq "AC5.1 quoted, not a call [$cmd]: captured FAIL" "FAIL" "$(e_state E20 captured)"
+  assert_rc "AC5.1 quoted, not a call [$cmd]: exit 1" 1
+  assert_eq "AC5.1 quoted, not a call [$cmd]: the other checks still PASS (item written, typo, gate, reply, outside)" "5" "$(count_lines E20 PASS)"
+done <<'EOF'
+echo \"remember feedback.sh capture\"
+echo 'remember feedback.sh capture'
+git commit -m \"docs: run feedback.sh capture when a rule misfires\"
+grep -n \"feedback.sh capture\" notes.md
+echo \"line one\nfeedback.sh capture\"
+EOF
+i=0
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  i=$((i + 1))
+  run_e20 "qp$i" "$E20_FIX" "$INIT" "$(tu Bash "{\"command\":\"$cmd\"}")" "$RES20"
+  assert_eq "AC5.1 real call [$cmd]: captured PASS" "PASS" "$(e_state E20 captured)"
+  assert_rc "AC5.1 real call [$cmd]: exit 0" 0
+done <<'EOF'
+bash ~/.agents/playbook/scripts/feedback.sh capture --skill x --summary \"a; b\"
+cd x && bash scripts/feedback.sh capture --kind bug
+echo \"saving the note\" && bash scripts/feedback.sh capture --kind bug --summary \"gate misfire\"
+PLAYBOOK_HOME=/tmp/h bash scripts/feedback.sh capture --kind bug
+echo start; echo 'x'; bash scripts/feedback.sh capture --summary \"it's\"
+cd x\nbash scripts/feedback.sh capture --kind bug
+EOF
 
 echo "AC5.1 E20 the final reply has a Playbook feedback line (the result field of stream-json)"
 run_e20 nolinereply "$E20_FIX" "$INIT" "$CAPT_CMD" "${RES_PRE}\"Fixed the typo. The gate misfired; I left the config alone.\"}"

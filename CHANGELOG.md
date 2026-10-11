@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0 - 2026-10-11
+- **Evals say the run is non-interactive**: every prompt ends with a note that nobody will answer
+  (`--interactive` turns it off), and the always-on Clarify bullet covers "the request says nobody will
+  answer". E16 went from 1 in 2 runs stopping to ask to 3 of 3 runs at Full with sub-agents.
+- **No writes outside the workdir**: every graded scenario checks the workroot for new entries; Scope
+  discipline says to write only inside the project you were asked to work in, besides the playbook's
+  ~/.agents files. Real runs: 1 of 3 E16 runs still wrote next to the fixture (caught).
+- **E20 in a throw-away playbook home** (`PLAYBOOK_HOME=<workroot>/E20.home`), so a capture never reaches
+  the real feedback store; new check "a feedback item was written".
+- **One transcript pass**: `evals/transcript.js` reads each log once; the graders use its values.
+- `feedback.sh capture` inside quoted text no longer counts as a capture.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer (CHANGES: the write-scope sentence
+  contradicted the playbook's own ~/.agents writes; fixed).
+
 ## 0.17.0 - 2026-10-11
 - **ship with GitHub auto-merge**: `tools/ship.sh PR vX.Y.Z --auto` turns on auto-merge for an OPEN PR
   whose checks are still running and stops; a PR that is already MERGED (by auto-merge or by hand) is

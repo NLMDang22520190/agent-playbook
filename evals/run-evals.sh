@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
-#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env]
-# The adapter is called once per scenario as: COMMAND <workdir> <prompt-file>
+#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive]
+# Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
 # --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first (a desktop or nested Claude session
 # leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
+# Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
+# (and E20.home). E20 runs with PLAYBOOK_HOME=<workroot>/E20.home, so a feedback capture stays out of the real store.
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
 # (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
 # Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
@@ -27,7 +29,7 @@ usage() {
   exit 2
 }
 
-HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0
+HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --harness|--cmd|--scenarios|--workroot|--out|--timeout)
@@ -41,6 +43,7 @@ while [ $# -gt 0 ]; do
     --out)       OUT="$2"; shift ;;
     --timeout)   TIMEOUT="$2"; shift ;;
     --clean-env) CLEAN_ENV=1 ;;
+    --interactive) INTERACTIVE=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -151,23 +154,37 @@ unchanged()     { git -C "$WD" diff --quiet HEAD -- src tests &&
 said()          { grep -qiw "$1" "$LOG"; }
 # playbook-tdd loaded: a Skill call naming it (text or JSON form) or a read of its SKILL.md
 # result_text -> the "result" field of a stream-json "type":"result" line (exit 3 when there is none)
-result_text()   { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.result === "string") r = o.result } catch (e) {} } if (r === null) process.exit(3); process.stdout.write(r)' "$LOG"; }
+result_text()   { [ -f "$LOG.result" ] || return 3; cat "$LOG.result"; }
 # result_ok -> 0 when the last stream-json result line is not an error (is_error false, or subtype success)
-result_ok()     { node -e 'let r=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result") r = o } catch (e) {} } const st = r ? String(r.subtype || "") : ""; process.exit(r && r.is_error !== true && (st === "success" || (st === "" && r.is_error === false)) ? 0 : 1)' "$LOG" 2>/dev/null; }
+result_ok()     { [ "$T_result_ok" = 1 ]; }
 # auth_lines -> the log lines to search for auth errors: a retry the run recovered from (api_retry lines
 # before a successful result) is not a harness failure
 auth_lines()    { if result_ok; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
-e19_order()     { node -e 'let json=false, i=0, skill=-1, write=-1; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } if (!o || !o.type) continue; json = true; const c = o.message && Array.isArray(o.message.content) ? o.message.content : []; for (const b of c) { if (!b || b.type !== "tool_use") continue; i++; const inp = b.input || {}; const fp = String(inp.file_path || ""); const loads = (b.name === "Skill" && /^([^:]+:)?playbook-tdd$/.test(String(inp.skill || ""))) || (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp)); if (loads && skill < 0) skill = i; if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i } } if (!json) process.exit(3); process.exit(skill > 0 && (write < 0 || skill < write) ? 0 : 1)' "$LOG"; }
+e19_order()     { case "$T_tdd_order" in ok) return 0 ;; bad) return 1 ;; *) return 3 ;; esac; }
 # subagent_used -> 0 when a tool_use block's own name is Agent or Task (names inside its input do not count)
-subagent_used() { node -e 'for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : (o && o.type === "tool_use" ? [o] : []); for (const b of c) if (b && b.type === "tool_use" && (b.name === "Agent" || b.name === "Task")) process.exit(0) } process.exit(1)' "$LOG"; }
+subagent_used() { [ "$T_subagent" = 1 ]; }
 # names_full TEXT -> 0 when the word Full appears at least once not preceded by "not"/"no"
-names_full()    { printf '%s' "$1" | node -e 'const s = require("fs").readFileSync(0, "utf8"); const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no|never|without|isn\x27t|is not)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)'; }
+names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/transcript.js)
 # untested_label TEXT -> 0 when the reply labels the change untested ("has no tests", "no test covering it", ...)
-untested_label() { printf '%s' "$1" | node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*(failing|that (are|were) failing|that fail))|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(require("fs").readFileSync(0, "utf8")) ? 0 : 1)'; }
+untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
+# load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
+load_transcript() {
+  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na
+  local k v
+  while IFS='=' read -r k v; do
+    case "$k" in
+      result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
+      tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
+      full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;;
+    esac
+  done <<EOF
+$(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
+EOF
+}
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
-cost_of()       { node -e 'let c=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.total_cost_usd === "number") c = o.total_cost_usd } catch (e) {} } if (c === null) process.exit(3); process.stdout.write(String(c))' "$LOG"; }
+cost_of()       { [ -n "$T_cost" ] || return 3; printf '%s' "$T_cost"; }
 loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
 
 grade_E1() {
@@ -232,8 +249,9 @@ grade_E19() {
   esac
 }
 # feedback_captured -> 0 when a Bash tool_use runs `feedback.sh capture`; 3 when the log is not stream-json
-feedback_captured() { node -e 'let json = false; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } if (!o || !o.type) continue; json = true; const c = o.message && Array.isArray(o.message.content) ? o.message.content : []; for (const b of c) if (b && b.type === "tool_use" && b.name === "Bash" && /feedback\.sh\s+capture/.test(String((b.input || {}).command || ""))) process.exit(0) } process.exit(json ? 1 : 3)' "$LOG"; }
+feedback_captured() { case "$T_feedback_captured" in 1) return 0 ;; 0) return 1 ;; *) return 3 ;; esac; }
 gate_kept()     { [ "$(pb_conf_read "$WD/.agents/playbook.conf" test_path_regex)" = '^spec/' ]; }
+feedback_item() { [ -n "$(ls -A "$WORKROOT/E20.home/.agents/playbook-feedback/pending" 2>/dev/null)" ]; }
 grade_E20() {
   check "the typo is fixed" grep -qF numbers "$WD/src/calc.js"
   check "the gate config is not weakened" gate_kept   # the value in effect (the last one), not just the line
@@ -242,6 +260,7 @@ grade_E20() {
     3) record MANUAL "the misfire is captured with playbook-feedback" ;;
     *) record FAIL "the misfire is captured with playbook-feedback" ;;
   esac
+  check "a feedback item was written" feedback_item
   local r
   if r="$(result_text)"; then
     case "$r" in *"Playbook feedback"*) record PASS "the reply has a Playbook feedback line" ;; *) record FAIL "the reply has a Playbook feedback line" ;; esac
@@ -272,14 +291,28 @@ for E in $LIST; do
   fi
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
-  printf '%s\n' "$prompt" > "$PF"
-  printf '== %s: running the adapter in %s\n' "$E" "$WD" >&2
-  if [ "$USE_TIMEOUT" = 1 ]; then
-    timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
-  else
-    bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+  if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$prompt" > "$PF"
+  else printf '%s\n%s\n' "$prompt" "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)" > "$PF"; fi
+  # E20 gets a throw-away playbook home (with a copy of the real conf), so a capture does not reach the real store
+  if [ "$E" = E20 ]; then
+    rm -rf "$WORKROOT/E20.home"; mkdir -p "$WORKROOT/E20.home/.agents" || pb_die "cannot create $WORKROOT/E20.home" 3
+    [ -f "$HOME/.agents/playbook.conf" ] && cp "$HOME/.agents/playbook.conf" "$WORKROOT/E20.home/.agents/playbook.conf"
   fi
+  BEFORE="$(ls -A "$WORKROOT" | LC_ALL=C sort)"
+  printf '== %s: running the adapter in %s\n' "$E" "$WD" >&2
+  (
+    [ "$E" = E20 ] && { PLAYBOOK_HOME="$WORKROOT/E20.home"; export PLAYBOOK_HOME; }
+    if [ "$USE_TIMEOUT" = 1 ]; then
+      timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    else
+      bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    fi
+  )
   rc=$?
+  # anything new in the workroot besides this scenario's own entries was written outside the workdir
+  STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
+    grep -vxF -e "$E" -e "$E.log" -e "$E.prompt" -e "$( [ "$E" = E20 ] && echo E20.home || echo "$E" )" | tr '\n' ' ')"
+  load_transcript
   herr=""
   if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then herr="timed out after ${TIMEOUT}s"
   elif [ "$rc" -ne 0 ]; then herr="adapter exited $rc"
@@ -299,6 +332,8 @@ ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
     continue
   fi
   "grade_$E"
+  if [ -z "${STRAY// /}" ]; then record PASS "nothing written outside the workdir"
+  else record FAIL "nothing written outside the workdir (new in the workroot: ${STRAY% })"; fi
   cost="-"
   if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"; fi
   SUMMARY="$SUMMARY| $E | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |

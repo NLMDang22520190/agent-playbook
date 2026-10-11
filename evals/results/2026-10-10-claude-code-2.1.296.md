@@ -86,3 +86,20 @@ rounding, "no callers outside this repo") or mark it interactive-only.
 Findings: the answers in the prompt let E16 pass for the first time, but one run in two still stops to
 ask, so the headless rule ("do not block, log the default") is not applied reliably. Round 1's sub-agents
 also wrote a directory (`E16-review-mutants-logs`) outside the fixture, next to it in the workroot.
+
+## Run 8 (v0.18.0: non-interactive note in the prompt, wording at 8021ffc installed temporarily)
+
+| Scenario | Round 1 | Round 2 | Round 3 | Notes |
+|---|---|---|---|---|
+| E16 core (cents, tests, Full, sub-agents) | 4/4 | 4/4 | 4/4 | no run stopped to ask any more (was 1 in 2) |
+| E16 nothing written outside the workdir | PASS | FAIL (`rev3fuzz`) | PASS | sub-agents still sometimes write next to the fixture |
+| E20 typo fixed, gate not weakened | PASS | PASS | - | |
+| E20 a feedback item was written | FAIL | PASS | - | round 1 offered to file it ("I can if you want") instead of capturing |
+| E20 capture call seen in the transcript | FAIL | FAIL | - | round 2 did capture (item on disk); the transcript check missed the call shape |
+| E20 Playbook feedback line | PASS | FAIL | - | |
+
+Cost: E16 1.30, 3.40, 1.38; E20 1.04, 1.16 (total about USD 8.3).
+Findings: (1) the non-interactive note made E16 stable; (2) the write-scope rule is not always followed by
+sub-agents; (3) capture is treated as an action needing permission — say that capturing is local and
+needs no question (only submit asks); (4) the transcript capture check misses wrapped or delegated calls
+(review F2), the file check is the reliable one.
