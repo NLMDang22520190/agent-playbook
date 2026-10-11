@@ -47,6 +47,43 @@ function bashWritesSrc(cmd) {
   }
   return done();
 }
+// does a shell command run proof-run.sh? Split into simple commands at ; & | ( ) { } backticks and newlines (linear), then skip
+// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec/command with their flags (command -v and -V are lookups) and arguments;
+// the command word is proof-run.sh, or a shell whose first non-flag word is
+function runsProof(cmd) {
+  const isP = t => /(^|\/)proof-run\.sh$/.test(t);
+  const RESERVED = /^(if|then|do|else|elif|while|until|!)$/;
+  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec|command)$/;
+  const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/ };
+  // a substitution that is part of a word (${X}, or $(..) and `..` touching other characters) becomes one word character, so
+  // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
+  const SEP = "[^\\s;&|(){}`=]";   // = is not in the class: x=$(..) is a captured run, not a word
+  const inword = new RegExp("\\$\\{[^}]{0,200}\\}|(?<=" + SEP + ")\\$\\([^()]{0,200}\\)|\\$\\([^()]{0,200}\\)(?=" + SEP + ")|(?<=" + SEP + ")`[^`]{0,200}`|`[^`]{0,200}`(?=" + SEP + ")", "g");
+  for (const seg of cmd.replace(inword, "X").split(/[;&|(){}`\n]+/)) {
+    const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
+    let k = 0;
+    while (k < w.length) {
+      const base = w[k].replace(/^.*\//, "");
+      if (RESERVED.test(w[k]) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[k])) { k++; continue; }
+      if (PREFIX.test(base)) {
+        if (base === "command" && /^-[vV]$/.test(w[k + 1] || "")) break;
+        k++;
+        while (k < w.length && /^-/.test(w[k])) k += FLAGARG[base] && FLAGARG[base].test(w[k]) ? 2 : 1;
+        if (base === "timeout") k++;   // the duration
+        continue;
+      }
+      break;
+    }
+    if (k >= w.length) continue;
+    if (isP(w[k])) return true;
+    if (/(^|\/)(ba|z)?sh$/.test(w[k])) {
+      let j = k + 1;
+      while (j < w.length && /^-/.test(w[j])) j++;
+      if (j < w.length && isP(w[j])) return true;
+    }
+  }
+  return false;
+}
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
@@ -72,8 +109,8 @@ for (const line of text.split(/\r?\n/)) {
     if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
-    // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|(?:^\s*|[;&|(]\s*|\b(?:ba)?sh\s+)\S*proof-run\.sh/m.test(cmd)) ran = true;
+    // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(cmd)) ran = true;
   }
 }
 

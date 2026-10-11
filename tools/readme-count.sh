@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes the README test count from a run-all log (maintainers).
-#   tools/readme-count.sh LOG           total = sum of passed + skipped over the "N passed, M failed[, K skipped]" lines;
+#   tools/readme-count.sh LOG           total = sum of passed + skipped over the suite summary lines "<suite>.sh: N passed, M failed[, K skipped]";
 #                                       rewrites the badge "tests-N", "**N passing**" and "N tests, run in sandboxes" in
 #                                       README.md (next to the tools directory) and prints "README: N tests (passed + skipped)"
 #   tools/readme-count.sh --check LOG   only compares (the flag may also come after LOG); nothing is written
@@ -24,7 +24,7 @@ done
 [ -r "$log" ] || { echo "cannot read $log" >&2; exit 2; }
 [ -r "$README" ] || { echo "cannot read $README" >&2; exit 2; }
 
-lines="$(grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' "$log")"
+lines="$(grep -E '^[^[:space:]]+\.sh: [0-9]+ passed, [0-9]+ failed' "$log" | grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?')"
 [ -n "$lines" ] || { echo "no 'N passed, M failed' summary line in $log" >&2; exit 1; }
 failed="$(printf '%s\n' "$lines" | awk '{ f += $3 } END { print f + 0 }')"
 [ "$failed" -eq 0 ] || { echo "the log has $failed failed test(s); the README is not changed" >&2; exit 1; }

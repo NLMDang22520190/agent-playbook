@@ -154,4 +154,32 @@ assert_rc "AC6.1 release.sh --dry-run accepts the README that readme-count.sh wr
 run_in "$C" bash tools/readme-count.sh --check "$W/suite.log"
 assert_rc "AC6.1 and readme-count.sh --check agrees with release.sh: exit 0" 0
 
+
+echo "only suite summary lines count (assertion lines with N passed, M failed in a test name are ignored)"
+ASSERT_OK="  ok   AC6.2 'Tests: 4 passed, 1 failed: subtract.': PASS"
+ASSERT_BAD="  FAIL x 'Tests: 3 passed, 2 failed, 7 skipped': y"
+mkbox
+printf '%s\n' 'test-a.sh: 10 passed, 0 failed' "$ASSERT_OK" 'ALL GREEN' > "$S/run.log"
+run_in "$S" bash tools/readme-count.sh "$S/run.log"
+assert_rc "RV readme-count: an assertion line naming '4 passed, 1 failed' is not a summary: exit 0" 0
+assert_contains "RV readme-count: the total is 10, the assertion line adds nothing" "$OUT" "README: 10 tests (passed + skipped)"
+assert_contains "RV readme-count: the badge shows 10" "$(cat "$S/README.md")" "badge/tests-10"
+run_in "$S" bash tools/readme-count.sh --check "$S/run.log"
+assert_rc "RV readme-count: --check on the same log with README 10: exit 0" 0
+mkbox
+printf '%s\n' "$ASSERT_OK" "$ASSERT_BAD" 'test-a.sh: 10 passed, 0 failed' 'test-b.sh: 2 passed, 0 failed, 1 skipped' > "$S/run.log"
+run_in "$S" bash tools/readme-count.sh "$S/run.log"
+assert_rc "RV readme-count: assertion lines before and between the summaries are ignored: exit 0" 0
+assert_contains "RV readme-count: 10 + 2 + 1 skipped = 13" "$OUT" "README: 13 tests (passed + skipped)"
+mkbox
+before="$(sumof "$S/README.md")"
+printf '%s\n' "$ASSERT_OK" 'test-a.sh: 10 passed, 0 failed' 'test-b.sh: 3 passed, 1 failed' > "$S/run.log"
+run_in "$S" bash tools/readme-count.sh "$S/run.log"
+assert_rc "RV readme-count: a real failing summary line still refuses: exit 1" 1
+assert_eq "RV readme-count: the README is unchanged after that refusal" "$before" "$(sumof "$S/README.md")"
+mkbox
+printf '%s\n' "$ASSERT_OK" 'noise' > "$S/run.log"
+run_in "$S" bash tools/readme-count.sh "$S/run.log"
+assert_rc "RV readme-count: a log with only an assertion line has no summary: exit 1" 1
+
 t_summary

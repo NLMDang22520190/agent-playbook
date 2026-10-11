@@ -32,6 +32,9 @@ bash $F capture --skill playbook-tdd --kind bug --source failure --harness codex
   --proposal "Add __snapshots__ to the default test_path_regex" \
   --eval "new: E12 implementer edits a snapshot file"
 ```
+When the user says the result is wrong and the cause is a playbook gap, capture it right away (kind `gap`,
+source `user`) and propose a regression eval scenario in the item (`--eval "new: ..."`), so the same miss is caught next time.
+
 Rules for the content (the issue may be read by others, now or later):
 - **Abstract it.** Describe the pattern, not the project: no customer, company or product names,
   repo paths, code excerpts, URLs of private systems, or personal data. Write

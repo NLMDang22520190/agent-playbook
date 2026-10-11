@@ -42,7 +42,7 @@ pb_conf_get() {
 
 # YYYY-MM-DD -> epoch seconds (GNU date, then BSD date)
 pb_epoch_day() {
-  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$1" +%s 2>/dev/null
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$1" +%s 2>/dev/null   # gnu-ok: BSD fallback follows
 }
 
 pb_valid_key() { case "$1" in "" | [!abcdefghijklmnopqrstuvwxyz]* | *[!abcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;; esac; return 0; }
