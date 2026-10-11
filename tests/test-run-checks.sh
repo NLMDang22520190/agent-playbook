@@ -184,4 +184,52 @@ C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\ngrep -E %s f\n' "'a{,${B
 checks "$C"
 assert_contains "AC7.1 the failure mentions the repeat bound" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "bound"
 
+
+echo "v0.21.0 AC2.1 GNU-only sed -i (no attached suffix) is refused; BSD sed needs one"
+# The commands are built at run time: a literal one in this file would fail the real run-checks.
+SD=sed; FI=-i
+# sed_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
+sed_case() {
+  local name="$1" rel="$2" line="$3" expect="$4"
+  C="$(mk_copy)"
+  mkdir -p "$C/$(dirname "$rel")"
+  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
+  checks "$C"
+  if [ "$expect" = fail ]; then
+    assert_rc "AC2.1 $name: exit 1" 1
+    assert_contains "AC2.1 $name: names file:line" "$OUT" "$rel:3"
+  else
+    assert_rc "AC2.1 $name: exit 0" 0
+    assert_not_contains "AC2.1 $name: the file is not named" "$OUT" "$rel"
+  fi
+}
+sed_case "double-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
+sed_case "single-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI 's/a/b/' f" fail
+sed_case "-E before -i"                           tests/zz-sed.sh "$SD -E $FI 's/a/b/' f" fail
+sed_case "-n before -i"                           tests/zz-sed.sh "$SD -n $FI 's/a/b/p' f" fail
+sed_case "mid-line after a semicolon"             tests/zz-sed.sh "x=1; $SD $FI \"s/a/b/\" f" fail
+sed_case "script quoted right after -i (double)"  tests/zz-sed.sh "$SD $FI\"s/a/b/\" f" fail
+sed_case "script quoted right after -i (single)"  tests/zz-sed.sh "$SD $FI's/a/b/' f" fail
+sed_case "in a pipeline"                          tests/zz-sed.sh "cat f | $SD $FI 's/a/b/' g" fail
+sed_case "evals/ file"                            evals/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
+sed_case "scripts/ file"                          scripts/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
+sed_case "tools/ file"                            tools/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
+sed_case "install.sh"                             install.sh "$SD $FI \"s/a/b/\" f" fail
+sed_case "attached suffix .bak"                   tests/zz-sed.sh "$SD $FI.bak 's/a/b/' f" pass
+sed_case "attached suffix .bak, -E before"        tests/zz-sed.sh "$SD -E $FI.bak 's/a/b/' f" pass
+sed_case "a comment line mentioning it"           tests/zz-sed.sh "# do not use $SD $FI \"s/...\"" pass
+sed_case "a trailing comment mentioning it"       tests/zz-sed.sh "foo   # node, not $SD $FI: BSD" pass
+sed_case "sed without -i"                         tests/zz-sed.sh "$SD -n 's/a/b/p' f" pass
+sed_case "grep -i is not sed -i"                  tests/zz-sed.sh "grep $FI x f" pass
+sed_case "sed -e script, no -i at all"           tests/zz-sed.sh "$SD -e 's/a/b/' f" pass
+# the message tells what is wrong, not only where
+C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$SD $FI 's/a/b/' f" > "$C/tests/zz-sed.sh"
+checks "$C"
+assert_contains "AC2.1 the failure mentions sed" "$OUT" "$SD"
+# the repository itself stays clean and says so
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh"
+assert_rc "AC2.1 the real tree passes run-checks" 0
+assert_contains "AC2.1 the ok line is printed" "$OUT" "  ok   $SD $FI has a suffix (BSD sed)"
+
 t_summary

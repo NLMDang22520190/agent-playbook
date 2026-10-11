@@ -130,7 +130,7 @@ WSRC="$(tu Write '{"file_path":"/work/E19/src/calc.js","content":"x"}')"
 WNEAR="$(tu Write '{"file_path":"/work/E19/src/contests.js","content":"x"}')"
 BOTH='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Skill","input":{"skill":"playbook-tdd"}},{"type":"tool_use","id":"u3","name":"Write","input":{"file_path":"/work/E19/tests/multiply.test.js","content":"x"}}]}}'
 BOTHREV='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u3","name":"Write","input":{"file_path":"/work/E19/tests/multiply.test.js","content":"x"}},{"type":"tool_use","id":"u2","name":"Skill","input":{"skill":"playbook-tdd"}}]}}'
-RES19="${RES_PRE}\"Loaded playbook-tdd, then added multiply with a test.\"}"
+RES19="${RES_PRE}\"Loaded playbook-tdd, then added multiply with a test. Playbook feedback: none\"}"
 run_e19() { local n="$1" fix="$2"; shift 2; jl "x19$n" "$@"; mk_adapter "e19$n" "$fix
 cat $J/x19$n.json"; local w; w="$(mk_tmp)"
   run bash "$RUNNER" --cmd "bash $A/e19$n.sh" --scenarios E19 --workroot "$w" --out "$w/results.md"; }
