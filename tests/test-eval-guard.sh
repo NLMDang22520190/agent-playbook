@@ -120,6 +120,40 @@ echo "AC2.2 usage"
 guard
 if [ "$RC" -ne 0 ]; then t_ok "AC2.2 no --base: non-zero exit"; else t_bad "AC2.2 no --base: non-zero exit" "exit 0, output: $OUT"; fi
 
+echo "AC2.2 the harness must be opencode, claude or codex (flag and PLAYBOOK_HARNESS)"
+for st in c3 c1; do
+  git_c checkout -q "$st"
+  guard --base base --harness bogus
+  assert_rc "AC2.2 [$st] --harness bogus: exit 2" 2
+  guard --base base --harness 'claude;touch x'
+  assert_rc "AC2.2 [$st] --harness with shell characters: exit 2" 2
+  guard --base base --harness Claude
+  assert_rc "AC2.2 [$st] --harness Claude (case matters): exit 2" 2
+  guard_env bogus --base base
+  assert_rc "AC2.2 [$st] PLAYBOOK_HARNESS=bogus: exit 2" 2
+  guard_env 'a b' --base base
+  assert_rc "AC2.2 [$st] PLAYBOOK_HARNESS with a blank: exit 2" 2
+  for okh in opencode claude codex; do
+    guard --base base --harness "$okh"
+    assert_rc "AC2.2 [$st] --harness $okh: exit 0" 0
+  done
+done
+assert_eq "AC2.2 a rejected harness writes nothing" "" "$(git_c status --porcelain)"
+
+echo "AC2.2 the map: blank lines and a last line without a newline still parse"
+git_c checkout -q c1
+printf 'skills/a/* E1 E3\n\n\nskills/b/SKILL.md E3 E5\nAGENTS.global.md E4 E1' > "$R/evals/scenario-map"
+guard --base base
+assert_rc "AC2.2 blank lines in the map: exit 0" 0
+has_line "AC2.2 blank lines and no final newline: the last map line is read too (E1,E3,E5,E4)" "bash evals/run-evals.sh --harness claude --scenarios E1,E3,E5,E4 --max-cost 3"
+printf 'skills/zzz/* E5\n\nAGENTS.global.md E4 E1' > "$R/evals/scenario-map"
+guard --base base
+has_line "AC2.2 the last line has no newline and is the only match: E4,E1" "bash evals/run-evals.sh --harness claude --scenarios E4,E1 --max-cost 3"
+printf '\nskills/b/SKILL.md E3 E5\n' > "$R/evals/scenario-map"
+guard --base base
+has_line "AC2.2 a leading blank line is ignored" "bash evals/run-evals.sh --harness claude --scenarios E3,E5 --max-cost 3"
+git_c checkout -q -- evals/scenario-map
+
 echo "AC2.2 the guard never runs anything (D1)"
 assert_eq "AC2.2 the recording run-evals.sh and the fake harnesses were never called" "" "$(cat "$CALLS")"
 t_summary

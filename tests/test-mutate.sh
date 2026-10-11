@@ -295,4 +295,186 @@ N="$(mk_tmp)"
 mrun "$N" --base base --test true
 assert_rc "AC1.5 not a git repository: exit 3" 3
 
+# =====================================================================================================
+# v0.22.4 review findings (round 2)
+# =====================================================================================================
+cat > "$W/snap.sh" <<'EOF'
+#!/usr/bin/env bash
+# snap.sh LOG TARGET: record the target's checksum before and after a one-second pause (a slow CMD)
+echo "$(cksum < "$2")" >> "$1"
+sleep 1
+echo "$(cksum < "$2")" >> "$1"
+exit 0
+EOF
+cat > "$W/seen.sh" <<'EOF'
+#!/usr/bin/env bash
+# seen.sh LOG SECS: record which mutant of src/m.js this run really sees, then pause SECS seconds
+printf 'seen:%s\n' "$(grep -n '!=' src/m.js)" >> "$1"
+sleep "$2"
+exit 0
+EOF
+cat > "$W/gc.sh" <<'EOF'
+#!/usr/bin/env bash
+# gc.sh PIDDIR MODE: start a grandchild (sleep 300) and wait for it. MODE mutant: only when src/a.js is mutated.
+if [ "$2" = mutant ] && ! grep -q '!=' src/a.js; then exit 0; fi
+echo "$$" > "$1/cmd.pid"
+sleep 300 &
+echo "$!" > "$1/gc.pid"
+wait
+EOF
+alive() { kill -0 "$1" 2>/dev/null; }
+# gone_within SECS PID -> 0 when PID is dead within SECS seconds (polled)
+gone_within() {
+  local i=0
+  while alive "$2" && [ "$i" -lt $(($1 * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+  ! alive "$2"
+}
+
+echo "AC1.3 symlinks (absolute or relative) are skipped; their target is never written"
+if [ "$SYMLINKS" = 1 ]; then
+  R="$W/sym"; mkfx "$R"
+  OUTSIDE="$W/outside/true"; mkdir -p "$OUTSIDE"
+  printf 'const t = a == b;\nconst u = 1;\n' > "$OUTSIDE/t.js"
+  ( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+  set_base "$R"
+  # the blob text of each link is its target path, which holds the whole token "true" (".../true/t.js")
+  ( cd "$R" && printf 'const f = true;\n' >> src/a.js && ln -s "$OUTSIDE/t.js" src/abs.js && ln -s "../../outside/true/t.js" src/rel.js ) || exit 3
+  commit_all "$R" change
+  assert_eq "AC1.3 precondition: both links are committed as symlinks (mode 120000)" "2" "$(cd "$R" && git ls-files -s src/abs.js src/rel.js | grep -c '^120000 ')"
+  TSUM="$(cksum < "$OUTSIDE/t.js")"
+  rm -f "$W/snap.log"
+  mrun "$R" --base base --test "bash $W/snap.sh $W/snap.log $OUTSIDE/t.js"
+  assert_rc "AC1.3 a repo with symlinks: exit 0" 0
+  has_line "AC1.3 the regular file is still mutated" "survived: src/a.js:2: const f = true; -> const f = false;"
+  no_text "AC1.3 the absolute symlink never becomes a mutant" "src/abs.js"
+  no_text "AC1.3 the relative symlink never becomes a mutant" "src/rel.js"
+  has_line "AC1.3 only the regular file is counted" "mutants: 1, killed: 0, survived: 1"
+  assert_eq "AC1.3 the target outside the repo is unchanged after the run" "$TSUM" "$(cksum < "$OUTSIDE/t.js")"
+  assert_eq "AC1.3 the target was unchanged at every snapshot taken during the run (2 per CMD run)" "$(printf '%s\n%s\n%s\n%s\n' "$TSUM" "$TSUM" "$TSUM" "$TSUM")" "$(cat "$W/snap.log")"
+  assert_eq "AC1.3 the symlinks in the user's tree are untouched" "2" "$(cd "$R" && find src -type l | wc -l | tr -d ' ')"
+else
+  t_skip 10 "AC1.3 symlinks (this system cannot create them)"
+fi
+
+echo "AC1.3 concurrent runs: a live run's worktree is never removed, only a dead owner's is"
+R="$W/conc"; mkfx "$R"
+( cd "$R" && mkdir -p src && printf 'const v0 = 0;\n' > src/m.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const v1 = a == b;\nconst v2 = a == b;\nconst v3 = a == b;\n' >> src/m.js ) || exit 3
+commit_all "$R" change
+# K: a run killed with kill -9 leaves a stale worktree behind (its owner is dead)
+rm -f "$W/hang.pid"
+( cd "$R" && exec env TMPDIR="$W/tmp" bash "$MUT" --base base --test "bash $W/hang.sh $W/hang.pid" > "$W/kc.out" 2>&1 ) &
+KPID=$!
+i=0; while [ ! -s "$W/hang.pid" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+kill -9 "$KPID" 2>/dev/null; wait "$KPID" 2>/dev/null
+[ -s "$W/hang.pid" ] && kill -9 "$(cat "$W/hang.pid")" 2>/dev/null
+assert_eq "AC1.3 precondition: the killed run left its worktree registered" "2" "$(nwt "$R")"
+# A: a slow run (3 s per CMD run, baseline + 3 mutants)
+rm -f "$W/seen.A.log"
+( cd "$R" && exec env TMPDIR="$W/tmp" bash "$MUT" --base base --test "bash $W/seen.sh $W/seen.A.log 3" > "$W/A.out" 2>&1 ) &
+APID=$!
+i=0; while [ ! -s "$W/seen.A.log" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+if [ -s "$W/seen.A.log" ]; then t_ok "AC1.3 run A reached its test command"; else t_bad "AC1.3 run A reached its test command" "no log after 20 s"; fi
+assert_eq "AC1.3 A's start removed the dead owner's worktree and made its own (two registered: the repo and A)" "2" "$(nwt "$R")"
+assert_eq "AC1.3 only A's temp directory is left (the stale one is gone)" "1" "$(ls -A "$W/tmp" | wc -l | tr -d ' ')"
+# B: starts while A is still running
+mrun "$R" --base base --test true
+assert_rc "AC1.3 run B, started while A runs, completes with exit 0" 0
+has_line "AC1.3 run B's own result is complete" "mutants: 3, killed: 0, survived: 3"
+if alive "$APID"; then t_ok "AC1.3 run A is still running after B finished"; else t_bad "AC1.3 run A is still running after B finished" "A ended early"; fi
+assert_eq "AC1.3 B did not remove A's worktree (the repo and A are still registered)" "2" "$(nwt "$R")"
+assert_eq "AC1.3 B removed only its own temp directory (A's is still there)" "1" "$(ls -A "$W/tmp" | wc -l | tr -d ' ')"
+i=0; while alive "$APID" && [ "$i" -lt 900 ]; do sleep 0.1; i=$((i + 1)); done
+if alive "$APID"; then kill -9 "$APID" 2>/dev/null; t_bad "AC1.3 run A finished within 90 s" "still running"; else t_ok "AC1.3 run A finished within 90 s"; fi
+wait "$APID" 2>/dev/null; ARC=$?
+AOUT="$(cat "$W/A.out" 2>/dev/null)"
+assert_eq "AC1.3 run A exits 0" "0" "$ARC"
+assert_contains "AC1.3 run A's result is correct (three mutants, none killed)" "$AOUT" "mutants: 3, killed: 0, survived: 3"
+assert_eq "AC1.3 run A saw each of its mutants in its own worktree, once, in order (the baseline sees none)" "$(printf 'seen:\nseen:2:const v1 = a != b;\nseen:3:const v2 = a != b;\nseen:4:const v3 = a != b;')" "$(cat "$W/seen.A.log")"
+assert_eq "AC1.3 after both runs only the repo's worktree is left" "1" "$(nwt "$R")"
+assert_eq "AC1.3 after both runs the temp dir is empty" "" "$(ls -A "$W/tmp")"
+
+echo "AC1.3 a mutant that cannot be applied is an error line, not a kill"
+RO_OK=1
+[ "$(id -u)" = 0 ] && RO_OK=0
+printf 'x\n' > "$W/probe.txt"; chmod a-w "$W/probe.txt"
+if ( : >> "$W/probe.txt" ) 2>/dev/null; then RO_OK=0; fi
+chmod u+w "$W/probe.txt"
+if [ "$RO_OK" = 1 ]; then
+  R="$W/ro"; mkfx "$R"; ( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+  set_base "$R"
+  ( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+  commit_all "$R" change
+  # the test command makes the file read-only in the throw-away copy, so the write of the mutant fails
+  mrun "$R" --base base --test "chmod a-w src/a.js"
+  if printf '%s\n' "$OUT" | grep -qiE '^error.*src/a\.js:2'; then t_ok "AC1.3 an error line names src/a.js:2"; else t_bad "AC1.3 an error line names src/a.js:2" "output: $OUT"; fi
+  no_text "AC1.3 an unapplied mutant is not reported as a survivor" "survived: src/a.js"
+  no_text "AC1.3 an unapplied mutant is not a timeout kill" "killed (timeout)"
+  ML="$(printf '%s\n' "$OUT" | grep '^mutants: ')"
+  case "$ML" in
+    "") t_ok "AC1.3 (no mutants line: the run stopped on the error)" ;;
+    *"killed: 0,"*) t_ok "AC1.3 an unapplied mutant is not counted as killed" ;;
+    *) t_bad "AC1.3 an unapplied mutant is not counted as killed" "line: $ML" ;;
+  esac
+  assert_eq "AC1.3 the worktree is removed even with a read-only file" "1" "$(nwt "$R")"
+else
+  t_skip 5 "AC1.3 unapplied mutant (running as root, or this file system ignores read-only files)"
+fi
+
+echo "AC1.4 process group: no grandchild survives a timeout or a kill -9 of mutate.sh"
+R="$W/pg"; mkfx "$R"; ( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+commit_all "$R" change
+PD="$W/pd1"; mkdir -p "$PD"
+bg_limited 30 "$R" --base base --test "bash $W/gc.sh $PD mutant" --timeout 2
+assert_eq "AC1.4 the timeout run finishes by itself" "0" "$HUNG"
+assert_contains "AC1.4 the timeout run reports the timeout" "$OUT" "killed (timeout): src/a.js:2"
+GC="$(cat "$PD/gc.pid" 2>/dev/null)"; CP="$(cat "$PD/cmd.pid" 2>/dev/null)"
+if [ -n "$GC" ]; then
+  if gone_within 10 "$GC"; then t_ok "AC1.4 the grandchild (sleep 300 &) is gone after a timeout"; else kill -9 "$GC" 2>/dev/null; t_bad "AC1.4 the grandchild (sleep 300 &) is gone after a timeout" "pid $GC still alive"; fi
+  if gone_within 5 "$CP"; then t_ok "AC1.4 the test command itself is gone after a timeout"; else kill -9 "$CP" 2>/dev/null; t_bad "AC1.4 the test command itself is gone after a timeout" "pid $CP still alive"; fi
+else
+  t_bad "AC1.4 the grandchild was started" "no pid file"
+fi
+PD="$W/pd2"; mkdir -p "$PD"
+( cd "$R" && exec env TMPDIR="$W/tmp" bash "$MUT" --base base --test "bash $W/gc.sh $PD always" > "$W/pg.out" 2>&1 ) &
+MPID=$!
+i=0; while [ ! -s "$PD/gc.pid" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done
+sleep 0.3
+GC="$(cat "$PD/gc.pid" 2>/dev/null)"; CP="$(cat "$PD/cmd.pid" 2>/dev/null)"
+kill -9 "$MPID" 2>/dev/null; wait "$MPID" 2>/dev/null
+if [ -n "$GC" ]; then
+  if gone_within 15 "$GC"; then t_ok "AC1.4 the grandchild is gone after a kill -9 of mutate.sh"; else kill -9 "$GC" 2>/dev/null; t_bad "AC1.4 the grandchild is gone after a kill -9 of mutate.sh" "pid $GC still alive after 15 s"; fi
+  if gone_within 5 "$CP"; then t_ok "AC1.4 the test command itself is gone after a kill -9 of mutate.sh"; else kill -9 "$CP" 2>/dev/null; t_bad "AC1.4 the test command itself is gone after a kill -9 of mutate.sh" "pid $CP still alive"; fi
+else
+  t_bad "AC1.4 the grandchild was started (kill -9 case)" "no pid file"
+fi
+mrun "$R" --base base --test true
+assert_eq "AC1.4 the next run cleans up the killed run's worktree" "1" "$(nwt "$R")"
+
+echo "AC1.1 *.md is excluded by default (D4); --include-docs brings it back"
+R="$W/md"; mkfx "$R"; ( cd "$R" && mkdir -p src docs ) || exit 3
+printf 'const k = 1;\n' > "$R/src/a.js"
+set_base "$R"
+( cd "$R" && printf 'const f = true;\n' >> src/a.js &&
+  printf 'Set the flag to true and check a == b.\n' > docs/g.md && printf 'x == y\n' > NOTES.md ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "AC1.1 default run exits 0" 0
+has_line "AC1.1 the code line is mutated" "survived: src/a.js:2: const f = true; -> const f = false;"
+no_text "AC1.1 a .md file in a directory is not mutated by default" "docs/g.md"
+no_text "AC1.1 a .md file at the root is not mutated by default" "NOTES.md"
+has_line "AC1.5 only the code mutant is counted by default" "mutants: 1, killed: 0, survived: 1"
+mrun "$R" --base base --test true --include-docs
+assert_rc "AC1.1 --include-docs run exits 0" 0
+has_line "AC1.1 --include-docs: the == in a .md file is mutated" "survived: docs/g.md:1: Set the flag to true and check a == b. -> Set the flag to true and check a != b."
+has_line "AC1.1 --include-docs: the word true in a .md file is mutated" "survived: docs/g.md:1: Set the flag to true and check a == b. -> Set the flag to false and check a == b."
+has_line "AC1.1 --include-docs: a root .md file is mutated" "survived: NOTES.md:1: x == y -> x != y"
+has_line "AC1.5 --include-docs counts all four mutants" "mutants: 4, killed: 0, survived: 4"
+mrun "$R" --base base --test true --include-docs --exclude 'docs/*'
+no_text "AC1.1 --exclude still applies next to --include-docs" "docs/g.md"
+has_line "AC1.1 --exclude next to --include-docs keeps the other .md file" "survived: NOTES.md:1: x == y -> x != y"
+
 t_summary

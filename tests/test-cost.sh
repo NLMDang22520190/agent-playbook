@@ -409,9 +409,9 @@ crow() { # ROLE TOKENS PHASE REWORK MAJORS TASK WEIGHT -> one eleven-field row o
 mkcal() { newp; mkdir -p "$(dirname "$F")"; printf '%s\n' "$CH" > "$F"; }
 # line_of_weight WEIGHT -> the calibrate output line that starts with that weight (after table or list marks)
 line_of_weight() { printf '%s\n' "$OUT" | grep -E "^[-*| ]*$1([^A-Za-z]|\$)" | head -n 1; }
-# has_metric NAME LINE LABEL VALUE: LABEL comes first, then the number (whole number)
+# has_metric NAME LINE LABEL VALUE: LABEL comes first, then the number; an average may be written with one decimal (1500 or 1500.0)
 has_metric() {
-  if printf '%s\n' "$2" | grep -qiE "$3[^0-9]{0,20}$4([^0-9.]|\$)"; then t_ok "$1"; else t_bad "$1" "no [$3 ... $4] in line [$2]"; fi
+  if printf '%s\n' "$2" | grep -qiE "$3[^0-9]{0,20}$4(\\.0)?([^0-9.]|\$)"; then t_ok "$1"; else t_bad "$1" "no [$3 ... $4] in line [$2]"; fi
 }
 mkcal
 {
@@ -487,4 +487,19 @@ newp
 cost calibrate
 assert_rc "AC3.2 calibrate with no file exits 0" 0
 assert_no_path "AC3.2 calibrate does not create the file" "$F"
+
+echo "cost.sh v0.22.4 review: per-task averages show one decimal place (D5)"
+mkcal
+{
+  crow reviewer 100 review 1 1 D1 Full
+  crow reviewer 100 review 0 0 D2 Full
+  crow reviewer 101 review 0 0 D3 Full
+} >> "$F"
+cost calibrate
+assert_rc "D5 calibrate with three Full tasks exits 0" 0
+DL="$(line_of_weight Full)"
+assert_contains "D5 three Full tasks with one major in total print 'review majors 0.3'" "$DL" "review majors 0.3"
+has_metric "D5 tasks stay a whole count (3)" "$DL" "tasks" "3"
+if printf '%s\n' "$DL" | grep -qiE 'tokens[^0-9]{0,20}100\.3([^0-9]|$)'; then t_ok "D5 the average tokens (300.33 / 3 = 100.33) print as 100.3"; else t_bad "D5 the average tokens print as 100.3" "line: $DL"; fi
+if printf '%s\n' "$DL" | grep -qiE 'rework[^0-9]{0,20}0\.3([^0-9]|$)'; then t_ok "D5 the rework per task (1, 0, 0) prints as 0.3"; else t_bad "D5 the rework per task prints as 0.3" "line: $DL"; fi
 t_summary

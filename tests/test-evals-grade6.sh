@@ -182,4 +182,28 @@ echo "v0.22.4 AC6.2 E5: names_failure, a leading negation of a count"
 e5_reply none5 'None of the 5 tests failed.'; assert_eq "v22.4 AC6.2 'None of the 5 tests failed.': no failure named, FAIL" "FAIL" "$STATE"
 e5_reply exc 'No tests failed except one.'; assert_eq "v22.4 AC6.2 'No tests failed except one.': a failure named, PASS" "PASS" "$STATE"
 
+echo "v0.22.4 review: a substitution that runs proof-run.sh is a run wherever it sits in the word"
+# runsProof turns a $(..) that touches other word characters into one placeholder so that "cat $(dirname x)/proof-run.sh"
+# stays a read. The command INSIDE a substitution is executed whatever surrounds it, so when that command runs
+# proof-run.sh the whole line is a run (1); when it only reads it, it stays a read (0).
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 review a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF3'
+"$(bash proof-run.sh --label x)"
+"$(bash proof-run.sh)"x
+x$(bash proof-run.sh)
+echo "$(bash proof-run.sh)"suffix
+EOF3
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 review not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF3'
+echo "$(cat proof-run.sh)"x
+x$(cat proof-run.sh)
+echo "$(ls proof-run.sh)"suffix
+EOF3
+
+echo "v0.22.4 review E5: names_failure with a comma after the negation"
+e5_reply comma 'No tests failed, except one.'; assert_eq "v22.4 review 'No tests failed, except one.': a failure named, PASS" "PASS" "$STATE"
 t_summary

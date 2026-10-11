@@ -800,4 +800,12 @@ case "$BSD_USAGE" in
   *[Ss]uite*relative*|*relative*[Ss]uite*|*[Pp]ath*relative*|*relative*[Pp]ath*) t_ok 'v22.4 AC6.3 bsd-check usage: the sentence is about the suite paths' ;;
   *) t_bad 'v22.4 AC6.3 bsd-check usage: the sentence is about the suite paths' "header: $BSD_USAGE" ;;
 esac
+
+echo "v22.4 review: the first-slice checkpoint keeps its Why line directly after it"
+CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$SKILL" | cut -d: -f1)"
+PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$SKILL" | cut -d: -f1)"
+WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
+if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
+if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
+if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
 t_summary
