@@ -437,6 +437,22 @@ run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E19 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E19 ')"
 
+# ---- v0.17.0 AC5.1: E20 joins the auto-gradable list ----
+echo "v0.17.0 AC5.1 the auto-gradable list accepts E20"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E20 --workroot "$W" --out "$W/results.md"
+assert_rc "AC5.1 --scenarios E20 is accepted (graded; the idle adapter fixes no typo: exit 1, not the usage exit 2)" 1
+assert_not_contains "AC5.1 E20 is not rejected as not auto-gradable" "$OUT" "not auto-gradable"
+if [ "$(printf '%s\n' "$OUT" | grep -c '^E20 ')" -ge 3 ]; then t_ok "AC5.1 the idle run graded E20 (at least 3 grader lines)"; else t_bad "AC5.1 the idle run graded E20 (at least 3 grader lines)" "$OUT"; fi
+assert_eq "AC5.1 the idle run: the typo check FAILs" "FAIL" "$(printf '%s\n' "$OUT" | grep '^E20 ' | grep -F 'typo' | awk '{print $2}' | head -n 1)"
+assert_eq "AC5.1 the idle run leaves the project conf alone: the gate config check PASSes" "PASS" "$(printf '%s\n' "$OUT" | grep '^E20 ' | grep -F 'gate config' | awk '{print $2}' | head -n 1)"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E17 --workroot "$W" --out "$W/results.md"
+assert_contains "AC5.1 the refusal lists E20 among the auto-gradable scenarios" "$OUT" "E1,E3,E8,E15,E16,E19,E20"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
+assert_eq "AC5.1 the default scenarios stay E1,E3,E8,E15 (no E20 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E20 ')"
+
 # ---- v0.15.0 AC2.1: a transient api_retry line is not a harness error ----
 echo "v0.15.0 AC2.1 api_retry 401 followed by a normal result is not a harness error"
 RETRY='{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"error_status":401,"error":"authentication_failed"}'

@@ -19,14 +19,17 @@ BIN="$W/bin"; mkdir -p "$BIN"
 # ---- fake gh ----
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# fake gh. Env: FAKE_LOG, FAKE_GH_STATE, FAKE_GH_MERGE_STATE, FAKE_GH_FAIL (words: prview merge runlist runwatch relview),
-# FAKE_ORIGIN_WORK (clone of origin used to simulate the merge)
+# fake gh. Env: FAKE_LOG, FAKE_GH_STATE, FAKE_GH_MERGE_STATE, FAKE_GH_MERGE_COMMIT (sha of the PR's merge commit, empty = none),
+# FAKE_GH_FAIL (words: prview merge runlist runwatch relview shardlist shardview),
+# FAKE_ORIGIN_WORK (clone of origin used to simulate the merge),
+# FAKE_SHARD_LIST (empty|null: the main push run lookup finds nothing), FAKE_MAIN_RUN (its id, default 7777),
+# FAKE_SHARDS (comma list of "windows shard" job seconds, "running" = no finish time, "none" = no jobs, "bad" = not JSON).
 echo "gh $*" >> "$FAKE_LOG"
 fails=" ${FAKE_GH_FAIL:-} "
 failing() { case "$fails" in *" $1 "*) echo "gh: simulated $1 failure" >&2; return 0 ;; esac; return 1; }
-fields=""; expr=""; prev=""
+fields=""; expr=""; prev=""; branch=""
 for a in "$@"; do
-  case "$prev" in --json) fields="$a" ;; --jq|-q) expr="$a" ;; esac
+  case "$prev" in --json) fields="$a" ;; --jq|-q) expr="$a" ;; --branch) branch="$a" ;; esac
   prev="$a"
 done
 val() { # field -> value for the PR (kind=pr) or the run (kind=run)
@@ -39,7 +42,8 @@ val() { # field -> value for the PR (kind=pr) or the run (kind=run)
     headRefName) echo "feat/x" ;;
     baseRefName) echo "main" ;;
     mergeable) echo "MERGEABLE" ;;
-    databaseId) echo "4242" ;;
+    databaseId) echo "${RUNID:-4242}" ;;
+    oid) echo "${FAKE_GH_MERGE_COMMIT:-}" ;;   # no jq: the value of .mergeCommit.oid
     status) echo "in_progress" ;;
     conclusion) echo "" ;;
     workflowName|name) echo "CI-fake" ;;
@@ -54,6 +58,8 @@ json_obj() {
   for f in $(printf '%s\n' "$fields" | tr ',' '\n' | sort); do
     v="$(val "$f")"
     case "$f" in
+      mergeCommit)   # gh prints the merge commit as an object {"oid": "..."}; null while the PR is not merged
+        if [ -n "${FAKE_GH_MERGE_COMMIT:-}" ]; then out="$out$sep\"$f\":{\"oid\":\"$FAKE_GH_MERGE_COMMIT\"}"; else out="$out$sep\"$f\":null"; fi ;;
       number|databaseId) out="$out$sep\"$f\":$v" ;;
       url) out="$out$sep\"$f\":\"${v}\"" ;;
       *) out="$out$sep\"$f\":\"$v\"" ;;
@@ -79,6 +85,8 @@ case "$1 $2" in
     failing merge && exit 1
     # where the clone is when GitHub merges (a detached HEAD makes the real gh fail locally after the merge)
     echo "merge-at $(git rev-parse --abbrev-ref HEAD 2>&1)" >> "$FAKE_LOG"
+    # --auto: GitHub only arms the merge for later (when the checks pass); nothing reaches origin's main now
+    case " $* " in *" --auto "*) echo "Pull request #$3 will be automatically merged when all requirements are met"; exit 0 ;; esac
     ( cd "$FAKE_ORIGIN_WORK" &&
       git pull -q --ff-only origin main >/dev/null 2>&1
       case "${FAKE_REWRITE_SHIP:-}" in
@@ -91,15 +99,46 @@ case "$1 $2" in
       git push -q origin HEAD:main >/dev/null 2>&1 ) || exit 1
     echo "merged pull request #$3" ;;
   "run list")
-    failing runlist && exit 1
-    case "${FAKE_RUN_LIST:-}" in
-      empty) emit "[]"; exit 0 ;;
-      null) echo null; exit 0 ;;
-    esac
+    if [ "$branch" = main ]; then   # the lookup of the push-to-main run (shard report), not of the tag's run
+      failing shardlist && exit 1
+      case "${FAKE_SHARD_LIST:-}" in
+        empty) emit "[]"; exit 0 ;;
+        null) echo null; exit 0 ;;
+      esac
+      RUNID="${FAKE_MAIN_RUN:-7777}"
+    else
+      failing runlist && exit 1
+      case "${FAKE_RUN_LIST:-}" in
+        empty) emit "[]"; exit 0 ;;
+        null) echo null; exit 0 ;;
+      esac
+    fi
     if [ -n "$fields" ]; then emit "[$(json_obj)]"; else printf 'in_progress\t\tfake run\tCI-fake\t%s\tpush\t4242\t5s\n' "${FAKE_TAG:-v1.2.3}"; fi ;;
   "run watch")
     failing runwatch && { echo "Run CI-fake (4242) failed" >&2; exit 1; }
     echo "Run CI-fake (4242) completed with 'success'" ;;
+  "run view")   # gh run view RUN --json jobs (--jq is ignored: the JSON comes back whole)
+    failing shardview && exit 1
+    case "${FAKE_SHARDS:-}" in
+      bad) echo "this is not json"; exit 0 ;;
+    esac
+    iso() { local s=$((36000 + $1)); printf '2026-10-11T%02d:%02d:%02dZ' $((s / 3600)) $((s % 3600 / 60)) $((s % 60)); }
+    job() { printf '{"databaseId":%s,"name":"%s","status":"%s","conclusion":"success","startedAt":"%s","completedAt":"%s"}' "$1" "$2" "$3" "$4" "$5"; }
+    jobs=""; sep=""; i=0
+    if [ "${FAKE_SHARDS:-}" != none ]; then
+      # other jobs of the same run: they are not shards and must not count
+      jobs="$(job 9001 'test (ubuntu-latest)' completed "$(iso 0)" "$(iso 900)"),$(job 9002 'test (macos-latest)' completed "$(iso 0)" "$(iso 30)"),$(job 9003 'test (windows-latest)' completed "$(iso 0)" "$(iso 5)")"
+      sep=","
+      for d in $(printf '%s' "${FAKE_SHARDS:-}" | tr ',' ' '); do
+        i=$((i + 1))
+        case "$d" in
+          running) jobs="$jobs$sep$(job $((9100 + i)) "windows shard $i/3" in_progress "$(iso 0)" '0001-01-01T00:00:00Z')" ;;
+          *) jobs="$jobs$sep$(job $((9100 + i)) "windows shard $i/3" completed "$(iso 0)" "$(iso "$d")")" ;;
+        esac
+        sep=","
+      done
+    fi
+    printf '{"jobs":[%s]}\n' "$jobs" ;;
   "release view")
     failing relview && { echo "release not found" >&2; exit 1; }
     echo "title: fake release" ;;
@@ -187,9 +226,11 @@ EOF
 chmod +x "$BIN/git"
 
 # fx -> fresh fixture: $F/origin.git, $F/repo (on branch feat/x, main pushed), $F/work (clone used by the fake merge)
-FXN=0
-fx() {
-  FXN=$((FXN + 1)); F="$W/fx$FXN"; mkdir -p "$F"
+# The first call builds the fixture with git (init, clone, commit, push); every later call copies that
+# template with cp -a and only re-points the two clones at the copied origin.
+FXN=0; FXTPL=""
+fx_build() { # DIR -> the fixture in DIR
+  local F="$1"; mkdir -p "$F"
   git init -q --bare "$F/origin.git" 2>/dev/null
   git -C "$F/origin.git" symbolic-ref HEAD refs/heads/main
   git clone -q "$F/origin.git" "$F/repo" 2>/dev/null
@@ -202,9 +243,19 @@ fx() {
     GITID commit -qm init && git push -q -u origin main 2>/dev/null &&
     git switch -q -c feat/x ) || { echo "fixture setup failed"; exit 3; }
   git clone -q "$F/origin.git" "$F/work" 2>/dev/null
+}
+fx() {
+  FXN=$((FXN + 1)); F="$W/fx$FXN"
+  if [ -z "$FXTPL" ]; then
+    FXTPL="$W/fxtpl"; fx_build "$FXTPL"
+  fi
+  mkdir -p "$F"
+  cp -a "$FXTPL/." "$F/"
+  git -C "$F/repo" remote set-url origin "$F/origin.git"
+  git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
-  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3
+  export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS=
   export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
   export PATH="$BIN:$ORIG_PATH"
 }
@@ -218,6 +269,7 @@ steps() {
     /^gh pr merge/ { print "merge"; next }
     /^release.sh .*--dry-run/ { print "dry"; next }
     /^release.sh/ { print "release"; next }
+    /^gh run list .*--branch main / { next }   # the shard report (v0.17.0 AC4.1) is not a step; see shard_calls
     /^gh run list/ { print "runlist"; next }
     /^gh run watch/ { print "runwatch"; next }
     /^gh release view/ { print "relview"; next }
@@ -227,6 +279,8 @@ steps() {
 logged() { grep -c -- "$1" "$FAKE_LOG" 2>/dev/null || true; }
 FULL="view merge dry release runlist runwatch relview install"          # with the questions: the dry run is kept
 FULL_YES="view merge release runlist runwatch relview install"          # --yes: the dry run is skipped (v0.14.0 AC2.1)
+MERGED_YES="view release runlist runwatch relview install"              # PR already merged (v0.17.0 AC2.2), --yes: no merge call
+MERGED_Q="view dry release runlist runwatch relview install"            # PR already merged, with the questions: the dry run stays
 
 echo "AC6.1 the script exists"
 assert_file "AC6.1 tools/ship.sh exists" "$SHIP"
@@ -267,8 +321,8 @@ assert_contains "AC6.1 merges PR 345" "$(grep '^gh pr merge' "$FAKE_LOG")" "pr m
 assert_eq "AC6.1 releases v10.20.30" "release.sh v10.20.30 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 assert_contains "AC6.1 looks up the CI run of v10.20.30" "$(grep '^gh run list' "$FAKE_LOG" | head -n 1)" "--branch v10.20.30"
 
-echo "AC6.1 refusal: the PR must be OPEN and CLEAN (nothing merged)"
-for combo in "MERGED CLEAN" "CLOSED CLEAN" "OPEN BLOCKED" "OPEN BEHIND" "OPEN DIRTY" "OPEN UNSTABLE" "OPEN UNKNOWN" "OPEN DRAFT" "OPEN HAS_HOOKS"; do
+echo "AC6.1 refusal: the PR must be OPEN and CLEAN (nothing merged); MERGED has its own rule (v0.17.0 AC2.2 below)"
+for combo in "CLOSED CLEAN" "OPEN BLOCKED" "OPEN BEHIND" "OPEN DIRTY" "OPEN UNSTABLE" "OPEN UNKNOWN" "OPEN DRAFT" "OPEN HAS_HOOKS"; do
   fx
   export FAKE_GH_STATE="${combo% *}" FAKE_GH_MERGE_STATE="${combo#* }"
   sh_run 12 v1.2.3 --yes
@@ -388,6 +442,9 @@ usage_case "tag with two parts (v1.2)" 12 v1.2
 usage_case "tag with a suffix (v1.2.3-rc1)" 12 v1.2.3-rc1
 usage_case "unknown option (--force)" 12 v1.2.3 --force
 usage_case "unknown option before the arguments (--bogus)" --bogus 12 v1.2.3
+usage_case "--auto alone, without a PR and a tag (v0.17.0)" --auto
+usage_case "--auto and --yes but no PR and no tag (v0.17.0)" --yes --auto
+usage_case "--auto with a PR but no tag (v0.17.0)" 12 --auto
 assert_eq "AC6.1 usage errors: gh, release.sh and install.sh were never called" "" "$(steps)"
 assert_eq "AC6.1 usage errors: the log is empty" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
 
@@ -480,6 +537,236 @@ for mode in exit99 trunc grow; do
   assert_eq "AC1.1 [$mode] the clone still ends on main" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
 done
 
+# ---- v0.17.0: gh call shapes the tests fix (the implementer must use exactly these) ----
+#  PR check:     gh pr view PR --json state,mergeStateStatus,mergeCommit --jq '...'   (gh prints mergeCommit as {"oid": "SHA"}, null until merged)
+#  auto-merge:   gh pr merge PR --auto --merge --delete-branch     (exactly this argument order)
+#  shard report: gh run list --branch main --event push --commit SHA --limit 1 --json databaseId [--jq ...]
+#                gh run view RUN --json jobs                       (no --jq: parse the JSON with node, as tools/shard-weights.sh does)
+#                jobs named "windows shard K/N" carry startedAt/completedAt; a job still running has completedAt 0001-01-01T00:00:00Z
+AUTO_MERGE_CALL="gh pr merge 12 --auto --merge --delete-branch"
+# merged_on_main -> the PR is MERGED and its merge commit ($MC) is a new commit on origin's main, made through the work
+# clone: the local clone does not have it until ship fetches
+merged_on_main() {
+  ( cd "$F/work" && git pull -q --ff-only origin main >/dev/null 2>&1
+    echo merged > "merged-${FAKE_PR}.txt" && git add -A && GITID commit -qm "merge PR $FAKE_PR" &&
+    git push -q origin HEAD:main >/dev/null 2>&1 ) || { echo "fixture setup failed: merge commit"; exit 3; }
+  MC="$(git -C "$F/work" rev-parse HEAD)"
+  export FAKE_GH_STATE=MERGED FAKE_GH_MERGE_COMMIT="$MC"
+}
+# side_commit -> a commit that exists on origin but only on the branch "side", never on main ($MC)
+side_commit() {
+  ( cd "$F/work" && git switch -q -c side && echo side > side.txt && git add -A && GITID commit -qm side &&
+    git push -q origin side >/dev/null 2>&1 ) || { echo "fixture setup failed: side commit"; exit 3; }
+  MC="$(git -C "$F/work" rev-parse HEAD)"
+}
+origin_merges() { git -C "$F/origin.git" ls-tree -r --name-only main | grep -c '^merged-'; }
+
+echo "v0.17.0 AC2.1 --auto: an OPEN PR that is not CLEAN yet gets GitHub auto-merge and ship stops without releasing"
+for st in BLOCKED UNSTABLE; do
+  fx
+  export FAKE_GH_MERGE_STATE="$st"
+  sh_run 12 v1.2.3 --yes --auto
+  assert_rc "AC2.1 OPEN/$st with --auto: exit 0" 0
+  assert_eq "AC2.1 OPEN/$st with --auto: exactly one merge call, '$AUTO_MERGE_CALL'" "$AUTO_MERGE_CALL" "$(grep '^gh pr merge' "$FAKE_LOG")"
+  assert_eq "AC2.1 OPEN/$st with --auto: only the PR check and the auto-merge call (no release, CI wait or install)" "view merge" "$(steps)"
+  assert_eq "AC2.1 OPEN/$st with --auto: no release.sh and no install.sh call" "0" "$(logged '^release.sh\|^install.sh')"
+  assert_eq "AC2.1 OPEN/$st with --auto: no tag was created" "" "$(git -C "$F/repo" tag)"
+  assert_eq "AC2.1 OPEN/$st with --auto: nothing was merged into origin's main yet" "0" "$(origin_merges)"
+  assert_contains "AC2.1 OPEN/$st with --auto: says auto-merge was enabled" "$OUT" "auto-merge"
+  assert_contains "AC2.1 OPEN/$st with --auto: says it will merge when the checks pass" "$OUT" "will merge when the checks pass"
+  assert_contains "AC2.1 OPEN/$st with --auto: names the command to run again (PR and tag)" "$OUT" "tools/ship.sh 12 v1.2.3"
+  assert_contains "AC2.1 OPEN/$st with --auto: says to run ship again" "$OUT" "again"
+  assert_not_contains "AC2.1 OPEN/$st with --auto: does not claim the release is shipped" "$OUT" "shipped v1.2.3"
+done
+fx
+export FAKE_PR=345 FAKE_TAG=v10.20.30 FAKE_GH_MERGE_STATE=BLOCKED
+sh_run --auto 345 v10.20.30 --yes   # the option may come first; another PR and tag
+assert_rc "AC2.1 --auto before the arguments, PR 345: exit 0" 0
+assert_eq "AC2.1 --auto PR 345: the merge call carries PR 345" "gh pr merge 345 --auto --merge --delete-branch" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_contains "AC2.1 --auto PR 345: the run-again command names PR 345 and v10.20.30" "$OUT" "tools/ship.sh 345 v10.20.30"
+fx
+export FAKE_GH_MERGE_STATE=BLOCKED
+sh_run 12 v1.2.3 --auto --yes
+assert_rc "AC2.1 '--auto --yes' (either order): exit 0" 0
+assert_eq "AC2.1 '--auto --yes': one auto-merge call" "$AUTO_MERGE_CALL" "$(grep '^gh pr merge' "$FAKE_LOG")"
+echo "AC2.1 --auto on a CLEAN PR merges and releases as usual; without --auto a non-CLEAN PR is still refused"
+fx
+sh_run 12 v1.2.3 --yes --auto
+assert_rc "AC2.1 CLEAN PR with --auto: exit 0" 0
+assert_eq "AC2.1 CLEAN PR with --auto: the whole flow ran" "$FULL_YES" "$(steps)"
+assert_eq "AC2.1 CLEAN PR with --auto: a plain merge call, no --auto in it" "gh pr merge 12 --merge --delete-branch" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_eq "AC2.1 CLEAN PR with --auto: released from main with the merge pulled" "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
+for st in BLOCKED UNSTABLE; do
+  fx
+  export FAKE_GH_MERGE_STATE="$st"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC2.1 OPEN/$st without --auto is still refused: exit 1" 1
+  assert_eq "AC2.1 OPEN/$st without --auto: no merge call at all (not even an auto-merge)" "view" "$(steps)"
+done
+echo "AC2.1 --auto does not make other states acceptable"
+fx
+export FAKE_GH_STATE=CLOSED FAKE_GH_MERGE_STATE=BLOCKED
+sh_run 12 v1.2.3 --yes --auto
+assert_rc "AC2.1 CLOSED PR with --auto: exit 1" 1
+assert_eq "AC2.1 CLOSED PR with --auto: nothing merged, nothing released" "view" "$(steps)"
+fx
+export FAKE_GH_MERGE_STATE=BLOCKED FAKE_GH_FAIL="merge"
+sh_run 12 v1.2.3 --yes --auto
+if [ "$RC" -ne 0 ]; then t_ok "AC2.1 enabling auto-merge fails (gh error): non-zero exit"; else t_bad "AC2.1 enabling auto-merge fails (gh error): non-zero exit" "exit $RC; output: $OUT"; fi
+assert_eq "AC2.1 enabling auto-merge fails: no release, no install" "view merge" "$(steps)"
+assert_not_contains "AC2.1 enabling auto-merge fails: does not say auto-merge is on" "$OUT" "will merge when the checks pass"
+
+echo "v0.17.0 AC2.2 a PR already MERGED (auto-merge) whose merge commit is on origin/main goes on to the release"
+fx
+merged_on_main
+assert_eq "AC2.2 fixture: the merge commit is not in the local clone yet (ship must fetch to see it on origin/main)" "no" \
+  "$(git -C "$F/repo" cat-file -e "$MC^{commit}" 2>/dev/null && echo yes || echo no)"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 MERGED, merge commit on origin/main: exit 0" 0
+assert_eq "AC2.2 MERGED: no merge call; update main, release, CI, release check, install ran" "$MERGED_YES" "$(steps)"
+assert_eq "AC2.2 MERGED: gh pr merge was never called" "0" "$(logged '^gh pr merge')"
+assert_eq "AC2.2 MERGED: exactly one '== ' line says the PR is already merged" "1" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -ci 'already merged')"
+assert_eq "AC2.2 MERGED: no '== merge PR' step line" "0" "$(printf '%s\n' "$OUT" | grep -c '^== merge PR')"
+assert_eq "AC2.2 MERGED: released from main with the merge commit pulled" "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
+assert_eq "AC2.2 MERGED: the local main is at origin's main" "$(git -C "$F/origin.git" rev-parse main)" "$(cd "$F/repo" && git rev-parse HEAD)"
+assert_eq "AC2.2 MERGED: the local main has the merge commit" "yes" "$(git -C "$F/repo" cat-file -e "$MC^{commit}" 2>/dev/null && echo yes || echo no)"
+assert_contains "AC2.2 MERGED: the last message is still printed" "$OUT" "shipped v1.2.3"
+assert_eq "AC2.2 MERGED: the clone ends on main" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
+for ms in UNKNOWN BLOCKED DIRTY; do   # gh reports no useful merge state for a merged PR: only state and commit count
+  fx
+  merged_on_main
+  export FAKE_GH_MERGE_STATE="$ms"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC2.2 MERGED with merge state $ms and the commit on origin/main: exit 0" 0
+  assert_eq "AC2.2 MERGED/$ms: the merged flow ran" "$MERGED_YES" "$(steps)"
+done
+fx
+merged_on_main
+sh_run 12 v1.2.3 --yes --auto
+assert_rc "AC2.2 MERGED with --auto: exit 0" 0
+assert_eq "AC2.2 MERGED with --auto: still no merge call (not even an auto-merge)" "0" "$(logged '^gh pr merge')"
+assert_eq "AC2.2 MERGED with --auto: the merged flow ran" "$MERGED_YES" "$(steps)"
+fx
+merged_on_main
+sh_run 12 v1.2.3
+assert_rc "AC2.2 MERGED, closed stdin, no --yes: stops at the tag question: exit 1" 1
+assert_eq "AC2.2 MERGED, closed stdin: no merge question, the dry run ran, nothing was tagged" "view dry" "$(steps)"
+assert_not_contains "AC2.2 MERGED, closed stdin: the merge question is skipped" "$OUT" "merge PR #12?"
+fx
+merged_on_main
+export FAKE_REL_REAL_RC=5
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 MERGED: a failing release.sh (5) still stops ship with its status" 5
+assert_eq "AC2.2 MERGED with a failing release: nothing after it" "view release" "$(steps)"
+
+echo "AC2.2 refused: MERGED but the merge commit is not on origin/main, or no merge commit; CLOSED"
+fx
+export FAKE_GH_STATE=MERGED FAKE_GH_MERGE_COMMIT=0123456789abcdef0123456789abcdef01234567
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 MERGED with a commit unknown to origin: exit 1" 1
+assert_eq "AC2.2 MERGED with an unknown commit: nothing merged or released" "view" "$(steps)"
+assert_contains "AC2.2 MERGED with an unknown commit: the refusal names origin/main" "$OUT" "origin/main"
+assert_eq "AC2.2 MERGED with an unknown commit: gh pr merge never called" "0" "$(logged '^gh pr merge')"
+fx
+side_commit
+export FAKE_GH_STATE=MERGED FAKE_GH_MERGE_COMMIT="$MC"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 MERGED with a commit that is on origin but not on main: exit 1" 1
+assert_eq "AC2.2 MERGED with a side-branch commit: nothing merged or released" "view" "$(steps)"
+assert_contains "AC2.2 MERGED with a side-branch commit: the refusal names origin/main" "$OUT" "origin/main"
+fx
+export FAKE_GH_STATE=MERGED FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_MERGE_COMMIT=""
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 MERGED with no merge commit reported: exit 1" 1
+assert_eq "AC2.2 MERGED with no merge commit: nothing merged or released" "view" "$(steps)"
+fx
+merged_on_main
+export FAKE_GH_STATE=CLOSED
+sh_run 12 v1.2.3 --yes
+assert_rc "AC2.2 CLOSED with a commit that is on origin/main: exit 1" 1
+assert_eq "AC2.2 CLOSED: nothing merged or released" "view" "$(steps)"
+
+echo "v0.17.0 AC4.1 unbalanced windows shards are reported after the tag's CI passes"
+shard_calls() { grep '^gh run list .*--branch main ' "$FAKE_LOG"; }
+unb() { printf '%s\n' "$OUT" | grep -c 'shards unbalanced'; }
+fx
+export FAKE_SHARDS="300,100,200"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC4.1 shards 300/100/200 s: ship still succeeds (exit 0)" 0
+assert_eq "AC4.1 unbalanced: the whole flow ran as before" "$FULL_YES" "$(steps)"
+assert_eq "AC4.1 unbalanced: one line names the shortest, the longest and the run id" "1" \
+  "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s): run tools/shard-weights.sh 7777')"
+assert_eq "AC4.1 unbalanced: only one line talks about it" "1" "$(unb)"
+assert_contains "AC4.1 unbalanced: shipped is still printed" "$OUT" "shipped v1.2.3"
+TAGSHA="$(cd "$F/repo" && git rev-parse 'v1.2.3^{commit}' 2>/dev/null)"
+assert_eq "AC4.1 exactly one lookup of the push-to-main run" "1" "$(shard_calls | wc -l | tr -d ' ')"
+assert_contains "AC4.1 the lookup is for branch main" "$(shard_calls)" "--branch main"
+assert_contains "AC4.1 the lookup is for event push" "$(shard_calls)" "--event push"
+assert_contains "AC4.1 the lookup is for the release commit (the tag's commit)" "$(shard_calls)" "--commit $TAGSHA"
+assert_eq "AC4.1 the jobs of that run are read once: gh run view 7777 --json jobs" "1" "$(grep -c '^gh run view 7777 .*--json jobs' "$FAKE_LOG")"
+WATCHN="$(grep -n '^gh run watch' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"; VIEWN="$(grep -n '^gh run view' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
+if [ -n "$WATCHN" ] && [ -n "$VIEWN" ] && [ "$VIEWN" -gt "$WATCHN" ]; then t_ok "AC4.1 the shard jobs are read after the CI run was watched"; else t_bad "AC4.1 the shard jobs are read after the CI run was watched" "watch at log line [$WATCHN], run view at [$VIEWN]"; fi
+fx
+export FAKE_SHARDS="250,100" FAKE_MAIN_RUN=9191
+sh_run 12 v1.2.3 --yes
+assert_eq "AC4.1 another run id (9191) and two shards: the hint names 9191" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 250 s): run tools/shard-weights.sh 9191')"
+assert_not_contains "AC4.1 the hint names the push-to-main run, not the tag's run (4242)" "$OUT" "shard-weights.sh 4242"
+echo "AC4.1 balanced shards print nothing (the other jobs of the run, 900 s and 30 s, are not shards)"
+for sh in "100,120,110" "150,100" "100,100,100" "300"; do
+  fx
+  export FAKE_SHARDS="$sh"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC4.1 shards [$sh]: exit 0" 0
+  assert_eq "AC4.1 shards [$sh]: no unbalanced line (longest is not more than 1.5x the shortest)" "0" "$(unb)"
+  assert_eq "AC4.1 shards [$sh]: the jobs were looked at (one gh run view)" "1" "$(logged '^gh run view')"
+done
+fx
+export FAKE_SHARDS="151,100"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC4.1 151 s against 100 s is more than 1.5x: reported" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 151 s)')"
+fx
+export FAKE_SHARDS="300,100,running"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC4.1 a shard without a finish time is ignored, the others are compared (100 s .. 300 s)" "1" "$(printf '%s\n' "$OUT" | grep -cF 'shards unbalanced (100 s .. 300 s)')"
+fx
+export FAKE_SHARDS="100,running"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC4.1 one finished shard and one unfinished: exit 0" 0
+assert_eq "AC4.1 one finished shard and one unfinished: nothing to compare, no hint" "0" "$(unb)"
+echo "AC4.1 missing or broken data prints nothing and never fails the ship"
+fx
+export FAKE_SHARDS=none
+sh_run 12 v1.2.3 --yes
+assert_rc "AC4.1 the run has no shard jobs: exit 0" 0
+assert_eq "AC4.1 no shard jobs: no hint, the flow ran" "0 $FULL_YES" "$(unb) $(steps)"
+fx
+export FAKE_SHARDS=bad
+sh_run 12 v1.2.3 --yes
+assert_rc "AC4.1 gh run view prints something that is not JSON: exit 0" 0
+assert_eq "AC4.1 not JSON: no hint, the flow ran" "0 $FULL_YES" "$(unb) $(steps)"
+assert_not_contains "AC4.1 not JSON: no parser noise on the terminal" "$OUT" "SyntaxError"
+for mode in empty null; do
+  fx
+  export FAKE_SHARDS="300,100" FAKE_SHARD_LIST="$mode"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC4.1 no push-to-main run found ($mode): exit 0" 0
+  assert_eq "AC4.1 no push-to-main run found ($mode): no hint, the flow ran" "0 $FULL_YES" "$(unb) $(steps)"
+  assert_eq "AC4.1 no push-to-main run found ($mode): gh run view is not called" "0" "$(logged '^gh run view')"
+done
+for word in shardlist shardview; do
+  fx
+  export FAKE_SHARDS="300,100" FAKE_GH_FAIL="$word"
+  sh_run 12 v1.2.3 --yes
+  assert_rc "AC4.1 gh failing in the shard report ($word): exit 0" 0
+  assert_eq "AC4.1 gh failing ($word): no hint, the flow ran" "0 $FULL_YES" "$(unb) $(steps)"
+  assert_contains "AC4.1 gh failing ($word): shipped is still printed" "$OUT" "shipped v1.2.3"
+done
+fx
+export FAKE_SHARDS="300,100" FAKE_GH_FAIL="runwatch"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC4.1 the tag's CI run failed: exit 1 as before" 1
+assert_eq "AC4.1 CI failed: no shard report (no hint, no gh run view)" "0 0" "$(unb) $(logged '^gh run view')"
+
 # ---- prompts, through a pseudo-terminal ----
 PTY_OK=0
 if [ -z "${PB_NO_PTY:-}" ] && command -v python3 >/dev/null 2>&1; then
@@ -536,10 +823,17 @@ pty_block() {
   fx
   export FAKE_GH_STATE=MERGED
   pty_ship y y -- 12 v1.2.3
-  assert_rc "AC6.1 a merged PR is refused before any question" 1
-  assert_not_contains "AC6.1 refusal comes before the first question" "$OUT" "[y/N]"
+  assert_rc "AC6.1/AC2.2 a merged PR with no merge commit on origin/main is refused before any question" 1
+  assert_not_contains "AC6.1/AC2.2 refusal comes before the first question" "$OUT" "[y/N]"
+  fx
+  merged_on_main
+  pty_ship y -- 12 v1.2.3
+  assert_rc "AC2.2 a merged PR on origin/main: the one answer (y) goes to the tag question: exit 0" 0
+  assert_eq "AC2.2 a merged PR with the questions: no merge, the dry run stays" "$MERGED_Q" "$(steps)"
+  assert_not_contains "AC2.2 a merged PR: the merge question is not asked" "$OUT" "merge PR #12? [y/N]"
+  assert_contains "AC2.2 a merged PR: the tag question is asked" "$OUT" "tag and push v1.2.3? [y/N]"
 }
-PTY_N=34
+PTY_N=38
 if [ "$PTY_OK" = 1 ]; then pty_block; else t_skip "$PTY_N" "AC6.1 prompt assertions need python3 with a pty (not available here)"; fi
 
 t_summary

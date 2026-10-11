@@ -357,4 +357,29 @@ check_sec 'v15 AC11.2 E20 Fail if covers a misfire fixed but not captured' "$SCE
 l19="$(line_of "$SCEN" '^## E19 ')"; l20="$(line_of "$SCEN" '^## E20 ')"
 if [ -n "$l19" ] && [ -n "$l20" ] && [ "$l20" -gt "$l19" ]; then t_ok 'v15 AC11.2 E20 comes after E19'; else t_bad 'v15 AC11.2 E20 comes after E19' "E19 at [$l19], E20 at [$l20]"; fi
 
+# --- v0.17.0 AC1.1: the E16 prompt gives the answers a headless agent would otherwise ask for
+# The runner sends the first double-quoted string of the **Prompt:** paragraph (evals/run-evals.sh prompt_of), so the new
+# wording must sit inside that one quoted string.
+E16='^## E16 '
+e16_para() { section "$SCEN" "$E16" | awk '/^\*\*Prompt:\*\*/ { p = 1 } /^\*\*(Pass|Fail) if:\*\*/ { p = 0 } p' | tr '\n' ' '; }
+e16_sent() { e16_para | sed -n 's/^[^"]*"\([^"]*\)".*/\1/p'; }   # what the runner would send
+e16_has() { # NAME PATTERN -> PATTERN (case-insensitive ERE) is in the prompt the runner sends
+  if e16_sent | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the E16 prompt as sent: [$(e16_sent)]"; fi
+}
+e16_has 'v17 AC1.1 E16 prompt is still the cents change of total() in src/cart.js' 'total\(\).*src/cart\.js|src/cart\.js.*total\(\)'
+e16_has 'v17 AC1.1 E16 prompt still asks for integer cents' 'cents[^.]{0,40}integer|integer[^.]{0,40}cents'
+e16_has 'v17 AC1.1 E16 prompt says the prices are dollars' 'dollar'
+e16_has 'v17 AC1.1 E16 prompt says the dollar prices are floats' 'dollars?[^.]{0,40}float'
+e16_has 'v17 AC1.1 E16 prompt says to round to the nearest cent' 'round[^.]{0,40}nearest cent'
+e16_has 'v17 AC1.1 E16 prompt says half up' 'half[ -]up'
+e16_has 'v17 AC1.1 E16 prompt says nothing outside this repo calls total()' '(nothing|nobody|no other code|no one|none)[^.]{0,60}outside this repo|outside this repo[^.]{0,60}(nothing|nobody|no one|none|not)'
+e16_has 'v17 AC1.1 E16 prompt says in-repo callers are updated' 'caller'
+e16_pass() { section "$SCEN" "$E16" | tr '\n' ' ' | sed -n 's/.*\*\*Pass if:\*\*\(.*\)\*\*Fail if:\*\*.*/\1/p'; }   # the Pass if paragraph on one line
+e16_pass_has() { if e16_pass | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the E16 Pass if: [$(e16_pass)]"; fi; }
+e16_pass_has 'v17 AC1.1 E16 Pass if still wants Full with the reason' 'Full.*reason|reason.*Full'
+e16_pass_has 'v17 AC1.1 E16 Pass if still wants separate tester, implementer and reviewer' 'tester,[^.]{0,20}implementer[^.]{0,20}reviewer'
+e16_pass_has 'v17 AC1.1 E16 Pass if still names the data shape' 'data shape'
+check_sec 'v17 AC1.1 E16 Fail if is still there' "$SCEN" "$E16" '^\*\*Fail if:\*\*'
+if [ "$(e16_para | tr -cd '"' | wc -c | tr -d ' ')" = 2 ]; then t_ok 'v17 AC1.1 E16 prompt is one double-quoted string (no inner double quotes cut it short)'; else t_bad 'v17 AC1.1 E16 prompt is one double-quoted string' "$(e16_para | tr -cd '"' | wc -c | tr -d ' ') double quotes in [$(e16_para)]"; fi
+
 t_summary

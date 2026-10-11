@@ -75,3 +75,14 @@ additive rule); round 3's reply did not name the weight in its first lines (not 
 Finding: E16 as written cannot pass headless. The agent cannot tell it is headless, so "ask when hard
 to reverse" wins over "headless: do not block". Next: give E16's prompt the answers (unit and
 rounding, "no callers outside this repo") or mark it interactive-only.
+
+## Run 7 (E16 prompt with the answers, v0.17.0 graders, `--clean-env`), two rounds
+
+| Round | Auto | Notes | Turns | Cost (USD) |
+|---|---|---|---|---|
+| 1 | 4/4 | Full, 6 Agent tool calls (tester, implementer, reviewer rounds), integer cents with half-up rounding | 22 | 2.25 |
+| 2 | 2/4 | named Full, then still stopped with one question before writing code | 5 | 0.24 |
+
+Findings: the answers in the prompt let E16 pass for the first time, but one run in two still stops to
+ask, so the headless rule ("do not block, log the default") is not applied reliably. Round 1's sub-agents
+also wrote a directory (`E16-review-mutants-logs`) outside the fixture, next to it in the workroot.

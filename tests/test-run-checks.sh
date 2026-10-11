@@ -5,12 +5,16 @@
 . "$(dirname "$0")/lib.sh"
 SKILL=skills/playbook-proof/SKILL.md
 
+# The tree is read once into MASTER (tracked + untracked, non-ignored files); every mk_copy is a plain
+# `cp -a` of it, so the file list and the tar pipeline are not repeated for each of the ~50 cases.
+MASTER="$(mk_tmp)"
+( cd "$PB_ROOT" &&
+  git ls-files -co --exclude-standard | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done |
+  tar -cf - -T - ) | ( cd "$MASTER" && tar -xf - )
 # mk_copy -> prints a temp dir holding a copy of the working tree
 mk_copy() {
   local d; d="$(mk_tmp)"
-  ( cd "$PB_ROOT" &&
-    git ls-files -co --exclude-standard | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done |
-    tar -cf - -T - ) | ( cd "$d" && tar -xf - )
+  cp -a "$MASTER/." "$d/"
   printf '%s\n' "$d"
 }
 # set_line DIR KEY LINE -> replace the first "KEY:" line of the frontmatter of $SKILL with LINE
@@ -26,10 +30,14 @@ add_line() {
 only_problems() { OUT="$(printf '%s\n' "$OUT" | grep -v '^  ok ')"; }
 checks() { run bash "$1/evals/run-checks.sh"; only_problems; }
 # mk_git_copy -> a copy of the working tree committed into a fresh git repo with LF in the index
+# (the repo is built once in GMASTER, with .git, and copied with cp -a)
+GMASTER="$(mk_tmp)"
+cp -a "$MASTER/." "$GMASTER/"
+( cd "$GMASTER" && git init -q && git config core.autocrlf false && git config user.email t@example.invalid &&
+  git config user.name tester && git config commit.gpgsign false && git add -A && git commit -q -m copy ) >/dev/null 2>&1
 mk_git_copy() {
-  local d; d="$(mk_copy)"
-  ( cd "$d" && git init -q && git config core.autocrlf false && git config user.email t@example.invalid &&
-    git config user.name tester && git config commit.gpgsign false && git add -A && git commit -q -m copy ) >/dev/null 2>&1
+  local d; d="$(mk_tmp)"
+  cp -a "$GMASTER/." "$d/"
   printf '%s\n' "$d"
 }
 to_crlf() { sed 's/$/\r/' "$1" > "$1.crlf" && mv "$1.crlf" "$1"; }
