@@ -7,6 +7,10 @@ export PLAYBOOK_HOME="$(mk_tmp)"   # isolate from the real ~/.agents/playbook.co
 # stderr, which would break the byte-identical output checks. Force it off for every git call in this suite
 # (command-line style config, git >= 2.31; it beats repository and global config).
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
+# One template repo (init, config, first commit) built once and copied for each case: the ~15 cases below
+# start from byte-identical repos without spawning git again.
+RTPL="$(mk_tmp)"; mk_repo "$RTPL"
+mk_repo() { cp -a "$RTPL/." "$1/"; }
 
 echo "classify"
 for f in src/app.test.ts pkg/foo_test.go test_foo.py tests/a.js e2e/login.spec.ts \

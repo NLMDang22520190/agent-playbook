@@ -187,9 +187,11 @@ EOF
 chmod +x "$BIN/git"
 
 # fx -> fresh fixture: $F/origin.git, $F/repo (on branch feat/x, main pushed), $F/work (clone used by the fake merge)
-FXN=0
-fx() {
-  FXN=$((FXN + 1)); F="$W/fx$FXN"; mkdir -p "$F"
+# The first call builds the fixture with git (init, clone, commit, push); every later call copies that
+# template with cp -a and only re-points the two clones at the copied origin.
+FXN=0; FXTPL=""
+fx_build() { # DIR -> the fixture in DIR
+  local F="$1"; mkdir -p "$F"
   git init -q --bare "$F/origin.git" 2>/dev/null
   git -C "$F/origin.git" symbolic-ref HEAD refs/heads/main
   git clone -q "$F/origin.git" "$F/repo" 2>/dev/null
@@ -202,6 +204,16 @@ fx() {
     GITID commit -qm init && git push -q -u origin main 2>/dev/null &&
     git switch -q -c feat/x ) || { echo "fixture setup failed"; exit 3; }
   git clone -q "$F/origin.git" "$F/work" 2>/dev/null
+}
+fx() {
+  FXN=$((FXN + 1)); F="$W/fx$FXN"
+  if [ -z "$FXTPL" ]; then
+    FXTPL="$W/fxtpl"; fx_build "$FXTPL"
+  fi
+  mkdir -p "$F"
+  cp -a "$FXTPL/." "$F/"
+  git -C "$F/repo" remote set-url origin "$F/origin.git"
+  git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
   export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3
