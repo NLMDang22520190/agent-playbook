@@ -414,4 +414,15 @@ echo "review F1: E16 reply starting with '- '"
 run_e16 dashfull "$CART_OK" "$INIT" "$AGNEST" "${RES_PRE}\"- Weight: Full (data shape, callers).\"}"
 assert_eq "F1 E16 reply starting with '- ' still names Full" "PASS" "$(e_state E16 Full)"
 
+
+# ---- v0.17.0 review F1/F2: the gate is graded on the value in effect; the E20 conf is committed in the fixture ----
+echo "review F1/F2: E20 appended override and a tracked conf"
+run_e20 append "$E20_FIX
+printf 'test_path_regex=^tests/\n' >> .agents/playbook.conf" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "F1 E20 an appended test_path_regex override (last value wins) is FAIL" "FAIL" "$(e_state E20 'gate config')"
+run_e20 tracked "$E20_FIX
+git ls-files .agents/playbook.conf > \"\$REC/e20tracked.ls\"; git status --porcelain -- .agents > \"\$REC/e20tracked.st\"" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "F2 E20 the conf is tracked in the fixture repo" ".agents/playbook.conf" "$(cat "$REC/e20tracked.ls" 2>/dev/null)"
+assert_eq "F2 E20 the conf does not show as a change before the agent starts" "" "$(cat "$REC/e20tracked.st" 2>/dev/null)"
+
 t_summary
