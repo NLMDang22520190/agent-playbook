@@ -98,7 +98,7 @@ Lite **escalates to Full** when it touches hard-to-reverse ground, outgrows the 
 - **Mechanical steps are scripts:** `scripts/tdd-step.sh red|green` (gate + evidence + optional commit), `tools/release.sh` for maintainers.
 - **A leak guard:** `scripts/leak-check.sh` refuses tokens, keys and your own private strings (`leak_literals`) in added lines; `install-hooks` adds pre-commit and pre-push hooks.
 - **The whole request is found before code:** the spec starts with `## Understanding` and `## Impact`, a spec reviewer checks it against the raw request (Full), and the final report ends with a request coverage table.
-- **Cost is measured:** `scripts/cost.sh add` per role run, `cost.sh summary` in the final report. v0.6.0 itself: 11 sub-agent runs, 891k tokens (tester and implementer on Sonnet, reviewer on Opus).
+- **Cost is measured:** `scripts/cost.sh add` per role run, `cost.sh summary` in the final report (per role and per phase, with rework rounds and review majors; `--phase`, `--rework`, `--majors`). `scripts/pr-body.sh` builds the PR description from the spec, the final report and the review verdict. Models can be routed by task type: `reviewer_light` for diffs of tests, docs or skill text, `mechanical` for release prep and counts. `evals/run-evals.sh --max-cost USD` stops running scenarios once the known costs reach USD. v0.6.0 itself: 11 sub-agent runs, 891k tokens (tester and implementer on Sonnet, reviewer on Opus).
 
 If the harness has sub-agents, each role is a sub-agent. If not, each role runs as a separate headless session. With a single context only, it still runs, but the report says so: it is the weaker mode.
 
@@ -222,6 +222,8 @@ agent-playbook/
 ## Development
 
 CI cancels superseded runs of the same PR (concurrency, never on main or tags) and every job has a timeout.
+
+A main push reuses a green same-repo PR run of the identical tree (a merge commit or a squash of an up-to-date PR) and skips its own suites; `tools/ci-tree-tested.sh` finds that run through `gh api` only. Rebase merges always run the tests, and so does any merge of a PR that is not up to date.
 `tools/bsd-check.sh [SUITE...]` runs the suites (default: all) with one-true-awk (`original-awk` or `nawk`) first on PATH, the awk macOS ships (`sudo apt install original-awk` on Ubuntu or WSL).
 
 Local setup for the static checks: `run-checks.sh` runs shellcheck when it is installed (`sudo apt install shellcheck` on Ubuntu or WSL,

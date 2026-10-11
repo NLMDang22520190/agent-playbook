@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
-#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive]
+#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
 # Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
+# --max-cost USD (a plain decimal > 0): after each scenario, when the known costs add up to USD or more, the
+# remaining scenarios are not run: each prints "<E> SKIPPED budget reached (spent X of USD)" and gets the summary
+# row "| E | SKIPPED | - | - |". A scenario whose cost is unknown adds nothing (one note names the first).
+# Skipping never changes the exit code.
 # --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first (a desktop or nested Claude session
 # leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
@@ -29,10 +33,10 @@ usage() {
   exit 2
 }
 
-HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0
+HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--scenarios|--workroot|--out|--timeout)
+    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -42,6 +46,7 @@ while [ $# -gt 0 ]; do
     --workroot)  WORKROOT="$2"; shift ;;
     --out)       OUT="$2"; shift ;;
     --timeout)   TIMEOUT="$2"; shift ;;
+    --max-cost)  MAX_COST="$2"; MAX_COST_SET=1; shift ;;
     --clean-env) CLEAN_ENV=1 ;;
     --interactive) INTERACTIVE=1 ;;
     -h|--help)   usage ;;
@@ -73,6 +78,17 @@ esac
 
 if [ -n "$TIMEOUT" ]; then
   case "$TIMEOUT" in *[!0-9]*) pb_die "--timeout needs whole seconds, got: $TIMEOUT" 2 ;; esac
+fi
+
+if [ "$MAX_COST_SET" = 1 ]; then
+  # a plain positive decimal: digits with an optional fraction, at least one non-zero digit
+  case "$MAX_COST" in
+    "" | *[!0-9.]* | .* | *. | *.*.*) pb_die "--max-cost needs a positive decimal amount in USD, got: $MAX_COST" 2 ;;
+  esac
+  case "$MAX_COST" in
+    *[1-9]*) ;;
+    *) pb_die "--max-cost needs a positive decimal amount in USD, got: $MAX_COST" 2 ;;
+  esac
 fi
 
 LIST="$(printf '%s' "$SCENARIOS" | tr ',' ' ')"
@@ -371,8 +387,27 @@ grade_E21() {
   esac
 }
 
-SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""
+SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
+# spent_of -> the sum of the known costs so far, "%.6g" formatted
+spent_of() { printf '%s
+' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 for E in $LIST; do
+  if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
+    # reached = spent >= USD (a tiny tolerance keeps 0.6 + 0.6 >= 1.2 exact despite float rounding)
+    if printf '%s
+' $COST_SUM | awk -v max="$MAX_COST" '{ s += $1 } END { exit !(s + 0.000000001 >= max + 0) }'; then
+      printf '%s SKIPPED budget reached (spent %s of %s)
+' "$E" "$(spent_of)" "$MAX_COST"
+      SUMMARY="$SUMMARY| $E | SKIPPED | - | - |
+"
+      DETAILS="$DETAILS
+## $E
+
+SKIPPED: budget reached (spent $(spent_of) of $MAX_COST USD); not run.
+"
+      continue
+    fi
+  fi
   WD="$WORKROOT/$E"; PF="$WORKROOT/$E.prompt"; LOG="$WORKROOT/$E.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
   # DECISION[D4]: the runner clears <abs workroot>/<whitelisted E> (ownership checked above, D6); make-fixture stays strict.
@@ -467,7 +502,10 @@ ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
   if [ -z "${STRAY// /}" ]; then record PASS "nothing written outside the workdir"
   else record FAIL "nothing written outside the workdir (new in the workroot: ${STRAY% })"; fi
   cost="-"
-  if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"; fi
+  if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"
+  elif [ "$MAX_COST_SET" = 1 ] && [ "$NOTE_UNKNOWN" = 0 ]; then
+    NOTE_UNKNOWN=1; printf 'note: cost unknown for %s; the budget counts known costs only\n' "$E"
+  fi
   SUMMARY="$SUMMARY| $E | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |
 "
   DETAILS="$DETAILS

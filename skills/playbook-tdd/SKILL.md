@@ -139,6 +139,8 @@ hard to reverse; for the rest choose a default, log it in `.agents/handoff/decis
 the request was ambiguous. Re-read the AC table before each commit.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
+**Context pack.** For each slice the orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when the pack is not enough, so each fresh role does not re-scan the repository.
+
 For slice S:
 1. **RED (tester).** Start a fresh tester with `roles/tester.md` and the inputs it lists. When it
    returns:
@@ -180,8 +182,10 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   ran focused tests only; this orchestrator run is the full suite. If it fails, the work goes back
   into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
-  --seconds <S> --model <M> --weight <Full|Lite>`, with tokens as the harness reports them (`0` if unknown,
-  never a guess). Then put `cost.sh summary` into the final report.
+  --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
+  --majors <N>`, with tokens as the harness reports them (`0` if unknown, never a guess); `--rework` is the
+  rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` (the per-role
+  and per-phase tables, rework rounds and review majors) into the final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
 - For a user-visible change (UI, HTTP API, CLI output, file format) the gates also include one real
   observation of the real behaviour in this session (screenshot or browser read, curl, the CLI command),
@@ -211,7 +215,8 @@ which step of the playbook let it through.
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
 (`--harness` takes `claude`, `codex` or `opencode`: the harness you are running in)
-and pass it when starting the role. `session` means do not override the session model. Build every
+and pass it when starting the role. `session` means do not override the session model.
+Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
 sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
 the fixed prefix is identical across runs and can be cached. For the mechanical RED or GREEN step
 (gate, then the test command as evidence, optional checkpoint commit) use
