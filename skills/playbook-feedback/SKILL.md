@@ -12,6 +12,7 @@ This is how the global playbook improves from real use across harnesses. Project
 do **not** belong here; they go to `playbook-learn`. Script: `~/.agents/playbook/scripts/feedback.sh`.
 
 ## 1. Capture quietly (no interruption)
+Capture is local, so do it right away with no need to ask; only submit (sending) asks the user, once, at the end.
 Capture when something concrete happened, not on a hunch:
 | kind | example |
 |---|---|

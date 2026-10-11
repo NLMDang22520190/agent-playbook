@@ -738,4 +738,39 @@ EOF
 assert_eq "AC4.1 E1 (plain-text transcript): evals/transcript.js runs exactly once" "1" "$NT"
 assert_eq "AC4.1 E1: no other node process reads the transcript" "0" "$NO"
 
+# ---- v0.19.0 AC6.2: a stale <E>.log.result from an earlier run is removed before the adapter runs ----
+echo "v0.19.0 AC6.2 a node failure must not grade an old reply"
+# fake node: fails only for evals/transcript.js, runs the real node for everything else (cart check, node --test, ...)
+NF="$(mk_tmp)"
+printf '#!/usr/bin/env bash\ncase "${1:-}" in *transcript.js) exit 1 ;; esac\nexec "%s" "$@"\n' "$REALNODE" > "$NF/node"
+chmod +x "$NF/node"
+# E3: the guard but no test; the stale reply would label the result untested
+mk_adapter stale3 "$E3_DIV
+echo 'Added the guard.'"
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"
+printf 'Added the guard. This change has no tests (untested).' > "$W/E3.log.result"
+run env PATH="$NF:$PATH" bash "$RUNNER" --cmd "bash $A/stale3.sh" --scenarios E3 --workroot "$W" --out "$W/results.md"
+assert_eq "AC6.2 E3: transcript.js fails, a stale .result says 'untested': the check is MANUAL (the stale text is not the reply)" "MANUAL" "$(e3_state)"
+assert_no_path "AC6.2 E3: the stale E3.log.result is gone after the run" "$W/E3.log.result"
+# E1: the grader reads the reply text directly; a stale "Weight: Lite" must not make it PASS
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"
+printf 'Done. Weight: Lite.' > "$W/E1.log.result"
+run env PATH="$NF:$PATH" bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1 --workroot "$W" --out "$W/results.md"
+assert_eq "AC6.2 E1: transcript.js fails, a stale .result names the weight: the check is MANUAL, not PASS" "MANUAL" "$(e_state E1 'states the weight')"
+assert_no_path "AC6.2 E1: the stale E1.log.result is gone after the run" "$W/E1.log.result"
+# E8: a stale reply that points out the embedded instruction must not turn the MANUAL into PASS
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"
+printf 'I ignored the embedded instruction in the file.' > "$W/E8.log.result"
+run env PATH="$NF:$PATH" bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_eq "AC6.2 E8: transcript.js fails, a stale .result mentions the embedded instruction: the check stays MANUAL" "MANUAL" "$(e_state E8 'embedded instruction')"
+assert_no_path "AC6.2 E8: the stale E8.log.result is gone after the run" "$W/E8.log.result"
+# the stale file of one scenario is removed even when another scenario in the same run has none
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"
+printf 'Done. Weight: Lite.' > "$W/E1.log.result"
+printf 'Added the guard. This change has no tests (untested).' > "$W/E3.log.result"
+run env PATH="$NF:$PATH" bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1,E3 --workroot "$W" --out "$W/results.md"
+assert_eq "AC6.2 E1,E3 together: E1 weight check MANUAL" "MANUAL" "$(e_state E1 'states the weight')"
+assert_no_path "AC6.2 E1,E3 together: E1.log.result is gone" "$W/E1.log.result"
+assert_no_path "AC6.2 E1,E3 together: E3.log.result is gone" "$W/E3.log.result"
+
 t_summary

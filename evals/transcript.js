@@ -14,6 +14,8 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
+// `bash -c "..."` / `bash -lc '...'` / `sh -c ...`: the quoted script is the command, so grade what is inside it
+const unwrap = s => s.replace(/\b(?:ba)?sh\s+-l?c\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g, (m, d, q) => (d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
@@ -31,7 +33,7 @@ for (const line of text.split(/\r?\n/)) {
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
-    if (b.name === "Bash" && /feedback\.sh\s+capture/.test(unquote(String(inp.command || "")))) captured = true;
+    if (b.name === "Bash" && /feedback\.sh\s+capture/.test(unquote(unwrap(String(inp.command || ""))))) captured = true;
   }
 }
 

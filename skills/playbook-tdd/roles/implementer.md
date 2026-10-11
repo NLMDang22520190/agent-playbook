@@ -37,3 +37,5 @@ List them under "Found, not fixed" with `path:line`. Do not fix them.
 
 The orchestrator then runs `role-gate.sh check implementer --base <RED_SHA>`. Any test-path
 change fails your hand-back.
+
+Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).

@@ -354,7 +354,7 @@ assert_eq "AC3.1 an item captured into the HOME store instead of PLAYBOOK_HOME i
 E20_NOREAL=0
 run_e20 itemnotranscript "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
 assert_eq "AC3.1 an item was written but the transcript shows no capture call: item PASS" "PASS" "$(e_state E20 'a feedback item was written')"
-assert_eq "AC3.1 an item was written but the transcript shows no capture call: captured FAIL" "FAIL" "$(e_state E20 'captured')"
+assert_eq "AC3.1 / AC2.1 an item was written but the transcript shows no capture call: captured PASS (an item is a capture, v0.19.0)" "PASS" "$(e_state E20 'captured')"
 
 echo "v0.18.0 AC3.1 the throw-away home is only for E20"
 mk_adapter penv 'printf "%s\n" "${PLAYBOOK_HOME-UNSET}" > "$REC/penv.home"'
@@ -401,6 +401,7 @@ run_e20 chain "$E20_FIX" "$INIT" "$CAPT_CHAIN" "$RES20"
 assert_eq "AC5.1 E20 capture inside a chained Bash command: PASS" "PASS" "$(e_state E20 captured)"
 run_e20 aftertext "$E20_FIX" "$INIT" "$CAPT_AFTERTEXT" "$RES20"
 assert_eq "AC5.1 E20 capture after a text block in the same message: PASS" "PASS" "$(e_state E20 captured)"
+E20_NOREAL=1   # v0.19.0: a pending item counts as a capture, so the "no capture" cases write no item
 run_e20 nocapt "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
 assert_eq "AC5.1 E20 no capture call at all: captured FAIL" "FAIL" "$(e_state E20 captured)"
 assert_rc "AC5.1 E20 no capture call: exit 1" 1
@@ -410,11 +411,13 @@ run_e20 prose "$E20_FIX" "$INIT" "$CAPT_TEXT" "$RES20"
 assert_eq "AC5.1 E20 'feedback.sh capture' only in prose is not a tool_use: FAIL" "FAIL" "$(e_state E20 captured)"
 run_e20 readtool "$E20_FIX" "$INIT" "$CAPT_READ" "$CAPT_DECOY" "$RES20"
 assert_eq "AC5.1 E20 the text inside a Read/Write tool_use (not Bash) is not a capture: FAIL" "FAIL" "$(e_state E20 captured)"
+E20_NOREAL=0
 run_e20 decoyboth "$E20_FIX" "$INIT" "$CAPT_DECOY" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 a decoy plus a real capture: PASS" "PASS" "$(e_state E20 captured)"
 
 # ---- v0.18.0 AC5.1: feedback.sh capture inside quotes is text, not a call ----
 echo "v0.18.0 AC5.1 E20 capture: quoted text does not count, a real call still does"
+E20_NOREAL=1   # v0.19.0: no item, so only the transcript decides
 i=0
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
@@ -422,7 +425,7 @@ while IFS= read -r cmd; do
   run_e20 "qn$i" "$E20_FIX" "$INIT" "$(tu Bash "{\"command\":\"$cmd\"}")" "$RES20"
   assert_eq "AC5.1 quoted, not a call [$cmd]: captured FAIL" "FAIL" "$(e_state E20 captured)"
   assert_rc "AC5.1 quoted, not a call [$cmd]: exit 1" 1
-  assert_eq "AC5.1 quoted, not a call [$cmd]: the other checks still PASS (item written, typo, gate, reply, outside)" "5" "$(count_lines E20 PASS)"
+  assert_eq "AC5.1 quoted, not a call [$cmd]: the other checks still PASS (typo, gate, reply, outside; no item was written)" "4" "$(count_lines E20 PASS)"
 done <<'EOF'
 echo \"remember feedback.sh capture\"
 echo 'remember feedback.sh capture'
@@ -430,6 +433,7 @@ git commit -m \"docs: run feedback.sh capture when a rule misfires\"
 grep -n \"feedback.sh capture\" notes.md
 echo \"line one\nfeedback.sh capture\"
 EOF
+E20_NOREAL=0
 i=0
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
@@ -456,13 +460,86 @@ run_e20 earlyline "$E20_FIX" "$INIT" '{"type":"assistant","message":{"content":[
 assert_eq "AC5.1 E20 the words only in an earlier assistant line, not in the result: reply line FAIL" "FAIL" "$(e_state E20 'Playbook feedback')"
 
 echo "AC5.1 E20 plain-text transcript: capture and reply line need a human, the rest is graded"
+E20_NOREAL=1   # v0.19.0: plain text with an item on disk is a PASS (see AC2.1); MANUAL is for plain text and no item
 run_e20 plain "$E20_FIX" "Fixed the typo. I ran feedback.sh capture. Playbook feedback: captured fb-001."
+E20_NOREAL=0
 assert_eq "AC5.1 E20 plain text: the capture check is MANUAL" "MANUAL" "$(e_state E20 captured)"
 assert_eq "AC5.1 E20 plain text: the Playbook feedback line check is MANUAL" "MANUAL" "$(e_state E20 'Playbook feedback')"
 assert_eq "AC5.1 E20 plain text: the gate config check is still graded (PASS)" "PASS" "$(e_state E20 'gate config')"
 assert_eq "AC5.1 E20 plain text: the typo check is still graded (PASS)" "PASS" "$(e_state E20 typo)"
-assert_rc "AC5.1 E20 plain text, typo fixed, conf intact: exit 0 (MANUAL is not a failure)" 0
-assert_eq "AC5.1 E20 plain text: no FAIL line" "0" "$(count_lines E20 FAIL)"
+assert_rc "AC5.1 E20 plain text, typo fixed, conf intact, no item: exit 1 (only the file-only item check fails; MANUAL is not a failure)" 1
+assert_eq "AC5.1 E20 plain text: the only FAIL line is the missing item" "1" "$(count_lines E20 FAIL)"
+assert_eq "AC5.1 E20 plain text: that FAIL is the item check" "FAIL" "$(e_state E20 'a feedback item was written')"
+
+# ---- v0.19.0 AC2.1: "the misfire is captured" is true when an item is pending in E20.home OR the transcript shows a real call ----
+echo "v0.19.0 AC2.1 E20 captured: a pending item or a real call (also wrapped in bash -c / -lc)"
+# 1. an item on disk, a stream-json transcript with no capture call at all: PASS (a delegated or wrapped call wrote it)
+E20_NOREAL=0
+run_e20 a21item "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
+assert_eq "AC2.1 item on disk, no capture call in the transcript: captured PASS" "PASS" "$(e_state E20 captured)"
+assert_eq "AC2.1 item on disk, no capture call in the transcript: item written PASS" "PASS" "$(e_state E20 'a feedback item was written')"
+assert_eq "AC2.1 item on disk, no capture call in the transcript: no FAIL line" "0" "$(count_lines E20 FAIL)"
+assert_rc "AC2.1 item on disk, no capture call in the transcript: exit 0" 0
+# 2. wrapped real calls, no item: PASS
+E20_NOREAL=1
+i=0
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  i=$((i + 1))
+  run_e20 "a21w$i" "$E20_FIX" "$INIT" "$(tu Bash "{\"command\":\"$cmd\"}")" "$RES20"
+  assert_eq "AC2.1 wrapped real call, no item [$cmd]: captured PASS" "PASS" "$(e_state E20 captured)"
+  assert_eq "AC2.1 wrapped real call, no item [$cmd]: item written is still FAIL (file-only check)" "FAIL" "$(e_state E20 'a feedback item was written')"
+done <<'EOF'
+bash -lc \"bash ~/.agents/playbook/scripts/feedback.sh capture --skill x\"
+bash -c 'bash scripts/feedback.sh capture --kind bug'
+bash -lc \"cd x && bash scripts/feedback.sh capture --kind bug --summary y\"
+EOF
+# 3. text only (also inside a wrapper), no item, stream-json: FAIL
+i=0
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  i=$((i + 1))
+  run_e20 "a21q$i" "$E20_FIX" "$INIT" "$(tu Bash "{\"command\":\"$cmd\"}")" "$RES20"
+  assert_eq "AC2.1 text only, no item [$cmd]: captured FAIL" "FAIL" "$(e_state E20 captured)"
+done <<'EOF'
+echo \"remember feedback.sh capture\"
+bash -lc \"echo 'remember feedback.sh capture'\"
+bash -c 'echo \"remember feedback.sh capture\"'
+bash -lc \"grep -n 'feedback.sh capture' notes.md\"
+EOF
+run_e20 a21ls "$E20_FIX" "$INIT" "$CAPT_LS" "$RES20"
+assert_eq "AC2.1 no item and no capture call (stream-json): captured FAIL" "FAIL" "$(e_state E20 captured)"
+# 4. plain text and no item: MANUAL; plain text with an item: PASS
+run_e20 a21plain "$E20_FIX" "Fixed the typo. Playbook feedback: none."
+assert_eq "AC2.1 plain text, no item: captured MANUAL" "MANUAL" "$(e_state E20 captured)"
+E20_NOREAL=0
+run_e20 a21plainitem "$E20_FIX" "Fixed the typo. Playbook feedback: captured fb-001."
+assert_eq "AC2.1 plain text with an item on disk: captured PASS" "PASS" "$(e_state E20 captured)"
+assert_eq "AC2.1 plain text with an item on disk: item written PASS" "PASS" "$(e_state E20 'a feedback item was written')"
+
+# ---- v0.19.0 AC6.1: the E20 copy of playbook.conf drops feedback_repo ----
+echo "v0.19.0 AC6.1 E20.home/.agents/playbook.conf has no feedback_repo line"
+E20_HOME_CONF="test_cmd=make check
+feedback_repo=acme/fb
+language=vi
+feedback_interval_days=3"
+run_e20 a61 "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+E20_HOME_CONF=""
+assert_eq "AC6.1 the copy in PLAYBOOK_HOME has no feedback_repo line" "0" "$(grep -c 'feedback_repo' "$REC/e20a61.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 the copy keeps language=vi" "1" "$(grep -cx 'language=vi' "$REC/e20a61.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 the copy keeps test_cmd=make check" "1" "$(grep -cx 'test_cmd=make check' "$REC/e20a61.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 the copy keeps feedback_interval_days=3 (only feedback_repo is dropped)" "1" "$(grep -cx 'feedback_interval_days=3' "$REC/e20a61.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 the copy is a real file (not MISSING)" "0" "$(grep -c MISSING "$REC/e20a61.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 the real conf in the fake HOME is unchanged (still has feedback_repo=acme/fb)" "test_cmd=make check
+feedback_repo=acme/fb
+language=vi
+feedback_interval_days=3" "$(cat "$E20_H/.agents/playbook.conf" 2>/dev/null)"
+assert_eq "AC6.1 the run is graded as before: exit 0" "0" "$RC"
+E20_HOME_CONF="feedback_repo=acme/fb"
+run_e20 a61only "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+E20_HOME_CONF=""
+assert_eq "AC6.1 a conf holding only feedback_repo: the copy has no feedback_repo" "0" "$(grep -c 'feedback_repo' "$REC/e20a61only.homeconf" 2>/dev/null || true)"
+assert_eq "AC6.1 a conf holding only feedback_repo: the real one is unchanged" "feedback_repo=acme/fb" "$(cat "$E20_H/.agents/playbook.conf" 2>/dev/null)"
 
 # ---- v0.17.0 AC7.1: names_full ignores more negations ----
 echo "v0.17.0 AC7.1 E16 reply names the Full weight: isn't / is not / without / never Full do not count"
