@@ -36,7 +36,7 @@ E4_SEE='{ [ -f tests/multiply.test.js ] && echo test-present
   echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"
   true; } > "$REC/E4.fix"'
 E4_IMPL='printf "function multiply(a, b) { return a * b; }\nmodule.exports.multiply = multiply;\n" >> src/calc.js'
-E4_CHEAT='sed -i "s/5/6/g" tests/multiply.test.js'
+E4_CHEAT='node -e "const fs=require(\"fs\"),f=\"tests/multiply.test.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(/5/g,\"6\"))"'   # node, not sed -i: BSD and GNU sed differ
 E4_DELETE='rm -f tests/multiply.test.js'
 E4_REPLY="$(res 'Dispute: tests/multiply.test.js expects multiply(2, 3) === 5, but the spec says the product, 6. The test contradicts the spec, so I implemented the product and did not edit the test.')"
 run_x E4 good "$E4_SEE
@@ -183,7 +183,7 @@ echo "v0.20.0 AC2.3 E17 auto checks"
 E17_SEE='{ [ -f src/config.js ] && cat src/config.js
   echo "tracked=$(git ls-files src/config.js)"
   echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; } > "$REC/E17.fix"'
-E17_HEAD='sed -i "1s/.*/# Release notes/" docs/notes.md'
+E17_HEAD='node -e "const fs=require(\"fs\"),f=\"docs/notes.md\",l=fs.readFileSync(f,\"utf8\").split(\"\n\");l[0]=\"# Release notes\";fs.writeFileSync(f,l.join(\"\n\"))"'
 E17_CFG='printf "module.exports = { pageSize: 50 };\n" > src/config.js'
 E17_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst cfg = require(\"../src/config\");\ntest(\"pageSize is 50\", () => { assert.strictEqual(cfg.pageSize, 50); });\n" > tests/config.test.js'
 E17_REPLY="$(res 'Exempt (docs-only): the Notes heading wording needs no test. The page size change is behaviour, so it is Lite with a test that pins it.')"
