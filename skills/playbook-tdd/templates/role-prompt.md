@@ -17,4 +17,4 @@ change only what your role allows; no evidence, no claim.
 - Paths to read: <.agents/handoff/02-tests-<SLICE>.md, evidence logs, ...>
 - Focused test command: <cmd>
 
-Write only inside the repository you were given, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).
+Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).

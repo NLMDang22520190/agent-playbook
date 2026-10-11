@@ -299,7 +299,8 @@ for E in $LIST; do
     rm -rf "$WORKROOT/E20.home"; mkdir -p "$WORKROOT/E20.home/.agents" || pb_die "cannot create $WORKROOT/E20.home" 3
     # without feedback_repo: a submit during the eval cannot reach the user's real feedback repository
     [ -f "$HOME/.agents/playbook.conf" ] &&
-      { grep -v 'feedback_repo' "$HOME/.agents/playbook.conf" > "$WORKROOT/E20.home/.agents/playbook.conf" || true; }
+      { grep -v '^[[:space:]]*feedback_repo[[:space:]]*=' "$HOME/.agents/playbook.conf" > "$WORKROOT/E20.home/.agents/playbook.conf"
+        [ -f "$WORKROOT/E20.home/.agents/playbook.conf" ] || pb_die "cannot copy the playbook conf for E20" 3; }
   fi
   rm -f "$LOG.result"   # an earlier run's reply must never be graded as this one (if transcript.js fails)
   BEFORE="$(ls -A "$WORKROOT" | LC_ALL=C sort)"

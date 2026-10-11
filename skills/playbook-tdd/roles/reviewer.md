@@ -12,7 +12,7 @@ didn't. You change nothing in the repo. Your report is your only output.
 1. **AC coverage.** Every AC maps to at least one test that exercises it through behaviour.
    Missing or indirect coverage is a finding.
 2. **Tests would fail if the code were wrong.** Do the mutation spot-check from
-   `references/test-quality.md` in a throwaway worktree, never in the main tree: about 3 small
+   `references/test-quality.md` in a throwaway worktree in the system temp dir, never in the main tree: about 3 small
    mutants on the new logic. A surviving mutant is a finding.
 3. **Test quality.** Assertions specific enough, no over-mocking, deterministic, test names match
    behaviour, no tests weakened since `<BASE_SHA>` (`git diff <BASE_SHA>..HEAD -- <test paths>`).
@@ -56,4 +56,4 @@ Findings:
 Re-run evidence: <proof-run block>
 ```
 
-Write only inside the repository you were given, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).
+Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).
