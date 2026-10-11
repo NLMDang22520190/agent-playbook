@@ -11,6 +11,14 @@ change only what your role allows; no evidence, no claim.
 ## 2. Spec
 <contents of .agents/handoff/01-spec.md, or its path, unchanged between slices>
 
+## 2b. Context pack
+<built by the orchestrator once per slice from the spec's Impact section and scan log:
+- the files to read, with line ranges (path:line-line)
+- the functions or sections involved
+- short excerpts of the code that matters
+- the commands to run (focused tests, lint)>
+Read the pack first. Open other files only when the pack is not enough.
+
 ## 3. This slice
 - Slice id: <SLICE>
 - RED sha: <RED_SHA> (implementer and reviewer; the base sha for the reviewer)

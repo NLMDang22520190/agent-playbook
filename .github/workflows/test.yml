@@ -15,9 +15,33 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  reuse:
+    # A push to main whose tree a green PR run of this repository already tested skips the suites below.
+    # It prints that run's id (nothing when there is none); any error here means the tests run.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.tree.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Find a green PR run of the same tree
+        id: tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run="$(bash tools/ci-tree-tested.sh "${{ github.sha }}" --repo "$GITHUB_REPOSITORY")" || run=""
+          case "$run" in *[!0-9]*) run= ;; esac
+          echo "reused run: ${run:-none}"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   test:
     # A release tag points at a commit the push to main already tested: main-ci waits for that run instead.
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: reuse
+    if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +65,8 @@ jobs:
   windows-shard:
     # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in three.
     name: windows shard ${{ matrix.shard }}
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: reuse
+    if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
       matrix:
@@ -65,15 +90,18 @@ jobs:
   windows:
     # The name branch protection requires; green only when every shard is green.
     name: test (windows-latest)
-    needs: windows-shard
+    needs: [windows-shard, reuse]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: All Windows shards passed
+      - name: All Windows shards passed, or the tree was already tested
+        # Skipped shards count only when reuse succeeded and named the PR run; anything else is red.
         run: |
-          echo "windows shards: ${{ needs.windows-shard.result }}"
-          [ "${{ needs.windows-shard.result }}" = success ] || exit 1
+          echo "windows shards: ${{ needs.windows-shard.result }}, reuse: ${{ needs.reuse.result }}"
+          [ "${{ needs.windows-shard.result }}" = success ] && exit 0
+          [ "${{ needs.windows-shard.result }}" = skipped ] && [ "${{ needs.reuse.result }}" = success ] && [ -n "${{ needs.reuse.outputs.run }}" ] && exit 0
+          exit 1
 
   main-ci:
     # Tag pushes only: the tagged commit was tested by its push to main; wait for that run and require success.

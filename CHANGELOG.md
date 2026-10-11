@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.22.3 - 2026-10-11
+- **A main push reuses a green PR run of the identical tree** (saves a full CI run per release):
+  `tools/ci-tree-tested.sh SHA` finds a same-repo PR with base main that contains SHA, a successful pull_request
+  run of its head with all six required jobs green, the same tree as SHA, and SHA's first parent an ancestor of the
+  head; gh api and git objects only, fail-closed. The workflow's `reuse` job (actions/contents read, numeric output
+  only) lets `test` and the Windows shards skip on main only then; a failed, skipped or empty reuse runs the tests;
+  the aggregator accepts skipped shards only with a successful, non-empty reuse. Proven on real data: merged PRs
+  #19-#30 each map to their own PR run. Rebase merges reuse only when the resulting commit has the head's tree.
+- **Cost ledger**: `cost.sh add --phase --rework --majors`, a per-phase summary, rework and review-major totals,
+  `summary --json`; old cost.tsv files keep their columns.
+- **Context packs**: the role prompt gets a `2b. Context pack` (paths and line ranges, excerpts, commands) built
+  once per slice from the spec's Impact and scan log.
+- **Model routing**: `role-model.sh` roles `reviewer_light` (test, docs or skill-only diffs) and `mechanical`
+  (release prep, counts, weights).
+- **`scripts/pr-body.sh`** builds a PR description from the spec and the final report (no vendor text).
+- **`run-evals.sh --max-cost USD`** stops before the next scenario once known costs reach the budget.
+- Built at Full weight with a spec review (two rounds; it found that a failed reuse job would have let tests be
+  skipped), Sonnet tester and implementer, Opus reviewer (three rounds; one Major found on real GitHub data:
+  a run's pull_requests lists only open PRs).
+
 ## 0.22.2 - 2026-10-11
 Also ships everything listed under 0.22.1: the v0.22.1 tag has no GitHub Release, because a test with a 1 s
 budget failed on the Windows runner of its main CI run (node start-up alone takes most of a second there).
