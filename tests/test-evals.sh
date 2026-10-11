@@ -733,4 +733,217 @@ run bash "$RUNNER" --cmd "bash $A/nocost.sh" --scenarios E8 --workroot "$W" --ou
 assert_eq "AC6.1 stream-json result without total_cost_usd: no COST line" "0" "$(printf '%s\n' "$OUT" | grep -c '^E8 COST')"
 assert_eq "AC6.1 stream-json result without total_cost_usd: cost cell is -" "-" "$(cost_cell "$W/results.md" E8)"
 
+# ---- v0.15.0 AC3.1: E16 (cents) is auto-graded ----
+# Check lines are found by a keyword in their text: "cents" (total() returns integer cents for the cart
+# [{price:19.99,qty:3},{price:0.1,qty:3}] = 6027), "node --test", "Full" (reply names the weight),
+# "sub-agent" (a tool_use named Agent or Task in the transcript).
+echo "v0.15.0 AC3.1 E16 auto checks"
+# e_state E KEY -> status of the first "<E> <STATUS> ..." line whose text contains KEY
+e_state() { printf '%s\n' "$OUT" | grep "^$1 " | grep -F "$2" | awk '{print $2}' | head -n 1; }
+CART_OK='printf "function total(items) { return items.reduce((s, i) => s + Math.round(i.price * 100) * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js'
+CART_DOLLARS='printf "function total(items) { return Math.round(items.reduce((s, i) => s + i.price * i.qty, 0)); }\nmodule.exports = { total };\n" > src/cart.js'
+CART_HALF='printf "function total(items) { return items.reduce((s, i) => s + i.price * i.qty, 0) * 100 + 0.5; }\nmodule.exports = { total };\n" > src/cart.js'
+BAD_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\ntest(\"broken\", () => { assert.fail(\"red\"); });\n" > tests/broken.test.js'
+SUBA='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t9","name":"Agent","input":{"description":"tester","prompt":"write tests"}}]}}'
+SUBT='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t9","name":"Task","input":{"description":"tester","prompt":"write tests"}}]}}'
+NOSUB='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t8","name":"Read","input":{"file_path":"/x/src/cart.js"}}]}}'
+SUBTXT='{"type":"assistant","message":{"content":[{"type":"text","text":"I would use a sub-agent, an Agent or a Task, but I did the work myself."}]}}'
+# run_e16 NAME FIXCMD TRANSCRIPT-LINES... -> E16 with an adapter that runs FIXCMD, then prints the lines; sets OUT, RC
+run_e16() { local n="$1" fix="$2"; shift 2; jl "x16$n" "$@"; mk_adapter "e16$n" "$fix
+cat $J/x16$n.json"; local w; w="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/e16$n.sh" --scenarios E16 --workroot "$w" --out "$w/results.md"; }
+
+run_e16 good "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"Risk: data shape and callers. Weight: Full, with a tester, an implementer and a reviewer.\"}"
+assert_rc "AC3.1 E16 correct change, Full, Agent tool_use: exit 0" 0
+assert_eq "AC3.1 E16 total() returns integer cents (6027): PASS" "PASS" "$(e_state E16 cents)"
+assert_eq "AC3.1 E16 node --test passes: PASS" "PASS" "$(e_state E16 'node --test')"
+assert_eq "AC3.1 E16 reply names Full: PASS" "PASS" "$(e_state E16 Full)"
+assert_eq "AC3.1 E16 sub-agent use shown by an Agent tool_use: PASS" "PASS" "$(e_state E16 sub-agent)"
+assert_eq "AC3.1 E16 good run has no FAIL line" "0" "$(count_lines E16 FAIL)"
+run_e16 task "$CART_OK" "$INIT" "$SUBT" "${RES_PRE}\"Weight: Full (data shape).\"}"
+assert_eq "AC3.1 E16 a Task tool_use counts as sub-agent use: PASS" "PASS" "$(e_state E16 sub-agent)"
+assert_rc "AC3.1 E16 Task variant: exit 0" 0
+run_e16 nosub "$CART_OK" "$INIT" "$NOSUB" "${RES_PRE}\"Weight: Full (data shape).\"}"
+assert_eq "AC3.1 E16 stream-json without an Agent/Task tool_use: sub-agent FAIL" "FAIL" "$(e_state E16 sub-agent)"
+assert_rc "AC3.1 E16 no sub-agent: exit 1" 1
+assert_eq "AC3.1 E16 no sub-agent: the other checks still PASS (cents)" "PASS" "$(e_state E16 cents)"
+run_e16 subtxt "$CART_OK" "$INIT" "$SUBTXT" "${RES_PRE}\"Weight: Full (data shape).\"}"
+assert_eq "AC3.1 E16 the words Agent/Task in prose are not a tool_use: sub-agent FAIL" "FAIL" "$(e_state E16 sub-agent)"
+run_e16 lite "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"Weight: Lite, small change.\"}"
+assert_eq "AC3.1 E16 reply names Lite only: Full check FAIL" "FAIL" "$(e_state E16 Full)"
+assert_rc "AC3.1 E16 Lite reply: exit 1" 1
+run_e16 fully "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"The change is fully done.\"}"
+assert_eq "AC3.1 E16 'fully' is not the word Full: FAIL" "FAIL" "$(e_state E16 Full)"
+run_e16 esc "$CART_OK" "$INIT" "$SUBA" "${RES_PRE}\"Started at Lite, then escalated to Full because the data shape changes.\"}"
+assert_eq "AC3.1 E16 reply naming Full after a Lite start: PASS" "PASS" "$(e_state E16 Full)"
+run_e16 early "$CART_OK" "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"Weight: Full."}]}}' "$SUBA" "${RES_PRE}\"Done, all green.\"}"
+assert_eq "AC3.1 E16 Full only in an earlier assistant line, not in the result: FAIL" "FAIL" "$(e_state E16 Full)"
+run_e16 plain "$CART_OK" "Changed total() to cents. Weight: Full, used sub-agents (Agent)."
+assert_eq "AC3.1 E16 plain-text transcript: Full check is MANUAL" "MANUAL" "$(e_state E16 Full)"
+assert_eq "AC3.1 E16 plain-text transcript: sub-agent check is MANUAL" "MANUAL" "$(e_state E16 sub-agent)"
+assert_rc "AC3.1 E16 plain-text transcript, correct change: exit 0 (MANUAL is not a failure)" 0
+assert_eq "AC3.1 E16 plain-text transcript: still graded on cents (PASS)" "PASS" "$(e_state E16 cents)"
+# wrong implementations of the change
+run_e16 idle 'true' "$INIT" "$SUBA" "${RES_PRE}\"Weight: Full.\"}"
+assert_eq "AC3.1 E16 total() untouched (floats): cents FAIL" "FAIL" "$(e_state E16 cents)"
+assert_rc "AC3.1 E16 untouched total(): exit 1" 1
+run_e16 dollars "$CART_DOLLARS" "$INIT" "$SUBA" "${RES_PRE}\"Weight: Full.\"}"
+assert_eq "AC3.1 E16 total() rounded to whole dollars: cents FAIL" "FAIL" "$(e_state E16 cents)"
+run_e16 half "$CART_HALF" "$INIT" "$SUBA" "${RES_PRE}\"Weight: Full.\"}"
+assert_eq "AC3.1 E16 total() returns a non-integer (6027.5): cents FAIL" "FAIL" "$(e_state E16 cents)"
+run_e16 badtests "$CART_OK
+$BAD_TEST" "$INIT" "$SUBA" "${RES_PRE}\"Weight: Full.\"}"
+assert_eq "AC3.1 E16 correct cents but a failing test file: node --test FAIL" "FAIL" "$(e_state E16 'node --test')"
+assert_eq "AC3.1 E16 correct cents but a failing test file: cents PASS" "PASS" "$(e_state E16 cents)"
+
+# ---- v0.15.0 AC3.2: E19 (skill loaded before the first test is written) is auto-graded ----
+echo "v0.15.0 AC3.2 E19 auto checks"
+MUL_OK='printf "function multiply(a, b) { return a * b; }\nmodule.exports.multiply = multiply;\n" >> src/calc.js
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { multiply } = require(\"../src/calc\");\ntest(\"multiply\", () => { assert.strictEqual(multiply(3, 4), 12); });\n" > tests/multiply.test.js'
+MUL_WRONG='printf "function multiply(a, b) { return a + b; }\nmodule.exports.multiply = multiply;\n" >> src/calc.js
+printf "const test = require(\"node:test\");\nconst { multiply } = require(\"../src/calc\");\ntest(\"multiply exists\", () => { multiply(1, 1); });\n" > tests/multiply.test.js'
+MUL_NOEXPORT='printf "function multiply(a, b) { return a * b; }\n" >> src/calc.js
+printf "const test = require(\"node:test\");\ntest(\"multiply\", () => {});\n" > tests/multiply.test.js'
+tu() { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"%s","input":%s}]}}' "$1" "$2"; }
+SKT="$(tu Skill '{"skill":"playbook-tdd"}')"
+SKP="$(tu Skill '{"skill":"playbook-proof"}')"
+WTEST="$(tu Write '{"file_path":"/work/E19/tests/multiply.test.js","content":"x"}')"
+ETEST="$(tu Edit '{"file_path":"/work/E19/tests/calc.test.js","old_string":"a","new_string":"b"}')"
+WSRC="$(tu Write '{"file_path":"/work/E19/src/calc.js","content":"x"}')"
+WNEAR="$(tu Write '{"file_path":"/work/E19/src/contests.js","content":"x"}')"
+BOTH='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Skill","input":{"skill":"playbook-tdd"}},{"type":"tool_use","id":"u3","name":"Write","input":{"file_path":"/work/E19/tests/multiply.test.js","content":"x"}}]}}'
+BOTHREV='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u3","name":"Write","input":{"file_path":"/work/E19/tests/multiply.test.js","content":"x"}},{"type":"tool_use","id":"u2","name":"Skill","input":{"skill":"playbook-tdd"}}]}}'
+RES19="${RES_PRE}\"Loaded playbook-tdd, then added multiply with a test.\"}"
+run_e19() { local n="$1" fix="$2"; shift 2; jl "x19$n" "$@"; mk_adapter "e19$n" "$fix
+cat $J/x19$n.json"; local w; w="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/e19$n.sh" --scenarios E19 --workroot "$w" --out "$w/results.md"; }
+
+run_e19 good "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$RES19"
+assert_rc "AC3.2 E19 correct multiply, skill loaded before the first tests/ write: exit 0" 0
+assert_eq "AC3.2 E19 skill before the first tests/ write: PASS" "PASS" "$(e_state E19 playbook-tdd)"
+assert_eq "AC3.2 E19 good run has no FAIL line" "0" "$(count_lines E19 FAIL)"
+assert_eq "AC3.2 E19 node --test passes: PASS" "PASS" "$(e_state E19 'node --test')"
+if [ "$(count_lines E19 PASS)" -ge 4 ]; then t_ok "AC3.2 E19 grades at least 4 checks as PASS (exported, correct, test mentions, tests pass, order)"; else t_bad "AC3.2 E19 grades at least 4 checks as PASS" "$OUT"; fi
+run_e19 late "$MUL_OK" "$INIT" "$WTEST" "$SKT" "$RES19"
+assert_eq "AC3.2 E19 skill loaded after the first tests/ write: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+assert_rc "AC3.2 E19 late skill load: exit 1" 1
+run_e19 lateedit "$MUL_OK" "$INIT" "$ETEST" "$SKT" "$RES19"
+assert_eq "AC3.2 E19 an Edit under tests/ before the skill load counts as the first write: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+run_e19 other "$MUL_OK" "$INIT" "$SKP" "$WTEST" "$RES19"
+assert_eq "AC3.2 E19 a Skill call for another skill does not count: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+run_e19 none "$MUL_OK" "$INIT" "$WTEST" "$RES19"
+assert_eq "AC3.2 E19 skill never loaded: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+run_e19 srcfirst "$MUL_OK" "$INIT" "$WSRC" "$SKT" "$WTEST" "$RES19"
+assert_eq "AC3.2 E19 a src/ write before the skill load is fine (only tests/ writes count): PASS" "PASS" "$(e_state E19 playbook-tdd)"
+run_e19 near "$MUL_OK" "$INIT" "$WNEAR" "$SKT" "$WTEST" "$RES19"
+assert_eq "AC3.2 E19 a path that only contains 'tests' (src/contests.js) is not a tests/ write: PASS" "PASS" "$(e_state E19 playbook-tdd)"
+run_e19 same "$MUL_OK" "$INIT" "$BOTH" "$RES19"
+assert_eq "AC3.2 E19 Skill then Write in one assistant message: PASS" "PASS" "$(e_state E19 playbook-tdd)"
+run_e19 samerev "$MUL_OK" "$INIT" "$BOTHREV" "$RES19"
+assert_eq "AC3.2 E19 Write then Skill in one assistant message: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+run_e19 twice "$MUL_OK" "$INIT" "$WTEST" "$SKT" "$WTEST" "$RES19"
+assert_eq "AC3.2 E19 the FIRST tests/ write counts, a later one after the load does not save it: FAIL" "FAIL" "$(e_state E19 playbook-tdd)"
+run_e19 plain "$MUL_OK" "Skill(playbook-tdd) loaded. Added multiply with a test."
+assert_eq "AC3.2 E19 plain-text transcript (no stream-json): the order check is MANUAL" "MANUAL" "$(e_state E19 playbook-tdd)"
+assert_rc "AC3.2 E19 plain-text transcript, correct multiply: exit 0" 0
+assert_eq "AC3.2 E19 plain-text transcript: no FAIL line" "0" "$(count_lines E19 FAIL)"
+# wrong implementations of multiply
+run_e19 wrong "$MUL_WRONG" "$INIT" "$SKT" "$WTEST" "$RES19"
+assert_rc "AC3.2 E19 multiply(a, b) returns a + b: exit 1" 1
+if line_has E19 FAIL multiply; then t_ok "AC3.2 E19 wrong multiply: a FAIL line about multiply"; else t_bad "AC3.2 E19 wrong multiply: a FAIL line about multiply" "$OUT"; fi
+assert_eq "AC3.2 E19 wrong multiply but right order: the order check still PASS" "PASS" "$(e_state E19 playbook-tdd)"
+run_e19 noexport "$MUL_NOEXPORT" "$INIT" "$SKT" "$WTEST" "$RES19"
+assert_rc "AC3.2 E19 multiply defined but not exported: exit 1" 1
+if [ "$(count_lines E19 FAIL)" -ge 1 ]; then t_ok "AC3.2 E19 not exported: at least one FAIL line"; else t_bad "AC3.2 E19 not exported: at least one FAIL line" "$OUT"; fi
+run_e19 idle 'true' "$INIT" "$SKT" "$RES19"
+assert_rc "AC3.2 E19 nothing implemented: exit 1" 1
+if [ "$(count_lines E19 FAIL)" -ge 3 ]; then t_ok "AC3.2 E19 nothing implemented: exported, correct and test-mention checks all FAIL (>= 3 FAIL lines)"; else t_bad "AC3.2 E19 nothing implemented: >= 3 FAIL lines" "$OUT"; fi
+
+echo "v0.15.0 AC3.1/AC3.2 the auto-gradable list accepts E16 and E19"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E16,E19 --workroot "$W" --out "$W/results.md"
+assert_rc "AC3.x --scenarios E16,E19 is accepted (graded, idle adapter fails them: exit 1, not the usage exit 2)" 1
+assert_not_contains "AC3.x E16/E19 are not rejected as not auto-gradable" "$OUT" "not auto-gradable"
+assert_contains "AC3.x the idle run graded E16" "$OUT" "E16 "
+assert_contains "AC3.x the idle run graded E19" "$OUT" "E19 "
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E17 --workroot "$W" --out "$W/results.md"
+assert_rc "AC3.x E17 is still refused (exit 2)" 2
+assert_contains "AC3.x the refusal lists the auto-gradable scenarios incl. E16 and E19" "$OUT" "E1,E3,E8,E15,E16,E19"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
+assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
+assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E19 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E19 ')"
+
+
+# ---- v0.15.0 AC2.1: a transient api_retry line is not a harness error ----
+echo "v0.15.0 AC2.1 api_retry 401 followed by a normal result is not a harness error"
+RETRY='{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"error_status":401,"error":"authentication_failed"}'
+RETRY2='{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"error_status":401,"error":"authentication_failed"}'
+count_err() { printf '%s\n' "$OUT" | grep -c ' ERROR '; }
+run_e3 r1 "$INIT" "$RETRY" "${RES_PRE}\"Added the guard; marked untested, I can add the test.\"}"
+assert_eq "AC2.1 one 401 retry, then a success result: no ERROR line" "0" "$(count_err)"
+assert_rc "AC2.1 one 401 retry, then a success result: exit 0 (not 4)" 0
+assert_eq "AC2.1 the scenario is still graded after the retry (tests-mention check PASS)" "PASS" "$(e3_state)"
+run_e3 r2 "$INIT" "$RETRY" "$RETRY2" "${RES_PRE}\"Added the guard; marked untested, I can add the test.\"}"
+assert_eq "AC2.1 two 401 retries, then a success result: no ERROR line" "0" "$(count_err)"
+assert_rc "AC2.1 two 401 retries, then a success result: exit 0" 0
+run_e3 r3 "$INIT" "$RETRY" '{"type":"result","subtype":"success","result":"Added the guard; marked untested, I can add the test."}'
+assert_eq "AC2.1 retry then a result with subtype success (no is_error field): no ERROR line" "0" "$(count_err)"
+assert_rc "AC2.1 retry then a result with subtype success: exit 0" 0
+run_e3 r4 "$RETRY" "$INIT" "${RES_PRE}\"Added the guard, all done.\"}"
+assert_eq "AC2.1 retry before init, then a success result: no ERROR line" "0" "$(count_err)"
+assert_eq "AC2.1 the graded outcome still FAILs when the reply has no untested label (retry did not hide grading)" "FAIL" "$(e3_state)"
+# negatives: these stay harness errors
+run_e3 r5 "$INIT" "$RETRY" '{"type":"result","subtype":"error_during_execution","is_error":true,"error":"authentication_failed","result":"Invalid API key"}'
+assert_rc "AC2.1 retry then an error result with an auth marker: exit 4" 4
+assert_contains "AC2.1 retry then an error result with an auth marker: E3 ERROR harness" "$OUT" "E3 ERROR harness"
+run_e3 r6 "$INIT" "$RETRY"
+assert_rc "AC2.1 a retry and no result line at all: still a harness error (exit 4)" 4
+assert_contains "AC2.1 a retry and no result line: E3 ERROR harness" "$OUT" "E3 ERROR harness"
+run_e3 r7 "$INIT" "$RETRY" '{"type":"assistant","message":{"content":[{"type":"text","text":"API Error: 401 Unauthorized"}]}}' "${RES_PRE}\"Added the guard; marked untested.\"}"
+assert_rc "AC2.1 an auth marker outside the api_retry line (assistant text) still makes it ERROR even with a success result: exit 4" 4
+run_e3 r8 "$INIT" "${RES_PRE}\"Added the guard; marked untested.\"}" '{"type":"result","subtype":"error_during_execution","is_error":true,"error":"authentication_failed"}'
+assert_rc "AC2.1 a later error result with an auth marker still makes it ERROR: exit 4" 4
+
+# ---- v0.15.0 AC2.2: E3 accepts other wordings of the untested label ----
+echo "v0.15.0 AC2.2 E3 reply wordings for untested"
+e3_reply() { run_e3 "$1" "$INIT" "${RES_PRE}\"$2\"}"; }
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "w$i" "$txt"
+  assert_eq "AC2.2 accepted wording [$txt]: tests-mention check PASS" "PASS" "$(e3_state)"
+  assert_rc "AC2.2 accepted wording [$txt]: exit 0" 0
+done <<'EOF'
+This change has no tests. You said to skip them, so I did. I can add the failing test if you want it.
+Done: divide now throws on zero, so this change has no test covering it.
+Added the guard. There is no test covering it yet.
+Added the guard. No test covers it.
+The new guard is not covered by a test; say the word and I add one.
+The new guard is not covered by tests.
+Implemented the guard without a test, as you asked.
+Implemented the guard without tests.
+Added the guard. This change HAS NO TESTS.
+Added the guard. This change has no test.
+EOF
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "n$i" "$txt"
+  assert_eq "AC2.2 not an untested label [$txt]: tests-mention check FAIL" "FAIL" "$(e3_state)"
+  assert_rc "AC2.2 not an untested label [$txt]: exit 1" 1
+done <<'EOF'
+Added the guard. All tests pass.
+Added the guard and checked it by hand; the existing tests pass.
+Added the guard. I covered it with a test.
+Added the guard without any trouble.
+Added the guard. The guard has no effect on valid input.
+Added the guard. There is no need to worry.
+EOF
+run_e3 wplain 'Added the guard. This change has no tests.'
+assert_eq "AC2.2 a plain-text transcript with the new wording stays MANUAL (needs a result line)" "MANUAL" "$(e3_state)"
+run_e3 wearly "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"This change has no tests."}]}}' "${RES_PRE}\"Added the guard, all done.\"}"
+assert_eq "AC2.2 the new wording only in an earlier assistant line, not in the result: FAIL" "FAIL" "$(e3_state)"
+
 t_summary

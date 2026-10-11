@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.0 - 2026-10-11
+- **CI shards balanced by measured time**: `tests/run-all.sh` prints each suite's time and, with
+  `tests/shard-weights` (seconds per suite from the windows-latest runner), assigns suites greedily.
+  The modulo split had put test-evals (392 s), test-ship and test-release-tool together (shard 1: 6 min 48 s);
+  the weighted split is 537 / 536 / 537 weight units.
+- **Release tags reuse main's CI**: on a `v*` tag the test jobs do not rerun; `main-ci` waits for the
+  push-to-main run of the same commit and the release job requires it.
+- **More auto-graded evals**: E16 (integer cents, Full named, Agent/Task sub-agent use) and E19
+  (playbook-tdd loaded before the first tests/ write). Prompts may wrap over several lines.
+- **Eval findings (3 rounds with v0.14.0)**: a recovered `api_retry` with a 401 no longer makes a scenario
+  ERROR; E3 accepts "has no tests" / "no test covering it" as the untested label (two of three rounds had
+  been marked FAIL for that wording).
+- **Playbook feedback at close-out**: playbook-tdd's Phase 4 captures any misfired rule, gate or script with
+  playbook-feedback; the final report has a "Playbook feedback" line; new eval E20.
+- test-run-all.sh unsets PB_SHARD at its top.
+- Built at Full weight: Sonnet tester, implementer for code, run-all under `check infra`, Opus reviewer.
+
 ## 0.14.0 - 2026-10-11
 - **ship.sh cannot be broken by its own `git pull`**: the whole body runs from `main "$@"; exit $?`, so a
   rewritten file mid-run changes nothing (a test rewrites the fixture's ship.sh during the merge).

@@ -69,7 +69,8 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
    logic is recommended.
 5. Final report with `Weight: Lite` and the line "no independent review". If the user wants one,
-   run Phase 3 on the result.
+   run Phase 3 on the result. If a rule, gate or script misfired, capture it with `playbook-feedback`
+   first (as in Phase 4) and name it on a "Playbook feedback:" line.
 
 ### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
 - **docs-only**: README, comments, guides; no executable or configuration change.
@@ -155,6 +156,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
+- If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report: one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
 
 ## Starting roles per harness (`conf.sh get subagents`)

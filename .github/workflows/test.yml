@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   test:
+    # A release tag points at a commit the push to main already tested: main-ci waits for that run instead.
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +35,7 @@ jobs:
   windows-shard:
     # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in three.
     name: windows shard ${{ matrix.shard }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +58,7 @@ jobs:
     # The name branch protection requires; green only when every shard is green.
     name: test (windows-latest)
     needs: windows-shard
-    if: always()
+    if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - name: All Windows shards passed
@@ -63,10 +66,30 @@ jobs:
           echo "windows shards: ${{ needs.windows-shard.result }}"
           [ "${{ needs.windows-shard.result }}" = success ] || exit 1
 
+  main-ci:
+    # Tag pushes only: the tagged commit was tested by its push to main; wait for that run and require success.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: The test run of this commit on main passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=""
+          for i in $(seq 1 30); do
+            run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow test.yml --branch main --event push --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            [ -n "$run" ] && break
+            sleep 10
+          done
+          [ -n "$run" ] || { echo "no test run on main for $GITHUB_SHA"; exit 1; }
+          gh run watch "$run" --repo "$GITHUB_REPOSITORY" --exit-status
+
   release:
     # Only for v* tag pushes, after the tests pass. Never overwrites an existing release.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [test, windows]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.main-ci.result == 'success' }}
+    needs: [test, windows, main-ci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
