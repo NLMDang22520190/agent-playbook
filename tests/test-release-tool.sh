@@ -307,4 +307,32 @@ assert_contains "AC8.1 the whole stub output arrives" "$(cat "$LOUT")" "LIVE-SEC
 assert_eq "AC8.1 the live run still exits 0" "0" "$(cat "$LOUT.rc" 2>/dev/null)"
 assert_contains "AC8.1 the live run still ends with 'would tag'" "$(cat "$LOUT")" "would tag"
 
+
+echo "README counts read only suite summary lines (an assertion line with N passed, M failed in its name is ignored)"
+set_readme_assert() {   # README_TEXT -> committed run-all stub: one summary line (10 passed) plus an assertion line naming 4 passed, 1 failed
+  printf '%s' "$1" > "$C/README.md"
+  cat > "$C/tests/run-all.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "== tests/test-a.sh"
+echo "  ok   AC6.2 'Tests: 4 passed, 1 failed: subtract.': PASS"
+echo "test-a.sh: 10 passed, 0 failed"
+echo "ALL GREEN"
+exit 0
+STUB
+  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main )
+}
+setup; set_readme_assert '# demo
+![tests](https://img.shields.io/badge/tests-10-1F9D63)
+| Script tests | **10 passing** |
+Every one of the 10 tests, run in sandboxes.
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "RV release: README 10 equals the one summary line (assertion line ignored): dry run exit 0" 0
+assert_contains "RV release: that dry run reaches 'would tag'" "$OUT" "would tag"
+setup; set_readme_assert '![tests](https://img.shields.io/badge/tests-15-1F9D63)
+'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "RV release: README 15 (summary 10 + the assertion line's 4 + 1) is wrong: refused, exit 1" 1
+assert_contains "RV release: the refusal names the real total 10" "$OUT" "suite ran 10"
+
 t_summary
