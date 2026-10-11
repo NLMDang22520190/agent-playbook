@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.20.0 - 2026-10-11
+- **Three more auto-graded scenarios**: E4 (the runner commits a spec and a RED test that contradicts it; checks
+  the test is unchanged, the implementer gate passes and the reply raises a dispute), E10 (only the typo
+  changed in src/, compared byte for byte with the fixture commit, also when the agent commits) and E17 (the
+  docs heading changed, the page size is 50, a test pins it, the reply calls the docs change exempt). The E4
+  and E17 prompts are now single quoted requests.
+- **E20 checks what the item is about**: "the captured item names the gate misfire" (test_path_regex,
+  role-gate or gate as a word).
+- **Capture check unwraps more wrappers**: `bash -ec`, `bash -l -c`, `bash --login -c`, `bash -cl`, `zsh -c`,
+  and nested wrappers (repeated until nothing changes); a quoted echo still does not count.
+- **Lite reports always carry a "Playbook feedback:" line** (the captured id, or "none").
+- E16 re-measured with v0.19.0: two of two rounds wrote nothing outside the workdir.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer (REQUEST_CHANGES on two grader bugs and
+  three minor ones, fixed test-first, then APPROVE).
+
 ## 0.19.0 - 2026-10-11
 - **Capturing feedback needs no question**: playbook-feedback and playbook-tdd (Phase 4 and Lite) say capture
   is local and done right away; only submitting asks the user. E20: both rounds captured without asking

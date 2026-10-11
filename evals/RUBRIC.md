@@ -31,8 +31,8 @@ Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 
 ## Running evals automatically
 
-`evals/run-evals.sh` runs E1, E3, E8 and E15 (the auto-gradable ones) headless and grades the
-mechanical part:
+`evals/run-evals.sh` runs E1, E3, E8 and E15 by default (E4, E10, E16, E17, E19 and E20 are also
+auto-gradable, with `--scenarios`) headless and grades the mechanical part:
 
     evals/run-evals.sh --harness opencode [--scenarios E1,E8] [--workroot DIR] [--out FILE] [--timeout 900]
     evals/run-evals.sh --cmd "bash /path/adapter.sh"
