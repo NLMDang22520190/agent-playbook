@@ -14,6 +14,14 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
+// like unquote, but a double-quoted string that stands alone as a word keeps its command substitutions as commands of
+// their own: out="$(bash proof-run.sh)" and [ -n "$(bash proof-run.sh)" ] run it; echo "bash proof-run.sh" does not
+const unquoteRun = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, (m, off, str) => {
+  if (m[0] !== '"') return "";
+  const prev = off > 0 ? str[off - 1] : "", next = off + m.length < str.length ? str[off + m.length] : "";
+  if (!/^(|[\s;&|(){}=])$/.test(prev) || !/^(|[\s;&|(){}])$/.test(next)) return "";
+  return (m.match(/\$\([^()]{0,200}\)/g) || []).map(x => ";" + x.slice(2, -1) + ";").join("");
+});
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
 // that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
 // script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
@@ -109,7 +117,7 @@ for (const line of text.split(/\r?\n/)) {
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(cmd)) ran = true;
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(b.name === "Bash" ? unquoteRun(unwrap(String(inp.command || ""))) : "")) ran = true;
   }
 }
 

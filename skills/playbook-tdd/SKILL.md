@@ -118,7 +118,9 @@ constraints, and **slices**. A slice is one observable behaviour, about 1 to 5 t
 slices so each one builds on the previous. Nothing goes into the spec that the source did not say.
 
 **Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
-(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The first RED covers
+(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from
+the existing code and tests, not from the source: the source describes the new behaviour, so read the old behaviour
+from the code, its tests and the earlier bug reports. The first RED covers
 the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
 
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
@@ -163,8 +165,20 @@ For slice S:
 
 **First-slice checkpoint.** When a task has more than one slice that repeats a pattern (several
 screens, endpoints or files), then in an interactive run show the first finished slice to the user and
-wait for an OK before the rest. In a non-interactive run, continue without waiting and log in
+wait for an OK before the rest. With `autonomy=full`, show the first finished slice in the report and do not wait
+for an OK. In a non-interactive run, continue without waiting and log in
 `decisions.md` that the checkpoint was skipped.
+
+**Parallel slices.** Slices whose files are disjoint (compare the files each one names in the spec's Impact section)
+may run in parallel: each slice gets its own git worktree on its own branch, with its tester and then its
+implementer working there, and its own red and green commits and role gates (`role-gate.sh check ... --base` the
+slice's own RED sha, run inside that worktree). The orchestrator merges the slice branches into the feature branch.
+A merge conflict means the slices were not disjoint after all, so those slices go back to serial work. Slices that
+share a file stay serial from the start. After the merge there is one review of the merged feature (Phase 3), never
+one per parallel slice. Remove the slice worktrees once their branches are merged.
+
+**Why:** disjoint slices cannot break each other, so waiting for one to finish before the next starts only costs
+time; a conflict is the cheap signal that the files were not disjoint.
 
 **Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
 
@@ -183,7 +197,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
   --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
-  --majors <N>`, with tokens as the harness reports them (`0` if unknown, never a guess); `--rework` is the
+  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess); `--rework` is the
   rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` (the per-role
   and per-phase tables, rework rounds and review majors) into the final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
@@ -194,6 +208,8 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
   the result could still be wrong, each with the command run to check it and its outcome).
+- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
+  review majors and rework rounds the tasks had. It is advice only and changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.

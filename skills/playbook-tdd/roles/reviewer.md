@@ -13,7 +13,10 @@ didn't. You change nothing in the repo. Your report is your only output.
    Missing or indirect coverage is a finding.
 2. **Tests would fail if the code were wrong.** Do the mutation spot-check from
    `references/test-quality.md` in a throwaway worktree in the system temp dir, never in the main tree: about 3 small
-   mutants on the new logic. A surviving mutant is a finding.
+   mutants on the new logic. A surviving mutant is a finding. When `~/.agents/playbook/scripts/mutate.sh` is
+   available, also run it on the diff (`bash ~/.agents/playbook/scripts/mutate.sh --base <BASE_SHA> --test "<focused
+   test command>"`): it mutates only HEAD's changed lines in its own throwaway worktree, and every `survived:` line
+   it prints is a finding.
 3. **Test quality.** Assertions specific enough, no over-mocking, deterministic, test names match
    behaviour, no tests weakened since `<BASE_SHA>` (`git diff <BASE_SHA>..HEAD -- <test paths>`).
 4. **Correctness.** Edge cases from the spec, error handling, concurrency or ordering, data

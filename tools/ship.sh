@@ -9,6 +9,8 @@
 # Questions need a terminal on stdin; --yes answers them (use only when the user already said yes).
 # Exit: 0 shipped, 1 refused or a step failed (release.sh's own status is passed on), 2 usage,
 #       3 cannot enter the repository.
+# Eval guard (advice only): when skill text changed since the previous release, ship prints
+# "eval guard: <capped run-evals command>" before it tags and again at the end. It never runs the command.
 # Waiting for the tag's CI run: PB_SHIP_WAIT_TRIES (default 12) x PB_SHIP_WAIT_SECS (default 5).
 set -u
 # The whole body is one function called on the last line: `git pull` below rewrites this file while
@@ -69,6 +71,22 @@ main() {
     fi
   }
 
+  # eval_hint: the capped command that checks the skill wording changed since the previous release (printed, never run)
+  eval_hint=""
+  find_eval_hint() {
+    local msha prev g
+    eval_hint=""
+    msha="HEAD"
+    if [ "$merged" = 1 ] && git rev-parse -q --verify "$oid^{commit}" >/dev/null 2>&1; then msha="$oid"; fi
+    prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$msha^" 2>/dev/null)" || prev=""
+    [ -n "$prev" ] || return 0
+    [ -f tools/eval-guard.sh ] || return 0
+    g="$(bash tools/eval-guard.sh --base "$prev" 2>/dev/null)" || return 0
+    eval_hint="$(printf '%s
+' "$g" | grep '^bash evals/run-evals.sh ' | head -n 1)"
+    return 0
+  }
+
   ask() { # question -> 0 on y/yes; refuses without a terminal
     [ "$yes" = 1 ] && return 0
     [ -t 0 ] || fail "'$1' needs an answer and stdin is not a terminal (pass --yes only if the user agreed)"
@@ -118,6 +136,8 @@ main() {
 
   step "update main"
   git switch -q main && git pull -q --ff-only || fail "could not bring main up to date"
+  find_eval_hint
+  [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
 
   if [ "$yes" = 1 ]; then
     step "dry run skipped (--yes: the real release.sh runs the same checks and suite before tagging)"
@@ -152,6 +172,7 @@ main() {
   # install.sh update checks out the tag; the development checkout goes back to main
   git switch -q main || fail "installed, but could not switch back to main"
   echo "back on branch main"
+  [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
   echo "shipped $tag"
 }
 

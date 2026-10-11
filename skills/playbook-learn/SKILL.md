@@ -46,12 +46,20 @@ Do **not** record:
      --rule "Run pnpm codegen before pnpm typecheck after editing *.graphql." \
      --why "Typecheck fails on stale generated types." \
      --evidence "CI run 4812 failed at typecheck; passed after codegen (2026-10-09)" \
-     --source failure --scope "src/graphql/**"
+     --source failure --scope "src/graphql/**" --role implementer
    bash $L check
    ```
+   `--role tester|implementer|reviewer|all` (default `all`) says who the rule is for. It is written as `- Role: <role>`
+   right after `- Scope:`. The Role line counts toward the line budget (`LEARN_MAX_LINES`), like every other line.
    Exit codes: 4 = duplicate, 5 = at capacity (retire or merge first), 2 = validation error.
 5. **Prune** when at capacity, or when an entry is wrong or obsolete:
    `bash $L retire L-0007 --reason "superseded by L-0012"`. Retired entries stay for the audit trail.
+
+## Role checklists
+`bash $L checklist <role>` prints the active entries for that role and for `all` (an entry without a Role line counts
+as `all`) as `- [ ] <rule> (L-000N, scope: <scope>)`, or "no learnings for <role>". The orchestrator puts that output
+into section 2c of the role prompt (the playbook-tdd role prompt template), so a lesson reaches the role that needs it.
+`check` reports an unknown Role value as a problem.
 
 ## Promoting a lesson to the global playbook
 If a lesson clearly applies to every project, tell the user and suggest adding it to the playbook
