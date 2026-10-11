@@ -506,4 +506,17 @@ sec_flat_has 'v22 AC4.1 Request coverage: not done' "$FINAL" '^## Request covera
 sec_flat_has 'v22 AC4.1 Phase 4 requires the request coverage' "$SKILL" '^### Phase 4' 'request coverage'
 lite_has 'v22 AC4.1 Lite step 5 requires the request coverage' 5 'request coverage'
 
+
+# --- v0.22.0 review findings: content
+if grep -qiE 'divide' "$SPEC_REV" 2>/dev/null; then t_bad 'RV10 spec-reviewer.md does not contain the E21 answer (divide)' "found: $(grep -niE 'divide' "$SPEC_REV" | head -n 2)"; else t_ok 'RV10 spec-reviewer.md does not contain the E21 answer (divide)'; fi
+if grep -qiE 'report\.js' "$SPEC_REV" 2>/dev/null; then t_bad 'RV10 spec-reviewer.md does not contain the E21 answer (report.js)' "found: $(grep -niE 'report\.js' "$SPEC_REV" | head -n 2)"; else t_ok 'RV10 spec-reviewer.md does not contain the E21 answer (report.js)'; fi
+assert_file 'RV10 spec-reviewer.md still exists (the leak checks above are not vacuous)' "$SPEC_REV"
+flat_has 'RV10 spec-reviewer.md: the report is its only output' "$SPEC_REV" 'only output'
+flat_has 'RV10 spec-reviewer.md: the orchestrator saves the report to 01b-spec-review.md' "$SPEC_REV" 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|01b-spec-review.{0,160}(saved|written|stored) by the orchestrator'
+sec_flat_has 'RV10 SKILL.md Phase 1: the orchestrator saves the spec reviewer report to .agents/handoff/01b-spec-review.md' "$SKILL" '^### Phase 1' 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|(save|saves|saved|writes?|stor).{0,80}01b-spec-review.{0,120}orchestrator|01b-spec-review.{0,120}(saved|written|stored) by the orchestrator'
+sec_flat_has 'RV10 SKILL.md Phase 1: it is the reviewer report that is saved (its only output)' "$SKILL" '^### Phase 1' 'report.{0,120}01b-spec-review|01b-spec-review.{0,120}report'
+flat_has 'RV10 playbook-setup: leak_literals only in the project conf are not read in linked git worktrees' "$SETUP" 'worktree.{0,250}(project|leak_literals)|leak_literals.{0,250}worktree'
+flat_has 'RV10 playbook-setup: the project conf is git-excluded' "$SETUP" 'worktree.{0,250}(exclude|ignored)|(exclude|ignored).{0,250}worktree'
+flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$SETUP" 'worktree.{0,250}global|global.{0,250}worktree'
+
 t_summary

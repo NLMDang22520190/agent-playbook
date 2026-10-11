@@ -198,4 +198,49 @@ printf 'wrote the spec, then edited src/calc.js\nsecond line\n' > "$TR/p.txt"
 assert_eq "AC5.2 spec_first=na for a plain-text transcript" "na" "$(node "$TS" "$TR/p.txt" 2>/dev/null | sed -n 's/^spec_first=//p')"
 assert_eq "AC5.2 transcript.js prints the spec_first key exactly once" "1" "$(printf '%s\n' "$(tu Write "$SFW")" > "$TR/o.json"; node "$TS" "$TR/o.json" 2>/dev/null | grep -c '^spec_first=')"
 
+
+echo "review: spec_first with no src write at all, MultiEdit, NotebookEdit, Bash edits of src/"
+assert_eq "RV8 spec_first=1: a spec Write and no src/ write at all" "1" "$(sf_of "$(tu Write "$SFW")")"
+assert_eq "RV8 spec_first=1: a spec Edit and no src/ write at all" "1" "$(sf_of "$(tu Edit "$SFW")")"
+assert_eq "RV9 spec_first=0: MultiEdit of an src/ file before the spec" "0" "$(sf_of "$(tu MultiEdit '{"file_path":"/w/E21/src/calc.js","edits":[{"old_string":"a","new_string":"b"}]}')" "$(tu Write "$SFW")")"
+assert_eq "RV9 spec_first=1: the spec, then a MultiEdit of src/" "1" "$(sf_of "$(tu Write "$SFW")" "$(tu MultiEdit '{"file_path":"/w/E21/src/calc.js","edits":[]}')")"
+assert_eq "RV9 spec_first=0: NotebookEdit of an src/ notebook before the spec" "0" "$(sf_of "$(tu NotebookEdit '{"notebook_path":"/w/E21/src/n.ipynb","new_source":"x"}')" "$(tu Write "$SFW")")"
+# btu COMMAND -> a Bash tool_use line (JSON-escaped by node)
+btu() { node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1"; }
+SI="-i"   # built from a variable so that no literal in-place sed sits in this file
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV9 spec_first=0: a Bash edit of src/ before the spec [$cmd]" "0" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")")"
+  assert_eq "RV9 spec_first=1: the same Bash edit after the spec [$cmd]" "1" "$(sf_of "$(tu Write "$SFW")" "$(btu "$cmd")")"
+done <<XEOF
+sed $SI 's/divide/safeDivide/g' src/calc.js
+sed $SI.bak 's/a/b/' src/x.js
+sed -e 's/a/b/' $SI src/x.js
+perl -pi -e 's/a/b/' src/x.js
+perl -i -pe 's/a/b/' src/x.js
+echo hi > src/x.js
+cat /tmp/new.js > src/x.js
+printf 'x' > ./src/x.js
+echo x | tee src/x.js
+echo x | tee -a src/x.js
+mv /tmp/a.js src/x.js
+cd /w/E21 && sed $SI 's/a/b/' src/calc.js
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV9 not an src/ write [$cmd]: spec_first stays 1 when the spec comes first and src is edited later" "1" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+done <<'XEOF'
+cat src/calc.js
+grep -rn divide src
+sed -n 1,5p src/calc.js
+ls src > /tmp/listing.txt
+cat src/calc.js > /tmp/copy.js
+cp src/calc.js /tmp/copy.js
+echo hi > srcnotes.txt
+XEOF
+assert_eq "RV9 spec_first=1: a Write under node_modules/x/src/ is not an src/ write" "1" "$(sf_of "$(tu Write '{"file_path":"/w/E21/node_modules/x/src/a.js","content":"x"}')" "$(tu Write "$SFW")")"
+assert_eq "RV9 spec_first=1: a Bash write under node_modules/x/src/ is not an src/ write" "1" "$(sf_of "$(btu 'echo x > node_modules/x/src/a.js')" "$(tu Write "$SFW")")"
+assert_eq "RV9 spec_first=1: a Bash sed edit under node_modules/x/src/ is not an src/ write" "1" "$(sf_of "$(btu "sed $SI 's/a/b/' node_modules/x/src/a.js")" "$(tu Write "$SFW")")"
+assert_eq "RV9 spec_first=0: a real src/ write after a node_modules one and before the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/node_modules/x/src/a.js","content":"x"}')" "$(tu Write "$SRC")" "$(tu Write "$SFW")")"
+
 t_summary
