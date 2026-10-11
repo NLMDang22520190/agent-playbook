@@ -14,14 +14,17 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
-// like unquote, but a double-quoted string that stands alone as a word keeps its command substitutions as commands of
-// their own: out="$(bash proof-run.sh)" and [ -n "$(bash proof-run.sh)" ] run it; echo "bash proof-run.sh" does not
-const unquoteRun = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, (m, off, str) => {
-  if (m[0] !== '"') return "";
-  const prev = off > 0 ? str[off - 1] : "", next = off + m.length < str.length ? str[off + m.length] : "";
-  if (!/^(|[\s;&|(){}=])$/.test(prev) || !/^(|[\s;&|(){}])$/.test(next)) return "";
-  return (m.match(/\$\([^()]{0,200}\)/g) || []).map(x => ";" + x.slice(2, -1) + ";").join("");
-});
+// like unquote, but the command substitutions inside a double-quoted string are kept as commands of their own (appended
+// at the end, so the words around the string stay as they were): out="$(bash proof-run.sh)", [ -n "$(bash proof-run.sh)" ]
+// and "$(bash proof-run.sh)"x run it; echo "bash proof-run.sh" does not
+const unquoteRun = s => {
+  const subs = [];
+  const r = s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, m => {
+    if (m[0] === '"') for (const x of m.match(/\$\([^()]{0,200}\)/g) || []) subs.push(x.slice(2, -1));
+    return "";
+  });
+  return subs.length ? r + ";" + subs.join(";") : r;
+};
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
 // that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
 // script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
@@ -67,7 +70,11 @@ function runsProof(cmd) {
   // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
   const SEP = "[^\\s;&|(){}`]";
   const inword = new RegExp("\\$\\{[^}]{0,200}\\}|(?<=" + SEP + ")\\$\\([^()]{0,200}\\)|\\$\\([^()]{0,200}\\)(?=" + SEP + ")|(?<=" + SEP + ")`[^`]{0,200}`|`[^`]{0,200}`(?=" + SEP + ")", "g");
-  for (const seg of cmd.replace(inword, "X").split(/[;&|(){}`\n]+/)) {
+  // the command inside a substitution that touches word characters runs whatever surrounds it: check it on its own
+  const inner = [];
+  const masked = cmd.replace(inword, m => { if (m[0] === "`") inner.push(m.slice(1, -1)); else if (m[0] === "$" && m[1] === "(") inner.push(m.slice(2, -1)); return "X"; });
+  if (inner.some(runsProof)) return true;
+  for (const seg of masked.split(/[;&|(){}`\n]+/)) {
     const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
     let k = 0;
     while (k < w.length) {

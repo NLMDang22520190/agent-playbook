@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Mutation testing on the changed lines of a diff: does the test command notice a flipped operator?
-#   mutate.sh --base REF --test "CMD" [--max N] [--timeout S] [--exclude GLOB]... [--fail-under PCT]
+#   mutate.sh --base REF --test "CMD" [--max N] [--timeout S] [--exclude GLOB]... [--include-docs] [--fail-under PCT]
 #
 # Changed lines = the added lines of `git diff -U0 -M --diff-filter=AMR REF...HEAD` (merge base; deleted and
-# binary files ignored; a rename counts only its changed lines). tests/* and every --exclude glob (repeatable,
-# e.g. '*_test.go') are left out, and so are comment lines (first non-blank character is # or //).
+# binary files ignored; a rename counts only its changed lines). Only regular files count: symlinks and submodules
+# are skipped. tests/*, markdown (*.md: prose gives false survivors; --include-docs brings it back) and every
+# --exclude glob (repeatable, e.g. '*_test.go') are left out, and so are comment lines (first non-blank character
+# is # or //).
 # One mutant per (line, operator), on the first whole-token occurrence on the line, in this order:
 #   == != | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
 #   and, only in non-shell files (shell uses < and > for redirection): < >= | > <=
@@ -12,24 +14,30 @@
 #
 # Safety: your work tree is never written. Only HEAD is mutated, in a throwaway `git worktree` under
 # ${TMPDIR:-/tmp}; CMD runs there (untracked or ignored files such as node_modules are not there). The worktree
-# is removed on exit, and a stale one left by a kill -9 is removed at the next start.
+# is removed on exit. Each run writes its pid to <its temp dir>/owner. At the start a run removes only the worktrees
+# of dead owners (a stale one left by a kill -9); a live run's worktree is never touched. A temp dir without an
+# owner file is removed only when it is older than 10 minutes.
 # Before the first mutant CMD runs once unmutated; when it does not pass, exit 4.
 # Every CMD run is limited by --timeout S (default 120): a portable background watchdog, no GNU timeout.
 # A mutant where CMD exits 0 survived; a failing or timed-out run killed it.
 # Output: "survived: file:line: <original line> -> <mutant line>", "killed (timeout): file:line", then
 # "mutants: N, killed: K, survived: S". --fail-under PCT: exit 1 when K*100/N (integer division) < PCT.
+# A mutant that cannot be written into the worktree prints "error: file:line: ..." and counts as neither killed nor
+# survived; the exit is then 5 (when --fail-under is not also missed).
 # Exit: 0 ok | 1 below --fail-under | 2 usage | 3 not a git repository or no worktree | 4 baseline fails
+#       5 a mutant could not be applied
 set -u
 
 usage() {
-  echo "usage: mutate.sh --base REF --test \"CMD\" [--max N] [--timeout S] [--exclude GLOB]... [--fail-under PCT]" >&2
+  echo "usage: mutate.sh --base REF --test \"CMD\" [--max N] [--timeout S] [--exclude GLOB]... [--include-docs] [--fail-under PCT]" >&2
   exit 2
 }
 die() { printf 'error: %s\n' "$1" >&2; exit "${2:-1}"; }
 is_uint() { case "$1" in "" | *[!0-9]*) return 1 ;; esac; return 0; }
 
-base=""; cmd=""; max=20; tmo=120; failunder=""; excludes=""
+base=""; cmd=""; max=20; tmo=120; failunder=""; excludes=""; docs=0
 while [ $# -gt 0 ]; do
+  if [ "$1" = "--include-docs" ]; then docs=1; shift; continue; fi
   case "$1" in
     --base | --test | --max | --timeout | --exclude | --fail-under) [ $# -ge 2 ] || usage ;;
     *) usage ;;
@@ -58,20 +66,31 @@ realbase="$(cd "$tmpbase" 2>/dev/null && pwd -P)" || die "cannot use the temp di
 altbase=""
 if command -v cygpath >/dev/null 2>&1; then altbase="$(cygpath -m "$realbase" 2>/dev/null || true)"; fi
 
-# a stale worktree under our prefix (a previous run was killed with kill -9)
+run="$(mktemp -d "$tmpbase/pbmutate.XXXXXX")" || die "cannot create a temp dir in $tmpbase" 3
+printf '%s\n' "$$" > "$run/owner"
+wt="$run/wt"
+
+# a stale worktree under our prefix: its owner is dead (a previous run was killed with kill -9). A live run's
+# worktree is never touched; a dir without an owner file is only removed when it is older than 10 minutes.
 stale="$(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')"
 printf '%s\n' "$stale" | while IFS= read -r wp; do
   case "$wp" in
     "$realbase"/pbmutate.*/wt | "${altbase:-$realbase}"/pbmutate.*/wt)
+      d="$(dirname "$wp")"
+      opid=""
+      if [ -f "$d/owner" ]; then
+        read -r opid < "$d/owner" || opid=""
+        case "$opid" in "" | *[!0-9]*) opid="" ;; esac
+        if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then continue; fi
+      elif [ -d "$d" ] && [ -z "$(find "$d" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+        continue
+      fi
       git -C "$root" worktree remove --force "$wp" >/dev/null 2>&1 || true
-      rm -rf "$(dirname "$wp")"
+      rm -rf "$d"
       ;;
   esac
 done
 git -C "$root" worktree prune >/dev/null 2>&1 || true
-
-run="$(mktemp -d "$tmpbase/pbmutate.XXXXXX")" || die "cannot create a temp dir in $tmpbase" 3
-wt="$run/wt"
 curpid=""
 cleanup() {
   if [ -n "$curpid" ]; then kill -9 -- "-$curpid" 2>/dev/null; kill -9 "$curpid" 2>/dev/null; fi
@@ -83,14 +102,23 @@ trap cleanup EXIT
 trap 'exit 1' INT TERM HUP
 
 # ---- the changed lines ----
-git -C "$root" -c core.quotepath=off diff --no-ext-diff --no-color -M --diff-filter=AMR --name-only "$base...HEAD" > "$run/names" \
+git -C "$root" -c core.quotepath=off diff --no-ext-diff --no-color -M --diff-filter=AMR --raw "$base...HEAD" > "$run/names" \
   || die "git diff failed for $base...HEAD" 2
 : > "$run/files"
+tab="$(printf '\t')"
 set -f
-while IFS= read -r f; do
+while IFS= read -r rec; do
+  [ -n "$rec" ] || continue
+  meta="${rec%%"$tab"*}"
+  f="${rec##*"$tab"}"
+  # shellcheck disable=SC2086  # split ":oldmode newmode oldsha newsha status" on blanks
+  set -- $meta
+  # only regular files: a symlink (120000) or a submodule (160000) is never mutated
+  case "${2:-}" in 100644 | 100755) ;; *) continue ;; esac
   [ -n "$f" ] || continue
   skip=0
   case "$f" in tests/*) skip=1 ;; esac
+  if [ "$docs" = 0 ]; then case "$f" in *.md) skip=1 ;; esac; fi
   if [ "$skip" = 0 ] && [ -n "$excludes" ]; then
     while IFS= read -r g; do
       [ -n "$g" ] || continue
@@ -216,7 +244,7 @@ run_cmd() {
   return 1
 }
 
-total=0; killed=0; survived=0
+total=0; killed=0; survived=0; errors=0
 if [ -s "$run/mutants" ]; then
   git -C "$root" worktree add -q --detach "$wt" HEAD >/dev/null 2>&1 || die "cannot create a throwaway worktree" 3
   run_cmd; brc=$?
@@ -228,10 +256,15 @@ if [ -s "$run/mutants" ]; then
   soh="$(printf '\001')"
   while IFS="$soh" read -r f n orig mut; do
     [ -n "$f" ] || continue
+    if [ ! -f "$wt/$f" ] || [ -L "$wt/$f" ] ||
+       ! cp "$wt/$f" "$run/orig" 2>/dev/null ||
+       ! M="$mut" awk -v n="$n" 'NR == n { print ENVIRON["M"]; next } { print }' "$run/orig" > "$run/mutf" 2>/dev/null ||
+       ! { cat "$run/mutf" > "$wt/$f"; } 2>/dev/null; then
+      printf 'error: %s:%s: cannot apply the mutant (not a writable regular file in the worktree)\n' "$f" "$n"
+      errors=$((errors + 1))
+      continue
+    fi
     total=$((total + 1))
-    cp "$wt/$f" "$run/orig"
-    M="$mut" awk -v n="$n" 'NR == n { print ENVIRON["M"]; next } { print }' "$run/orig" > "$run/mutf"
-    cat "$run/mutf" > "$wt/$f"
     run_cmd; rc=$?
     cat "$run/orig" > "$wt/$f"
     case "$rc" in
@@ -246,4 +279,5 @@ printf 'mutants: %d, killed: %d, survived: %d\n' "$total" "$killed" "$survived"
 if [ -n "$failunder" ] && [ "$total" -gt 0 ] && [ $((killed * 100 / total)) -lt "$failunder" ]; then
   exit 1
 fi
+[ "$errors" -eq 0 ] || exit 5
 exit 0

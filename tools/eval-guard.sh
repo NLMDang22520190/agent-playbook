@@ -4,7 +4,7 @@
 # Lists the files changed since REF (git diff REF...HEAD) that evals/scenario-map covers, and prints the
 # capped command that would check them:
 #   bash evals/run-evals.sh --harness H --scenarios E1,E3 --max-cost USD
-# H defaults to $PLAYBOOK_HARNESS, else claude; USD defaults to 3. Scenarios are listed once each, in map order.
+# H (opencode, claude or codex; anything else exits 2) defaults to $PLAYBOOK_HARNESS, else claude; USD defaults to 3. Scenarios are listed once each, in map order.
 # Nothing mapped changed: prints "no skill text changed". It never calls run-evals.sh or a harness:
 # running evals spends money, so the user or the agent runs the printed command on purpose.
 # evals/scenario-map: one line per rule, "<path glob> <scenario> [<scenario>...]" ('#' starts a comment line).
@@ -26,7 +26,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$base" ] || usage
 case "$cost" in "" | *[!0-9.]* | .* | *. | *.*.*) usage ;; esac
-case "$harness" in "" | *[!A-Za-z0-9._-]*) usage ;; esac
+case "$harness" in opencode | claude | codex) ;; *) echo "error: the harness must be opencode, claude or codex" >&2; exit 2 ;; esac
 
 root="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 map="$root/evals/scenario-map"

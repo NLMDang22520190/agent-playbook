@@ -169,6 +169,8 @@ wait for an OK before the rest. With `autonomy=full`, show the first finished sl
 for an OK. In a non-interactive run, continue without waiting and log in
 `decisions.md` that the checkpoint was skipped.
 
+**Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
+
 **Parallel slices.** Slices whose files are disjoint (compare the files each one names in the spec's Impact section)
 may run in parallel: each slice gets its own git worktree on its own branch, with its tester and then its
 implementer working there, and its own red and green commits and role gates (`role-gate.sh check ... --base` the
@@ -179,8 +181,6 @@ one per parallel slice. Remove the slice worktrees once their branches are merge
 
 **Why:** disjoint slices cannot break each other, so waiting for one to finish before the next starts only costs
 time; a conflict is the cheap signal that the files were not disjoint.
-
-**Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
 
 ### Phase 3: Review (reviewer, read-only)
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with

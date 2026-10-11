@@ -184,7 +184,7 @@ case "$cmd" in
         nw = split("Full Lite", ws, " ")
         for (i = 1; i <= nw; i++) {
           w = ws[i]
-          if (n[w] > 0) printf "%s: tasks %d, tokens %d, review majors %d, rework %d (per task, average)\n", w, n[w], int(stok[w] / n[w]), int(smj[w] / n[w]), int(srw[w] / n[w])
+          if (n[w] > 0) printf "%s: tasks %d, tokens %.1f, review majors %.1f, rework %.1f (per task, average)\n", w, n[w], stok[w] / n[w], smj[w] / n[w], srw[w] / n[w]
         }
         printf "skipped %d task(s) without review data\n", skipped
         if (n["Full"] >= 5 && !fullmaj) printf "advice: Full reviews found no majors in %d tasks; similar changes may be Lite\n", n["Full"]
