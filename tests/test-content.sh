@@ -660,6 +660,10 @@ assert_eq 'v22.2 AC2.2 the aggregator (test (windows-latest)) has timeout-minute
 assert_eq 'v22.2 AC2.2 main-ci has timeout-minutes 30' "30" "$(wf_timeout main-ci)"
 assert_eq 'v22.2 AC2.2 release has timeout-minutes 10' "10" "$(wf_timeout release)"
 
+# AC8.3: the Windows shards turn the run-all re-run off (the full failure logs are already printed; re-runs could near the timeout)
+assert_contains "v22.2 AC8.3 the windows-shard job sets PB_RERUN: '0'" "$(wf_block "${SHARD:-__none__}")" "PB_RERUN: '0'"
+assert_not_contains "v22.2 AC8.3 the ubuntu/macos test job keeps the default re-run (no PB_RERUN)" "$(wf_block "${MAIN:-__none__}")" "PB_RERUN"
+
 # --- v0.22.2 AC6: resume state file
 STATE_T="$TDD/templates/state.md"
 assert_file 'v22.2 AC6.1 templates/state.md exists' "$STATE_T"
