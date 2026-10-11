@@ -404,4 +404,36 @@ if printf '%s' "$SCOPE_J" | grep -qiE 'never weaken, skip or delete a test'; the
 # the clause is in Scope discipline, not only in another section
 if printf '%s' "$(section "$BLOCK" "$CLAR" | tr '\n' ' ')" | grep -qE '[Ww]rite only (inside|in|within)'; then t_bad 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section' 'found in Clarify'; else t_ok 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section'; fi
 
+# --- v0.19.0 AC1.1: capturing feedback is local and needs no question; only submit asks the user
+FB19="$PB_ROOT/skills/playbook-feedback/SKILL.md"
+# flat FILE -> the whole file on one line (a sentence may wrap), runs of blanks squeezed
+flat() { tr '\n' ' ' < "$1" 2>/dev/null | tr -s ' '; }
+# flat_has NAME FILE PATTERN: PATTERN (case-insensitive ERE) is in the flattened FILE; PATTERN gaps use [^.] so a clause stays in one sentence
+flat_has() { if flat "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in the flattened $2"; fi; }
+flat_has 'v19 AC1.1 playbook-feedback says that capture is local (same sentence)' "$FB19" 'capture[^.]{0,120}(local|on disk)|(local|on disk)[^.]{0,80}capture'
+flat_has 'v19 AC1.1 playbook-feedback says capture needs no question' "$FB19" 'capture[^.]{0,160}(no question|no need to ask|without asking|never ask|do not ask|needs no (question|permission))|(no question|no need to ask|without asking)[^.]{0,120}capture'
+flat_has 'v19 AC1.1 playbook-feedback says to capture right away' "$FB19" 'capture[^.]{0,200}(right away|immediately|at once)|(right away|immediately|at once)[^.]{0,80}capture'
+flat_has 'v19 AC1.1 playbook-feedback says only submit (sending) asks the user' "$FB19" 'only[^.]{0,80}(submit|sending|send)[^.]{0,80}ask|only[^.]{0,40}ask[^.]{0,80}(submit|sending|send)'
+flat_has 'v19 AC1.1 playbook-feedback still asks at most once at the end (submit stays gated)' "$FB19" 'ask at most once'
+flat_has 'v19 AC1.1 playbook-feedback still has mark-asked' "$FB19" 'mark-asked'
+
+# --- v0.19.0 AC1.2: the Phase 4 and the Lite feedback lines say to capture without asking
+sec_flat_has() { # NAME FILE HEADING_REGEX PATTERN
+  if section "$2" "$3" | tr '\n' ' ' | tr -s ' ' | grep -qiE -- "$4"; then t_ok "$1"; else t_bad "$1" "pattern [$4] not in section [$3] of $2"; fi
+}
+NOASK='(no need to ask|without asking|no question|do not ask|don.t ask|never ask|needs no (question|permission))'
+sec_flat_has 'v19 AC1.2 Phase 4 feedback line: capture without asking' "$SKILL" '^### Phase 4' "playbook-feedback[^.]{0,250}$NOASK|capture[^.]{0,250}$NOASK"
+sec_flat_has 'v19 AC1.2 Lite feedback line: capture without asking' "$SKILL" '^### Lite workflow' "capture[^.]{0,250}$NOASK"
+sec_flat_has 'v19 AC1.2 Phase 4 still names playbook-feedback' "$SKILL" '^### Phase 4' 'playbook-feedback'
+sec_flat_has 'v19 AC1.2 Lite still names the Playbook feedback line' "$SKILL" '^### Lite workflow' 'Playbook feedback'
+
+# --- v0.19.0 AC3.1: every role file and the role prompt template tell sub-agents to write only inside the repository
+for f in "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT"; do
+  b="$(basename "$(dirname "$f")")/$(basename "$f")"
+  flat_has "v19 AC3.1 $b: write only inside the repository you were given" "$f" '(write|create)[^.]{0,50}only (inside|in|within)[^.]{0,80}repositor|only (write|create)[^.]{0,60}(inside|in|within)[^.]{0,80}repositor|(write|create)[^.]{0,30}nothing outside[^.]{0,80}repositor'
+  flat_has "v19 AC3.1 $b: never next to the repository" "$f" '(never|not)[^.]{0,60}(next to|beside|alongside)[^.]{0,40}(the )?(repo|repository)|(next to|beside|alongside) the repo[^.]{0,40}(never|not)'
+  flat_has "v19 AC3.1 $b: scratch files go under .agents/handoff/" "$f" 'scratch[^.]{0,100}\.agents/handoff'
+  flat_has "v19 AC3.1 $b: or the system temp dir" "$f" 'temp(orary)? (dir|folder)|\$TMPDIR|/tmp'
+done
+
 t_summary
