@@ -14,8 +14,11 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
-// `bash -c "..."` / `bash -lc '...'` / `sh -c ...`: the quoted script is the command, so grade what is inside it
-const unwrap = s => s.replace(/\b(?:ba)?sh\s+-l?c\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g, (m, d, q) => (d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
+// `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`: the quoted
+// script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
+const WRAP = /\b(?:ba|z)?sh((?:\s+--?[a-z]+)+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
+const unwrap1 = s => s.replace(WRAP, (m, f, d, q) => (!/(?:^|\s)-[a-z]*c/.test(f) ? m : d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
+const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u === s) break; s = u; } return s; };
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
