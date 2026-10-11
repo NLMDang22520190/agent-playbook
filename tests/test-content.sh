@@ -294,4 +294,67 @@ if [ -n "$MAIN" ] && [ "$MAIN" != "$SHARD" ] && [ "$MAIN" != "$AGG" ]; then t_ok
 NEEDS_REL="$(wf_needs release)"
 assert_contains "v14 AC8.2 the release job needs the aggregator" "$NEEDS_REL" "${AGG:-__none__}"
 assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEEDS_REL" "${MAIN:-__none__}"
+
+# --- v0.15.0 AC5.1: a v* tag push reuses the main CI run of the same commit instead of rerunning the matrix
+# wf_if ID -> the job-level `if:` line (single line), "" when none
+wf_if() { wf_block "$1" | grep -m1 '^    if:'; }
+# not_tag LINE -> 0 when the condition excludes tag refs: !startsWith(github.ref, 'refs/tags/..') or ref_type != 'tag'
+not_tag() { printf '%s\n' "$1" | grep -Eq "![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"; }
+for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}"; do
+  label="${pair%:*}"; id="${pair##*:}"
+  IFL="$(wf_if "$id")"
+  if [ -n "$IFL" ] && not_tag "$IFL"; then t_ok "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes"; else t_bad "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes" "if line: [$IFL]"; fi
+done
+AGGIF="$(wf_if "${AGG:-__none__}")"
+case "$AGGIF" in *always\(\)*) t_ok "v15 AC5.1 the aggregator keeps always() next to the tag exclusion (still fails instead of skipping on PRs)" ;; *) t_bad "v15 AC5.1 the aggregator keeps always() next to the tag exclusion" "if line: [$AGGIF]" ;; esac
+case "$(wf_if "${MAIN:-__none__}")" in *github.event_name*|*refs/tags*) t_ok "v15 AC5.1 the test job's if: is about the ref (PRs and main pushes still match it)" ;; *) t_bad "v15 AC5.1 the test job's if: is about the ref" "if line: [$(wf_if "${MAIN:-__none__}")]" ;; esac
+if wf_jobs | grep -qxF main-ci; then t_ok "v15 AC5.1 a job main-ci exists"; else t_bad "v15 AC5.1 a job main-ci exists" "jobs: $(wf_jobs | tr '\n' ' ')"; fi
+CB="$(wf_block main-ci)"
+CIF="$(wf_if main-ci)"
+if printf '%s\n' "$CIF" | grep -Eq "startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/v" && ! not_tag "$CIF"; then t_ok "v15 AC5.1 main-ci runs on v* tag pushes only (if: startsWith(github.ref, 'refs/tags/v'))"; else t_bad "v15 AC5.1 main-ci runs on v* tag pushes only" "if line: [$CIF]"; fi
+case "$CB" in *"gh run"*) t_ok "v15 AC5.1 main-ci uses gh run" ;; *) t_bad "v15 AC5.1 main-ci uses gh run" "block: $CB" ;; esac
+if printf '%s\n' "$CB" | grep -Eq 'GITHUB_SHA|github\.sha'; then t_ok "v15 AC5.1 main-ci looks up the run by the commit sha"; else t_bad "v15 AC5.1 main-ci looks up the run by the commit sha" "block: $CB"; fi
+if printf '%s\n' "$CB" | grep -Eq -- '--branch[ =]+main|branch=main|head_branch.{0,20}main'; then t_ok "v15 AC5.1 main-ci restricts the lookup to branch main"; else t_bad "v15 AC5.1 main-ci restricts the lookup to branch main" "block: $CB"; fi
+if printf '%s\n' "$CB" | grep -Eq -- '--event[ =]+push|event=push|\.event.{0,10}push'; then t_ok "v15 AC5.1 main-ci restricts the lookup to the push event"; else t_bad "v15 AC5.1 main-ci restricts the lookup to the push event" "block: $CB"; fi
+if printf '%s\n' "$CB" | grep -Eq -- '--workflow[ =]+[^ ]*test|workflows/test|workflow.{0,10}test'; then t_ok "v15 AC5.1 main-ci names the test workflow"; else t_bad "v15 AC5.1 main-ci names the test workflow" "block: $CB"; fi
+if printf '%s\n' "$CB" | grep -Eq -- '--exit-status|conclusion.{0,40}success|success.{0,40}conclusion'; then t_ok "v15 AC5.1 main-ci fails unless the main run succeeded (--exit-status or a conclusion check)"; else t_bad "v15 AC5.1 main-ci fails unless the main run succeeded" "block: $CB"; fi
+case "$CB" in *"gh run watch"*|*"gh run list"*|*"gh run view"*|*"gh api"*) t_ok "v15 AC5.1 main-ci finds or waits for the main run (gh run watch/list/view)" ;; *) t_bad "v15 AC5.1 main-ci finds or waits for the main run" "block: $CB" ;; esac
+if printf '%s\n' "$CB" | grep -Eq '^      actions:[[:space:]]*read|^    permissions:' && printf '%s\n' "$CB" | grep -Eq 'actions:[[:space:]]*read'; then t_ok "v15 AC5.1 main-ci has actions: read (the default token cannot list workflow runs otherwise)"; else t_bad "v15 AC5.1 main-ci has actions: read" "block: $CB"; fi
+if printf '%s\n' "$CB" | grep -Eq 'GH_TOKEN'; then t_ok "v15 AC5.1 main-ci passes GH_TOKEN to gh"; else t_bad "v15 AC5.1 main-ci passes GH_TOKEN to gh" "block: $CB"; fi
+assert_not_contains "v15 AC5.1 main-ci does not rerun the suites" "$CB" "tests/run-all.sh"
+NEEDS_REL="$(wf_needs release)"
+assert_contains "v15 AC5.1 the release job needs main-ci" "$NEEDS_REL" "main-ci"
+RIF="$(wf_if release)"
+case "$RIF" in *needs.main-ci.result*success*) t_ok "v15 AC5.1 the release if: requires needs.main-ci.result == 'success'" ;; *) t_bad "v15 AC5.1 the release if: requires needs.main-ci.result == 'success'" "if line: [$RIF]" ;; esac
+if printf '%s\n' "$RIF" | grep -Eq "needs\.main-ci\.result[[:space:]]*==[[:space:]]*'success'"; then t_ok "v15 AC5.1 the release if: compares with == 'success' (not !=)"; else t_bad "v15 AC5.1 the release if: compares with == 'success'" "if line: [$RIF]"; fi
+if printf '%s\n' "$RIF" | grep -Eq 'always\(\)|!cancelled\(\)|!failure\(\)'; then t_ok "v15 AC5.1 the release if: has always()/!cancelled() (test and windows are skipped on tags, so it would be skipped silently)"; else t_bad "v15 AC5.1 the release if: has always()/!cancelled()" "if line: [$RIF]"; fi
+assert_contains "v15 AC5.1 the release if: still limits to v* tags" "$RIF" "refs/tags/v"
+
+# --- v0.15.0 AC11.1: close-out captures playbook misfires; the final report has a Playbook feedback line
+P4='^### Phase 4'
+check_sec 'v15 AC11.1 playbook-tdd Phase 4 mentions playbook-feedback' "$SKILL" "$P4" 'playbook-feedback'
+check_sec 'v15 AC11.1 Phase 4 says to capture a misfire' "$SKILL" "$P4" 'misfire'
+check_sec 'v15 AC11.1 Phase 4 covers rules, gates or scripts that misfired' "$SKILL" "$P4" 'rule[^.]{0,80}(gate|script)|gate[^.]{0,80}script'
+check_sec 'v15 AC11.1 Phase 4 asks for the capture before the final report' "$SKILL" "$P4" 'before[^.]{0,60}final report'
+check_sec 'v15 AC11.1 Phase 4 asks for one line per misfire with evidence' "$SKILL" "$P4" 'one line[^.]{0,60}evidence|evidence[^.]{0,60}one line'
+check_sec 'v15 AC11.1 Phase 4 still fills the final report template' "$SKILL" "$P4" 'templates/final-report\.md'
+check_sec 'v15 AC11.1 Phase 4 still proposes learnings with playbook-learn' "$SKILL" "$P4" 'playbook-learn'
+if grep -Eq '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null; then t_ok 'v15 AC11.1 final-report has a **Playbook feedback:** line'; else t_bad 'v15 AC11.1 final-report has a **Playbook feedback:** line' "no line starting with **Playbook feedback:** in $FINAL"; fi
+if grep -E '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null | grep -qi 'none'; then t_ok 'v15 AC11.1 the Playbook feedback line offers "none" as the empty value'; else t_bad 'v15 AC11.1 the Playbook feedback line offers "none"' "$(grep -i 'playbook feedback' "$FINAL" 2>/dev/null)"; fi
+if grep -E '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null | grep -qiE 'id|captured'; then t_ok 'v15 AC11.1 the Playbook feedback line says captured ids'; else t_bad 'v15 AC11.1 the Playbook feedback line says captured ids' "$(grep -i 'playbook feedback' "$FINAL" 2>/dev/null)"; fi
+exact_heading 'v15 AC11.1 final-report keeps the exact ## Cost heading' "$FINAL" '## Cost'
+
+# --- v0.15.0 AC11.2: scenario E20
+exact_heading 'v15 AC11.2 scenarios has the E20 heading' "$SCEN" '## E20 A playbook misfire is captured'
+E20='^## E20 '
+check_sec 'v15 AC11.2 E20 has a Prompt line' "$SCEN" "$E20" '^\*\*Prompt:\*\*'
+check_sec 'v15 AC11.2 E20 has a Pass if line' "$SCEN" "$E20" '^\*\*Pass if:\*\*'
+check_sec 'v15 AC11.2 E20 has a Fail if line' "$SCEN" "$E20" '^\*\*Fail if:\*\*'
+check_sec 'v15 AC11.2 E20 mentions playbook-feedback' "$SCEN" "$E20" 'playbook-feedback'
+check_sec 'v15 AC11.2 E20 mentions a misfire' "$SCEN" "$E20" 'misfire'
+check_sec 'v15 AC11.2 E20 Pass if mentions the Playbook feedback line of the final report' "$SCEN" "$E20" 'Pass if:.*Playbook feedback'
+check_sec 'v15 AC11.2 E20 Fail if covers a misfire fixed but not captured' "$SCEN" "$E20" 'Fail if:.*(not captured|never captured|without captur|no capture|skips|does not capture)'
+l19="$(line_of "$SCEN" '^## E19 ')"; l20="$(line_of "$SCEN" '^## E20 ')"
+if [ -n "$l19" ] && [ -n "$l20" ] && [ "$l20" -gt "$l19" ]; then t_ok 'v15 AC11.2 E20 comes after E19'; else t_bad 'v15 AC11.2 E20 comes after E19' "E19 at [$l19], E20 at [$l20]"; fi
+
 t_summary

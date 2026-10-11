@@ -2,6 +2,7 @@
 # Tests for tests/run-all.sh: job pool (#6 AC6.1-AC6.3). Runs a copy of run-all.sh in a fake tree
 # with timed stand-in suites; each suite records when it starts and ends.
 . "$(dirname "$0")/lib.sh"
+unset PB_SHARD   # v0.15.0 AC6.1: an exported PB_SHARD must not leak into the fake-tree runs below (they set it explicitly)
 
 # guarded SECS CMD... -> runs CMD with a time limit; sets OUT (stdout+stderr) and RC (124 when the limit hit).
 # Uses `timeout` when it is on PATH, else a bash watchdog; PB_FORCE_WATCHDOG=1 forces the watchdog (so it is
@@ -84,7 +85,7 @@ else t_bad "AC6.2 the last suite e also starts before a ends" "log: $(tr '\n' ' 
 max="$(sort -n "$D/conc" | tail -n 1)"
 if [ -n "$max" ] && [ "$max" -le 2 ]; then t_ok "AC6.1 at most PB_JOBS=2 suites at once (max $max)"
 else t_bad "AC6.1 at most PB_JOBS=2 suites at once" "max concurrency $max"; fi
-order="$(printf '%s\n' "$OUT" | grep -E '^== tests/test-' | tr '\n' ' ')"
+order="$(printf '%s\n' "$OUT" | grep -E '^== tests/test-' | sed 's/ ([0-9][0-9]* s)$//' | tr '\n' ' ')"
 assert_eq "AC6.3 output in suite order" "== tests/test-a.sh == tests/test-b.sh == tests/test-c.sh == tests/test-d.sh == tests/test-e.sh " "$order"
 assert_contains "AC6.3 suite output printed" "$OUT" "suite c out"
 left="$(ls -A "$TD" 2>/dev/null)"
@@ -168,7 +169,7 @@ shard_run() {
 }
 # ran_suites -> the suites that ran, sorted, e.g. "a d "  (from the log the suites write)
 ran_suites() { grep '^start ' "$D/log" 2>/dev/null | sed 's/^start //' | sort | tr '\n' ' '; }
-headings() { printf '%s\n' "$OUT" | grep -E '^== tests/test-' | sed 's#^== tests/test-##; s#\.sh$##' | tr '\n' ' '; }
+headings() { printf '%s\n' "$OUT" | grep -E '^== tests/test-' | sed 's#^== tests/test-##; s# ([0-9][0-9]* s)$##; s#\.sh$##' | tr '\n' ' '; }
 ALL=""
 for k in 1 2 3; do
   shard_run "$k/3"
@@ -240,5 +241,85 @@ SUITE
   assert_eq "AC8.1 leak [$sh]: the suite run-all started sees PB_SHARD unset" "unset" "$(sort -u "$D/seen" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
   assert_eq "AC8.1 leak [$sh]: the nested run-all (no PB_SHARD of its own) ran all 3 of its suites" "x y z " "$(grep '^start ' "$N/log" 2>/dev/null | sed 's/^start //' | sort | tr '\n' ' ')"
 done
+
+echo "v0.15.0 AC1.1 each suite heading carries its wall time"
+D="$(mk_tmp)"; mk_tree "$D" 3 0.2 "a b"
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC1.1 timed run exits 0" 0
+ha="$(printf '%s\n' "$OUT" | grep -E '^== tests/test-a\.sh' | head -n 1)"
+hb="$(printf '%s\n' "$OUT" | grep -E '^== tests/test-b\.sh' | head -n 1)"
+if printf '%s\n' "$ha" | grep -Eq '^== tests/test-a\.sh \([0-9]+ s\)$'; then t_ok "AC1.1 heading format '== tests/test-a.sh (N s)'"; else t_bad "AC1.1 heading format '== tests/test-a.sh (N s)'" "heading: [$ha]"; fi
+if printf '%s\n' "$hb" | grep -Eq '^== tests/test-b\.sh \([0-9]+ s\)$'; then t_ok "AC1.1 the fast suite has the format too"; else t_bad "AC1.1 the fast suite has the format too" "heading: [$hb]"; fi
+na="$(printf '%s' "$ha" | sed -n 's/^.*(\([0-9][0-9]*\) s)$/\1/p')"; nb="$(printf '%s' "$hb" | sed -n 's/^.*(\([0-9][0-9]*\) s)$/\1/p')"
+if [ -n "$na" ] && [ "$na" -ge 2 ] && [ "$na" -le 6 ]; then t_ok "AC1.1 the 3 s suite reports about 3 s (got $na)"; else t_bad "AC1.1 the 3 s suite reports about 3 s" "got [$na]"; fi
+if [ -n "$nb" ] && [ "$nb" -le 2 ]; then t_ok "AC1.1 the 0.2 s suite reports at most 2 s (got $nb)"; else t_bad "AC1.1 the 0.2 s suite reports at most 2 s" "got [$nb]"; fi
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b"
+guarded 60 env PB_JOBS=2 FAIL_b=1 bash "$D/tests/run-all.sh"
+if printf '%s\n' "$OUT" | grep -Eq '^== tests/test-b\.sh \([0-9]+ s\)$'; then t_ok "AC1.1 a failing suite's heading has the time too"; else t_bad "AC1.1 a failing suite's heading has the time too" "$OUT"; fi
+
+echo "v0.15.0 AC1.2 PB_SHARD with tests/shard-weights: greedy assignment by weight"
+# wshard_run K/N NAMES WEIGHTS -> fresh tree, tests/shard-weights = WEIGHTS (printf %b), run with PB_SHARD=K/N; sets D, OUT, RC
+wshard_run() {
+  local sh="$1" names="$2" w="$3"
+  D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "$names"
+  printf '#!/usr/bin/env bash\necho x > "%s/rc-ran"\necho "run-checks: all ok"\n' "$D" > "$D/evals/run-checks.sh"
+  printf '%b' "$w" > "$D/tests/shard-weights"
+  guarded 60 env PB_JOBS=2 PB_SHARD="$sh" bash "$D/tests/run-all.sh"
+}
+# a=100 b=60 c=50 d=40 e=10 (file order scrambled). Greedy, 2 shards: a->1(100) b->2(60) c->2(110) d->1(140) e->2(120)
+W1='test-e.sh 10\ntest-c.sh 50\ntest-a.sh 100\ntest-d.sh 40\ntest-b.sh 60\n'
+wshard_run "1/2" "a b c d e" "$W1"
+assert_rc "AC1.2 weighted 1/2 exits 0" 0
+assert_eq "AC1.2 weights a100 b60 c50 d40 e10, shard 1/2 = a d (modulo would give a c e)" "a d " "$(ran_suites)"
+assert_eq "AC1.2 weighted shard 1/2 prints only its suites" "a d " "$(headings | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+assert_file "AC1.2 weighted shard 1 still runs evals/run-checks.sh" "$D/rc-ran"
+wshard_run "2/2" "a b c d e" "$W1"
+assert_eq "AC1.2 weights a100 b60 c50 d40 e10, shard 2/2 = b c e (modulo would give b d)" "b c e " "$(ran_suites)"
+assert_no_path "AC1.2 weighted shard 2 does not run evals/run-checks.sh" "$D/rc-ran"
+# 3 shards: a->1(100) b->2(60) c->3(50) d->3(90) e->2(70)
+ALL=""
+for k in 1 2 3; do
+  wshard_run "$k/3" "a b c d e" "$W1"
+  r="$(ran_suites)"; ALL="$ALL$r"
+  case "$k" in 1) want="a " ;; 2) want="b e " ;; 3) want="c d " ;; esac
+  assert_eq "AC1.2 weighted $k/3" "$want" "$r"
+done
+assert_eq "AC1.2 weighted: the 3 shards together ran every suite exactly once" "a b c d e " "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+# ties: equal weights go in name order, each to the lowest shard among equals: a->1 b->2 c->1 d->2
+W2='test-d.sh 20\ntest-c.sh 20\ntest-b.sh 20\ntest-a.sh 20\n'
+wshard_run "1/2" "a b c d" "$W2"; assert_eq "AC1.2 ties by name, lowest shard first: shard 1/2 = a c" "a c " "$(ran_suites)"
+wshard_run "2/2" "a b c d" "$W2"; assert_eq "AC1.2 ties by name, lowest shard first: shard 2/2 = b d" "b d " "$(ran_suites)"
+# unknown suites weigh 10: a=100 only. a->1(100) b->2(10) c->2(20)
+W3='test-a.sh 100\n'
+wshard_run "1/2" "a b c" "$W3"; assert_eq "AC1.2 unknown suites (b c): shard 1/2 = a" "a " "$(ran_suites)"
+wshard_run "2/2" "a b c" "$W3"; assert_eq "AC1.2 unknown suites (b c): shard 2/2 = b c" "b c " "$(ran_suites)"
+# unknown = more than 5, not 0 or 1: a=5 listed, b c unknown. b(10)->1 c(10)->2 a(5)->1 (tie 10/10 -> lowest)
+W4='test-a.sh 5\n'
+wshard_run "1/2" "a b c" "$W4"; assert_eq "AC1.2 an unknown suite weighs 10 (more than a=5): shard 1/2 = a b" "a b " "$(ran_suites)"
+wshard_run "2/2" "a b c" "$W4"; assert_eq "AC1.2 an unknown suite weighs 10: shard 2/2 = c" "c " "$(ran_suites)"
+# unknown = exactly 10, not 9 or 11: a=10 listed ties with the unknown b c -> name order a->1 b->2 c->1
+W5='test-a.sh 10\n'
+wshard_run "1/2" "a b c" "$W5"; assert_eq "AC1.2 a listed 10 and unknown suites tie by name: shard 1/2 = a c" "a c " "$(ran_suites)"
+wshard_run "2/2" "a b c" "$W5"; assert_eq "AC1.2 a listed 10 and unknown suites tie by name: shard 2/2 = b" "b " "$(ran_suites)"
+# comments, blank lines and weights of suites that do not exist are ignored
+W6='# measured on Windows Git Bash\n\n#test-e.sh 500\n# test-c.sh 999\ntest-a.sh 100\ntest-b.sh 60\ntest-c.sh 50\ntest-d.sh 40\ntest-e.sh 10\ntest-z.sh 500\n\n'
+wshard_run "1/2" "a b c d e" "$W6"; assert_eq "AC1.2 comments, blank lines and unknown names ignored: shard 1/2 = a d" "a d " "$(ran_suites)"
+wshard_run "2/2" "a b c d e" "$W6"; assert_eq "AC1.2 comments, blank lines and unknown names ignored: shard 2/2 = b c e" "b c e " "$(ran_suites)"
+# a weighted run keeps a failing suite in the shard it was assigned to
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e"; printf '%b' "$W1" > "$D/tests/shard-weights"
+guarded 60 env PB_JOBS=2 PB_SHARD=1/2 FAIL_d=1 bash "$D/tests/run-all.sh"
+assert_rc "AC1.2 weighted: failing suite d lives in shard 1/2 -> exit 1" 1
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e"; printf '%b' "$W1" > "$D/tests/shard-weights"
+guarded 60 env PB_JOBS=2 PB_SHARD=2/2 FAIL_d=1 bash "$D/tests/run-all.sh"
+assert_rc "AC1.2 weighted: failing suite d is not in shard 2/2 -> exit 0" 0
+# without the file: the modulo assignment stays
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e"
+assert_no_path "AC1.2 control tree has no tests/shard-weights" "$D/tests/shard-weights"
+guarded 60 env PB_JOBS=2 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
+assert_eq "AC1.2 without a weights file shard 1/2 is the modulo set a c e" "a c e " "$(ran_suites)"
+# no PB_SHARD with a weights file: everything runs
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e"; printf '%b' "$W1" > "$D/tests/shard-weights"
+guarded 60 env -u PB_SHARD PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_eq "AC1.2 no PB_SHARD with a weights file: all suites run" "a b c d e " "$(ran_suites)"
 
 t_summary
