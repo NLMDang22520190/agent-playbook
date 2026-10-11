@@ -48,14 +48,18 @@ function bashWritesSrc(cmd) {
   return done();
 }
 // does a shell command run proof-run.sh? Split into simple commands at ; & | ( ) { } backticks and newlines (linear), then skip
-// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec/command with their flags and arguments;
+// reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec with their flags and arguments;
 // the command word is proof-run.sh, or a shell whose first non-flag word is
 function runsProof(cmd) {
   const isP = t => /(^|\/)proof-run\.sh$/.test(t);
   const RESERVED = /^(if|then|do|else|elif|while|until|!)$/;
-  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec|command)$/;
+  const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec)$/;
   const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/ };
-  for (const seg of cmd.split(/[;&|(){}`\n]+/)) {
+  // a substitution that is part of a word (${X}, or $(..) and `..` touching other characters) becomes one word character, so
+  // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
+  const SEP = "[^\\s;&|(){}`]";
+  const inword = new RegExp("\\$\\{[^}]{0,200}\\}|(?<=" + SEP + ")\\$\\([^()]{0,200}\\)|\\$\\([^()]{0,200}\\)(?=" + SEP + ")|(?<=" + SEP + ")`[^`]{0,200}`|`[^`]{0,200}`(?=" + SEP + ")", "g");
+  for (const seg of cmd.replace(inword, "X").split(/[;&|(){}`\n]+/)) {
     const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
     let k = 0;
     while (k < w.length) {
