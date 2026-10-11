@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Ship a release in one command: merge the PR, tag it, wait for the tag's CI, update the local installs.
-#   tools/ship.sh PR vX.Y.Z [--yes]
+#   tools/ship.sh PR vX.Y.Z [--yes] [--auto]
 # Steps: PR must be OPEN and CLEAN (checks green, mergeable) -> ask, merge (merge commit, delete branch)
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
@@ -14,14 +14,15 @@ set -u
 main() {
   cd "$(dirname "$0")/.." || exit 3
 
-  usage() { echo "usage: tools/ship.sh PR vX.Y.Z [--yes]" >&2; exit 2; }
+  usage() { echo "usage: tools/ship.sh PR vX.Y.Z [--yes] [--auto]" >&2; exit 2; }
   step() { printf '== %s\n' "$1"; }
   fail() { echo "ship refused: $1" >&2; exit 1; }
 
-  yes=0; pr=""; tag=""
+  yes=0; auto=0; pr=""; tag=""
   for a in "$@"; do
     case "$a" in
       --yes) yes=1 ;;
+      --auto) auto=1 ;;
       -*) usage ;;
       *) if [ -z "$pr" ]; then pr="$a"; elif [ -z "$tag" ]; then tag="$a"; else usage; fi ;;
     esac
@@ -33,6 +34,17 @@ main() {
   tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
   case "$tries" in '' | *[!0123456789]*) usage ;; esac
   case "$secs" in '' | *[!0123456789]*) usage ;; esac
+
+  # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
+  # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing
+  shard_hint() {
+    local hs hr hj
+    hs="$(git rev-parse "$tag^{commit}" 2>/dev/null)" || return 0
+    hr="$(gh run list --branch main --event push --commit "$hs" --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null)" || return 0
+    case "$hr" in '' | null | *[!0123456789]*) return 0 ;; esac
+    hj="$(gh run view "$hr" --json jobs 2>/dev/null)" || return 0
+    printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { const d = []; for (const j of JSON.parse(s).jobs || []) { if (!/^windows shard \d+\/\d+$/.test(j.name || "") || !j.completedAt || /^0001-/.test(j.completedAt)) continue; const x = (Date.parse(j.completedAt) - Date.parse(j.startedAt)) / 1000; if (x >= 0) d.push(Math.round(x)) } if (d.length < 2) return; const lo = Math.min(...d), hi = Math.max(...d); if (hi > 1.5 * lo) console.log("shards unbalanced (" + lo + " s .. " + hi + " s): run tools/shard-weights.sh " + process.argv[1]) } catch (e) {} })' "$hr" 2>/dev/null || true
+  }
 
   ask() { # question -> 0 on y/yes; refuses without a terminal
     [ "$yes" = 1 ] && return 0
@@ -54,13 +66,32 @@ main() {
   fi
 
   step "check PR #$pr"
-  st="$(gh pr view "$pr" --json state,mergeStateStatus --jq '.state + " " + .mergeStateStatus')" || fail "cannot read PR #$pr"
+  st="$(gh pr view "$pr" --json state,mergeStateStatus,mergeCommit --jq '.state + " " + .mergeStateStatus + " " + (.mergeCommit.oid // "")')" || fail "cannot read PR #$pr"
   set -- $st
-  [ "${1:-}" = OPEN ] && [ "${2:-}" = CLEAN ] || fail "PR #$pr is ${1:-?}/${2:-?}, needs OPEN/CLEAN (checks green, mergeable)"
+  state="${1:-}"; mstate="${2:-}"; oid="${3:-}"
+  merged=0
+  if [ "$state" = MERGED ]; then
+    # merged already (e.g. by GitHub auto-merge): release it if its merge commit is on origin/main
+    [ -n "$oid" ] && [ "$oid" != null ] || fail "PR #$pr is MERGED but has no merge commit"
+    git fetch -q origin || fail "cannot fetch origin"
+    git merge-base --is-ancestor "$oid" origin/main 2>/dev/null ||
+      fail "PR #$pr merge commit $oid is not on origin/main"
+    step "PR #$pr already merged (merge commit $oid is on origin/main)"
+    merged=1
+  elif [ "$state" = OPEN ] && [ "$mstate" != CLEAN ] && [ "$auto" = 1 ]; then
+    # checks still running: let GitHub merge when they pass (auto-merge must be allowed on the repo)
+    gh pr merge "$pr" --auto --merge --delete-branch || fail "gh pr merge $pr --auto failed"
+    echo "auto-merge enabled for PR #$pr: GitHub will merge when the checks pass; then run tools/ship.sh $pr $tag again to release"
+    exit 0
+  elif [ "$state" != OPEN ] || [ "$mstate" != CLEAN ]; then
+    fail "PR #$pr is ${state:-?}/${mstate:-?}, needs OPEN/CLEAN (checks green, mergeable), or --auto"
+  fi
 
-  ask "merge PR #$pr?" || fail "not merged (answer was not yes)"
-  step "merge PR #$pr"
-  gh pr merge "$pr" --merge --delete-branch || fail "gh pr merge $pr failed"
+  if [ "$merged" = 0 ]; then
+    ask "merge PR #$pr?" || fail "not merged (answer was not yes)"
+    step "merge PR #$pr"
+    gh pr merge "$pr" --merge --delete-branch || fail "gh pr merge $pr failed"
+  fi
 
   step "update main"
   git switch -q main && git pull -q --ff-only || fail "could not bring main up to date"
@@ -88,6 +119,7 @@ main() {
   done
   [ -n "$run" ] || fail "no CI run found for $tag (commit $sha)"
   gh run watch "$run" --exit-status || fail "CI run $run for $tag failed"
+  shard_hint || true
 
   step "check the release"
   gh release view "$tag" >/dev/null || fail "GitHub Release $tag not found"

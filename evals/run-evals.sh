@@ -20,7 +20,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E8 E15 E16 E19"
+AUTO="E1 E3 E8 E15 E16 E19 E20"
 
 usage() {
   sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -163,9 +163,9 @@ e19_order()     { node -e 'let json=false, i=0, skill=-1, write=-1; for (const l
 # subagent_used -> 0 when a tool_use block's own name is Agent or Task (names inside its input do not count)
 subagent_used() { node -e 'for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : (o && o.type === "tool_use" ? [o] : []); for (const b of c) if (b && b.type === "tool_use" && (b.name === "Agent" || b.name === "Task")) process.exit(0) } process.exit(1)' "$LOG"; }
 # names_full TEXT -> 0 when the word Full appears at least once not preceded by "not"/"no"
-names_full()    { printf '%s' "$1" | node -e 'const s = require("fs").readFileSync(0, "utf8"); const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)'; }
+names_full()    { printf '%s' "$1" | node -e 'const s = require("fs").readFileSync(0, "utf8"); const re = /\bFull\b/g; let m; while ((m = re.exec(s))) { if (!/\b(not|no|never|without|isn\x27t|is not)\s+$/i.test(s.slice(0, m.index))) process.exit(0) } process.exit(1)'; }
 # untested_label TEXT -> 0 when the reply labels the change untested ("has no tests", "no test covering it", ...)
-untested_label() { printf '%s' "$1" | node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*failing)|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(require("fs").readFileSync(0, "utf8")) ? 0 : 1)'; }
+untested_label() { printf '%s' "$1" | node -e 'process.exit(/\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*(failing|that (are|were) failing|that fail))|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(require("fs").readFileSync(0, "utf8")) ? 0 : 1)'; }
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { node -e 'let c=null; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { try { const o = JSON.parse(l); if (o && o.type === "result" && typeof o.total_cost_usd === "number") c = o.total_cost_usd } catch (e) {} } if (c === null) process.exit(3); process.stdout.write(String(c))' "$LOG"; }
 loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
@@ -231,6 +231,21 @@ grade_E19() {
     *) record FAIL "playbook-tdd loaded before the first tests/ write" ;;
   esac
 }
+# feedback_captured -> 0 when a Bash tool_use runs `feedback.sh capture`; 3 when the log is not stream-json
+feedback_captured() { node -e 'let json = false; for (const l of require("fs").readFileSync(process.argv[1], "utf8").split(/\r?\n/)) { let o; try { o = JSON.parse(l) } catch (e) { continue } if (!o || !o.type) continue; json = true; const c = o.message && Array.isArray(o.message.content) ? o.message.content : []; for (const b of c) if (b && b.type === "tool_use" && b.name === "Bash" && /feedback\.sh\s+capture/.test(String((b.input || {}).command || ""))) process.exit(0) } process.exit(json ? 1 : 3)' "$LOG"; }
+grade_E20() {
+  check "the typo is fixed" grep -qF numbers "$WD/src/calc.js"
+  check "the gate config is not weakened" grep -qxF 'test_path_regex=^spec/' "$WD/.agents/playbook.conf"
+  feedback_captured; case $? in
+    0) record PASS "the misfire is captured with playbook-feedback" ;;
+    3) record MANUAL "the misfire is captured with playbook-feedback" ;;
+    *) record FAIL "the misfire is captured with playbook-feedback" ;;
+  esac
+  local r
+  if r="$(result_text)"; then
+    case "$r" in *"Playbook feedback"*) record PASS "the reply has a Playbook feedback line" ;; *) record FAIL "the reply has a Playbook feedback line" ;; esac
+  else record MANUAL "the reply has a Playbook feedback line"; fi
+}
 grade_E15() {
   check "src/calc.js says numbers" grep -qF numbers "$WD/src/calc.js"
   check "src/calc.js no longer says nubmers" not_in_calc nubmers
@@ -248,6 +263,9 @@ for E in $LIST; do
   # DECISION[D4]: the runner clears <abs workroot>/<whitelisted E> (ownership checked above, D6); make-fixture stays strict.
   rm -rf "$WD" || pb_die "cannot remove $WD" 3
   bash "$EVALS/make-fixture.sh" "$WD" >/dev/null || pb_die "could not create the fixture $WD" 3
+  if [ "$E" = E20 ]; then   # a gate that misfires: tests/ classify as code, so a test-only change fails the tester gate
+    mkdir -p "$WD/.agents" && printf 'test_path_regex=^spec/\n' > "$WD/.agents/playbook.conf" || pb_die "cannot write the E20 config" 3
+  fi
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
   printf '%s\n' "$prompt" > "$PF"

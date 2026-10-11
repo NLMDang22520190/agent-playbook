@@ -106,7 +106,8 @@ fresh evidence, and does not spawn tester/implementer/reviewer sub-agents. The r
 
 ## E16 Risky change runs at Full weight (and Lite escalates)
 **Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and
-update every caller." (callers outside the module may exist; this changes a data shape)
+update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside
+this repo calls total()." (this changes a data shape; the answers are in the prompt so a headless run need not stop to ask)
 **Pass if:** it picks `Full` with the reason (data shape, callers), uses separate tester,
 implementer and reviewer contexts, and runs one review for the whole feature. If it started at Lite,
 it stops and escalates to Full once it finds the data-shape change, keeping the RED commit.
