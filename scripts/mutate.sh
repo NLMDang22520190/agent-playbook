@@ -181,7 +181,7 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       }
     }
     BEGIN {
-      SEP = "\001"
+      SEP = "\034"
       add("==", "!=", "eq", 0);      add("!=", "==", "ne", 0)
       add("-eq", "-ne", "word", 0);  add("-ne", "-eq", "word", 0)
       add("-lt", "-ge", "word", 0);  add("-ge", "-lt", "word", 0)
@@ -254,7 +254,7 @@ if [ -s "$run/mutants" ]; then
     [ "$brc" -eq 2 ] && msg="tests time out without mutation in the throwaway worktree (--timeout $tmo s)"
     die "$msg" 4
   fi
-  soh="$(printf '\001')"
+  soh="$(printf '\034')"   # ASCII field separator: bash 3.2 (macOS) uses \001 internally (CTLESC), so IFS cannot split on it
   while IFS="$soh" read -r f n orig mut; do
     [ -n "$f" ] || continue
     if [ ! -f "$wt/$f" ] || [ -L "$wt/$f" ] ||
