@@ -130,4 +130,26 @@ env -i PATH=/bin ls scripts/proof-run.sh
 `cat proof-run.sh`
 EOF2
 
+
+echo "v0.22.1 re-review: reads of proof-run.sh through substitutions or command -v are not runs"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV2 ran_tests: not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF2'
+cat ${PB}/scripts/proof-run.sh
+ls ${HOME}/.agents/playbook/scripts/proof-run.sh
+cat $(dirname x)/proof-run.sh
+sed -n 1,5p `pwd`/proof-run.sh
+command -v proof-run.sh
+command -V proof-run.sh
+EOF2
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "RV2 ran_tests: a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF2'
+bash `pwd`/proof-run.sh --label x
+bash ${PB}/scripts/proof-run.sh --label x
+bash $(dirname x)/proof-run.sh
+EOF2
+
 t_summary
