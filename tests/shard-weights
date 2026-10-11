@@ -1,23 +1,23 @@
-# Seconds per suite on the windows-latest CI runner (shard jobs), run 38105496262.
+# Seconds per suite on the windows-latest CI runner (shard jobs), run 38106315525.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
-test-run-checks.sh 203
-test-evals-grade2.sh 198
-test-ship.sh 175
-test-role-gate.sh 160
-test-evals-runner.sh 154
-test-evals-grade.sh 153
-test-run-all.sh 130
-test-release-tool.sh 93
-test-release.sh 57
-test-install.sh 56
-test-tdd-step.sh 49
-test-update.sh 46
-test-conf.sh 36
-test-feedback.sh 35
-test-learn.sh 26
-test-shard-weights.sh 21
-test-role-model.sh 20
-test-content.sh 14
+test-run-checks.sh 243
+test-ship.sh 217
+test-role-gate.sh 203
+test-evals-grade.sh 190
+test-run-all.sh 148
+test-evals-grade2.sh 120
+test-update.sh 102
+test-evals-runner.sh 101
+test-release-tool.sh 65
+test-install.sh 63
+test-shard-weights.sh 61
+test-release.sh 53
+test-conf.sh 39
+test-tdd-step.sh 31
+test-learn.sh 30
+test-feedback.sh 28
+test-content.sh 22
 test-cost.sh 14
-test-proof-run.sh 9
-test-lib.sh 3
+test-role-model.sh 14
+test-proof-run.sh 11
+test-lib.sh 2
