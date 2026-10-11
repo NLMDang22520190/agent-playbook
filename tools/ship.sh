@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Ship a release in one command: merge the PR, tag it, wait for the tag's CI, update the local installs.
 #   tools/ship.sh PR vX.Y.Z [--yes] [--auto]
+# --auto: an OPEN PR whose checks are still running gets GitHub auto-merge and ship stops; run it again
+# after GitHub merged. A PR that is already MERGED is released when its merge commit is on origin/main.
 # Steps: PR must be OPEN and CLEAN (checks green, mergeable) -> ask, merge (merge commit, delete branch)
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
