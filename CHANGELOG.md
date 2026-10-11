@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.0 - 2026-10-11
+- **ship with GitHub auto-merge**: `tools/ship.sh PR vX.Y.Z --auto` turns on auto-merge for an OPEN PR
+  whose checks are still running and stops; a PR that is already MERGED (by auto-merge or by hand) is
+  released when its merge commit is on origin/main. After a green release ship prints
+  `shards unbalanced (A s .. B s): run tools/shard-weights.sh RUN` when the longest Windows shard is more
+  than 1.5x the shortest.
+- **E16 runnable headless**: the prompt carries the answers (dollars as floats, round half up to the cent,
+  no outside callers). First full pass (4/4, Full, six sub-agent calls, USD 2.25); the second round still
+  stopped to ask.
+- **E20 auto-graded**: fixture with a committed `test_path_regex=^spec/`; checks the gate value in effect
+  (an appended override is caught — review finding), a `feedback.sh capture` call, a "Playbook feedback"
+  line and the typo fix.
+- **Grader wording**: "isn't/never/without Full" and "tests that are failing" no longer count.
+- **Faster tests**: test-ship (-31% on WSL), test-role-gate and test-run-checks build their fixtures once;
+  shard weights refreshed with `tools/shard-weights.sh`.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer (CHANGES: the appended-override hole,
+  fixed test-first at Lite weight).
+
 ## 0.16.0 - 2026-10-11
 - **Faster Windows CI**: `tests/test-evals.sh` (392 s on windows-latest, the floor of the slowest shard)
   is split into `test-evals-runner.sh`, `test-evals-grade.sh` and `test-evals-grade2.sh` with a shared
