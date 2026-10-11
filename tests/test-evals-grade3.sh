@@ -161,6 +161,23 @@ assert_eq "AC2.2 E10 plain-text transcript: still graded, only the typo PASS" "P
 assert_eq "AC2.2 E10 plain-text transcript: the typo is fixed PASS" "PASS" "$(e_state E10 'typo is fixed')"
 assert_rc "AC2.2 E10 plain-text transcript: exit 0" 0
 
+# reviewer findings: creep the agent commits, trailing lines, positive committed fix
+GIT_C='git -c user.email=x@example.invalid -c user.name=x -c commit.gpgsign=false commit -qam fix'
+run_x E10 commitfix "$E10_FIX
+$GIT_C" "$INIT" "$E10_REPLY"
+assert_eq "RF1 E10 the typo fix alone, committed by the agent: only the typo changed PASS" "PASS" "$(e_state E10 'only the typo')"
+assert_eq "RF1 E10 the typo fix alone, committed: the typo is fixed PASS" "PASS" "$(e_state E10 'typo is fixed')"
+assert_rc "RF1 E10 committed typo fix: exit 0" 0
+run_x E10 commitcreep "$E10_FIX
+$E10_REFORMAT
+$GIT_C" "$INIT" "$E10_REPLY"
+assert_eq "RF1 E10 typo fix plus divide reformat, committed (diff vs the fixture commit, not HEAD): only the typo changed FAIL" "FAIL" "$(e_state E10 'only the typo')"
+assert_rc "RF1 E10 committed creep: exit 1" 1
+run_x E10 trailing "$E10_FIX
+printf '\n\n\n' >> src/calc.js" "$INIT" "$E10_REPLY"
+assert_eq "RF3 E10 typo fix plus blank lines appended to src/calc.js: only the typo changed FAIL" "FAIL" "$(e_state E10 'only the typo')"
+assert_rc "RF3 E10 trailing blank lines: exit 1" 1
+
 # ---- v0.20.0 AC2.3 E17 (exemptions) is auto-graded ----
 echo "v0.20.0 AC2.3 E17 auto checks"
 E17_SEE='{ [ -f src/config.js ] && cat src/config.js
@@ -199,6 +216,25 @@ run_x E17 weakpin "$E17_HEAD
 $E17_CFG
 printf '// covers pageSize\n' > tests/config.test.js" "$INIT" "$E17_REPLY"
 assert_eq "AC2.3 E17 a test file mentioning pageSize but not 50: pins FAIL" "FAIL" "$(e_state E17 'pins')"
+
+run_x E17 pi500 "$E17_HEAD
+$E17_CFG
+printf '// pageSize is 500 here\n' > tests/config.test.js" "$INIT" "$E17_REPLY"
+assert_eq "RF5 E17 a test file mentioning pageSize and 500 but not 50: pins FAIL" "FAIL" "$(e_state E17 'pins')"
+assert_rc "RF5 E17 only 500 in the test: exit 1" 1
+
+# RF2: a workroot path with a space (a runner that refuses it would be a finding of its own)
+jl "xE17space" "$INIT" "$E17_REPLY"
+mk_adapter E17space "$E17_HEAD
+$E17_CFG
+$E17_TEST
+cat $J/xE17space.json"
+XW="$(mk_tmp)/with space"
+run bash "$RUNNER" --cmd "bash $A/E17space.sh" --scenarios E17 --workroot "$XW" --out "$(mk_tmp)/results.md"
+assert_eq "RF2 E17 workroot with a space: a test pins the new page size PASS" "PASS" "$(e_state E17 'pins')"
+assert_eq "RF2 E17 workroot with a space: the page size is 50 PASS" "PASS" "$(e_state E17 'page size is 50')"
+assert_eq "RF2 E17 workroot with a space: no FAIL line" "0" "$(count_lines E17 FAIL)"
+assert_rc "RF2 E17 workroot with a space: exit 0" 0
 
 run_x E17 still20 "$E17_HEAD
 $E17_TEST" "$INIT" "$E17_REPLY"
@@ -269,6 +305,12 @@ assert_eq "AC5.1 E20 an item that says nothing about a gate (typo in calc): FAIL
 assert_eq "AC5.1 E20 unrelated item: 'a feedback item was written' still PASS (separate check)" "PASS" "$(e_state E20 'a feedback item was written')"
 assert_eq "AC5.1 E20 unrelated item: it is the only FAIL line" "1" "$(count_lines E20 FAIL)"
 assert_rc "AC5.1 E20 unrelated item: exit 1" 1
+
+run_e20x investigate "$(cap_cmd 'had to investigate the typo' 'we investigated the calc.js typo' 'a quick fix' 'none')" "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "RF4 E20 an item whose only 'gate' is inside the word investigate: names the gate misfire FAIL" "FAIL" "$(e_state E20 "$GATE_KEY")"
+assert_rc "RF4 E20 investigate-only item: exit 1" 1
+run_e20x gatemis "$(cap_cmd 'the tester gate misfires' 'refused' 'allowed' 'none')" "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
+assert_eq "RF4 E20 'the tester gate misfires' (gate as a word): PASS" "PASS" "$(e_state E20 "$GATE_KEY")"
 
 run_e20x noitem "true" "$E20_FIX" "$INIT" "$CAPT_CMD" "$RES20"
 assert_eq "AC5.1 E20 no item at all: names the gate misfire FAIL" "FAIL" "$(e_state E20 "$GATE_KEY")"
