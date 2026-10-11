@@ -1,13 +1,27 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
+#   evals/run-checks.sh [--only SECTION]
+# --only runs one check group (dupmax|sed|gnu|shellcheck|skills|scenarios) and prints only its lines plus the summary;
+# a missing or unknown SECTION exits 2. Without --only everything runs; the always-on and files checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
 P=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
+ONLY=""
+if [ "$#" -gt 0 ]; then
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|shellcheck|skills|scenarios]" >&2; exit 2; }
+  case "$2" in
+    dupmax | sed | gnu | shellcheck | skills | scenarios) ONLY="$2" ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|shellcheck|skills|scenarios)" >&2; exit 2 ;;
+  esac
+fi
+# want NAME: this group runs (always without --only)
+want() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
 
 SENTENCE='Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.'
 
+if want skills; then
 echo "skills"
 desc_total=0
 have_yaml=0
@@ -45,7 +59,9 @@ for d in skills/*/; do
   done
 done
 [ "$desc_total" -le 2000 ] && ok "all descriptions together: $desc_total chars (<=2000, keeps the skill list cheap)" || bad "descriptions total $desc_total chars (>2000)"
+fi
 
+if [ -z "$ONLY" ]; then
 echo "always-on block"
 g=AGENTS.global.md
 grep -qF "$SENTENCE" "$g" && ok "contains the verbatim clarify sentence" || bad "$g lost the verbatim clarify sentence"
@@ -131,19 +147,26 @@ done
 for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh scripts/feedback.sh; do
   [ -x "$f" ] && ok "executable: $f" || bad "not executable: $f (chmod +x)"
 done
+fi   # full-run-only groups end here
+
+if want shellcheck; then
 if command -v shellcheck >/dev/null 2>&1; then
   shellcheck -S warning install.sh scripts/*.sh tools/*.sh evals/*.sh && ok "shellcheck (warning level)" || bad "shellcheck reported warnings"
 else
   echo "  skip shellcheck not installed"
 fi
+fi
 
+if want dupmax; then
 # BSD regex (macOS) rejects repeat bounds above RE_DUP_MAX (255): such a pattern never matches there
 big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null |
   awk -F: '{ line = $0; sub(/^[^:]*:[^:]*:/, "", line)
              while (match(line, /\{([0-9]+(,[0-9]*)?|,[0-9]+)\}/)) { b = substr(line, RSTART + 1, RLENGTH - 2); line = substr(line, RSTART + RLENGTH)
                n = split(b, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 > 255) { print $1 ":" $2; break } } }' | sort -u | tr '\n' ' ')"
 [ -z "$big" ] && ok "regex repeat bounds <= 255 (BSD RE_DUP_MAX)" || bad "regex repeat bound above 255 (BSD/macOS never matches) at: $big"
+fi
 
+if want sed; then
 # BSD sed (macOS) reads the word after -i as the backup suffix, so `sed -i 's/a/b/' f` edits nothing there;
 # an attached suffix (sed -i.bak) works on both. Comments (from a # at the start or after a blank) are ignored.
 gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
@@ -151,7 +174,9 @@ gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
   tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | sort -u | tr '\n' ' ')"
 si=-i   # spelled through a variable so this file does not trip its own check
 [ -z "$gsed" ] && ok "sed $si has a suffix (BSD sed)" || bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"
+fi
 
+if want gnu; then
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
 # Comments (from a # at the start or after a blank) are ignored. A line may opt out with "# gnu-ok: <reason>" (a non-blank reason, that line only).
 # The names are spelled in pieces so this file does not trip its own check.
@@ -168,7 +193,9 @@ ggnu="$(awk 'function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
     if (line ~ (b "sed" fl "[[:alpha:]]*r")) hit("sed " "-r") }
   END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
 [ -z "${ggnu// /}" ] && ok "GNU-only options absent (BSD/macOS)" || bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"
+fi
 
+if want scenarios; then
 echo "eval scenarios"
 n=0
 while IFS= read -r _; do
@@ -178,5 +205,6 @@ for k in 'Prompt:' 'Pass if:' 'Fail if:'; do
   c="$(grep -c "^\*\*$k\*\*" evals/scenarios.md || true)"
   [ "$c" -eq "$n" ] && ok "$n scenarios each have $k" || bad "scenarios: $n headings but $c '$k' lines"
 done
+fi
 
 [ "$P" -eq 0 ] && echo "run-checks: all ok" || { echo "run-checks: $P problem(s)"; exit 1; }
