@@ -259,4 +259,10 @@ assert_eq "AC2.2 a plain-text transcript with the new wording stays MANUAL (need
 run_e3 wearly "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"This change has no tests."}]}}' "${RES_PRE}\"Added the guard, all done.\"}"
 assert_eq "AC2.2 the new wording only in an earlier assistant line, not in the result: FAIL" "FAIL" "$(e3_state)"
 
+
+# ---- v0.16.0 review F1: names_full gets the reply on stdin ----
+echo "review F1: E16 reply starting with '- '"
+run_e16 dashfull "$CART_OK" "$INIT" "$AGNEST" "${RES_PRE}\"- Weight: Full (data shape, callers).\"}"
+assert_eq "F1 E16 reply starting with '- ' still names Full" "PASS" "$(e_state E16 Full)"
+
 t_summary

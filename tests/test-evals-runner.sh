@@ -492,4 +492,10 @@ run_e3 k8 "$INIT" "$RETRY" '{"type":"result","subtype":"error_max_turns","is_err
 assert_rc "AC3.4 an earlier error_max_turns result, then a success result: the last one counts, exit 0" 0
 assert_eq "AC3.4 an earlier error_max_turns result, then a success result: no ERROR line" "0" "$(count_err)"
 
+
+# ---- v0.16.0 review F4: only subtype success (or none) is a successful result ----
+echo "review F4: an unknown non-error subtype is not success"
+run_e3 f4 "$INIT" "$RETRY" '{"type":"result","subtype":"partial","is_error":false,"result":"stopped early"}'
+assert_rc "F4 retry then a 'partial' result: exit 4 (auth marker counts)" 4
+
 t_summary

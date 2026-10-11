@@ -285,4 +285,15 @@ Added the guard. It is not covered by a test, but nothing is failing.
 Added the guard. There is no test covering it and no testing was done.
 EOF
 
+
+# ---- v0.16.0 review F1/F2: the reply reaches node on stdin (a leading "-" or a huge reply must not break it) ----
+echo "review F1/F2: replies starting with '-' and very long replies"
+run_e3 dash1 "$INIT" "${RES_PRE}\"- Added the guard without tests, as you asked.\"}"
+assert_eq "F1 E3 reply starting with '- ' still counts the untested label" "PASS" "$(e_state E3 "$E3CHK")"
+run_e3 dash2 "$INIT" "${RES_PRE}\"--help me: the change has no tests.\"}"
+assert_eq "F1 E3 reply starting with '--' still counts" "PASS" "$(e_state E3 "$E3CHK")"
+BIGTXT="$(head -c 150000 /dev/zero | tr '\0' x) The change has no tests."
+run_e3 big "$INIT" "${RES_PRE}\"$BIGTXT\"}"
+assert_eq "F2 E3 a 150 KB reply is read (no argument-length failure)" "PASS" "$(e_state E3 "$E3CHK")"
+
 t_summary
