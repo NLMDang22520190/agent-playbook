@@ -128,3 +128,18 @@ round 2's reply: "I saved a local bug note (fb-20261011-001) ... Nothing was sen
 
 Cost: 1.31, 1.22 USD. With the v0.19.0 write-scope rule in the role prompts, no sub-agent wrote next to the
 workdir (before: one of three runs did).
+
+## Run 11 (v0.20.0 installed), E4, E10, E17 two rounds
+
+| Check | Round 1 | Round 2 |
+|---|---|---|
+| E4 RED test unchanged, implementer gate passes, dispute raised | PASS | PASS |
+| E10 only the typo changed in src/, typo fixed | PASS | PASS |
+| E17 heading changed, page size 50, a test pins it | PASS | PASS |
+| E17 reply calls the docs change exempt | FAIL | FAIL |
+| nothing written outside the workdir | PASS | PASS |
+
+Cost: E4 0.31/0.28, E10 1.11/1.04, E17 0.38/0.35 USD. The E17 FAILs were the grader, not the agent: both replies
+said "Docs-only change, so no test was needed" and added no test for it; v0.21.0 accepts docs-only wording. Both
+E17 replies ended with "Playbook feedback: none" (the v0.20.0 Lite rule). The page-size change was done test-first
+at Lite weight in both rounds.

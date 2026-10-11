@@ -322,4 +322,78 @@ D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e"; printf '%b' "$W1" > "$D/tests/s
 guarded 60 env -u PB_SHARD PB_JOBS=2 bash "$D/tests/run-all.sh"
 assert_eq "AC1.2 no PB_SHARD with a weights file: all suites run" "a b c d e " "$(ran_suites)"
 
+
+echo "v0.21.0 AC8.1 run-all names a likely environment failure when most FAIL assertions got nothing"
+# mk_fake_suite FILE EMPTY OTHER -> a suite that prints EMPTY assertions failing with an empty actual value and
+# OTHER failing with a real one, in the format of lib.sh t_bad, then exits 1
+mk_fake_suite() {
+  { echo '#!/usr/bin/env bash'
+    echo "i=0; while [ \$i -lt $2 ]; do i=\$((i + 1)); echo \"  FAIL empty case \$i\"; echo \"       expected [PASS] got []\"; done"
+    echo "i=0; while [ \$i -lt $3 ]; do i=\$((i + 1)); echo \"  FAIL wrong case \$i\"; echo \"       expected [PASS] got [FAIL]\"; done"
+    echo 'echo "test-fake.sh: 0 passed, 1 failed"; exit 1'
+  } > "$1"
+}
+# hint_run EMPTY-IN-A OTHER-IN-A EMPTY-IN-B OTHER-IN-B -> fresh tree with two suites; sets D, OUT, RC
+hint_run() {
+  D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+  mk_fake_suite "$D/tests/test-a.sh" "$1" "$2"
+  if [ "$3" -gt 0 ] || [ "$4" -gt 0 ]; then mk_fake_suite "$D/tests/test-b.sh" "$3" "$4"; fi
+  guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+}
+hints() { printf '%s\n' "$OUT" | grep -c '^hint: '; }
+hint_text() { printf '%s\n' "$OUT" | grep '^hint: ' | head -n 1; }
+
+hint_run 25 0 0 0
+assert_rc "AC8.1 25 FAILs with an empty actual value: still exit 1" 1
+assert_contains "AC8.1 the run ends in FAILURES" "$OUT" "FAILURES"
+assert_eq "AC8.1 25 empty-got FAILs: exactly one hint line" "1" "$(hints)"
+fl="$(printf '%s\n' "$OUT" | grep -n -x 'FAILURES' | tail -n 1 | cut -d: -f1)"
+hl="$(printf '%s\n' "$OUT" | grep -n '^hint: ' | head -n 1 | cut -d: -f1)"
+if [ -n "$fl" ] && [ -n "$hl" ] && [ "$hl" -gt "$fl" ]; then t_ok "AC8.1 the hint comes after FAILURES"; else t_bad "AC8.1 the hint comes after FAILURES" "FAILURES at [$fl], hint at [$hl]"; fi
+ht="$(hint_text | tr 'A-Z' 'a-z')"
+assert_contains "AC8.1 the hint names an environment problem" "$ht" "environment"
+assert_contains "AC8.1 the hint says the assertions got empty output" "$ht" "empty"
+assert_contains "AC8.1 the hint says to re-run one suite" "$ht" "re-run"
+
+hint_run 0 25 0 0
+assert_rc "AC8.1 25 FAILs with real actual values: exit 1" 1
+assert_eq "AC8.1 25 non-empty FAILs: no hint" "0" "$(hints)"
+
+hint_run 19 0 0 0
+assert_rc "AC8.1 19 empty-got FAILs: exit 1" 1
+assert_eq "AC8.1 19 empty-got FAILs (below 20): no hint" "0" "$(hints)"
+
+hint_run 20 0 0 0
+assert_eq "AC8.1 exactly 20 empty-got FAILs (all of them): hint" "1" "$(hints)"
+
+hint_run 20 30 0 0
+assert_rc "AC8.1 20 empty + 30 non-empty: exit 1" 1
+assert_eq "AC8.1 20 empty + 30 non-empty (under half): no hint" "0" "$(hints)"
+
+hint_run 20 20 0 0
+assert_eq "AC8.1 20 empty + 20 non-empty (exactly half): hint" "1" "$(hints)"
+
+hint_run 20 19 0 0
+assert_eq "AC8.1 20 empty + 19 non-empty (just over half): hint" "1" "$(hints)"
+
+hint_run 12 0 13 0
+assert_eq "AC8.1 12 empty in one suite + 13 in another (25 across the outputs): hint" "1" "$(hints)"
+
+hint_run 12 0 0 13
+assert_eq "AC8.1 12 empty in one suite + 13 non-empty in another (under 20 empty): no hint" "0" "$(hints)"
+
+hint_run 30 0 0 40
+assert_eq "AC8.1 30 empty in one suite + 40 non-empty in another (under half): no hint" "0" "$(hints)"
+
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+guarded 60 env PB_JOBS=2 bash "$D/tests/run-all.sh"
+assert_rc "AC8.1 all green: exit 0" 0
+assert_contains "AC8.1 all green: ALL GREEN" "$OUT" "ALL GREEN"
+assert_eq "AC8.1 all green: no hint" "0" "$(hints)"
+
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+guarded 60 env PB_JOBS=2 FAIL_a=1 bash "$D/tests/run-all.sh"
+assert_rc "AC8.1 a failing suite without FAIL assertions: exit 1" 1
+assert_eq "AC8.1 a failing suite without FAIL assertions: no hint" "0" "$(hints)"
+
 t_summary
