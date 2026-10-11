@@ -222,6 +222,10 @@ run_cmd() {
   ( cd "$wt" && exec bash -c "$cmd" ) >/dev/null 2>&1 </dev/null &
   curpid=$!
   (
+    # A subshell can still hold the parent's EXIT/TERM traps for a moment after the fork: a signal in that window ran
+    # cleanup() here and removed the live worktree. So the watchdog drops the traps first and is never signalled:
+    # it ends by itself within a second of the command ending.
+    trap - EXIT INT TERM HUP
     n=0
     while [ "$n" -lt "$tmo" ]; do
       sleep 1
@@ -233,11 +237,8 @@ run_cmd() {
     kill -9 -- "-$curpid" 2>/dev/null
     kill -9 "$curpid" 2>/dev/null
   ) >/dev/null 2>&1 &
-  wdpid=$!
   { wait "$curpid"; } 2>/dev/null
   rc=$?
-  kill "$wdpid" 2>/dev/null
-  { wait "$wdpid"; } 2>/dev/null
   curpid=""
   if [ -f "$run/timeout" ]; then return 2; fi
   [ "$rc" -eq 0 ] && return 0
