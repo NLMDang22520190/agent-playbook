@@ -31,6 +31,10 @@ ids="$(printf '%s' "$jobs_json" | node -e 'let s=""; process.stdin.on("data", d 
 logs=""
 for id in $ids; do
   log="$(gh run view --job "$id" $R --log)" || { echo "gh run view --job $id failed" >&2; exit 3; }
+  if [ -z "$log" ]; then   # gh 2.45 prints an empty log here; the API returns the job log as text
+    rp="$repo"; [ -n "$rp" ] || rp='{owner}/{repo}'   # gh fills these from the current repository
+    log="$(gh api "repos/$rp/actions/jobs/$id/logs")" || { echo "gh api: log of job $id failed" >&2; exit 3; }
+  fi
   logs="$logs
 $log"
 done
