@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.21.0 - 2026-10-11
+- **Two more auto-graded scenarios**: E5 (the runner commits a change whose new test fails; checks the tests were
+  run in the session, the reply reports the failure and does not claim everything passes; transcript.js key
+  `ran_tests`) and E11 (multiply works, tests pass, sub-agents used, a RED commit touches only tests and tests are
+  unchanged after it; the Superpowers overlap stays manual).
+- **E15 and E19 check the Playbook feedback line** of the final reply.
+- **run-checks refuses GNU-only `sed -i`** (no attached suffix): BSD sed edits nothing. v0.20.0 lost a CI round
+  to it.
+- **run-all hints at an environment failure** when most failing assertions got empty output (a WSL restart
+  produced ~370 such FAILs).
+- **Capture check unwraps options with values**: `bash -o pipefail -c`, `+o`, `-O`, `--rcfile F`, `--init-file F`.
+- **E20 gate item** accepts underscore forms (`tester_gate`); **E17** accepts "docs-only" wording.
+- Real runs of E4, E10 and E17 (two rounds each) recorded; shard weights refreshed from run 38128390983.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer.
+
 ## 0.20.0 - 2026-10-11
 - **Three more auto-graded scenarios**: E4 (the runner commits a spec and a RED test that contradicts it; checks
   the test is unchanged, the implementer gate passes and the reply raises a dispute), E10 (only the typo
