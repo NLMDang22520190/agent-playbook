@@ -147,7 +147,7 @@ big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*
 # BSD sed (macOS) reads the word after -i as the backup suffix, so `sed -i 's/a/b/' f` edits nothing there;
 # an attached suffix (sed -i.bak) works on both. Comments (from a # at the start or after a blank) are ignored.
 gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
-             if (line ~ /(^|[^[:alnum:]_])sed([[:space:]]+-[[:alnum:]]+)*[[:space:]]+-[[:alpha:]]*i([[:space:]"'"'"']|$)/) print FILENAME ":" FNR }' \
+             if (line ~ /(^|[^[:alnum:]_])sed([[:space:]]+-[[:alnum:]]+)*[[:space:]]+(-[[:alpha:]]*i([[:space:]"'"'"']|$)|--in-place([[:space:]=]|$))/) print FILENAME ":" FNR }' \
   tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | sort -u | tr '\n' ' ')"
 si=-i   # spelled through a variable so this file does not trip its own check
 [ -z "$gsed" ] && ok "sed $si has a suffix (BSD sed)" || bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"

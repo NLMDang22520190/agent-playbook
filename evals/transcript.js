@@ -17,7 +17,7 @@ const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
 // that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
 // script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
-const WRAP = /\b(?:ba|z)?sh((?:\s+(?:[-+][a-zA-Z]*[oO]\s+[a-z_]+|--(?:rcfile|init-file)\s+[^\s"']+|--?[a-zA-Z][a-zA-Z-]*))+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
+const WRAP = /\b(?:ba|z)?sh((?:\s+(?:[-+][a-zA-Z]*[oO]\s+[a-z_]+|--(?:rcfile|init-file)\s+[^\s"'-][^\s"']*|--?[a-zA-Z][a-zA-Z-]*))+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
 const unwrap1 = s => s.replace(WRAP, (m, f, d, q) => (!/(?:^|\s)-[a-z]*c/.test(f) ? m : d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
 const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u === s) break; s = u; } return s; };
 for (const line of text.split(/\r?\n/)) {
@@ -39,7 +39,8 @@ for (const line of text.split(/\r?\n/)) {
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|proof-run\.sh/.test(cmd)) ran = true;   // a test run, not a mention
+    // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|(?:^\s*|[;&|(]\s*|\b(?:ba)?sh\s+)\S*proof-run\.sh/m.test(cmd)) ran = true;
   }
 }
 
