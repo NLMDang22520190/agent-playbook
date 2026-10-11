@@ -761,4 +761,43 @@ flat_has 'v22.3 AC6.4 README: the reused run is a same-repo PR run' "$README" 's
 flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tree|same tree|tree[^.]{0,60}identical'
 flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
 flat_has 'v22.3 AC6.4 README: rebase merges always run the tests' "$README" 'rebase[^.]{0,200}always[^.]{0,80}(run|runs)[^.]{0,40}tests?|always[^.]{0,40}(run|runs)[^.]{0,40}tests?[^.]{0,120}rebase'
+# --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
+echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
+P2='^### Phase 2'
+sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILL" "$P2" 'parallel'
+sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
+sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
+sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
+sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
+sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
+sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
+sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
+sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+
+# --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
+echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
+exact_heading 'v22.4 AC5.4 role-prompt.md has the exact heading' "$RPROMPT" '## 2c. Project checklist'
+L2B="$(line_of "$RPROMPT" '^## 2b. Context pack')"; L2C="$(line_of "$RPROMPT" '^## 2c. Project checklist')"; L3="$(line_of "$RPROMPT" '^## 3. This slice')"
+if [ -n "$L2B" ] && [ -n "$L2C" ] && [ -n "$L3" ] && [ "$L2B" -lt "$L2C" ] && [ "$L2C" -lt "$L3" ]; then t_ok 'v22.4 AC5.4 section 2c sits between 2b and 3'; else t_bad 'v22.4 AC5.4 section 2c sits between 2b and 3' "lines: 2b=[$L2B] 2c=[$L2C] 3=[$L3]"; fi
+sec_flat_has 'v22.4 AC5.4 section 2c is the output of learn.sh checklist for the role' "$RPROMPT" '^## 2c' 'learn\.sh checklist'
+LEARNSK="$PB_ROOT/skills/playbook-learn/SKILL.md"
+flat_has 'v22.4 AC5.4 playbook-learn mentions --role' "$LEARNSK" '--role'
+flat_has 'v22.4 AC5.4 playbook-learn mentions checklist' "$LEARNSK" 'checklist'
+flat_has 'v22.4 AC5.2 playbook-learn says the Role line counts toward the line budget' "$LEARNSK" '(role[^.]{0,160}(line budget|LEARN_MAX_LINES|line limit)|(line budget|LEARN_MAX_LINES|line limit)[^.]{0,160}role)'
+
+# --- v0.22.4 AC6.3: wording lows
+echo "v22.4 AC6.3 SKILL.md, state.md, bsd-check"
+flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$SKILL" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
+check 'v22.4 AC6.3 state.md: the reviewer line is "the sha it reviewed"' "$TDD/templates/state.md" 'reviewer:.*the sha it reviewed'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}show'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
+BSD_USAGE="$(sed -n '1,12p' "$PB_ROOT/tools/bsd-check.sh" | tr '\n' ' ' | tr -s ' ')"
+case "$BSD_USAGE" in
+  *[Rr]elative\ to\ the\ repo*root*) t_ok 'v22.4 AC6.3 bsd-check usage: suite paths are relative to the repo root' ;;
+  *) t_bad 'v22.4 AC6.3 bsd-check usage: suite paths are relative to the repo root' "header: $BSD_USAGE" ;;
+esac
+case "$BSD_USAGE" in
+  *[Ss]uite*relative*|*relative*[Ss]uite*|*[Pp]ath*relative*|*relative*[Pp]ath*) t_ok 'v22.4 AC6.3 bsd-check usage: the sentence is about the suite paths' ;;
+  *) t_bad 'v22.4 AC6.3 bsd-check usage: the sentence is about the suite paths' "header: $BSD_USAGE" ;;
+esac
 t_summary

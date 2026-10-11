@@ -433,13 +433,13 @@ node -e '
 const cmd = "bash " + "--rcfile -o ".repeat(30) + "x";
 console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:cmd}}]}}));
 ' > "$TR/slow.json"
-# a node child with a 5 s watchdog (no GNU timeout on macOS)
+# a node child with a 15 s watchdog (no GNU timeout on macOS); node start-up alone can take seconds on a slow runner, backtracking takes minutes
 node "$PB_ROOT/evals/transcript.js" "$TR/slow.json" > "$TR/slow.out" 2>&1 &
 slow_pid=$!
-n=0; while kill -0 "$slow_pid" 2>/dev/null && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+n=0; while kill -0 "$slow_pid" 2>/dev/null && [ "$n" -lt 150 ]; do sleep 0.1; n=$((n + 1)); done
 if kill -0 "$slow_pid" 2>/dev/null; then slow_hung=1; kill -9 "$slow_pid" 2>/dev/null; else slow_hung=0; fi
 wait "$slow_pid" 2>/dev/null
-assert_eq "RV2 transcript.js on 30 x '--rcfile -o' finishes within 5 s" "0" "$slow_hung"
+assert_eq "RV2 transcript.js on 30 x '--rcfile -o' finishes within 15 s" "0" "$slow_hung"
 assert_eq "RV2 ... and prints feedback_captured=0" "feedback_captured=0" "$(grep '^feedback_captured=' "$TR/slow.out")"
 
 echo "v0.21.0 review: E5 a zero failure count is not a reported failure"

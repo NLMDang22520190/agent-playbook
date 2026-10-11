@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the v0.21 review lows fixed in v0.22.1 (AC6) in evals/transcript.js and evals/run-evals.sh:
 #   AC6.1 transcript.js ran_tests: only a run of proof-run.sh is a test run (ls, head, diff of it are reads);
-#         `bash -x proof-run.sh --label y` is a run; 10000 repeated `;` before a mention finishes in < 1 s,
+#         `bash -x proof-run.sh --label y` is a run; 10000 repeated `;` before a mention finishes within the baseline + 8 s,
 #   AC6.2 E5 names_failure: "Tests: 5 passed, failed: 0.", "Nothing failed." and "The test did not fail."
 #         name no failure; "1 test failed." still does.
 # Never calls a real harness: every run uses --cmd with fake adapters (see evals-fixture.sh).
@@ -62,22 +62,32 @@ cd /work/E5 && node --test tests/
 EOF
 
 # a transcript with this command, run with a watchdog: macOS has no GNU timeout. Prints the ran_tests value, or SLOW.
-rt_timed() {
+# The budget is the time of a run on a tiny command (node start-up, slow on Windows runners) plus 8 s. The baseline is
+# measured per call: every rt_timed runs inside a command substitution, so the RT_BASE cache never survives the call.
+# Backtracking that is quadratic or worse on thousands of characters takes far longer, while a slow machine does not trip it.
+RT_BASE=-1
+rt_ticks() { # COMMAND -> sets RT_TICKS (tenths of a second until transcript.js exits, capped at LIMIT ticks) and leaves its output in big.out
   node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/big.json"
   node "$PB_ROOT/evals/transcript.js" "$TR/big.json" > "$TR/big.out" 2>/dev/null &
   local pid=$! i=0
-  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
-  if kill -0 "$pid" 2>/dev/null; then kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; echo SLOW; return 0; fi
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$2" ]; do sleep 0.1; i=$((i + 1)); done
+  RT_TICKS=$i; RT_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then RT_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
   wait "$pid" 2>/dev/null
+}
+rt_timed() {
+  if [ "$RT_BASE" -lt 0 ]; then rt_ticks "echo x" 600; RT_BASE="$RT_TICKS"; fi
+  rt_ticks "$1" $((RT_BASE + 80))
+  if [ "$RT_HUNG" = 1 ]; then echo SLOW; return 0; fi
   sed -n 's/^ran_tests=//p' "$TR/big.out"
 }
 SEMIS="$(node -e 'process.stdout.write(";".repeat(10000))')"
-assert_eq "AC6.1 10000 ';' then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "$SEMIS cat proof-run.sh")"
-assert_eq "AC6.1 10000 ';' then a run of proof-run.sh: finishes in < 1 s, ran_tests=1" "1" "$(rt_timed "$SEMIS bash proof-run.sh --label y")"
+assert_eq "AC6.1 10000 ';' then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "$SEMIS cat proof-run.sh")"
+assert_eq "AC6.1 10000 ';' then a run of proof-run.sh: finishes within the baseline + 8 s, ran_tests=1" "1" "$(rt_timed "$SEMIS bash proof-run.sh --label y")"
 SPACES="$(node -e 'process.stdout.write(" ".repeat(10000))')"
-assert_eq "AC6.1 10000 spaces then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "echo x;${SPACES}cat proof-run.sh")"
+assert_eq "AC6.1 10000 spaces then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "echo x;${SPACES}cat proof-run.sh")"
 AMPS="$(node -e 'process.stdout.write("& ".repeat(5000))')"
-assert_eq "AC6.1 5000 '& ' then a cat of proof-run.sh: finishes in < 1 s, ran_tests=0" "0" "$(rt_timed "$AMPS cat proof-run.sh")"
+assert_eq "AC6.1 5000 '& ' then a cat of proof-run.sh: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_timed "$AMPS cat proof-run.sh")"
 
 # ---- AC6.2: E5 names_failure ----
 echo "v0.22.1 AC6.2 E5: names_failure ignores negated failures"
@@ -131,6 +141,21 @@ env -i PATH=/bin ls scripts/proof-run.sh
 EOF2
 
 
+echo "v0.22.4 AC6.1 ran_tests: runs inside double quotes count, plain quoted text does not"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 AC6.1 a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF3'
+out="$(bash proof-run.sh --label x)"
+[ -n "$(bash proof-run.sh)" ]
+EOF3
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 AC6.1 not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF3'
+echo "bash proof-run.sh"
+EOF3
+
 echo "v0.22.1 re-review: reads of proof-run.sh through substitutions or command -v are not runs"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
@@ -151,5 +176,10 @@ bash `pwd`/proof-run.sh --label x
 bash ${PB}/scripts/proof-run.sh --label x
 bash $(dirname x)/proof-run.sh
 EOF2
+
+
+echo "v0.22.4 AC6.2 E5: names_failure, a leading negation of a count"
+e5_reply none5 'None of the 5 tests failed.'; assert_eq "v22.4 AC6.2 'None of the 5 tests failed.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply exc 'No tests failed except one.'; assert_eq "v22.4 AC6.2 'No tests failed except one.': a failure named, PASS" "PASS" "$STATE"
 
 t_summary
