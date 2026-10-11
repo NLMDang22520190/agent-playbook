@@ -167,6 +167,7 @@ P="$NEWOLD"
 # --- v0.22.3 AC1: phase, rework and majors (the old cases above stay as they are)
 echo "cost.sh v0.22.3 AC1.1: new columns appended at the end"
 OLDHDR="$(printf 'date\trole\ttokens\tseconds\tmodel\tweight\tnote')"
+OLDHDR10="$(printf 'date\trole\ttokens\tseconds\tmodel\tweight\tnote\tphase\trework\tmajors')"
 field() { # N LINE -> tab field N
   printf '%s\n' "$2" | awk -F'\t' -v n="$1" '{ print $n }'
 }
@@ -178,9 +179,9 @@ assert_eq "AC1.1 the old seven header columns stay first and unchanged" "$OLDHDR
 assert_eq "AC1.1 header column 8 is phase" "phase" "$(field 8 "$HDR")"
 assert_eq "AC1.1 header column 9 is rework" "rework" "$(field 9 "$HDR")"
 assert_eq "AC1.1 header column 10 is majors" "majors" "$(field 10 "$HDR")"
-assert_eq "AC1.1 the header has exactly ten columns" "10" "$(printf '%s\n' "$HDR" | awk -F'\t' '{print NF}')"
+assert_eq "AC1.1 the header has exactly eleven columns (v0.22.4 adds task)" "11" "$(printf '%s\n' "$HDR" | awk -F'\t' '{print NF}')"
 ROW="$(tail -n 1 "$F")"
-assert_eq "AC1.1 the row has the same field count as the header" "10" "$(printf '%s\n' "$ROW" | awk -F'\t' '{print NF}')"
+assert_eq "AC1.1 the row has the same field count as the header (eleven since v0.22.4)" "11" "$(printf '%s\n' "$ROW" | awk -F'\t' '{print NF}')"
 assert_eq "AC1.1 the old fields keep their place (role)" "tester" "$(field 2 "$ROW")"
 assert_eq "AC1.1 the old fields keep their place (tokens)" "100" "$(field 3 "$ROW")"
 assert_eq "AC1.1 the old fields keep their place (note)" "n1" "$(field 7 "$ROW")"
@@ -203,7 +204,7 @@ assert_eq "AC1.1 --majors 0 recorded" "0" "$(field 10 "$(tail -n 1 "$F")")"
 newp
 cost add --role tester --tokens 1
 assert_rc "AC1.1 add without the new options still exits 0" 0
-assert_eq "AC1.1 add without the new options keeps the header field count" "10" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
+assert_eq "AC1.1 add without the new options keeps the header field count (eleven since v0.22.4)" "11" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
 assert_eq "AC1.1 add without --phase leaves the phase empty" "" "$(field 8 "$(tail -n 1 "$F")")"
 
 echo "cost.sh v0.22.3 AC1.1: invalid values exit 2 and write nothing"
@@ -340,4 +341,165 @@ assert_eq "AC1.2 the short row counts 0 rework and 0 majors; the full row adds 3
 has_cell "AC1.2 the short row still counts its tokens (total 100)" "$(cells 'total')" "100"
 PV="$(cells '^review$')"
 has_cell "AC1.2 only the full row is in the review phase (tokens 60)" "$PV" "60"
+# --- v0.22.4 AC3: --task column and calibrate (advisory)
+echo "cost.sh v0.22.4 AC3.1: --task is appended after majors (new files have eleven columns)"
+newp
+cost add --role tester --tokens 5 --phase red --rework 0 --majors 0 --task T-1.a_b
+assert_rc "AC3.1 add with --task exits 0" 0
+HDR="$(head -n 1 "$F")"; ROW="$(tail -n 1 "$F")"
+assert_eq "AC3.1 the first ten header columns are unchanged" "$OLDHDR10" "$(printf '%s\n' "$HDR" | cut -f1-10)"
+assert_eq "AC3.1 header column 11 is task" "task" "$(field 11 "$HDR")"
+assert_eq "AC3.1 the header has eleven columns" "11" "$(printf '%s\n' "$HDR" | awk -F'\t' '{print NF}')"
+assert_eq "AC3.1 the row has eleven fields" "11" "$(printf '%s\n' "$ROW" | awk -F'\t' '{print NF}')"
+assert_eq "AC3.1 --task is recorded in column 11" "T-1.a_b" "$(field 11 "$ROW")"
+assert_eq "AC3.1 column 10 (majors) keeps its place" "0" "$(field 10 "$ROW")"
+cost add --role tester --tokens 5
+assert_rc "AC3.1 add without --task exits 0" 0
+assert_eq "AC3.1 add without --task keeps eleven fields" "11" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
+assert_eq "AC3.1 add without --task leaves the task empty" "" "$(field 11 "$(tail -n 1 "$F")")"
+assert_not_contains "AC3.1 a new-format file prints no old-format note" "$OUT" "old cost.tsv format"
+cost add --role tester --tokens 5 --task A9
+assert_eq "AC3.1 IDs of letters and digits are accepted" "A9" "$(field 11 "$(tail -n 1 "$F")")"
+
+echo "cost.sh v0.22.4 AC3.1: an invalid task ID exits 2 and writes nothing"
+newp
+badn "task with a space"       --task "a b"
+badn "task with a slash"       --task "a/b"
+badn "task with a semicolon"   --task "a;b"
+badn "task empty"              --task ""
+badn "task with a tab"         --task "a	b"
+badn "task with a newline"     --task "a
+b"
+cost add --role tester --tokens 7 --task ok1
+BEFORE="$(cat "$F")"
+cost add --role tester --tokens 7 --task "bad id"
+assert_rc "AC3.1 an invalid task on an existing file exits 2" 2
+assert_eq "AC3.1 an invalid task leaves the file byte-identical" "$BEFORE" "$(cat "$F")"
+
+echo "cost.sh v0.22.4 AC3.1: old files (seven or v0.22.3 ten columns) keep their header, the note mentions task"
+oldp10() { newp; mkdir -p "$(dirname "$F")"; printf '%s\n' "$OLDHDR10" > "$F"; printf '2026-01-01T00:00:00Z\ttester\t40\t4\tm0\tLite\told\tred\t0\t0\n' >> "$F"; }
+oldp10
+cost add --role reviewer --tokens 60 --phase review --majors 1 --task T9
+assert_rc "AC3.1 add --task to a v0.22.3 ten-column file exits 0" 0
+assert_eq "AC3.1 the ten-column header is untouched" "$OLDHDR10" "$(head -n 1 "$F")"
+assert_eq "AC3.1 the new row keeps ten fields (no task recorded)" "10" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
+assert_eq "AC3.1 the new row keeps its majors in column 10" "1" "$(field 10 "$(tail -n 1 "$F")")"
+assert_contains "AC3.1 the note says it is the old format" "$OUT" "old cost.tsv format"
+assert_contains "AC3.1 the note mentions task" "$OUT" "task"
+cost add --role tester --tokens 1
+assert_contains "AC3.1 the note is printed without --task too" "$OUT" "old cost.tsv format"
+assert_eq "AC3.1 still ten fields after a second add" "10" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
+oldp
+cost add --role reviewer --tokens 60 --task T9
+assert_rc "AC3.1 add --task to a seven-column file exits 0" 0
+assert_eq "AC3.1 the seven-column header is untouched" "$OLDHDR" "$(head -n 1 "$F")"
+assert_eq "AC3.1 the new row keeps seven fields" "7" "$(tail -n 1 "$F" | awk -F'\t' '{print NF}')"
+assert_contains "AC3.1 the seven-column note mentions task" "$OUT" "task"
+oldp10
+BEFORE="$(cat "$F")"
+cost add --role tester --tokens 5 --task "bad id"
+assert_rc "AC3.1 an invalid task on an old file exits 2" 2
+assert_eq "AC3.1 an invalid task leaves the old file unchanged" "$BEFORE" "$(cat "$F")"
+
+echo "cost.sh v0.22.4 AC3.2: calibrate per weight"
+CH="$(printf 'date\trole\ttokens\tseconds\tmodel\tweight\tnote\tphase\trework\tmajors\ttask')"
+crow() { # ROLE TOKENS PHASE REWORK MAJORS TASK WEIGHT -> one eleven-field row on stdout
+  printf '2026-01-01T00:00:00Z\t%s\t%s\t1\tm\t%s\t\t%s\t%s\t%s\t%s\n' "$1" "$2" "$7" "$3" "$4" "$5" "$6"
+}
+mkcal() { newp; mkdir -p "$(dirname "$F")"; printf '%s\n' "$CH" > "$F"; }
+# line_of_weight WEIGHT -> the calibrate output line that starts with that weight (after table or list marks)
+line_of_weight() { printf '%s\n' "$OUT" | grep -E "^[-*| ]*$1([^A-Za-z]|\$)" | head -n 1; }
+# has_metric NAME LINE LABEL VALUE: LABEL comes first, then the number; an average may be written with one decimal (1500 or 1500.0)
+has_metric() {
+  if printf '%s\n' "$2" | grep -qiE "$3[^0-9]{0,20}$4(\\.0)?([^0-9.]|\$)"; then t_ok "$1"; else t_bad "$1" "no [$3 ... $4] in line [$2]"; fi
+}
+mkcal
+{
+  crow tester 400 red 0 0 F1 Full; crow implementer 300 green 2 0 F1 Full; crow reviewer 300 review 0 2 F1 Full
+  crow tester 1500 red 2 0 F2 Full; crow reviewer 300 review 0 1 F2 Full; crow reviewer 200 review 0 3 F2 Full
+  crow implementer 500 green 1 0 L1 Lite; crow reviewer 100 review 0 0 L1 Lite
+  crow tester 900 red 3 0 L2 Lite; crow reviewer 100 review 0 0 L2 Lite
+  crow implementer 99999 green 9 0 S1 Full
+  crow reviewer 88888 review 0 "" S2 Lite
+  crow reviewer 77777 review 9 9 "" Full
+} >> "$F"
+CALSUM="$(cksum "$F")"
+FILES_BEFORE="$(find "$P" "$PLAYBOOK_HOME" -type f 2>/dev/null | sort)"
+cost calibrate
+assert_rc "AC3.2 calibrate exits 0" 0
+FL="$(line_of_weight Full)"
+LL="$(line_of_weight Lite)"
+[ -n "$FL" ] && t_ok "AC3.2 a line for the weight Full" || t_bad "AC3.2 a line for the weight Full" "$OUT"
+[ -n "$LL" ] && t_ok "AC3.2 a line for the weight Lite" || t_bad "AC3.2 a line for the weight Lite" "$OUT"
+has_metric "AC3.2 Full: 2 tasks (rows without review data or task id are not counted)" "$FL" "tasks" "2"
+has_metric "AC3.2 Full: average tokens 1500 per task" "$FL" "tokens" "1500"
+has_metric "AC3.2 Full: review majors per task 3 (sum over the review rows: 2 and 4)" "$FL" "major" "3"
+has_metric "AC3.2 Full: rework per task 2 (max rework in the task)" "$FL" "rework" "2"
+has_metric "AC3.2 Lite: 2 tasks" "$LL" "tasks" "2"
+has_metric "AC3.2 Lite: average tokens 800 per task" "$LL" "tokens" "800"
+has_metric "AC3.2 Lite: review majors per task 0" "$LL" "major" "0"
+has_metric "AC3.2 Lite: rework per task 2 (1 and 3)" "$LL" "rework" "2"
+assert_contains "AC3.2 two tasks lack review data (no review row, review row without majors)" "$OUT" "skipped 2 task(s) without review data"
+assert_not_contains "AC3.2 fewer than five Full tasks: no advice" "$OUT" "advice:"
+assert_eq "AC3.2 calibrate does not modify the cost file" "$CALSUM" "$(cksum "$F")"
+assert_eq "AC3.2 calibrate writes no file anywhere (project or playbook home)" "$FILES_BEFORE" "$(find "$P" "$PLAYBOOK_HOME" -type f 2>/dev/null | sort)"
+
+echo "cost.sh v0.22.4 AC3.2: the advice line"
+ADV="advice: Full reviews found no majors in 5 tasks; similar changes may be Lite"
+fulls() { # N [LAST_MAJORS] -> N Full tasks FA1..FAN, one review row each (majors 0, the last one LAST_MAJORS)
+  local n="$1" last="${2:-0}" i=1
+  while [ "$i" -le "$n" ]; do
+    crow implementer 100 green 0 0 "FA$i" Full
+    if [ "$i" -eq "$n" ]; then crow reviewer 50 review 0 "$last" "FA$i" Full; else crow reviewer 50 review 0 0 "FA$i" Full; fi
+    i=$((i + 1))
+  done
+}
+mkcal; fulls 5 >> "$F"
+cost calibrate
+assert_rc "AC3.2 five Full tasks, no majors: exit 0" 0
+assert_eq "AC3.2 five Full tasks with 0 majors: the advice line, once" "1" "$(printf '%s\n' "$OUT" | grep -cxF "$ADV")"
+mkcal; fulls 6 >> "$F"
+cost calibrate
+assert_eq "AC3.2 six Full tasks with 0 majors: the line names 6" "1" "$(printf '%s\n' "$OUT" | grep -cxF "advice: Full reviews found no majors in 6 tasks; similar changes may be Lite")"
+mkcal; fulls 4 >> "$F"
+cost calibrate
+assert_not_contains "AC3.2 four Full tasks: no advice" "$OUT" "advice:"
+mkcal; fulls 5 1 >> "$F"
+cost calibrate
+assert_not_contains "AC3.2 five Full tasks, one found a major: no advice" "$OUT" "advice:"
+mkcal; { fulls 4; crow implementer 100 green 0 0 SK Full; } >> "$F"
+cost calibrate
+assert_not_contains "AC3.2 four counted Full tasks plus one without review data: no advice" "$OUT" "advice:"
+assert_contains "AC3.2 ... and that task is reported as skipped" "$OUT" "skipped 1 task(s) without review data"
+mkcal; { fulls 5; crow reviewer 50 review 0 2 L1 Lite; } >> "$F"
+cost calibrate
+assert_eq "AC3.2 majors found in Lite tasks do not cancel the Full advice" "1" "$(printf '%s\n' "$OUT" | grep -cxF "$ADV")"
+
+echo "cost.sh v0.22.4 AC3.2: calibrate on old or empty data"
+oldp
+cost calibrate
+assert_rc "AC3.2 calibrate on a seven-column file exits 0" 0
+assert_not_contains "AC3.2 no tasks recorded, no advice" "$OUT" "advice:"
+oldp10
+cost calibrate
+assert_rc "AC3.2 calibrate on a v0.22.3 ten-column file exits 0 (no task recorded: starts from new data)" 0
+newp
+cost calibrate
+assert_rc "AC3.2 calibrate with no file exits 0" 0
+assert_no_path "AC3.2 calibrate does not create the file" "$F"
+
+echo "cost.sh v0.22.4 review: per-task averages show one decimal place (D5)"
+mkcal
+{
+  crow reviewer 100 review 1 1 D1 Full
+  crow reviewer 100 review 0 0 D2 Full
+  crow reviewer 101 review 0 0 D3 Full
+} >> "$F"
+cost calibrate
+assert_rc "D5 calibrate with three Full tasks exits 0" 0
+DL="$(line_of_weight Full)"
+assert_contains "D5 three Full tasks with one major in total print 'review majors 0.3'" "$DL" "review majors 0.3"
+has_metric "D5 tasks stay a whole count (3)" "$DL" "tasks" "3"
+if printf '%s\n' "$DL" | grep -qiE 'tokens[^0-9]{0,20}100\.3([^0-9]|$)'; then t_ok "D5 the average tokens (300.33 / 3 = 100.33) print as 100.3"; else t_bad "D5 the average tokens print as 100.3" "line: $DL"; fi
+if printf '%s\n' "$DL" | grep -qiE 'rework[^0-9]{0,20}0\.3([^0-9]|$)'; then t_ok "D5 the rework per task (1, 0, 0) prints as 0.3"; else t_bad "D5 the rework per task prints as 0.3" "line: $DL"; fi
 t_summary

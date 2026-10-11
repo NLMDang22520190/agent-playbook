@@ -62,8 +62,9 @@ cd /work/E5 && node --test tests/
 EOF
 
 # a transcript with this command, run with a watchdog: macOS has no GNU timeout. Prints the ran_tests value, or SLOW.
-# The budget is the time of a run on a tiny command (node start-up, slow on Windows runners) plus 8 s: backtracking
-# that is quadratic or worse on thousands of characters takes far longer, while a slow machine does not trip it.
+# The budget is the time of a run on a tiny command (node start-up, slow on Windows runners) plus 8 s. The baseline is
+# measured per call: every rt_timed runs inside a command substitution, so the RT_BASE cache never survives the call.
+# Backtracking that is quadratic or worse on thousands of characters takes far longer, while a slow machine does not trip it.
 RT_BASE=-1
 rt_ticks() { # COMMAND -> sets RT_TICKS (tenths of a second until transcript.js exits, capped at LIMIT ticks) and leaves its output in big.out
   node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/big.json"
@@ -140,6 +141,21 @@ env -i PATH=/bin ls scripts/proof-run.sh
 EOF2
 
 
+echo "v0.22.4 AC6.1 ran_tests: runs inside double quotes count, plain quoted text does not"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 AC6.1 a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF3'
+out="$(bash proof-run.sh --label x)"
+[ -n "$(bash proof-run.sh)" ]
+EOF3
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 AC6.1 not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF3'
+echo "bash proof-run.sh"
+EOF3
+
 echo "v0.22.1 re-review: reads of proof-run.sh through substitutions or command -v are not runs"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
@@ -162,6 +178,55 @@ bash $(dirname x)/proof-run.sh
 EOF2
 
 
+echo "v0.22.4 AC6.2 E5: names_failure, a leading negation of a count"
+e5_reply none5 'None of the 5 tests failed.'; assert_eq "v22.4 AC6.2 'None of the 5 tests failed.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply exc 'No tests failed except one.'; assert_eq "v22.4 AC6.2 'No tests failed except one.': a failure named, PASS" "PASS" "$STATE"
+
+echo "v0.22.4 review: a substitution that runs proof-run.sh is a run wherever it sits in the word"
+# runsProof turns a $(..) that touches other word characters into one placeholder so that "cat $(dirname x)/proof-run.sh"
+# stays a read. The command INSIDE a substitution is executed whatever surrounds it, so when that command runs
+# proof-run.sh the whole line is a run (1); when it only reads it, it stays a read (0).
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 review a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+done <<'EOF3'
+"$(bash proof-run.sh --label x)"
+"$(bash proof-run.sh)"x
+x$(bash proof-run.sh)
+echo "$(bash proof-run.sh)"suffix
+EOF3
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "v22.4 review not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+done <<'EOF3'
+echo "$(cat proof-run.sh)"x
+x$(cat proof-run.sh)
+echo "$(ls proof-run.sh)"suffix
+EOF3
+
+echo "v0.22.4 review E5: names_failure with a comma after the negation"
+e5_reply comma 'No tests failed, except one.'; assert_eq "v22.4 review 'No tests failed, except one.': a failure named, PASS" "PASS" "$STATE"
+
+echo "v0.22.4 regression: heredoc bodies are data, not commands"
+# a command containing newlines cannot go through the line-by-line lists above, so each one is built here
+NLC='
+'
+hd() { # NAME EXPECTED COMMAND
+  assert_eq "v22.4 heredoc $1: ran_tests=$2" "$2" "$(rt_of "$3")"
+}
+hd "commit message in a substitution (<<EOF)" 0 "git commit -m \"\$(cat <<EOF${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "commit message in a substitution (<<'EOF')" 0 "git commit -m \"\$(cat <<'EOF'${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "commit message in a substitution (<<-EOF, tab-indented)" 0 "git commit -m \"\$(cat <<-EOF${NLC}	feat: x${NLC}	bash scripts/proof-run.sh --label green passed${NLC}	EOF${NLC})\""
+hd "commit message in a substitution (<<\"EOF\")" 0 "git commit -m \"\$(cat <<\"EOF\"${NLC}feat: x${NLC}bash proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "plain cat <<EOF outside a substitution" 0 "cat <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "plain cat <<'EOF' outside a substitution" 0 "cat <<'EOF'${NLC}bash scripts/proof-run.sh${NLC}EOF"
+hd "a heredoc with another word as terminator" 0 "cat <<DONE${NLC}bash proof-run.sh --label x${NLC}DONE"
+hd "the command itself runs, the heredoc body is only input" 1 "bash proof-run.sh --label x <<EOF${NLC}input${NLC}EOF"
+hd "the command itself runs with a quoted heredoc" 1 "bash scripts/proof-run.sh --label x <<'EOF'${NLC}input${NLC}EOF"
+hd "captured run" 1 'out="$(bash proof-run.sh --label x)"'
+hd "a run after a heredoc has ended" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label x"
+hd "a run before a heredoc, the body mentions nothing" 1 "bash proof-run.sh --label x${NLC}cat <<EOF${NLC}notes${NLC}EOF"
+hd "a run with the heredoc terminator word later in the text is still a run" 1 "bash proof-run.sh --label x <<EOF${NLC}EOF${NLC}bash proof-run.sh --label y"
 echo "v0.22.1 corpus: ran_tests for every run and read form seen in the review rounds (first field = expected value)"
 while IFS= read -r row; do
   [ -n "$row" ] || continue
@@ -216,4 +281,11 @@ done <<'EOF2'
 0 grep -n usage scripts/proof-run.sh
 EOF2
 
+echo "v0.22.4 regression: a here-string (<<<) is not a heredoc; <<\WORD is a heredoc"
+hd "a here-string with a quoted word, then a run" 1 "grep x <<< \"hello\"${NLC}bash proof-run.sh --label y"
+hd "a here-string with a bare word, then a run" 1 "cat <<<EOF${NLC}bash proof-run.sh --label y"
+hd "a here-string, a run on the same line after it" 1 "cat <<< hi; bash proof-run.sh --label y"
+hd "a here-string does not hide a later heredoc body (data)" 0 "cat <<< hi${NLC}cat <<EOF${NLC}bash proof-run.sh body${NLC}EOF"
+hd "a backslash-quoted heredoc word: the body is data" 0 "cat <<\\EOF${NLC}bash proof-run.sh body${NLC}EOF"
+hd "a backslash-quoted heredoc word, then a run after it" 1 "cat <<\\EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
 t_summary

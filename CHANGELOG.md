@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.22.4 - 2026-10-12
+- **`scripts/mutate.sh`**: mutation testing on the lines a branch changed (`--base REF --test CMD`), whole-token
+  operator flips, one mutant per line and operator; it runs only in a throwaway worktree (never the user's tree,
+  also after kill -9), skips symlinks and docs (`--include-docs`), keeps concurrent runs apart (owner pids), kills a
+  hung test's whole process group (`--timeout`), checks an unmutated baseline first, and lists survivors;
+  `--fail-under PCT`. The reviewer role runs it and lists survivors as findings.
+  A load-only race was found by run-all's new re-run classification and fixed: the timeout watchdog
+  inherited the cleanup trap and could remove the live worktree.
+- **Eval guard**: `tools/eval-guard.sh` maps changed skill text (`evals/scenario-map`) to the scenarios that exercise
+  it and prints a capped `run-evals.sh` command; ship prints it before tagging. It never spends money itself.
+- **`cost.sh calibrate`** (advisory): per weight, tasks, average tokens, review majors and rework per task (`--task`
+  ids); advises Lite only after 5 Full tasks with no review majors.
+- **Parallel slices**: slices on disjoint files may run in separate worktrees with their own gates, merged before
+  one review.
+- **Project learnings as role checklists**: `learn.sh add --role`, `learn.sh checklist ROLE`, and a `2c. Project
+  checklist` section in the role prompt.
+- Graders: runs inside double quotes and substitutions count; more negation forms in names_failure; eval-guard
+  checks the harness name.
+- Built at Full weight with a spec review (two rounds; found that mutating the user's tree was not crash-safe),
+  Sonnet tester and implementer, Opus reviewer (found writes through symlinks and concurrent runs destroying each
+  other, both fixed test-first).
+
 ## 0.22.3 - 2026-10-11
 - **A main push reuses a green PR run of the identical tree** (saves a full CI run per release):
   `tools/ci-tree-tested.sh SHA` finds a same-repo PR with base main that contains SHA, a successful pull_request

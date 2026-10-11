@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # Log and summarise the cost of TDD role runs, per project.
 #   cost.sh add --role R --tokens N [--seconds S] [--model M] [--weight Full|Lite] [--note T]
-#               [--phase spec|red|green|review|fix|release] [--rework N] [--majors N]
+#               [--phase spec|red|green|review|fix|release] [--rework N] [--majors N] [--task ID]
 #       R = tester|implementer|reviewer|orchestrator; N, S non-negative integers.
 #       --rework N = rework round (0 = first pass); --majors N = review majors found.
 #       Appends one row to <project>/.agents/handoff/cost.tsv (header on first use).
-#       A new file gets ten columns (phase, rework, majors last). An existing file with the
-#       old seven-column header keeps it, and its new rows keep seven fields.
+#       --task ID = a task id, [A-Za-z0-9._-]+, used by calibrate to group the rows of one task.
+#       A new file gets eleven columns (phase, rework, majors, task last). An existing file with
+#       an old header (seven columns, or the v0.22.3 ten) keeps it, and its new rows keep their field count.
 #   cost.sh summary [--json]
 #       markdown table per role plus a total row, a table per phase, and the line
 #       "rework rounds: N, review majors: M"; --json prints the totals as one JSON object.
 #       "no cost data" if empty.
+#   cost.sh calibrate
+#       advisory only, writes nothing: per weight (Full, Lite) the tasks that have a review row with a
+#       recorded majors value: tasks, average tokens, review majors per task (sum over the review
+#       rows), rework per task (max in the task). Rows without a task id are skipped.
 # Exit: 0 ok, 2 usage/invalid input (nothing written), 3 environment.
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -30,6 +35,7 @@ case "$cmd" in
   add)
     role=""; tokens=""; seconds=""; model=""; weight=""; note=""
     phase=""; rework=""; majors=""; phase_set=0; rework_set=0; majors_set=0
+    task=""; task_set=0
     while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || pb_die "option $1 needs a value" 2
       case "$1" in
@@ -42,6 +48,7 @@ case "$cmd" in
         --phase) phase="$2"; phase_set=1 ;;
         --rework) rework="$2"; rework_set=1 ;;
         --majors) majors="$2"; majors_set=1 ;;
+        --task) task="$2"; task_set=1 ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift 2
@@ -61,23 +68,32 @@ case "$cmd" in
     fi
     if [ "$rework_set" = 1 ]; then is_uint "$rework" || pb_die "--rework must be a non-negative integer" 2; fi
     if [ "$majors_set" = 1 ]; then is_uint "$majors" || pb_die "--majors must be a non-negative integer" 2; fi
+    if [ "$task_set" = 1 ]; then
+      case "$task" in "" | *[!A-Za-z0-9._-]*) pb_die "--task must match [A-Za-z0-9._-]+" 2 ;; esac
+    fi
     no_ctl "$model" || pb_die "--model must not contain a tab or newline" 2
     no_ctl "$note" || pb_die "--note must not contain a tab or newline" 2
     mkdir -p "$(dirname "$file")" || pb_die "cannot create $(dirname "$file")" 3
     if [ ! -s "$file" ]; then
-      printf 'date\trole\ttokens\tseconds\tmodel\tweight\tnote\tphase\trework\tmajors\n' > "$file" || pb_die "cannot write $file" 3
+      printf 'date\trole\ttokens\tseconds\tmodel\tweight\tnote\tphase\trework\tmajors\ttask\n' > "$file" || pb_die "cannot write $file" 3
     fi
     hdr="$(head -n 1 "$file")"
     case "$hdr" in
-      *"${tab}phase"*) oldfmt=0 ;;
-      *) oldfmt=1 ;;
+      *"${tab}task"*) fmt=11 ;;
+      *"${tab}phase"*) fmt=10 ;;
+      *) fmt=7 ;;
     esac
-    if [ "$oldfmt" = 1 ]; then
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role" "$tokens" "$seconds" "$model" "$weight" "$note" >> "$file" \
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [ "$fmt" = 7 ]; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$now" "$role" "$tokens" "$seconds" "$model" "$weight" "$note" >> "$file" \
         || pb_die "cannot write $file" 3
-      echo "old cost.tsv format: phase/rework/majors not recorded"
+      echo "old cost.tsv format: phase/rework/majors not recorded (task not recorded either)"
+    elif [ "$fmt" = 10 ]; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$now" "$role" "$tokens" "$seconds" "$model" "$weight" "$note" "$phase" "$rework" "$majors" >> "$file" \
+        || pb_die "cannot write $file" 3
+      echo "old cost.tsv format: task not recorded"
     else
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$role" "$tokens" "$seconds" "$model" "$weight" "$note" "$phase" "$rework" "$majors" >> "$file" \
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$now" "$role" "$tokens" "$seconds" "$model" "$weight" "$note" "$phase" "$rework" "$majors" "$task" >> "$file" \
         || pb_die "cannot write $file" 3
     fi
     ;;
@@ -138,7 +154,43 @@ case "$cmd" in
         printf "rework rounds: %d, review majors: %d\n", rw, mj
       }' "$file"
     ;;
+  calibrate)
+    [ $# -eq 0 ] || pb_die "usage: cost.sh calibrate" 2
+    if [ ! -f "$file" ] || [ "$(wc -l < "$file" | tr -d ' ')" -lt 2 ]; then
+      echo "no cost data"
+      exit 0
+    fi
+    awk -F'\t' '
+      NR == 1 { next }
+      $11 == "" { next }
+      {
+        t = $11
+        if (!(t in seen)) { seen[t] = 1; order[++nt] = t }
+        tok[t] += $3
+        if ($6 != "" && wt[t] == "") wt[t] = $6
+        if ($9 + 0 > rw[t]) rw[t] = $9 + 0
+        if ($8 == "review" && $10 != "") { hasrev[t] = 1; mj[t] += $10 }
+      }
+      END {
+        skipped = 0
+        for (i = 1; i <= nt; i++) {
+          t = order[i]
+          if (!hasrev[t]) { skipped++; continue }
+          w = wt[t]
+          if (w != "Full" && w != "Lite") continue
+          n[w]++; stok[w] += tok[t]; smj[w] += mj[t]; srw[w] += rw[t]
+          if (w == "Full" && mj[t] > 0) fullmaj = 1
+        }
+        nw = split("Full Lite", ws, " ")
+        for (i = 1; i <= nw; i++) {
+          w = ws[i]
+          if (n[w] > 0) printf "%s: tasks %d, tokens %.1f, review majors %.1f, rework %.1f (per task, average)\n", w, n[w], stok[w] / n[w], smj[w] / n[w], srw[w] / n[w]
+        }
+        printf "skipped %d task(s) without review data\n", skipped
+        if (n["Full"] >= 5 && !fullmaj) printf "advice: Full reviews found no majors in %d tasks; similar changes may be Lite\n", n["Full"]
+      }' "$file"
+    ;;
   *)
-    pb_die "usage: cost.sh add|summary" 2
+    pb_die "usage: cost.sh add|summary|calibrate" 2
     ;;
 esac

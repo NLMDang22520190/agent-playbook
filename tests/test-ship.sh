@@ -1012,6 +1012,95 @@ export FAKE_SHARDS_7777=none FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200" F
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.3 CI failed: ship exits 1" 1
 assert_eq "AC6.3 CI failed: ci-tree-tested.sh does not run" "0" "$(tree_calls | wc -l | tr -d ' ')"
+# ---- v0.22.4 AC2.3: the eval guard hint, printed before the tag and repeated in the summary ----
+# The fixture gets the real tools/eval-guard.sh and its own evals/scenario-map (skills/fixt/* -> E1 E3), plus a recording
+# evals/run-evals.sh that must never be called. eg_fx PREV_TAG CHANGED_FILE: with PREV_TAG a tag v1.2.2 is put on main's
+# current commit; CHANGED_FILE is then changed on origin's main (the commit ship pulls), before the fake merge.
+echo "v0.22.4 AC2.3 eval guard hint: skill text changed since the previous release"
+EGGUARD="$SHIPDIR/eval-guard.sh"
+eg_fx() { # TAG(yes|no) FILE
+  fx
+  local w="$F/work"
+  mkdir -p "$w/tools" "$w/evals" "$w/skills/fixt" "$w/docs"
+  [ -f "$EGGUARD" ] && cp -p "$EGGUARD" "$w/tools/eval-guard.sh"
+  printf 'skills/fixt/* E1 E3\n' > "$w/evals/scenario-map"
+  printf '#!/usr/bin/env bash\necho "run-evals.sh $*" >> "%s"\nexit 0\n' "$F/evals-called" > "$w/evals/run-evals.sh"
+  printf 'v1\n' > "$w/skills/fixt/SKILL.md"; printf 'v1\n' > "$w/docs/x.md"
+  ( cd "$w" && git add -A && GITID commit -qm "eval guard fixture" && git push -q origin HEAD:main 2>/dev/null ) || { echo "eval guard fixture failed"; exit 3; }
+  if [ "$1" = yes ]; then
+    git -C "$F/repo" fetch -q origin && git -C "$F/repo" tag v1.2.2 origin/main
+  fi
+  printf 'v2\n' > "$w/$2"
+  ( cd "$w" && git add -A && GITID commit -qm "change $2" && git push -q origin HEAD:main 2>/dev/null ) || { echo "eval guard change failed"; exit 3; }
+  unset PLAYBOOK_HARNESS
+}
+lineno() { printf '%s\n' "$OUT" | grep -n -- "$1" | cut -d: -f1; }   # all line numbers matching a fixed text
+
+eg_fx yes skills/fixt/SKILL.md
+sh_run 12 v1.2.3 --yes
+assert_rc "v22.4 AC2.3 skill text changed since the previous tag: ship exits 0" 0
+assert_eq "v22.4 AC2.3 the flow is unchanged (the hint is only output)" "$FULL_YES" "$(steps)"
+GL="$(printf '%s\n' "$OUT" | grep '^eval guard: ')"
+assert_eq "v22.4 AC2.3 'eval guard: <command>' is printed twice (before the tag and in the final summary)" "2" "$(printf '%s\n' "$GL" | grep -c '^eval guard: ')"
+assert_contains "v22.4 AC2.3 the hint is the capped run-evals command" "$GL" "run-evals.sh"
+assert_contains "v22.4 AC2.3 the hint names the mapped scenarios, comma separated" "$GL" "--scenarios E1,E3"
+assert_contains "v22.4 AC2.3 the hint carries --max-cost" "$GL" "--max-cost"
+assert_eq "v22.4 AC2.3 both lines are the same command" "1" "$(printf '%s\n' "$GL" | sort -u | wc -l | tr -d ' ')"
+FIRST="$(lineno '^eval guard: ' | head -n 1)"; LAST="$(lineno '^eval guard: ' | tail -n 1)"
+REL="$(lineno '^== release v1.2.3$' | head -n 1)"
+CHK="$(lineno '^== check the release$' | head -n 1)"
+if [ -n "$FIRST" ] && [ -n "$REL" ] && [ "$FIRST" -lt "$REL" ]; then t_ok "v22.4 AC2.3 the first hint comes BEFORE the '== release v1.2.3' (tag and push) step"; else t_bad "v22.4 AC2.3 the first hint comes BEFORE the '== release v1.2.3' (tag and push) step" "hint line [$FIRST], release step line [$REL]; output: $OUT"; fi
+if [ -n "$LAST" ] && [ -n "$CHK" ] && [ "$LAST" -gt "$CHK" ]; then t_ok "v22.4 AC2.3 the repeated hint comes after the release was checked (final summary)"; else t_bad "v22.4 AC2.3 the repeated hint comes after the release was checked (final summary)" "last hint line [$LAST], '== check the release' line [$CHK]"; fi
+assert_contains "v22.4 AC2.3 ship still says shipped" "$OUT" "shipped v1.2.3"
+assert_no_path "v22.4 AC2.3 ship never runs the command (the recording run-evals.sh was not called)" "$F/evals-called"
+assert_eq "v22.4 AC2.3 no gh call asks for an eval run" "0" "$(logged 'run-evals')"
+
+echo "v0.22.4 AC2.3 the hint also appears with the questions flow (dry run kept): still before the tag"
+if [ "$PTY_OK" = 1 ]; then
+  eg_fx yes skills/fixt/SKILL.md
+  pty_ship y y -- 12 v1.2.3
+  assert_rc "v22.4 AC2.3 questions flow exits 0" 0
+  FIRST="$(lineno '^eval guard: ' | head -n 1)"
+  ASKTAG="$(lineno 'tag and push v1.2.3' | head -n 1)"
+  if [ -n "$FIRST" ] && [ -n "$ASKTAG" ] && [ "$FIRST" -lt "$ASKTAG" ]; then t_ok "v22.4 AC2.3 the hint is printed before the 'tag and push' question"; else t_bad "v22.4 AC2.3 the hint is printed before the 'tag and push' question" "hint line [$FIRST], question line [$ASKTAG]; output: $OUT"; fi
+else
+  t_skip 2 "v22.4 AC2.3 questions flow (no python3 pty)"
+fi
+
+echo "v0.22.4 AC2.3 no previous tag: no hint, ship still succeeds"
+eg_fx no skills/fixt/SKILL.md
+sh_run 12 v1.2.3 --yes
+assert_rc "v22.4 AC2.3 no previous v* tag: ship exits 0" 0
+assert_eq "v22.4 AC2.3 no previous v* tag: the whole flow ran" "$FULL_YES" "$(steps)"
+assert_eq "v22.4 AC2.3 no previous v* tag: no 'eval guard:' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'eval guard:')"
+assert_contains "v22.4 AC2.3 no previous v* tag: shipped is printed" "$OUT" "shipped v1.2.3"
+assert_no_path "v22.4 AC2.3 no previous v* tag: nothing was run" "$F/evals-called"
+
+echo "v0.22.4 AC2.3 only a non-v tag exists: describe fails, no hint, ship still succeeds"
+eg_fx no skills/fixt/SKILL.md
+git -C "$F/repo" fetch -q origin && git -C "$F/repo" tag nightly-1 origin/main
+sh_run 12 v1.2.3 --yes
+assert_rc "v22.4 AC2.3 only a non-v tag: ship exits 0" 0
+assert_eq "v22.4 AC2.3 only a non-v tag: no 'eval guard:' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'eval guard:')"
+assert_contains "v22.4 AC2.3 only a non-v tag: shipped is printed" "$OUT" "shipped v1.2.3"
+
+echo "v0.22.4 AC2.3 no mapped file changed since the previous tag: no hint"
+eg_fx yes docs/x.md
+sh_run 12 v1.2.3 --yes
+assert_rc "v22.4 AC2.3 only docs changed: ship exits 0" 0
+assert_eq "v22.4 AC2.3 only docs changed: no 'eval guard:' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'eval guard:')"
+assert_contains "v22.4 AC2.3 only docs changed: shipped is printed" "$OUT" "shipped v1.2.3"
+assert_no_path "v22.4 AC2.3 only docs changed: nothing was run" "$F/evals-called"
+
+echo "v0.22.4 AC2.3 a failing eval-guard.sh never fails the release"
+eg_fx yes skills/fixt/SKILL.md
+# replace the guard on origin's main (the commit ship pulls) with one that fails
+printf '#!/usr/bin/env bash\necho "guard broke" >&2\nexit 7\n' > "$F/work/tools/eval-guard.sh"
+( cd "$F/work" && git add -A && GITID commit -qm "broken guard on main" && git push -q origin HEAD:main 2>/dev/null )
+sh_run 12 v1.2.3 --yes
+assert_rc "v22.4 AC2.3 eval-guard.sh exits 7: ship still exits 0" 0
+assert_eq "v22.4 AC2.3 eval-guard.sh exits 7: the whole flow ran" "$FULL_YES" "$(steps)"
+assert_contains "v22.4 AC2.3 eval-guard.sh exits 7: shipped is printed" "$OUT" "shipped v1.2.3"
 echo "v0.22.3 review Low-3: shard jobs that were skipped (conclusion skipped, with a completedAt) are not completed shards"
 fx
 export FAKE_SHARDS_7777="skip,skip,skip" FAKE_TREE_RUN=5555 FAKE_SHARDS_5555="300,100,200"

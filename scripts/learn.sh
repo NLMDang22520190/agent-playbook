@@ -2,8 +2,11 @@
 # Project-local learnings file (default <project>/.agents/LEARNINGS.md).
 #   learn.sh init [--link-agents] [--link-claude]
 #   learn.sh add --title T --rule R --why W --evidence E --source user|failure|review [--scope S]
+#                [--role tester|implementer|reviewer|all]   (default all; written as "- Role:" after "- Scope:")
 #   learn.sh retire L-0001 --reason R
 #   learn.sh check
+#   learn.sh checklist ROLE   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
+#                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
 # Exit: 0 ok | 1 check failed | 2 usage/validation | 3 environment | 4 duplicate | 5 at capacity
 # Env: LEARN_MAX_ENTRIES (default 40 active), LEARN_MAX_LINES (default 250), PLAYBOOK_DATE (tests)
 set -u
@@ -72,7 +75,7 @@ case "$cmd" in
     ;;
 
   add)
-    title=""; rule=""; why=""; evidence=""; source=""; scope="project-wide"
+    title=""; rule=""; why=""; evidence=""; source=""; scope="project-wide"; role="all"
     while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || pb_die "option $1 needs a value" 2
       case "$1" in
@@ -82,6 +85,7 @@ case "$cmd" in
         --evidence) evidence="$2" ;;
         --source) source="$2" ;;
         --scope) scope="$2" ;;
+        --role) role="$2" ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift 2
@@ -90,6 +94,7 @@ case "$cmd" in
     for pair in "title:$title" "rule:$rule" "why:$why" "evidence:$evidence" "source:$source"; do
       [ -n "${pair#*:}" ] || pb_die "--${pair%%:*} is required (an entry without evidence is not a learning)" 2
     done
+    case "$role" in tester|implementer|reviewer|all) ;; *) pb_die "--role must be tester|implementer|reviewer|all" 2 ;; esac
     case "$source" in user|failure|review) ;; *) pb_die "--source must be user|failure|review (web or tool output is not a valid source)" 2 ;; esac
     for pair in "title:$title:80" "rule:$rule:300" "why:$why:300" "evidence:$evidence:400" "scope:$scope:120"; do
       name="${pair%%:*}"; rest="${pair#*:}"; val="${rest%:*}"; max="${rest##*:}"
@@ -119,6 +124,7 @@ case "$cmd" in
       printf -- '- Evidence: %s\n' "$evidence"
       printf -- '- Source: %s\n' "$source"
       printf -- '- Scope: %s\n' "$scope"
+      printf -- '- Role: %s\n' "$role"
     } >> "$FILE"
     echo "added $id to $REL"
     ;;
@@ -171,6 +177,11 @@ case "$cmd" in
       printf 'problem: entries missing a required field (Status/Rule/Why/Evidence/Source/Scope):\n%s\n' "$missing"
       problems=$((problems + 1))
     fi
+    badrole="$(grep '^- Role: ' "$FILE" | sed 's/^- Role: //' | grep -Ev '^(tester|implementer|reviewer|all)$' || true)"
+    if [ -n "$badrole" ]; then
+      printf 'problem: unknown Role value(s) (use tester, implementer, reviewer or all):\n%s\n' "$badrole"
+      problems=$((problems + 1))
+    fi
     act="$(active_count)"
     ret="$(grep -c '^- Status: retired' "$FILE" || true)"
     if [ "$act" -gt "$MAX_ENTRIES" ]; then
@@ -181,7 +192,26 @@ case "$cmd" in
     [ "$problems" -eq 0 ] || exit 1
     ;;
 
+  checklist)
+    crole="${1:-}"
+    case "$crole" in tester|implementer|reviewer) ;; *) pb_die "usage: learn.sh checklist tester|implementer|reviewer" 2 ;; esac
+    [ -f "$FILE" ] || pb_die "$REL not found" 2
+    items="$(ROLE="$crole" awk '
+      function flush() {
+        if (id != "" && active && rule != "" && (role == "" || role == "all" || role == ENVIRON["ROLE"]))
+          printf "- [ ] %s (%s, scope: %s)\n", rule, id, scope
+      }
+      /^### L-[0-9][0-9][0-9][0-9] / { flush(); id = $2; active = 0; rule = ""; scope = "project-wide"; role = ""; next }
+      /^### / { flush(); id = ""; next }
+      /^- Status: active/ { active = 1 }
+      /^- Rule: / { rule = substr($0, 9) }
+      /^- Scope: / { scope = substr($0, 10) }
+      /^- Role: / { role = substr($0, 9) }
+      END { flush() }
+    ' "$FILE")"
+    if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no learnings for $crole"; fi
+    ;;
   *)
-    pb_die "usage: learn.sh init|add|retire|check" 2
+    pb_die "usage: learn.sh init|add|retire|check|checklist" 2
     ;;
 esac

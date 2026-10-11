@@ -19,6 +19,12 @@ change only what your role allows; no evidence, no claim.
 - the commands to run (focused tests, lint)>
 Read the pack first. Open other files only when the pack is not enough.
 
+## 2c. Project checklist
+<the output of `bash ~/.agents/playbook/scripts/learn.sh checklist <role>` (tester, implementer or reviewer), built by the
+orchestrator once per role run: the project's active learnings for this role and for all roles, one `- [ ]` line each.
+Leave out the section when the project has no .agents/LEARNINGS.md.>
+Go through the list before you hand back, and say which items did not apply.
+
 ## 3. This slice
 - Slice id: <SLICE>
 - RED sha: <RED_SHA> (implementer and reviewer; the base sha for the reviewer)

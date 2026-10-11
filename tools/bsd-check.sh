@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run suites with one-true-awk first on PATH: the awk macOS ships, so BSD awk problems show up before CI.
 #   tools/bsd-check.sh [SUITE...]      (default: tests/run-all.sh, everything)
+# Suite paths are relative to the repo root (the script runs from there), e.g. tests/test-learn.sh.
 # Uses `original-awk`, else `nawk`, linked as `awk` in a temp dir put first on PATH (a copy when links fail).
 # Prints the awk it used. Exit: the suites' exit code; 2 when neither awk is installed (apt install original-awk).
 set -u

@@ -14,6 +14,36 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
+// heredoc bodies are data: drop every line after a line with <<WORD, <<'WORD', <<"WORD" or <<-WORD up to and including the
+// terminator line (tabs allowed before it with <<-); an unterminated heredoc swallows the rest. One pass over the lines.
+const stripHeredocs = s => {
+  const out = [];
+  const pending = [];
+  for (const line of s.split("\n")) {
+    if (pending.length) {
+      const t = pending[0].dash ? line.replace(/^\t+/, "") : line;
+      if (t.replace(/\r$/, "") === pending[0].word) pending.shift();
+      continue;
+    }
+    out.push(line);
+    // not a here-string (<<<); the word may be quoted ('W' or "W") or backslash-quoted (\W)
+    const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][A-Za-z0-9_]*)\2|\\?([A-Za-z_][A-Za-z0-9_]*))/g;
+    let m;
+    while ((m = re.exec(line))) pending.push({ dash: m[1] === "-", word: m[3] || m[4] });
+  }
+  return out.join("\n");
+};
+// like unquote, but the command substitutions inside a double-quoted string are kept as commands of their own (appended
+// at the end, so the words around the string stay as they were): out="$(bash proof-run.sh)", [ -n "$(bash proof-run.sh)" ]
+// and "$(bash proof-run.sh)"x run it; echo "bash proof-run.sh" does not
+const unquoteRun = s => {
+  const subs = [];
+  const r = s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, m => {
+    if (m[0] === '"') for (const x of m.match(/\$\([^()]{0,200}\)/g) || []) subs.push(x.slice(2, -1));
+    return "";
+  });
+  return subs.length ? r + ";" + subs.join(";") : r;
+};
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
 // that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
 // script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
@@ -59,7 +89,11 @@ function runsProof(cmd) {
   // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
   const SEP = "[^\\s;&|(){}`=]";   // = is not in the class: x=$(..) is a captured run, not a word
   const inword = new RegExp("\\$\\{[^}]{0,200}\\}|(?<=" + SEP + ")\\$\\([^()]{0,200}\\)|\\$\\([^()]{0,200}\\)(?=" + SEP + ")|(?<=" + SEP + ")`[^`]{0,200}`|`[^`]{0,200}`(?=" + SEP + ")", "g");
-  for (const seg of cmd.replace(inword, "X").split(/[;&|(){}`\n]+/)) {
+  // the command inside a substitution that touches word characters runs whatever surrounds it: check it on its own
+  const inner = [];
+  const masked = cmd.replace(inword, m => { if (m[0] === "`") inner.push(m.slice(1, -1)); else if (m[0] === "$" && m[1] === "(") inner.push(m.slice(2, -1)); return "X"; });
+  if (inner.some(runsProof)) return true;
+  for (const seg of masked.split(/[;&|(){}`\n]+/)) {
     const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
     let k = 0;
     while (k < w.length) {
@@ -107,10 +141,11 @@ for (const line of text.split(/\r?\n/)) {
       if (isSrc(p) && srcw < 0) srcw = i;
     }
     if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
-    const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
+    const cmdText = b.name === "Bash" ? stripHeredocs(String(inp.command || "")) : "";
+    const cmd = b.name === "Bash" ? unquote(unwrap(cmdText)) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(cmd)) ran = true;
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(b.name === "Bash" ? unquoteRun(unwrap(cmdText)) : "")) ran = true;
   }
 }
 

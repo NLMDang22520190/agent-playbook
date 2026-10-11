@@ -3,6 +3,12 @@
 Coverage shows which lines ran. It does not show that a wrong result would be noticed.
 Mutation testing does: change the code slightly (a "mutant") and check that some test fails ("killed").
 
+## Mutation script (reviewer, automatic)
+`scripts/mutate.sh --base <sha> --test "<focused test command>"` flips operators (`==`, `-eq`, `&&`, `true`, `return 0`, and
+`<` `>` outside shell files) on the lines the diff added, one mutant per line and operator, in a throwaway worktree
+(your tree is never written), and prints `survived:` for every mutant the tests did not catch. Use it first; the manual
+spot-check below covers what its small operator list cannot.
+
 ## Mutation spot-check (manual, reviewer, about 10 minutes)
 Do it in a throwaway worktree so the main tree stays untouched (the reviewer gate checks this):
 ```bash
