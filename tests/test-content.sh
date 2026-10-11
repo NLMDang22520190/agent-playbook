@@ -519,4 +519,80 @@ flat_has 'RV10 playbook-setup: leak_literals only in the project conf are not re
 flat_has 'RV10 playbook-setup: the project conf is git-excluded' "$SETUP" 'worktree.{0,250}(exclude|ignored)|(exclude|ignored).{0,250}worktree'
 flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$SETUP" 'worktree.{0,250}global|global.{0,250}worktree'
 
+
+# --- v0.22.1 AC1: one real observation of the user-visible behaviour (Phase 4, Lite step 4, playbook-proof)
+PROOF="$PB_ROOT/skills/playbook-proof/SKILL.md"
+README="$PB_ROOT/README.md"
+FB="$PB_ROOT/skills/playbook-feedback/SKILL.md"
+REAL='real[- ](behaviou?r|observation|run)|observ[a-z]* (of )?the real'
+UVIS='user[- ]visible'
+NOTENOUGH='unit tests?[^.]{0,80}(not|never) enough|(not|never) enough[^.]{0,80}unit tests?|unit tests? alone'
+NOTCHK_IMPOSSIBLE='(cannot|can.t|could not|not possible|unable)[^.]{0,120}Not checked|Not checked[^.]{0,120}(cannot|can.t|could not|not possible|unable)'
+sec_flat_has 'v22.1 AC1.1 Phase 4: user-visible changes' "$SKILL" '^### Phase 4' "$UVIS"
+sec_flat_has 'v22.1 AC1.1 Phase 4: one real observation of the behaviour' "$SKILL" '^### Phase 4' "$REAL"
+sec_flat_has 'v22.1 AC1.1 Phase 4: in this session' "$SKILL" '^### Phase 4' 'in this session|this session'
+sec_flat_has 'v22.1 AC1.1 Phase 4: screenshot or browser read for a UI' "$SKILL" '^### Phase 4' 'screenshot|browser'
+sec_flat_has 'v22.1 AC1.1 Phase 4: curl for an API' "$SKILL" '^### Phase 4' 'curl'
+sec_flat_has 'v22.1 AC1.1 Phase 4: the CLI command for a CLI' "$SKILL" '^### Phase 4' 'CLI'
+sec_flat_has 'v22.1 AC1.1 Phase 4: unit tests alone are not enough' "$SKILL" '^### Phase 4' "$NOTENOUGH"
+sec_flat_has 'v22.1 AC1.1 Phase 4: when it cannot be run it goes under Not checked' "$SKILL" '^### Phase 4' "$NOTCHK_IMPOSSIBLE"
+lite_has 'v22.1 AC1.1 Lite step 4: user-visible changes' 4 "$UVIS"
+lite_has 'v22.1 AC1.1 Lite step 4: one real observation of the behaviour' 4 "$REAL"
+lite_has 'v22.1 AC1.1 Lite step 4: screenshot or browser read for a UI' 4 'screenshot|browser'
+lite_has 'v22.1 AC1.1 Lite step 4: curl for an API' 4 'curl'
+lite_has 'v22.1 AC1.1 Lite step 4: unit tests alone are not enough' 4 "$NOTENOUGH"
+lite_has 'v22.1 AC1.1 Lite step 4: when it cannot be run it goes under Not checked' 4 "$NOTCHK_IMPOSSIBLE"
+flat_has 'v22.1 AC1.1 playbook-proof: user-visible changes need a real observation' "$PROOF" "($UVIS)[^.]{0,250}($REAL)|($REAL)[^.]{0,250}($UVIS)"
+flat_has 'v22.1 AC1.1 playbook-proof: unit tests alone are not enough for it' "$PROOF" "$NOTENOUGH"
+flat_has 'v22.1 AC1.1 playbook-proof: what could not be observed goes under Not checked' "$PROOF" 'Not checked'
+
+# --- v0.22.1 AC2: an honest final report (templates/final-report.md, Phase 4, Lite step 5)
+exact_heading 'v22.1 AC2.1 final-report template has the exact heading ## Not checked' "$FINAL" '## Not checked'
+sec_flat_has 'v22.1 AC2.1 Not checked: environments' "$FINAL" '^## Not checked' 'environment'
+sec_flat_has 'v22.1 AC2.1 Not checked: data' "$FINAL" '^## Not checked' '(^|[^[:alnum:]])data([^[:alnum:]]|$)'
+sec_flat_has 'v22.1 AC2.1 Not checked: files or paths not exercised' "$FINAL" '^## Not checked' 'files?|paths?'
+sec_flat_has 'v22.1 AC2.1 Not checked: says these were not exercised' "$FINAL" '^## Not checked' 'not (exercised|run|tested|checked)|never (exercised|run)'
+sec_flat_has 'v22.1 AC2.1 AC table has a Confidence column' "$FINAL" '^## AC to tests' '\|[^|]*Confidence[^|]*\|'
+sec_flat_has 'v22.1 AC2.1 Confidence levels high, medium, low' "$FINAL" '^## AC to tests' 'high[^[:alnum:]]{1,12}medium[^[:alnum:]]{1,12}low'
+sec_flat_has 'v22.1 AC2.1 Confidence comes with a why' "$FINAL" '^## AC to tests' 'why|because|reason'
+exact_heading 'v22.1 AC2.1 final-report template has the exact heading ## Pre-mortem' "$FINAL" '## Pre-mortem'
+sec_flat_has 'v22.1 AC2.1 Pre-mortem: three ways the result could still be wrong' "$FINAL" '^## Pre-mortem' 'three[^.]{0,80}(wrong|fail|break)|3[^.]{0,40}(ways|risks)'
+sec_flat_has 'v22.1 AC2.1 Pre-mortem: each with the command run to check it' "$FINAL" '^## Pre-mortem' 'command'
+sec_flat_has 'v22.1 AC2.1 Pre-mortem: and its outcome' "$FINAL" '^## Pre-mortem' 'outcome|result of'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires Not checked' "$SKILL" '^### Phase 4' 'Not checked'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Confidence column' "$SKILL" '^### Phase 4' 'confidence'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Pre-mortem' "$SKILL" '^### Phase 4' 'pre-mortem'
+lite_has 'v22.1 AC2.2 Lite step 5 requires Not checked' 5 'Not checked'
+lite_has 'v22.1 AC2.2 Lite step 5 requires the Confidence column' 5 'confidence'
+lite_has 'v22.1 AC2.2 Lite step 5 requires the Pre-mortem' 5 'pre-mortem'
+lite_has 'v22.1 AC2.2 Lite step 5: the pre-mortem may be one line per risk' 5 'one line (per|for each|each)[^.]{0,40}risk|one-line'
+
+# --- v0.22.1 AC3: first-slice checkpoint (Phase 2)
+sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$SKILL" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
+sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$SKILL" '^### Phase 2' 'screens?|endpoints?'
+sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$SKILL" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
+sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$SKILL" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$SKILL" '^### Phase 2' 'interactive'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
+
+# --- v0.22.1 AC4: when the user says the result is wrong
+exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
+WRONG='^## When the user says it is wrong'
+sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$SKILL" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
+sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$SKILL" "$WRONG" 'misread'
+sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$SKILL" "$WRONG" 'missed[^.]{0,30}(place|scan)'
+sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$SKILL" "$WRONG" 'wrong assumption'
+sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$SKILL" "$WRONG" 'not verified live'
+sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SKILL" "$WRONG" 'real bug'
+sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SKILL" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
+sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SKILL" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
+sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SKILL" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
+sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL" "$WRONG" 'regression eval'
+flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
+flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
+
+# --- v0.22.1 AC5.2: how to install shellcheck is in the README
+flat_has 'v22.1 AC5.2 README says how to install shellcheck (apt install shellcheck)' "$README" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
+
 t_summary
