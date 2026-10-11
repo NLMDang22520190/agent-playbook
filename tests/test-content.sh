@@ -245,7 +245,8 @@ jwchk 'v13 AC4.2 the Full side stays: alters or removes existing behaviour is Fu
 
 # --- v0.13.0 AC5.1: the always-on block fits with headroom
 BLOCK_BYTES="$(wc -c < "$BLOCK" | tr -d ' ')"
-if [ "$BLOCK_BYTES" -le 4700 ]; then t_ok "v13 AC5.1 AGENTS.global.md is <= 4700 bytes ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 AGENTS.global.md is <= 4700 bytes" "$BLOCK_BYTES bytes"; fi
+# v0.18.0 AC1.2/AC2.2 add two clauses: the ceiling moves from 4700 to 4850 bytes (spec 01-spec.md)
+if [ "$BLOCK_BYTES" -le 4850 ]; then t_ok "v13 AC5.1 / v18 AC1.2 AGENTS.global.md is <= 4850 bytes ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 / v18 AC1.2 AGENTS.global.md is <= 4850 bytes" "$BLOCK_BYTES bytes"; fi
 
 # --- v0.14.0 AC8.2: Windows runs as 3 shard jobs plus an aggregator named exactly `test (windows-latest)`
 WF="$PB_ROOT/.github/workflows/test.yml"
@@ -381,5 +382,26 @@ e16_pass_has 'v17 AC1.1 E16 Pass if still wants separate tester, implementer and
 e16_pass_has 'v17 AC1.1 E16 Pass if still names the data shape' 'data shape'
 check_sec 'v17 AC1.1 E16 Fail if is still there' "$SCEN" "$E16" '^\*\*Fail if:\*\*'
 if [ "$(e16_para | tr -cd '"' | wc -c | tr -d ' ')" = 2 ]; then t_ok 'v17 AC1.1 E16 prompt is one double-quoted string (no inner double quotes cut it short)'; else t_bad 'v17 AC1.1 E16 prompt is one double-quoted string' "$(e16_para | tr -cd '"' | wc -c | tr -d ' ') double quotes in [$(e16_para)]"; fi
+
+# --- v0.18.0 AC1.2: the non-interactive bullet also covers "the request says nobody will answer"
+CLAR='^### Clarify before changing'
+NIB="$(section "$BLOCK" "$CLAR" | grep -iE '^- Non-interactive' | tr '\n' ' ')"
+case "$NIB" in *[![:space:]]*) t_ok 'v18 AC1.2 Clarify keeps a "- Non-interactive" bullet' ;; *) t_bad 'v18 AC1.2 Clarify keeps a "- Non-interactive" bullet' "no such bullet in the Clarify section" ;; esac
+if printf '%s' "$NIB" | grep -qiE 'nobody will answer|no one will answer'; then t_ok 'v18 AC1.2 the Non-interactive bullet mentions that nobody will answer'; else t_bad 'v18 AC1.2 the Non-interactive bullet mentions that nobody will answer' "bullet: [$NIB]"; fi
+if printf '%s' "$NIB" | grep -qiE 'request[^.]{0,60}(say|says|state|states|tell|tells)'; then t_ok 'v18 AC1.2 the bullet ties it to the request saying so'; else t_bad 'v18 AC1.2 the bullet ties it to the request saying so' "bullet: [$NIB]"; fi
+if printf '%s' "$NIB" | grep -qiE 'CI|headless'; then t_ok 'v18 AC1.2 the bullet keeps the CI/headless case'; else t_bad 'v18 AC1.2 the bullet keeps the CI/headless case' "bullet: [$NIB]"; fi
+if printf '%s' "$NIB" | grep -qiE 'do not block'; then t_ok 'v18 AC1.2 the bullet still says do not block'; else t_bad 'v18 AC1.2 the bullet still says do not block' "bullet: [$NIB]"; fi
+if printf '%s' "$NIB" | grep -qiE 'log[^.]{0,60}default'; then t_ok 'v18 AC1.2 the bullet still says to log the defaults'; else t_bad 'v18 AC1.2 the bullet still says to log the defaults' "bullet: [$NIB]"; fi
+# the phrase belongs to the Clarify section (not just anywhere in the block)
+if section "$BLOCK" "$CLAR" | grep -qiE 'nobody will answer|no one will answer'; then t_ok 'v18 AC1.2 "nobody will answer" is in the Clarify section'; else t_bad 'v18 AC1.2 "nobody will answer" is in the Clarify section' "not in section $CLAR"; fi
+
+# --- v0.18.0 AC2.2: Scope discipline says to write only inside the project/workdir the agent was asked to work in
+SCOPE_J="$(jsec "$BLOCK" "$SCOPE")"
+if printf '%s' "$SCOPE_J" | grep -qE '([Ww]rite|[Cc]reate)( files)? (only (inside|in|within)|nothing outside)[^.]{0,80}(project|workdir|working directory)[^.]{0,80}(asked|told|work in)'; then t_ok 'v18 AC2.2 Scope discipline: write only inside the project/workdir you were asked to work in'; else t_bad 'v18 AC2.2 Scope discipline: write only inside the project/workdir you were asked to work in' "section: [$SCOPE_J]"; fi
+# the existing scope rules stay in the same section (the new clause adds, it does not replace)
+if printf '%s' "$SCOPE_J" | grep -qiE 'no drive-by refactors'; then t_ok 'v18 AC2.2 Scope discipline keeps: no drive-by refactors'; else t_bad 'v18 AC2.2 Scope discipline keeps: no drive-by refactors' "section: [$SCOPE_J]"; fi
+if printf '%s' "$SCOPE_J" | grep -qiE 'never weaken, skip or delete a test'; then t_ok 'v18 AC2.2 Scope discipline keeps: never weaken a test'; else t_bad 'v18 AC2.2 Scope discipline keeps: never weaken a test' "section: [$SCOPE_J]"; fi
+# the clause is in Scope discipline, not only in another section
+if printf '%s' "$(section "$BLOCK" "$CLAR" | tr '\n' ' ')" | grep -qE '[Ww]rite only (inside|in|within)'; then t_bad 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section' 'found in Clarify'; else t_ok 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section'; fi
 
 t_summary

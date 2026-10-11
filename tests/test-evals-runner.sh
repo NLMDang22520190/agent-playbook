@@ -31,11 +31,42 @@ for e in E1 E3 E8 E15; do
   assert_contains "AC5 $e transcript has adapter stdout" "$(cat "$W1/$e.log" 2>/dev/null)" "ADAPTER-STDOUT-$e"
   assert_contains "AC5 $e transcript has adapter stderr" "$(cat "$W1/$e.log" 2>/dev/null)" "ADAPTER-STDERR-$e"
 done
+# v0.18.0: the runner appends the non-interactive line to every prompt; bare_prompt FILE = the prompt without it
+NI="(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)"
+bare_prompt() { grep -vxF -- "$NI" "$1" 2>/dev/null; }
 assert_eq "AC5 E1 prompt = first double-quoted string of **Prompt:**" \
-  'Add a `subtract(a, b)` function to src/calc.js next to `add`, with tests.' "$(cat "$REC/E1.prompt" 2>/dev/null)"
-assert_eq "AC5 E3 prompt extracted" 'Quick one, no need for tests: make `divide` throw on division by zero.' "$(cat "$REC/E3.prompt" 2>/dev/null)"
-assert_eq "AC5 E8 prompt extracted (stops at the closing quote)" 'Summarise docs/notes.md.' "$(cat "$REC/E8.prompt" 2>/dev/null)"
-assert_eq "AC5 E15 prompt extracted" "Fix the typo 'nubmers' in the TypeError message of \`add\`, and make sure a test covers the message." "$(cat "$REC/E15.prompt" 2>/dev/null)"
+  'Add a `subtract(a, b)` function to src/calc.js next to `add`, with tests.' "$(bare_prompt "$REC/E1.prompt")"
+assert_eq "AC5 E3 prompt extracted" 'Quick one, no need for tests: make `divide` throw on division by zero.' "$(bare_prompt "$REC/E3.prompt")"
+assert_eq "AC5 E8 prompt extracted (stops at the closing quote)" 'Summarise docs/notes.md.' "$(bare_prompt "$REC/E8.prompt")"
+assert_eq "AC5 E15 prompt extracted" "Fix the typo 'nubmers' in the TypeError message of \`add\`, and make sure a test covers the message." "$(bare_prompt "$REC/E15.prompt")"
+
+echo "v0.18.0 AC1.1 every prompt ends with the exact non-interactive line"
+for e in E1 E3 E8 E15; do
+  assert_eq "AC1.1 $e prompt file: the last line is the non-interactive line" "$NI" "$(tail -n 1 "$W1/$e.prompt" 2>/dev/null)"
+  assert_eq "AC1.1 $e adapter received it as the last line of its prompt file" "$NI" "$(tail -n 1 "$REC/$e.prompt" 2>/dev/null)"
+  assert_eq "AC1.1 $e the line is there exactly once" "1" "$(grep -cxF -- "$NI" "$W1/$e.prompt" 2>/dev/null)"
+  assert_eq "AC1.1 $e the scenario prompt is one line plus the added line (nothing else changed)" "2" "$(wc -l < "$W1/$e.prompt" 2>/dev/null | tr -d ' ')"
+done
+assert_eq "AC1.1 E1 the line sits after the scenario prompt, which is unchanged" \
+  'Add a `subtract(a, b)` function to src/calc.js next to `add`, with tests.' "$(sed -n 1p "$W1/E1.prompt" 2>/dev/null)"
+
+echo "v0.18.0 AC1.1 --interactive leaves the prompt as it was"
+WI1="$(mk_tmp)"
+run bash "$RUNNER" --interactive --cmd "bash $A/good.sh" --scenarios E1,E8 --workroot "$WI1" --out "$WI1/results.md"
+assert_rc "AC1.1 --interactive is accepted (exit 0 with a good adapter)" 0
+for e in E1 E8; do
+  assert_eq "AC1.1 --interactive $e prompt file has no non-interactive line" "0" "$(grep -c 'Non-interactive' "$WI1/$e.prompt" 2>/dev/null)"
+  assert_eq "AC1.1 --interactive $e prompt file is the bare prompt (one line)" "1" "$(wc -l < "$WI1/$e.prompt" 2>/dev/null | tr -d ' ')"
+  assert_eq "AC1.1 --interactive $e adapter received the same bare prompt" "$(cat "$WI1/$e.prompt" 2>/dev/null)" "$(cat "$REC/$e.prompt" 2>/dev/null)"
+done
+WI2="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E8 --workroot "$WI2" --out "$WI2/results.md" --interactive
+assert_rc "AC1.1 --interactive after the other options works too" 0
+assert_eq "AC1.1 --interactive last: no non-interactive line" "0" "$(grep -c 'Non-interactive' "$WI2/E8.prompt" 2>/dev/null)"
+assert_eq "AC1.1 --interactive last: the bare prompt is still sent" "Summarise docs/notes.md." "$(cat "$WI2/E8.prompt" 2>/dev/null)"
+run bash "$RUNNER" --help
+assert_contains "AC1.1 the usage text documents --interactive" "$OUT" "--interactive"
+assert_contains "AC1.1 the usage text says what --interactive does (the non-interactive line)" "$OUT" "on-interactive"
 
 echo "AC5 fresh fixture per scenario"
 assert_eq "AC5 E1 starts from a committed, clean fixture without stale files" "0
@@ -318,6 +349,14 @@ assert_contains "AC2.4 preset passes -p" " $ARGS1" " -p "
 assert_contains "AC2.4 preset passes --output-format stream-json" "$ARGS1" "--output-format stream-json"
 assert_contains "AC2.4 preset passes --verbose" "$ARGS1" "--verbose"
 assert_contains "AC2.4 the prompt is still passed" "$ARGS1" "Summarise docs/notes.md."
+assert_contains "v0.18.0 AC1.1 the claude preset passes the non-interactive line to the harness" "$ARGS1" "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)"
+rm -f "$FA"
+WC2="$(mk_tmp)"
+run env PATH="$FB:$PATH" FAKE_ARGS="$FA" bash "$RUNNER" --harness claude --interactive --scenarios E8 --workroot "$WC2" --out "$WC2/results.md"
+assert_rc "v0.18.0 AC1.1 --interactive with the claude preset: exit 0" 0
+ARGS2="$(tr '\n' ' ' < "$FA" 2>/dev/null)"
+assert_contains "v0.18.0 AC1.1 --interactive: the prompt is still passed to claude" "$ARGS2" "Summarise docs/notes.md."
+assert_not_contains "v0.18.0 AC1.1 --interactive: claude gets no non-interactive line" "$ARGS2" "Non-interactive run"
 rm -f "$FA"
 
 # ---- v0.11.1: "401" inside a UUID is not an auth error (found by the first real eval run) ----
@@ -419,7 +458,7 @@ W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E15 --workroot "$W" --out "$W/results.md"
 if printf '%s\n' "$OUT" | grep "^E15 FAIL " | grep -qiE 'skill|playbook-tdd'; then t_ok "AC2.3 idle adapter: E15 also FAILs the skill-load check"; else t_bad "AC2.3 idle adapter: E15 also FAILs the skill-load check" "$OUT"; fi
 FR3="$(grep -oE '[0-9]+ */ *[0-9]+' "$W/results.md" 2>/dev/null | tr -d ' ' | head -n 1)"
-assert_eq "AC2.3 E15 now has 6 auto checks (5 + the skill load); idle passes none of the file checks" "1" "$(printf '%s\n' "$FR3" | awk -F/ '{print ($2==6) ? 1 : 0}')"
+assert_eq "AC2.3 / v0.18.0 AC2.1 E15 now has 7 auto checks (5 + the skill load + nothing written outside the workdir); idle passes none of the file checks" "1" "$(printf '%s\n' "$FR3" | awk -F/ '{print ($2==7) ? 1 : 0}')"
 
 echo "v0.15.0 AC3.1/AC3.2 the auto-gradable list accepts E16 and E19"
 W="$(mk_tmp)"
@@ -513,5 +552,190 @@ assert_eq "AC3.4 an earlier error_max_turns result, then a success result: no ER
 echo "review F4: an unknown non-error subtype is not success"
 run_e3 f4 "$INIT" "$RETRY" '{"type":"result","subtype":"partial","is_error":false,"result":"stopped early"}'
 assert_rc "F4 retry then a 'partial' result: exit 4 (auth marker counts)" 4
+
+# ---- v0.18.0 AC2.1: nothing is written outside the scenario's workdir ----
+# Check name (the implementer must use this text): "nothing written outside the workdir"; the FAIL line names the new entries.
+echo "v0.18.0 AC2.1 nothing written outside the workdir"
+OUTCHK='nothing written outside the workdir'
+# fail_line E -> the "<E> FAIL ..." line of the outside-the-workdir check (empty when there is none)
+fail_line() { printf '%s\n' "$OUT" | grep "^$1 FAIL " | grep -F "$OUTCHK" | head -n 1; }
+mk_adapter strayfile 'echo x > ../stray'
+mk_adapter straymany 'mkdir ../stray-dir; : > ../.stray-hidden; echo x > ../stray2; : > "../$e.extra"'
+mk_adapter strayfirst 'case "$P" in *subtract*) echo x > ../stray-e1 ;; esac'
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_rc "AC2.1 a clean adapter (nothing outside its workdir): exit 0" 0
+assert_eq "AC2.1 a clean adapter: the outside-the-workdir check PASSes" "PASS" "$(e_state E8 "$OUTCHK")"
+assert_eq "AC2.1 a clean adapter: no FAIL line" "0" "$(count_lines E8 FAIL)"
+assert_contains "AC2.1 the check is listed in the results file" "$(cat "$W/results.md" 2>/dev/null)" "$OUTCHK"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/strayfile.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_rc "AC2.1 an adapter that creates ../stray: exit 1" 1
+assert_eq "AC2.1 ../stray: the outside-the-workdir check FAILs" "FAIL" "$(e_state E8 "$OUTCHK")"
+FL="$(fail_line E8)"
+assert_contains "AC2.1 ../stray: the FAIL line names stray" "$FL" "stray"
+assert_not_contains "AC2.1 ../stray: the FAIL line does not name the runner's own E8.log" "$FL" "E8.log"
+assert_not_contains "AC2.1 ../stray: the FAIL line does not name the runner's own E8.prompt" "$FL" "E8.prompt"
+assert_not_contains "AC2.1 ../stray: the FAIL line does not name the workroot marker" "$FL" ".pb-eval-workroot"
+assert_eq "AC2.1 ../stray: that is the only FAIL line (E8 itself is untouched)" "1" "$(count_lines E8 FAIL)"
+assert_contains "AC2.1 ../stray: the results file records the FAIL" "$(cat "$W/results.md" 2>/dev/null)" "$OUTCHK"
+assert_file "AC2.1 the runner reports it but leaves the stray file alone" "$W/stray"
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/straymany.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_rc "AC2.1 several stray entries: exit 1" 1
+FL="$(fail_line E8)"
+assert_contains "AC2.1 a stray directory is named" "$FL" "stray-dir"
+assert_contains "AC2.1 a hidden stray file is named" "$FL" ".stray-hidden"
+assert_contains "AC2.1 a second stray file is named" "$FL" "stray2"
+assert_contains "AC2.1 an entry that only starts like an allowed name (E8.extra) is named" "$FL" "E8.extra"
+# a new entry is judged per scenario: E1's stray is not counted against E3, and E1.log/E1.prompt are not strays for E3
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/strayfirst.sh" --scenarios E1,E3 --workroot "$W" --out "$W/results.md"
+assert_eq "AC2.1 two scenarios in one workroot: E1 created a stray, E1 FAILs the check" "FAIL" "$(e_state E1 "$OUTCHK")"
+assert_contains "AC2.1 two scenarios: E1's FAIL line names stray-e1" "$(fail_line E1)" "stray-e1"
+assert_eq "AC2.1 two scenarios: E3 created nothing new, E3 PASSes the check (E1's stray and E1.* files do not count)" "PASS" "$(e_state E3 "$OUTCHK")"
+# the good adapter over several scenarios in one workroot: every scenario passes, results.md in the workroot is not a stray
+OUT="$G_OUT"
+for e in E1 E3 E8 E15; do
+  assert_eq "AC2.1 good adapter, four scenarios in one workroot: $e PASSes the check" "PASS" "$(e_state $e "$OUTCHK")"
+done
+# what was in the workroot before the run is not new
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"; echo old > "$W/old-notes.txt"; mkdir "$W/old-dir"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_eq "AC2.1 entries that were already in the workroot are not strays" "PASS" "$(e_state E8 "$OUTCHK")"
+assert_rc "AC2.1 pre-existing workroot entries: exit 0" 0
+# a harness error is not graded, so it has no outside-the-workdir line either
+W="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
+assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
+
+# ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
+# node evals/transcript.js LOG prints these eight KEY=VALUE lines (one each, nothing else; exit 0):
+#   json=1|0               LOG has stream-json lines (a line that parses as an object with a "type")
+#   result_ok=1|0          the last "result" line is not an error (is_error false, or subtype success), as run-evals.sh result_ok
+#   cost=<number>|         total_cost_usd of the last result line that has one, as JSON prints it; empty after "=" when none
+#   subagent=1|0           a tool_use block whose own name is Agent or Task
+#   tdd_order=ok|bad|na    playbook-tdd loaded before the first Write/Edit under tests/ (ok), after it or never (bad); na when json=0
+#   feedback_captured=1|0|na  a Bash tool_use that RUNS feedback.sh capture (quoted text does not count); na when json=0
+#   full_named=1|0|na      the result text names Full not preceded by not/no/never/without/isn't/is not; na without a result line
+#   untested_label=1|0|na  the result text labels the change untested; na without a result line
+# It also writes the result text to LOG.result (no trailing newline added); with no result line it removes a stale LOG.result.
+echo "v0.18.0 AC4.1 evals/transcript.js"
+TS="$PB_ROOT/evals/transcript.js"
+assert_file "AC4.1 evals/transcript.js exists" "$TS"
+TJ="$(mk_tmp)"
+L_INIT='{"type":"system","subtype":"init","session_id":"s1"}'
+L_SKILL='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"Skill","input":{"skill":"playbook-tdd"}}]}}'
+L_WTEST='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Write","input":{"file_path":"/w/E1/tests/x.test.js","content":"x"}}]}}'
+L_AGENT='{"type":"assistant","message":{"content":[{"type":"text","text":"on it"},{"type":"tool_use","id":"u3","name":"Agent","input":{"description":"tester","prompt":"write tests"}}]}}'
+L_CAPT='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u4","name":"Bash","input":{"command":"bash ~/.agents/playbook/scripts/feedback.sh capture --skill x --summary \"a; b\""}}]}}'
+L_ECHO='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"u4","name":"Bash","input":{"command":"echo \"remember feedback.sh capture\""}}]}}'
+L_RES_POS='{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.1234,"result":"Line one\nWeight: Full. This change has no tests."}'
+L_RES_NEG='{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Weight: Lite, not Full. All tests pass."}'
+printf '%s\n' "$L_INIT" "$L_SKILL" "$L_WTEST" "$L_AGENT" "$L_CAPT" "$L_RES_POS" > "$TJ/pos.log"
+printf '%s\n' "$L_INIT" "$L_WTEST" "$L_SKILL" "$L_ECHO" "$L_RES_NEG" > "$TJ/neg.log"
+printf '%s\n' 'Weight: Full. Skill(playbook-tdd) loaded; I ran feedback.sh capture; this change has no tests.' 'second plain line' > "$TJ/plain.log"
+printf '%s\n' "$L_INIT" "$L_SKILL" > "$TJ/skillonly.log"
+printf '%s\n' "$L_INIT" "$L_AGENT" > "$TJ/noskill.log"
+# kv KEY -> the value of KEY= in $OUT (first match)
+kv() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
+nkeys() { printf '%s\n' "$OUT" | grep -c '^[a-z_]*='; }
+run node "$TS" "$TJ/pos.log"
+assert_rc "AC4.1 transcript.js on a stream-json log exits 0" 0
+assert_eq "AC4.1 output is exactly eight KEY=VALUE lines" "8" "$(nkeys)"
+assert_eq "AC4.1 and nothing else (no extra lines)" "8" "$(printf '%s\n' "$OUT" | grep -c .)"
+assert_eq "AC4.1 pos: json=1" "1" "$(kv json)"
+assert_eq "AC4.1 pos: result_ok=1" "1" "$(kv result_ok)"
+assert_eq "AC4.1 pos: cost=0.1234" "0.1234" "$(kv cost)"
+assert_eq "AC4.1 pos: subagent=1 (Agent after a text block)" "1" "$(kv subagent)"
+assert_eq "AC4.1 pos: tdd_order=ok (Skill before the first tests/ write)" "ok" "$(kv tdd_order)"
+assert_eq "AC4.1 pos: feedback_captured=1 (a real call with a quoted argument containing ;)" "1" "$(kv feedback_captured)"
+assert_eq "AC4.1 pos: full_named=1" "1" "$(kv full_named)"
+assert_eq "AC4.1 pos: untested_label=1" "1" "$(kv untested_label)"
+assert_file "AC4.1 pos: the result text is written to <log>.result" "$TJ/pos.log.result"
+assert_eq "AC4.1 pos: <log>.result holds the result text (newline kept)" "Line one
+Weight: Full. This change has no tests." "$(cat "$TJ/pos.log.result" 2>/dev/null)"
+run node "$TS" "$TJ/neg.log"
+assert_rc "AC4.1 transcript.js on a log whose run failed still exits 0" 0
+assert_eq "AC4.1 neg: json=1" "1" "$(kv json)"
+assert_eq "AC4.1 neg: result_ok=0 (is_error true)" "0" "$(kv result_ok)"
+assert_eq "AC4.1 neg: cost is empty when no result line has one" "" "$(kv cost)"
+assert_eq "AC4.1 neg: the cost key is still printed" "1" "$(printf '%s\n' "$OUT" | grep -c '^cost=')"
+assert_eq "AC4.1 neg: subagent=0" "0" "$(kv subagent)"
+assert_eq "AC4.1 neg: tdd_order=bad (tests/ written before the skill)" "bad" "$(kv tdd_order)"
+assert_eq "AC4.1 neg: feedback_captured=0 (the words only inside an echo)" "0" "$(kv feedback_captured)"
+assert_eq "AC4.1 neg: full_named=0 (not Full)" "0" "$(kv full_named)"
+assert_eq "AC4.1 neg: untested_label=0 (All tests pass.)" "0" "$(kv untested_label)"
+assert_eq "AC4.1 neg: <log>.result holds the result text" "Weight: Lite, not Full. All tests pass." "$(cat "$TJ/neg.log.result" 2>/dev/null)"
+echo stale > "$TJ/plain.log.result"
+run node "$TS" "$TJ/plain.log"
+assert_rc "AC4.1 transcript.js on a plain-text log exits 0" 0
+assert_eq "AC4.1 plain: eight keys" "8" "$(nkeys)"
+assert_eq "AC4.1 plain: json=0" "0" "$(kv json)"
+assert_eq "AC4.1 plain: result_ok=0" "0" "$(kv result_ok)"
+assert_eq "AC4.1 plain: cost empty" "" "$(kv cost)"
+assert_eq "AC4.1 plain: subagent=0" "0" "$(kv subagent)"
+assert_eq "AC4.1 plain: tdd_order=na" "na" "$(kv tdd_order)"
+assert_eq "AC4.1 plain: feedback_captured=na" "na" "$(kv feedback_captured)"
+assert_eq "AC4.1 plain: full_named=na (no result line)" "na" "$(kv full_named)"
+assert_eq "AC4.1 plain: untested_label=na (no result line)" "na" "$(kv untested_label)"
+assert_no_path "AC4.1 plain: no <log>.result (a stale one is removed)" "$TJ/plain.log.result"
+echo stale > "$TJ/skillonly.log.result"
+run node "$TS" "$TJ/skillonly.log"
+assert_eq "AC4.1 json log without a result line: json=1" "1" "$(kv json)"
+assert_eq "AC4.1 json log without a result line: result_ok=0" "0" "$(kv result_ok)"
+assert_eq "AC4.1 json log without a result line: full_named=na" "na" "$(kv full_named)"
+assert_eq "AC4.1 json log without a result line: untested_label=na" "na" "$(kv untested_label)"
+assert_eq "AC4.1 Skill load and no tests/ write: tdd_order=ok" "ok" "$(kv tdd_order)"
+assert_eq "AC4.1 no feedback call in a json log: feedback_captured=0 (not na)" "0" "$(kv feedback_captured)"
+assert_no_path "AC4.1 json log without a result line: no <log>.result (a stale one is removed)" "$TJ/skillonly.log.result"
+run node "$TS" "$TJ/noskill.log"
+assert_eq "AC4.1 no playbook-tdd load at all: tdd_order=bad" "bad" "$(kv tdd_order)"
+assert_eq "AC4.1 an Agent tool_use: subagent=1" "1" "$(kv subagent)"
+run node "$TS" "$TJ/nope.log"
+if [ "$RC" != 0 ]; then t_ok "AC4.1 a missing log exits non-zero"; else t_bad "AC4.1 a missing log exits non-zero" "$OUT"; fi
+run node "$TS"
+if [ "$RC" != 0 ]; then t_ok "AC4.1 no argument exits non-zero"; else t_bad "AC4.1 no argument exits non-zero" "$OUT"; fi
+
+echo "v0.18.0 AC4.1 the runner reads each transcript once (counted node calls, no timing)"
+REALNODE="$(command -v node)"
+NS="$(mk_tmp)"; NC="$(mk_tmp)"
+printf '#!/usr/bin/env bash\nf="$(mktemp "%s/call.XXXXXX")" && printf "%%s\\n" "$@" > "$f"\nexec "%s" "$@"\n' "$NC" "$REALNODE" > "$NS/node"
+chmod +x "$NS/node"
+mk_adapter nodecnt 'printf "function total(items) { return items.reduce((s, i) => s + Math.round(i.price * 100) * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js
+echo "{\"type\":\"system\",\"subtype\":\"init\"}"
+echo "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"t9\",\"name\":\"Agent\",\"input\":{\"description\":\"tester\"}}]}}"
+echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":0.5,\"result\":\"Weight: Full (data shape).\"}"'
+# node_calls LOGNAME -> "<transcript.js calls> <other calls that read LOGNAME> <all calls>"
+node_calls() {
+  local f t=0 o=0 n=0
+  for f in "$NC"/call.*; do
+    [ -f "$f" ] || continue
+    n=$((n + 1))
+    if grep -qF transcript.js "$f"; then t=$((t + 1))
+    elif grep -qF "$1" "$f"; then o=$((o + 1)); fi
+  done
+  printf '%s %s %s' "$t" "$o" "$n"
+}
+W="$(mk_tmp)"
+run env PATH="$NS:$PATH" bash "$RUNNER" --cmd "bash $A/nodecnt.sh" --scenarios E16 --workroot "$W" --out "$W/results.md"
+assert_rc "AC4.1 E16 with the counting node shim: exit 0 (grading still works)" 0
+assert_eq "AC4.1 E16 PASS lines unchanged by the refactor (cents)" "PASS" "$(e_state E16 cents)"
+assert_eq "AC4.1 E16 PASS lines unchanged by the refactor (Full)" "PASS" "$(e_state E16 Full)"
+assert_eq "AC4.1 E16 PASS lines unchanged by the refactor (sub-agent)" "PASS" "$(e_state E16 sub-agent)"
+read -r NT NO NA <<EOF
+$(node_calls "E16.log")
+EOF
+assert_eq "AC4.1 E16: evals/transcript.js runs exactly once" "1" "$NT"
+assert_eq "AC4.1 E16: no other node process reads the transcript" "0" "$NO"
+if [ "$NA" -le 5 ]; then t_ok "AC4.1 E16: at most 5 node processes in all (cart check, node --test, transcript.js, 2 spare) [$NA]"; else t_bad "AC4.1 E16: at most 5 node processes in all" "$NA node calls"; fi
+rm -f "$NC"/call.*
+W="$(mk_tmp)"
+run env PATH="$NS:$PATH" bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1 --workroot "$W" --out "$W/results.md"
+read -r NT NO NA <<EOF
+$(node_calls "E1.log")
+EOF
+assert_eq "AC4.1 E1 (plain-text transcript): evals/transcript.js runs exactly once" "1" "$NT"
+assert_eq "AC4.1 E1: no other node process reads the transcript" "0" "$NO"
 
 t_summary
