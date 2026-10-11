@@ -607,4 +607,77 @@ SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}'
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"'; fi
 
+
+# --- v0.22.2 AC1: process rules (named-line assertions: each check names the line or phrase it needs)
+exact_heading 'v22.2 AC1.1 spec template has ## Regression corpus' "$SPEC_T" '## Regression corpus'
+sec_flat_has 'v22.2 AC1.1 template: the corpus lists old inputs' "$SPEC_T" '^## Regression corpus' 'old inputs?|existing inputs?|inputs?'
+sec_flat_has 'v22.2 AC1.1 template: the corpus lists earlier bugs' "$SPEC_T" '^## Regression corpus' 'earlier bugs?|past bugs?|previous bugs?|bugs?'
+sec_flat_has 'v22.2 AC1.1 template: each entry has an expected result' "$SPEC_T" '^## Regression corpus' 'expected'
+sec_flat_has 'v22.2 AC1.1 Phase 1 names the regression corpus' "$SKILL" '^### Phase 1' 'regression corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: it applies when a change replaces or rewrites existing logic' "$SKILL" '^### Phase 1' 'replac.{0,200}corpus|rewrit.{0,200}corpus|corpus.{0,200}(replac|rewrit)'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the corpus holds old inputs and earlier bugs with the expected result' "$SKILL" '^### Phase 1' 'corpus.{0,250}(old inputs?|earlier bugs?)|(old inputs?|earlier bugs?).{0,250}corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the first RED covers the whole corpus' "$SKILL" '^### Phase 1' 'corpus.{0,250}first RED|first RED.{0,250}corpus'
+flat_has 'v22.2 AC1.2 implementer: never hide a construct from a gate' "$IMPL" 'never hide|not hide|do not hide|don.t hide|hid(e|ing)[^.]{0,80}(from|inside)[^.]{0,40}(gate|rule|check)'
+flat_has 'v22.2 AC1.2 implementer: a flagged construct is reported (Dispute or note)' "$IMPL" '(gate|rule)[^.]{0,200}flag[^.]{0,250}report|report[^.]{0,200}(dispute|note)|(dispute|note)[^.]{0,200}report'
+flat_has 'v22.2 AC1.2 implementer: the hiding tricks are named (variable, disabling, renaming)' "$IMPL" 'variable|disabl|renam'
+flat_has 'v22.2 AC1.3 tester: prefer named-line assertions' "$TESTER" 'named[- ]line'
+flat_has 'v22.2 AC1.3 tester: ... over exact counts' "$TESTER" 'exact (count|number)s?|counts? of (lines|keys|list)|instead of (an )?exact'
+flat_has 'v22.2 AC1.3 tester: a new check must not break unrelated tests' "$TESTER" 'unrelated|new check'
+
+# --- v0.22.2 AC2: CI concurrency and timeouts (static checks of .github/workflows/test.yml)
+# wf_top KEY -> the lines of the workflow-level KEY: block (up to the next top-level key)
+wf_top() { awk -v k="$1" '$0 ~ "^" k ":" { f = 1; print; next } f && /^[^ #]/ { exit } f { print }' "$WF" 2>/dev/null; }
+CONC="$(wf_top concurrency)"
+if [ -n "$CONC" ]; then t_ok 'v22.2 AC2.1 the workflow has a top-level concurrency: block'; else t_bad 'v22.2 AC2.1 the workflow has a top-level concurrency: block' 'no ^concurrency: key'; fi
+GROUP_LINE="$(printf '%s\n' "$CONC" | grep -m1 '^[[:space:]]*group:')"
+CANCEL_LINE="$(printf '%s\n' "$CONC" | grep -m1 '^[[:space:]]*cancel-in-progress:')"
+assert_contains 'v22.2 AC2.1 the group expression contains github.ref' "$GROUP_LINE" 'github.ref'
+assert_contains 'v22.2 AC2.1 the group expression contains github.sha' "$GROUP_LINE" 'github.sha'
+assert_contains 'v22.2 AC2.1 the group expression has the pull_request condition' "$GROUP_LINE" 'pull_request'
+assert_contains 'v22.2 AC2.1 the group expression is an expression (${{ ... }})' "$GROUP_LINE" '${{'
+GROUP_PR="${GROUP_LINE%%||*}"
+GROUP_REST="${GROUP_LINE#*||}"
+case "$GROUP_LINE" in *'||'*) t_ok 'v22.2 AC2.1 the group is "PR ? ref : other" (an || between the two branches)' ;; *) t_bad 'v22.2 AC2.1 the group is "PR ? ref : other" (an || between the two branches)' "group line: [$GROUP_LINE]" ;; esac
+assert_contains 'v22.2 AC2.1 the PR branch tests pull_request' "$GROUP_PR" 'pull_request'
+assert_contains 'v22.2 AC2.1 the PR branch groups by github.ref (runs of one PR cancel each other)' "$GROUP_PR" 'github.ref'
+assert_not_contains 'v22.2 AC2.1 the PR branch does not use github.sha' "$GROUP_PR" 'github.sha'
+assert_contains 'v22.2 AC2.1 the non-PR branch contains github.ref' "$GROUP_REST" 'github.ref'
+assert_contains 'v22.2 AC2.1 the non-PR branch contains github.sha (main and tag runs are never cancelled)' "$GROUP_REST" 'github.sha'
+assert_contains 'v22.2 AC2.1 cancel-in-progress is an expression' "$CANCEL_LINE" '${{'
+assert_contains 'v22.2 AC2.1 cancel-in-progress tests github.event_name' "$CANCEL_LINE" 'github.event_name'
+assert_contains "v22.2 AC2.1 cancel-in-progress is true only when the event is pull_request (== 'pull_request')" "$CANCEL_LINE" "== 'pull_request'"
+assert_not_contains 'v22.2 AC2.1 cancel-in-progress is not negated (no !=)' "$CANCEL_LINE" '!='
+if printf '%s\n' "$CANCEL_LINE" | grep -Eq 'cancel-in-progress:[[:space:]]*(true|false)[[:space:]]*$'; then t_bad 'v22.2 AC2.1 cancel-in-progress is not a constant' "line: [$CANCEL_LINE]"; else t_ok 'v22.2 AC2.1 cancel-in-progress is not a constant'; fi
+# wf_timeout ID -> the job's timeout-minutes value ("" when none)
+wf_timeout() { wf_block "$1" | grep -m1 '^    timeout-minutes:' | sed 's/^    timeout-minutes:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//'; }
+for id in $(wf_jobs); do
+  tv="$(wf_timeout "$id")"
+  case "$tv" in '' | *[!0123456789]*) t_bad "v22.2 AC2.2 job $id has a numeric timeout-minutes" "value: [$tv]" ;; *) t_ok "v22.2 AC2.2 job $id has a numeric timeout-minutes ($tv)" ;; esac
+done
+assert_eq 'v22.2 AC2.2 the test job (ubuntu/macos) has timeout-minutes 20' "20" "$(wf_timeout "${MAIN:-__none__}")"
+assert_eq 'v22.2 AC2.2 windows-shard has timeout-minutes 20' "20" "$(wf_timeout "${SHARD:-__none__}")"
+assert_eq 'v22.2 AC2.2 the aggregator (test (windows-latest)) has timeout-minutes 5' "5" "$(wf_timeout "${AGG:-__none__}")"
+assert_eq 'v22.2 AC2.2 main-ci has timeout-minutes 30' "30" "$(wf_timeout main-ci)"
+assert_eq 'v22.2 AC2.2 release has timeout-minutes 10' "10" "$(wf_timeout release)"
+
+# --- v0.22.2 AC6: resume state file
+STATE_T="$TDD/templates/state.md"
+assert_file 'v22.2 AC6.1 templates/state.md exists' "$STATE_T"
+flat_has 'v22.2 AC6.1 state template: the phase' "$STATE_T" 'phase'
+flat_has 'v22.2 AC6.1 state template: the slice' "$STATE_T" 'slice'
+flat_has 'v22.2 AC6.1 state template: the last sha per role (tester)' "$STATE_T" 'tester'
+flat_has 'v22.2 AC6.1 state template: the last sha per role (implementer)' "$STATE_T" 'implementer'
+flat_has 'v22.2 AC6.1 state template: the last sha per role (reviewer)' "$STATE_T" 'reviewer'
+flat_has 'v22.2 AC6.1 state template: sha' "$STATE_T" 'sha'
+flat_has 'v22.2 AC6.1 state template: the next step' "$STATE_T" 'next step'
+flat_has 'v22.2 AC6.1 state template: open questions' "$STATE_T" 'open questions?'
+flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$SKILL" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
+flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
+
+# --- v0.22.2 AC7: README
+if grep -i 'concurrency' "$README" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts' 'no README line has both words'; fi
+sec_flat_has 'v22.2 AC7.1 README Development section mentions tools/bsd-check.sh' "$README" '^## Development' 'tools/bsd-check\.sh'
+
 t_summary
