@@ -155,6 +155,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
+- If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report: one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
 
 ## Starting roles per harness (`conf.sh get subagents`)
