@@ -55,3 +55,5 @@ Findings:
 - [major] src/cart.ts:88 - discount applied twice when ... Evidence: ...
 Re-run evidence: <proof-run block>
 ```
+
+Write only inside the repository you were given, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).

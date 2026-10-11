@@ -55,3 +55,5 @@ target has deleted real data.
 - Stubs needed (if any), and open questions.
 
 The orchestrator then runs `role-gate.sh check tester`. Any production-code change fails your hand-back.
+
+Write only inside the repository you were given, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).
