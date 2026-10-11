@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.22.2 - 2026-10-11
+Also ships everything listed under 0.22.1: the v0.22.1 tag has no GitHub Release, because a test with a 1 s
+budget failed on the Windows runner of its main CI run (node start-up alone takes most of a second there).
+- **Process rules**: a spec that replaces existing logic lists a `## Regression corpus` and the first RED covers it;
+  the implementer reports a gate that flags existing code and never hides the construct; testers prefer named-line
+  assertions over exact counts.
+- **Resume state**: `templates/state.md`; the orchestrator updates `.agents/handoff/state.md` after each phase and
+  reads it first when resuming.
+- **CI**: PR runs of the same PR cancel each other; runs on main and tags never do (group per ref and sha); every
+  job has a timeout; Windows shards turn the run-all re-run off.
+- **run-all re-runs failing suites alone** (PB_RERUN, up to 3) and classifies them: passed alone (flaky or load),
+  failed again (real), or skipped when the environment hint fired.
+- **ship refreshes shard weights** into `.agents/handoff/shard-weights.next` when the shards are unbalanced.
+- **`tools/bsd-check.sh`** runs suites with one-true-awk (as on macOS) first on PATH.
+- **`run-checks.sh --only SECTION`**: the run-checks tests run one section per case (679 s -> 136 s locally; 866 s
+  on Windows CI before).
+- **Timing tests** use a measured baseline plus 8 s instead of a fixed 1 s.
+- Built at Full weight with a spec review (two rounds; the "skip main tests" idea was deferred to v0.22.3 with a
+  safe design), Sonnet tester and implementer, Opus reviewer.
+
 ## 0.22.1 - 2026-10-11
 - **Real behaviour, not only unit tests**: a user-visible change (UI, HTTP API, CLI output, file format) needs one
   observation of the real behaviour in the session (screenshot or browser read, curl, the CLI command); when it
