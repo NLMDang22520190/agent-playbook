@@ -4,9 +4,8 @@
 # Prints the id of a green PR run whose tree equals the tree of SHA, or prints nothing. Exit 0 either way,
 # 2 on a usage error. Repository: --repo, else $GITHUB_REPOSITORY, else the current gh repository.
 # Lookup (gh api only; never logs, artifacts or job outputs):
-#   1. repos/R/commits/SHA/pulls: at most 5 PRs, each with its head sha H; a PR whose head repo is not R is skipped
+#   1. repos/R/commits/SHA/pulls: at most 5 PRs, each with its head sha H; a PR whose head repo is not R, or whose base.ref is not main, is skipped
 #   2. repos/R/actions/workflows/test.yml/runs?event=pull_request&head_sha=H&status=success&per_page=10 (newest first);
-#      a run counts only when its pull_requests[] has an entry with base.ref main
 #   3. repos/R/actions/runs/ID/jobs?filter=latest&per_page=100: test (ubuntu-latest), test (macos-latest),
 #      test (windows-latest) and windows shard 1/3, 2/3, 3/3 all concluded success (none skipped or missing)
 #   4. tree(SHA) equals tree(H) (repos/R/git/commits/X, .tree.sha)
@@ -55,6 +54,8 @@ if (mode === "pulls") {
   for (const p of d.slice(0, 5)) {
     const h = p && p.head;
     if (!h || !hex(h.sha) || !h.repo || h.repo.full_name !== arg) continue;
+    // the merged PR must have targeted main (the run own list of PRs is empty after a merge, so it is not used)
+    if (!p.base || p.base.ref !== "main") continue;
     out.push(h.sha);
   }
 } else if (mode === "runs") {
@@ -62,8 +63,6 @@ if (mode === "pulls") {
   for (const r of d.workflow_runs.slice(0, 10)) {
     if (!r || r.conclusion !== "success" || r.status !== "completed") continue;
     if (r.head_sha !== undefined && r.head_sha !== arg) continue;
-    // the run must belong to a PR whose base branch is main (not a stacked PR retargeted later)
-    if (!Array.isArray(r.pull_requests) || !r.pull_requests.some((p) => p && p.base && p.base.ref === "main")) continue;
     if (!/^[0-9]+$/.test(String(r.id))) continue;
     out.push(String(r.id));
   }
