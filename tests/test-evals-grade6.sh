@@ -281,4 +281,11 @@ done <<'EOF2'
 0 grep -n usage scripts/proof-run.sh
 EOF2
 
+echo "v0.22.4 regression: a here-string (<<<) is not a heredoc; <<\WORD is a heredoc"
+hd "a here-string with a quoted word, then a run" 1 "grep x <<< \"hello\"${NLC}bash proof-run.sh --label y"
+hd "a here-string with a bare word, then a run" 1 "cat <<<EOF${NLC}bash proof-run.sh --label y"
+hd "a here-string, a run on the same line after it" 1 "cat <<< hi; bash proof-run.sh --label y"
+hd "a here-string does not hide a later heredoc body (data)" 0 "cat <<< hi${NLC}cat <<EOF${NLC}bash proof-run.sh body${NLC}EOF"
+hd "a backslash-quoted heredoc word: the body is data" 0 "cat <<\\EOF${NLC}bash proof-run.sh body${NLC}EOF"
+hd "a backslash-quoted heredoc word, then a run after it" 1 "cat <<\\EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
 t_summary
