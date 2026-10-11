@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reads one eval transcript once and prints what the graders need, as KEY=VALUE lines:
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
-//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na
+//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
 "use strict";
@@ -11,12 +11,13 @@ if (!log) { console.error("usage: node evals/transcript.js <log>"); process.exit
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
 
-let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false;
+let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
-// `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`: the quoted
+// `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
+// that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
 // script is the command, so grade what is inside it; repeat for nested wrappers until nothing changes
-const WRAP = /\b(?:ba|z)?sh((?:\s+--?[a-z]+)+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
+const WRAP = /\b(?:ba|z)?sh((?:\s+(?:[-+][a-zA-Z]*[oO]\s+[a-z_]+|--(?:rcfile|init-file)\s+[^\s"']+|--?[a-zA-Z][a-zA-Z-]*))+)\s+(?:"((?:[^"\\]|\\[\s\S])*)"|'([^']*)')/g;
 const unwrap1 = s => s.replace(WRAP, (m, f, d, q) => (!/(?:^|\s)-[a-z]*c/.test(f) ? m : d !== undefined ? d.replace(/\\(["\\$`])/g, "$1") : q));
 const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u === s) break; s = u; } return s; };
 for (const line of text.split(/\r?\n/)) {
@@ -36,7 +37,9 @@ for (const line of text.split(/\r?\n/)) {
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
-    if (b.name === "Bash" && /feedback\.sh\s+capture/.test(unquote(unwrap(String(inp.command || ""))))) captured = true;
+    const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
+    if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|proof-run\.sh/.test(cmd)) ran = true;   // a test run, not a mention
   }
 }
 
@@ -66,4 +69,5 @@ process.stdout.write([
   "feedback_captured=" + (!json ? "na" : b(captured)),
   "full_named=" + (reply === null ? "na" : b(fullNamed(reply))),
   "untested_label=" + (reply === null ? "na" : b(untested(reply))),
+  "ran_tests=" + (!json ? "na" : b(ran)),
 ].join("\n") + "\n");
