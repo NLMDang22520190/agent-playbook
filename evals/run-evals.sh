@@ -22,7 +22,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21"
 
 usage() {
   sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' >&2
@@ -171,13 +171,14 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na
+  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
       result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
+      spec_first) T_spec_first="$v" ;;
     esac
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
@@ -354,6 +355,20 @@ grade_E15() {
   record MANUAL "test seen failing before the fix"
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"
 }
+# no_divide_left -> 0 when no word `divide` is left in src/*.js (safeDivide is a different word) and src/report.js calls safeDivide
+no_divide_left() { ! grep -qw divide "$WD"/src/*.js && grep -q safeDivide "$WD/src/report.js"; }
+spec_has()      { grep -qE "$1" "$WD/.agents/handoff/01-spec.md"; }
+grade_E21() {
+  check "every call site is renamed" no_divide_left
+  check "node --test tests/*.test.js passes" tests_pass
+  check "the spec has an Understanding section" spec_has '^## Understanding'
+  check "the spec names report.js" spec_has 'report\.js'
+  case "$T_spec_first" in
+    1) record PASS "the spec is written before the first src/ edit" ;;
+    0) record FAIL "the spec is written before the first src/ edit" ;;
+    *) record MANUAL "the spec is written before the first src/ edit" ;;
+  esac
+}
 
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""
 for E in $LIST; do
@@ -395,6 +410,11 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   if [ "$E" = E17 ]; then   # an app config whose default the request changes
     printf 'module.exports = { pageSize: 20 };\n' > "$WD/src/config.js" &&
       fx add src/config.js && fx commit -qm "app config" || pb_die "cannot write the E17 config" 3
+  fi
+  if [ "$E" = E21 ]; then   # a second call site of divide, committed on top of the fixture
+    printf '%s\n' "const { divide } = require('./calc');" 'function ratio(a, b) { return divide(a, b); }' \
+      'module.exports = { ratio };' > "$WD/src/report.js" &&
+      fx add src/report.js && fx commit -qm "report" || pb_die "cannot write the E21 report.js" 3
   fi
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3

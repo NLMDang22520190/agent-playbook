@@ -18,6 +18,7 @@ session) coordinates and does not write tests or production code itself, except 
 | Tester | tests only | production code | `roles/tester.md` |
 | Implementer | production code only | any test file (edit, delete, skip, rename) | `roles/implementer.md` |
 | Reviewer | the review report only | any file in the repo | `roles/reviewer.md` |
+| Spec reviewer (Full) | the spec review report only | any file in the repo | `roles/spec-reviewer.md` |
 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
 Prompt rules alone are not enough. The gate runs after every role hand-back.
@@ -59,7 +60,11 @@ continue with separate roles from there.
 reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
 
 ### Lite workflow
-1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`.
+1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
+   with a short `## Understanding` (the request in your own words, a scan log of searches with hit counts,
+   other readings, in and out of scope) and a short `## Impact` (callers or users of what changes), a few
+   lines each. Write both before any test or code. A reading that is ambiguous and hard to reverse is
+   asked before any code, in one batched question; a reversible one gets a logged default.
 2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
@@ -68,7 +73,7 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
    ≤ 100 changed lines); if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
    logic is recommended.
-5. Final report with `Weight: Lite`, the line "no independent review", and always a "Playbook feedback:"
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), and always a "Playbook feedback:"
    line (the captured id, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask (as in Phase 4).
 
@@ -108,6 +113,18 @@ Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, accepta
 ids (AC1…) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
 constraints, and **slices**. A slice is one observable behaviour, about 1 to 5 tests. Order the
 slices so each one builds on the previous. Nothing goes into the spec that the source did not say.
+
+Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
+search command, its hit count and the files read, other readings and why this one, in and out of scope) and
+`## Impact` (who calls or uses what changes: command, hits, file:line). Search for every place the request
+touches before you fix the scope. A reading that is ambiguous and hard to reverse is asked before any code,
+in one batched question.
+
+**Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
+context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
+sentence with the ACs. It writes `.agents/handoff/01b-spec-review.md`; check it with
+`role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
+rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
 
 Gaps, by reversibility: ask (one batched message) only about those that change assertions AND are
 hard to reverse; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
@@ -152,7 +169,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   --seconds <S> --model <M> --weight <Full|Lite>`, with tokens as the harness reports them (`0` if unknown,
   never a guess). Then put `cost.sh summary` into the final report.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- Fill `templates/final-report.md`: AC to tests to evidence, review verdict, assumptions, the
+- Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
@@ -197,5 +214,5 @@ remove it.
 - baseline failures make the RED/GREEN signal unreadable.
 
 ## Hand-off files (`.agents/handoff/`, git-ignored)
-`01-spec.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
+`01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
 · `evidence/*.log`. Templates are in `templates/`.

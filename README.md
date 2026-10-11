@@ -96,6 +96,8 @@ Lite **escalates to Full** when it touches hard-to-reverse ground, outgrows the 
 - **The reviewer's checklist is in the tester's prompt** ("make every check able to fail"), so fewer review rounds come back.
 - **Cohesive slices** of 1–5 tests, and every sub-agent prompt built from `templates/role-prompt.md` (fixed text first) so prompt caching can reuse it.
 - **Mechanical steps are scripts:** `scripts/tdd-step.sh red|green` (gate + evidence + optional commit), `tools/release.sh` for maintainers.
+- **A leak guard:** `scripts/leak-check.sh` refuses tokens, keys and your own private strings (`leak_literals`) in added lines; `install-hooks` adds pre-commit and pre-push hooks.
+- **The whole request is found before code:** the spec starts with `## Understanding` and `## Impact`, a spec reviewer checks it against the raw request (Full), and the final report ends with a request coverage table.
 - **Cost is measured:** `scripts/cost.sh add` per role run, `cost.sh summary` in the final report. v0.6.0 itself: 11 sub-agent runs, 891k tokens (tester and implementer on Sonnet, reviewer on Opus).
 
 If the harness has sub-agents, each role is a sub-agent. If not, each role runs as a separate headless session. With a single context only, it still runs, but the report says so: it is the weaker mode.
@@ -204,12 +206,12 @@ The always-on block has a *When other skills overlap* section. When it conflicts
 agent-playbook/
 ├── AGENTS.global.md        always-on rules (the installer puts them in each harness's global file)
 ├── skills/                 setup · tdd (roles/, templates/, references/) · proof · learn · feedback
-├── scripts/                role-gate · proof-run · conf · learn · feedback · lib
+├── scripts/                role-gate · proof-run · conf · learn · feedback · leak-check · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
 ├── tests/                  3214 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E20) · RUBRIC.md · make-fixture.sh
-├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag)
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E21) · RUBRIC.md · make-fixture.sh
+├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag) · readme-count.sh (README test count)
 └── docs/                   flow.svg · architecture.svg · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md
 ```
 

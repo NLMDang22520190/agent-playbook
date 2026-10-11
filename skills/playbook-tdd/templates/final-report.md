@@ -4,6 +4,14 @@
 **Weight:** Full | Lite (no independent review) | Exempt (docs-only / config-only / spike) · reason: <one line>
 **Mode:** native | manual | none (degraded: roles shared one context)
 
+## Request coverage
+One row for each sentence of the raw request, copied verbatim. Leave none out. Each row says what happened to it.
+| Request sentence (verbatim) | Status |
+|---|---|
+| "..." | done: where (file:line or AC) |
+| "..." | read as: how I understood it, and why |
+| "..." | not done: why, and who decides |
+
 ## AC to tests to evidence
 | AC | Tests | Evidence |
 |---|---|---|

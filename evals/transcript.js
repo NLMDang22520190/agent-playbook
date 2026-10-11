@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reads one eval transcript once and prints what the graders need, as KEY=VALUE lines:
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
-//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na
+//   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
 "use strict";
@@ -11,7 +11,7 @@ if (!log) { console.error("usage: node evals/transcript.js <log>"); process.exit
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
 
-let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false;
+let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
@@ -37,6 +37,11 @@ for (const line of text.split(/\r?\n/)) {
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
     if ((b.name === "Write" || b.name === "Edit") && /(^|[\\/])tests[\\/]/.test(fp) && write < 0) write = i;
+    if (b.name === "Write" || b.name === "Edit") {   // the spec file, and the first edit under src/
+      const p = fp.replace(/\\/g, "/");
+      if (/(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p) && specw < 0) specw = i;
+      if (/(^|\/)src\//.test(p) && srcw < 0) srcw = i;
+    }
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
@@ -71,4 +76,5 @@ process.stdout.write([
   "full_named=" + (reply === null ? "na" : b(fullNamed(reply))),
   "untested_label=" + (reply === null ? "na" : b(untested(reply))),
   "ran_tests=" + (!json ? "na" : b(ran)),
+  "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
 ].join("\n") + "\n");
