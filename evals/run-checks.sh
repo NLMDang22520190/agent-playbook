@@ -152,6 +152,21 @@ gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
 si=-i   # spelled through a variable so this file does not trip its own check
 [ -z "$gsed" ] && ok "sed $si has a suffix (BSD sed)" || bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"
 
+# GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
+# Comments (from a # at the start or after a blank) are ignored. The names are spelled in pieces so this file does not trip its own check.
+ggnu="$(awk 'function hit(n) { out = out FILENAME ":" FNR " (" n ") " }
+  { line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
+    b = "(^|[^[:alnum:]_-])"; fl = "([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+-"
+    if (line ~ (b "grep" fl "[[:alpha:]]*P")) hit("grep " "-P")
+    if (line ~ (b "readlink" fl "[[:alpha:]]*f")) hit("readlink " "-f")
+    if (line ~ (b "date" fl "[[:alpha:]]*d")) hit("date " "-d")
+    if (line ~ (b "stat" fl "[[:alpha:]]*c")) hit("stat " "-c")
+    if (line ~ (b "find[[:space:]].*[[:space:]]-printf")) hit("find " "-print" "f")
+    if (line ~ (b "xargs" fl "[[:alpha:]]*r")) hit("xargs " "-r")
+    if (line ~ (b "sed" fl "[[:alpha:]]*r")) hit("sed " "-r") }
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
+[ -z "${ggnu// /}" ] && ok "GNU-only options absent (BSD/macOS)" || bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"
+
 echo "eval scenarios"
 n=0
 while IFS= read -r _; do

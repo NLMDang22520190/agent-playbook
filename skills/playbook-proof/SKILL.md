@@ -29,6 +29,10 @@ Label the claims that matter to a decision. Do not decorate every sentence.
 | "nothing else uses X" | the search command and its output (`rg -n 'X'`), naming what was searched |
 | recommendations | the criteria, the evidence for each option, and what would change the recommendation |
 
+A user-visible change (UI, HTTP API, CLI output, file format) needs one real observation of the behaviour,
+made in this session: a screenshot or browser read, a curl call, the CLI command. Unit tests alone are not enough for it.
+What could not be observed goes under "Not checked" in the report.
+
 ## Producing evidence
 
 ```bash
@@ -55,6 +59,7 @@ label the claim [UNVERIFIED].
 
 ## Definition of done (before saying "done")
 - [ ] The requested behaviour is shown working (test or reproduction), with evidence.
+- [ ] A user-visible change was also observed for real, or the gap is listed under "Not checked".
 - [ ] The project's test, lint and typecheck commands ran after the last change, with exit codes shown.
 - [ ] The diff contains only in-scope changes (`git diff --stat` shown).
 - [ ] No test, assertion or gate was weakened, skipped or deleted (or the user approved it explicitly).

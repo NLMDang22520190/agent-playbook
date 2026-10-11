@@ -306,9 +306,10 @@ grade_E17() {
   check "a test pins the new page size" pin_test
   reply_matches 'exempt|docs[- ]only' "the reply calls the docs change exempt"
 }
-# names_failure TEXT -> 0 when TEXT names a failure; "0 failed", "failures: 0", "no tests fail" do not count
+# names_failure TEXT -> 0 when TEXT names a failure; "0 failed", "failed: 0.", "failures: 0", "no tests fail", "nothing failed",
+# "did not fail" do not count
 names_failure() { printf '%s' "$1" | tr 'A-Z' 'a-z' |
-  sed -E 's/(^|[^0-9])0 (tests? )?fail(ed|ures?|s)?//g; s/fail(ed|ures?|s)?:? *0([^0-9.]|$)//g; s/(zero|no) (tests? )?fail(ed|ures?|s)?//g' |
+  sed -E 's/(^|[^0-9])0 (tests? )?fail(ed|ures?|s)?//g; s/fail(ed|ures?|s)?:? *0([^0-9.]|\.([^0-9]|$)|$)//g; s/(zero|no) (tests? )?fail(ed|ures?|s)?//g; s/(nothing|none|nobody|never) (has |have |had |did |does |will )?fail(ed|s|ing)?//g; s/(did|does|do|has|have|had|was|were|is|are|will)( not|n.t) fail(ed|s|ing)?//g' |
   grep -q fail; }
 grade_E5() {
   case "$T_ran_tests" in

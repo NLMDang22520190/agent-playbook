@@ -72,8 +72,11 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
    `role-gate.sh size --base $RED` is the machine check of the Lite limits (≤ 3 production files,
    ≤ 100 changed lines); if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended.
-5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), and always a "Playbook feedback:"
+   logic is recommended. For a user-visible change (UI, HTTP API, CLI output, file format) also make
+   one real observation of the behaviour in this session: a screenshot or browser read for a UI, a
+   curl call for an API, the CLI command for a CLI. Unit tests alone are not enough for it. If it
+   cannot be run, say so under "Not checked" in the report.
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough), and always a "Playbook feedback:"
    line (the captured id, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask (as in Phase 4).
 
@@ -152,6 +155,13 @@ For slice S:
 4. **REFACTOR (optional, implementer).** Only on green, with tests untouched (same gate and
    `--base $RED`), and green again afterwards.
 
+**First-slice checkpoint.** When a task has more than one slice that repeats a pattern (several
+screens, endpoints or files), then in an interactive run show the first finished slice to the user and
+wait for an OK before the rest. In a non-interactive run, continue without waiting and log in
+`decisions.md` that the checkpoint was skipped.
+
+**Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
+
 ### Phase 3: Review (reviewer, read-only)
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
 `roles/reviewer.md` for the whole diff. Review a single slice early only when that slice alone is
@@ -169,12 +179,29 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   --seconds <S> --model <M> --weight <Full|Lite>`, with tokens as the harness reports them (`0` if unknown,
   never a guess). Then put `cost.sh summary` into the final report.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence, review verdict, assumptions, the
+- For a user-visible change (UI, HTTP API, CLI output, file format) the gates also include one real
+  observation of the real behaviour, made in this session: a screenshot or browser read for a UI, a
+  curl call for an HTTP API, the CLI command for a CLI. Paste it as evidence. Unit tests alone are not
+  enough for it. If it cannot be run, say so under "Not checked" in the report.
+- Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence with a confidence for each AC, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
-  [UNVERIFIED] list.
+  [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
+  the result could still be wrong, each with the command run to check it and its outcome).
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
+
+## When the user says it is wrong
+Do not defend the result and do not patch at once.
+1. Restate in two lines what the user expected and what was delivered.
+2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified
+   live, real bug. Give the evidence for that cause (a command and its output, or a file:line).
+3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix.
+4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and
+   propose a regression eval scenario in the item.
+
+**Why:** a patch without a named cause fixes one symptom and repeats the miss; the named cause shows
+which step of the playbook let it through.
 
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`

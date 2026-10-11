@@ -47,6 +47,24 @@ function bashWritesSrc(cmd) {
   }
   return done();
 }
+// does a shell command run proof-run.sh? Split into simple commands at ; & | ( and newlines (linear), then the command word
+// (after env assignments and time/env/sudo/nohup/exec) is proof-run.sh, or a shell whose first non-flag word is
+function runsProof(cmd) {
+  const isP = t => /(^|\/)proof-run\.sh$/.test(t);
+  for (const seg of cmd.split(/[;&|(\n]+/)) {
+    const w = seg.trim().split(/\s+/).map(t => t.replace(/^["']|["']$/g, "")).filter(t => t !== "");
+    let k = 0;
+    while (k < w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[k]) || /^(time|env|sudo|nohup|exec)$/.test(w[k]))) k++;
+    if (k >= w.length) continue;
+    if (isP(w[k])) return true;
+    if (/(^|\/)(ba|z)?sh$/.test(w[k])) {
+      let j = k + 1;
+      while (j < w.length && /^-/.test(w[j])) j++;
+      if (j < w.length && isP(w[j])) return true;
+    }
+  }
+  return false;
+}
 for (const line of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(line); } catch (e) { continue; }
@@ -72,8 +90,8 @@ for (const line of text.split(/\r?\n/)) {
     if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
     const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
-    // a test run, not a mention: proof-run.sh only in command position (cat or grep of it is a read)
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b|(?:^\s*|[;&|(]\s*|\b(?:ba)?sh\s+)\S*proof-run\.sh/m.test(cmd)) ran = true;
+    // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(cmd)) ran = true;
   }
 }
 
