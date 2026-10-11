@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0 - 2026-10-11
+- **Capturing feedback needs no question**: playbook-feedback and playbook-tdd (Phase 4 and Lite) say capture
+  is local and done right away; only submitting asks the user. E20: both rounds captured without asking
+  (before: one round offered to file it instead).
+- **E20 capture check**: passes on a pending item in the eval home or a real call, also inside
+  `bash -c "..."` / `bash -lc '...'`.
+- **Sub-agents write inside the repository**: the tester, implementer and reviewer role prompts and the
+  role-prompt template carry the write-scope rule (with the ~/.agents exception); reviewers put mutation
+  worktrees in the temp dir.
+- **Eval hygiene**: E20's copied conf drops `feedback_repo`; a stale `<E>.log.result` is removed before
+  each adapter run.
+- Shard weights refreshed from the run ship flagged as unbalanced.
+- Built at Full weight: Sonnet tester, implementer, Opus reviewer (APPROVE, three minor wording/filter
+  fixes applied).
+
 ## 0.18.0 - 2026-10-11
 - **Evals say the run is non-interactive**: every prompt ends with a note that nobody will answer
   (`--interactive` turns it off), and the always-on Clarify bullet covers "the request says nobody will
