@@ -11,7 +11,7 @@ assert_file "AC5.1 tools/bsd-check.sh exists" "$TOOL"
 
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*)   # copied bash/sh in a bare PATH cannot load the msys DLLs; one-true-awk is a Linux/macOS dev tool
-    t_skip "AC5.1 bsd-check cases need a bare PATH (not possible on Git Bash)"; t_summary; exit $? ;;
+    t_skip 20 "AC5.1 bsd-check cases need a bare PATH (not possible on Git Bash)"; t_summary; exit $? ;;
 esac
 REAL_AWK="$(command -v awk)"
 W="$(mk_tmp)"

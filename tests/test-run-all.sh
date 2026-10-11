@@ -2,6 +2,7 @@
 # Tests for tests/run-all.sh: job pool (#6 AC6.1-AC6.3). Runs a copy of run-all.sh in a fake tree
 # with timed stand-in suites; each suite records when it starts and ends.
 . "$(dirname "$0")/lib.sh"
+unset PB_RERUN   # v0.22.2: the Windows CI shards export PB_RERUN=0; the fake trees below expect the default
 unset PB_SHARD   # v0.15.0 AC6.1: an exported PB_SHARD must not leak into the fake-tree runs below (they set it explicitly)
 
 # guarded SECS CMD... -> runs CMD with a time limit; sets OUT (stdout+stderr) and RC (124 when the limit hit).
