@@ -206,4 +206,25 @@ EOF3
 
 echo "v0.22.4 review E5: names_failure with a comma after the negation"
 e5_reply comma 'No tests failed, except one.'; assert_eq "v22.4 review 'No tests failed, except one.': a failure named, PASS" "PASS" "$STATE"
+
+echo "v0.22.4 regression: heredoc bodies are data, not commands"
+# a command containing newlines cannot go through the line-by-line lists above, so each one is built here
+NLC='
+'
+hd() { # NAME EXPECTED COMMAND
+  assert_eq "v22.4 heredoc $1: ran_tests=$2" "$2" "$(rt_of "$3")"
+}
+hd "commit message in a substitution (<<EOF)" 0 "git commit -m \"\$(cat <<EOF${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "commit message in a substitution (<<'EOF')" 0 "git commit -m \"\$(cat <<'EOF'${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "commit message in a substitution (<<-EOF, tab-indented)" 0 "git commit -m \"\$(cat <<-EOF${NLC}	feat: x${NLC}	bash scripts/proof-run.sh --label green passed${NLC}	EOF${NLC})\""
+hd "commit message in a substitution (<<\"EOF\")" 0 "git commit -m \"\$(cat <<\"EOF\"${NLC}feat: x${NLC}bash proof-run.sh --label green passed${NLC}EOF${NLC})\""
+hd "plain cat <<EOF outside a substitution" 0 "cat <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "plain cat <<'EOF' outside a substitution" 0 "cat <<'EOF'${NLC}bash scripts/proof-run.sh${NLC}EOF"
+hd "a heredoc with another word as terminator" 0 "cat <<DONE${NLC}bash proof-run.sh --label x${NLC}DONE"
+hd "the command itself runs, the heredoc body is only input" 1 "bash proof-run.sh --label x <<EOF${NLC}input${NLC}EOF"
+hd "the command itself runs with a quoted heredoc" 1 "bash scripts/proof-run.sh --label x <<'EOF'${NLC}input${NLC}EOF"
+hd "captured run" 1 'out="$(bash proof-run.sh --label x)"'
+hd "a run after a heredoc has ended" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label x"
+hd "a run before a heredoc, the body mentions nothing" 1 "bash proof-run.sh --label x${NLC}cat <<EOF${NLC}notes${NLC}EOF"
+hd "a run with the heredoc terminator word later in the text is still a run" 1 "bash proof-run.sh --label x <<EOF${NLC}EOF${NLC}bash proof-run.sh --label y"
 t_summary
