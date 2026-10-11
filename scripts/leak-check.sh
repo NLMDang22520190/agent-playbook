@@ -85,7 +85,8 @@ EOF3
 
 # diff_to_added FILE -> idx and txt from a unified diff (-U0) of FILE: the added lines only
 diff_to_added() {
-  awk -v idx="$TMP/idx" -v txt="$TMP/txt" '
+  # NUL bytes (binary files) end a line early in BSD awk and grep (macOS): turn them into spaces first
+  tr '\000' ' ' < "$1" | awk -v idx="$TMP/idx" -v txt="$TMP/txt" '
     /^diff --(git|cc|combined) / { hdr = 1; file = ""; next }
     hdr && /^\+\+\+ / { f = $0; sub(/^\+\+\+ /, "", f); sub(/\t.*$/, "", f)
       if (f == "/dev/null") file = ""; else { sub(/^b\//, "", f); file = f }; next }
@@ -95,7 +96,7 @@ diff_to_added() {
       if (index(p, "-")) next                                       # not in the result
       if (p ~ /^\++$/ && file != "") { print file ":" ln >> idx; print substr($0, np + 1) >> txt }
       ln++; next }
-  ' "$1"
+  '
   : >> "$TMP/idx"; : >> "$TMP/txt"
 }
 
@@ -134,7 +135,7 @@ do_scan() {
       for f in "$@"; do
         [ -f "$f" ] && [ -r "$f" ] || { printf 'leak-check: cannot read %s\n' "$f" >&2; exit 2; }
         awk -v f="$f" -v idx="$TMP/idx" '{ print f ":" FNR >> idx }' "$f"
-        cat "$f" >> "$TMP/txt"
+        tr '\000' ' ' < "$f" >> "$TMP/txt"   # NUL bytes: see diff_to_added
         # a file without a final newline must not glue its last line to the next file
         [ -z "$(tail -c 1 "$f" | tr -d '\n')" ] || printf '\n' >> "$TMP/txt"
         : >> "$TMP/idx"
