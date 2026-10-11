@@ -762,7 +762,7 @@ flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tr
 flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
 if flat "$README" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 README no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 README no longer says rebase merges always run the tests'; fi
 flat_has 'v22.3 review Low-2 README: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
-flat_has 'v22.3 review Low-2 README: ... and the PR head parent P' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,350}(parent|P)\b'
+flat_has 'v22.3 review Low-2 README: ... and the PR head parent P' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
 echo "v22.3 review Low-4: the reuse step validates the run id before writing the output"
 RSTEP="$(wf_block reuse | awk '/id: tree/ { f = 1 } f { print }')"
 assert_contains 'v22.3 review Low-4 the reuse step has a numeric-only guard' "$RSTEP" '[!0-9]'
