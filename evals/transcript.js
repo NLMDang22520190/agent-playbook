@@ -14,6 +14,24 @@ try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot r
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
+// heredoc bodies are data: drop every line after a line with <<WORD, <<'WORD', <<"WORD" or <<-WORD up to and including the
+// terminator line (tabs allowed before it with <<-); an unterminated heredoc swallows the rest. One pass over the lines.
+const stripHeredocs = s => {
+  const out = [];
+  const pending = [];
+  for (const line of s.split("\n")) {
+    if (pending.length) {
+      const t = pending[0].dash ? line.replace(/^\t+/, "") : line;
+      if (t.replace(/\r$/, "") === pending[0].word) pending.shift();
+      continue;
+    }
+    out.push(line);
+    const re = /<<(?!<)(-?)[ \t]*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
+    let m;
+    while ((m = re.exec(line))) pending.push({ dash: m[1] === "-", word: m[3] });
+  }
+  return out.join("\n");
+};
 // like unquote, but the command substitutions inside a double-quoted string are kept as commands of their own (appended
 // at the end, so the words around the string stay as they were): out="$(bash proof-run.sh)", [ -n "$(bash proof-run.sh)" ]
 // and "$(bash proof-run.sh)"x run it; echo "bash proof-run.sh" does not
@@ -121,10 +139,11 @@ for (const line of text.split(/\r?\n/)) {
       if (isSrc(p) && srcw < 0) srcw = i;
     }
     if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
-    const cmd = b.name === "Bash" ? unquote(unwrap(String(inp.command || ""))) : "";
+    const cmdText = b.name === "Bash" ? stripHeredocs(String(inp.command || "")) : "";
+    const cmd = b.name === "Bash" ? unquote(unwrap(cmdText)) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
-    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(b.name === "Bash" ? unquoteRun(unwrap(String(inp.command || ""))) : "")) ran = true;
+    if (/\bnode\s+--test\b|\bnpm\s+(?:run\s+)?test\b/.test(cmd) || runsProof(b.name === "Bash" ? unquoteRun(unwrap(cmdText)) : "")) ran = true;
   }
 }
 
