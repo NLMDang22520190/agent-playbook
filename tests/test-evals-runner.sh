@@ -610,7 +610,7 @@ run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" -
 assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
 
 # ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
-# node evals/transcript.js LOG prints these ten KEY=VALUE lines (one each, nothing else; exit 0):
+# node evals/transcript.js LOG prints these eleven KEY=VALUE lines (one each, nothing else; exit 0; models= since v0.24.0, last):
 #   json=1|0               LOG has stream-json lines (a line that parses as an object with a "type")
 #   result_ok=1|0          the last "result" line is not an error (is_error false, or subtype success), as run-evals.sh result_ok
 #   cost=<number>|         total_cost_usd of the last result line that has one, as JSON prints it; empty after "=" when none
@@ -644,8 +644,8 @@ kv() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
 nkeys() { printf '%s\n' "$OUT" | grep -c '^[a-z_]*='; }
 run node "$TS" "$TJ/pos.log"
 assert_rc "AC4.1 transcript.js on a stream-json log exits 0" 0
-assert_eq "AC4.1 output is exactly ten KEY=VALUE lines" "10" "$(nkeys)"
-assert_eq "AC4.1 and nothing else (no extra lines)" "10" "$(printf '%s\n' "$OUT" | grep -c .)"
+assert_eq "AC4.1 output is exactly eleven KEY=VALUE lines (v0.24.0 adds models=)" "11" "$(nkeys)"
+assert_eq "AC4.1 and nothing else (no extra lines)" "11" "$(printf '%s\n' "$OUT" | grep -c .)"
 assert_eq "AC4.1 pos: json=1" "1" "$(kv json)"
 assert_eq "AC4.1 pos: result_ok=1" "1" "$(kv result_ok)"
 assert_eq "AC4.1 pos: cost=0.1234" "0.1234" "$(kv cost)"
@@ -672,7 +672,7 @@ assert_eq "AC4.1 neg: <log>.result holds the result text" "Weight: Lite, not Ful
 echo stale > "$TJ/plain.log.result"
 run node "$TS" "$TJ/plain.log"
 assert_rc "AC4.1 transcript.js on a plain-text log exits 0" 0
-assert_eq "AC4.1 plain: ten keys" "10" "$(nkeys)"
+assert_eq "AC4.1 plain: eleven keys" "11" "$(nkeys)"
 assert_eq "AC4.1 plain: json=0" "0" "$(kv json)"
 assert_eq "AC4.1 plain: result_ok=0" "0" "$(kv result_ok)"
 assert_eq "AC4.1 plain: cost empty" "" "$(kv cost)"
