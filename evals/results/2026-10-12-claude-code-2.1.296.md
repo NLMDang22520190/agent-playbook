@@ -33,3 +33,14 @@ E16 (money, Full): integer cents (6027), Full named, sub-agents used. E17 (docs 
 exempt and the page-size change got a test.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 3: E19, E21, E15 on v0.23.2 (cap 4 USD) - confirms the v0.23.2 fixes
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) |
+|---|---|---|---|
+| E19 | 7/7 | 0 | 0.52 |
+| E21 | 6/6 | 0 | 1.68 |
+| E15 | 8/8 | 1 | 0.42 |
+
+Total: 2.62 USD. E19 now ends with the Playbook feedback line and E21's spec_first is graded correctly (the spec was
+written through Bash before the first src edit), so both v0.23.1 misses are closed.

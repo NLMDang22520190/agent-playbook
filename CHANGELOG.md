@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.23.3 - 2026-10-12
+- **`leak-check` scans every push that goes somewhere the remote's refs do not cover** (the pre-push hook body is
+  unchanged, so existing installs get it):
+  - a push to a URL that is not a configured remote scans the full range ("NAME is not a configured remote; scanning
+    the full range (push through a named remote to limit it)"), unless the URL is a configured remote's url or pushurl
+    (raw or after `insteadOf`) and every url/pushurl of that remote names the same place;
+  - any `url.<base>.pushInsteadOf` that rewrites the destination forces the full scan;
+  - a push by remote NAME whose push destination (`pushurl`, `pushInsteadOf`, or a second `url` - git fetches only the
+    first url but pushes to all) is not the remote's first url is resolved like a URL push: another configured
+    remote's refs count, otherwise the full range is scanned ("R pushes to a place its fetched refs do not cover").
+- **The mode check never fails open**: a work-tree path git cannot hash, a path with a newline or a \002 byte, or a
+  failing `git diff --raw` is a "VIOLATION (mode): ... the mode check is incomplete" in role-gate and
+  `leak-check scan --staged` (an unhashable path can be allowed with `PB_ALLOW_MODE_CHANGE`; a newline path cannot).
+  Unreadable files are set aside before one batch hash, so the cost stays at a few git processes.
+- **Eval graders** (`evals/transcript.js`): heredocs fed to a shell through wrappers (`sudo [-u U]`, `env`, `nice`,
+  `timeout`, `exec -a`, `sudo -s/-i`), `--rcfile`, `-s -- args` and redirects count as commands; only the last of
+  several heredocs is the shell's stdin; `<file` after a heredoc makes it data; `sh -c "$(cat <<EOF ...)"` runs its
+  body; heredoc words may contain `-`; the heredoc queue is linear (320k heredocs: 15.5 s -> 1.5 s). Known limits are
+  listed in the file header.
+- **run-checks GNU scanner**: `(( x << y ))` is arithmetic, not a heredoc; assignments and wrappers (`sudo`, `env`,
+  `nice`, `time`, `timeout`, `command`, `exec`) before a `$GREP`-style variable are skipped; comments after `; & | ( )`
+  and quote-aware comments in the sed check; a `match()` that was nondeterministic under one-true-awk (macOS) is
+  now stable.
+- **CI speed**: `test-run-checks.sh` (631 s on the Windows runner, the shard floor) is split into four suites and
+  `test-evals-grade2.sh` (553 s) into two, with every assertion kept; heavy leak-check fixtures shrink (1200 refs,
+  1000 files) and its test repos are copied from a template; shard weights refreshed.
+- **`tools/bsd-check.sh`**: a candidate that does not answer within 5 s (`PB_BSD_PROBE_SECS`) is rejected and its
+  process group killed; the same file reached twice is probed once.
+- **Smaller**: leak-check's diff awk runs with `LC_ALL=C` (no gawk "Invalid multibyte data" noise); the Windows
+  leak-check suite reports the same total as Linux; README notes `vmIdleTimeout` is Windows 11 only.
+- **Real evals on v0.23.2** (results file): E19 7/7, E21 6/6, E15 8/8 (2.62 USD) - the two v0.23.1 misses are fixed.
+- Built at Full weight in two lanes with Opus reviews; lane A took four review rounds (each found another way a push
+  could skip the scan). From v0.24 the playbook caps review rounds and queues pre-existing findings.
+
 ## 0.23.2 - 2026-10-12
 - **The executable bit is checked at commit time.** `role-gate.sh check <any role>` fails with "VIOLATION (mode):
   PATH lost its executable bit (100755 -> 100644)" for a drop in the work tree or the index, also a rename with
