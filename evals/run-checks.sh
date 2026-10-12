@@ -213,6 +213,10 @@ if want gnu; then
 # Comments are ignored: a # starts one at the start of a line or after a blank when it is not inside single or double quotes.
 # A line may opt out with "# gnu-ok: <reason>" (a non-blank reason) in its real trailing comment, that line only.
 # The names are spelled in pieces so this file does not trip its own check.
+# Limits (not covered): quote state is per line (a string that spans lines is not tracked); text inside single quotes
+# (bash -c '...', awk programs) is not looked at; a tool named through a variable or an alias is not seen; a flag on a
+# continuation line (after a backslash) is not seen; heredoc bodies are read as code; only the names and options listed
+# above are checked, so a new GNU-only option needs a new entry.
 ggnu="$(awk "$AWKSTRIP"'
   function flush() { if (t != "") { TK[++nk] = t; t = "" } }
   function tokenize(s,   i, n, c, sp, m) {
@@ -285,7 +289,9 @@ fi
 if want soh; then
 # The control byte SOH (octal 1) is bash 3.2's internal CTLESC (macOS ships 3.2): a script that builds it with printf, tr, awk
 # or an ANSI-C quote misbehaves there while Ubuntu is fine. Refused in every spelling outside comments (a backslash run of odd
-# length ends in a live escape): the octal forms with 3 or 2 digits and the hex form. No gnu-ok exemption; build fixtures from pieces.
+# length ends in a live escape): the octal forms with 4, 3 or 2 digits and the two-digit hex form. No gnu-ok exemption; build
+# fixtures from pieces. Not covered: the one-digit octal \1, the one-digit hex \x1, the control escape \cA (printf %b and the
+# ANSI-C quote of newer bashes), and a byte made another way (for example from a variable or a file); quote state is per line.
 gsoh="$(awk "$AWKSTRIP"'
   {
     line = strip($0)
@@ -295,7 +301,7 @@ gsoh="$(awk "$AWKSTRIP"'
       if (substr(line, i, 1) != "\\") continue
       j = i; while (substr(line, j + 1, 1) == "\\") j++
       rest = substr(line, j + 1, 4)
-      if ((j - i + 1) % 2 == 1 && (rest ~ /^001/ || rest ~ /^x01/ || rest ~ /^01([^0-7]|$)/)) { out = out FILENAME ":" FNR " "; break }
+      if ((j - i + 1) % 2 == 1 && (rest ~ /^0?001/ || rest ~ /^x01/ || rest ~ /^01([^0-7]|$)/)) { out = out FILENAME ":" FNR " "; break }
       i = j
     }
   }

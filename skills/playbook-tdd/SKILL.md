@@ -49,7 +49,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
 A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
 A new exported function counts as additive: it changes no existing public API.
-A change limited to a string literal or message text (a typo, a wording fix), with no control flow and no data shape touched, is Lite even in a sensitive module: it alters no behaviour that money, auth or data depends on. State the sensitivity as a risk line in the spec and the report (for example "risk: billing module, message text only"), not as the reason for Full.
+A change limited to user-visible message or comment text (a typo, a wording fix), with no control flow and no data shape touched, is Lite even in a sensitive module, provided the string is not parsed, matched or sent as data: then it alters no behaviour that money, auth or data depends on (an error code, a key, a log format or a message another system matches on is data, so Full applies). State the sensitivity as a risk line in the spec and the report (for example "risk: billing module, message text only"), not as the reason for Full.
 The weight line quotes the file:line or rule that decided it.
 
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
