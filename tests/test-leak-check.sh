@@ -1558,4 +1558,63 @@ run_in "$R" git push origin feat
 assert_rc "R3 M2 G: git push origin feat (pushurl = url = priv; the secret is on origin/main): exit 0" 0
 if holds_feat "$PRIV"; then t_ok "R3 M2 G: git pushed to the pushurl (priv)"; else t_bad "R3 M2 G: git pushed to the pushurl (priv)" "no feat on priv; output: $OUT"; fi
 if holds_feat "$PUB"; then t_bad "R3 M2 G: nothing went to pub" "feat is on pub"; else t_ok "R3 M2 G: nothing went to pub"; fi
+
+# ---- v0.23.3 lane A review round 4 (fix round 4): remotes with several urls ----
+# git fetches only from a remote's FIRST url but pushes to all its urls (or to all its pushurls): git-push(1), REMOTES.
+# So a secret fetched from the first url is not "owned" by the second url, and the push must scan the full range.
+echo "v0.23.3 lane A review round 4 N6: origin has urls priv and pub, no pushurl; the secret is on origin/main (fetched from priv)"
+pfix origin
+git -C "$R" config --add remote.origin.url "$PUB"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R4 N6: git push origin feat (it also pushes to pub) is refused (exit $RC)"; else t_bad "R4 N6: git push origin feat (it also pushes to pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R4 N6: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R4 N6: pub did not receive the secret commit" "object is on pub"; else t_ok "R4 N6: pub did not receive the secret commit"; fi
+# NIT-C: the push goes to origin's own first url AND elsewhere; the note must not claim that no configured remote owns it
+assert_contains "R4 NIT-C N6: the note says origin pushes to a place its fetched refs do not cover" "$OUT" "origin pushes to a place its fetched refs do not cover; scanning the full range"
+assert_not_contains "R4 NIT-C N6: the note does not say 'no configured remote owns' (priv is origin's own url)" "$OUT" "no configured remote owns"
+
+echo "v0.23.3 lane A review round 4 N6b: origin has urls priv and pub, pushurl = pub"
+pfix origin
+git -C "$R" config --add remote.origin.url "$PUB"
+git -C "$R" config remote.origin.pushurl "$PUB"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R4 N6b: git push origin feat (pushurl is pub) is refused (exit $RC)"; else t_bad "R4 N6b: git push origin feat (pushurl is pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R4 N6b: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R4 N6b: pub did not receive the secret commit" "object is on pub"; else t_ok "R4 N6b: pub did not receive the secret commit"; fi
+
+echo "v0.23.3 lane A review round 4 N6c control: origin has urls priv and pub, pushurl = priv (the first url)"
+pfix origin
+git -C "$R" config --add remote.origin.url "$PUB"
+git -C "$R" config remote.origin.pushurl "$PRIV"
+run_in "$R" git push origin feat
+assert_rc "R4 N6c control: git push origin feat (it only pushes to priv, whose refs origin fetched): exit 0" 0
+if holds_feat "$PRIV"; then t_ok "R4 N6c control: the push reached priv"; else t_bad "R4 N6c control: the push reached priv" "no feat on priv; output: $OUT"; fi
+if holds_feat "$PUB"; then t_bad "R4 N6c control: nothing went to pub" "feat is on pub"; else t_ok "R4 N6c control: nothing went to pub"; fi
+
+echo "v0.23.3 lane A review round 4 N2: origin has pushurls priv and pub (a check of only the first push destination misses pub)"
+pfix origin
+git -C "$R" config --add remote.origin.pushurl "$PRIV"
+git -C "$R" config --add remote.origin.pushurl "$PUB"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R4 N2: git push origin feat (pushurls priv and pub) is refused (exit $RC)"; else t_bad "R4 N2: git push origin feat (pushurls priv and pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R4 N2: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R4 N2: pub did not receive the secret commit" "object is on pub"; else t_ok "R4 N2: pub did not receive the secret commit"; fi
+assert_contains "R4 NIT-C N2: the note says origin pushes to a place its fetched refs do not cover" "$OUT" "origin pushes to a place its fetched refs do not cover; scanning the full range"
+assert_not_contains "R4 NIT-C N2: the note does not say 'no configured remote owns'" "$OUT" "no configured remote owns"
+
+echo "v0.23.3 lane A review round 4 N8: origin has pushurls fork and pub; the secret is on refs/remotes/fork/* only; pub is unowned"
+pfix fork
+git -C "$R" config --add remote.origin.pushurl "$FORK"
+git -C "$R" config --add remote.origin.pushurl "$PUB"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R4 N8: git push origin feat (pushurls fork and pub) is refused (exit $RC)"; else t_bad "R4 N8: git push origin feat (pushurls fork and pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R4 N8: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R4 N8: pub did not receive the secret commit" "object is on pub"; else t_ok "R4 N8: pub did not receive the secret commit"; fi
+
+echo "v0.23.3 lane A review round 4 F3 control: origin's pushurl is remote fork's url, fork holds the secret (still allowed)"
+pfix fork
+git -C "$R" config remote.origin.pushurl "$FORK"
+run_in "$R" git push origin feat
+assert_rc "R4 F3 control: git push origin feat (the only destination is fork, which holds the secret): exit 0" 0
+if holds_feat "$FORK"; then t_ok "R4 F3 control: the push reached fork"; else t_bad "R4 F3 control: the push reached fork" "no feat on fork; output: $OUT"; fi
 t_summary
