@@ -694,9 +694,10 @@ for h in pre-commit pre-push; do
 done
 assert_contains "AC10.3 the rewritten pre-push hook passes --remote" "$(cat "$HOOKS/pre-push" 2>/dev/null)" "--remote"
 assert_contains "AC10.3 the rewritten pre-commit hook scans the staged change" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "--staged"
-CL_SEC="$(awk '/^## /{n++} n==1' "$PB_ROOT/CHANGELOG.md" 2>/dev/null)"
-case "$CL_SEC" in *0.23.1*) t_ok "AC10.3 the newest CHANGELOG section is 0.23.1" ;; *) t_bad "AC10.3 the newest CHANGELOG section is 0.23.1" "first section: $(printf '%s\n' "$CL_SEC" | head -n 1)" ;; esac
-if printf '%s\n' "$CL_SEC" | grep -qi 'install-hooks'; then t_ok "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks"; else t_bad "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks" "not in the newest section"; fi
+# the 0.23.1 section itself (it was the newest when written; later releases sit above it)
+CL_SEC="$(awk '/^## /{p = ($2 == "0.23.1")} p' "$PB_ROOT/CHANGELOG.md" 2>/dev/null)"
+case "$CL_SEC" in "## 0.23.1"*) t_ok "AC10.3 the CHANGELOG has a 0.23.1 section" ;; *) t_bad "AC10.3 the CHANGELOG has a 0.23.1 section" "found: $(printf '%s\n' "$CL_SEC" | head -n 1)" ;; esac
+if printf '%s\n' "$CL_SEC" | grep -qi 'install-hooks'; then t_ok "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks"; else t_bad "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks" "not in the 0.23.1 section"; fi
 if printf '%s\n' "$CL_SEC" | grep -qiE 're-?run|again'; then t_ok "AC10.3 the 0.23.1 CHANGELOG section says to re-run it"; else t_bad "AC10.3 the 0.23.1 CHANGELOG section says to re-run it" "no re-run/again wording"; fi
 if grep -i 'install-hooks' "$README" 2>/dev/null | grep -qiE 're-?run|again'; then t_ok "AC10.3 README says existing installs re-run install-hooks"; else t_bad "AC10.3 README says existing installs re-run install-hooks" "no README line with install-hooks and re-run/again"; fi
 
