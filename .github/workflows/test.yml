@@ -54,8 +54,11 @@ jobs:
           fetch-depth: 0
       - name: Is this a docs-only change
         id: docs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          d="$(bash tools/docs-only.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")" || d=false
+          d="$(bash tools/docs-only.sh "$BASE_SHA" "$HEAD_SHA")" || d=false
           case "$d" in true) ;; *) d=false ;; esac
           echo "docs_only: $d"
           echo "docs_only=$d" >> "$GITHUB_OUTPUT"
