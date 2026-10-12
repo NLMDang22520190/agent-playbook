@@ -1006,4 +1006,20 @@ else
   t_skip 1 'v23.2 AC8.1 E1 mode of tests/test-docs-rules.sh needs a git checkout'
 fi
 
+
+# --- v0.23.3 AC8.1 / D5: the cd tracking limits of evals/transcript.js are documented in its header (not implemented)
+echo "v23.3 AC8.1 transcript.js header names the cd tracking limits"
+TSJS="$PB_ROOT/evals/transcript.js"
+# the header is the comment block at the top of the file, up to the first line that is not a comment
+TSHEAD="$(awk '/^(#!|\/\/)/ { print; next } { exit }' "$TSJS")"
+TSHEAD_FLAT="$(printf '%s\n' "$TSHEAD" | tr '\n' ' ' | tr -s ' ')"
+assert_contains "v23.3 AC8.1 the header names the chained form cd .agents; cd handoff" "$TSHEAD_FLAT" "cd .agents; cd handoff"
+assert_contains "v23.3 AC8.1 the header names pushd" "$TSHEAD_FLAT" "pushd"
+assert_contains "v23.3 AC8.1 the header says the cwd is not kept across Bash calls" "$TSHEAD_FLAT" "across Bash calls"
+assert_contains "v23.3 AC8.1 the header uses the word cwd" "$TSHEAD_FLAT" "cwd"
+case "$(printf '%s' "$TSHEAD_FLAT" | tr 'A-Z' 'a-z')" in
+  *"not tracked"*|*"not followed"*|*"not kept"*|*"not covered"*|*"limit"*) t_ok "v23.3 AC8.1 the header states these as limits (not tracked / not covered / limit)" ;;
+  *) t_bad "v23.3 AC8.1 the header states these as limits (not tracked / not covered / limit)" "header: $TSHEAD_FLAT" ;;
+esac
+
 t_summary

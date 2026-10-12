@@ -96,4 +96,54 @@ assert_rc "AC9 the real tree passes run-checks --only gnu" 0
 assert_contains "AC9 the gnu ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
 
 
+
+# ---- v0.23.3 AC7.1 / R6: (( x << y )) is arithmetic, not a heredoc; a heredoc word may contain a dash ----
+# A false heredoc swallows every later line as a "body" that is read as code on its own, so a flag inside a later multi-line
+# quoted string is reported. Fixtures are built from the same pieces as above (DL, DQ, LB, Q, G, PF, SD2).
+echo "v0.23.3 AC7.1 arithmetic << is not a heredoc, <<END-X is one"
+gnu9 "AC7.1 (( x << y )) then a multi-line single-quoted string holding the flag" tests/zz-gnu.sh pass 3 "(( x << y ))" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "AC7.1 \$(( x << y )) then a multi-line single-quoted string holding the flag" tests/zz-gnu.sh pass 3 "z=${DL}(( x << y ))" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "AC7.1 (( x<<y )) without blanks, then the multi-line string" tests/zz-gnu.sh pass 3 "(( x<<y ))" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "AC7.1 (( x << y )) then a multi-line double-quoted string holding the flag" tests/zz-gnu.sh pass 3 "(( x << y ))" "echo ${DQ}a" "$G $PF x" "${DQ}"
+gnu9 "AC7.1 <<END-X (a dash in the word), its terminator, then a multi-line single-quoted string holding the flag" tests/zz-gnu.sh pass 3 "cat <<END-X" "text" "END-X" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "AC7.1 <<'END-X' (quoted, a dash), its terminator, then a multi-line single-quoted string holding the flag" tests/zz-gnu.sh pass 3 "cat <<${Q}END-X${Q}" "text" "END-X" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "AC7.1 <<-END-X (tab-indented), its terminator, then a multi-line single-quoted string holding the flag" tests/zz-gnu.sh pass 3 "cat <<-END-X" "text" "$(printf '\t')END-X" "echo ${Q}a" "$G $PF x" "${Q}"
+# controls: the flag as plain code after the arithmetic or after the terminator is still reported
+gnu9 "AC7.1 control: the flag on a plain line after (( x << y ))" tests/zz-gnu.sh fail 5 "(( x << y ))" "echo done" "$G $PF x"
+gnu9 "AC7.1 control: the flag on a plain line after the terminator END-X" tests/zz-gnu.sh fail 7 "cat <<END-X" "text" "END-X" "echo done" "$G $PF x"
+gnu9 "AC7.1 control: a real heredoc <<EOF still ends at EOF, the flag after it is code" tests/zz-gnu.sh fail 7 "cat <<EOF" "text" "EOF" "echo done" "$G $PF x"
+gnu9 "AC7.1 control: a here-string is not a heredoc, the flag after it is code" tests/zz-gnu.sh fail 5 "cat <<< hi" "echo done" "$G $PF x"
+
+# ---- v0.23.3 AC7.2 / R1: assignments and wrappers before a variable command word ----
+echo "v0.23.3 AC7.2 an assignment or a wrapper before a variable named after a checked tool"
+gnu9 "AC7.2 LC_ALL=C then the variable" tests/zz-gnu.sh fail 3 "LC_ALL=C ${DL}GREP $PF x"
+gnu9 "AC7.2 two assignments then the variable" tests/zz-gnu.sh fail 3 "LC_ALL=C FOO=1 ${DL}GREP $PF x"
+gnu9 "AC7.2 LC_ALL=C then the braced variable" tests/zz-gnu.sh fail 3 "LC_ALL=C ${DL}${LB}GREP} $PF x"
+gnu9 "AC7.2 sudo -u u then the variable" tests/zz-gnu.sh fail 3 "sudo -u u ${DL}GREP $PF x"
+gnu9 "AC7.2 sudo then the variable" tests/zz-gnu.sh fail 3 "sudo ${DL}GREP $PF x"
+gnu9 "AC7.2 env then the variable" tests/zz-gnu.sh fail 3 "env ${DL}GREP $PF x"
+gnu9 "AC7.2 env FOO=1 then the variable" tests/zz-gnu.sh fail 3 "env FOO=1 ${DL}GREP $PF x"
+gnu9 "AC7.2 env -u V FOO=1 then the variable" tests/zz-gnu.sh fail 3 "env -u V FOO=1 ${DL}GREP $PF x"
+gnu9 "AC7.2 time then the variable" tests/zz-gnu.sh fail 3 "time ${DL}SED -r x"
+gnu9 "AC7.2 time -p then the variable" tests/zz-gnu.sh fail 3 "time -p ${DL}SED -r x"
+gnu9 "AC7.2 nice -n 5 then the variable" tests/zz-gnu.sh fail 3 "nice -n 5 ${DL}GREP $PF x"
+gnu9 "AC7.2 command then the variable" tests/zz-gnu.sh fail 3 "command ${DL}GREP $PF x"
+gnu9 "AC7.2 exec then the variable" tests/zz-gnu.sh fail 3 "exec ${DL}GREP $PF x"
+gnu9 "AC7.2 exec -a NAME then the variable" tests/zz-gnu.sh fail 3 "exec -a n ${DL}GREP $PF x"
+gnu9 "AC7.2 a wrapper chain: sudo -u u env FOO=1 nice -n 5 then the variable" tests/zz-gnu.sh fail 3 "sudo -u u env FOO=1 nice -n 5 ${DL}GREP $PF x"
+gnu9 "AC7.2 a wrapper after a pipe" tests/zz-gnu.sh fail 3 "cat f | sudo ${DL}GREP $PF x"
+gnu9 "AC7.2 an assignment after then" tests/zz-gnu.sh fail 3 "if true; then LC_ALL=C ${DL}GREP $PF x; fi"
+gnu9 "AC7.2 a wrapper in a command substitution" tests/zz-gnu.sh fail 3 "y=${DL}(env LC_ALL=C ${DL}GREP $PF x f)"
+# the tool written out after a wrapper was flagged before and stays flagged
+gnu9 "AC7.2 corpus: sudo grep with the PCRE flag stays flagged" tests/zz-gnu.sh fail 3 "sudo $G $PF x"
+gnu9 "AC7.2 corpus: sudo -u u grep with the PCRE flag stays flagged" tests/zz-gnu.sh fail 3 "sudo -u u $G $PF x"
+gnu9 "AC7.2 corpus: env grep with the PCRE flag stays flagged" tests/zz-gnu.sh fail 3 "env $G $PF x"
+# not flagged: command -v / -V is a lookup, the variable is then an argument, not a command word
+gnu9 "AC7.2 control: command -v then the variable is a lookup" tests/zz-gnu.sh pass 3 "command -v ${DL}GREP $PF x"
+gnu9 "AC7.2 control: command -V then the variable is a lookup" tests/zz-gnu.sh pass 3 "command -V ${DL}GREP $PF x"
+gnu9 "AC7.2 control: the variable after echo is an argument" tests/zz-gnu.sh pass 3 "echo LC_ALL=C ${DL}GREP $PF x"
+gnu9 "AC7.2 control: a longer variable name after an assignment is another variable" tests/zz-gnu.sh pass 3 "LC_ALL=C ${DL}GREPPER $PF x"
+gnu9 "AC7.2 control: an assignment alone, with no command word" tests/zz-gnu.sh pass 3 "LC_ALL=C"
+gnu9 "AC7.2 control: a GNU-ok marker with a reason exempts a wrapped variable" tests/zz-gnu.sh pass 3 "sudo -u u ${DL}GREP $PF x $MK needs PCRE here"
+
 t_summary

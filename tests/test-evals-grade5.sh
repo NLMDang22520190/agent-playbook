@@ -449,6 +449,40 @@ hdw no "sh -c 'cat' <<'EOF'" "sh -c 'cat' <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.j
 hdw yes "bash -c with an src write as the script, heredoc body is input" "bash -c 'sed $SIH s/a/b/ src/x.js' <<EOF${NLH}input${NLH}EOF"
 hdw yes "bash <<EOF still executes the body" "bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
 
+# ---- v0.23.3 AC6.2 / AC6.3 / AC6.4: the same shell feeds for bashWritesSrc (the body is read when a shell reads it) ----
+echo "v0.23.3 AC6.2 bashWritesSrc: options with values, -s with arguments, redirects, wrappers; the last heredoc body is the input"
+SW="sed $SIH 's/a/b/' src/x.js"
+hdw yes "bash --rcfile f <<EOF" "bash --rcfile f <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash --init-file f <<EOF" "bash --init-file f <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash -s -- a <<EOF" "bash -s -- a <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash -s arg <<EOF" "bash -s arg <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash 2>&1 <<EOF" "bash 2>&1 <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash 2>/dev/null <<EOF" "bash 2>/dev/null <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash &>f <<EOF" "bash &>f <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash <&0 <<EOF" "bash <&0 <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "bash <<A <<B with the src write only in B (bash reads the last body)" "bash <<A <<B${NLH}echo hi${NLH}A${NLH}${SW}${NLH}B"
+hdw no "bash <<A <<B with the src write only in A (an earlier body is data)" "bash <<A <<B${NLH}${SW}${NLH}A${NLH}echo hi${NLH}B"
+hdw no "bash <<EOF <input.txt (the file after the heredoc is the stdin: the body is data)" "bash <<EOF <input.txt${NLH}${SW}${NLH}EOF"
+hdw yes "sudo -u x bash <<EOF" "sudo -u x bash <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "env FOO=1 bash <<EOF" "env FOO=1 bash <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "nice -n 5 bash <<EOF" "nice -n 5 bash <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "exec -a n bash <<EOF" "exec -a n bash <<EOF${NLH}${SW}${NLH}EOF"
+hdw yes "sudo -s <<EOF" "sudo -s <<EOF${NLH}${SW}${NLH}EOF"
+hdw no "command -v bash <<EOF is a lookup" "command -v bash <<EOF${NLH}${SW}${NLH}EOF"
+hdw no "bash 2>&1 build.sh <<EOF: a script file, the body is input" "bash 2>&1 build.sh <<EOF${NLH}${SW}${NLH}EOF"
+
+echo "v0.23.3 AC6.3 bashWritesSrc: a heredoc inside the -c string of a shell is commands; a commit message stays data"
+hdw yes "sh -c \"\$(cat <<'EOF' ...)\"" "sh -c \"\$(cat <<'EOF'${NLH}${SW}${NLH}EOF${NLH})\""
+hdw yes "bash -c \"\$(cat <<'EOF' ...)\"" "bash -c \"\$(cat <<'EOF'${NLH}${SW}${NLH}EOF${NLH})\""
+hdw yes "zsh -c \"\$(cat <<EOF ...)\"" "zsh -c \"\$(cat <<EOF${NLH}${SW}${NLH}EOF${NLH})\""
+hdw no "git commit -m \"\$(cat <<EOF ...)\" stays data" "git commit -m \"\$(cat <<EOF${NLH}${SW}${NLH}EOF${NLH})\""
+hdw no "echo \"\$(cat <<'EOF' ...)\" stays data" "echo \"\$(cat <<'EOF'${NLH}${SW}${NLH}EOF${NLH})\""
+
+echo "v0.23.3 AC6.4 bashWritesSrc: a heredoc word with a dash ends at its own terminator line"
+hdw yes "cat <<END-X, body, END-X, then an src write" "cat <<END-X${NLH}notes${NLH}END-X${NLH}${SW}"
+hdw no "cat <<END-X with an src write in the body is data" "cat <<END-X${NLH}${SW}${NLH}END-X"
+hdw yes "bash <<END-X with an src write in the body is fed to the shell" "bash <<END-X${NLH}${SW}${NLH}END-X"
+
 # ---- v0.23.2 lane B review (F4): one command that writes the spec and src is src-first ----
 echo "v0.23.2 review F4 spec_first: a single command writing both spec and src counts src first"
 SPECP=".agents/handoff/01-spec.md"
@@ -459,5 +493,29 @@ assert_eq "F4 tee writing src/ and the spec: spec_first=0" "0" "$(sf_of "$(btu "
 assert_eq "F4 control: spec; src gives 1" "1" "$(sf_of "$(btu "echo x > $SPECP; sed $SIH s/a/b/ src/a.js")")"
 assert_eq "F4 control: src; spec gives 0" "0" "$(sf_of "$(btu "sed $SIH s/a/b/ src/a.js; echo x > $SPECP")")"
 assert_eq "F4 control: tee of the spec alone, then an src write: spec_first=1" "1" "$(sf_of "$(btu "echo x | tee $SPECP")" "$(tu Write "$SRC")")"
+
+
+# ---- v0.23.3 corpus: real eval transcripts keep every key ----
+# The logs of real runs (v0.23.1: E16, E17, E19, E21; v0.23.2: E15, E19, E21) are not committed (they are large and CI does not
+# have them). Where the directory exists on the machine that runs the suite, transcript.js must print exactly the keys it printed
+# when the lane started (spec_first=1 in every one of them); where it is missing, the case is skipped and counted.
+# PB_EV231_DIR / PB_EV232_DIR override the default places ($HOME/ev231-evidence, $HOME/ev232-evidence).
+echo "v0.23.3 corpus: the real transcripts keep their keys (skipped when the logs are absent)"
+EV231="${PB_EV231_DIR:-$HOME/ev231-evidence}"
+EV232="${PB_EV232_DIR:-$HOME/ev232-evidence}"
+# corpus_case DIR FILE EXPECTED-KEYS -> the keys of transcript.js on a COPY of the log (the .result file is written next to the log)
+corpus_case() {
+  local dir="$1" f="$2" want="$3" copy
+  if [ ! -f "$dir/$f" ]; then t_skip 1 "corpus $f: $dir/$f is absent"; return 0; fi
+  copy="$TR/corpus-$(basename "$dir")-$f"; cp "$dir/$f" "$copy"
+  assert_eq "corpus $(basename "$dir")/$f keeps its keys" "$want" "$(node "$TS" "$copy" 2>/dev/null | tr '\n' ' ')"
+}
+corpus_case "$EV231" E16.log "json=1 result_ok=1 cost=2.502914 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV231" E17.log "json=1 result_ok=1 cost=0.397748 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV231" E19.log "json=1 result_ok=1 cost=0.5311316 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV231" E21.log "json=1 result_ok=1 cost=1.5856581 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV232" E15.log "json=1 result_ok=1 cost=0.4213710000000001 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV232" E19.log "json=1 result_ok=1 cost=0.5172622 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 "
+corpus_case "$EV232" E21.log "json=1 result_ok=1 cost=1.6847831 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 "
 
 t_summary

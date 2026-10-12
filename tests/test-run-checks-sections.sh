@@ -361,4 +361,29 @@ run bash "$C/evals/run-checks.sh"
 assert_rc "AC16.1 [full run] scripts/ renamed: exit 1" 1
 assert_contains "AC16.1 [full run] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
 
+
+# ---- v0.23.3 AC7.3: a # right after ; & | ( ) starts a comment in the sed check too ----
+echo "v0.23.3 AC7.3 the sed check strips a comment that starts right after an operator"
+sed_case "a comment right after ';' mentioning it" tests/zz-sed.sh "true;# $SD $FI x f" pass
+sed_case "a comment right after '|' mentioning it" tests/zz-sed.sh "a|# $SD $FI x f" pass
+sed_case "a comment right after '&' mentioning it" tests/zz-sed.sh "true &# $SD $FI x f" pass
+sed_case "a comment right after '(' mentioning it" tests/zz-sed.sh "(# $SD $FI x f" pass
+sed_case "a comment right after ')' mentioning it" tests/zz-sed.sh "( true )# $SD $FI x f" pass
+sed_case "a comment right after '&&' mentioning it" tests/zz-sed.sh "true &&# $SD $FI x f" pass
+sed_case "control: code after ';' is still flagged" tests/zz-sed.sh "true;$SD $FI x f" fail
+sed_case "control: code before a comment after ';' is still flagged" tests/zz-sed.sh "$SD $FI x f;# done" fail
+sed_case "control: a # inside a word is not a comment" tests/zz-sed.sh "echo a#b; $SD $FI x f" fail
+
+# ---- v0.23.3 AC7.3: strip() starts a comment after ; & | ( ) as scan() does ----
+echo "v0.23.3 AC7.3 the soh check strips a comment that starts right after an operator"
+soh_case "a comment right after ';' mentioning the escape" tests/zz-soh.sh "true;# ${B}001" pass
+soh_case "a comment right after '|' mentioning the escape" tests/zz-soh.sh "a|# ${B}001" pass
+soh_case "a comment right after '&' mentioning the escape" tests/zz-soh.sh "true &# ${B}001" pass
+soh_case "a comment right after '(' mentioning the escape" tests/zz-soh.sh "(# ${B}001" pass
+soh_case "a comment right after ')' mentioning the escape" tests/zz-soh.sh "( true )# ${B}001" pass
+soh_case "control: the escape in code after ';' is still flagged" tests/zz-soh.sh "true;printf ${Q}${B}001${Q}" fail
+soh_case "control: the escape in code before a comment after ';' is still flagged" tests/zz-soh.sh "printf ${Q}${B}001${Q};# done" fail
+soh_case "control: a # inside a word is not a comment" tests/zz-soh.sh "echo a#b; printf ${Q}${B}001${Q}" fail
+soh_case "control: a # inside quotes after ';' is not a comment" tests/zz-soh.sh "true; echo ${Q}a#${B}001${Q}" fail
+
 t_summary
