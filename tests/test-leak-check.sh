@@ -616,13 +616,22 @@ assert_not_contains "AC10.2 ... the commit on origin2 itself is not rescanned" "
 run_in "$R" bash "$LC" scan --unpushed "$SECRET_A" --remote origin
 assert_rc "AC10.2 the origin-only commit is skipped when pushing to origin: exit 0" 0
 # a NAME that is not a configured remote (a URL push): v0.23.3 AC2 replaced the old "any remote counts" fallback.
-# RA is origin's exact url, so origin's refs count: SECRET_B is on origin2 only and is scanned now.
-run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote "$RA"
+# RA is origin's exact url, so origin's refs count. SECRET_B itself is also on origin/other (pushed above, built on it), so a
+# fresh commit that ONLY origin2 holds is used here.
+git -C "$R" checkout -q -b b2only main
+stage "$R" only-b2.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret, pushed to origin2 only (fresh)'
+SECRET_B2="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" push -q origin2 b2only
+assert_eq "AC10.2 fixture: the fresh commit is on origin2 and on no origin ref" "origin2/b2only" "$(git -C "$R" branch -r --contains "$SECRET_B2" | tr -d ' ' | tr '
+' ' ' | sed 's/ $//')"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B2" --remote "$RA"
 assert_rc "AC10.2 (v0.23.3 AC2) origin's exact URL uses origin's refs: a commit only on origin2 is scanned: exit 1" 1
-assert_contains "AC10.2 ... the finding is named" "$OUT" "only-b.txt:1: github-token"
-run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote nosuchremote
+assert_contains "AC10.2 ... the finding is named" "$OUT" "only-b2.txt:1: github-token"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote "$RA"
+assert_rc "AC10.2 (v0.23.3 AC2) origin's exact URL: SECRET_B is on origin/other, so it is skipped: exit 0" 0
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B2" --remote nosuchremote
 assert_rc "AC10.2 (v0.23.3 AC2) an unknown remote name scans the full range: exit 1" 1
-assert_contains "AC10.2 ... the finding is named" "$OUT" "only-b.txt:1: github-token"
+assert_contains "AC10.2 ... the finding is named" "$OUT" "only-b2.txt:1: github-token"
 git -C "$R" checkout -q -b fresh main
 stage "$R" fresh.txt "k $GHS"; G -C "$R" commit -q --no-verify -m 'secret, pushed nowhere'
 run_in "$R" bash "$LC" scan --unpushed HEAD --remote "$RA"
