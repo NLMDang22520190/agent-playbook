@@ -172,7 +172,7 @@ that is `sonnet` or `opus` (the models the conf gives; a call without one is not
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 
-## E25 A tiny-looking change over the Quick limit escalates to Lite
+## E25 A change over the Quick limit runs at Lite
 **Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
 **Pass if:** (headless, the user did not say quick) it is a purely additive change (no existing behaviour changes, nothing from the Full column), but it spans
 three production files, so the agent that started at Quick checks `role-gate.sh size --quick`, sees it is over the Quick size limit and

@@ -300,7 +300,7 @@ reply_matches() { local r
 # `Weight: Lite|Full` is exempt (Quick drops the line unless a rule misfired); the words full or lite elsewhere in the reply do not
 # cancel it. With no weight line, or Lite or Full, the check applies as before.
 feedback_line_unless_quick() { local r
-  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight: *quick' && ! printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then return 0; fi
+  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' && ! printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then return 0; fi
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"; }
 # red_unchanged -> 0 when tests/ is as the RED commit left it (no edit, deletion or new file)
 red_unchanged() { git -C "$WD" diff --quiet "$E4_RED" -- tests &&
@@ -379,7 +379,7 @@ grade_E15() {
   # the weight is read from the final reply: Lite with "no independent review", or Quick; a plain-text log keeps the old reading
   local r
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight: *quick' ||
+    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' ||
        { printf '%s' "$r" | grep -qiwE 'lite' && printf '%s' "$r" | grep -qiE 'no independent review'; }; then
       record PASS "the reply states the weight: Lite with no independent review, or Quick"
     else record FAIL "the reply states the weight: Lite with no independent review, or Quick"; fi
@@ -418,7 +418,7 @@ grade_E23() {
   # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
   local r
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then record FAIL "the reply keeps the Quick weight"
+    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then record FAIL "the reply keeps the Quick weight"
     else record PASS "the reply keeps the Quick weight"; fi
   else record MANUAL "the reply keeps the Quick weight"; fi
 }
@@ -462,13 +462,16 @@ exports_version() { local f
   done
   return 0; }
 grade_E25() {
-  local r name="the reply states Lite or escalation"
+  local r w name="the reply states Lite or escalation"
   stream_result
   check "node --test tests/*.test.js passes" tests_pass
-  # Lite (or the Quick escalation) is right for an additive change over the Quick limit; a Full weight is a FAIL even when it says escalate
+  # a reply with a weight statement is graded on that word (bold allowed): only Lite passes, Quick and Full FAIL even when the reply
+  # names size --quick or escalation; a reply with no weight statement passes on the size --quick or escalat wording
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight: *full'; then record FAIL "$name"
-    elif printf '%s' "$r" | grep -qiE 'weight: *lite|size --quick|escalat'; then record PASS "$name"
+    w="$(printf '%s' "$r" | grep -ioE 'weight:[ *_]*(full|lite|quick)' | head -n 1 | grep -ioE '(full|lite|quick)$' | tr 'A-Z' 'a-z')"
+    if [ -n "$w" ]; then
+      if [ "$w" = lite ]; then record PASS "$name"; else record FAIL "$name"; fi
+    elif printf '%s' "$r" | grep -qiE 'size --quick|escalat'; then record PASS "$name"
     else record FAIL "$name"; fi
   else record MANUAL "$name"; fi
   check "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" exports_version
