@@ -166,6 +166,30 @@ run env -i PATH="$GCCONLY:$BARE" HOME="$H" TMPDIR="$W" FAKE_LOG="$W/fake.log" PB
 assert_rc "AC4.1 gcc without cc is enough: exit 0" 0
 assert_file "AC4.1 gcc without cc: installed" "$H/.local/bin/bash3.2"
 
+echo "AC4.1 review: the checksum is verified before the tarball is extracted"
+TARBIN="$W/tarbin"; mkdir -p "$TARBIN"
+printf '#!/bin/sh\necho "tar $*" >> "%s"\nexit 1\n' "$W/tar.log" > "$TARBIN/tar"; chmod +x "$TARBIN/tar"
+H="$(fresh_home tarorder)"; rm -f "$W/tar.log" "$W/fake.log"
+run env -i PATH="$TARBIN:$FAKEBIN:$BARE" HOME="$H" TMPDIR="$W" FAKE_LOG="$W/fake.log" NET_LOG="$W/net.log" PB_BASH32_SRC="$SRC" PB_BASH32_SHA256="$BADSHA" "$BASH_BIN" "$TOOL"
+assert_rc "AC4.1 review: a checksum mismatch still exits 1" 1
+assert_eq "AC4.1 review: on a mismatch tar is never called" "" "$(cat "$W/tar.log" 2>/dev/null)"
+assert_no_path "AC4.1 review: on a mismatch nothing is installed" "$H/.local/bin/bash3.2"
+
+echo "AC4.1 review: PB_BASH32_SRC must start with https:// or file://; anything else exits 2 before any fetch or copy"
+CPBIN="$W/cpbin"; mkdir -p "$CPBIN"
+printf '#!/bin/sh\necho "cp $*" >> "%s"\nexit 1\n' "$W/net.log" > "$CPBIN/cp"; chmod +x "$CPBIN/cp"
+for badsrc in '--config=/x' '-K' '-o/x' 'http://example.invalid/b.tar.gz' '/abs/path/bash-3.2.57.tar.gz' 'ftp://example.invalid/b.tar.gz' 'relative/b.tar.gz'; do
+  H="$(fresh_home srcform)"; rm -f "$W/net.log"
+  run env -i PATH="$CPBIN:$FAKEBIN:$BARE" HOME="$H" TMPDIR="$W" FAKE_LOG="$W/fake.log" NET_LOG="$W/net.log" PB_BASH32_SRC="$badsrc" "$BASH_BIN" "$TOOL"
+  assert_rc "AC4.1 review: source [$badsrc] exits 2" 2
+  assert_eq "AC4.1 review: source [$badsrc]: curl, wget and cp were never run" "" "$(cat "$W/net.log" 2>/dev/null)"
+  assert_no_path "AC4.1 review: source [$badsrc]: nothing installed" "$H/.local/bin/bash3.2"
+done
+H="$(fresh_home srcform2)"; rm -f "$W/net.log"
+run env -i PATH="$CPBIN:$FAKEBIN:$BARE" HOME="$H" TMPDIR="$W" FAKE_LOG="$W/fake.log" NET_LOG="$W/net.log" PB_BASH32_SRC="--config=/x" PB_BASH32_SHA256="$GOODSHA" "$BASH_BIN" "$TOOL"
+assert_eq "AC4.1 review: a bad source with PB_BASH32_SHA256 set: nothing fetched or copied either" "" "$(cat "$W/net.log" 2>/dev/null)"
+if [ "$RC" -ne 0 ]; then t_ok "AC4.1 review: a bad source with PB_BASH32_SHA256 set is refused (exit $RC)"; else t_bad "AC4.1 review: a bad source with PB_BASH32_SHA256 set is refused" "exit 0"; fi
+
 echo "AC4.1 the tool left no temp dirs behind and the real home is untouched (E3)"
 LEFT="$(ls "$W" | grep -c 'pbbash32\|pbget\|bash-3.2.57' )"
 assert_eq "AC4.1 no build dir is left in TMPDIR" "0" "$LEFT"

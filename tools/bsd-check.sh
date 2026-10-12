@@ -30,6 +30,13 @@ b32=""
 if [ -n "${PB_BASH32:-}" ] && [ -x "$PB_BASH32" ]; then b32="$PB_BASH32"
 elif [ -x "${HOME:-/nonexistent}/.local/bin/bash3.2" ]; then b32="$HOME/.local/bin/bash3.2"
 else b32="$(command -v bash3.2 2>/dev/null)" || b32=""; fi
+if [ -n "$b32" ]; then   # only a real 3.2 counts: a bash3.2 that reports another version would give a false "macOS-like" run
+  b32ver="$("$b32" -c 'echo "$BASH_VERSION"' 2>/dev/null)" || b32ver=""
+  case "$b32ver" in
+    3.2.*) ;;
+    *) echo "bsd-check: $b32 reports bash version '${b32ver:-unknown}', not 3.2.x; ignoring it. Build the right one with tools/get-bash32.sh (installs ~/.local/bin/bash3.2) to match macOS." >&2; b32="" ;;
+  esac
+fi
 if [ -n "$b32" ]; then
   ln -s "$b32" "$AWKD/bash" 2>/dev/null && [ -x "$AWKD/bash" ] || { rm -f "$AWKD/bash"; cp "$b32" "$AWKD/bash" && chmod +x "$AWKD/bash"; } || exit 3
   echo "bsd-check: bash is $b32"

@@ -171,4 +171,51 @@ assert_dir "AC3.1 the other suite's dir survives while it still runs" "$HD"
 wait "$HP" 2>/dev/null
 assert_eq "AC3.1 after both ended the private TMPDIR is empty" "" "$(left "$P")"
 
+
+# ---- v0.23.0 review: TMPDIR forms ("//", relative) and a glob in T_TMPS ----
+# bash_list -> the bash binaries to run a stub with: the one on PATH, and bash 3.2 when ~/.local/bin/bash3.2 exists
+BASHES="bash"
+[ -x "/home/dev/.local/bin/bash3.2" ] && BASHES="bash /home/dev/.local/bin/bash3.2"
+[ -x "$HOME/.local/bin/bash3.2" ] && [ "$HOME" != "/home/dev" ] && BASHES="$BASHES $HOME/.local/bin/bash3.2"
+
+echo "AC3.2 review: a TMPDIR with // (internal or trailing) leaves no pbtest.* behind, under every bash"
+for BB in $BASHES; do
+  for form in trailing double-trailing internal; do
+    P="$(priv)"; mkdir "$P/sub"
+    case "$form" in
+      trailing) TD="$P/sub/" ;;
+      double-trailing) TD="$P/sub//" ;;
+      internal) TD="$P//sub" ;;
+    esac
+    stub slashes 'a=$(mk_tmp); b=$(mk_tmp); touch "$a/x"; t_summary'
+    run env TMPDIR="$TD" "$BB" "$STUB"
+    assert_rc "AC3.2 review: [$form] under $(basename "$BB"): exit 0" 0
+    assert_eq "AC3.2 review: [$form] under $(basename "$BB"): the TMPDIR is empty afterwards" "" "$(left "$P/sub")"
+  done
+done
+
+echo "AC3.2 review: a relative TMPDIR is refused at load or made absolute, never left behind"
+P="$(priv)"; mkdir "$P/rel"
+stub relative 'a=$(mk_tmp); touch "$a/x"; t_summary'
+run_in "$P" env TMPDIR=rel bash "$STUB"
+assert_eq "AC3.2 review: a relative TMPDIR leaves nothing in rel/" "" "$(left "$P/rel")"
+assert_eq "AC3.2 review: and nothing in the working directory" "rel" "$(left "$P")"
+P="$(priv)"; mkdir "$P/rel"
+stub relative2 'a=$(mk_tmp); touch "$a/x"; t_summary'
+run_in "$P" env TMPDIR=./rel bash "$STUB"
+assert_eq "AC3.2 review: TMPDIR=./rel leaves nothing in rel/" "" "$(left "$P/rel")"
+
+echo "AC3.2 review: a glob in T_TMPS does not delete a dir the suite did not create"
+P="$(priv)"
+stub globbed 'a=$(mk_tmp); echo "a=$a"
+mkdir "$TMPDIR/pbtest.other"; touch "$TMPDIR/pbtest.other/keep"
+T_TMPS="$T_TMPS $TMPDIR/pbtest.*"
+t_summary'
+run_stub "$P"
+assert_rc "AC3.2 review: the globbing suite exits 0" 0
+assert_dir "AC3.2 review: the decoy pbtest.other survives a glob in T_TMPS" "$P/pbtest.other"
+assert_file "AC3.2 review: and its content" "$P/pbtest.other/keep"
+GA="$(printf '%s\n' "$OUT" | sed -n 's/^a=//p')"
+assert_no_path "AC3.2 review: the dir the suite did create is gone" "$GA"
+
 t_summary

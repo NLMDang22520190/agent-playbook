@@ -25,6 +25,10 @@ EXPECT="$PIN"
 die() { printf 'get-bash32: %s\n' "$2" >&2; exit "$1"; }
 
 case "$SRC" in
+  https://* | file://*) ;;
+  *) die 2 "PB_BASH32_SRC must start with https:// or file:// (got: $SRC)" ;;
+esac
+case "$SRC" in
   file://*) [ -n "${PB_BASH32_SHA256:-}" ] && EXPECT="$PB_BASH32_SHA256" ;;
   *) [ -n "${PB_BASH32_SHA256:-}" ] && die 1 "PB_BASH32_SHA256 is accepted only with a file:// PB_BASH32_SRC; refusing to weaken the pin for $SRC" ;;
 esac
@@ -49,10 +53,10 @@ trap 'exit 143' TERM
 
 TARBALL="$WORK/bash-3.2.57.tar.gz"
 case "$SRC" in
-  file://*) cp "${SRC#file://}" "$TARBALL" || die 1 "cannot read ${SRC#file://}" ;;
+  file://*) cp -- "${SRC#file://}" "$TARBALL" || die 1 "cannot read ${SRC#file://}" ;;
   *)
-    if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$TARBALL" "$SRC" || die 1 "download failed: $SRC"
-    elif command -v wget >/dev/null 2>&1; then wget -q -O "$TARBALL" "$SRC" || die 1 "download failed: $SRC"
+    if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$TARBALL" -- "$SRC" || die 1 "download failed: $SRC"
+    elif command -v wget >/dev/null 2>&1; then wget -q -O "$TARBALL" -- "$SRC" || die 1 "download failed: $SRC"
     else die 2 "neither curl nor wget found; install one of them"; fi ;;
 esac
 

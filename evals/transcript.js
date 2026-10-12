@@ -38,49 +38,47 @@ const stripHeredocs = s => {
 // like unquote, but the command substitutions inside a double-quoted string are kept as commands of their own (appended
 // at the end, so the words around the string stay as they were): out="$(bash proof-run.sh)", [ -n "$(bash proof-run.sh)" ]
 // and "$(bash proof-run.sh)"x run it; echo "bash proof-run.sh" does not
-// One quote-aware scan (single pass, no backtracking): `out` is the text outside every quoted string and every $(( )); `subs`
+// One quote-aware scan (single pass, explicit stack, no recursion): `out` is the text outside every quoted string and every $(( )); `subs`
 // are the bodies of the $( ) found inside double quotes, matched with their own nested quotes and parentheses, so
 // out="$(bash proof-run.sh --label "red")" keeps the run. An arithmetic $(( ... )) holds no command and no heredoc.
 const shellView = s => {
   const n = s.length, subs = [];
+  let budget = 4 * n + 1000;   // total size of the collected bodies: deep nesting would otherwise copy the text once per level
+  const keep = (a, b) => { if (b - a <= budget) { budget -= b - a; subs.push(s.slice(a, b)); } };
   const arith = i => { let d = 2; i += 3; while (i < n && d > 0) { if (s[i] === "(") d++; else if (s[i] === ")") d--; i++; } return i; };   // i at "$((": the index after its "))"
-  const dq = i => {   // i just after an opening ": the index after the closing "
-    while (i < n && s[i] !== '"') {
-      if (s[i] === "\\") { i += 2; continue; }
-      if (s[i] === "$" && s[i + 1] === "(") {
-        if (s[i + 2] === "(") { i = arith(i); continue; }
-        const e = sub(i + 2); subs.push(s.slice(i + 2, e)); i = e + 1; continue;
-      }
-      i++;
-    }
-    return i + 1;
-  };
-  const sub = i => {   // i just after "$(": the index of the matching ")"
-    let d = 1;
-    while (i < n) {
-      const c = s[i];
-      if (c === "\\") { i += 2; continue; }
-      if (c === "'") { const e = s.indexOf("'", i + 1); if (e < 0) return n; i = e + 1; continue; }
-      if (c === '"') { i = dq(i + 1); continue; }
-      if (c === "(") d++;
-      else if (c === ")" && --d === 0) return i;
-      i++;
-    }
-    return n;
-  };
   const HD = /<<(?!<)-?[ \t]*(?:(["'])[A-Za-z_][A-Za-z0-9_]*\1|\\?[A-Za-z_][A-Za-z0-9_]*)/y;   // a heredoc word, quoted or not, stays as it is
+  // An explicit stack instead of recursion (a deeply nested input must not overflow the call stack): a frame is
+  // { d: true } for a double-quoted string, or { start, depth } for a $( ) body.
+  const st = [];
   let out = "", i = 0;
   while (i < n) {
-    const c = s[i];
-    HD.lastIndex = i;
-    const h = c === "<" && s[i - 1] !== "<" ? HD.exec(s) : null;
-    if (h) { out += h[0]; i += h[0].length; }
-    else if (c === "\\") { out += s.slice(i, i + 2); i += 2; }
-    else if (c === "'" && s.indexOf("'", i + 1) > 0) i = s.indexOf("'", i + 1) + 1;
-    else if (c === '"') i = dq(i + 1);
-    else if (c === "$" && s[i + 1] === "(" && s[i + 2] === "(") i = arith(i);
-    else { out += c; i++; }
+    const c = s[i], top = st.length ? st[st.length - 1] : null;
+    if (top === null) {
+      HD.lastIndex = i;
+      const h = c === "<" && s[i - 1] !== "<" ? HD.exec(s) : null;
+      if (h) { out += h[0]; i += h[0].length; }
+      else if (c === "\\") { out += s.slice(i, i + 2); i += 2; }
+      else if (c === "'" && s.indexOf("'", i + 1) > 0) i = s.indexOf("'", i + 1) + 1;
+      else if (c === '"') { st.push({ d: true }); i++; }
+      else if (c === "$" && s[i + 1] === "(" && s[i + 2] === "(") i = arith(i);
+      else { out += c; i++; }
+    } else if (top.d) {   // inside double quotes: hidden, except a command substitution
+      if (c === "\\") i += 2;
+      else if (c === '"') { st.pop(); i++; }
+      else if (c === "$" && s[i + 1] === "(") {
+        if (s[i + 2] === "(") i = arith(i);
+        else { st.push({ start: i + 2, depth: 1 }); i += 2; }
+      } else i++;
+    } else {   // inside $( ): quotes are skipped, parentheses counted
+      if (c === "\\") i += 2;
+      else if (c === "'") { const e = s.indexOf("'", i + 1); i = e < 0 ? n : e + 1; }
+      else if (c === '"') { st.push({ d: true }); i++; }
+      else if (c === "(") { top.depth++; i++; }
+      else if (c === ")" && --top.depth === 0) { keep(top.start, i); st.pop(); i++; }
+      else i++;
+    }
   }
+  for (let k = st.length - 1; k >= 0; k--) if (!st[k].d) keep(st[k].start, n);   // unclosed $( ): the rest of the text is its body
   return { out, subs };
 };
 const unquoteRun = s => {
