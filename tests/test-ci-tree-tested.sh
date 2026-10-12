@@ -52,20 +52,44 @@ run_json() { # ID HEADSHA [CONCLUSION] [LISTED-BASEREF]  (pull_requests[] is emp
   printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":%s}' "$1" "$2" "${3:-success}" "$prs"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
-jobs_json() { # MODE NAME: MODE ok (all six success) | skipped|failure|cancelled NAME | missing NAME
-  local mode="${1:-ok}" bad="${2:-}" out="" sep="" n c st
+jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all six success) | skipped|failure|cancelled NAME | missing NAME
+  # | steps NAME STEPKIND: the jobs are all success; NAME's step list is changed (v0.23.0 AC5.3):
+  #   docsonly (only a Docs-only checks step), both (full step skipped + Docs-only success), fullskipped (full step skipped, no other),
+  #   fullfailed (full step failure), fullmissing (setup steps only), nosteps (no steps field), fullcancelled, fullnotdone
+  # Every other suite job has the full step with conclusion success.
+  local mode="${1:-ok}" bad="${2:-}" kind="${3:-}" out="" sep="" n c st steps
   for n in "${NAMES[@]}"; do
     c=success
     if [ "$n" = "$bad" ]; then
-      case "$mode" in missing) continue ;; *) c="$mode" ;; esac
+      case "$mode" in missing) continue ;; steps) ;; *) c="$mode" ;; esac
     fi
     st=completed
     if [ "$n" = "$bad" ] && [ "$mode" = notcompleted ]; then c=success; st=in_progress; fi
-    out="$out$sep{\"name\":\"$n\",\"status\":\"$st\",\"conclusion\":\"$c\"}"; sep=","
+    steps="$(steps_json "$n" "$([ "$n" = "$bad" ] && [ "$mode" = steps ] && echo "$kind" || echo full)")"
+    out="$out$sep{\"name\":\"$n\",\"status\":\"$st\",\"conclusion\":\"$c\"$steps}"; sep=","
   done
   # jobs that are not required checks never matter (the PR run skips reuse and main-ci)
   out="$out$sep{\"name\":\"reuse\",\"status\":\"completed\",\"conclusion\":\"skipped\"},{\"name\":\"main-ci\",\"status\":\"completed\",\"conclusion\":\"skipped\"}"
   printf '{"total_count":8,"jobs":[%s]}' "$out"
+}
+# step_one NAME CONCLUSION NUMBER [STATUS]
+step_one() { printf '{"name":"%s","status":"%s","conclusion":"%s","number":%s}' "$1" "${4:-completed}" "$2" "$3"; }
+# steps_json JOBNAME KIND -> ,"steps":[...] for the five suite jobs (the aggregator has none), "" for others
+steps_json() {
+  local n="$1" kind="$2" full='Tests and static checks' pre
+  case "$n" in "test (windows-latest)") return 0 ;; "windows shard "*) full='Tests and static checks (shard)' ;; esac
+  pre="$(step_one 'Set up job' success 1),$(step_one 'Run actions/checkout@v5' success 2)"
+  case "$kind" in
+    full)        printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" success 3)" ;;
+    docsonly)    printf ',"steps":[%s,%s]' "$pre" "$(step_one 'Docs-only checks' success 3)" ;;
+    both)        printf ',"steps":[%s,%s,%s]' "$pre" "$(step_one "$full" skipped 3)" "$(step_one 'Docs-only checks' success 4)" ;;
+    fullskipped) printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" skipped 3)" ;;
+    fullfailed)  printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" failure 3)" ;;
+    fullcancelled) printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" cancelled 3)" ;;
+    fullnotdone) printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" success 3 in_progress)" ;;
+    fullmissing) printf ',"steps":[%s]' "$pre" ;;
+    nosteps)     return 0 ;;
+  esac
 }
 commit_json() { printf '{"sha":"%s","tree":{"sha":"%s"},"parents":[{"sha":"%s"}]}' "$1" "$2" "$3"; }
 compare_json() { printf '{"status":"%s","ahead_by":1,"behind_by":%s}' "$1" "$2"; }
@@ -335,6 +359,50 @@ put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
 tool "$SHA" --repo "$R"
 assert_eq "AC6.1 a row with another head_sha is ignored, the next row is used" "2002" "$OUT"
 assert_eq "AC6.1 the ignored row's jobs were never read" "0" "$(logged "runs/2001/jobs")"
+
+echo "AC5.3 the full test step must have succeeded in each of the five suite jobs"
+world
+tool "$SHA" --repo "$R"
+assert_eq "AC5.3 the fixtures carry steps: a full run is still reused" "111" "$OUT"
+assert_contains "AC5.3 the fixture steps are in the jobs JSON (full step of the ubuntu job)" "$(jobs_json ok)" '"name":"Tests and static checks"'
+assert_contains "AC5.3 the fixture steps are in the jobs JSON (shard step)" "$(jobs_json ok)" '"name":"Tests and static checks (shard)"'
+SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/3" "windows shard 2/3" "windows shard 3/3")
+for n in "${SUITES[@]}"; do
+  for kind in docsonly both fullskipped fullfailed fullcancelled fullnotdone fullmissing nosteps; do
+    world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps "$n" "$kind")"
+    tool "$SHA" --repo "$R"
+    nothing "job [$n] steps: $kind (a reduced or missing full step is never reused)"
+  done
+done
+echo "AC5.3 a docs-only run: every suite job reduced -> nothing"
+world
+dj="$(jobs_json ok)"
+for n in "${SUITES[@]}"; do
+  case "$n" in "windows shard "*) f='Tests and static checks (shard)' ;; *) f='Tests and static checks' ;; esac
+  dj="$(printf '%s' "$dj" | sed "s#\"name\":\"$f\",\"status\":\"completed\",\"conclusion\":\"success\"#\"name\":\"Docs-only checks\",\"status\":\"completed\",\"conclusion\":\"success\"#")"
+done
+assert_contains "AC5.3 the docs-only fixture really has Docs-only steps" "$dj" '"name":"Docs-only checks"'
+assert_not_contains "AC5.3 the docs-only fixture has no full step left" "$dj" '"name":"Tests and static checks'
+put "repos/$R/actions/runs/111/jobs" "$dj"
+tool "$SHA" --repo "$R"
+nothing "a docs-only run (all five suite jobs reduced)"
+echo "AC5.3 one shard reduced, the rest full -> nothing"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/3' docsonly)"
+tool "$SHA" --repo "$R"
+nothing "only shard 2/3 reduced"
+echo "AC5.3 the aggregator (test (windows-latest)) needs only a success conclusion"
+world
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok)"
+assert_contains "AC5.3 the aggregator fixture has no steps (its object ends right after the conclusion)" "$(jobs_json ok)" '"name":"test (windows-latest)","status":"completed","conclusion":"success"}'
+tool "$SHA" --repo "$R"
+assert_eq "AC5.3 the aggregator without steps does not block a reuse" "111" "$OUT"
+echo "AC5.3 a successful full step in the right job, an older run with a reduced one: the first full run wins"
+world
+put_runs "$HEAD" "$(runs_json 2 "$(run_json 2001 "$HEAD"),$(run_json 2002 "$HEAD")")"
+put "repos/$R/actions/runs/2001/jobs" "$(jobs_json steps 'test (macos-latest)' docsonly)"
+put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
+tool "$SHA" --repo "$R"
+assert_eq "AC5.3 a docs-only run is skipped, the next full run is printed" "2002" "$OUT"
 
 echo "AC6.1 usage: exit 2"
 : > "$LOG"

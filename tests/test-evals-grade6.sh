@@ -288,4 +288,47 @@ hd "a here-string, a run on the same line after it" 1 "cat <<< hi; bash proof-ru
 hd "a here-string does not hide a later heredoc body (data)" 0 "cat <<< hi${NLC}cat <<EOF${NLC}bash proof-run.sh body${NLC}EOF"
 hd "a backslash-quoted heredoc word: the body is data" 0 "cat <<\\EOF${NLC}bash proof-run.sh body${NLC}EOF"
 hd "a backslash-quoted heredoc word, then a run after it" 1 "cat <<\\EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
+
+# ---- v0.23.0 AC7: grader lows (transcript.js ran_tests, run-evals.sh names_failure) ----
+echo "v0.23.0 AC7.1 ran_tests: a captured run with double quotes inside the substitution inside double quotes"
+assert_eq "v23 AC7.1 out=\"\$(bash proof-run.sh --label \"red\")\": ran_tests=1" "1" "$(rt_of 'out="$(bash proof-run.sh --label "red")"')"
+assert_eq "v23 AC7.1 the same with a nested quoted argument and a space: ran_tests=1" "1" "$(rt_of 'r="$(bash scripts/proof-run.sh --label "red phase" -- node --test)"')"
+assert_eq "v23 AC7.1 a quoted label, no substitution: ran_tests=1" "1" "$(rt_of 'bash proof-run.sh --label "red"')"
+assert_eq "v23 AC7.1 a read with quotes inside the substitution is not a run: ran_tests=0" "0" "$(rt_of 'out="$(cat proof-run.sh "x")"')"
+assert_eq "v23 AC7.1 an echo of the text with quotes is not a run: ran_tests=0" "0" "$(rt_of 'echo "bash proof-run.sh --label "red""')"
+
+echo "v0.23.0 AC7.2 a << inside quotes or inside \$((...)) does not start a heredoc"
+hd "double-quoted text with <<EOF, then a run on the next line" 1 "echo \"a <<EOF b\"${NLC}bash proof-run.sh --label y"
+hd "single-quoted text with <<EOF, then a run on the next line" 1 "echo 'a <<EOF b'${NLC}bash proof-run.sh --label y"
+hd "arithmetic shift x=\$((y<<2)), then a run" 1 "x=\$((y<<2))${NLC}bash proof-run.sh --label y"
+hd "arithmetic shift with a word, x=\$((x<<y)), then a run" 1 "x=\$((x<<y))${NLC}bash proof-run.sh --label y"
+hd "arithmetic shift with spaces, then a run" 1 "x=\$(( y << n ))${NLC}bash proof-run.sh --label y"
+hd "a quoted << then a real heredoc: the body is still data" 0 "echo \"a <<EOF b\"${NLC}cat <<EOT${NLC}bash proof-run.sh body${NLC}EOT"
+hd "a real heredoc after an arithmetic shift: the body is still data" 0 "x=\$((y<<2))${NLC}cat <<EOT${NLC}bash proof-run.sh body${NLC}EOT"
+hd "a real heredoc, then a run (regression)" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
+
+echo "v0.23.0 AC7.3 names_failure: 'but' followed by skipped, pending or todo names no failure"
+e5_reply sk1 'None failed but 2 were skipped.'; assert_eq "v23 AC7.3 'None failed but 2 were skipped.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply sk2 'Nothing failed but 3 pending.'; assert_eq "v23 AC7.3 'Nothing failed but 3 pending.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply sk3 'No tests failed but one was skipped.'; assert_eq "v23 AC7.3 'No tests failed but one was skipped.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply sk4 'None failed, but 1 todo.'; assert_eq "v23 AC7.3 'None failed, but 1 todo.': no failure named, FAIL" "FAIL" "$STATE"
+e5_reply nm1 'none failed but test_x'; assert_eq "v23 AC7.3 'none failed but test_x': a failure named, PASS" "PASS" "$STATE"
+e5_reply nm2 'no tests failed but one'; assert_eq "v23 AC7.3 'no tests failed but one': a failure named, PASS" "PASS" "$STATE"
+e5_reply nm3 'No tests failed but the subtract test.'; assert_eq "v23 AC7.3 'No tests failed but the subtract test.': a failure named, PASS" "PASS" "$STATE"
+
+
+# ---- v0.23.0 review: deeply nested quotes and substitutions must not crash transcript.js ----
+# (4000 units is the reviewer's case; 20000 and 100000 are past the recursion limit of the first fix)
+for NEST in 4000 20000 100000; do
+  echo "v0.23.0 review: transcript.js survives $NEST nested '\"\$(' units"
+  node -e 'const s = ("\x27\"$(").repeat(+process.argv[1]); console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:s}}]}}))' "$NEST" > "$TR/deep.log"
+  run node "$PB_ROOT/evals/transcript.js" "$TR/deep.log"
+  assert_rc "v23 review [$NEST]: a deeply nested command: exit 0" 0
+  assert_not_contains "v23 review [$NEST]: no RangeError (stack overflow)" "$OUT" "RangeError"
+  assert_contains "v23 review [$NEST]: still prints json=1" "$OUT" "json=1"
+  assert_contains "v23 review [$NEST]: still prints ran_tests=" "$OUT" "ran_tests="
+  assert_contains "v23 review [$NEST]: still prints spec_first=" "$OUT" "spec_first="
+  assert_eq "v23 review [$NEST]: a nested non-run is ran_tests=0" "0" "$(printf '%s\n' "$OUT" | sed -n 's/^ran_tests=//p')"
+done
+
 t_summary

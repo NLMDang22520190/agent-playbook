@@ -50,15 +50,57 @@ run() { OUT="$("$@" 2>&1)"; RC=$?; }
 # run_in DIR CMD... -> same, executed in DIR (a subshell around `run` would lose OUT/RC)
 run_in() { local d="$1"; shift; OUT="$(cd "$d" && "$@" 2>&1)"; RC=$?; }
 
+# Temp dirs. At load time lib.sh fixes the base (TMPDIR without a trailing slash) and makes one list file
+# ($PB_TMPBASE/pblist.XXXXXX). mk_tmp appends every dir it makes to that file, so dirs made inside $(...) are recorded
+# too (a T_TMPS update there would be lost). t_cleanup removes only absolute entries directly under the base whose name
+# starts with pbtest. or pbguard. (from the list file or from T_TMPS), refuses empty entries, / and anything containing
+# .., then removes the list file. It runs on EXIT, and on INT/TERM (exit 130/143); running it twice is harmless.
+# t_squeeze PATH -> PATH with every run of / collapsed to one (a loop: ${x//\/\//\/} is wrong on bash 3.2); sets T_SQ
+t_squeeze() {
+  local x="$1" y=""
+  while [ -n "$x" ]; do
+    case "$x" in
+      //*) x="${x#/}" ;;
+      *) y="$y${x%"${x#?}"}"; x="${x#?}" ;;
+    esac
+  done
+  T_SQ="$y"
+}
+PB_TMPBASE="${TMPDIR:-/tmp}"
+case "$PB_TMPBASE" in /*) ;; ./*) PB_TMPBASE="$PWD/${PB_TMPBASE#./}" ;; *) PB_TMPBASE="$PWD/$PB_TMPBASE" ;; esac   # a relative TMPDIR is made absolute
+t_squeeze "$PB_TMPBASE"; PB_TMPBASE="${T_SQ%/}"   # macOS TMPDIR ends with "/": avoid "//" paths that differ from normalised ones
+PB_TMPLIST="$(mktemp "$PB_TMPBASE/pblist.XXXXXX")" || exit 3
 mk_tmp() {
-  local d base="${TMPDIR:-/tmp}"
-  base="${base%/}"   # macOS TMPDIR ends with "/": avoid "//" paths that differ from normalised ones
-  d="$(mktemp -d "$base/pbtest.XXXXXX")" || exit 3
+  local d
+  d="$(mktemp -d "$PB_TMPBASE/pbtest.XXXXXX")" || exit 3
   T_TMPS="$T_TMPS $d"
+  printf '%s\n' "$d" >> "$PB_TMPLIST"
   printf '%s\n' "$d"
 }
-t_cleanup() { local d; for d in $T_TMPS; do rm -rf "$d"; done; }
+# t_rm_ok ENTRY -> 0 only for an absolute path directly under the load-time base named pbtest.* or pbguard.*
+t_rm_ok() {
+  local e rest
+  t_squeeze "$1"; e="$T_SQ"
+  case "$e" in '' | / | *..* | *[*?[]*) return 1 ;; esac
+  case "$e" in "$PB_TMPBASE"/*) rest="${e#"$PB_TMPBASE"/}" ;; *) return 1 ;; esac
+  case "$rest" in '' | */*) return 1 ;; pbtest.* | pbguard.*) return 0 ;; esac
+  return 1
+}
+t_cleanup() {
+  local d line noglob=""
+  if [ -f "$PB_TMPLIST" ]; then
+    while IFS= read -r line; do if t_rm_ok "$line"; then rm -rf "$line"; fi; done < "$PB_TMPLIST"
+  fi
+  case "$-" in *f*) noglob=1 ;; esac
+  set -f   # a glob in T_TMPS must not expand into dirs the suite did not make
+  for d in $T_TMPS; do if t_rm_ok "$d"; then rm -rf "$d"; fi; done
+  [ -n "$noglob" ] || set +f
+  rm -f "$PB_TMPLIST"
+  return 0
+}
 trap t_cleanup EXIT
+trap 't_cleanup; exit 130' INT
+trap 't_cleanup; exit 143' TERM
 
 # mk_repo DIR -> git repo with src/app.js, tests/app.test.js, README.md committed
 mk_repo() {

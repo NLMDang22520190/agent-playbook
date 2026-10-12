@@ -38,9 +38,34 @@ jobs:
           echo "reused run: ${run:-none}"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
+  changes:
+    # Pull requests only: is the change limited to README.md and CHANGELOG.md (counts unchanged)?
+    # Any error means false, and the full run happens. Push events skip this job, which also means the full run.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Is this a docs-only change
+        id: docs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          d="$(bash tools/docs-only.sh "$BASE_SHA" "$HEAD_SHA")" || d=false
+          case "$d" in true) ;; *) d=false ;; esac
+          echo "docs_only: $d"
+          echo "docs_only=$d" >> "$GITHUB_OUTPUT"
+
   test:
     # A release tag points at a commit the push to main already tested: main-ci waits for that run instead.
-    needs: reuse
+    needs: [reuse, changes]
     if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
@@ -59,13 +84,34 @@ jobs:
           fetch-depth: 0
       - name: Versions
         run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
+      - name: Docs-only checks
+        # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
+        # found by grep, plus the content checks and the static checks. The full step below is skipped then.
+        if: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' }}
+        run: |
+          fail=0
+          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh) | sort -u)"
+          for t in $suites; do
+            echo "== $t"
+            bash "$t" || fail=1
+          done
+          echo "== evals/run-checks.sh"
+          bash evals/run-checks.sh || fail=1
+          exit "$fail"
       - name: Tests and static checks
-        run: bash tests/run-all.sh
+        if: ${{ !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
+        run: |
+          set -o pipefail
+          bash tests/run-all.sh 2>&1 | tee "$RUNNER_TEMP/run-all.log"
+      - name: README test count (Linux only)
+        # A PR that adds tests updates the README count with tools/readme-count.sh; a stale count fails here.
+        if: ${{ matrix.os == 'ubuntu-latest' && !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
+        run: bash tools/readme-count.sh --check "$RUNNER_TEMP/run-all.log"
 
   windows-shard:
     # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in three.
     name: windows shard ${{ matrix.shard }}
-    needs: reuse
+    needs: [reuse, changes]
     if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
@@ -84,7 +130,22 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Docs-only checks
+        # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
+        # found by grep, plus the content checks and the static checks. The full step below is skipped then.
+        if: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' }}
+        run: |
+          fail=0
+          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh) | sort -u)"
+          for t in $suites; do
+            echo "== $t"
+            bash "$t" || fail=1
+          done
+          echo "== evals/run-checks.sh"
+          bash evals/run-checks.sh || fail=1
+          exit "$fail"
       - name: Tests and static checks (shard)
+        if: ${{ !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
         run: bash tests/run-all.sh
 
   windows:

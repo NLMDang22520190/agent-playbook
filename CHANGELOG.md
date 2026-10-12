@@ -14,6 +14,28 @@
   script fails closed (exit 2), so update the script and the hook together.
 - **`run-evals.sh --max-cost`** accepts `.5` and `.75`; `.`, `0.`, `5.` stay rejected.
 
+## 0.23.0 - 2026-10-12
+- **Real evals of v0.22 (eval guard, 3 USD cap)** found two problems, both fixed here: E15 - a message-only fix chose
+  Full because the module is sensitive and then stopped to ask in a non-interactive run (now: user-visible message or
+  comment text is Lite when it is not parsed, matched or sent as data, and a failed or interrupted sub-agent in a
+  non-interactive run means continue at Lite and report, never ask); E3 - the grader missed "added no test" wording.
+- **README test count is checked in the PR**: the ubuntu job tees run-all and runs `tools/readme-count.sh --check` on
+  full runs. A PR that adds tests updates the README count with tools/readme-count.sh LOG (no more count-only PRs)
+- **Docs-only fast path**: `tools/docs-only.sh` (rename-proof, glob-safe, regular blobs only, README count lines
+  unchanged) lets a README/CHANGELOG-only PR run only the suites that read them; the required jobs always report, and
+  a reduced run is never reused for main (ci-tree-tested requires the full test step in all five suite jobs).
+- **bash 3.2 parity on the machine**: `tools/get-bash32.sh` builds GNU bash 3.2.57 (pinned sha256
+  3fa9daf85ebf35068f090ce51283ddeeb3c75eb5bc70b1a4a7cb05868bfe06a4, derived by verifying the GNU .sig with the GNU
+  keyring - Chet Ramey's key 7C01 35FB 088A AF6C 66C6 50B9 BB58 69F0 64EA 74AB; a real build needs yacc or bison);
+  `tools/bsd-check.sh` runs suites under bash 3.2 and one-true-awk (the macOS pair). Six suites ran clean under it.
+- **run-checks**: refuses the 001 byte in any common spelling (bash 3.2 cannot split on it), more GNU-only long
+  options and flag forms, quote-aware comments; a permanent guard that every tracked script keeps its exec bit.
+- **tests/lib.sh** removes every temp dir it makes (also on INT/TERM), never anything else.
+- Graders: quoted args inside substitutions, `<<` inside quotes or arithmetic, "but ... skipped", iterative and
+  depth-safe shell parsing.
+- Built at Full weight in two parallel lanes (separate worktrees and gates, merged before release), each with a spec
+  review and an Opus review; a reviewer found that a docs-only run could have been reused as a full test - closed.
+
 ## 0.22.4 - 2026-10-12
 - **`scripts/mutate.sh`**: mutation testing on the lines a branch changed (`--base REF --test CMD`), whole-token
   operator flips, one mutant per line and operator; it runs only in a throwaway worktree (never the user's tree,

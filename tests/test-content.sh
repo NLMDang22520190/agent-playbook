@@ -820,4 +820,113 @@ assert_contains 'v22.3 review Low-4 the reuse step has a numeric-only guard' "$R
 GUARD_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 -F '[!0-9]' | cut -d: -f1)"
 OUT_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 'GITHUB_OUTPUT' | cut -d: -f1)"
 if [ -n "$GUARD_LN" ] && [ -n "$OUT_LN" ] && [ "$GUARD_LN" -lt "$OUT_LN" ]; then t_ok 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT'; else t_bad 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT' "guard line [$GUARD_LN] output line [$OUT_LN]"; fi
+
+# --- v0.23.0 AC2: the README test count is checked in the PR (static checks of the workflow)
+# wf_step ID NAME -> the lines of that step ("      - name: NAME" up to the next step) of the job
+wf_step() { wf_block "$1" | awk -v n="      - name: $2" '$0 == n { f = 1; print; next } f && /^      - / { exit } f { print }'; }
+# step_if TEXT -> the step-level if: line ("" when none)
+step_if() { printf '%s\n' "$1" | grep -m1 '^        if:'; }
+REDUCED_COND="needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
+
+echo "v23.0 AC2 workflow: the ubuntu job counts the README tests"
+FULLSTEP="$(wf_step "${MAIN:-__none__}" 'Tests and static checks')"
+if [ -n "$FULLSTEP" ]; then t_ok 'v23.0 AC5.2 the test job keeps a step named exactly "Tests and static checks"'; else t_bad 'v23.0 AC5.2 the test job keeps a step named exactly "Tests and static checks"' "block: $MB"; fi
+RUNALL_LINES="$(printf '%s\n' "$MB" | grep 'run-all\.sh')"
+TEE_LINE="$(printf '%s\n' "$RUNALL_LINES" | grep -m1 'tee')"
+if [ -n "$TEE_LINE" ]; then t_ok 'v23.0 AC2.1 the test job tees the run-all output to a log'; else t_bad 'v23.0 AC2.1 the test job tees the run-all output to a log' "run-all lines: $RUNALL_LINES"; fi
+case "$MB" in *pipefail*|*PIPESTATUS*) t_ok 'v23.0 AC2.1 the test job keeps the exit code of run-all (pipefail or PIPESTATUS)' ;; *) t_bad 'v23.0 AC2.1 the test job keeps the exit code of run-all (pipefail or PIPESTATUS)' "no pipefail or PIPESTATUS in the block" ;; esac
+case "$RUNALL_LINES" in *'|| true'*) t_bad 'v23.0 AC2.1 the run-all line never ends in || true' "lines: $RUNALL_LINES" ;; *) t_ok 'v23.0 AC2.1 the run-all line never ends in || true' ;; esac
+CHECK_LINE="$(printf '%s\n' "$MB" | grep -m1 'readme-count\.sh --check')"
+if printf '%s\n' "$CHECK_LINE" | grep -Eq 'readme-count\.sh --check[[:space:]]+[^[:space:]]+'; then t_ok 'v23.0 AC2.1 the test job runs tools/readme-count.sh --check with a log argument'; else t_bad 'v23.0 AC2.1 the test job runs tools/readme-count.sh --check with a log argument' "check line: [$CHECK_LINE]"; fi
+TEE_LOG="$(printf '%s\n' "$TEE_LINE" | sed 's/.*tee[[:space:]]*//; s/^-a[[:space:]]*//; s/[[:space:]].*//; s/"//g')"
+if [ -n "$TEE_LOG" ]; then case "$CHECK_LINE" in *"$TEE_LOG"*) t_ok 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' ;; *) t_bad 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' "tee log [$TEE_LOG] check line [$CHECK_LINE]" ;; esac; else t_bad 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' "no tee log found"; fi
+TEE_LN="$(printf '%s\n' "$MB" | grep -n -m1 'run-all\.sh.*tee' | cut -d: -f1)"
+CHECK_LN="$(printf '%s\n' "$MB" | grep -n -m1 'readme-count\.sh --check' | cut -d: -f1)"
+if [ -n "$TEE_LN" ] && [ -n "$CHECK_LN" ] && [ "$TEE_LN" -lt "$CHECK_LN" ]; then t_ok 'v23.0 AC2.1 the count check comes after the run-all line'; else t_bad 'v23.0 AC2.1 the count check comes after the run-all line' "tee line [$TEE_LN] check line [$CHECK_LN]"; fi
+# the step that holds the check: only ubuntu, never macOS, and only on a full run
+CHECK_STEP="$(printf '%s\n' "$MB" | awk '/^      - / { if (buf ~ /readme-count\.sh --check/) { printf "%s", buf; exit } buf = "" } { buf = buf $0 "\n" } END { if (buf ~ /readme-count\.sh --check/) printf "%s", buf }')"
+case "$CHECK_STEP" in *ubuntu-latest*|*Linux*) t_ok 'v23.0 AC2.1 the count check is limited to ubuntu (the macOS job does not run it)' ;; *) t_bad 'v23.0 AC2.1 the count check is limited to ubuntu (the macOS job does not run it)' "step: $CHECK_STEP" ;; esac
+case "$CHECK_STEP" in *docs_only*|*"name: Tests and static checks"*) t_ok 'v23.0 AC2.1 the count check runs on full runs only (docs_only gate or inside the full step)' ;; *) t_bad 'v23.0 AC2.1 the count check runs on full runs only (docs_only gate or inside the full step)' "step: $CHECK_STEP" ;; esac
+assert_not_contains 'v23.0 AC2.1 the Windows shard job does not run the count check' "$SB" 'readme-count'
+assert_not_contains 'v23.0 AC2.1 the aggregator does not run the count check' "$AB" 'readme-count'
+
+echo "v23.0 AC2.2 README or CHANGELOG: a PR that adds tests updates the README count"
+CHLOG="$PB_ROOT/CHANGELOG.md"
+COUNT_RULE='(PR|pull request)[^.]{0,80}(add|adds|adding|added)[^.]{0,60}tests?[^.]{0,160}(README|readme-count)|(README|readme-count)[^.]{0,120}(PR|pull request)[^.]{0,80}(add|adds|adding|added)[^.]{0,60}tests?'
+if flat "$README" | grep -qiE -- "$COUNT_RULE" || flat "$CHLOG" | grep -qiE -- "$COUNT_RULE"; then t_ok 'v23.0 AC2.2 README or CHANGELOG says a PR that adds tests updates the README count'; else t_bad 'v23.0 AC2.2 README or CHANGELOG says a PR that adds tests updates the README count' "pattern [$COUNT_RULE] in neither file"; fi
+if flat "$README" | grep -qiE -- 'readme-count|tools/readme-count' || flat "$CHLOG" | grep -qiE -- 'readme-count\.sh[^.]{0,120}(PR|CI|check)'; then t_ok 'v23.0 AC2.2 the rule names tools/readme-count.sh'; else t_bad 'v23.0 AC2.2 the rule names tools/readme-count.sh' 'neither file ties readme-count.sh to the PR check'; fi
+
+# --- v0.23.0 AC5.1: the changes job (docs-only detection)
+echo "v23.0 AC5.1 workflow: the changes job"
+if wf_jobs | grep -qxF changes; then t_ok 'v23.0 AC5.1 a job changes exists'; else t_bad 'v23.0 AC5.1 a job changes exists' "jobs: $(wf_jobs | tr '\n' ' ')"; fi
+CHB="$(wf_block changes)"
+CHIF="$(wf_if changes)"
+assert_contains "v23.0 AC5.1 the changes if: tests the event" "$CHIF" "github.event_name == 'pull_request'"
+assert_eq 'v23.0 AC5.1 changes has timeout-minutes 5' "5" "$(wf_timeout changes)"
+if printf '%s\n' "$CHB" | grep -Eq '^      contents:[[:space:]]*read[[:space:]]*$'; then t_ok 'v23.0 AC5.1 changes has contents: read'; else t_bad 'v23.0 AC5.1 changes has contents: read' "block: $CHB"; fi
+if printf '%s' "$CHB" | grep -Eq '^      [a-z-]+:[[:space:]]*write'; then t_bad 'v23.0 AC5.1 changes has no write permission' "block: $CHB"; else t_ok 'v23.0 AC5.1 changes has no write permission'; fi
+assert_contains 'v23.0 AC5.1 changes checks out with fetch-depth: 0' "$CHB" 'fetch-depth: 0'
+if printf '%s\n' "$CHB" | grep -Eq '^    outputs:' && printf '%s\n' "$CHB" | grep -Eq '^      docs_only:[[:space:]]*\$\{\{'; then t_ok 'v23.0 AC5.1 changes outputs docs_only'; else t_bad 'v23.0 AC5.1 changes outputs docs_only' "block: $CHB"; fi
+assert_contains 'v23.0 AC5.1 changes writes docs_only to GITHUB_OUTPUT' "$CHB" 'docs_only='
+assert_contains 'v23.0 AC5.1 changes uses the base sha of the event' "$CHB" 'pull_request.base.sha'
+assert_contains 'v23.0 AC5.1 changes uses the head sha of the event' "$CHB" 'pull_request.head.sha'
+assert_contains 'v23.0 AC5.1 changes runs tools/docs-only.sh' "$CHB" 'tools/docs-only.sh'
+assert_not_contains 'v23.0 AC5.1 the changes block never names macos-latest' "$CHB" 'macos-latest'
+assert_not_contains 'v23.0 AC5.1 the changes block never names PB_SHARD' "$CHB" 'PB_SHARD'
+assert_not_contains 'v23.0 AC5.1 the changes block never names windows-latest' "$CHB" 'windows-latest'
+assert_not_contains 'v23.0 AC5.1 changes does not run the suites' "$CHB" 'tests/run-all.sh'
+DOCSONLY="$PB_ROOT/tools/docs-only.sh"
+assert_file 'v23.0 AC5.1 tools/docs-only.sh exists' "$DOCSONLY"
+DOTXT="$(cat "$DOCSONLY" 2>/dev/null)"
+assert_contains 'v23.0 AC5.1 docs-only.sh lists the changed paths with git diff --name-only' "$DOTXT" 'git diff --name-only'
+assert_contains 'v23.0 AC5.1 docs-only.sh turns rename detection off (--no-renames)' "$DOTXT" '--no-renames'
+assert_eq 'v23.0 AC5.1 MAIN detection still finds the test job (not changes)' "test" "$MAIN"
+assert_eq 'v23.0 AC5.1 SHARD detection still finds windows-shard (not changes)' "windows-shard" "$SHARD"
+
+# --- v0.23.0 AC5.2: the required jobs are never skipped; the run step has a reduced path
+echo "v23.0 AC5.2 workflow: needs changes, same if:, reduced step"
+for id in test windows-shard; do
+  assert_contains "v23.0 AC5.2 job $id needs reuse (still)" "$(wf_needs "$id")" "reuse"
+  assert_contains "v23.0 AC5.2 job $id needs changes" "$(wf_needs "$id")" "changes"
+  assert_eq "v23.0 AC5.2 job $id keeps the exact one-line if:" "    $NOREUSE_IF" "$(wf_if "$id")"
+done
+assert_not_contains 'v23.0 AC5.2 the aggregator does not need changes (it only reads the shard result)' "$(wf_needs "$AGG")" 'changes'
+case "$(wf_needs "$AGG")" in *"[windows-shard, reuse]"*) t_ok 'v23.0 AC5.2 the aggregator keeps needs: [windows-shard, reuse]' ;; *) t_bad 'v23.0 AC5.2 the aggregator keeps needs: [windows-shard, reuse]' "needs: $(wf_needs "$AGG")" ;; esac
+for id in test windows-shard; do
+  if [ "$id" = test ]; then FULLN='Tests and static checks'; else FULLN='Tests and static checks (shard)'; fi
+  FS="$(wf_step "$id" "$FULLN")"
+  DS="$(wf_step "$id" 'Docs-only checks')"
+  if [ -n "$FS" ]; then t_ok "v23.0 AC5.2 job $id keeps the full step named [$FULLN]"; else t_bad "v23.0 AC5.2 job $id keeps the full step named [$FULLN]" "block: $(wf_block "$id")"; fi
+  if [ -n "$DS" ]; then t_ok "v23.0 AC5.2 job $id has a step named [Docs-only checks]"; else t_bad "v23.0 AC5.2 job $id has a step named [Docs-only checks]" "block: $(wf_block "$id")"; fi
+  assert_contains "v23.0 AC5.2 job $id: the reduced step runs only when changes succeeded and docs_only is true" "$(step_if "$DS")" "$REDUCED_COND"
+  assert_contains "v23.0 AC5.2 job $id: the full step runs unless that condition holds (negated)" "$(step_if "$FS")" "!($REDUCED_COND)"
+  assert_contains "v23.0 AC5.2 job $id: the full step still runs tests/run-all.sh" "$FS" 'tests/run-all.sh'
+  assert_not_contains "v23.0 AC5.2 job $id: the reduced step does not run the count check" "$DS" 'readme-count'
+  assert_contains "v23.0 AC5.2 job $id: the reduced suites are found by grep at run time" "$DS" 'grep'
+  assert_contains "v23.0 AC5.2 job $id: the reduced set reads PB_ROOT/README.md" "$DS" 'PB_ROOT/README.md'
+  assert_contains "v23.0 AC5.2 job $id: the reduced set reads PB_ROOT/CHANGELOG.md" "$DS" 'PB_ROOT/CHANGELOG.md'
+  assert_contains "v23.0 AC5.2 job $id: the reduced set adds tests/test-content.sh" "$DS" 'test-content.sh'
+  assert_contains "v23.0 AC5.2 job $id: the reduced set adds evals/run-checks.sh" "$DS" 'run-checks.sh'
+done
+assert_not_contains 'v23.0 AC5.2 the Windows reduced step does not skip suites by shard (every shard runs the whole set)' "$(wf_step windows-shard 'Docs-only checks')" 'PB_SHARD'
+
+# --- v0.23.0 review: the shas reach the changes job through env:, never interpolated into the script text
+echo "v23.0 review: changes passes the shas through env:"
+PRREF_LINES="$(printf '%s\n' "$CHB" | grep 'github\.event\.pull_request')"
+PRREF_N="$(printf '%s\n' "$PRREF_LINES" | grep -c 'github\.event\.pull_request')"
+if [ "$PRREF_N" -ge 2 ]; then t_ok 'v23.0 review changes reads the base and the head sha from the event (>= 2 references)'; else t_bad 'v23.0 review changes reads the base and the head sha from the event (>= 2 references)' "lines: $PRREF_LINES"; fi
+BAD_REF="$(printf '%s\n' "$PRREF_LINES" | grep -v -E '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*\$\{\{[[:space:]]*github\.event\.pull_request\.(base|head)\.sha[[:space:]]*\}\}[[:space:]]*$')"
+assert_eq 'v23.0 review every pull_request reference in changes is an env mapping (NAME: ${{ ... }})' "" "$BAD_REF"
+CH_RUN="$(printf '%s\n' "$CHB" | awk '/^        run:/ { f = 1 } f { print }')"
+assert_not_contains 'v23.0 review the run: text of changes has no ${{ github.event.pull_request' "$CH_RUN" '${{ github.event.pull_request'
+assert_not_contains 'v23.0 review the run: text of changes has no ${{ github.event at all' "$CH_RUN" '${{ github.event'
+if printf '%s\n' "$CHB" | grep -Eq '^        env:'; then t_ok 'v23.0 review the docs step of changes has an env: block'; else t_bad 'v23.0 review the docs step of changes has an env: block' "block: $CHB"; fi
+# the env names are used in the script as quoted shell variables
+ENVNAMES="$(printf '%s\n' "$PRREF_LINES" | grep -E '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*\$\{\{' | sed 's/^[[:space:]]*//; s/:.*//')"
+for nm in $ENVNAMES; do
+  case "$CH_RUN" in *"\$$nm"*|*"\${$nm}"*) t_ok "v23.0 review changes uses \$$nm in its script" ;; *) t_bad "v23.0 review changes uses \$$nm in its script" "run text: $CH_RUN" ;; esac
+done
+
+# --- v0.23.0 review: the README does not oversell the reduced path
+if flat "$README" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review README does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review README does not say the reduced checks run in "every required job"'; fi
 t_summary
