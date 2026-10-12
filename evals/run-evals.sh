@@ -30,7 +30,8 @@ EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21"
 
 usage() {
-  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2
+  # the whole header comment, up to (not including) the "# Every graded" line
+  sed -n '2,$p' "$0" | sed '/^# Every graded/,$d' | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -498,6 +499,8 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   if [ -n "$herr" ]; then
     printf '%s ERROR harness: %s (see %s)\n' "$E" "$herr" "$LOG"
     ANY_ERROR=1
+    # a cost the transcript reported still counts towards spent and the estimate
+    if c="$(cost_of)"; then printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"; fi
     SUMMARY="$SUMMARY| $E | ERROR | - | - |
 "
     DETAILS="$DETAILS
