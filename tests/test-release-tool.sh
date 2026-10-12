@@ -335,4 +335,22 @@ run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "RV release: README 15 (summary 10 + the assertion line's 4 + 1) is wrong: refused, exit 1" 1
 assert_contains "RV release: the refusal names the real total 10" "$OUT" "suite ran 10"
 
+
+echo "v0.23.2 AC14 a README count that differs from the run is refused naming the expected and the found count"
+# Spec note (tester): no tool in this repo writes VERSION/CHANGELOG/README and commits; the README count is re-counted by
+# tools/release.sh after the suite run, on a clean tree equal to origin/main (i.e. after the last commit). These cases pin that
+# place. The only change asked of it: the refusal says "expected N" (the suite's passed + skipped) and "found M" (README).
+setup; set_readme '![tests](https://img.shields.io/badge/tests-9-1F9D63)
+'
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC14.1 README 9 vs the run's 11: refused, exit 1" 1
+if printf '%s\n' "$OUT" | grep -iE 'expected[^0-9]{0,20}11' | grep -iqE 'found[^0-9]{0,20}9([^0-9]|$)'; then t_ok "AC14.1 the refusal reads 'expected 11 ... found 9'"; else
+  if printf '%s\n' "$OUT" | grep -iE 'found[^0-9]{0,20}9([^0-9]|$)' | grep -iqE 'expected[^0-9]{0,20}11'; then t_ok "AC14.1 the refusal reads 'found 9 ... expected 11'"; else t_bad "AC14.1 the refusal names the expected (11) and the found (9) counts with those words" "$OUT"; fi
+fi
+assert_eq "AC14.1 the refusal creates no tag and pushes nothing" "" "$(tags_of "$C")$(origin_tags)"
+setup; set_readme "$README_OK"
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC14.1 README equals the run's count (11): it proceeds, exit 0" 0
+assert_not_contains "AC14.1 a matching count prints no 'expected ... found' refusal" "$OUT" "found 11"
+
 t_summary

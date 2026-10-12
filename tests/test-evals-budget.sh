@@ -42,15 +42,15 @@ assert_eq "AC5.1 baseline: three scenarios, three adapter runs" "3" "$(for e in 
 assert_eq "AC5.1 baseline: no SKIPPED line" "0" "$(printf '%s\n' "$OUT" | grep -c SKIPPED)"
 case "$BASE_RC" in 0|1) t_ok "AC5.1 baseline: exit is 0 or 1 (never 2 or 4)" ;; *) t_bad "AC5.1 baseline: exit is 0 or 1 (never 2 or 4)" "exit $BASE_RC: $OUT" ;; esac
 
-echo "AC5.1 --max-cost 1.0 with costs 0.6 + 0.6 + 0.6"
-go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost 1.0
+echo "AC5.1 --max-cost 1.3 with costs 0.6 + 0.6 + 0.6 (v0.23.2 AC13: was cap 1.0; with the estimate rule 0.6 + 0.6 >= 1.0 would skip E3)"
+go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost 1.3
 RC_BUD="$RC"
 if ran E1 && ran E3; then t_ok "AC5.1 the first two scenarios run (E1, E3)"; else t_bad "AC5.1 the first two scenarios run (E1, E3)" "$(ls "$REC")"; fi
 if ran E8; then t_bad "AC5.1 the third scenario (E8) is not run" "adapter ran for E8"; else t_ok "AC5.1 the third scenario (E8) is not run"; fi
 assert_eq "AC5.1 E1 has its COST line (0.6)" "1" "$(printf '%s\n' "$OUT" | grep -Ec '^E1 COST 0?\.60*$')"
 assert_eq "AC5.1 E3 has its COST line (0.6)" "1" "$(printf '%s\n' "$OUT" | grep -Ec '^E3 COST 0?\.60*$')"
 assert_eq "AC5.1 exactly one SKIPPED line" "1" "$(printf '%s\n' "$OUT" | grep -c ' SKIPPED ')"
-if printf '%s\n' "$OUT" | grep -Eq '^E8 SKIPPED budget reached \(spent 1\.20* of 1\.0\)$'; then t_ok "AC5.1 the line 'E8 SKIPPED budget reached (spent 1.2 of 1.0)'"; else t_bad "AC5.1 the line 'E8 SKIPPED budget reached (spent 1.2 of 1.0)'" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|budget')"; fi
+if printf '%s\n' "$OUT" | grep -E '^E8 SKIPPED ' | grep -Eq 'budget: spent 1\.20* \+ estimate 0?\.60* >= cap 1\.30*($|[^0-9.])'; then t_ok "AC13.1 the line 'E8 SKIPPED ... budget: spent 1.2 + estimate 0.6 >= cap 1.3'"; else t_bad "AC13.1 the line 'E8 SKIPPED ... budget: spent 1.2 + estimate 0.6 >= cap 1.3'" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|budget')"; fi
 assert_eq "AC5.1 E8 has no PASS/FAIL/MANUAL grader lines" "0" "$(printf '%s\n' "$OUT" | grep -Ec '^E8 (PASS|FAIL|MANUAL) ')"
 assert_file "AC5.1 the results file was written" "$WR/results.md"
 assert_eq "AC5.1 the summary row of E8 is '| E8 | SKIPPED | - | - |'" "| E8 | SKIPPED | - | - |" "$(row_of "$WR/results.md" E8)"
@@ -60,10 +60,10 @@ assert_not_contains "AC5.1 E3 is not marked SKIPPED in the results" "$(row_of "$
 case "$RC_BUD" in 0|1) t_ok "AC5.1 skipping does not make the exit 2 or 4" ;; *) t_bad "AC5.1 skipping does not make the exit 2 or 4" "exit $RC_BUD" ;; esac
 assert_eq "AC5.1 skipping does not change the exit code (same as the baseline run)" "$BASE_RC" "$RC_BUD"
 
-echo "AC5.1 the sum of known costs reaches USD exactly"
-go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost 1.2
-if ran E1 && ran E3 && ! ran E8; then t_ok "AC5.1 spent == USD (1.2 of 1.2) counts as reached: the third scenario is skipped"; else t_bad "AC5.1 spent == USD counts as reached" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
-assert_eq "AC5.1 ... with the SKIPPED line for E8" "1" "$(printf '%s\n' "$OUT" | grep -c '^E8 SKIPPED budget reached')"
+echo "AC5.1 the sum of spent + estimate reaches USD exactly (v0.23.2 AC13: was cap 1.2; now 1.8 = 1.2 spent + 0.6 estimate)"
+go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost 1.8
+if ran E1 && ran E3 && ! ran E8; then t_ok "AC13.1 spent + estimate == cap (1.2 + 0.6 vs 1.8) counts as reached: the third scenario is skipped"; else t_bad "AC13.1 spent + estimate == cap counts as reached" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+assert_eq "AC13.1 ... with the SKIPPED line for E8" "1" "$(printf '%s\n' "$OUT" | grep -c '^E8 SKIPPED ')"
 
 echo "AC5.1 a budget that is not reached runs everything"
 go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost 1.9
@@ -101,7 +101,7 @@ case \"\$P\" in
   *subtract*) echo '$INIT'; echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Weight: Lite.\"}' ;;
   *) echo '$INIT'; echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":0.6,\"result\":\"Weight: Lite.\"}' ;;
 esac"
-go --cmd "bash $A/mix.sh" --scenarios E1,E3,E8 --max-cost 1.0
+go --cmd "bash $A/mix.sh" --scenarios E1,E3,E8 --max-cost 1.3   # v0.23.2 AC13: was 1.0; E8 now needs spent 0.6 + estimate 0.6 < cap
 assert_eq "AC5.1 E1 (unknown) + E3 (0.6) + E8 (0.6): all three run, the sum is 1.2 only after E8" "3" "$(for e in E1 E3 E8; do ran $e && echo x; done | wc -l | tr -d ' ')"
 assert_eq "AC5.1 ... so nothing is skipped (unknown E1 added 0)" "0" "$(printf '%s\n' "$OUT" | grep -c SKIPPED)"
 assert_eq "AC5.1 the note names E1 (the unknown one)" "1" "$(printf '%s\n' "$OUT" | grep -cF 'note: cost unknown for E1; the budget counts known costs only')"
@@ -155,12 +155,86 @@ for v in .5 0.5; do
   assert_eq "AC11.2 --max-cost $v: a SKIPPED line for E8" "1" "$(printf '%s\n' "$OUT" | grep -c '^E8 SKIPPED budget reached')"
 done
 go --cmd "bash $A/c06.sh" --scenarios E1,E3 --max-cost .75
-if ran E1 && ran E3; then t_ok "AC11.2 --max-cost .75 is a budget of 0.75: 0.6 does not reach it, the second scenario runs"; else t_bad "AC11.2 --max-cost .75 is a budget of 0.75" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+# v0.23.2 AC13: 0.6 spent + 0.6 estimate >= 0.75, so E3 is skipped by the estimate rule; the line names cap 0.75 (not 75)
+if ran E1 && ! ran E3; then t_ok "AC11.2 --max-cost .75 is a budget of 0.75: 0.6 + estimate 0.6 reaches it, E3 is skipped"; else t_bad "AC11.2 --max-cost .75 is a budget of 0.75" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+if printf '%s\n' "$OUT" | grep -E '^E3 SKIPPED ' | grep -Eq 'cap 0?\.750*($|[^0-9.])'; then t_ok "AC11.2 the skip line says cap 0.75"; else t_bad "AC11.2 the skip line says cap 0.75" "$(printf '%s\n' "$OUT" | grep SKIPPED)"; fi
 for v in . 0. 5. 1.; do
   go --cmd "bash $A/c06.sh" --scenarios E1 --max-cost "$v"
   assert_rc "AC11.2 --max-cost [$v] exits 2" 2
   if ran E1; then t_bad "AC11.2 --max-cost [$v] runs no scenario" "adapter ran"; else t_ok "AC11.2 --max-cost [$v] runs no scenario"; fi
 done
+
+echo "v0.23.2 AC13 --max-cost stops before a scenario that would pass the cap (estimate = the largest cost seen so far)"
+# mk_pc NAME COST_E1 COST_E3 COST_OTHER -> an adapter whose reported cost depends on the scenario (E1 has "subtract" in
+# its prompt, E3 has "divide", every other scenario is "other"); an empty cost means the transcript reports none
+mk_pc() {
+  mk_adapter "$1" "$GOOD_BODY
+case \"\$P\" in
+  *subtract*) CST='$2' ;;
+  *divide*) CST='$3' ;;
+  *) CST='$4' ;;
+esac
+echo '$INIT'
+if [ -n \"\$CST\" ]; then
+  echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":'\"\$CST\"',\"result\":\"Weight: Lite.\"}'
+else
+  echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Weight: Lite.\"}'
+fi"
+}
+# skipline E KEY-REGEX -> 0 when "<E> SKIPPED ..." has a part matching KEY-REGEX
+skipline() { printf '%s\n' "$OUT" | grep -E "^$1 SKIPPED " | grep -Eq "$2"; }
+
+# AC13.1 + AC13.2 first example: 1.0, then 2.5 under cap 3
+mk_pc pc1 1.0 2.5 1.0
+go --cmd "bash $A/pc1.sh" --scenarios E1,E3,E8 --max-cost 3
+if ran E1; then t_ok "AC13.1 cap 3: E1 (cost 1.0) runs"; else t_bad "AC13.1 cap 3: E1 (cost 1.0) runs" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+if ran E3; then t_ok "AC13.1 cap 3: E3 runs (spent 1.0 + estimate 1.0 < 3)"; else t_bad "AC13.1 cap 3: E3 runs (spent 1.0 + estimate 1.0 < 3)" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|E3')"; fi
+if ran E8; then t_bad "AC13.2 cap 3: E8 is not run (spent 3.5 >= 3)" "adapter ran for E8"; else t_ok "AC13.2 cap 3: E8 is not run (spent 3.5 >= 3)"; fi
+assert_eq "AC13.2 cap 3: exactly one SKIPPED line (E8)" "1" "$(printf '%s\n' "$OUT" | grep -c ' SKIPPED ')"
+if skipline E8 '(spent 3\.50* of 3|budget: spent 3\.50* \+ estimate)'; then t_ok "AC13.2 the E8 skip line names the spent figure 3.5"; else t_bad "AC13.2 the E8 skip line names the spent figure 3.5" "$(printf '%s\n' "$OUT" | grep SKIPPED)"; fi
+
+# AC13.1 second example: 1.2 and 1.2 under cap 2.0 -> the second scenario is skipped before it runs
+mk_pc pc2 1.2 1.2 1.2
+go --cmd "bash $A/pc2.sh" --scenarios E1,E3 --max-cost 2.0
+if ran E1; then t_ok "AC13.1 cap 2.0: E1 (the first scenario) always runs"; else t_bad "AC13.1 cap 2.0: E1 (the first scenario) always runs" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+if ran E3; then t_bad "AC13.1 cap 2.0: E3 is not run (spent 1.2 + estimate 1.2 >= 2.0)" "adapter ran for E3"; else t_ok "AC13.1 cap 2.0: E3 is not run (spent 1.2 + estimate 1.2 >= 2.0)"; fi
+if skipline E3 'budget: spent 1\.20* \+ estimate 1\.20* >= cap 2(\.0*)?($|[^0-9.])'; then t_ok "AC13.1 the line 'E3 SKIPPED ... budget: spent 1.2 + estimate 1.2 >= cap 2'"; else t_bad "AC13.1 the line 'E3 SKIPPED ... budget: spent 1.2 + estimate 1.2 >= cap 2'" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|budget')"; fi
+assert_eq "AC13.1 the summary row of E3 is '| E3 | SKIPPED | - | - |'" "| E3 | SKIPPED | - | - |" "$(row_of "$WR/results.md" E3)"
+assert_not_contains "AC13.1 E1 is a normal row" "$(row_of "$WR/results.md" E1)" "SKIPPED"
+case "$RC" in 0|1) t_ok "AC13.1 the estimate skip does not change the exit code class (0 or 1)" ;; *) t_bad "AC13.1 the estimate skip does not change the exit code class (0 or 1)" "exit $RC" ;; esac
+SKIP_RC="$RC"
+go --cmd "bash $A/pc2.sh" --scenarios E1
+assert_eq "AC13.1 the exit code with a skip equals that of E1 run alone" "$RC" "$SKIP_RC"
+
+# the estimate is the LARGEST single cost, not the last or the average: 2.0 then 0.2, cap 4.1
+mk_pc pc3 2.0 0.2 0.3
+go --cmd "bash $A/pc3.sh" --scenarios E1,E3,E8 --max-cost 4.1
+if ran E1 && ran E3; then t_ok "AC13.1 largest estimate: E1 (2.0) and E3 (2.0 + 2.0 < 4.1) run"; else t_bad "AC13.1 largest estimate: E1 and E3 run" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+if ran E8; then t_bad "AC13.1 largest estimate: E8 is skipped (spent 2.2 + largest 2.0 >= 4.1; the last cost 0.2 would let it run)" "adapter ran for E8"; else t_ok "AC13.1 largest estimate: E8 is skipped (spent 2.2 + largest 2.0 >= 4.1)"; fi
+if skipline E8 'estimate 20*(\.0*)? >= cap 4\.10*($|[^0-9.])'; then t_ok "AC13.1 the E8 line names estimate 2 (the largest seen)"; else t_bad "AC13.1 the E8 line names estimate 2 (the largest seen)" "$(printf '%s\n' "$OUT" | grep SKIPPED)"; fi
+
+# a scenario with no reported cost does not change the estimate (nor the spent sum)
+mk_pc pc4 "" 1.0 0.5
+go --cmd "bash $A/pc4.sh" --scenarios E1,E3,E8 --max-cost 2.5
+assert_eq "AC13.2 unknown cost first, then 1.0, then 0.5 under cap 2.5: all three run" "3" "$(for e in E1 E3 E8; do ran $e && echo x; done | wc -l | tr -d ' ')"
+assert_eq "AC13.2 ... nothing is SKIPPED" "0" "$(printf '%s\n' "$OUT" | grep -c SKIPPED)"
+mk_pc pc6 1.0 "" 0.5
+go --cmd "bash $A/pc6.sh" --scenarios E1,E3,E8 --max-cost 2.2
+if ran E1 && ran E3 && ran E8; then t_ok "AC13.2 1.0, unknown, then E8 under cap 2.2: the unknown scenario added nothing (spent 1.0 + estimate 1.0 < 2.2): all run"; else t_bad "AC13.2 the unknown scenario adds nothing to spent or estimate" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+
+# the first scenario is never skipped by the estimate (there is none yet)
+go --cmd "bash $A/c15.sh" --scenarios E1 --max-cost 0.1
+if ran E1; then t_ok "AC13.3 with no earlier cost the first scenario runs even when it will pass a tiny cap"; else t_bad "AC13.3 the first scenario runs" "not run"; fi
+
+echo "v0.23.2 AC13.3 usage text: the cap is a guard, the first scenario can pass it"
+go --cmd "bash $A/c06.sh" --scenarios E1 --help
+HLP="$OUT"
+assert_contains "AC13.3 --help mentions --max-cost" "$HLP" "--max-cost"
+assert_contains "AC13.3 --help says the cap is a guard" "$HLP" "guard"
+if printf '%s\n' "$HLP" | grep -iE 'first scenario' | grep -qi 'pass'; then t_ok "AC13.3 --help says the first scenario can pass the cap"; else t_bad "AC13.3 --help says the first scenario can pass the cap" "$HLP"; fi
+HDR2="$(sed -n '1,30p' "$RUNNER")"
+assert_contains "AC13.3 the header comment says the cap is a guard" "$HDR2" "guard"
+assert_contains "AC13.3 the header comment names the estimate" "$HDR2" "estimate"
 
 echo "AC5.1 usage text"
 go --cmd "bash $A/c06.sh" --scenarios E1 --bogus
