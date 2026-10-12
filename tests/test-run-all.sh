@@ -324,6 +324,21 @@ guarded 60 env -u PB_SHARD PB_JOBS=2 bash "$D/tests/run-all.sh"
 assert_eq "AC1.2 no PB_SHARD with a weights file: all suites run" "a b c d e " "$(ran_suites)"
 
 
+echo "v0.23.3 four Windows shards: PB_SHARD=k/4 with the repo's tests/shard-weights partitions every suite exactly once"
+# stub suites carry the real suite names (hyphens become underscores: the stubs use the name in variable names)
+# and the repo's weights file (same renaming) decides the split
+REAL="$(ls "$PB_ROOT"/tests/test-*.sh | sed 's#^.*/test-##; s#\.sh$##; s/-/_/g' | tr '\n' ' ' | sed 's/ $//')"
+RW="$(grep -v '^#' "$PB_ROOT/tests/shard-weights" | sed 's/-/_/g; s/^test_/test-/' | awk '{ printf "%s\n", $0 }')"
+ALL=""
+for k in 1 2 3 4; do
+  wshard_run "$k/4" "$REAL" "$RW"
+  assert_rc "v0.23.3 real weights, shard $k/4 exits 0" 0
+  r="$(ran_suites)"
+  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/4 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/4 runs at least one suite" "ran nothing"; fi
+  ALL="$ALL$r"
+done
+assert_eq "v0.23.3 real weights: the 4 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+
 echo "v0.21.0 AC8.1 run-all names a likely environment failure when most FAIL assertions got nothing"
 # mk_fake_suite FILE EMPTY OTHER -> a suite that prints EMPTY assertions failing with an empty actual value and
 # OTHER failing with a real one, in the format of lib.sh t_bad, then exits 1

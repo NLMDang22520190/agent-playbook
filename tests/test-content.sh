@@ -272,9 +272,13 @@ assert_eq "v14 AC8.2 exactly one job has the name: exactly 'test (windows-latest
 if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD ($SHARD)"; else t_bad "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD" "aggregator [$AGG]; jobs: $(wf_jobs | tr '\n' ' ')"; fi
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
-assert_contains "v14 AC8.2 the shard matrix has 1/3" "$SB" "1/3"
-assert_contains "v14 AC8.2 the shard matrix has 2/3" "$SB" "2/3"
-assert_contains "v14 AC8.2 the shard matrix has 3/3" "$SB" "3/3"
+assert_contains "v0.23.3 the shard matrix is exactly 1/4, 2/4, 3/4, 4/4" "$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')" "shard: ['1/4', '2/4', '3/4', '4/4']"
+assert_contains "v0.23.3 the shard matrix has 1/4" "$SB" "1/4"
+assert_contains "v0.23.3 the shard matrix has 2/4" "$SB" "2/4"
+assert_contains "v0.23.3 the shard matrix has 3/4" "$SB" "3/4"
+assert_contains "v0.23.3 the shard matrix has 4/4" "$SB" "4/4"
+assert_not_contains "v0.23.3 the shard matrix has no 3/3 left" "$SB" "3/3"
+assert_not_contains "v0.23.3 no matrix entry ending in /3' is left" "$SB" "/3'"
 if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
 assert_contains "v14 AC8.2 the shard job still runs tests/run-all.sh" "$SB" "tests/run-all.sh"
 assert_contains "v14 AC8.2 a failing shard does not cancel the others (fail-fast: false)" "$SB" "fail-fast: false"

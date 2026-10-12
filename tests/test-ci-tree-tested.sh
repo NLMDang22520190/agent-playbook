@@ -35,7 +35,7 @@ chmod +x "$BIN/gh"
 R="own/repo"
 h40() { printf '%040d' "$1"; }          # 40 digits are a valid hex sha
 SHA="$(h40 1)"; PAR="$(h40 2)"; HEAD="$(h40 3)"; TREE="$(h40 4)"
-NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "windows shard 1/3" "windows shard 2/3" "windows shard 3/3")
+NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "windows shard 1/4" "windows shard 2/4" "windows shard 3/4" "windows shard 4/4")
 
 # put KEYPATH JSON -> the response of `gh api <KEYPATH>` (query string left out; runs also by head sha: use put_runs)
 put() { printf '%s\n' "$2" | tr -d '\r' > "$DATA/$(printf '%s' "$1" | tr '/' '_')"; }
@@ -52,7 +52,7 @@ run_json() { # ID HEADSHA [CONCLUSION] [LISTED-BASEREF]  (pull_requests[] is emp
   printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":%s}' "$1" "$2" "${3:-success}" "$prs"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
-jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all six success) | skipped|failure|cancelled NAME | missing NAME
+jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all seven success) | skipped|failure|cancelled NAME | missing NAME
   # | steps NAME STEPKIND: the jobs are all success; NAME's step list is changed (v0.23.0 AC5.3):
   #   docsonly (only a Docs-only checks step), both (full step skipped + Docs-only success), fullskipped (full step skipped, no other),
   #   fullfailed (full step failure), fullmissing (setup steps only), nosteps (no steps field), fullcancelled, fullnotdone
@@ -74,7 +74,7 @@ jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all six success) | skipped|failur
 }
 # step_one NAME CONCLUSION NUMBER [STATUS]
 step_one() { printf '{"name":"%s","status":"%s","conclusion":"%s","number":%s}' "$1" "${4:-completed}" "$2" "$3"; }
-# steps_json JOBNAME KIND -> ,"steps":[...] for the five suite jobs (the aggregator has none), "" for others
+# steps_json JOBNAME KIND -> ,"steps":[...] for the six suite jobs (the aggregator has none), "" for others
 steps_json() {
   local n="$1" kind="$2" full='Tests and static checks' pre
   case "$n" in "test (windows-latest)") return 0 ;; "windows shard "*) full='Tests and static checks (shard)' ;; esac
@@ -168,7 +168,7 @@ world; put_runs "$HEAD" "$(runs_json 0 "")"
 tool "$SHA" --repo "$R"
 nothing "no candidate runs"
 
-echo "AC6.1 each of the six required jobs: skipped, missing or failed -> nothing"
+echo "AC6.1 each of the seven required jobs: skipped, missing or failed -> nothing"
 for n in "${NAMES[@]}"; do
   for mode in skipped missing failure cancelled; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json "$mode" "$n")"
@@ -180,9 +180,13 @@ world; put "repos/$R/actions/runs/111/jobs" '{"total_count":0,"jobs":[]}'
 tool "$SHA" --repo "$R"
 nothing "a run with no jobs"
 world
-put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed 's/"windows shard 3\/3"/"windows shard 3\/4"/')"
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed 's/"windows shard 4\/4"/"windows shard 4\/5"/')"
 tool "$SHA" --repo "$R"
-nothing "shard 3/3 missing (only a 3/4 shard)"
+nothing "shard 4/4 missing (only a 4/5 shard)"
+world
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/"windows shard 1\/4"/"windows shard 1\/3"/' -e 's/"windows shard 2\/4"/"windows shard 2\/3"/' -e 's/"windows shard 3\/4"/"windows shard 3\/3"/' -e 's/{"name":"windows shard 4\/4"[^]]*\]}/{"name":"unrelated","status":"completed","conclusion":"success"}/')"
+tool "$SHA" --repo "$R"
+nothing "only the old 1/3, 2/3, 3/3 shards (fail-closed)"
 
 echo "AC6.1 the trees must be equal"
 world; put "repos/$R/git/commits/$HEAD" "$(commit_json "$HEAD" "$(h40 99)" "$PAR")"
@@ -237,7 +241,7 @@ tool "$SHA" --repo "$R"; nothing "a compare answer without a status"
 echo "AC6.1 several candidate runs: the first passing run wins"
 world
 put_runs "$HEAD" "$(runs_json 3 "$(run_json 2001 "$HEAD"),$(run_json 2002 "$HEAD"),$(run_json 2003 "$HEAD")")"
-put "repos/$R/actions/runs/2001/jobs" "$(jobs_json failure 'windows shard 2/3')"
+put "repos/$R/actions/runs/2001/jobs" "$(jobs_json failure 'windows shard 2/4')"
 put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
 put "repos/$R/actions/runs/2003/jobs" "$(jobs_json ok)"
 tool "$SHA" --repo "$R"
@@ -296,7 +300,7 @@ runsworld() { # PASSING-RUN-ID -> twelve candidate runs 2001..2012; only that on
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
     rl="$rl$sep$(run_json $((2000 + i)) "$HEAD")"; sep=","
     if [ "$((2000 + i))" = "$1" ]; then put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json ok)"
-    else put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json skipped 'windows shard 1/3')"; fi
+    else put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json skipped 'windows shard 1/4')"; fi
   done
   put_runs "$HEAD" "$(runs_json 12 "$rl")"
 }
@@ -360,13 +364,13 @@ tool "$SHA" --repo "$R"
 assert_eq "AC6.1 a row with another head_sha is ignored, the next row is used" "2002" "$OUT"
 assert_eq "AC6.1 the ignored row's jobs were never read" "0" "$(logged "runs/2001/jobs")"
 
-echo "AC5.3 the full test step must have succeeded in each of the five suite jobs"
+echo "AC5.3 the full test step must have succeeded in each of the six suite jobs"
 world
 tool "$SHA" --repo "$R"
 assert_eq "AC5.3 the fixtures carry steps: a full run is still reused" "111" "$OUT"
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (full step of the ubuntu job)" "$(jobs_json ok)" '"name":"Tests and static checks"'
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (shard step)" "$(jobs_json ok)" '"name":"Tests and static checks (shard)"'
-SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/3" "windows shard 2/3" "windows shard 3/3")
+SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/4" "windows shard 2/4" "windows shard 3/4" "windows shard 4/4")
 for n in "${SUITES[@]}"; do
   for kind in docsonly both fullskipped fullfailed fullcancelled fullnotdone fullmissing nosteps; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps "$n" "$kind")"
@@ -385,11 +389,11 @@ assert_contains "AC5.3 the docs-only fixture really has Docs-only steps" "$dj" '
 assert_not_contains "AC5.3 the docs-only fixture has no full step left" "$dj" '"name":"Tests and static checks'
 put "repos/$R/actions/runs/111/jobs" "$dj"
 tool "$SHA" --repo "$R"
-nothing "a docs-only run (all five suite jobs reduced)"
+nothing "a docs-only run (all six suite jobs reduced)"
 echo "AC5.3 one shard reduced, the rest full -> nothing"
-world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/3' docsonly)"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/4' docsonly)"
 tool "$SHA" --repo "$R"
-nothing "only shard 2/3 reduced"
+nothing "only shard 2/4 reduced"
 echo "AC5.3 the aggregator (test (windows-latest)) needs only a success conclusion"
 world
 put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok)"
