@@ -973,6 +973,20 @@ $GOT_SET
 $HEAVY
 "
   done
+  # v0.24.1: test-leak-check.sh, test-ci-tree-tested.sh and test-role-gate.sh are split by section. tests/test-leak-check.sh is the one part that reads
+  # the README and the CHANGELOG, so it alone is in the reduced set; every other part (found by glob, a part added later is covered too) stays out
+  case "
+$GOT_SET
+" in *"
+tests/test-leak-check.sh
+"*) t_ok "v24.1 job $id: tests/test-leak-check.sh (it reads the README and the CHANGELOG) is in the reduced set" ;; *) t_bad "v24.1 job $id: tests/test-leak-check.sh (it reads the README and the CHANGELOG) is in the reduced set" "set: $GOT_SET" ;; esac
+  for HEAVY in $(cd "$PB_ROOT" && ls tests/test-leak-check-*.sh tests/test-ci-tree-tested*.sh tests/test-role-gate*.sh 2>/dev/null); do
+    assert_not_contains "v24.1 job $id: the suite $HEAVY stays out of the reduced set" "
+$GOT_SET
+" "
+$HEAVY
+"
+  done
 done
 # v0.23.3 AC1a / R5: the suites are split, no part reads the README or the CHANGELOG (the grep above would pull it into the reduced
 # set), every part is stored at mode 100755, and the shared fixture is a helper that run-all.sh does not start
@@ -1000,6 +1014,41 @@ if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   t_skip 1 "v23.3 R5 mode of the fixture helper needs a git checkout"
 fi
+# v0.24.1 shard balance: test-leak-check.sh (3 parts), test-ci-tree-tested.sh (2) and test-role-gate.sh (2) are split by section. Every part is stored at
+# mode 100755. Only tests/test-leak-check.sh reads the README and the CHANGELOG (AC10.3), so only it is pulled into the docs-only reduced set by the grep.
+set -- test-leak-check 3 test-ci-tree-tested 2 test-role-gate 2
+while [ $# -ge 2 ]; do
+  FAMILY="$1"; MINPARTS="$2"; shift 2
+  NPARTS="$(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$NPARTS" -ge "$MINPARTS" ]; then t_ok "v24.1 tests/$FAMILY.sh is split into $NPARTS suites (at least $MINPARTS)"; else t_bad "v24.1 tests/$FAMILY.sh is split into at least $MINPARTS suites" "found $NPARTS"; fi
+  for PART in $(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null); do
+    if [ "$PART" = tests/test-leak-check.sh ]; then
+      if grep -q 'PB_ROOT/README.md' "$PB_ROOT/$PART" && grep -q 'PB_ROOT/CHANGELOG.md' "$PB_ROOT/$PART"; then t_ok "v24.1 $PART keeps the README and CHANGELOG reads"; else t_bad "v24.1 $PART keeps the README and CHANGELOG reads" "a literal is missing"; fi
+    else
+      assert_eq "v24.1 $PART names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$PB_ROOT/$PART")"
+    fi
+    if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      assert_eq "v24.1 $PART is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- "$PART" | cut -d' ' -f1)"
+    else
+      t_skip 1 "v24.1 mode of $PART needs a git checkout"
+    fi
+  done
+done
+# the shared setup of the split suites lives in helpers that run-all.sh does not start
+for HNAME in leak-check-fixture ci-tree-fixture role-gate-fixture evals-e20-fixture; do
+  HELPER="$PB_ROOT/tests/$HNAME.sh"
+  assert_file "v24.1 the helper tests/$HNAME.sh exists" "$HELPER"
+  case "$(basename "$HELPER")" in test-*.sh) t_bad "v24.1 the helper $HNAME.sh is not named test-*.sh" "name: $(basename "$HELPER")" ;; *) t_ok "v24.1 the helper $HNAME.sh is not named test-*.sh" ;; esac
+  FIRSTL=""; IFS= read -r FIRSTL < "$HELPER" 2>/dev/null
+  case "$FIRSTL" in "#!"*) t_ok "v24.1 the helper $HNAME.sh has a #! line" ;; *) t_bad "v24.1 the helper $HNAME.sh has a #! line" "first line: $FIRSTL" ;; esac
+  if bash -n "$HELPER" 2>/dev/null; then t_ok "v24.1 the helper $HNAME.sh passes bash -n"; else t_bad "v24.1 the helper $HNAME.sh passes bash -n"; fi
+  assert_eq "v24.1 the helper $HNAME.sh names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$HELPER" 2>/dev/null)"
+  if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    assert_eq "v24.1 the helper $HNAME.sh is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- "tests/$HNAME.sh" | cut -d' ' -f1)"
+  else
+    t_skip 1 "v24.1 mode of the helper $HNAME.sh needs a git checkout"
+  fi
+done
 assert_file "v23.2 AC8.1 E1 tests/test-docs-rules.sh exists" "$PB_ROOT/tests/test-docs-rules.sh"
 if [ -f "$PB_ROOT/tests/test-docs-rules.sh" ]; then
   if grep -q 'PB_ROOT/README.md' "$PB_ROOT/tests/test-docs-rules.sh"; then t_ok 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)'; else t_bad 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)' 'the literal is missing'; fi
