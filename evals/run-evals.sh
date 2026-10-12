@@ -189,14 +189,14 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na
+  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_models=
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
       result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
-      spec_first) T_spec_first="$v" ;;
+      spec_first) T_spec_first="$v" ;; models) T_models="$v" ;;
     esac
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
@@ -211,9 +211,9 @@ grade_E1() {
   check "subtract(5,3) === 2" calc_js 'process.exit(require(process.argv[1]).subtract(5, 3) === 2 ? 0 : 1)'
   check "a file under tests/ mentions subtract" tests_mention subtract
   check "node --test tests/*.test.js passes" tests_pass
-  local r   # the final reply names the weight (Full or Lite, as a word); plain text needs a human
+  local r   # the final reply names the weight (Full, Lite or Quick, as a word); plain text needs a human
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qwE 'Full|Lite'; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
+    if printf '%s' "$r" | grep -qwE 'Full|Lite|Quick'; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
   else record MANUAL "reply states the weight"; fi
   record MANUAL "no unnecessary questions"
 }
@@ -266,7 +266,7 @@ grade_E19() {
     3) record MANUAL "playbook-tdd loaded before the first tests/ write" ;;
     *) record FAIL "playbook-tdd loaded before the first tests/ write" ;;
   esac
-  reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"
+  feedback_line_unless_quick
 }
 # feedback_captured -> 0 when a Bash tool_use runs `feedback.sh capture`; 3 when the log is not stream-json
 feedback_captured() { case "$T_feedback_captured" in 1) return 0 ;; 0) return 1 ;; *) return 3 ;; esac; }
@@ -296,6 +296,11 @@ reply_matches() { local r
   if r="$(result_text)"; then
     if printf '%s' "$r" | grep -qiE "$1"; then record PASS "$2"; else record FAIL "$2"; fi
   else record MANUAL "$2"; fi; }
+# feedback_line_unless_quick -> the "Playbook feedback line" check (E15, E19). A reply that states Quick and neither Lite nor Full is
+# exempt (Quick drops the line unless a rule misfired); with no weight stated, or Lite or Full, the check applies as before.
+feedback_line_unless_quick() { local r
+  if r="$(result_text)" && printf '%s' "$r" | grep -qiw 'quick' && ! printf '%s' "$r" | grep -qiwE 'lite|full'; then return 0; fi
+  reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"; }
 # red_unchanged -> 0 when tests/ is as the RED commit left it (no edit, deletion or new file)
 red_unchanged() { git -C "$WD" diff --quiet "$E4_RED" -- tests &&
                   [ -z "$(git -C "$WD" ls-files --others --exclude-standard -- tests)" ]; }
@@ -370,10 +375,17 @@ grade_E15() {
   check "src/calc.js no longer says nubmers" not_in_calc nubmers
   check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
-  check "transcript states the Lite weight" said lite
+  # the weight is read from the final reply: Lite with "no independent review", or Quick; a plain-text log keeps the old reading
+  local r
+  if r="$(result_text)"; then
+    if printf '%s' "$r" | grep -qiE 'weight: *quick' ||
+       { printf '%s' "$r" | grep -qiwE 'lite' && printf '%s' "$r" | grep -qiE 'no independent review'; }; then
+      record PASS "the reply states the weight: Lite with no independent review, or Quick"
+    else record FAIL "the reply states the weight: Lite with no independent review, or Quick"; fi
+  else check "the reply states the weight: Lite with no independent review, or Quick" said lite; fi
   check "transcript shows the playbook-tdd skill loaded" loaded_tdd
   record MANUAL "test seen failing before the fix"
-  reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"
+  feedback_line_unless_quick
 }
 # no_divide_left -> 0 when no word `divide` is left in src/*.js (safeDivide is a different word) and src/report.js calls safeDivide
 no_divide_left() { ! grep -qw divide "$WD"/src/*.js && grep -q safeDivide "$WD/src/report.js"; }
@@ -388,6 +400,61 @@ grade_E21() {
     0) record FAIL "the spec is written before the first src/ edit" ;;
     *) record MANUAL "the spec is written before the first src/ edit" ;;
   esac
+}
+grade_E22() {
+  check "the typo is fixed" grep -qF 'expects numbers' "$WD/src/calc.js"
+  check "a file under tests/ says expects numbers" tests_mention "expects numbers"
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_matches 'Weight: Quick \(user-requested\)' "the reply states Weight: Quick (user-requested)"
+  record MANUAL "no question about the weight, and a 3-5 line report"
+}
+grade_E23() {
+  check "total() ignores items whose qty is zero or negative" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 5, qty: 2 }, { price: 7, qty: 0 }, { price: 9, qty: -1 }]) === 10 ? 0 : 1)'
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_matches 'over the limit, user chose Quick|Full (column|stop)|money|billing' "the reply names the limit or the Full stop"
+  # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
+  local r
+  if r="$(result_text)"; then
+    if printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then record FAIL "the reply keeps the Quick weight"
+    else record PASS "the reply keeps the Quick weight"; fi
+  else record MANUAL "the reply keeps the Quick weight"; fi
+}
+# models_configured -> 0 when there is at least one Agent or Task call and every call passes a model that the project conf of
+# the fixture gives to tester, implementer or reviewer on claude (a call without a model is "-" and is not accepted)
+models_configured() { local allowed="" k m ok
+  for k in model_tester_claude model_implementer_claude model_reviewer_claude; do
+    allowed="$allowed $(pb_conf_read "$WD/.agents/playbook.conf" "$k")"
+  done
+  [ -n "$T_models" ] || return 1
+  for m in $(printf '%s' "$T_models" | tr ',' ' '); do
+    ok=1; for k in $allowed; do [ "$m" = "$k" ] && ok=0; done
+    [ "$ok" = 0 ] || return 1
+  done
+  return 0; }
+# stream_result -> E24 and E25 are graded from the stream-json transcript (--harness claude): a run without a final result line
+# cannot show its sub-agent calls or its weight, so it FAILs this check instead of passing on MANUAL alone
+stream_result() { check "the run ended with a stream-json result (needs --harness claude)" result_ok; }
+grade_E24() {
+  local r
+  stream_result
+  if r="$(result_text)"; then
+    if subagent_used; then record PASS "transcript shows sub-agent use (Agent or Task tool)"
+    else record FAIL "transcript shows sub-agent use (Agent or Task tool)"; fi
+    if models_configured; then record PASS "every sub-agent call uses a configured model"
+    else record FAIL "every sub-agent call uses a configured model (models: ${T_models:-none})"; fi
+  else
+    record MANUAL "transcript shows sub-agent use (Agent or Task tool)"
+    record MANUAL "every sub-agent call uses a configured model"
+  fi
+  reply_matches '^Models: |Models: tester=' "the reply has a Models: line"
+  check "node --test tests/*.test.js passes" tests_pass
+  record MANUAL "total() returns integer cents and every caller is updated"
+}
+grade_E25() {
+  stream_result
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_matches 'Weight: *Lite' "the reply states Lite"
+  reply_matches 'size --quick|escalat' "the reply names the Quick escalation"
 }
 
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
@@ -457,7 +524,14 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     printf 'module.exports = { pageSize: 20 };\n' > "$WD/src/config.js" &&
       fx add src/config.js && fx commit -qm "app config" || pb_die "cannot write the E17 config" 3
   fi
-  if [ "$E" = E21 ]; then   # a second call site of divide, committed on top of the fixture
+  if [ "$E" = E24 ]; then   # a project conf that fixes the models of the roles (tracked, so the tree stays clean)
+    mkdir -p "$WD/.agents" &&
+      printf 'model_tester_claude=sonnet\nmodel_implementer_claude=sonnet\nmodel_reviewer_claude=opus\n' > "$WD/.agents/playbook.conf" &&
+      git -C "$WD" add .agents/playbook.conf &&
+      git -C "$WD" -c user.email=fixture@example.invalid -c user.name=fixture -c commit.gpgsign=false commit -qm "project config" ||
+      pb_die "cannot write the E24 config" 3
+  fi
+  if [ "$E" = E21 ] || [ "$E" = E25 ]; then   # a second call site of divide, committed on top of the fixture
     printf '%s\n' "const { divide } = require('./calc');" 'function ratio(a, b) { return divide(a, b); }' \
       'module.exports = { ratio };' > "$WD/src/report.js" &&
       fx add src/report.js && fx commit -qm "report" || pb_die "cannot write the E21 report.js" 3

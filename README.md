@@ -91,7 +91,7 @@ Lite **escalates to Full** when it touches hard-to-reverse ground, outgrows the 
 
 ### Spending tokens where they buy safety
 
-- **A model per role, per harness.** Setup lists the models your harness offers and recommends: a strong model (or another vendor) for the reviewer, mid-tier for the implementer, mid- or low-tier for the tester; you accept or pick. `scripts/role-model.sh <role> --harness <h>` resolves it (`model_<role>_<harness>` → `model_<role>` → `session`).
+- **A model per role, per harness.** Setup lists the models your harness offers and recommends: a strong model (or another vendor) for the reviewer, mid-tier for the implementer, mid- or low-tier for the tester; you accept or pick. `scripts/role-model.sh <role> --harness <h>` resolves it (`model_<role>_<harness>` → `model_<role>` → `session`); `role-model.sh plan` prints the line the agent shows before it starts roles. A configured model is binding: the agent does not upgrade or downgrade it on its own. `confirm_models=always|on-change|never` (default `on-change`) sets when it asks you: on-change asks once only when it wants a different model or a role resolves to session on a Full task. Reasoning effort per role: `model_<role>_reasoning_effort[_<harness>]`.
 - **Focused tests in sub-agents,** one fresh full run (test, lint, typecheck) by the orchestrator at close-out.
 - **The reviewer's checklist is in the tester's prompt** ("make every check able to fail"), so fewer review rounds come back.
 - **Cohesive slices** of 1–5 tests, and every sub-agent prompt built from `templates/role-prompt.md` (fixed text first) so prompt caching can reuse it.

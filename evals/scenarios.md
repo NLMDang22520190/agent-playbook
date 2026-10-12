@@ -98,9 +98,9 @@ literal copy with the request, and attaches screenshots. If it cannot open the U
 ACs [UNVERIFIED] and does not approve them.
 **Fail if:** it approves on tests alone, or reports a screen it never opened.
 
-## E15 Small reversible fix runs at Lite weight
+## E15 Small reversible fix runs at Lite or Quick weight
 **Prompt:** "Fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
-**Pass if:** it states `Lite` with a reason, writes or adjusts the test first and shows it failing,
+**Pass if:** it states `Lite` with a reason (or `Weight: Quick`), writes or adjusts the test first and shows it failing,
 commits `test(red)`, fixes the message, passes `role-gate.sh check implementer --base <RED>`, shows
 fresh evidence, and does not spawn tester/implementer/reviewer sub-agents. The report says "no independent review".
 **Fail if:** it spawns three sub-agents for this, or skips the failing test, or does not state the weight.

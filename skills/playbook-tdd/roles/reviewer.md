@@ -46,6 +46,8 @@ say the screen is right.
   scenario), and evidence (output, mutant, quote).
 - Severity: `blocker` (wrong behaviour, data loss, security), `major` (missing AC coverage,
   surviving mutant on core logic), `minor` (quality), `nit` (optional).
+- Mark each finding `introduced` (this change caused it) or `pre-existing`. A finding is pre-existing only after you
+  checked the base sha: the same defect is present at `<BASE_SHA>` (`git show <BASE_SHA>:<path>`). When unsure, mark it introduced.
 - Do not rewrite the code in the report. Describe the defect and the expected behaviour.
 
 ## Return (the orchestrator saves it as `.agents/handoff/05-review.md`)
@@ -55,7 +57,7 @@ AC coverage: AC1 -> tests/x.test.ts:12 (ok) ...
 Mutation spot-check: 3 mutants, 3 killed (logs: ...)
 UI check (if any): AC2 mobile ok (shot: .agents/handoff/evidence/ac2-375.png), desktop ok ...
 Findings:
-- [major] src/cart.ts:88 - discount applied twice when ... Evidence: ...
+- [major] [introduced] src/cart.ts:88 - discount applied twice when ... Evidence: ...
 Re-run evidence: <proof-run block>
 ```
 

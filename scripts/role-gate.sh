@@ -2,8 +2,10 @@
 # Mechanical enforcement of role separation in the TDD workflow.
 #   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF]
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
-#   role-gate.sh size [--base REF] [--max-files N] [--max-lines M]
-#                                       Lite size check (defaults 3 files, 100 lines)
+#   role-gate.sh size [--quick] [--base REF] [--max-files N] [--max-lines M]
+#                                       Lite size check (defaults 3 files, 100 lines);
+#                                       --quick: Quick check (1 file, 20 lines; conf keys
+#                                       quick_max_files / quick_max_lines; explicit limits win)
 #
 # Test paths include test configuration and snapshots (jest/vitest/playwright/cypress
 # config, karma.conf, .mocharc, pytest.ini, phpunit.xml, __snapshots__/, *.snap).
@@ -14,7 +16,7 @@
 # size counts production files (non-test, outside .agents/handoff/) changed since REF
 # (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines
 # (git diff --numstat; a binary file counts as 1 line; an untracked file counts all its
-# lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
+# lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full (Quick: to Lite).
 #
 # What each role may change (relative to REF, default HEAD; includes staged, unstaged
 # and untracked files):
@@ -165,9 +167,10 @@ EOF
     printf 'OK: role gate passed for %s (%d file(s) checked, base=%s)\n' "$role" "$checked" "$base"
     ;;
   size)
-    base="HEAD"; max_files=3; max_lines=100
+    base="HEAD"; max_files=""; max_lines=""; quick=0
     while [ $# -gt 0 ]; do
       case "$1" in
+        --quick)     quick=1 ;;
         --base)      [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
@@ -175,6 +178,13 @@ EOF
       esac
       shift
     done
+    if [ "$quick" = 1 ]; then
+      [ -n "$max_files" ] || max_files="$(pb_conf_get quick_max_files 1)"
+      [ -n "$max_lines" ] || max_lines="$(pb_conf_get quick_max_lines 20)"
+    else
+      [ -n "$max_files" ] || max_files=3
+      [ -n "$max_lines" ] || max_lines=100
+    fi
     for n in "$max_files" "$max_lines"; do
       case "$n" in ''|*[!0-9]*) pb_die "limit must be a non-negative integer: $n" 2 ;; esac
     done
@@ -210,11 +220,15 @@ $stats
 EOF
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
-      printf 'over the Lite size limit: escalate to Full\n'
+      if [ "$quick" = 1 ]; then
+        printf 'over the Quick size limit: escalate to Lite\n'
+      else
+        printf 'over the Lite size limit: escalate to Full\n'
+      fi
       exit 1
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--quick] [--base REF] [--max-files N] [--max-lines M]" 2
     ;;
 esac
