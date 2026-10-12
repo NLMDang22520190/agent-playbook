@@ -2,13 +2,15 @@
 # Refuses secrets and private literals in ADDED lines (a guard against leaking into a public repository).
 #   leak-check.sh scan --staged            the staged change (index vs HEAD)
 #   leak-check.sh scan --range A..B        the lines added by the commits of that range
-#   leak-check.sh scan --unpushed SHA      the commits of SHA that are on no remote (the pre-push hook uses it for a new branch)
+#   leak-check.sh scan --unpushed SHA [--remote NAME]   the commits of SHA that are on no remote (the pre-push hook uses it
+#                                          for a new branch); with NAME (a configured remote) only that remote counts
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
 # Patterns: github-token, anthropic-key, aws-key, private-key (built in), plus the conf keys
 #   leak_patterns  (ERE, alternatives separated by |)         reported as user-pattern
 #   leak_literals  (comma-separated FIXED strings, case-insensitive)   reported as user-literal
+#                  (a UTF-8 locale is probed so non-ASCII letters fold case too; none found: ASCII-only, noted on stderr)
 # read from the global conf (PLAYBOOK_HOME or HOME) and the project conf.
 # A hit prints "file:line: <pattern name> <first 4 chars>***" (a match of 8 characters or fewer: just ***) and exits 1.
 # Exit: 0 clean ("leak-check: clean"), 1 a hit (or, for install-hooks, a hook left alone), 2 usage, 3 not a git repo or git failed.
@@ -20,7 +22,7 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 MARKER='# agent-playbook leak-check'
 
 usage() {
-  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -29,8 +31,13 @@ cleanup() { [ -z "$TMP" ] || rm -rf "${TMP:?}"; }
 trap cleanup EXIT
 
 # scan_text NAME FLAG EXPR -> findings for one pattern over $TMP/txt, as "file:line: name masked"
+# (LITLOC, when set, is the locale for grep: the case folding of non-ASCII literals)
 scan_text() {
-  grep -a -n -o "$2" -e "$3" "$TMP/txt" 2>/dev/null |
+  if [ -n "${LITLOC:-}" ]; then
+    LC_ALL="$LITLOC" grep -a -n -o "$2" -e "$3" "$TMP/txt" 2>/dev/null
+  else
+    grep -a -n -o "$2" -e "$3" "$TMP/txt" 2>/dev/null
+  fi |
     awk -v name="$1" 'NR == FNR { loc[FNR] = $0; next }
       { n = $0; sub(/:.*/, "", n); m = $0; sub(/^[0-9]+:/, "", m); print loc[n] ": " name " " (length(m) <= 8 ? "" : substr(m, 1, 4)) "***" }' "$TMP/idx" - >> "$TMP/found"
 }
@@ -43,6 +50,16 @@ conf_values() {
   return 0
 }
 
+# utf8_locale -> the first of C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8 where grep -i folds a non-ASCII letter (D-stroke vs
+# d-stroke, written as bytes), or nothing
+utf8_locale() {
+  local c
+  for c in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+    if printf '\304\220' | LC_ALL="$c" grep -qiF "$(printf '\304\221')" 2>/dev/null; then printf '%s' "$c"; return 0; fi
+  done
+  return 0
+}
+
 # check_added: $TMP/idx (file:line) and $TMP/txt (the line) hold the lines to check, one pair per line
 check_added() {
   : > "$TMP/found"
@@ -52,7 +69,7 @@ check_added() {
     scan_text anthropic-key -E 'sk-ant-[A-Za-z0-9_-]{20,}'
     scan_text aws-key -E 'AKIA[0-9A-Z]{16}'
     scan_text private-key -E '-----BEGIN [A-Z ]*PRIVATE KEY-----'
-    local pat lit
+    local pat lit lits
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
       printf '' | grep -E -e "$pat" >/dev/null 2>&1
@@ -61,6 +78,12 @@ check_added() {
     done <<EOF
 $(conf_values leak_patterns)
 EOF
+    lits="$(conf_values leak_literals)"
+    LITLOC=""
+    if [ -n "$lits" ]; then
+      LITLOC="$(utf8_locale)"
+      [ -n "$LITLOC" ] || echo "leak-check: no UTF-8 locale; literal case folding is ASCII-only" >&2
+    fi
     while IFS= read -r pat; do
       [ -n "$pat" ] || continue
       while IFS= read -r lit; do
@@ -70,7 +93,7 @@ EOF
 $(printf '%s\n' "$pat" | tr ',' '\n')
 EOF2
     done <<EOF3
-$(conf_values leak_literals)
+$lits
 EOF3
   fi
   if [ -s "$TMP/found" ]; then
@@ -103,11 +126,15 @@ diff_to_added() {
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
 
 do_scan() {
-  local mode="" val=""
+  local mode="" val="" remote="" hasremote=0
   [ $# -gt 0 ] || usage
   case "$1" in
     --staged) [ $# -eq 1 ] || usage; mode=staged ;;
-    --range|--unpushed) [ $# -eq 2 ] || usage; mode="${1#--}"; val="$2" ;;
+    --range) [ $# -eq 2 ] || usage; mode=range; val="$2" ;;
+    --unpushed)
+      [ $# -eq 2 ] || { [ $# -eq 4 ] && [ "$3" = --remote ]; } || usage
+      mode=unpushed; val="$2"
+      if [ $# -eq 4 ]; then hasremote=1; remote="$4"; fi ;;
     --) shift; [ $# -gt 0 ] || usage; mode=files ;;
     -*) usage ;;
     *) mode=files ;;
@@ -126,7 +153,10 @@ do_scan() {
         git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for range $val" >&2; exit 3; }
       else
-        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not --remotes -- > "$TMP/diff" 2>/dev/null ||
+        # --remote NAME with NAME exactly a configured remote: only that remote counts; otherwise (a URL push) any remote
+        local notremotes="--remotes"
+        if [ "$hasremote" = 1 ] && [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then notremotes="--remotes=$remote"; fi
+        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not "$notremotes" -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for $val" >&2; exit 3; }
       fi
       diff_to_added "$TMP/diff" ;;
@@ -195,7 +225,7 @@ while read -r lref lsha rref rsha; do
               continue
             fi ;;
   esac
-  bash "$LC" scan --unpushed "$lsha" </dev/null || rc=1   # a new branch: its commits that are on no remote
+  bash "$LC" scan --unpushed "$lsha" --remote "$1" </dev/null || rc=1   # a new branch: its commits that are on no remote
 done
 exit $rc
 HOOK

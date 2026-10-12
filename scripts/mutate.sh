@@ -14,8 +14,8 @@
 #
 # Safety: your work tree is never written. Only HEAD is mutated, in a throwaway `git worktree` under
 # ${TMPDIR:-/tmp}; CMD runs there (untracked or ignored files such as node_modules are not there). The worktree
-# is removed on exit. Each run writes its pid to <its temp dir>/owner. At the start a run removes only the worktrees
-# of dead owners (a stale one left by a kill -9); a live run's worktree is never touched. A temp dir without an
+# is removed on exit. Each run writes its pid and its start time (ps lstart) to <its temp dir>/owner. At the start a run removes only the worktrees
+# of dead owners or reused pids (a stale one left by a kill -9); a live run's worktree is never touched. A temp dir without an
 # owner file is removed only when it is older than 10 minutes.
 # Before the first mutant CMD runs once unmutated; when it does not pass, exit 4.
 # Every CMD run is limited by --timeout S (default 120): a portable background watchdog, no GNU timeout.
@@ -67,7 +67,9 @@ altbase=""
 if command -v cygpath >/dev/null 2>&1; then altbase="$(cygpath -m "$realbase" 2>/dev/null || true)"; fi
 
 run="$(mktemp -d "$tmpbase/pbmutate.XXXXXX")" || die "cannot create a temp dir in $tmpbase" 3
-printf '%s\n' "$$" > "$run/owner"
+# owner file: line 1 = pid, line 2 = its start string (a v0.22.4 file has line 1 only)
+pstart() { LC_ALL=C TZ=UTC0 ps -o lstart= -p "$1" 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed 1q; }
+printf '%s\n%s\n' "$$" "$(pstart "$$")" > "$run/owner"
 wt="$run/wt"
 
 # a stale worktree under our prefix: its owner is dead (a previous run was killed with kill -9). A live run's
@@ -79,9 +81,15 @@ printf '%s\n' "$stale" | while IFS= read -r wp; do
       d="$(dirname "$wp")"
       opid=""
       if [ -f "$d/owner" ]; then
-        read -r opid < "$d/owner" || opid=""
+        ostart=""
+        { read -r opid && read -r ostart; } < "$d/owner" 2>/dev/null || true
         case "$opid" in "" | *[!0-9]*) opid="" ;; esac
-        if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then continue; fi
+        if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then
+          # alive, unless the pid was reused: both start strings known and different (an empty or failed ps = alive)
+          nstart=""
+          [ -n "$ostart" ] && nstart="$(pstart "$opid")"
+          if [ -z "$ostart" ] || [ -z "$nstart" ] || [ "$ostart" = "$nstart" ]; then continue; fi
+        fi
       elif [ -d "$d" ] && [ -z "$(find "$d" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
         continue
       fi

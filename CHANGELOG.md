@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.23.1 - 2026-10-12
+- **`scripts/mutate.sh`**: the owner file now holds the pid and its start time (`ps -o lstart=`); a worktree whose
+  pid was reused by another process (start time differs) is reaped like a dead owner. An empty or failing `ps`
+  (e.g. Git Bash) counts as alive, and a one-line v0.22.4 owner file falls back to `kill -0`.
+- **`bashWritesSrc`** (eval grader): `cd src && sed -i ...`, `git mv ... src/...` and
+  `node -e "...writeFileSync('src/...')"` now count as src writes; reads stay non-writes.
+- **`scripts/leak-check.sh`**: `leak_literals` fold case for non-ASCII letters by probing a UTF-8 locale (C.UTF-8,
+  C.utf8, en_US.UTF-8, en_US.utf8); with none, ASCII-only folding and one stderr note.
+  `scan --unpushed SHA --remote NAME` skips only commits on that remote (a name that is not a configured remote,
+  such as a URL, keeps the old "any remote" behaviour); the pre-push hook passes the remote name.
+  **Existing installs: re-run `leak-check.sh install-hooks` to get the per-remote scan.** A new hook with an old
+  script fails closed (exit 2), so update the script and the hook together.
+- **`run-evals.sh --max-cost`** accepts `.5` and `.75`; `.`, `0.`, `5.` stay rejected.
+
 ## 0.22.4 - 2026-10-12
 - **`scripts/mutate.sh`**: mutation testing on the lines a branch changed (`--base REF --test CMD`), whole-token
   operator flips, one mutant per line and operator; it runs only in a throwaway worktree (never the user's tree,

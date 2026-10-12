@@ -4,7 +4,7 @@
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
 # Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
-# --max-cost USD (a plain decimal > 0): after each scenario, when the known costs add up to USD or more, the
+# --max-cost USD (a plain decimal > 0, e.g. 5, 0.5 or .5): after each scenario, when the known costs add up to USD or more, the
 # remaining scenarios are not run: each prints "<E> SKIPPED budget reached (spent X of USD)" and gets the summary
 # row "| E | SKIPPED | - | - |". A scenario whose cost is unknown adds nothing (one note names the first).
 # Skipping never changes the exit code.
@@ -83,7 +83,7 @@ fi
 if [ "$MAX_COST_SET" = 1 ]; then
   # a plain positive decimal: digits with an optional fraction, at least one non-zero digit
   case "$MAX_COST" in
-    "" | *[!0-9.]* | .* | *. | *.*.*) pb_die "--max-cost needs a positive decimal amount in USD, got: $MAX_COST" 2 ;;
+    "" | *[!0-9.]* | *. | *.*.*) pb_die "--max-cost needs a positive decimal amount in USD, got: $MAX_COST" 2 ;;
   esac
   case "$MAX_COST" in
     *[1-9]*) ;;
