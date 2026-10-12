@@ -1086,5 +1086,48 @@ else
   assert_eq "MINOR-4 baseline: at most 10 git processes for 3000 new files" "ok" "$([ "$(wc -l < "$SLOGX" | tr -d ' ')" -le 10 ] && echo ok || echo "$(wc -l < "$SLOGX" | tr -d ' ') git calls")"
   assert_eq "MINOR-4 at most 10 git processes for 3000 new 100644 files (not one per file)" "ok" "$([ "$(wc -l < "$SLOGN" | tr -d ' ')" -le 10 ] && echo ok || echo "$(wc -l < "$SLOGN" | tr -d ' ') git calls")"
   assert_contains "MINOR-4 the #! warning is still printed for the 100644 files" "$OUT" "gen/f1.sh"
+  assert_eq "MINOR-A all $NF new 100644 #! files are warned about, one line each" "$NF" "$(printf '%s\n' "$OUT" | grep -c 'warning: new file .* starts with #! ')"
 fi
+
+echo "v0.23.2 round 2 MINOR-A the one-pass #! warning keeps its byte count across a mixed batch"
+# every blob's size decides where the next header starts: plain files with and without a trailing newline, an empty one,
+# a CRLF #! file, a #! file right after an empty one, a #! file with no trailing newline, and a #! file last in the batch
+newrepo
+mkdir -p "$R/mix"
+printf 'plain text\nsecond line\n' > "$R/mix/a01_plain.txt"
+printf 'no trailing newline' > "$R/mix/a02_nonl.txt"
+: > "$R/mix/a03_empty.txt"
+printf '#!/bin/sh\r\necho crlf\r\n' > "$R/mix/a04_crlf.sh"
+: > "$R/mix/a05_empty.txt"
+printf '#!/bin/sh\necho after-empty\n' > "$R/mix/a06_after_empty.sh"
+printf '#!/bin/sh' > "$R/mix/a07_shebang_nonl.sh"
+printf 'x\n\n\n' > "$R/mix/a08_blank_lines.txt"
+printf 'x\n#!/bin/sh\n' > "$R/mix/a09_shebang_on_line2.txt"
+printf '#!/bin/sh\necho last\n' > "$R/mix/a10_last.sh"
+git -C "$R" add -A
+MIXMODES="$(git -C "$R" ls-files -s -- mix | cut -c1-6 | sort -u | tr '\n' ' ')"
+scan_streams
+assert_eq "MINOR-A fixture: all ten files are staged 100644" "100644 " "$MIXMODES"
+assert_eq "MINOR-A the exit code is 0 (warnings only)" "0" "$RC"
+WARNED="$(printf '%s\n' "$ERR" | grep 'warning: new file ' | sed 's/^.*warning: new file \(.*\) starts with #! .*$/\1/' | LC_ALL=C sort)"
+WANT="$(printf '%s\n' mix/a04_crlf.sh mix/a06_after_empty.sh mix/a07_shebang_nonl.sh mix/a10_last.sh)"
+assert_eq "MINOR-A exactly the four #! files are warned about (no other file, none missed)" "$WANT" "$WARNED"
+assert_eq "MINOR-A four warning lines" "4" "$(printf '%s\n' "$ERR" | grep -c 'warning: new file ')"
+
+echo "v0.23.2 round 2 LOW-a an empty executable deleted and an empty 644 file added is not a rename"
+newrepo
+: > "$R/keep.sh"; chmod +x "$R/keep.sh" 2>/dev/null
+git -C "$R" add keep.sh; git -C "$R" update-index --chmod=+x -- keep.sh; G -C "$R" commit -q -m "empty exec"
+assert_eq "LOW-a fixture: keep.sh is committed 100755" "100755" "$(git -C "$R" ls-files -s -- keep.sh | cut -d' ' -f1)"
+git -C "$R" rm -q keep.sh
+mkdir -p "$R/pkg"; : > "$R/pkg/__init__.py"; git -C "$R" add pkg/__init__.py
+assert_eq "LOW-a fixture: pkg/__init__.py is staged 100644" "100644" "$(git -C "$R" ls-files -s -- pkg/__init__.py | cut -d' ' -f1)"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "LOW-a deleting an empty 100755 file and adding an empty 100644 file: exit 0" 0
+assert_not_contains "LOW-a ... no mode violation" "$OUT" "(mode)"
+
+echo "v0.23.2 round 2 LOW-b the usage describes rename detection as a rename with unchanged content"
+run_in "$R" bash "$LC" scan
+USAGE_FLAT="$(printf '%s' "$OUT" | tr 'A-Z' 'a-z' | tr -s ' \n\t' '   ')"
+assert_contains "LOW-b the usage says 'a rename with unchanged content'" "$USAGE_FLAT" "a rename with unchanged content"
 t_summary

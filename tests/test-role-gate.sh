@@ -729,4 +729,45 @@ for P in "$QP" "$TP"; do
 done
 HDR="$(sed -n 1,45p "$GATE" | tr 'A-Z' 'a-z')"
 assert_contains "LOW-6 the help says a path with a colon cannot be listed in PB_ALLOW_MODE_CHANGE" "$HDR" "cannot be listed"
+
+echo "v0.23.2 round 2 MINOR-B a rename plus a mode drop that exists only in the work tree (core.fileMode=true) is caught"
+for spec in tester:tests/run.sh:tests/renamed.sh implementer:src/run.sh:src/renamed.sh reviewer:src/run.sh:src/renamed.sh infra:ci/run.sh:ci/renamed.sh; do
+  role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
+  MSG="VIOLATION (mode): $new lost its executable bit (100755 -> 100644)"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  git config core.fileMode true
+  git mv "$old" "$new"; chmod -x "$new" 2>/dev/null          # the new path is NOT re-added: the index still says 100755
+  if [ -x "$new" ]; then t_skip 3 "MINOR-B $role (chmod -x has no effect here)"; continue; fi
+  assert_eq "MINOR-B $role: fixture: the index still says $new is 100755" "100755" "$(git ls-files -s -- "$new" | cut -d' ' -f1)"
+  gchk "$role"; assert_rc "MINOR-B $role: a work-tree-only rename + drop fails" 1
+  assert_contains "MINOR-B $role: the NEW path is named with both modes" "$OUT" "$MSG"
+  gchk_allow "$new" "$role"
+  assert_not_contains "MINOR-B $role: PB_ALLOW_MODE_CHANGE=new path silences it" "$OUT" "VIOLATION (mode)"
+done
+echo "v0.23.2 round 2 MINOR-B a work-tree-only rename that keeps the bit is not reported"
+for spec in implementer:src/run.sh:src/renamed.sh tester:tests/run.sh:tests/renamed.sh; do
+  role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  git config core.fileMode true
+  git mv "$old" "$new"
+  gchk "$role"
+  assert_not_contains "MINOR-B $role: a rename that keeps 100755 has no mode violation" "$OUT" "(mode)"
+done
+
+echo "v0.23.2 round 2 LOW-a an empty executable deleted and an empty 644 file added is not a rename"
+for role in tester implementer reviewer infra; do
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  git config core.fileMode true
+  : > keep.sh; chmod +x keep.sh 2>/dev/null
+  git add keep.sh; git update-index --chmod=+x -- keep.sh; git commit -q -m "empty exec"
+  git rm -q keep.sh
+  mkdir -p pkg; : > pkg/__init__.py; git add pkg/__init__.py
+  assert_eq "LOW-a $role: fixture: keep.sh was committed 100755" "100755" "$(git ls-tree HEAD -- keep.sh | cut -d' ' -f1)"
+  gchk "$role"
+  assert_not_contains "LOW-a $role: no mode violation for a delete + an unrelated empty add" "$OUT" "(mode)"
+done
+
+echo "v0.23.2 round 2 LOW-b the header describes rename detection as a rename with unchanged content"
+HDR2="$(sed -n 1,45p "$GATE" | sed 's/^# \{0,1\}//' | tr 'A-Z' 'a-z' | tr -s ' \n\t' '   ')"
+assert_contains "LOW-b the header says 'a rename with unchanged content'" "$HDR2" "a rename with unchanged content"
 t_summary
