@@ -81,6 +81,8 @@ chk "AC1.1 the Quick row names the 20 line limit" "$QROW" '(≤|<=|at most|up to
 chk "AC1.1 the Quick row says nothing from the Full column" "$QROW" 'nothing from the Full column'
 chk "AC1.1 the Quick row says the user can ask for quick" "$QROW" 'user (asks|says|requests)[^|]{0,40}quick|asks? for quick|says? quick'
 chk "AC1.1 the Quick row points to references/quick.md" "$QROW" 'references/quick\.md'
+chk "v24.2 AC6.2 the Quick row says removing or renaming an exported symbol is a public API change (Full)" "$QROW" '(remov|renam)[^|]{0,60}exported symbol[^|]{0,60}public API[^|]{0,60}Full'
+if [ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ]; then t_ok "v24.2 AC6.2 SKILL.md stays within 296 lines"; else t_bad "v24.2 AC6.2 SKILL.md stays within 296 lines" "$(wc -l < "$SKILL") lines"; fi
 LROW="$(grep -E '^\| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1)"
 chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '≤ 3 production files'
 chk "AC1.1 regression: the Lite row keeps its 100 line limit" "$LROW" '≤ 100 changed lines'

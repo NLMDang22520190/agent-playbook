@@ -580,6 +580,17 @@ run_x E23 plain "$E23_FIX
 echo 'over the limit, user chose Quick'"
 assert_eq "E23 plain-text transcript: the Full-stop check is MANUAL" "MANUAL" "$(e_state E23 "$K23A")"
 assert_eq "E23 plain-text transcript: no FAIL line" "0" "$(count_lines E23 FAIL)"
+# v0.24.2 AC5.1: the real v0.24.0 reply says the change "would normally need Full": that names the Full stop (reply only)
+run_x E23 normally "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested); it touches billing money, which would normally need Full.')"
+assert_eq "AC5.1 E23 the real v0.24.0 reply (normally need Full): the limit check PASSes" "PASS" "$(e_state E23 "$K23A")"
+assert_eq "AC5.1 E23 the real v0.24.0 reply: the keeps-Quick check PASSes" "PASS" "$(e_state E23 "$K23B")"
+assert_eq "AC5.1 E23 the real v0.24.0 reply: no FAIL line" "0" "$(count_lines E23 FAIL)"
+run_x E23 normally2 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Billing code that normally needs the full process; I stayed at Quick.')"
+assert_eq "AC5.1 E23 'normally needs the full': PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 normally3 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This NORMALLY GETS FULL treatment. Changed total().')"
+assert_eq "AC5.1 E23 'NORMALLY GETS FULL' (case-insensitive): PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 normallymoney "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Billing money code, normally handled with care. Changed total().')"
+assert_eq "AC5.1 E23 money and billing without 'normally need Full': still FAIL" "FAIL" "$(e_state E23 "$K23A")"
 
 echo "v0.24.0 E24 (R5): every sub-agent call of a Full task uses a configured model"
 E24_REC='{ echo "tracked=$(git ls-files .agents/playbook.conf)"; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; cat .agents/playbook.conf; } > "$REC/E24.fix"'
@@ -624,35 +635,54 @@ echo 'Models: tester=sonnet'"
 assert_eq "E24 plain-text transcript: the sub-agent check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E24 FAIL ' | grep -c 'sub-agent use')"
 assert_eq "E24 plain-text transcript: the Models: line check is MANUAL" "MANUAL" "$(e_state E24 "$K24C")"
 
-echo "v0.24.0 E25 (R12): an agent-chosen Quick change that spans three files escalates to Lite"
+echo "v0.24.2 AC5.2 E25 (redesigned): an additive change over the Quick limit runs at Lite and each file exports VERSION"
 E25_REC='{ echo "tracked=$(git ls-files src/report.js)"; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; } > "$REC/E25.fix"'
-E25_FIX="$E25_REC"
-K25A='states Lite'; K25B='Quick escalation'
-run_x E25 good "$E25_FIX" "$INIT" "$(res 'Weight: Lite (escalated from Quick: role-gate.sh size --quick printed files: 3/1 lines: 9/20, over the Quick size limit: escalate to Lite).')"
-assert_eq "E25 the reply states Lite: PASS" "PASS" "$(e_state E25 "$K25A")"
-assert_eq "E25 the reply names the Quick escalation: PASS" "PASS" "$(e_state E25 "$K25B")"
+E25_ADD='for f in calc cart report; do printf "\nmodule.exports.VERSION = \"1.0.0\";\n" >> "src/$f.js"; done'
+E25_FIX="$E25_REC
+$E25_ADD"
+K25A='states Lite or escalation'; K25B='exports VERSION'
+run_x E25 good "$E25_FIX" "$INIT" "$(res 'Weight: Lite (escalated from Quick: role-gate.sh size --quick printed files: 3/1 lines: 3/20, over the Quick size limit: escalate to Lite). Added VERSION to the three files.')"
+assert_eq "E25 the reply states Lite or the escalation: PASS" "PASS" "$(e_state E25 "$K25A")"
+assert_eq "E25 each file exports VERSION: PASS" "PASS" "$(e_state E25 "$K25B")"
 assert_eq "E25 node --test passes: PASS" "PASS" "$(e_state E25 'node --test')"
 assert_eq "E25 good run: no FAIL line" "0" "$(count_lines E25 FAIL)"
+assert_rc "E25 good run: exit 0" 0
 assert_contains "E25 fixture: src/report.js is committed" "$(cat "$REC/E25.fix" 2>/dev/null)" "tracked=src/report.js"
 assert_contains "E25 fixture: the tree is clean" "$(cat "$REC/E25.fix" 2>/dev/null)" "dirty=0"
 assert_not_contains "E25 the prompt does not ask for the quick way" "$(cat "$REC/E25.prompt" 2>/dev/null | tr 'A-Z' 'a-z')" "quick"
 assert_contains "E25 the prompt names the three files" "$(cat "$REC/E25.prompt" 2>/dev/null)" "src/report.js"
-run_x E25 sizeq "$E25_FIX" "$INIT" "$(res 'Weight: Lite. I ran role-gate.sh size --quick: 3 files.')"
-assert_eq "E25 Lite + the size --quick command: escalation PASS" "PASS" "$(e_state E25 "$K25B")"
-run_x E25 escword "$E25_FIX" "$INIT" "$(res 'Weight: Lite. I had to escalate because three files changed.')"
-assert_eq "E25 Lite + the word escalate: escalation PASS" "PASS" "$(e_state E25 "$K25B")"
-run_x E25 nomention "$E25_FIX" "$INIT" "$(res 'Weight: Lite. Changed three files.')"
-assert_eq "E25 Lite without any mention of the Quick check: states Lite PASS" "PASS" "$(e_state E25 "$K25A")"
-assert_eq "E25 Lite without any mention of the Quick check: escalation FAIL" "FAIL" "$(e_state E25 "$K25B")"
-run_x E25 stayquick "$E25_FIX" "$INIT" "$(res 'Weight: Quick. Changed three files.')"
-assert_eq "E25 stayed at Quick over the limit: states Lite FAIL" "FAIL" "$(e_state E25 "$K25A")"
-assert_rc "E25 stayed at Quick: exit 1" 1
-run_x E25 full "$E25_FIX" "$INIT" "$(res 'Weight: Full. Changed three files, escalate.')"
-assert_eq "E25 Full instead of Lite: states Lite FAIL" "FAIL" "$(e_state E25 "$K25A")"
+assert_contains "E25 the prompt asks for an exported constant VERSION" "$(cat "$REC/E25.prompt" 2>/dev/null)" "VERSION = '1.0.0'"
+assert_contains "E25 the prompt names src/calc.js and src/cart.js" "$(cat "$REC/E25.prompt" 2>/dev/null)" "src/calc.js, src/cart.js and src/report.js"
+run_x E25 lite "$E25_FIX" "$INIT" "$(res 'Weight: Lite. Added VERSION to three files.')"
+assert_eq "AC5.2 E25 Lite without any mention of the Quick check: PASS" "PASS" "$(e_state E25 "$K25A")"
+assert_eq "AC5.2 E25 Lite, files exported: no FAIL line" "0" "$(count_lines E25 FAIL)"
+run_x E25 sizeq "$E25_FIX" "$INIT" "$(res 'I ran role-gate.sh size --quick: 3 files, so I continued with the playbook.')"
+assert_eq "AC5.2 E25 the size --quick command named: PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 escword "$E25_FIX" "$INIT" "$(res 'Three files, so I had to escalate from Quick.')"
+assert_eq "AC5.2 E25 the word escalate: PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 stayquick "$E25_FIX" "$INIT" "$(res 'Weight: Quick. Added VERSION to three files.')"
+assert_eq "AC5.2 E25 stayed at Quick over the limit: FAIL" "FAIL" "$(e_state E25 "$K25A")"
+assert_rc "AC5.2 E25 stayed at Quick: exit 1" 1
+run_x E25 full "$E25_FIX" "$INIT" "$(res 'Weight: Full. Added VERSION to three files.')"
+assert_eq "AC5.2 E25 Full without a Full-column reason: FAIL" "FAIL" "$(e_state E25 "$K25A")"
+run_x E25 fullesc "$E25_FIX" "$INIT" "$(res 'Weight: Full (escalated). Added VERSION to three files.')"
+assert_eq "AC5.2 E25 Full that mentions escalation is still not Lite: FAIL" "FAIL" "$(e_state E25 "$K25A")"
+E25_MISS='for f in calc report; do printf "\nmodule.exports.VERSION = \"1.0.0\";\n" >> "src/$f.js"; done'
+run_x E25 missing "$E25_MISS" "$INIT" "$(res 'Weight: Lite. Added VERSION.')"
+assert_eq "AC5.2 E25 src/cart.js has no VERSION: each file exports VERSION FAILs" "FAIL" "$(e_state E25 "$K25B")"
+assert_rc "AC5.2 E25 a missing export: exit 1" 1
+E25_WRONG='for f in calc cart report; do printf "\nmodule.exports.VERSION = \"2.0.0\";\n" >> "src/$f.js"; done'
+run_x E25 wrongval "$E25_WRONG" "$INIT" "$(res 'Weight: Lite. Added VERSION.')"
+assert_eq "AC5.2 E25 VERSION is not 1.0.0: FAIL" "FAIL" "$(e_state E25 "$K25B")"
+E25_NOTEXP='for f in calc cart report; do printf "\nconst VERSION = \"1.0.0\";\n" >> "src/$f.js"; done'
+run_x E25 notexported "$E25_NOTEXP" "$INIT" "$(res 'Weight: Lite. Added VERSION.')"
+assert_eq "AC5.2 E25 VERSION declared but not exported: FAIL" "FAIL" "$(e_state E25 "$K25B")"
+run_x E25 untouched "$E25_REC" "$INIT" "$(res 'Weight: Lite. Done.')"
+assert_eq "AC5.2 E25 nothing changed: each file exports VERSION FAILs" "FAIL" "$(e_state E25 "$K25B")"
 run_x E25 plain "$E25_FIX
 echo 'Weight: Lite, escalate'"
-assert_eq "E25 plain-text transcript: the Lite check is MANUAL" "MANUAL" "$(e_state E25 "$K25A")"
-assert_eq "E25 plain-text transcript: the escalation check is MANUAL" "MANUAL" "$(e_state E25 "$K25B")"
+assert_eq "E25 plain-text transcript: the reply check is MANUAL" "MANUAL" "$(e_state E25 "$K25A")"
+assert_eq "AC5.2 E25 plain-text transcript: the export check is still graded (PASS)" "PASS" "$(e_state E25 "$K25B")"
 
 echo "v0.24.0 review round 2 F1: E24 and E25 FAIL on a missing stream-json result only when the log is stream-json"
 ERRRES='{"type":"result","subtype":"error_max_turns","is_error":true,"result":"x"}'
@@ -697,7 +727,7 @@ for e in E22 E23 E24 E25; do
   assert_not_contains "AUTO $e is accepted (not a usage error)" "$OUT" "not auto-gradable"
   assert_contains "AUTO $e: the idle adapter is graded (a line for $e)" "$OUT" "$e "
   case "$e" in
-    E24|E25) # review round 2 F1: a plain-text idle run is MANUAL for the stream-json checks (needs --harness claude), never a FAIL
+    E24) # review round 2 F1: a plain-text idle run is MANUAL for the stream-json checks (needs --harness claude), never a FAIL (E25 since v0.24.2 also checks the files, so an idle run FAILs)
       assert_eq "AUTO $e: the idle plain-text adapter is graded without a FAIL (exit 0, not 2)" "0" "$RC" ;;
     *) assert_eq "AUTO $e: the idle adapter fails a check (exit 1, not 2)" "1" "$RC" ;;
   esac
