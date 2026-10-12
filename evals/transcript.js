@@ -76,9 +76,9 @@ function bashWritesSrc(cmd) {
     if (verb === "tee") return plain.some(a => src(bare(a)));
     if (verb === "mv" || verb === "cp") return plain.length > 0 && src(bare(plain[plain.length - 1]));
     if (verb === "git") {
-      const a = args.slice(0);
-      while (a.length > 1 && bare(a[0]) === "-C") a.splice(0, 2);   // git -C DIR mv ...
-      const q = a.filter(x => !/^-/.test(x));
+      let j = 0;
+      while (j + 1 < args.length && bare(args[j]) === "-C") j += 2;   // git -C DIR mv ... (an index walk: linear)
+      const q = args.slice(j).filter(x => !/^-/.test(x));
       return q[0] === "mv" && q.length > 2 && src(bare(q[q.length - 1]));
     }
     if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => src(bare(a)));
