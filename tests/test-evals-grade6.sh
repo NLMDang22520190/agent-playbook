@@ -454,4 +454,14 @@ hd "cat <<END-X with a proof run in the body is data" 0 "cat <<END-X${NLC}${PR}$
 hd "cat <<'END-X' with a proof run in the body is data" 0 "cat <<'END-X'${NLC}${PR}${NLC}END-X"
 hd "bash <<END-X with a proof run in the body is fed to the shell" 1 "bash <<END-X${NLC}${PR}${NLC}END-X"
 
+# ---- v0.23.3 round 3 R7: timeout with long options before the shell that reads the heredoc ----
+echo "v0.23.3 round 3 R7 timeout --signal SIG DUR / --kill-after DUR DUR before a shell reading its heredoc"
+hd "timeout --signal KILL 5 bash <<EOF: the body is fed to the shell" 1 "timeout --signal KILL 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --kill-after 2 5 bash <<EOF: the body is fed to the shell" 1 "timeout --kill-after 2 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal=KILL 5 bash <<EOF (attached value): the body is fed to the shell" 1 "timeout --signal=KILL 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal KILL 5 cat <<EOF is not a shell: the body is data" 0 "timeout --signal KILL 5 cat <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --kill-after 2 5 cat <<EOF is not a shell: the body is data" 0 "timeout --kill-after 2 5 cat <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal KILL 5 bash proof-run.sh --label x is a run" 1 "timeout --signal KILL 5 bash proof-run.sh --label x"
+hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KILL 5 head proof-run.sh"
+
 t_summary

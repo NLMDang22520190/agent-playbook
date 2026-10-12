@@ -161,10 +161,70 @@ gnu9 "review N3 corpus: timeout 5 then the tool written out"     tests/zz-gnu.sh
 gnu9 "review N3 control: timeout 5 then a clean variable use"    tests/zz-gnu.sh pass 3 "timeout 5 ${DL}GREP -i x f"
 gnu9 "review N3 control: the variable as an argument of timeout's command" tests/zz-gnu.sh pass 3 "timeout 5 echo ${DL}GREP $PF"
 
+echo "v0.23.3 round 3 R1 a quoted \$(( x << y )) is arithmetic, the heredoc check skips it"
+# R1: with the count of an opening $(( inside double quotes dropped, the << read as a heredoc and the body lines after it
+# were scanned as code, so the flag inside the later multi-line single-quoted string was reported
+gnu9 "R1 \"\$(( x << y ))\" in double quotes, then a multi-line string holding the flag" tests/zz-gnu.sh pass 3 "echo ${DQ}${DL}(( x << y ))${DQ}" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "R1 nested \$(( \$(( x << y )) << z )) in double quotes, then the multi-line string" tests/zz-gnu.sh pass 3 "echo ${DQ}${DL}(( ${DL}(( x << y )) << z ))${DQ}" "echo ${Q}a" "$G $PF x" "${Q}"
+gnu9 "R1 control: the flag after the quoted arithmetic on a plain line is still code" tests/zz-gnu.sh fail 4 "echo ${DQ}${DL}(( x << y ))${DQ}" "$G $PF x"
+
+echo "v0.23.3 round 3 R2 known limit: arithmetic state is per line"
+# R2: an arithmetic (( )) that spans lines is not tracked (the scan header says so); its second line "y << z ))" starts a false heredoc
+# whose body is read as code on its own, so the flag after it is reported. This pins today's behaviour of that known limit: if
+# arithmetic ever becomes multi-line aware, this case flips to pass and its expectation is to be changed with the header.
+# (the variable is named stat so that line 3 passes the no-tool prefilter and the scan really sees the open ((; a line without a tool word or quote is skipped)
+gnu9 "R2 limit: (( stat + then y << z )) is a false heredoc; its body line holding the flag is scanned" tests/zz-gnu.sh fail 6 "(( stat +" "y << z ))" "echo ${Q}a" "$G $PF x" "${Q}"
+
+echo "v0.23.3 round 3 R7 timeout with long options before a variable command word"
+gnu9 "R7 timeout --signal KILL 5 then the variable"              tests/zz-gnu.sh fail 3 "timeout --signal KILL 5 ${DL}GREP $PF x"
+gnu9 "R7 timeout --kill-after 2 5 then the variable"             tests/zz-gnu.sh fail 3 "timeout --kill-after 2 5 ${DL}GREP $PF x"
+gnu9 "R7 timeout --signal=KILL 5 then the variable (attached value)" tests/zz-gnu.sh fail 3 "timeout --signal=KILL 5 ${DL}GREP $PF x"
+gnu9 "R7 timeout --foreground 5 then the variable (a long flag with no value)" tests/zz-gnu.sh fail 3 "timeout --foreground 5 ${DL}GREP $PF x"
+gnu9 "R7 control: timeout --signal KILL 5 then a clean variable use" tests/zz-gnu.sh pass 3 "timeout --signal KILL 5 ${DL}GREP -i x f"
+gnu9 "R7 control: timeout --kill-after 2 5 then echo, the variable is an argument" tests/zz-gnu.sh pass 3 "timeout --kill-after 2 5 echo ${DL}GREP $PF"
+
+echo "v0.23.3 round 3 R3 a \${NAME} word is matched the same on every run, also under one-true-awk"
+# R3: match(substr(s, i + 2, 64), ...) gave different answers from run to run under original-awk, so a ${GREP} word was
+# sometimes not recognised. The fixture holds twelve such lines (the more lines, the surer a flaky match shows); every run must name all of them.
+# tools/bsd-check.sh is the oracle for the whole suite; this case finds the same awk (original-awk, else nawk) and puts it first on PATH.
+r3_lines=(); r3_k=0
+while [ "$r3_k" -lt 6 ]; do r3_lines+=("sudo ${DL}${LB}GREP} $PF x" "${DL}${LB}GREP} $PF x"); r3_k=$((r3_k + 1)); done
+# r3_runs LABEL COUNT [AWKDIR] -> COUNT runs of --only gnu over the twelve-line fixture; each must exit 1 and name lines 3..14
+r3_runs() {
+  local label="$1" cnt="$2" awd="${3:-}" r=0 oldp="$PATH" ln missing
+  C="$(mk_copy)"
+  printf '%s\n' '#!/usr/bin/env bash' '# fixture' "${r3_lines[@]}" > "$C/tests/zz-gnu.sh"
+  while [ "$r" -lt "$cnt" ]; do
+    r=$((r + 1))
+    if [ -n "$awd" ]; then PATH="$awd:$oldp"; fi
+    checks "$C" gnu
+    PATH="$oldp"
+    missing=""; ln=3
+    while [ "$ln" -le 14 ]; do
+      case "$OUT" in *"tests/zz-gnu.sh:$ln "*) ;; *) missing="$missing $ln" ;; esac
+      ln=$((ln + 1))
+    done
+    assert_rc "R3 $label run $r: exit 1" 1
+    assert_eq "R3 $label run $r: every \${NAME} line is named (missing:)" "" "${missing# }"
+  done
+}
+r3_runs "default awk" 3
+R3AWK=""
+for r3_c in original-awk nawk; do
+  if command -v "$r3_c" >/dev/null 2>&1; then R3AWK="$(command -v "$r3_c")"; break; fi
+done
+if [ -n "$R3AWK" ]; then
+  R3D="$(mk_tmp)"
+  { ln -s "$R3AWK" "$R3D/awk" 2>/dev/null && [ -x "$R3D/awk" ]; } || { rm -f "$R3D/awk"; cp "$R3AWK" "$R3D/awk" && chmod +x "$R3D/awk"; }
+  r3_runs "one-true-awk" 10 "$R3D"
+else
+  t_skip 20 "R3 one-true-awk runs need original-awk or nawk (tools/bsd-check.sh is the oracle)"
+fi
+
 echo "v0.23.3 review F1 the arithmetic check is linear in the line length"
 # F1: for every << the check rescanned the whole line before it, so a long line with many heredoc operators took
 # O(length x operators). The same line without << is the baseline; the budget is baseline + 8 s.
-# gen_long PREFIX-COUNT WORD COUNT -> one line: PREFIX-COUNT "((a)) " groups, then COUNT copies of WORD (WORD is "x<<A " or "x A ")
+# gen_long PREFIX-COUNT WORD COUNT -> one line: PREFIX-COUNT "((a)) " groups, then COUNT copies of WORD (WORD is "x<<A " or "x<A ": both pass the no-tool prefilter, only the first holds a heredoc operator)
 gen_long() { awk -v n="$1" -v w="$2" -v m="$3" 'BEGIN { for (i = 0; i < n; i++) s = s "((a)) "; for (i = 0; i < m; i++) s = s w; print s }'; }
 # time_long WORD COUNT -> sets LELAPSED (seconds) and RC/OUT of run-checks --only gnu over a file holding that long line, then a line A
 time_long() {
@@ -176,7 +236,7 @@ time_long() {
   LELAPSED=$((SECONDS - t0))
 }
 HD="<<"
-time_long "x A " 2800
+time_long "x<A " 2800   # R6: a scanned word (the "<" keeps the line past the no-tool prefilter), still no heredoc operator
 LBASE=$LELAPSED
 assert_rc "review F1 baseline (no heredoc operators): exit 0" 0
 time_long "x${HD}A " 2800

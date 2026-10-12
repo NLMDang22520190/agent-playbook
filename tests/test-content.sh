@@ -1032,4 +1032,31 @@ assert_contains "v23.3 review N4 the header names sudo -iu" "$TSHEAD_FLAT" "sudo
 assert_contains "v23.3 review N4 the header names a here-string after a heredoc" "$TSHEAD_FLAT" "here-string"
 assert_contains "v23.3 review N4 the here-string limit is about the position after a heredoc" "$TSHEAD_FLAT" "after a heredoc"
 
+# --- v0.23.3 round 3 R5: the here-string limit says what really happens (the here-string replaces the shell's stdin)
+echo "v23.3 round 3 R5 the here-string limit is worded as what the grader does"
+assert_not_contains "v23.3 R5 the header no longer says the position after a heredoc is not tracked" "$TSHEAD_FLAT" "position after a heredoc is not tracked"
+# the text from the here-string bullet to the end of the header is that one limit (it is the last bullet)
+TSHS="${TSHEAD_FLAT#*here-string}"
+assert_contains "v23.3 R5 the here-string limit says the here-string replaces the shell's stdin" "$TSHS" "stdin"
+assert_contains "v23.3 R5 the here-string limit says the heredoc body is still read as commands" "$TSHS" "commands"
+assert_contains "v23.3 R5 the here-string limit keeps its subject: after a heredoc" "$TSHS" "after a heredoc"
+
+# --- v0.23.3 round 3 R2 / R4: two limits of evals/run-checks.sh are documented in its own comments (not implemented)
+echo "v23.3 round 3 R2 R4 run-checks.sh documents the arithmetic and quote-state limits"
+RCSH="$PB_ROOT/evals/run-checks.sh"
+# the comment lines of the gnu section (up to its first command) and of the strip() helper, one line each
+RCGNU="$(awk '/^if want gnu; then/ { f = 1; next } f && /^#/ { print } f && /^ggnu=/ { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+RCSTRIP="$(awk '/^# AWKSTRIP:/ { f = 1 } f && /^#/ { print; next } f { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+RCSEDC="$(awk '/^if want sed; then/ { f = 1; next } f && /^#/ { print } f && /^gsed=/ { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+if [ -n "$RCGNU" ] && [ -n "$RCSTRIP" ] && [ -n "$RCSEDC" ]; then t_ok "v23.3 R2 R4 the gnu, strip and sed comment blocks were found in evals/run-checks.sh"
+else t_bad "v23.3 R2 R4 the gnu, strip and sed comment blocks were found in evals/run-checks.sh" "gnu=${#RCGNU} strip=${#RCSTRIP} sed=${#RCSEDC} chars"; fi
+# R2: arithmetic state is per line
+assert_contains "v23.3 R2 the gnu header names an arithmetic (( )) that spans lines" "$RCGNU" "(( ))"
+assert_contains "v23.3 R2 the gnu header says that case is not tracked" "$RCGNU" "not tracked"
+# R4: quote state in strip() is per line; an apostrophe in prose or a heredoc body hides a later # (a false positive for the sed check)
+RCQ="$RCSTRIP $RCSEDC"
+assert_contains "v23.3 R4 the strip/sed comments name an apostrophe in text" "$RCQ" "apostrophe"
+assert_contains "v23.3 R4 the strip/sed comments name a heredoc body" "$RCQ" "heredoc"
+assert_contains "v23.3 R4 the strip/sed comments state it as a limit" "$RCQ" "limit"
+
 t_summary

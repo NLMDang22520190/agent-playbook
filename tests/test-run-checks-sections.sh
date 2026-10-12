@@ -347,7 +347,7 @@ C="$(mk_copy)"; mv "$C/skills" "$C/skills-renamed"
 run bash "$C/evals/run-checks.sh" --only skills
 assert_rc "AC16.1 [skills] skills/ renamed: exit 1" 1
 assert_contains "AC16.1 [skills] skills/ renamed: reports no files match skills/*" "$OUT" "no files match skills/*"
-# shellcheck, where it is installed
+# the section named for that tool, run only where it is installed
 if command -v shellcheck >/dev/null 2>&1; then
   glob_case shellcheck tools   'tools/*.sh'
   glob_case shellcheck scripts 'scripts/*.sh'
