@@ -673,4 +673,26 @@ assert_rc "R6 the usage error exits 2" 2
 assert_contains "R6 the usage line mentions plan" "$OUT" "plan"
 reset
 
+
+echo "v0.24.0 review round 2 F5: a key present in any conf counts as from conf, even when it says session"
+reset
+printf 'model_tester_claude=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 an explicit model_tester_claude=session in the global conf: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_reviewer_claude=session\n' > "$L"
+role plan --harness claude
+assert_eq "F5 an explicit session key in the project conf: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_implementer=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 an explicit generic session key: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_tester_codex=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 a session key of another harness does not count" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+reset
+role plan --harness claude
+assert_eq "F5 nothing set at all: session (no conf)" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+reset
 t_summary

@@ -1020,4 +1020,23 @@ SHIM
   assert_eq "only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
   chmod 644 bulk/unreadable.txt 2>/dev/null
 else t_skip 5 "bounded fallback ($FB_WHY)"; fi
+
+echo "v0.24.0 review round 2 F7: an empty quick_max_files= or quick_max_lines= falls back to the default"
+qrepo
+qconf quick_max_files= quick_max_lines=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 both quick keys empty: exits 0, not 2" 0
+assert_contains "F7 both quick keys empty: the defaults 1 / 20 apply" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_files=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_files only: exits 0" 0
+assert_contains "F7 empty quick_max_files only: default files 1" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_lines=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_lines only: exits 0" 0
+assert_contains "F7 empty quick_max_lines only: default lines 20" "$OUT" "files: 1/1 lines: 20/20"
+printf 'x\n' >> src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 an empty key keeps the default limit: 21 lines exits 1" 1
 t_summary

@@ -635,13 +635,53 @@ echo 'Weight: Lite, escalate'"
 assert_eq "E25 plain-text transcript: the Lite check is MANUAL" "MANUAL" "$(e_state E25 "$K25A")"
 assert_eq "E25 plain-text transcript: the escalation check is MANUAL" "MANUAL" "$(e_state E25 "$K25B")"
 
+echo "v0.24.0 review round 2 F1: E24 and E25 FAIL on a missing stream-json result only when the log is stream-json"
+ERRRES='{"type":"result","subtype":"error_max_turns","is_error":true,"result":"x"}'
+run_x E24 f1plain "$E24_REC
+echo 'Models: tester=sonnet'"
+assert_eq "F1 E24 plain-text transcript: no FAIL line names the stream-json result" "0" "$(printf '%s\n' "$OUT" | grep '^E24 FAIL ' | grep -c 'stream-json result')"
+assert_eq "F1 E24 plain-text transcript: the stream-json check is MANUAL (needs --harness claude)" "MANUAL" "$(e_state E24 'needs --harness claude')"
+run_x E25 f1plain "$E25_FIX
+echo 'Weight: Lite, escalate'"
+assert_eq "F1 E25 plain-text transcript: no FAIL line names the stream-json result" "0" "$(printf '%s\n' "$OUT" | grep '^E25 FAIL ' | grep -c 'stream-json result')"
+assert_eq "F1 E25 plain-text transcript: the stream-json check is MANUAL (needs --harness claude)" "MANUAL" "$(e_state E25 'needs --harness claude')"
+run_x E24 f1err "$E24_REC" "$INIT" "$(AG sonnet)" "$ERRRES"
+assert_eq "F1 E24 stream-json run with an error result: the stream-json check FAILs" "1" "$(printf '%s\n' "$OUT" | grep '^E24 FAIL ' | grep -c 'stream-json result')"
+run_x E25 f1err "$E25_FIX" "$INIT" "$ERRRES"
+assert_eq "F1 E25 stream-json run with an error result: the stream-json check FAILs" "1" "$(printf '%s\n' "$OUT" | grep '^E25 FAIL ' | grep -c 'stream-json result')"
+run_x E24 f1ok "$E24_REC" "$INIT" "$(AG sonnet)" "$(res "$MODELS_REPLY")"
+assert_eq "F1 E24 good stream-json run: no FAIL line names the stream-json result" "0" "$(printf '%s\n' "$OUT" | grep '^E24 FAIL ' | grep -c 'stream-json result')"
+
+echo "v0.24.0 review round 2 F2: models= lists only general-purpose (or untyped) Agent/Task calls"
+AGX() { tu Agent "{\"description\":\"d\",\"subagent_type\":\"$1\",\"prompt\":\"x\"}"; }
+assert_eq "F2 models: an Explore call without a model is not listed" "sonnet" "$(mo_of "$INIT" "$(AGX Explore)" "$(AG sonnet)")"
+assert_eq "F2 models: an Explore call with a model is not listed either" "sonnet" "$(mo_of "$INIT" "$(tu Agent '{"description":"d","subagent_type":"Explore","model":"opus","prompt":"x"}')" "$(AG sonnet)")"
+assert_eq "F2 models: Explore alone gives an empty list" "" "$(mo_of "$INIT" "$(AGX Explore)")"
+assert_eq "F2 models: a general-purpose call without a model is still '-'" "-" "$(mo_of "$INIT" "$(AGN)")"
+assert_eq "F2 models: a call without subagent_type and without model is '-'" "-" "$(mo_of "$INIT" "$(tu Agent '{"description":"d","prompt":"x"}')")"
+assert_eq "F2 models: a Task call without subagent_type is listed" "opus" "$(mo_of "$INIT" "$(tu Task '{"description":"d","model":"opus","prompt":"x"}')")"
+assert_eq "F2 models: the general-purpose position order is kept around a helper" "sonnet,-,opus" "$(mo_of "$INIT" "$(AG sonnet)" "$(AGX Explore)" "$(AGN)" "$(AG opus)")"
+run_x E24 f2helper "$E24_REC" "$INIT" "$(AGX Explore)" "$(AG sonnet)" "$(res "$MODELS_REPLY")"
+assert_eq "F2 E24 Explore without a model + a sonnet call: configured model PASS" "PASS" "$(e_state E24 "$K24B")"
+assert_eq "F2 E24 Explore without a model + a sonnet call: no FAIL line" "0" "$(count_lines E24 FAIL)"
+run_x E24 f2gp "$E24_REC" "$INIT" "$(AGN)" "$(res "$MODELS_REPLY")"
+assert_eq "F2 E24 general-purpose without a model: configured model FAIL" "FAIL" "$(e_state E24 "$K24B")"
+run_x E24 f2onlyexp "$E24_REC" "$INIT" "$(AGX Explore)" "$(res "$MODELS_REPLY")"
+assert_eq "F2 E24 only a helper call: no listed model, configured model FAIL" "FAIL" "$(e_state E24 "$K24B")"
+assert_contains "F2 the transcript.js header documents the helper rule" "$(sed -n 1,12p "$TSX" | tr '\n' ' ')" "Explore"
+assert_contains "F2 the E24 scenario text documents the helper rule" "$(grep -A12 '^## E24' "$PB_ROOT/evals/scenarios.md" | tr '\n' ' ')" "Explore"
+
 echo "v0.24.0 AUTO list: E22-E25 are auto-gradable and the default scenarios stay E1,E3,E8,E15"
 for e in E22 E23 E24 E25; do
   W="$(mk_tmp)"
   run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios "$e" --workroot "$W" --out "$W/results.md"
   assert_not_contains "AUTO $e is accepted (not a usage error)" "$OUT" "not auto-gradable"
   assert_contains "AUTO $e: the idle adapter is graded (a line for $e)" "$OUT" "$e "
-  assert_eq "AUTO $e: the idle adapter fails a check (exit 1, not 2)" "1" "$RC"
+  case "$e" in
+    E24|E25) # review round 2 F1: a plain-text idle run is MANUAL for the stream-json checks (needs --harness claude), never a FAIL
+      assert_eq "AUTO $e: the idle plain-text adapter is graded without a FAIL (exit 0, not 2)" "0" "$RC" ;;
+    *) assert_eq "AUTO $e: the idle adapter fails a check (exit 1, not 2)" "1" "$RC" ;;
+  esac
 done
 
 t_summary

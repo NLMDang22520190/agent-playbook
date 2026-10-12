@@ -1202,4 +1202,10 @@ done
 AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
 qchk "R2 the AGENTS.global.md map line keeps E1 E3 E5 E8 E10 E21" "$AGMAP" 'E1 E3 E5 E8 E10 E21'
 
+
+echo "v0.24.0 review round 2 F6: the size --quick check applies to both paths (user-requested stop b, agent-chosen escalation)"
+QOUTSIDE="$(awk '/^## When Quick must escalate/ { skip = 1; next } skip && /^## / { skip = 0 } !skip { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
+qchk "F6 quick.md names role-gate.sh size --quick outside the escalation section" "$QOUTSIDE" 'role-gate\.sh size --quick'
+QUSER="$(awk '/^## When the user asks for Quick/ { f = 1; next } f && /^## / { exit } f { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
+qchk "F6 the user-requested section uses the size --quick check for stop (b)" "$QUSER" 'size --quick'
 t_summary

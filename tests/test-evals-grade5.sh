@@ -510,12 +510,12 @@ corpus_case() {
   copy="$TR/corpus-$(basename "$dir")-$f"; cp "$dir/$f" "$copy"
   assert_eq "corpus $(basename "$dir")/$f keeps its keys" "$want" "$(node "$TS" "$copy" 2>/dev/null | tr '\n' ' ')"
 }
-corpus_case "$EV231" E16.log "json=1 result_ok=1 cost=2.502914 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=opus,opus,sonnet,sonnet,opus,sonnet "
+corpus_case "$EV231" E16.log "json=1 result_ok=1 cost=2.502914 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=sonnet,sonnet,opus,sonnet "
 corpus_case "$EV231" E17.log "json=1 result_ok=1 cost=0.397748 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 models= "
 corpus_case "$EV231" E19.log "json=1 result_ok=1 cost=0.5311316 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 models= "
-corpus_case "$EV231" E21.log "json=1 result_ok=1 cost=1.5856581 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=opus,sonnet,sonnet,opus "
+corpus_case "$EV231" E21.log "json=1 result_ok=1 cost=1.5856581 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=sonnet,sonnet,opus "
 corpus_case "$EV232" E15.log "json=1 result_ok=1 cost=0.4213710000000001 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 models= "
 corpus_case "$EV232" E19.log "json=1 result_ok=1 cost=0.5172622 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 models= "
-corpus_case "$EV232" E21.log "json=1 result_ok=1 cost=1.6847831 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=opus,sonnet,sonnet,opus "
+corpus_case "$EV232" E21.log "json=1 result_ok=1 cost=1.6847831 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 models=sonnet,sonnet,opus "
 
 t_summary

@@ -159,4 +159,7 @@ chk "R11 reviewer.md checks the base sha for a pre-existing finding" "$RV" 'pre-
 chk "R11 reviewer.md: the marking is for every finding" "$RV" 'each finding[^.]{0,100}(introduced|pre-existing)|every finding[^.]{0,100}(introduced|pre-existing)|(introduced|pre-existing)[^.]{0,100}each finding'
 chk "AC3.2 reviewer.md: regression, no evidence no finding stays" "$RV" 'No evidence, no finding'
 
+
+echo "v0.24.0 review round 2 F4: the effort command carries --harness"
+chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$ROLES" 'role-model\.sh <role> --harness <h> --effort'
 t_summary

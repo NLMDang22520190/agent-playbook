@@ -558,4 +558,20 @@ assert_eq "R1 E19 escalated from Quick to Lite, no feedback line: FAIL (the repl
 run_x E19 qlitefb "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Lite. Loaded playbook-tdd, then added multiply. Playbook feedback: none')"
 assert_eq "R1 E19 Lite with a feedback line: no FAIL line" "0" "$(count_lines E19 FAIL)"
 
+
+echo "v0.24.0 review round 2 F3: the Quick exemption is not cancelled by the word full or lite elsewhere in the reply"
+run_x E15 f3quickfull "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Quick. Fixed the typo and ran the full test suite, it is green.')"
+assert_eq "F3 E15 Weight: Quick + 'full test suite', no feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
+assert_eq "F3 E15 Weight: Quick + 'full': the feedback check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -c 'Playbook feedback')"
+run_x E15 f3quicklite "$E15_FIX" "$INIT" "$SKT" "$(res 'weight: quick. Fixed the typo; a lite change, nothing else touched.')"
+assert_eq "F3 E15 weight: quick + the word lite elsewhere, no feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E15 f3lite "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite, no independent review. Fixed the typo and added a test.')"
+assert_eq "F3 E15 Weight: Lite without a feedback line: FAIL" "FAIL" "$(e_state E15 "$FBK")"
+run_x E19 f3quickfull "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Quick. Loaded playbook-tdd, added multiply, ran the full test suite.')"
+assert_eq "F3 E19 Weight: Quick + 'full test suite', no feedback line: no FAIL line" "0" "$(count_lines E19 FAIL)"
+assert_eq "F3 E19 Weight: Quick + 'full': the feedback check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E19 FAIL ' | grep -c 'Playbook feedback')"
+run_x E19 f3lite "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Lite. Loaded playbook-tdd, then added multiply with a test.')"
+assert_eq "F3 E19 Weight: Lite without a feedback line: FAIL" "FAIL" "$(e_state E19 "$FBK")"
+run_x E19 f3quickfullw "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Full. Loaded playbook-tdd, quick look, then added multiply.')"
+assert_eq "F3 E19 Weight: Full + the word quick elsewhere, no feedback line: FAIL" "FAIL" "$(e_state E19 "$FBK")"
 t_summary
