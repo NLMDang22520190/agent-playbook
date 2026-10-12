@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
-# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios) and prints only its lines plus the summary;
+# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes) and prints only its lines plus the summary;
 # a missing or unknown SECTION exits 2. Without --only everything runs; the always-on and files checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
@@ -10,14 +10,27 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
 ONLY=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios]" >&2; exit 2; }
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes]" >&2; exit 2; }
   case "$2" in
-    dupmax | sed | gnu | soh | shellcheck | skills | scenarios) ONLY="$2" ;;
-    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios)" >&2; exit 2 ;;
+    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes) ONLY="$2" ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes)" >&2; exit 2 ;;
   esac
 fi
 # want NAME: this group runs (always without --only)
 want() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
+# nofiles GLOB...: one FAIL per quoted glob that matches no file (an unmatched glob stays literal, so a renamed directory
+# would otherwise be a silent pass). Pass the globs quoted.
+nofiles() {
+  local g f found
+  for g in "$@"; do
+    found=0
+    for f in $g; do
+      if [ -e "$f" ]; then found=1; fi
+      break
+    done
+    [ "$found" -eq 1 ] || bad "no files match $g"
+  done
+}
 
 # AWKSTRIP: awk code shared by the gnu and soh checks. strip(s) returns the code part of a line and leaves the comment text
 # (from its #) in CMT. A # starts a comment only at the start of a line or after a blank, and only outside single and double
@@ -50,6 +63,7 @@ SENTENCE='Before making any changes, inspect the relevant context and identify a
 
 if want skills; then
 echo "skills"
+nofiles 'skills/*/'
 desc_total=0
 have_yaml=0
 if python3 -c 'import yaml' >/dev/null 2>&1; then have_yaml=1; else echo "  skip yaml frontmatter parse: python3 with PyYAML not available"; fi
@@ -166,7 +180,9 @@ else
   crlf="$(find . -path ./.git -prune -o -type f -print | sed 's#^\./##' | cr_files | tr '\n' ' ')"
 fi
 [ -z "${crlf// /}" ] && ok "no CRLF line endings" || bad "CRLF found in: $crlf"
+nofiles 'scripts/*.sh' 'tests/*.sh' 'evals/*.sh' 'tools/*.sh'
 for f in install.sh scripts/*.sh tests/*.sh evals/*.sh tools/*.sh; do
+  case "$f" in *'*'*) continue ;; esac   # an unmatched glob is reported above
   bash -n "$f" 2>/dev/null && ok "syntax: $f" || bad "bash -n failed: $f"
   sb=""; IFS= read -r -n 2 sb < "$f"   # builtin read: no head process per file
   [ "$sb" = "#!" ] || bad "$f: missing shebang"
@@ -178,6 +194,7 @@ fi   # full-run-only groups end here
 
 if want shellcheck; then
 if command -v shellcheck >/dev/null 2>&1; then
+  nofiles 'scripts/*.sh' 'tools/*.sh' 'evals/*.sh'
   shellcheck -S warning install.sh scripts/*.sh tools/*.sh evals/*.sh && ok "shellcheck (warning level)" || bad "shellcheck reported warnings"
 else
   echo "  skip shellcheck not installed"
@@ -185,6 +202,7 @@ fi
 fi
 
 if want dupmax; then
+nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # BSD regex (macOS) rejects repeat bounds above RE_DUP_MAX (255): such a pattern never matches there
 big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null |
   awk -F: '{ line = $0; sub(/^[^:]*:[^:]*:/, "", line)
@@ -194,6 +212,7 @@ big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*
 fi
 
 if want sed; then
+nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # BSD sed (macOS) reads the word after -i as the backup suffix, so `sed -i 's/a/b/' f` edits nothing there;
 # an attached suffix (sed -i.bak) works on both. Comments (from a # at the start or after a blank) are ignored.
 gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
@@ -204,36 +223,73 @@ si=-i   # spelled through a variable so this file does not trip its own check
 fi
 
 if want gnu; then
+nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
-# The line is cut into words (single-quoted text and double-quoted text are skipped, except a $( ) inside double quotes;
-# ( ) ; | & ` { } end a command), and for each
+# Each file is read once, line by line, with the quote state carried across lines. A line is cut into words (single-quoted
+# text, ANSI-C quoted text $'...' and double-quoted text are skipped, except a $( ) or backtick command inside double quotes;
+# ( ) ; | & ` end a command, a { } pair stays a word as in find -exec {} or xargs -I {}), and for each
 # of grep, readlink, date, stat, xargs, sed and find the rest of that command is looked at: the GNU-only short flags
 # (also inside a cluster with digits, after an option argument, or as a trailing flag), the GNU-only long options and their
-# prefixes of at least 4 letters (with or without =value), and the find actions -printf / -fprintf.
-# Comments are ignored: a # starts one at the start of a line or after a blank when it is not inside single or double quotes.
+# prefixes of at least 4 letters (with or without =value), and the find actions -printf / -fprintf. A command word that is a
+# variable named exactly after one of those tools ($GREP, ${sed}, any case) is checked like the tool.
+# Comments are ignored: a # starts one at the start of a line or after a blank when it is not inside quotes. Comments and
+# heredoc bodies never change the quote state (a heredoc body line is read as code on its own).
 # A line may opt out with "# gnu-ok: <reason>" (a non-blank reason) in its real trailing comment, that line only.
 # The names are spelled in pieces so this file does not trip its own check.
-# Limits (not covered): quote state is per line (a string that spans lines is not tracked); text inside single quotes
-# (bash -c '...', awk programs) is not looked at; a tool named through a variable or an alias is not seen; a flag on a
-# continuation line (after a backslash) is not seen; heredoc bodies are read as code; only the names and options listed
-# above are checked, so a new GNU-only option needs a new entry.
-ggnu="$(awk "$AWKSTRIP"'
+# Limits (not covered): text inside single quotes (bash -c '...', awk programs) is not looked at; a tool named through
+# an alias or a longer variable name is not seen; a flag on a continuation line (after a backslash) is not seen; an ANSI-C
+# quote does not span lines; only the names and options listed above are checked, so a new GNU-only option needs a new entry.
+ggnu="$(awk '
   function flush() { if (t != "") { TK[++nk] = t; t = "" } }
-  function tokenize(s,   i, n, c, sp, m) {
-    nk = 0; t = ""; n = length(s); sp = 1; MS[1] = "c"; PD[1] = 0
-    for (i = 1; i <= n; i++) {
+  # scan(s): the words of one line, with the quote state (sp/MS/PD/inS) carried over from the line before.
+  # MS[sp] is "c" (code), "d" (inside double quotes) or "b" (a backtick command inside double quotes).
+  function scan(s,   i, n, c, m, j, c2, q, w, dash, ch) {
+    nk = 0; t = ""; CMT = ""; n = length(s); i = 1
+    if (inS) {   # still inside a single-quoted string that began on an earlier line
+      while (i <= n && substr(s, i, 1) != "\047") i++
+      if (i > n) return
+      inS = 0; i++
+    }
+    for (; i <= n; i++) {
       c = substr(s, i, 1); m = MS[sp]
       if (m == "d") {   # inside double quotes: hidden, except a command substitution
         if (c == "\\") i++
         else if (c == "\"") { sp--; flush() }
         else if (c == "$" && substr(s, i + 1, 1) == "(") { sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
+        else if (c == "`") { sp++; MS[sp] = "b"; PD[sp] = 0; flush(); TK[++nk] = ";" }
         continue
       }
       if (c == "\\") { i++; flush() }
-      else if (c == "\047") { flush(); i++; while (i <= n && substr(s, i, 1) != "\047") i++ }   # single quotes: hidden
+      else if (c == "\047") { flush(); i++; while (i <= n && substr(s, i, 1) != "\047") i++; if (i > n) inS = 1 }   # single quotes: hidden
+      else if (c == "$" && substr(s, i + 1, 1) == "\047") {   # ANSI-C quote: a backslash escapes the next character
+        flush(); i += 2
+        while (i <= n) { c2 = substr(s, i, 1); if (c2 == "\\") i += 2; else if (c2 == "\047") break; else i++ }
+      }
       else if (c == "\"") { flush(); sp++; MS[sp] = "d" }
+      else if (c == "#" && (i == 1 || substr(s, i - 1, 1) == " " || substr(s, i - 1, 1) == "\t")) { CMT = substr(s, i); break }
+      else if (c == "<" && !nohd && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && (i == 1 || substr(s, i - 1, 1) != "<")) {
+        j = i + 2; dash = 0
+        if (substr(s, j, 1) == "-") { dash = 1; j++ }
+        while (substr(s, j, 1) == " " || substr(s, j, 1) == "\t") j++
+        q = substr(s, j, 1)
+        if (q == "\"" || q == "\047" || q == "\\") j++; else q = ""
+        w = ""
+        while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_]/) { w = w substr(s, j, 1); j++ }
+        if (w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
+          if (hn == 0) hi = 1
+          hn++; HDW[hn] = w; HDD[hn] = dash
+          if (q == "\"" || q == "\047") j++
+          i = j - 1
+        } else i++
+        flush()
+      }
       else if (c == " " || c == "\t" || c == "<" || c == ">") flush()
-      else if (c == ")" && sp > 1 && PD[sp] == 0) { flush(); TK[++nk] = ";"; sp-- }
+      else if (c == "$" && substr(s, i + 1, 1) == "{" && match(substr(s, i + 2, 64), /^[A-Za-z_][A-Za-z0-9_]*[}]/)) {   # ${NAME}: one word
+        t = t substr(s, i, RLENGTH + 2); i += RLENGTH + 1
+      }
+      else if (c == "{" && substr(s, i + 1, 1) == "}") { t = t "{}"; i++ }   # find -exec {} and xargs -I {}
+      else if (c == ")" && m == "c" && sp > 1 && PD[sp] == 0) { flush(); TK[++nk] = ";"; sp-- }
+      else if (c == "`" && m == "b") { flush(); TK[++nk] = ";"; sp-- }
       else if (index(";|&(){}`", c) > 0) {
         if (c == "(" && sp > 1) PD[sp]++
         if (c == ")" && sp > 1) PD[sp]--
@@ -242,11 +298,29 @@ ggnu="$(awk "$AWKSTRIP"'
       else t = t c
     }
     flush()
+    if (MS[sp] != "d") TK[++nk] = ";"
+  }
+  # a heredoc body line is read as code on its own: the quote state around it is saved and restored
+  function scanbody(s,   k, sv, si) {
+    sv = sp; si = inS
+    for (k = 1; k <= sp; k++) { SM[k] = MS[k]; SD[k] = PD[k] }
+    sp = 1; MS[1] = "c"; PD[1] = 0; inS = 0; nohd = 1
+    scan(s)
+    nohd = 0; sp = sv; inS = si
+    for (k = 1; k <= sp; k++) { MS[k] = SM[k]; PD[k] = SD[k] }
+  }
+  # a variable used as a command word: at the start of a command, after if/then/do/while and similar words
+  function cmdpos(i,   j) {
+    j = i - 1
+    while (j >= 1 && (TK[j] in RW)) j--
+    return (j == 0 || TK[j] == ";")
   }
   function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
   BEGIN {
     nt = split("grep readlink date stat find xargs sed", tl, " ")
     for (k = 1; k <= nt; k++) isT[tl[k]] = 1
+    split("if then do else elif while until !", rl, " ")
+    for (k = 1; k <= 8; k++) RW[rl[k]] = 1
     SL["grep"] = "P"; SL["readlink"] = "f"; SL["date"] = "d"; SL["stat"] = "c"; SL["xargs"] = "r"; SL["sed"] = "r"
     LN["grep"] = "perl-regexp"
     LN["stat"] = "format printf"
@@ -255,13 +329,22 @@ ggnu="$(awk "$AWKSTRIP"'
     LN["xargs"] = "no-run-if-empty"
     LN["sed"] = "regexp-extended"
   }
+  FNR == 1 { sp = 1; MS[1] = "c"; PD[1] = 0; inS = 0; hn = 0; hi = 0; nohd = 0 }
   {
-    code = strip($0)
+    body = 0
+    if (hn > 0) {
+      tl1 = $0; if (HDD[hi]) sub(/^\t+/, "", tl1)
+      if (tl1 == HDW[hi]) { if (++hi > hn) hn = 0; next }
+      body = 1
+    } else if (sp == 1 && !inS && $0 !~ /["\047`<\\]/ && tolower($0) !~ /grep|readlink|date|stat|find|xargs|sed/) next   # no state change, no tool
+    if (body) scanbody($0); else scan($0)
     ex = (CMT ~ /(^|[[:space:]])#[[:space:]]*gnu-ok:[[:space:]]*[^[:space:]]/)
-    if (code !~ /grep|readlink|date|stat|find|xargs|sed/) next
-    tokenize(code)
     for (i = 1; i <= nk; i++) {
-      w = TK[i]; sub(/^.*\//, "", w)
+      w = TK[i]
+      if (w ~ /^[$][{]?[A-Za-z]+[}]?$/) {   # a variable named after a tool, as a command word
+        if (!cmdpos(i)) continue
+        w = tolower(w); gsub(/[$]|[{]|[}]/, "", w)
+      } else sub(/^.*\//, "", w)
       if (!(w in isT)) continue
       skip = 0
       for (j = i + 1; j <= nk && TK[j] != ";"; j++) {
@@ -287,6 +370,7 @@ ggnu="$(awk "$AWKSTRIP"'
 fi
 
 if want soh; then
+nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # The control byte SOH (octal 1) is bash 3.2's internal CTLESC (macOS ships 3.2): a script that builds it with printf, tr, awk
 # or an ANSI-C quote misbehaves there while Ubuntu is fine. Refused in every spelling outside comments (a backslash run of odd
 # length ends in a live escape): the octal forms with 4, 3 or 2 digits and the two-digit hex form. No gnu-ok exemption; build
@@ -307,6 +391,31 @@ gsoh="$(awk "$AWKSTRIP"'
   }
   END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
 [ -z "${gsoh// /}" ] && ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)" || bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"
+fi
+
+if want modes; then
+# Executable bits: every tracked file under scripts/, tools/ and evals/ whose first line is a #! line, plus tests/*.sh and
+# install.sh, is stored with git mode 100755. The INDEX mode is read (git ls-files -s), never the work tree: a commit that
+# rewrites a script as 100644 breaks `./x` and the CI wrappers while `bash x` still works.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mfail=0
+  while read -r mode _ _ mpath; do
+    case "$mpath" in
+      scripts/* | tools/* | evals/*)
+        [ -f "$mpath" ] || continue
+        mfirst=""; IFS= read -r mfirst < "$mpath"
+        case "$mfirst" in "#!"*) ;; *) continue ;; esac ;;
+      tests/*.sh | install.sh) ;;
+      *) continue ;;
+    esac
+    [ "$mode" = 100755 ] || { bad "script stored with git mode $mode, want 100755 (git update-index --chmod=+x): $mpath"; mfail=1; }
+  done <<EOF
+$(git ls-files -s -- scripts tools evals tests install.sh)
+EOF
+  [ "$mfail" -eq 0 ] && ok "every script is stored with git mode 100755"
+else
+  echo "  skip modes: not a git checkout"
+fi
 fi
 
 if want scenarios; then

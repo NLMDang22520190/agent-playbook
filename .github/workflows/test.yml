@@ -86,11 +86,11 @@ jobs:
         run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
       - name: Docs-only checks
         # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
-        # found by grep, plus the content checks and the static checks. The full step below is skipped then.
+        # found by grep, plus the content and update checks and the static checks. The full step below is skipped then.
         if: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' }}
         run: |
           fail=0
-          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh) | sort -u)"
+          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh; echo tests/test-update.sh) | sort -u)"
           for t in $suites; do
             echo "== $t"
             bash "$t" || fail=1
@@ -132,11 +132,11 @@ jobs:
           fetch-depth: 0
       - name: Docs-only checks
         # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
-        # found by grep, plus the content checks and the static checks. The full step below is skipped then.
+        # found by grep, plus the content and update checks and the static checks. The full step below is skipped then.
         if: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' }}
         run: |
           fail=0
-          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh) | sort -u)"
+          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh; echo tests/test-update.sh) | sort -u)"
           for t in $suites; do
             echo "== $t"
             bash "$t" || fail=1

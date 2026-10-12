@@ -16,6 +16,20 @@ let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // heredoc bodies are data: drop every line after a line with <<WORD, <<'WORD', <<"WORD" or <<-WORD up to and including the
 // terminator line (tabs allowed before it with <<-); an unterminated heredoc swallows the rest. One pass over the lines.
+// A heredoc that is fed to a bare shell (bash, sh or zsh with flags only, no script file) is its stdin, which the shell runs
+// as commands: its body is kept (the terminator line is dropped), so the graders read it like any other command text.
+const feedsShell = prefix => {
+  const segs = prefix.split(/[;&|(){}`]+/);
+  const w = segs[segs.length - 1].trim().split(/\s+/).filter(t => t !== "");
+  let k = 0;
+  while (k < w.length && /^(?:[A-Za-z_][A-Za-z0-9_]*=.*|if|then|do|else|elif|while|until|!|sudo|env|nice|time|nohup|exec|command)$/.test(w[k])) k++;
+  if (k >= w.length || !/^(?:ba|z)?sh$/.test(w[k].replace(/^.*\//, ""))) return false;
+  for (let j = k + 1; j < w.length; j++) {
+    if (/^[-+][a-zA-Z]*[oO]$/.test(w[j])) j++;   // an option that takes a value (-o pipefail)
+    else if (!/^[-+]/.test(w[j])) return false;   // a script file or other word: the body is input to it
+  }
+  return true;
+};
 const stripHeredocs = s => {
   const out = [];
   const pending = [];
@@ -23,6 +37,7 @@ const stripHeredocs = s => {
     if (pending.length) {
       const t = pending[0].dash ? line.replace(/^\t+/, "") : line;
       if (t.replace(/\r$/, "") === pending[0].word) pending.shift();
+      else if (pending[0].keep) out.push(line);
       continue;
     }
     out.push(line);
@@ -31,7 +46,7 @@ const stripHeredocs = s => {
     let m;
     // only in code: a << inside a quoted string or an arithmetic $(( )) is no heredoc (a $( ) inside double quotes is code)
     const v = shellView(line), view = v.out + (v.subs.length ? ";" + v.subs.join(";") : "");
-    while ((m = re.exec(view))) pending.push({ dash: m[1] === "-", word: m[3] || m[4] });
+    while ((m = re.exec(view))) pending.push({ dash: m[1] === "-", word: m[3] || m[4], keep: feedsShell(view.slice(0, m.index)) });
   }
   return out.join("\n");
 };
@@ -97,13 +112,19 @@ const isSrc = p => /(^|\/)src\//.test(p) && !/(^|\/)node_modules\//.test(p);
 // simple commands at ; & | and newlines; redirects, tee, mv/cp/git mv targets, sed/perl in-place edits and node
 // writeFileSync/appendFileSync calls count. After a `cd src` (or ./src, or <abs>/src) a relative path is inside src until
 // a later cd that leaves it.
-function bashWritesSrc(cmd) {
+function bashWrites(cmd) {
   const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n()]|[^\s;&|<>()"']+/g) || [];
   const bare = t => t.replace(/^["']|["']$/g, "");
-  let words = [], inSrc = false;
-  const saved = [];   // inSrc at each open "(": a subshell's cd does not leak out of it
+  let words = [], inSrc = false, inHand = false;
+  let sawSrc = false, sawSpec = false;
+  const saved = [];   // [inSrc, inHand] at each open "(": a subshell's cd does not leak out of it
   const rel = p => p !== "" && !/^(\/|~|\.\.|-)/.test(p);
   const src = p => isSrc(p) || (inSrc && rel(p));
+  // the spec file: the same path rule as a Write/Edit call; a bare 01-spec.md only after a cd into .agents/handoff still in effect
+  const spec = p => /(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p.replace(/\\/g, "/")) || (inHand && /^(\.\/)?01-spec\.md$/.test(p));
+  // a write target: an src write ends the scan (nothing after it can put the spec first); a spec write before it is noted
+  const hit = p => { if (src(p)) sawSrc = true; else if (spec(p)) sawSpec = true; return sawSrc; };
+  const hits = list => { for (const p of list) if (hit(p)) return true; return false; };
   const done = () => {
     const w = words; words = [];
     if (!w.length) return false;
@@ -112,33 +133,36 @@ function bashWritesSrc(cmd) {
     if (verb === "cd") {
       const d = plain.length ? bare(plain[0]) : "";
       inSrc = (inSrc && rel(d)) || isSrc(d + "/");
+      inHand = /(^|\/)\.agents\/handoff\/?$/.test(d.replace(/\\/g, "/"));
       return false;
     }
-    if (verb === "tee") return plain.some(a => src(bare(a)));
-    if (verb === "mv" || verb === "cp") return plain.length > 0 && src(bare(plain[plain.length - 1]));
+    if (verb === "tee") return hits(plain.map(bare));
+    if (verb === "mv" || verb === "cp") return plain.length > 0 && hit(bare(plain[plain.length - 1]));
     if (verb === "git") {
       let j = 0;
       while (j + 1 < args.length && bare(args[j]) === "-C") j += 2;   // git -C DIR mv ... (an index walk: linear)
       const q = args.slice(j).filter(x => !/^-/.test(x));
-      return q[0] === "mv" && q.length > 2 && src(bare(q[q.length - 1]));
+      return q[0] === "mv" && q.length > 2 && hit(bare(q[q.length - 1]));
     }
-    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => src(bare(a)));
-    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => src(bare(a)));
+    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && hits(plain.map(bare));
+    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && hits(plain.map(bare));
     if (verb === "node" || verb === "nodejs") {
       const re = /\b(?:writeFileSync|appendFileSync)\s*\(\s*\x5c?["'`]([^"'`\x5c]*)/g;
-      for (const a of plain) { let m; while ((m = re.exec(a))) if (src(m[1])) return true; }
+      for (const a of plain) { let m; while ((m = re.exec(a))) if (hit(m[1])) return true; }
     }
     return false;
   };
+  const result = () => ({ src: sawSrc, spec: sawSpec });
   for (let k = 0; k < toks.length; k++) {
     const t = toks[k];
-    if (t === ">" || t === ">>") { if (k + 1 < toks.length && src(bare(toks[k + 1]))) return true; k++; continue; }
-    if (t === "(") { if (done()) return true; saved.push(inSrc); continue; }
-    if (t === ")") { if (done()) return true; if (saved.length) inSrc = saved.pop(); continue; }
-    if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return true; continue; }
+    if (t === ">" || t === ">>") { if (k + 1 < toks.length && hit(bare(toks[k + 1]))) return result(); k++; continue; }
+    if (t === "(") { if (done()) return result(); saved.push([inSrc, inHand]); continue; }
+    if (t === ")") { if (done()) return result(); if (saved.length) [inSrc, inHand] = saved.pop(); continue; }
+    if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return result(); continue; }
     words.push(t);
   }
-  return done();
+  done();
+  return result();
 }
 // does a shell command run proof-run.sh? Split into simple commands at ; & | ( ) { } backticks and newlines (linear), then skip
 // reserved words, env assignments and the prefixes sudo/env/nice/timeout/time/nohup/exec/command with their flags (command -v and -V are lookups) and arguments;
@@ -203,8 +227,13 @@ for (const line of text.split(/\r?\n/)) {
       if (b.name !== "NotebookEdit" && /(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p) && specw < 0) specw = i;
       if (isSrc(p) && srcw < 0) srcw = i;
     }
-    if (b.name === "Bash" && srcw < 0 && bashWritesSrc(unwrap(String(inp.command || "")))) srcw = i;
     const cmdText = b.name === "Bash" ? stripHeredocs(String(inp.command || "")) : "";
+    if (b.name === "Bash" && (srcw < 0 || specw < 0)) {
+      // heredoc bodies are data unless a shell reads them (cmdText); a Bash write of the spec is the spec write, ordered inside the call
+      const w = bashWrites(unwrap(cmdText));
+      if (w.spec && specw < 0) specw = i - 0.5;
+      if (w.src && srcw < 0) srcw = i;
+    }
     const cmd = b.name === "Bash" ? unquote(unwrap(cmdText)) : "";
     if (/feedback\.sh\s+capture/.test(cmd)) captured = true;
     // a test run, not a mention: proof-run.sh only as the command (or the script of a shell); ls, cat, head, diff of it are reads
