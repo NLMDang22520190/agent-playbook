@@ -244,4 +244,74 @@ assert_rc "review F1 2800 heredoc operators after 1000 closed (( )) groups: exit
 if [ "$LELAPSED" -le $((LBASE + 8)) ]; then t_ok "review F1 the heredoc line took ${LELAPSED}s, baseline ${LBASE}s (budget baseline + 8 s)"
 else t_bad "review F1 the heredoc line took ${LELAPSED}s, baseline ${LBASE}s (budget baseline + 8 s)" "quadratic in the line length"; fi
 
+echo "v0.24.2 AC1.2 the scanner reads one very long line in linear time under one-true-awk (macOS CI was 3-4x slower than Linux)"
+# AC1.2: one-true-awk's substr(s, i, 1) costs O(i), so a per-character loop over a long line is quadratic there. The slow case is one
+# line of SLOWK x 2000 characters (each 2000-character segment: a double-quoted text, then command substitutions as code); the baseline
+# is the same bytes as SLOWK lines of 2000 characters. Budget: slow <= 3 x baseline + 8 s. The spec says 20000 characters; at 20000 the
+# quadratic cost is only ~2-3 s on one-true-awk 20231127 (measured: 6 s against 3 s), well inside the budget, so the size is raised until
+# the old scanner is over it (60000 characters: ~36 s against a 4 s baseline).
+# Both runs must find the same thing: one GNU-only flag at the very end of the data, so a scanner that gets lost in the long quote is caught.
+SLOWK=30
+g9_seg="$(awk 'BEGIN { s = "x=\""; while (length(s) < 1000) s = s "abc def "; s = s "\"; "; while (length(s) < 1990) s = s "a$(b) "; print s "true;" }')"
+g9_one=""; g9_k=0
+while [ "$g9_k" -lt "$SLOWK" ]; do g9_one="$g9_one$g9_seg "; g9_k=$((g9_k + 1)); done
+g9_lines=(); g9_k=1
+while [ "$g9_k" -lt "$SLOWK" ]; do g9_lines+=("$g9_seg"); g9_k=$((g9_k + 1)); done
+g9_lines+=("$g9_seg $G $PF x")
+# g9_time LABEL AWKDIR LINE... -> TSEC (seconds), TRC, TOUT of --only gnu over tests/zz-gnu.sh holding the LINEs (AWKDIR empty: default awk)
+g9_time() {
+  local label="$1" awd="$2" oldp="$PATH" t0; shift 2
+  C="$(mk_copy)"
+  printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$@" > "$C/tests/zz-gnu.sh"
+  if [ -n "$awd" ]; then PATH="$awd:$oldp"; fi
+  t0=$SECONDS
+  checks "$C" gnu
+  TSEC=$((SECONDS - t0))
+  PATH="$oldp"
+  TRC=$RC; TOUT="$OUT"
+}
+G9AWK=""
+for g9_c in original-awk nawk; do
+  if command -v "$g9_c" >/dev/null 2>&1; then G9AWK="$(command -v "$g9_c")"; break; fi
+done
+if [ -n "$G9AWK" ]; then
+  G9D="$(mk_tmp)"
+  { ln -s "$G9AWK" "$G9D/awk" 2>/dev/null && [ -x "$G9D/awk" ]; } || { rm -f "$G9D/awk"; cp "$G9AWK" "$G9D/awk" && chmod +x "$G9D/awk"; }
+  g9_time "default one line" "" "$g9_one$G $PF x"
+  G9DEF_RC=$TRC; G9DEF_OUT="$TOUT"
+  g9_time "slow" "$G9D" "$g9_one$G $PF x"
+  G9A_T=$TSEC; G9A_RC=$TRC; G9A_OUT="$TOUT"
+  g9_time "baseline" "$G9D" "${g9_lines[@]}"
+  G9B_T=$TSEC; G9B_RC=$TRC; G9B_OUT="$TOUT"
+  assert_eq "AC1.2 slow case (one $((SLOWK * 2000))-character line): exit 1" "1" "$G9A_RC"
+  assert_contains "AC1.2 slow case: the flag at the end of the line is named (tests/zz-gnu.sh:3)" "$G9A_OUT" "tests/zz-gnu.sh:3"
+  assert_eq "AC1.2 slow case: one finding" "1" "$(printf '%s\n' "$G9A_OUT" | grep -c 'tests/zz-gnu.sh:')"
+  assert_eq "AC1.2 baseline ($SLOWK lines of 2000): exit 1" "1" "$G9B_RC"
+  assert_contains "AC1.2 baseline: the flag on the last line is named (tests/zz-gnu.sh:$((SLOWK + 2)))" "$G9B_OUT" "tests/zz-gnu.sh:$((SLOWK + 2))"
+  assert_eq "AC1.2 baseline: one finding" "1" "$(printf '%s\n' "$G9B_OUT" | grep -c 'tests/zz-gnu.sh:')"
+  assert_eq "AC1.2 the slow line gives the same exit and findings under one-true-awk and the default awk" "$G9DEF_RC|$G9DEF_OUT" "$G9A_RC|$G9A_OUT"
+  if [ "$G9A_T" -le $((3 * G9B_T + 8)) ]; then t_ok "AC1.2 the long line took ${G9A_T}s, baseline ${G9B_T}s (budget 3 x baseline + 8 s)"
+  else t_bad "AC1.2 the long line took ${G9A_T}s, baseline ${G9B_T}s (budget 3 x baseline + 8 s)" "quadratic in the line length under one-true-awk"; fi
+else
+  t_skip 9 "AC1.2 the long-line watchdog needs original-awk or nawk (tools/bsd-check.sh is the oracle)"
+fi
+
+echo "v0.24.2 AC1.3 the GNU findings over the whole tree equal those of the v0.24.0 scanner"
+# The scanner is rewritten for speed; its answers must not change. The base copy is evals/run-checks.sh at 4517824 (v0.24.0 merged).
+G9BASE_SHA=4517824
+G9BASEF="$(mk_tmp)/run-checks.base.sh"
+if command -v git >/dev/null 2>&1 && git -C "$PB_ROOT" show "$G9BASE_SHA:evals/run-checks.sh" > "$G9BASEF" 2>/dev/null && [ -s "$G9BASEF" ]; then
+  C="$(mk_copy)"
+  cp "$G9BASEF" "$C/evals/run-checks-base.sh"
+  run bash "$C/evals/run-checks-base.sh" --only gnu
+  G9BASE_RC=$RC; G9BASE_OUT="$OUT"
+  run bash "$C/evals/run-checks.sh" --only gnu
+  G9NEW_RC=$RC; G9NEW_OUT="$OUT"
+  assert_eq "AC1.3 the new scanner exits as the base scanner over every *.sh of the tree" "$G9BASE_RC" "$G9NEW_RC"
+  assert_eq "AC1.3 the new scanner prints the same lines as the base scanner over every *.sh of the tree" "$G9BASE_OUT" "$G9NEW_OUT"
+  assert_contains "AC1.3 sanity: the base run scanned (it printed the GNU summary lines)" "$G9BASE_OUT" "ok"
+else
+  t_skip 3 "AC1.3 the base scanner is not available (git, or $G9BASE_SHA, missing)"
+fi
+
 t_summary

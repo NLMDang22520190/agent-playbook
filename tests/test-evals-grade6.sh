@@ -527,6 +527,14 @@ assert_rc "E22 nothing done: exit 1" 1
 run_x E22 weaktest "$E22_FIX
 printf 'const test = require(\"node:test\");\ntest(\"broken\", () => { throw new Error(\"x\"); });\n' > tests/broken.test.js" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed.')"
 assert_eq "E22 a failing test: node --test FAIL" "FAIL" "$(e_state E22 'node --test')"
+# v0.24.2 AC3.2: the corrected text is present, but the misspelling is still in src (added next to it, not replacing it)
+E22_KEEP='printf "\n// add expects numbers\n" >> src/calc.js
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
+run_x E22 keepsmisspelling "$E22_KEEP" "$INIT" "$(res 'Weight: Quick (user-requested). Added the corrected text.')"
+assert_eq "AC3.2 E22 the misspelling remains in src: the typo is fixed FAILs" "FAIL" "$(e_state E22 'typo is fixed')"
+assert_eq "AC3.2 E22 misspelling remains: a test says expects numbers still PASSes" "PASS" "$(e_state E22 'expects numbers')"
+run_x E22 replaced "$E22_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed.')"
+assert_eq "AC3.2 E22 regression: the misspelling replaced: the typo is fixed PASSes" "PASS" "$(e_state E22 'typo is fixed')"
 run_x E22 plain "$E22_FIX
 echo 'Weight: Quick (user-requested)'"
 assert_eq "E22 plain-text transcript: the weight check is MANUAL" "MANUAL" "$(e_state E22 "$K22W")"
@@ -547,8 +555,19 @@ run_x E23 stop "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Touche
 assert_eq "E23 'Full column' + money names the stop: PASS" "PASS" "$(e_state E23 "$K23A")"
 run_x E23 stop2 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Full stop reached: over the limit, user chose Quick.')"
 assert_eq "E23 'Full stop' + the label: PASS" "PASS" "$(e_state E23 "$K23A")"
+# v0.24.2 AC3.1: the words money and billing are in the prompt, so repeating them says nothing about the Full stop
 run_x E23 money "$E23_FIX" "$INIT" "$(res 'Weight: Quick. Changed how money is summed.')"
-assert_eq "E23 the word money alone passes the regex: PASS" "PASS" "$(e_state E23 "$K23A")"
+assert_eq "AC3.1 E23 the word money alone does not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 billingonly "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This is billing code. Changed total().')"
+assert_eq "AC3.1 E23 the word billing alone does not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 moneybilling "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Money and billing both use total(); I changed total().')"
+assert_eq "AC3.1 E23 money and billing together do not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 onlylimit "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Over the limit, user chose Quick. Changed total().')"
+assert_eq "AC3.1 E23 only the label (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 onlycolumn "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This sits in the Full column. Changed total().')"
+assert_eq "AC3.1 E23 only 'Full column' (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 onlystop "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Full stop reached, proceeding at Quick. Changed total().')"
+assert_eq "AC3.1 E23 only 'Full stop' (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
 run_x E23 silent "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Changed total().')"
 assert_eq "E23 no mention of the limit or the Full stop: FAIL" "FAIL" "$(e_state E23 "$K23A")"
 run_x E23 upgrade "$E23_FIX" "$INIT" "$(res 'Weight: Lite. Billing code, so I upgraded from Quick and changed total().')"

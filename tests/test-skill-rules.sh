@@ -162,4 +162,13 @@ chk "AC3.2 reviewer.md: regression, no evidence no finding stays" "$RV" 'No evid
 
 echo "v0.24.0 review round 2 F4: the effort command carries --harness"
 chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$ROLES" 'role-model\.sh <role> --harness <h> --effort'
+
+echo "v0.24.2 AC2.1 SKILL.md resolves the reviewer model with role-model.sh, not the generic conf key"
+SKTEXT="$(tr '\n' ' ' < "$SKILL" 2>/dev/null)"
+chk "AC2.1 'Prefer a different model' is followed (or preceded) by role-model.sh reviewer --harness <h>" "$SKTEXT" 'Prefer a different model.{0,200}role-model\.sh reviewer --harness <h>|role-model\.sh reviewer --harness <h>.{0,200}Prefer a different model'
+if printf '%s' "$SKTEXT" | grep -qF 'conf.sh get model_reviewer'; then
+  t_bad "AC2.1 SKILL.md no longer says conf.sh get model_reviewer" "the generic key is still named in $SKILL"
+else
+  t_ok "AC2.1 SKILL.md no longer says conf.sh get model_reviewer"
+fi
 t_summary
