@@ -47,7 +47,7 @@ total="$(grep -E '^[^[:space:]]+\.sh: [0-9]+ passed, [0-9]+ failed' "$suite_log"
   awk '{ t += $1; if (NF >= 6) t += $5 } END { print t + 0 }')"
 if [ -r README.md ]; then
   for n in $(grep -oE 'badge/tests-[0-9]+|\*\*[0-9]+ passing\*\*|[0-9]+ tests, run in sandboxes' README.md | grep -oE '[0-9]+' ); do
-    [ "$n" = "$total" ] || refuse "README.md says $n tests but the suite ran $total (passed + skipped)"
+    [ "$n" = "$total" ] || refuse "README.md test count is wrong: expected $total (the suite ran $total, passed + skipped), found $n"
   done
 fi
 

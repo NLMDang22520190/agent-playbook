@@ -4,10 +4,11 @@
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
 # Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
-# --max-cost USD (a plain decimal > 0, e.g. 5, 0.5 or .5): after each scenario, when the known costs add up to USD or more, the
-# remaining scenarios are not run: each prints "<E> SKIPPED budget reached (spent X of USD)" and gets the summary
-# row "| E | SKIPPED | - | - |". A scenario whose cost is unknown adds nothing (one note names the first).
-# Skipping never changes the exit code.
+# --max-cost USD (a plain decimal > 0, e.g. 5, 0.5 or .5) is a guard, not a hard limit. Before each scenario that follows one
+# with a known cost, it is skipped when spent + estimate >= USD, the estimate being the largest single cost seen so far in the run
+# (when spent >= USD it says "budget reached (spent X of USD)"). Each skip prints "<E> SKIPPED ..." and gets the summary row
+# "| E | SKIPPED | - | - |". A scenario whose cost is unknown adds nothing (one note names the first).
+# The first scenario (or one costlier than any before it) can pass the cap. Skipping never changes the exit code.
 # --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first (a desktop or nested Claude session
 # leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
@@ -29,7 +30,8 @@ EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21"
 
 usage() {
-  sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' >&2
+  # the whole header comment, up to (not including) the "# Every graded" line
+  sed -n '2,$p' "$0" | sed '/^# Every graded/,$d' | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -392,19 +394,26 @@ SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
 ' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
+# estimate_of -> the largest single known cost so far (the estimate for the next scenario), "%.6g" formatted
+estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 for E in $LIST; do
   if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
-    # reached = spent >= USD (a tiny tolerance keeps 0.6 + 0.6 >= 1.2 exact despite float rounding)
-    if printf '%s
-' $COST_SUM | awk -v max="$MAX_COST" '{ s += $1 } END { exit !(s + 0.000000001 >= max + 0) }'; then
-      printf '%s SKIPPED budget reached (spent %s of %s)
-' "$E" "$(spent_of)" "$MAX_COST"
+    # reached = spent >= USD; else the estimate rule: spent + the largest single cost so far >= USD (v0.23.2 AC13).
+    # A tiny tolerance keeps 0.6 + 0.6 >= 1.2 exact despite float rounding.
+    skip_why=""
+    if printf '%s\n' $COST_SUM | awk -v max="$MAX_COST" '{ s += $1 } END { exit !(s + 0.000000001 >= max + 0) }'; then
+      skip_why="budget reached (spent $(spent_of) of $MAX_COST)"
+    elif printf '%s\n' $COST_SUM | awk -v max="$MAX_COST" '{ s += $1; if ($1 + 0 > m) m = $1 + 0 } END { exit !(s + m + 0.000000001 >= max + 0) }'; then
+      skip_why="budget: spent $(spent_of) + estimate $(estimate_of) >= cap $MAX_COST"
+    fi
+    if [ -n "$skip_why" ]; then
+      printf '%s SKIPPED %s\n' "$E" "$skip_why"
       SUMMARY="$SUMMARY| $E | SKIPPED | - | - |
 "
       DETAILS="$DETAILS
 ## $E
 
-SKIPPED: budget reached (spent $(spent_of) of $MAX_COST USD); not run.
+SKIPPED: $skip_why; not run.
 "
       continue
     fi
@@ -490,6 +499,8 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   if [ -n "$herr" ]; then
     printf '%s ERROR harness: %s (see %s)\n' "$E" "$herr" "$LOG"
     ANY_ERROR=1
+    # a cost the transcript reported still counts towards spent and the estimate
+    if c="$(cost_of)"; then printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"; fi
     SUMMARY="$SUMMARY| $E | ERROR | - | - |
 "
     DETAILS="$DETAILS

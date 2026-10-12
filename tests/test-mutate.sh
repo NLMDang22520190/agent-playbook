@@ -640,4 +640,43 @@ if [ "$LIN" = 0 ]; then
   assert_eq "AC8.1 empty ps: owner line 2 is empty" "" "$OWN2"
 fi
 
+
+echo "v0.23.2 AC15.1 a run dir WITHOUT an owner file is reaped only when older than 24 h (was 10 min)"
+# stamp_ago SECONDS -> a touch -t stamp (CCYYMMDDhhmm, local time) for now minus SECONDS; empty when neither perl nor node exists
+stamp_ago() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -MPOSIX -e 'print POSIX::strftime("%Y%m%d%H%M", localtime(time - $ARGV[0]))' "$1" 2>/dev/null
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'const d = new Date(Date.now() - process.argv[1] * 1000), p = n => String(n).padStart(2, "0"); process.stdout.write(d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()))' "$1" 2>/dev/null
+  fi
+}
+# noowner_case NAME AGE_SECONDS -> a registered worktree under its own TMPDIR in a run dir without an owner file whose
+# mtime is AGE_SECONDS ago (set with touch -t after the contents exist); runs mutate.sh; sets REAPED=1|0 and OUT, RC
+noowner_case() {
+  local name="$1" age="$2" tb rb st
+  st="$(stamp_ago "$age")"
+  tb="$W/no-$name"; mkdir -p "$tb"; rb="$(cd "$tb" && pwd -P)"
+  mkdir -p "$rb/pbmutate.noown"
+  ( cd "$R" && git worktree add -q --detach "$rb/pbmutate.noown/wt" HEAD >/dev/null 2>&1 ) || t_bad "AC15.1 fixture [$name]: worktree add" "failed"
+  touch -t "$st" "$rb/pbmutate.noown" || t_bad "AC15.1 fixture [$name]: touch -t $st" "failed"
+  OUT="$(cd "$R" && env TMPDIR="$tb" bash "$MUT" --base base --test true 2>&1)"; RC=$?
+  if [ -d "$rb/pbmutate.noown" ]; then REAPED=0; else REAPED=1; fi
+  ( cd "$R" && git worktree remove --force "$rb/pbmutate.noown/wt" >/dev/null 2>&1; git worktree prune >/dev/null 2>&1 ) || true
+  rm -rf "$rb/pbmutate.noown"
+}
+if [ -z "$(stamp_ago 60)" ]; then
+  t_skip 6 "AC15.1 no perl or node to compute a touch -t stamp"
+else
+  noowner_case fresh 660   # 11 minutes
+  assert_rc "AC15.1 11 min old, no owner file: the run itself exits 0" 0
+  assert_eq "AC15.1 a run dir without an owner file that is 11 minutes old is NOT reaped (its command may still run)" "0" "$REAPED"
+  noowner_case young 60
+  assert_eq "AC15.1 1 minute old, no owner file: not reaped" "0" "$REAPED"
+  noowner_case day 82800   # 23 h
+  assert_eq "AC15.1 23 h old, no owner file: not reaped" "0" "$REAPED"
+  noowner_case old 90000   # 25 h
+  assert_rc "AC15.1 25 h old, no owner file: the run itself exits 0" 0
+  assert_eq "AC15.1 a run dir without an owner file that is 25 h old IS reaped" "1" "$REAPED"
+fi
+
 t_summary

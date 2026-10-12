@@ -16,7 +16,7 @@
 # ${TMPDIR:-/tmp}; CMD runs there (untracked or ignored files such as node_modules are not there). The worktree
 # is removed on exit. Each run writes its pid and its start time (ps lstart) to <its temp dir>/owner. At the start a run removes only the worktrees
 # of dead owners or reused pids (a stale one left by a kill -9); a live run's worktree is never touched. A temp dir without an
-# owner file is removed only when it is older than 10 minutes.
+# owner file is removed only when it is older than 24 hours.
 # Before the first mutant CMD runs once unmutated; when it does not pass, exit 4.
 # Every CMD run is limited by --timeout S (default 120): a portable background watchdog, no GNU timeout.
 # A mutant where CMD exits 0 survived; a failing or timed-out run killed it.
@@ -84,7 +84,7 @@ cr="$(printf '\r')"
 wt="$run/wt"
 
 # a stale worktree under our prefix: its owner is dead (a previous run was killed with kill -9). A live run's
-# worktree is never touched; a dir without an owner file is only removed when it is older than 10 minutes.
+# worktree is never touched; a dir without an owner file is only removed when it is older than 24 hours.
 stale="$(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')"
 printf '%s\n' "$stale" | while IFS= read -r wp; do
   case "$wp" in
@@ -104,7 +104,7 @@ printf '%s\n' "$stale" | while IFS= read -r wp; do
           fi
           if [ -z "$ostart" ] || [ -z "$nstart" ] || [ "$ostart" = "$nstart" ]; then continue; fi
         fi
-      elif [ -d "$d" ] && [ -z "$(find "$d" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+      elif [ -d "$d" ] && [ -z "$(find "$d" -maxdepth 0 -mmin +1440 2>/dev/null)" ]; then
         continue
       fi
       git -C "$root" worktree remove --force "$wp" >/dev/null 2>&1 || true
