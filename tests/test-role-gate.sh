@@ -543,4 +543,134 @@ R="$(conf_repo 'test_path_regex=^checks/\n')"; cd "$R" || exit 3
 run bash "$GATE" check implementer
 assert_eq "AC8.1 plain printable value unchanged" "note: test_path_regex from the project conf: ^checks/" "$(notes_of)"
 
+
+# ---- v0.23.2 AC1.1: a lost executable bit is a violation for every role ----
+echo "v0.23.2 AC1.1 the executable bit (100755 -> 100644)"
+unset PB_ALLOW_MODE_CHANGE
+IH="$(mk_tmp)"; mkdir -p "$IH/.agents"; printf 'test_infra_regex=^ci/\n' > "$IH/.agents/playbook.conf"
+# gchk ROLE [ARGS] -> check in the current repo (global conf with an infra regex for ci/); gchk_allow LIST ROLE [ARGS] sets PB_ALLOW_MODE_CHANGE
+gchk() { run env PLAYBOOK_HOME="$IH" bash "$GATE" check "$@"; }
+gchk_allow() { local a="$1"; shift; run env PLAYBOOK_HOME="$IH" PB_ALLOW_MODE_CHANGE="$a" bash "$GATE" check "$@"; }
+# mk_mode_repo DIR -> a repo whose committed index has 100755 scripts (src/run.sh, src/second.sh, 'src/my run.sh', tests/run.sh,
+# ci/run.sh) and a 100644 src/plain.js; modes are set with update-index so Windows (no chmod) builds the same fixture
+mk_mode_repo() {
+  mk_repo "$1"
+  ( cd "$1" && mkdir -p ci &&
+    printf '#!/bin/sh\necho a\n' > src/run.sh && cp src/run.sh src/second.sh && cp src/run.sh "src/my run.sh" &&
+    cp src/run.sh tests/run.sh && cp src/run.sh ci/run.sh && printf 'plain\n' > src/plain.js &&
+    chmod +x src/run.sh src/second.sh "src/my run.sh" tests/run.sh ci/run.sh 2>/dev/null
+    git add -A &&
+    git update-index --chmod=+x -- src/run.sh src/second.sh "src/my run.sh" tests/run.sh ci/run.sh &&
+    git commit -q -m "exec scripts" )
+}
+# dropped_visible -> 0 when git itself sees a 100755 -> 100644 change against HEAD here (a chmod is a no-op on Windows)
+dropped_visible() { git diff --raw --no-renames HEAD 2>/dev/null | grep -q '^:100755 100644'; }
+
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+assert_eq "AC1.1 fixture: src/run.sh is committed 100755" "100755" "$(git ls-files -s -- src/run.sh | cut -d' ' -f1)"
+assert_eq "AC1.1 fixture: src/plain.js is committed 100644" "100644" "$(git ls-files -s -- src/plain.js | cut -d' ' -f1)"
+gchk implementer; assert_rc "AC1.1 an untouched fixture passes the implementer check" 0
+
+for spec in tester:tests/run.sh implementer:src/run.sh reviewer:src/run.sh infra:ci/run.sh; do
+  role="${spec%%:*}"; p="${spec#*:}"
+  MSG="VIOLATION (mode): $p lost its executable bit (100755 -> 100644)"
+  # work tree only
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  chmod -x "$p" 2>/dev/null
+  if dropped_visible; then
+    gchk "$role"; assert_rc "AC1.1 $role: a work-tree chmod -x fails" 1
+    assert_contains "AC1.1 $role: work-tree drop prints the mode violation line" "$OUT" "$MSG"
+  else t_skip 2 "AC1.1 $role work-tree chmod (not visible to git here)"; fi
+  # staged
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  chmod -x "$p" 2>/dev/null; git update-index --chmod=-x -- "$p"
+  if dropped_visible; then
+    gchk "$role"; assert_rc "AC1.1 $role: a staged mode drop fails" 1
+    assert_contains "AC1.1 $role: staged drop prints the mode violation line" "$OUT" "$MSG"
+  else t_skip 2 "AC1.1 $role staged drop (not visible to git here)"; fi
+  # the escape: PB_ALLOW_MODE_CHANGE lists the path
+  if dropped_visible; then
+    gchk_allow "$p" "$role"
+    assert_not_contains "AC1.1 $role: PB_ALLOW_MODE_CHANGE=path silences the mode violation" "$OUT" "VIOLATION (mode)"
+    if [ "$role" != reviewer ]; then assert_rc "AC1.1 $role: PB_ALLOW_MODE_CHANGE=path lets the change pass" 0; fi
+  else t_skip 2 "AC1.1 $role PB_ALLOW_MODE_CHANGE (not visible to git here)"; fi
+done
+
+echo "v0.23.2 AC1.1 PB_ALLOW_MODE_CHANGE: colon list, exact paths only, only the listed path"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+chmod -x src/run.sh src/second.sh 2>/dev/null; git update-index --chmod=-x -- src/run.sh src/second.sh
+if dropped_visible; then
+  gchk implementer
+  assert_rc "AC1.1 two dropped files: fails" 1
+  assert_contains "AC1.1 two dropped: first path named" "$OUT" "VIOLATION (mode): src/run.sh lost its executable bit (100755 -> 100644)"
+  assert_contains "AC1.1 two dropped: second path named" "$OUT" "VIOLATION (mode): src/second.sh lost its executable bit (100755 -> 100644)"
+  gchk_allow "src/run.sh" implementer
+  assert_rc "AC1.1 allowing one of two still fails" 1
+  assert_contains "AC1.1 the unlisted path is still reported" "$OUT" "VIOLATION (mode): src/second.sh lost its executable bit"
+  assert_not_contains "AC1.1 the listed path is not reported" "$OUT" "VIOLATION (mode): src/run.sh "
+  gchk_allow "src/run.sh:src/second.sh" implementer
+  assert_rc "AC1.1 a colon list of both paths passes" 0
+  gchk_allow "docs/other.sh:src/run.sh:src/second.sh:x" implementer
+  assert_rc "AC1.1 a colon list with other entries around them passes" 0
+  for bad in src "src/*" run.sh "src/run.sh.bak" "src/second" "/src/run.sh" ""; do
+    gchk_allow "$bad:src/second.sh" implementer
+    assert_rc "AC1.1 allow entry [$bad] is not a match for src/run.sh (exact paths only): fails" 1
+    assert_contains "AC1.1 allow entry [$bad]: src/run.sh is still reported" "$OUT" "VIOLATION (mode): src/run.sh lost its executable bit"
+  done
+  gchk_allow "" implementer
+  assert_rc "AC1.1 an empty PB_ALLOW_MODE_CHANGE allows nothing" 1
+else t_skip 20 "AC1.1 PB_ALLOW_MODE_CHANGE cases (chmod not visible to git here)"; fi
+
+echo "v0.23.2 AC1.1 what is not a lost executable bit"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+printf 'changed\n' > src/plain.js
+gchk implementer; assert_rc "AC1.1 a 100644 file that was never executable, edited: passes" 0
+assert_not_contains "AC1.1 ... no mode violation" "$OUT" "(mode)"
+printf '#!/bin/sh\necho new\n' > src/new.sh
+gchk implementer; assert_rc "AC1.1 a new untracked file (not executable): passes" 0
+assert_not_contains "AC1.1 ... no mode violation for the untracked file" "$OUT" "(mode)"
+git add src/new.sh
+gchk implementer; assert_rc "AC1.1 a new staged file at 100644: passes" 0
+assert_not_contains "AC1.1 ... no mode violation for the new staged file" "$OUT" "(mode)"
+git update-index --chmod=+x -- src/plain.js; chmod +x src/plain.js 2>/dev/null
+gchk implementer; assert_rc "AC1.1 gaining the executable bit (100644 -> 100755): passes" 0
+assert_not_contains "AC1.1 ... gaining is no mode violation" "$OUT" "(mode)"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+rm -f src/run.sh
+gchk implementer; assert_rc "AC1.1 deleting an executable file (100755 -> gone): passes for the implementer" 0
+assert_not_contains "AC1.1 ... deleting is no mode violation" "$OUT" "(mode)"
+
+echo "v0.23.2 AC1.1 a path with a space"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+chmod -x "src/my run.sh" 2>/dev/null; git update-index --chmod=-x -- "src/my run.sh"
+if dropped_visible; then
+  gchk implementer; assert_rc "AC1.1 a spaced path losing its bit fails" 1
+  assert_contains "AC1.1 the spaced path is printed whole" "$OUT" "VIOLATION (mode): src/my run.sh lost its executable bit (100755 -> 100644)"
+  gchk_allow "src/my run.sh" implementer; assert_rc "AC1.1 a spaced path listed in PB_ALLOW_MODE_CHANGE passes" 0
+else t_skip 3 "AC1.1 spaced path (not visible to git here)"; fi
+
+echo "v0.23.2 AC1.1 --base: a committed drop since the base is caught"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+chmod -x src/run.sh 2>/dev/null; git update-index --chmod=-x -- src/run.sh
+git commit -q -m "drop the bit"
+gchk implementer --base HEAD~1
+assert_rc "AC1.1 --base before the committed drop fails" 1
+assert_contains "AC1.1 --base names the path" "$OUT" "VIOLATION (mode): src/run.sh lost its executable bit (100755 -> 100644)"
+gchk implementer;   assert_rc "AC1.1 the default base (HEAD) sees nothing after the commit" 0
+gchk_allow "src/run.sh" implementer --base HEAD~1
+assert_rc "AC1.1 --base with PB_ALLOW_MODE_CHANGE passes" 0
+
+echo "v0.23.2 AC1.1 core.fileMode=false: no false alarm from the work tree, a staged update-index is caught"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+git config core.fileMode false
+chmod -x src/run.sh tests/run.sh 2>/dev/null
+gchk implementer; assert_rc "AC1.1 fileMode=false: a work-tree chmod -x gives no alarm (implementer)" 0
+assert_not_contains "AC1.1 fileMode=false: no mode violation line" "$OUT" "(mode)"
+gchk tester; assert_rc "AC1.1 fileMode=false: a work-tree chmod -x gives no alarm (tester)" 0
+git update-index --chmod=-x -- src/run.sh
+gchk implementer; assert_rc "AC1.1 fileMode=false: a staged update-index --chmod=-x is caught" 1
+assert_contains "AC1.1 fileMode=false: the staged drop prints the mode violation line" "$OUT" "VIOLATION (mode): src/run.sh lost its executable bit (100755 -> 100644)"
+assert_not_contains "AC1.1 fileMode=false: the other, only chmod-ed, file is not reported" "$OUT" "tests/run.sh lost"
+gchk_allow "src/run.sh" implementer; assert_rc "AC1.1 fileMode=false: the escape works for the staged drop" 0
+
 t_summary

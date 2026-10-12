@@ -689,4 +689,189 @@ if grep -q 'leak_literals' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-se
 if grep -q 'install-hooks' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-setup SKILL.md mentions install-hooks"; else t_bad "AC1.5 playbook-setup SKILL.md mentions install-hooks" "not in $SETUP_MD"; fi
 if grep -qi 'leak-check' "$README" 2>/dev/null; then t_ok "AC1.5 README mentions leak-check"; else t_bad "AC1.5 README mentions leak-check" "not in $README"; fi
 
+
+# ---- v0.23.2 AC1.2: scan --staged refuses a lost executable bit and warns about a new #! file at 100644 ----
+echo "v0.23.2 AC1.2 scan --staged: a staged 100755 -> 100644 is refused"
+unset PB_ALLOW_MODE_CHANGE
+# modrepo -> sets R: a repo whose HEAD has 100755 bin/run.sh and bin/other.sh and a 100644 notes.txt (modes set with
+# update-index, so Windows without chmod builds the same repo)
+modrepo() {
+  newrepo
+  ( cd "$R" && mkdir -p bin &&
+    printf '#!/bin/sh\necho a\n' > bin/run.sh && cp bin/run.sh bin/other.sh && printf 'plain\n' > notes.txt &&
+    chmod +x bin/run.sh bin/other.sh 2>/dev/null
+    git add -A && git update-index --chmod=+x -- bin/run.sh bin/other.sh && G commit -q -m "exec scripts" )
+}
+# scan_streams -> STD (stdout) and ERR (stderr) of `scan --staged` in $R, RC its exit code
+scan_streams() {
+  local ef; ef="$(mk_tmp)/err"
+  STD="$(cd "$R" && env "$@" bash "$LC" scan --staged 2>"$ef")"; RC=$?
+  ERR="$(cat "$ef" 2>/dev/null)"
+}
+MODEMSG="VIOLATION (mode): bin/run.sh lost its executable bit (100755 -> 100644)"
+modrepo
+assert_eq "AC1.2 fixture: bin/run.sh is committed 100755" "100755" "$(git -C "$R" ls-files -s -- bin/run.sh | cut -d' ' -f1)"
+git -C "$R" update-index --chmod=-x -- bin/run.sh
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 a staged mode drop is refused: exit 1" 1
+assert_contains "AC1.2 the refusal names the path and both modes" "$OUT" "$MODEMSG"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh bash "$LC" scan --staged
+assert_rc "AC1.2 PB_ALLOW_MODE_CHANGE=bin/run.sh lets it pass: exit 0" 0
+assert_contains "AC1.2 ... and says clean" "$OUT" "leak-check: clean"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=docs/a.sh:bin/run.sh:x bash "$LC" scan --staged
+assert_rc "AC1.2 a colon list containing the path passes" 0
+for bad in bin "bin/*" run.sh "bin/run.sh.bak" "bin/run" "/bin/run.sh" ""; do
+  run_in "$R" env PB_ALLOW_MODE_CHANGE="$bad" bash "$LC" scan --staged
+  assert_rc "AC1.2 allow entry [$bad] is not an exact match: exit 1" 1
+  assert_contains "AC1.2 allow entry [$bad]: the path is still reported" "$OUT" "$MODEMSG"
+done
+# two drops, one allowed
+git -C "$R" update-index --chmod=-x -- bin/other.sh
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh bash "$LC" scan --staged
+assert_rc "AC1.2 one of two drops allowed: exit 1" 1
+assert_contains "AC1.2 the unlisted drop is reported" "$OUT" "VIOLATION (mode): bin/other.sh lost its executable bit (100755 -> 100644)"
+assert_not_contains "AC1.2 the listed drop is not reported" "$OUT" "VIOLATION (mode): bin/run.sh"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh:bin/other.sh bash "$LC" scan --staged
+assert_rc "AC1.2 both drops allowed: exit 0" 0
+# the secret check still runs next to the mode check
+stage "$R" cfg.txt "k $GH"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh:bin/other.sh bash "$LC" scan --staged
+assert_rc "AC1.2 the allowed mode drop does not hide a secret: exit 1" 1
+assert_contains "AC1.2 ... the secret is named" "$OUT" "cfg.txt:1: github-token"
+run_in "$R" bash "$LC" scan --staged
+
+echo "v0.23.2 AC1.2 scan --staged: changes that are not a lost executable bit"
+modrepo
+printf 'changed\n' > "$R/notes.txt"; git -C "$R" add notes.txt
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 a never-executable file edited: exit 0" 0
+assert_not_contains "AC1.2 ... no mode violation" "$OUT" "(mode)"
+git -C "$R" update-index --chmod=+x -- notes.txt
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 gaining the executable bit (100644 -> 100755): exit 0" 0
+assert_not_contains "AC1.2 ... gaining is no mode violation" "$OUT" "(mode)"
+modrepo
+git -C "$R" rm -q bin/run.sh
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 deleting an executable file: exit 0" 0
+assert_not_contains "AC1.2 ... deleting is no mode violation" "$OUT" "(mode)"
+modrepo
+printf '#!/bin/sh\necho ok\n' > "$R/bin/run.sh"; git -C "$R" add bin/run.sh
+run_in "$R" bash "$LC" scan --staged
+assert_rc "AC1.2 an executable file edited and still 100755: exit 0" 0
+assert_not_contains "AC1.2 ... no mode violation" "$OUT" "(mode)"
+
+echo "v0.23.2 AC1.2 scan --staged: a new staged #! file at 100644 is a warning, not a refusal"
+modrepo
+stage "$R" bin/new.sh '#!/bin/sh' 'echo new'
+git -C "$R" update-index --chmod=-x -- bin/new.sh
+scan_streams
+assert_eq "AC1.2 the exit code is unchanged (0)" "0" "$RC"
+assert_contains "AC1.2 stdout still says clean" "$STD" "leak-check: clean"
+assert_contains "AC1.2 the warning is on stderr and names the path" "$ERR" "bin/new.sh"
+assert_contains "AC1.2 the warning says warning" "$(printf '%s' "$ERR" | tr 'A-Z' 'a-z')" "warning"
+assert_not_contains "AC1.2 the warning is not on stdout" "$STD" "bin/new.sh"
+modrepo
+stage "$R" bin/new.sh '#!/bin/sh' 'echo new'
+git -C "$R" update-index --chmod=+x -- bin/new.sh
+scan_streams
+assert_eq "AC1.2 a new #! file at 100755: exit 0" "0" "$RC"
+assert_not_contains "AC1.2 a new #! file at 100755: no warning" "$ERR" "bin/new.sh"
+modrepo
+stage "$R" docs/new.txt 'just text' '#!/bin/sh'
+scan_streams
+assert_not_contains "AC1.2 a new 100644 file without #! on line 1: no warning" "$ERR" "docs/new.txt"
+modrepo
+stage "$R" docs/plain.txt 'just text'
+scan_streams
+assert_not_contains "AC1.2 a new plain file: no warning" "$ERR" "docs/plain.txt"
+modrepo
+printf '#!/bin/sh\necho changed\n' > "$R/notes.txt"; git -C "$R" add notes.txt
+scan_streams
+assert_not_contains "AC1.2 an existing file that gains a #! line (not newly added): no warning" "$ERR" "notes.txt"
+modrepo
+stage "$R" bin/new.sh '#!/bin/sh' "token = $GH"
+git -C "$R" update-index --chmod=-x -- bin/new.sh
+scan_streams
+assert_eq "AC1.2 a warning does not hide a secret: exit 1" "1" "$RC"
+assert_contains "AC1.2 ... the finding is named" "$STD" "bin/new.sh:2: github-token"
+
+echo "v0.23.2 AC1.2 the installed pre-commit hook is unchanged and still enforces the mode check"
+modrepo
+HOOKS="$R/.git/hooks"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC1.2 install-hooks: exit 0" 0
+assert_contains "AC1.2 the hook body still ends with 'exec bash \"\$LC\" scan --staged'" "$(tail -n 1 "$HOOKS/pre-commit" 2>/dev/null)" 'exec bash "$LC" scan --staged'
+assert_not_contains "AC1.2 the hook body carries no mode logic of its own (100755)" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "100755"
+assert_not_contains "AC1.2 the hook body carries no mode logic of its own (ls-files)" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "ls-files"
+assert_not_contains "AC1.2 the hook body does not mention PB_ALLOW_MODE_CHANGE" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "PB_ALLOW_MODE_CHANGE"
+head1="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-index --chmod=-x -- bin/run.sh
+run_in "$R" git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'drop the bit'
+if [ "$RC" != 0 ]; then t_ok "AC1.2 the installed hook refuses a commit that drops the exec bit (exit $RC)"; else t_bad "AC1.2 the installed hook refuses a commit that drops the exec bit" "exit 0; output: $OUT"; fi
+assert_contains "AC1.2 the hook output names the lost bit" "$OUT" "$MODEMSG"
+assert_eq "AC1.2 the refused commit was not created" "$head1" "$(git -C "$R" rev-parse HEAD)"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -q -m 'deliberate'
+assert_rc "AC1.2 the environment escape reaches the hook: the commit goes through" 0
+assert_eq "AC1.2 the deliberate commit exists" "deliberate" "$(git -C "$R" log -1 --format=%s)"
+assert_eq "AC1.2 the committed mode is now 100644" "100644" "$(git -C "$R" ls-files -s -- bin/run.sh | cut -d' ' -f1)"
+
+# ---- v0.23.2 AC7.1: --remote NAME owns the refs of its fetch refspec (longest destination wins) ----
+echo "v0.23.2 AC7.1 without a configured remote origin/foo, refs/remotes/origin/foo/x belongs to origin"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RO="$(mk_tmp)/o.git"; RF="$(mk_tmp)/f.git"
+git init -q --bare "$RO"; git init -q --bare "$RF"
+git -C "$R" remote add origin "$RO"
+git -C "$R" checkout -q -b sec
+stage "$R" s.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret on origin/foo/x'
+SEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/foo/x "$SEC"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "AC7.1 origin/foo/x is origin's own branch foo/x: not scanned when pushing to origin: exit 0" 0
+assert_contains "AC7.1 ... says clean" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --unpushed "$SEC"
+assert_rc "AC7.1 without --remote any remote counts: exit 0" 0
+
+echo "v0.23.2 AC7.1 with a configured remote origin/foo, its commits are scanned when pushing to origin"
+git -C "$R" update-ref -d refs/remotes/origin/foo/x
+git -C "$R" push -q "$RF" sec:main
+git -C "$R" remote add origin/foo "$RF"
+git -C "$R" fetch -q origin/foo
+assert_eq "AC7.1 fixture: refs/remotes/origin/foo/main holds the secret commit" "$SEC" "$(git -C "$R" rev-parse --verify -q refs/remotes/origin/foo/main 2>/dev/null)"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "AC7.1 a commit only on remote origin/foo IS scanned when pushing to origin: exit 1" 1
+assert_contains "AC7.1 ... the finding is named" "$OUT" "s.txt:1: github-token"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin/foo
+assert_rc "AC7.1 the same commit is skipped when pushing to origin/foo itself: exit 0" 0
+assert_contains "AC7.1 ... says clean" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --unpushed "$SEC"
+assert_rc "AC7.1 without --remote any remote still counts: exit 0" 0
+
+echo "v0.23.2 AC7.1 the longest matching destination wins (origin's own foo/x counts as origin/foo's)"
+git -C "$R" checkout -q -b sec2 main
+stage "$R" s2.txt "k $AWS"; G -C "$R" commit -q --no-verify -m 'secret 2'
+SEC2="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/foo/x "$SEC2"
+run_in "$R" bash "$LC" scan --unpushed "$SEC2" --remote origin
+assert_rc "AC7.1 refs/remotes/origin/foo/x belongs to origin/foo now: scanned for origin: exit 1" 1
+assert_contains "AC7.1 ... the finding is named" "$OUT" "s2.txt:1: aws-key"
+run_in "$R" bash "$LC" scan --unpushed "$SEC2" --remote origin/foo
+assert_rc "AC7.1 ... and skipped for origin/foo: exit 0" 0
+git -C "$R" checkout -q -b sec3 main
+stage "$R" s3.txt "k $GHS"; G -C "$R" commit -q --no-verify -m 'secret 3'
+SEC3="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/main "$SEC3"
+run_in "$R" bash "$LC" scan --unpushed "$SEC3" --remote origin
+assert_rc "AC7.1 an ordinary origin ref (origin/main) is still skipped for origin: exit 0" 0
+run_in "$R" bash "$LC" scan --unpushed "$SEC3" --remote origin/foo
+assert_rc "AC7.1 ... and scanned for origin/foo: exit 1" 1
+assert_contains "AC7.1 ... the finding is named" "$OUT" "s3.txt:1: github-token"
+
+echo "v0.23.2 AC7.1 the help states the consequence"
+run_in "$R" bash "$LC" scan
+assert_rc "AC7.1 no scan arguments: usage, exit 2" 2
+assert_contains "AC7.1 the usage text names the origin/foo case" "$OUT" "origin/foo"
+assert_contains "AC7.1 the usage text says the nested ref is scanned too" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "scanned"
+
 t_summary
