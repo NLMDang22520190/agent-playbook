@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for v0.23.2 AC17.1: the final report always ENDS with the exact line
-#   Playbook feedback: <captured fb- ids or none>
+#   **Playbook feedback:** <captured fb- ids or none>
 # copied verbatim, never paraphrased (real eval E19 on v0.23.1 wrote "No playbook rule misfired.").
 # Files read: skills/playbook-tdd/SKILL.md (Lite step 5 and the Full report step = Phase 4) and
 # skills/playbook-tdd/templates/final-report.md (the spec says templates/final-report.md; the file lives under the skill).
@@ -9,7 +9,7 @@
 . "$(dirname "$0")/lib.sh"
 SKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
 FINAL="$PB_ROOT/skills/playbook-tdd/templates/final-report.md"
-LINE='Playbook feedback: <captured fb- ids or none>'
+LINE='**Playbook feedback:** <captured fb- ids or none>'
 
 assert_file "the playbook-tdd SKILL.md exists" "$SKILL"
 assert_file "the final-report template exists" "$FINAL"
