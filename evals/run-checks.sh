@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
-# --only runs one check group (dupmax|sed|gnu|shellcheck|skills|scenarios) and prints only its lines plus the summary;
+# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios) and prints only its lines plus the summary;
 # a missing or unknown SECTION exits 2. Without --only everything runs; the always-on and files checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
@@ -10,14 +10,41 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
 ONLY=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|shellcheck|skills|scenarios]" >&2; exit 2; }
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios]" >&2; exit 2; }
   case "$2" in
-    dupmax | sed | gnu | shellcheck | skills | scenarios) ONLY="$2" ;;
-    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|shellcheck|skills|scenarios)" >&2; exit 2 ;;
+    dupmax | sed | gnu | soh | shellcheck | skills | scenarios) ONLY="$2" ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios)" >&2; exit 2 ;;
   esac
 fi
 # want NAME: this group runs (always without --only)
 want() { [ -z "$ONLY" ] || [ "$ONLY" = "$1" ]; }
+
+# AWKSTRIP: awk code shared by the gnu and soh checks. strip(s) returns the code part of a line and leaves the comment text
+# (from its #) in CMT. A # starts a comment only at the start of a line or after a blank, and only outside single and double
+# quotes (a backslash escapes the next character outside single quotes). Quote state is per line.
+AWKSTRIP='
+function strip(s,   i, n, c, q, bs, pc) {
+  CMT = ""
+  if (index(s, "#") == 0) return s
+  n = length(s); q = ""; bs = 0
+  for (i = 1; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (bs) { bs = 0; continue }
+    if (q == "") {
+      if (c == "\\") bs = 1
+      else if (c == "\"" || c == "\047") q = c
+      else if (c == "#") {
+        pc = (i > 1) ? substr(s, i - 1, 1) : " "
+        if (pc == " " || pc == "\t") { CMT = substr(s, i); return substr(s, 1, i - 1) }
+      }
+    } else if (q == "\"") {
+      if (c == "\\") bs = 1
+      else if (c == q) q = ""
+    } else if (c == q) q = ""
+  }
+  return s
+}
+'
 
 SENTENCE='Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.'
 
@@ -178,21 +205,102 @@ fi
 
 if want gnu; then
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
-# Comments (from a # at the start or after a blank) are ignored. A line may opt out with "# gnu-ok: <reason>" (a non-blank reason, that line only).
+# The line is cut into words (single-quoted text and double-quoted text are skipped, except a $( ) inside double quotes;
+# ( ) ; | & ` { } end a command), and for each
+# of grep, readlink, date, stat, xargs, sed and find the rest of that command is looked at: the GNU-only short flags
+# (also inside a cluster with digits, after an option argument, or as a trailing flag), the GNU-only long options and their
+# prefixes of at least 4 letters (with or without =value), and the find actions -printf / -fprintf.
+# Comments are ignored: a # starts one at the start of a line or after a blank when it is not inside single or double quotes.
+# A line may opt out with "# gnu-ok: <reason>" (a non-blank reason) in its real trailing comment, that line only.
 # The names are spelled in pieces so this file does not trip its own check.
-ggnu="$(awk 'function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
-  { ex = ($0 ~ /(^|[[:space:]])#[[:space:]]*gnu-ok:[[:space:]]*[^[:space:]]/)
-    line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
-    b = "(^|[^[:alnum:]_-])"; fl = "([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+-"
-    if (line ~ (b "grep" fl "[[:alpha:]]*P")) hit("grep " "-P")
-    if (line ~ (b "readlink" fl "[[:alpha:]]*f")) hit("readlink " "-f")
-    if (line ~ (b "date" fl "[[:alpha:]]*d")) hit("date " "-d")
-    if (line ~ (b "stat" fl "[[:alpha:]]*c")) hit("stat " "-c")
-    if (line ~ (b "find[[:space:]].*[[:space:]]-printf")) hit("find " "-print" "f")
-    if (line ~ (b "xargs" fl "[[:alpha:]]*r")) hit("xargs " "-r")
-    if (line ~ (b "sed" fl "[[:alpha:]]*r")) hit("sed " "-r") }
+ggnu="$(awk "$AWKSTRIP"'
+  function flush() { if (t != "") { TK[++nk] = t; t = "" } }
+  function tokenize(s,   i, n, c, sp, m) {
+    nk = 0; t = ""; n = length(s); sp = 1; MS[1] = "c"; PD[1] = 0
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1); m = MS[sp]
+      if (m == "d") {   # inside double quotes: hidden, except a command substitution
+        if (c == "\\") i++
+        else if (c == "\"") { sp--; flush() }
+        else if (c == "$" && substr(s, i + 1, 1) == "(") { sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
+        continue
+      }
+      if (c == "\\") { i++; flush() }
+      else if (c == "\047") { flush(); i++; while (i <= n && substr(s, i, 1) != "\047") i++ }   # single quotes: hidden
+      else if (c == "\"") { flush(); sp++; MS[sp] = "d" }
+      else if (c == " " || c == "\t" || c == "<" || c == ">") flush()
+      else if (c == ")" && sp > 1 && PD[sp] == 0) { flush(); TK[++nk] = ";"; sp-- }
+      else if (index(";|&(){}`", c) > 0) {
+        if (c == "(" && sp > 1) PD[sp]++
+        if (c == ")" && sp > 1) PD[sp]--
+        flush(); TK[++nk] = ";"
+      }
+      else t = t c
+    }
+    flush()
+  }
+  function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
+  BEGIN {
+    nt = split("grep readlink date stat find xargs sed", tl, " ")
+    for (k = 1; k <= nt; k++) isT[tl[k]] = 1
+    SL["grep"] = "P"; SL["readlink"] = "f"; SL["date"] = "d"; SL["stat"] = "c"; SL["xargs"] = "r"; SL["sed"] = "r"
+    LN["grep"] = "perl-regexp"
+    LN["stat"] = "format printf"
+    LN["readlink"] = "canonicalize canonicalize-existing canonicalize-missing"
+    LN["date"] = "date"
+    LN["xargs"] = "no-run-if-empty"
+    LN["sed"] = "regexp-extended"
+  }
+  {
+    code = strip($0)
+    ex = (CMT ~ /(^|[[:space:]])#[[:space:]]*gnu-ok:[[:space:]]*[^[:space:]]/)
+    if (code !~ /grep|readlink|date|stat|find|xargs|sed/) next
+    tokenize(code)
+    for (i = 1; i <= nk; i++) {
+      w = TK[i]; sub(/^.*\//, "", w)
+      if (!(w in isT)) continue
+      skip = 0
+      for (j = i + 1; j <= nk && TK[j] != ";"; j++) {
+        t = TK[j]
+        if (w == "find") { if (t == "-printf" || t == "-fprintf") hit("find " t); continue }
+        if (skip) { skip = 0; continue }
+        if (t ~ /^--[[:alnum:]]/) {
+          nm = substr(t, 3); e = index(nm, "="); if (e > 0) nm = substr(nm, 1, e - 1)
+          if (length(nm) >= 4 && (w in LN)) {
+            m = split(LN[w], fulls, " ")
+            for (q = 1; q <= m; q++) if (substr(fulls[q], 1, length(nm)) == nm) { hit(w " --" fulls[q]); break }
+          }
+        } else if (t ~ /^-[[:alnum:]]/) {
+          pre = t; sub(/^-/, "", pre); match(pre, /^[[:alnum:]]+/); pre = substr(pre, 1, RLENGTH)
+          if (index(pre, SL[w]) > 0) hit(w " -" SL[w])
+          if (w == "xargs" && length(pre) + 1 == length(t) && pre ~ /[nILsPdEa]$/) skip = 1
+        } else if (w == "xargs") break
+      }
+    }
+  }
   END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
 [ -z "${ggnu// /}" ] && ok "GNU-only options absent (BSD/macOS)" || bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"
+fi
+
+if want soh; then
+# The control byte SOH (octal 1) is bash 3.2's internal CTLESC (macOS ships 3.2): a script that builds it with printf, tr, awk
+# or an ANSI-C quote misbehaves there while Ubuntu is fine. Refused in every spelling outside comments (a backslash run of odd
+# length ends in a live escape): the octal forms with 3 or 2 digits and the hex form. No gnu-ok exemption; build fixtures from pieces.
+gsoh="$(awk "$AWKSTRIP"'
+  {
+    line = strip($0)
+    if (index(line, "\\") == 0) next
+    n = length(line)
+    for (i = 1; i <= n; i++) {
+      if (substr(line, i, 1) != "\\") continue
+      j = i; while (substr(line, j + 1, 1) == "\\") j++
+      rest = substr(line, j + 1, 4)
+      if ((j - i + 1) % 2 == 1 && (rest ~ /^001/ || rest ~ /^x01/ || rest ~ /^01([^0-7]|$)/)) { out = out FILENAME ":" FNR " "; break }
+      i = j
+    }
+  }
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
+[ -z "${gsoh// /}" ] && ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)" || bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"
 fi
 
 if want scenarios; then
