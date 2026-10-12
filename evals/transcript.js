@@ -57,9 +57,10 @@ const isSrc = p => /(^|\/)src\//.test(p) && !/(^|\/)node_modules\//.test(p);
 // writeFileSync/appendFileSync calls count. After a `cd src` (or ./src, or <abs>/src) a relative path is inside src until
 // a later cd that leaves it.
 function bashWritesSrc(cmd) {
-  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n]|[^\s;&|<>"']+/g) || [];
+  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n()]|[^\s;&|<>()"']+/g) || [];
   const bare = t => t.replace(/^["']|["']$/g, "");
   let words = [], inSrc = false;
+  const saved = [];   // inSrc at each open "(": a subshell's cd does not leak out of it
   const rel = p => p !== "" && !/^(\/|~|\.\.|-)/.test(p);
   const src = p => isSrc(p) || (inSrc && rel(p));
   const done = () => {
@@ -74,7 +75,12 @@ function bashWritesSrc(cmd) {
     }
     if (verb === "tee") return plain.some(a => src(bare(a)));
     if (verb === "mv" || verb === "cp") return plain.length > 0 && src(bare(plain[plain.length - 1]));
-    if (verb === "git") return plain[0] === "mv" && plain.length > 2 && src(bare(plain[plain.length - 1]));
+    if (verb === "git") {
+      const a = args.slice(0);
+      while (a.length > 1 && bare(a[0]) === "-C") a.splice(0, 2);   // git -C DIR mv ...
+      const q = a.filter(x => !/^-/.test(x));
+      return q[0] === "mv" && q.length > 2 && src(bare(q[q.length - 1]));
+    }
     if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => src(bare(a)));
     if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => src(bare(a)));
     if (verb === "node" || verb === "nodejs") {
@@ -86,6 +92,8 @@ function bashWritesSrc(cmd) {
   for (let k = 0; k < toks.length; k++) {
     const t = toks[k];
     if (t === ">" || t === ">>") { if (k + 1 < toks.length && src(bare(toks[k + 1]))) return true; k++; continue; }
+    if (t === "(") { if (done()) return true; saved.push(inSrc); continue; }
+    if (t === ")") { if (done()) return true; if (saved.length) inSrc = saved.pop(); continue; }
     if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return true; continue; }
     words.push(t);
   }
