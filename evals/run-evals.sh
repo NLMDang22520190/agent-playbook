@@ -318,7 +318,7 @@ only_typo()     { git -C "$WD" show "$E10_BASE:src/calc.js" | sed 's/nubmers/num
                   [ -z "$(git -C "$WD" ls-files --others --exclude-standard -- src)" ]; }
 grade_E10() {
   check "only the typo changed in src/" only_typo
-  check "the typo is fixed" grep -qF 'expects numbers' "$WD/src/calc.js"
+  check "the typo is fixed" typo_fixed
 }
 heading_changed() { [ "$(sed -n 1p "$WD/docs/notes.md" 2>/dev/null)" != "# Notes" ]; }
 # pin_test -> 0 when one file under tests/ mentions both pageSize and the word 50 (paths may contain spaces)
@@ -402,8 +402,10 @@ grade_E21() {
     *) record MANUAL "the spec is written before the first src/ edit" ;;
   esac
 }
+# typo_fixed -> 0 when src/calc.js has the corrected text and the misspelling nubmers is gone from it
+typo_fixed()    { grep -qF 'expects numbers' "$WD/src/calc.js" && not_in_calc nubmers; }
 grade_E22() {
-  check "the typo is fixed" grep -qF 'expects numbers' "$WD/src/calc.js"
+  check "the typo is fixed" typo_fixed
   check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
   reply_matches 'Weight: Quick \(user-requested\)' "the reply states Weight: Quick (user-requested)"
@@ -412,7 +414,7 @@ grade_E22() {
 grade_E23() {
   check "total() ignores items whose qty is zero or negative" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 5, qty: 2 }, { price: 7, qty: 0 }, { price: 9, qty: -1 }]) === 10 ? 0 : 1)'
   check "node --test tests/*.test.js passes" tests_pass
-  reply_matches 'over the limit, user chose Quick|Full (column|stop)|money|billing' "the reply names the limit or the Full stop"
+  reply_matches 'over the limit, user chose Quick|Full (column|stop)' "the reply names the limit or the Full stop"
   # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
   local r
   if r="$(result_text)"; then

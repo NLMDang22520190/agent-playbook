@@ -189,7 +189,7 @@ time; a conflict is the cheap signal that the files were not disjoint.
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
 `roles/reviewer.md` for the whole diff. Review a single slice early only when that slice alone is
 hard to reverse (a migration, a public API change) and later slices build on it.
-Prefer a different model (`conf.sh get model_reviewer`). Give it the spec, the base sha from before
+Prefer a different model (resolve it with `role-model.sh reviewer --harness <h>`). Give it the spec, the base sha from before
 slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
