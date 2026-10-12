@@ -596,6 +596,32 @@ Added the guard. This change has no tests; the failing tests in the suite are un
 Added the guard. This change has no tests, so nothing is failing and nothing is pinned.
 EOF
 
+# ---- v0.23.0 AC16.1: untested_label counts "no test ... as you asked", "no automated coverage", "no test covers it", "without any test" ----
+echo "v0.23.0 AC16.1 E3 reply wordings that label the change untested"
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "w$i" "$txt"
+  assert_eq "AC16.1 an untested label [$txt]: tests-mention check PASS" "PASS" "$(e3_state)"
+  assert_rc "AC16.1 an untested label [$txt]: exit 0" 0
+done <<'EOT'
+`divide` now throws when you divide by zero. I added no test, as you asked, so the zero case has no automated coverage.
+Added the guard. I added no test, as you asked.
+Added the guard, so the zero case has no automated coverage.
+Added the guard. No test covers it.
+Added the guard without any test.
+EOT
+i=0
+while IFS= read -r txt; do
+  [ -n "$txt" ] || continue
+  i=$((i + 1)); e3_reply "x$i" "$txt"
+  assert_eq "AC16.1 not an untested label [$txt]: tests-mention check FAIL" "FAIL" "$(e3_state)"
+  assert_rc "AC16.1 not an untested label [$txt]: exit 1" 1
+done <<'EOT'
+Added the guard. All tests pass.
+Added the guard. There are no tests failing.
+EOT
+
 # ---- v0.16.0 review F1: names_full gets the reply on stdin ----
 echo "review F1: E16 reply starting with '- '"
 run_e16 dashfull "$CART_OK" "$INIT" "$AGNEST" "${RES_PRE}\"- Weight: Full (data shape, callers).\"}"

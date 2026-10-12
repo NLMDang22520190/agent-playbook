@@ -29,20 +29,63 @@ const stripHeredocs = s => {
     // not a here-string (<<<); the word may be quoted ('W' or "W") or backslash-quoted (\W)
     const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][A-Za-z0-9_]*)\2|\\?([A-Za-z_][A-Za-z0-9_]*))/g;
     let m;
-    while ((m = re.exec(line))) pending.push({ dash: m[1] === "-", word: m[3] || m[4] });
+    // only in code: a << inside a quoted string or an arithmetic $(( )) is no heredoc (a $( ) inside double quotes is code)
+    const v = shellView(line), view = v.out + (v.subs.length ? ";" + v.subs.join(";") : "");
+    while ((m = re.exec(view))) pending.push({ dash: m[1] === "-", word: m[3] || m[4] });
   }
   return out.join("\n");
 };
 // like unquote, but the command substitutions inside a double-quoted string are kept as commands of their own (appended
 // at the end, so the words around the string stay as they were): out="$(bash proof-run.sh)", [ -n "$(bash proof-run.sh)" ]
 // and "$(bash proof-run.sh)"x run it; echo "bash proof-run.sh" does not
+// One quote-aware scan (single pass, no backtracking): `out` is the text outside every quoted string and every $(( )); `subs`
+// are the bodies of the $( ) found inside double quotes, matched with their own nested quotes and parentheses, so
+// out="$(bash proof-run.sh --label "red")" keeps the run. An arithmetic $(( ... )) holds no command and no heredoc.
+const shellView = s => {
+  const n = s.length, subs = [];
+  const arith = i => { let d = 2; i += 3; while (i < n && d > 0) { if (s[i] === "(") d++; else if (s[i] === ")") d--; i++; } return i; };   // i at "$((": the index after its "))"
+  const dq = i => {   // i just after an opening ": the index after the closing "
+    while (i < n && s[i] !== '"') {
+      if (s[i] === "\\") { i += 2; continue; }
+      if (s[i] === "$" && s[i + 1] === "(") {
+        if (s[i + 2] === "(") { i = arith(i); continue; }
+        const e = sub(i + 2); subs.push(s.slice(i + 2, e)); i = e + 1; continue;
+      }
+      i++;
+    }
+    return i + 1;
+  };
+  const sub = i => {   // i just after "$(": the index of the matching ")"
+    let d = 1;
+    while (i < n) {
+      const c = s[i];
+      if (c === "\\") { i += 2; continue; }
+      if (c === "'") { const e = s.indexOf("'", i + 1); if (e < 0) return n; i = e + 1; continue; }
+      if (c === '"') { i = dq(i + 1); continue; }
+      if (c === "(") d++;
+      else if (c === ")" && --d === 0) return i;
+      i++;
+    }
+    return n;
+  };
+  const HD = /<<(?!<)-?[ \t]*(?:(["'])[A-Za-z_][A-Za-z0-9_]*\1|\\?[A-Za-z_][A-Za-z0-9_]*)/y;   // a heredoc word, quoted or not, stays as it is
+  let out = "", i = 0;
+  while (i < n) {
+    const c = s[i];
+    HD.lastIndex = i;
+    const h = c === "<" && s[i - 1] !== "<" ? HD.exec(s) : null;
+    if (h) { out += h[0]; i += h[0].length; }
+    else if (c === "\\") { out += s.slice(i, i + 2); i += 2; }
+    else if (c === "'" && s.indexOf("'", i + 1) > 0) i = s.indexOf("'", i + 1) + 1;
+    else if (c === '"') i = dq(i + 1);
+    else if (c === "$" && s[i + 1] === "(" && s[i + 2] === "(") i = arith(i);
+    else { out += c; i++; }
+  }
+  return { out, subs };
+};
 const unquoteRun = s => {
-  const subs = [];
-  const r = s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, m => {
-    if (m[0] === '"') for (const x of m.match(/\$\([^()]{0,200}\)/g) || []) subs.push(x.slice(2, -1));
-    return "";
-  });
-  return subs.length ? r + ";" + subs.join(";") : r;
+  const r = shellView(s);
+  return r.subs.length ? r.out + ";" + r.subs.join(";") : r.out;
 };
 // `bash -c "..."`, `bash -lc '...'`, `bash -ec`, `bash -l -c`, `bash --login -c`, `zsh -c`, `sh -c`, and options
 // that take a value (`-o pipefail`, `+o histexpand`, `-O extglob`, `--rcfile F`, `--init-file F`): the quoted
@@ -163,7 +206,7 @@ function fullNamed(s) {   // Full as a word, not negated ("not Full", "isn't Ful
   while ((m = re.exec(s))) if (!/\b(not|no|never|without|isn't|is not)\s+$/i.test(s.slice(0, m.index))) return true;
   return false;
 }
-const untested = s => /\buntested\b|\b(has no|without( a)?) tests?\b(?![ \t]*(failing|that (are|were) failing|that fail))|\bno tests? (covers|covering)\b|\bnot covered by (a )?tests?\b/i.test(s);
+const untested = s => /\buntested\b|\b(has no|added no|without( (a|any))?) tests?\b(?![ \t]*(failing|that (are|were) failing|that fail))|\bno tests? (covers|covering)\b|\bno automated (test )?coverage\b|\bnot covered by (a )?tests?\b/i.test(s);
 
 const b = v => (v ? "1" : "0");
 process.stdout.write([

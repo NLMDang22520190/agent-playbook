@@ -442,4 +442,120 @@ for want in "name matches directory" "always-on block" "regex repeat bounds <= 2
   assert_contains "AC8.1 no --only: the full output has [$want]" "$OUT" "$want"
 done
 
+
+# ---- v0.23.0 AC4.3: the control byte SOH (octal 1) in scripts is refused in every spelling (bash 3.2 on macOS) ----
+# New check group: `evals/run-checks.sh --only soh`. Every construct is built from pieces (B = one backslash, Q = a single
+# quote), so this file does not trip its own check. The message names file:line.
+echo "v0.23.0 AC4.3 the SOH byte in any spelling (section soh)"
+B='\'; Q="'"
+# soh_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
+soh_case() {
+  local name="$1" rel="$2" line="$3" expect="$4"
+  C="$(mk_copy)"
+  mkdir -p "$C/$(dirname "$rel")"
+  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
+  checks "$C" soh
+  if [ "$expect" = fail ]; then
+    assert_rc "AC4.3 $name: exit 1" 1
+    assert_contains "AC4.3 $name: names file:line" "$OUT" "$rel:3"
+  else
+    assert_rc "AC4.3 $name: exit 0" 0
+    assert_not_contains "AC4.3 $name: the file is not named" "$OUT" "$rel"
+  fi
+}
+# every spelling is flagged
+soh_case "printf with the octal escape"          tests/zz-soh.sh "printf ${Q}${B}001${Q}" fail
+soh_case "ANSI-C quote with the octal escape"    tests/zz-soh.sh "x=\$${Q}${B}001${Q}" fail
+soh_case "hex escape"                            tests/zz-soh.sh "printf ${Q}${B}x01${Q}" fail
+soh_case "ANSI-C quote with the hex escape"      tests/zz-soh.sh "x=\$${Q}${B}x01${Q}" fail
+soh_case "short octal escape"                    tests/zz-soh.sh "printf ${Q}${B}01${Q}" fail
+soh_case "printf %b with the octal escape"       tests/zz-soh.sh "printf ${Q}%b${Q} ${Q}${B}001${Q}" fail
+soh_case "tr with the octal escape"              tests/zz-soh.sh "tr ${Q}${B}001${Q} x" fail
+soh_case "awk string with the octal escape"      tests/zz-soh.sh "awk ${Q}BEGIN { printf \"${B}001\" }${Q}" fail
+soh_case "three backslashes: the last one escapes" tests/zz-soh.sh "printf ${Q}${B}${B}${B}001${Q}" fail
+soh_case "inside double quotes"                  tests/zz-soh.sh "echo \"a${B}001b\"" fail
+soh_case "mid-line after a semicolon"            tests/zz-soh.sh "x=1; printf ${Q}${B}001${Q}" fail
+soh_case "no gnu-ok exemption"                   tests/zz-soh.sh "printf ${Q}${B}001${Q}   # gnu-ok: legacy fixture" fail
+# in every scanned location
+soh_case "evals/ file"       evals/zz-soh.sh   "printf ${Q}${B}001${Q}" fail
+soh_case "scripts/ file"     scripts/zz-soh.sh "printf ${Q}${B}001${Q}" fail
+soh_case "tools/ file"       tools/zz-soh.sh   "printf ${Q}${B}001${Q}" fail
+soh_case "install.sh"        install.sh        "printf ${Q}${B}001${Q}" fail
+soh_case "hex spelling in scripts/"  scripts/zz-soh.sh "printf ${Q}${B}x01${Q}" fail
+soh_case "tr spelling in tools/"     tools/zz-soh.sh   "tr ${Q}${B}001${Q} x" fail
+# not flagged
+soh_case "a comment line mentioning it"      tests/zz-soh.sh "# uses ${B}001 and printf ${Q}${B}x01${Q} here" pass
+soh_case "an indented comment line"          tests/zz-soh.sh "   # ${B}001 is CTLESC" pass
+soh_case "a trailing comment mentioning it (as scripts/mutate.sh does)" tests/zz-soh.sh "soh=\"\$(printf ${Q}${B}034${Q})\"   # ASCII field separator: bash 3.2 uses ${B}001 internally" pass
+soh_case "an escaped backslash before 01 (as tests/test-evals-grade5.sh does)" tests/zz-soh.sh "x=${Q}handoff${B}${B}01-spec.md${Q}" pass
+soh_case "an escaped backslash before 01 in double quotes" tests/zz-soh.sh "echo \"handoff${B}${B}01-spec.md\"" pass
+soh_case "an escaped backslash before 001"   tests/zz-soh.sh "printf ${Q}${B}${B}001${Q}" pass
+soh_case "the field separator 034"           tests/zz-soh.sh "printf ${Q}${B}034${Q}" pass
+soh_case "another escape (newline)" tests/zz-soh.sh "printf ${Q}${B}n${Q}" pass
+soh_case "a path with 001 and no backslash"  tests/zz-soh.sh "cat tests/fixture-001.txt" pass
+
+echo "v0.23.0 AC4.3 the real tree passes and says so"
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh" --only soh
+assert_rc "AC4.3 --only soh on the real tree: exit 0" 0
+assert_contains "AC4.3 --only soh: run-checks: all ok" "$OUT" "run-checks: all ok"
+assert_eq "AC4.3 --only soh prints exactly one ok line" "1" "$(printf '%s\n' "$OUT" | grep -c '^  ok   ')"
+assert_contains "AC4.3 the ok line names 001" "$(printf '%s\n' "$OUT" | grep '^  ok   ')" "001"
+assert_not_contains "AC4.3 --only soh: no gnu line" "$OUT" "GNU-only options"
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh"
+assert_rc "AC4.3 the full run on the real tree: exit 0" 0
+assert_eq "AC4.3 the full run has the soh ok line (001)" "1" "$(printf '%s\n' "$OUT" | grep '^  ok   ' | grep -c '001')"
+C="$(mk_copy)"
+printf '#!/usr/bin/env bash\n# fixture\n%s\n' "printf ${Q}${B}001${Q}" > "$C/tests/zz-soh.sh"
+run bash "$C/evals/run-checks.sh" --only gnu
+assert_rc "AC4.3 --only gnu ignores a soh-flagged file: exit 0" 0
+run bash "$C/evals/run-checks.sh" --only sed
+assert_rc "AC4.3 --only sed ignores a soh-flagged file: exit 0" 0
+
+# ---- v0.23.0 AC6: more GNU-only constructs, and a quote-aware comment stripper ----
+echo "v0.23.0 AC6.1 GNU long options, find -fprintf, flags after arguments, clusters with digits"
+# the constructs are spelled through the variables above (G, ST, RL, DT, XA, SD2, FD, PF, XR, MK)
+gnu_case "long perl option"                       tests/zz-gnu.sh   "$G --perl 'a' f" fail
+gnu_case "long perl-regexp option"                tests/zz-gnu.sh   "$G --perl-regexp 'a' f" fail
+gnu_case "stat --form (a prefix of the format option)" tests/zz-gnu.sh "$ST --form %Y f" fail
+gnu_case "stat --format=x"                        scripts/zz-gnu.sh "$ST --format=x f" fail
+gnu_case "stat --printf"                          evals/zz-gnu.sh   "$ST --printf x f" fail
+gnu_case "readlink --canon"                       tools/zz-gnu.sh   "$RL --canon f" fail
+gnu_case "date --date=x"                          install.sh        "$DT --date=x" fail
+gnu_case "xargs --no-run"                         tests/zz-gnu.sh   "echo a | $XA --no-run echo" fail
+gnu_case "sed --regexp (a prefix of the extended option)" tests/zz-gnu.sh "echo a | $SD2 --regexp 's/a/b/'" fail
+gnu_case "find -fprintf"                          tests/zz-gnu.sh   "$FD . -fprintf out x" fail
+gnu_case "PCRE flag after an option argument (-e x)" tests/zz-gnu.sh "$G -e x $PF f" fail
+gnu_case "PCRE flag after an option argument (-A 3)" tests/zz-gnu.sh "$G -A 3 $PF x f" fail
+gnu_case "PCRE flag as a trailing flag"           tests/zz-gnu.sh   "$G x f $PF" fail
+gnu_case "xargs -0r (cluster with a digit)"       tests/zz-gnu.sh   "echo a | $XA -0${XR#-} echo" fail
+gnu_case "long option in scripts/"                scripts/zz-gnu.sh "$G --perl-regexp x f" fail
+gnu_case "long option in tools/"                  tools/zz-gnu.sh   "$DT --date=x" fail
+gnu_case "long option after a pipe"               evals/zz-gnu.sh   "cat f | $G --perl x" fail
+gnu_case "long option with a marker without a reason" tests/zz-gnu.sh "$G --perl x f $MK" fail
+# not flagged
+gnu_case "grep --regexp=x"                        tests/zz-gnu.sh   "$G --regexp=x f" pass
+gnu_case "grep --extended-regexp"                 tests/zz-gnu.sh   "$G --extended-regexp x f" pass
+gnu_case "grep --ignore-case"                     tests/zz-gnu.sh   "$G --ignore-case x f" pass
+gnu_case "xargs -n1 -0"                           tests/zz-gnu.sh   "echo a | $XA -n1 -0 echo" pass
+gnu_case "a long option in a comment"             tests/zz-gnu.sh   "# do not use $G --perl, $ST --format=x or $FD . -fprintf" pass
+gnu_case "a trailing flag that is not a GNU one"  tests/zz-gnu.sh   "$G x f -i" pass
+gnu_case "a real trailing gnu-ok marker with a reason" tests/zz-gnu.sh "$G $PF x f $MK needs PCRE here" pass
+gnu_case "a real trailing gnu-ok marker on a long option" scripts/zz-gnu.sh "$DT --date=x $MK Linux only, checked" pass
+
+echo "v0.23.0 AC6.2 the comment stripper and the gnu-ok marker are quote-aware"
+gnu_case "a # inside double quotes is not a comment" tests/zz-gnu.sh "echo \"a # b\"; $G $PF x" fail
+gnu_case "a gnu-ok marker inside single quotes does not exempt" tests/zz-gnu.sh "echo 'a $MK x'; $G $PF y" fail
+gnu_case "a # inside single quotes is not a comment" tests/zz-gnu.sh "echo 'a # b'; $G $PF x" fail
+gnu_case "a gnu-ok marker inside double quotes does not exempt" scripts/zz-gnu.sh "echo \"a $MK x\"; $G $PF y" fail
+gnu_case "a quoted # before a real trailing comment: the flag is code" tests/zz-gnu.sh "echo \"a # b\"; $G $PF x # tail" fail
+gnu_case "a quoted # then a real marker with a reason exempts" tests/zz-gnu.sh "echo \"a # b\"; $G $PF x $MK needs PCRE" pass
+gnu_case "a real comment after a closed quote hides the rest" tests/zz-gnu.sh "echo \"a b\" # $G $PF x" pass
+gnu_case "a # inside quotes in a comment-free line without GNU flags" tests/zz-gnu.sh "echo \"a # b\"; $G -i x" pass
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh"
+assert_rc "AC6 the real tree passes a full run-checks with the new rules" 0
+assert_contains "AC6 the gnu ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
+
 t_summary
