@@ -25,7 +25,11 @@
   now stable.
 - **CI speed**: `test-run-checks.sh` (631 s on the Windows runner, the shard floor) is split into four suites and
   `test-evals-grade2.sh` (553 s) into two, with every assertion kept; heavy leak-check fixtures shrink (1200 refs,
-  1000 files) and its test repos are copied from a template; shard weights refreshed.
+  1000 files) and its test repos are copied from a template.
+- **Four Windows shards** (`windows shard 1/4` .. `4/4`, was three): `tests/shard-weights` is rebuilt from the real timings of CI
+  run 38260695294 (the earlier file mixed measured and estimated numbers); `tools/ci-tree-tested.sh` requires the four
+  shard jobs (seven required jobs in all) before a tree counts as tested. Branch protection still needs only
+  `test (windows-latest)`.
 - **`tools/bsd-check.sh`**: a candidate that does not answer within 5 s (`PB_BSD_PROBE_SECS`) is rejected and its
   process group killed; the same file reached twice is probed once.
 - **Smaller**: leak-check's diff awk runs with `LC_ALL=C` (no gawk "Invalid multibyte data" noise); the Windows
