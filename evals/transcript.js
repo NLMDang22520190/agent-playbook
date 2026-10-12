@@ -4,6 +4,11 @@
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
+// Limits of the cd tracking (bashWrites): a `cd` is followed only as a simple command of its own, one directory at a time. These
+// shapes are not tracked: a chain such as `cd .agents; cd handoff` (each cd argument is judged alone, so `handoff` by itself
+// is not .agents/handoff and a bare 01-spec.md written after it is not seen as the spec), `pushd` / `popd` (not followed at all), and
+// the cwd kept across Bash calls (every call starts in the project root; a cd in an earlier call is not carried over). A spec or
+// src write made through such a shape is not seen by spec_first. This is a limit, not a bug; the shapes are rare in real runs.
 "use strict";
 const fs = require("fs");
 const log = process.argv[2];
@@ -18,44 +23,108 @@ const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // terminator line (tabs allowed before it with <<-); an unterminated heredoc swallows the rest. One pass over the lines.
 // A heredoc that is fed to a bare shell (bash, sh or zsh with flags only, no script file) is its stdin, which the shell runs
 // as commands: its body is kept (the terminator line is dropped), so the graders read it like any other command text.
-const feedsShell = prefix => {
-  const segs = prefix.split(/[;&|(){}`]+/);
-  const w = segs[segs.length - 1].trim().split(/\s+/).filter(t => t !== "");
-  let k = 0;
-  while (k < w.length && /^(?:[A-Za-z_][A-Za-z0-9_]*=.*|if|then|do|else|elif|while|until|!|sudo|env|nice|time|nohup|exec|command)$/.test(w[k])) k++;
-  if (k >= w.length || !/^(?:ba|z)?sh$/.test(w[k].replace(/^.*\//, ""))) return false;
-  for (let j = k + 1; j < w.length; j++) {
-    if (/^-[a-zA-Z]*c/.test(w[j])) return false;   // -c, -ec, -xc: the shell runs the -c string; the heredoc is that script's stdin, not commands
-    if (/^[-+][a-zA-Z]*[oO]$/.test(w[j])) j++;   // an option that takes a value (-o pipefail)
-    else if (!/^[-+]/.test(w[j])) return false;   // a script file or other word: the body is input to it
+// feedsWords(w, wantC): w are the words of one simple command (the heredoc operators removed). True when the command is a bare
+// shell reading its stdin: after the reserved words, assignments and wrappers (sudo [-u U], env [-u V], nice [-n N], time,
+// nohup, exec [-a N], timeout DUR, command but not command -v/-V; sudo -s / -i is a shell itself) comes sh, bash or zsh whose
+// words are flags only (options with a value: -o X, --rcfile F, --init-file F; -s may be followed by -- and arguments) and
+// redirects (2>&1, >&2, <&0, 2>f, >f, &>f). A script file or any other word, or -c, makes the body input to something else.
+// With wantC the shell must end in -c (the heredoc is inside the -c string, see subC): true for that shape only.
+const REDIR_BARE = /^(?:[0-9]*|&)(?:>>?|<|>\|)$/;   // an operator alone: the next word is its target
+const REDIR_ATT = /^(?:[0-9]*|&)(?:>>?|<>?|>&|<&|>\|)\S/;   // an operator with its target attached
+const feedsWords = (w, wantC) => {
+  let k = 0, sudoShell = false;
+  while (k < w.length) {
+    const t = w[k], b = t.replace(/^.*\//, "");
+    if (/^(?:if|then|do|else|elif|while|until|!)$/.test(t) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { k++; continue; }
+    if (!/^(?:sudo|env|nice|time|nohup|exec|command|timeout)$/.test(b)) break;
+    if (b === "command" && /^-[vV]$/.test(w[k + 1] || "")) return false;   // a lookup, not a run
+    k++;
+    while (k < w.length && /^-/.test(w[k])) {
+      const f = w[k];
+      if (b === "sudo" && /^(?:-[a-zA-Z]*[si][a-zA-Z]*|--shell|--login)$/.test(f)) sudoShell = true;
+      k += (b === "sudo" && /^-[ugphCDRTU]$/.test(f)) || (b === "env" && /^-[uCS]$/.test(f)) || (b === "nice" && f === "-n") ||
+        (b === "exec" && f === "-a") || (b === "timeout" && /^-[sk]$/.test(f)) ? 2 : 1;
+    }
+    if (b === "timeout") k++;   // the duration
   }
-  return true;
+  if (k >= w.length) return sudoShell && !wantC;   // sudo -s / -i with nothing after it starts a shell
+  if (!/^(?:ba|z)?sh$/.test(w[k].replace(/^.*\//, ""))) return false;
+  let seenS = false;
+  for (let j = k + 1; j < w.length; j++) {
+    const t = w[j];
+    if (REDIR_BARE.test(t)) { j++; continue; }
+    if (REDIR_ATT.test(t)) continue;
+    if (/^-[a-zA-Z]*c/.test(t)) return wantC && j === w.length - 1;   // -c, -ec, -xc: the shell runs the -c string; a heredoc after it is that script's stdin, not commands
+    if (t === "--") continue;
+    if (/^--(?:rcfile|init-file)$/.test(t) || /^[-+][a-zA-Z]*[oO]$/.test(t)) { j++; continue; }   // an option that takes a value
+    if (/^[-+]/.test(t)) { if (/^-[a-zA-Z]*s/.test(t)) seenS = true; continue; }
+    if (!seenS) return false;   // a script file or other word: the body is input to it (after -s the words are arguments)
+  }
+  return !wantC;
+};
+// is the char at v[i] a command separator? (not the & of 2>&1, >&2, <&0 or &>f, not the | of >|)
+const isSep = (v, i) => {
+  const c = v[i];
+  if (";(){}`".indexOf(c) >= 0) return true;
+  if (c === "&") return !(v[i - 1] === ">" || v[i - 1] === "<" || v[i + 1] === ">");
+  if (c === "|") return v[i - 1] !== ">";
+  return false;
+};
+// `sh -c "$(cat <<'EOF'` or `bash -c '$(cat <<EOF` at the end of a line: the heredoc is the -c script itself, so its body is commands
+const subC = line => {
+  const m = /\$\(\s*cat\s+(?:--?\s+)?<<-?[ \t]*["'\\]?[A-Za-z_][-A-Za-z0-9_]*["']?[ \t]*$/.exec(line);
+  if (!m || !/["']$/.test(line.slice(0, m.index))) return false;
+  const pre = line.slice(0, m.index - 1);
+  let a = pre.length;
+  while (a > 0 && !isSep(pre, a - 1)) a--;
+  return feedsWords(pre.slice(a).trim().split(/\s+/).filter(t => t !== ""), true);
 };
 const stripHeredocs = s => {
   const out = [];
   const pending = [];
+  let ph = 0;   // head of the queue: an index, not shift() (shift is linear in the queue length)
   for (const line of s.split("\n")) {
-    if (pending.length) {
-      const t = pending[0].dash ? line.replace(/^\t+/, "") : line;
-      if (t.replace(/\r$/, "") === pending[0].word) pending.shift();
-      else if (pending[0].keep) out.push(line);
+    if (ph < pending.length) {
+      const e = pending[ph];
+      const t = e.dash ? line.replace(/^\t+/, "") : line;
+      if (t.replace(/\r$/, "") === e.word) ph++;
+      else if (e.keep) out.push(line);
       continue;
     }
+    if (pending.length) { pending.length = 0; ph = 0; }
     out.push(line);
-    // not a here-string (<<<); the word may be quoted ('W' or "W") or backslash-quoted (\W)
-    const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][A-Za-z0-9_]*)\2|\\?([A-Za-z_][A-Za-z0-9_]*))/g;
+    // not a here-string (<<<); the word may be quoted ('W' or "W") or backslash-quoted (\W) and may contain a dash
+    const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][-A-Za-z0-9_]*)\2|\\?([A-Za-z_][-A-Za-z0-9_]*))/g;
     let m;
     // only in code: a << inside a quoted string or an arithmetic $(( )) is no heredoc (a $( ) inside double quotes is code)
     const v = shellView(line), view = v.out + (v.subs.length ? ";" + v.subs.join(";") : "");
-    // Linear: the start of the current simple command is tracked while scanning (no slice from 0 per heredoc), and a second
-    // heredoc in the same simple command is never fed to a bare shell (its prefix holds the first <<WORD, a non-flag word).
-    let scanned = 0, cmdStart = 0, prevStart = -1;
+    // Linear: the start of the current simple command is tracked while scanning (no slice from 0 per heredoc). The heredocs of
+    // one simple command form a group; bash reads the LAST body as the stdin, so only that one can be commands, and only when
+    // the whole command (before and after the heredocs) is a bare shell and no <file follows the last heredoc.
+    let scanned = 0, cmdStart = 0, g = null, lastEnt = null;
+    const finish = () => {
+      let e = g.ranges[g.ranges.length - 1][1];
+      while (e < view.length && !isSep(view, e)) e++;
+      const parts = [];
+      let p = g.start;
+      for (const r of g.ranges) { parts.push(view.slice(p, r[0])); p = r[1]; }
+      const after = view.slice(p, e);
+      g.last.keep = !/(?:^|\s)0?<(?![<&])\s*[^\s<>&|]/.test(after) &&
+        feedsWords((parts.join(" ") + " " + after).split(/\s+/).filter(t => t !== ""), false);
+      g = null;
+    };
     while ((m = re.exec(view))) {
-      for (; scanned < m.index; scanned++) if (";&|(){}`".indexOf(view[scanned]) >= 0) cmdStart = scanned + 1;
+      for (; scanned < m.index; scanned++) if (isSep(view, scanned)) cmdStart = scanned + 1;
       scanned = re.lastIndex;
-      pending.push({ dash: m[1] === "-", word: m[3] || m[4], keep: cmdStart !== prevStart && feedsShell(view.slice(cmdStart, m.index)) });
-      prevStart = cmdStart;
+      lastEnt = { dash: m[1] === "-", word: m[3] || m[4], keep: false };
+      pending.push(lastEnt);
+      if (g && g.start !== cmdStart) finish();
+      if (!g) g = { start: cmdStart, ranges: [], last: null };
+      g.ranges.push([m.index, re.lastIndex]);
+      g.last = lastEnt;
     }
+    if (g) finish();
+    if (lastEnt && subC(line)) lastEnt.keep = true;
   }
   return out.join("\n");
 };
@@ -70,7 +139,7 @@ const shellView = s => {
   let budget = 4 * n + 1000;   // total size of the collected bodies: deep nesting would otherwise copy the text once per level
   const keep = (a, b) => { if (b - a <= budget) { budget -= b - a; subs.push(s.slice(a, b)); } };
   const arith = i => { let d = 2; i += 3; while (i < n && d > 0) { if (s[i] === "(") d++; else if (s[i] === ")") d--; i++; } return i; };   // i at "$((": the index after its "))"
-  const HD = /<<(?!<)-?[ \t]*(?:(["'])[A-Za-z_][A-Za-z0-9_]*\1|\\?[A-Za-z_][A-Za-z0-9_]*)/y;   // a heredoc word, quoted or not, stays as it is
+  const HD = /<<(?!<)-?[ \t]*(?:(["'])[A-Za-z_][-A-Za-z0-9_]*\1|\\?[A-Za-z_][-A-Za-z0-9_]*)/y;   // a heredoc word, quoted or not, stays as it is
   // An explicit stack instead of recursion (a deeply nested input must not overflow the call stack): a frame is
   // { d: true } for a double-quoted string, or { start, depth } for a $( ) body.
   const st = [];

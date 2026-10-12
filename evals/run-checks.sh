@@ -33,7 +33,7 @@ nofiles() {
 }
 
 # AWKSTRIP: awk code shared by the gnu and soh checks. strip(s) returns the code part of a line and leaves the comment text
-# (from its #) in CMT. A # starts a comment only at the start of a line or after a blank, and only outside single and double
+# (from its #) in CMT. A # starts a comment only at the start of a line, after a blank or right after ; & | ( ), and only outside single and double
 # quotes (a backslash escapes the next character outside single quotes). Quote state is per line.
 AWKSTRIP='
 function strip(s,   i, n, c, q, bs, pc) {
@@ -48,7 +48,7 @@ function strip(s,   i, n, c, q, bs, pc) {
       else if (c == "\"" || c == "\047") q = c
       else if (c == "#") {
         pc = (i > 1) ? substr(s, i - 1, 1) : " "
-        if (pc == " " || pc == "\t") { CMT = substr(s, i); return substr(s, 1, i - 1) }
+        if (pc == " " || pc == "\t" || index(";&|()", pc) > 0) { CMT = substr(s, i); return substr(s, 1, i - 1) }
       }
     } else if (q == "\"") {
       if (c == "\\") bs = 1
@@ -214,8 +214,8 @@ fi
 if want sed; then
 nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # BSD sed (macOS) reads the word after -i as the backup suffix, so `sed -i 's/a/b/' f` edits nothing there;
-# an attached suffix (sed -i.bak) works on both. Comments (from a # at the start or after a blank) are ignored.
-gsed="$(awk '{ line = $0; sub(/(^|[[:space:]])#.*$/, "", line)
+# an attached suffix (sed -i.bak) works on both. Comments (from a # at the start, after a blank or right after ; & | ( )) are ignored.
+gsed="$(awk '{ line = $0; sub(/(^|[[:space:];&|()])#.*$/, "", line)
              if (line ~ /(^|[^[:alnum:]_])sed([[:space:]]+-[[:alnum:]]+)*[[:space:]]+(-[[:alpha:]]*i([[:space:]"'"'"']|$)|--in-place([[:space:]=]|$))/) print FILENAME ":" FNR }' \
   tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | sort -u | tr '\n' ' ')"
 si=-i   # spelled through a variable so this file does not trip its own check
@@ -274,8 +274,8 @@ ggnu="$(awk '
         q = substr(s, j, 1)
         if (q == "\"" || q == "\047" || q == "\\") j++; else q = ""
         w = ""
-        while (j <= n && substr(s, j, 1) ~ /[A-Za-z0-9_]/) { w = w substr(s, j, 1); j++ }
-        if (w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
+        while (j <= n && substr(s, j, 1) ~ /[-A-Za-z0-9_]/) { w = w substr(s, j, 1); j++ }
+        if (!inarith(substr(s, 1, i - 1)) && w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
           if (hn == 0) hi = 1
           hn++; HDW[hn] = w; HDD[hn] = dash
           if (q == "\"" || q == "\047") j++
@@ -309,11 +309,33 @@ ggnu="$(awk '
     nohd = 0; sp = sv; inS = si
     for (k = 1; k <= sp; k++) { MS[k] = SM[k]; PD[k] = SD[k] }
   }
-  # a variable used as a command word: at the start of a command, after if/then/do/while and similar words
-  function cmdpos(i,   j) {
+  # inarith(p): the text p (the line up to a <<) ends inside an arithmetic (( )) or $(( )) that is not closed yet
+  function inarith(p,   r, k, e, last) {
+    last = 0; r = p; k = 0
+    while ((e = index(r, "((")) > 0) { last = k + e; k += e + 1; r = substr(r, e + 2) }
+    return (last > 0 && index(substr(p, last + 2), "))") == 0)
+  }
+  # a variable used as a command word: at the start of a command (after an assignment, a reserved word such as if/then/do, or a
+  # wrapper sudo [-u U] / env [-u V] / nice [-n N] / time [-p] / command (not -v/-V) / exec [-a N] with its flags)
+  function cmdpos(i,   j, k, b, t) {
     j = i - 1
-    while (j >= 1 && (TK[j] in RW)) j--
-    return (j == 0 || TK[j] == ";")
+    while (j >= 1 && TK[j] != ";") j--
+    k = j + 1
+    while (k < i) {
+      t = TK[k]; b = t; sub(/^.*\//, "", b)
+      if ((t in RW) || t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { k++; continue }
+      if (b == "sudo" || b == "env" || b == "nice" || b == "time" || b == "command" || b == "exec" || b == "nohup") {
+        if (b == "command" && (TK[k + 1] == "-v" || TK[k + 1] == "-V")) return 0
+        k++
+        while (k < i && TK[k] ~ /^-/) {
+          if ((b == "sudo" && TK[k] ~ /^-[ugphCDRTU]$/) || (b == "env" && TK[k] ~ /^-[uCS]$/) || (b == "nice" && TK[k] == "-n") || (b == "exec" && TK[k] == "-a")) k++
+          k++
+        }
+        continue
+      }
+      return 0
+    }
+    return (k == i)
   }
   function hit(n) { if (!ex) out = out FILENAME ":" FNR " (" n ") " }
   BEGIN {
