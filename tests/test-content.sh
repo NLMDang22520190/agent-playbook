@@ -960,12 +960,42 @@ $GOT_SET
 " "
 tests/test-install.sh
 "
-  assert_not_contains "v23.2 AC8.1 job $id: the heavy suite tests/test-run-checks.sh stays out (D4)" "
+  # v0.23.3 R5: the heavy suites stay out, every part of the two split suites (tests/test-run-checks*.sh and
+  # tests/test-evals-grade2*.sh, found by glob so a part added later is covered too)
+  for HEAVY in $(cd "$PB_ROOT" && ls tests/test-run-checks*.sh tests/test-evals-grade2*.sh 2>/dev/null); do
+    assert_not_contains "v23.3 R5 job $id: the heavy suite $HEAVY stays out (D4)" "
 $GOT_SET
 " "
-tests/test-run-checks.sh
+$HEAVY
 "
+  done
 done
+# v0.23.3 AC1a / R5: the suites are split, no part reads the README or the CHANGELOG (the grep above would pull it into the reduced
+# set), every part is stored at mode 100755, and the shared fixture is a helper that run-all.sh does not start
+for FAMILY in test-run-checks test-evals-grade2; do
+  NPARTS="$(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$NPARTS" -ge 2 ]; then t_ok "v23.3 AC1a tests/$FAMILY.sh is split into $NPARTS suites"; else t_bad "v23.3 AC1a tests/$FAMILY.sh is split into at least 2 suites" "found $NPARTS"; fi
+  for PART in $(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null); do
+    assert_eq "v23.3 R5 $PART names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$PB_ROOT/$PART")"
+    if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      assert_eq "v23.3 AC1a $PART is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- "$PART" | cut -d' ' -f1)"
+    else
+      t_skip 1 "v23.3 AC1a mode of $PART needs a git checkout"
+    fi
+  done
+done
+HELPER="$PB_ROOT/tests/run-checks-fixture.sh"
+assert_file "v23.3 R5 the shared run-checks fixture exists" "$HELPER"
+case "$(basename "$HELPER")" in test-*.sh) t_bad "v23.3 R5 the fixture helper is not named test-*.sh" "name: $(basename "$HELPER")" ;; *) t_ok "v23.3 R5 the fixture helper is not named test-*.sh" ;; esac
+FIRSTL=""; IFS= read -r FIRSTL < "$HELPER" 2>/dev/null
+case "$FIRSTL" in "#!"*) t_ok "v23.3 R5 the fixture helper has a #! line" ;; *) t_bad "v23.3 R5 the fixture helper has a #! line" "first line: $FIRSTL" ;; esac
+if bash -n "$HELPER" 2>/dev/null; then t_ok "v23.3 R5 the fixture helper passes bash -n"; else t_bad "v23.3 R5 the fixture helper passes bash -n"; fi
+assert_eq "v23.3 R5 the fixture helper names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$HELPER" 2>/dev/null)"
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  assert_eq "v23.3 R5 the fixture helper is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- tests/run-checks-fixture.sh | cut -d' ' -f1)"
+else
+  t_skip 1 "v23.3 R5 mode of the fixture helper needs a git checkout"
+fi
 assert_file "v23.2 AC8.1 E1 tests/test-docs-rules.sh exists" "$PB_ROOT/tests/test-docs-rules.sh"
 if [ -f "$PB_ROOT/tests/test-docs-rules.sh" ]; then
   if grep -q 'PB_ROOT/README.md' "$PB_ROOT/tests/test-docs-rules.sh"; then t_ok 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)'; else t_bad 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)' 'the literal is missing'; fi
