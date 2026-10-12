@@ -266,7 +266,7 @@ ggnu="$(awk '
         while (i <= n) { c2 = substr(s, i, 1); if (c2 == "\\") i += 2; else if (c2 == "\047") break; else i++ }
       }
       else if (c == "\"") { flush(); sp++; MS[sp] = "d" }
-      else if (c == "#" && (i == 1 || substr(s, i - 1, 1) == " " || substr(s, i - 1, 1) == "\t")) { CMT = substr(s, i); break }
+      else if (c == "#" && (i == 1 || index(" \t;&|()", substr(s, i - 1, 1)) > 0)) { CMT = substr(s, i); break }   # a comment starts a word: after a blank or an operator
       else if (c == "<" && !nohd && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && (i == 1 || substr(s, i - 1, 1) != "<")) {
         j = i + 2; dash = 0
         if (substr(s, j, 1) == "-") { dash = 1; j++ }

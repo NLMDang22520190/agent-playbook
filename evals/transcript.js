@@ -25,6 +25,7 @@ const feedsShell = prefix => {
   while (k < w.length && /^(?:[A-Za-z_][A-Za-z0-9_]*=.*|if|then|do|else|elif|while|until|!|sudo|env|nice|time|nohup|exec|command)$/.test(w[k])) k++;
   if (k >= w.length || !/^(?:ba|z)?sh$/.test(w[k].replace(/^.*\//, ""))) return false;
   for (let j = k + 1; j < w.length; j++) {
+    if (/^-[a-zA-Z]*c/.test(w[j])) return false;   // -c, -ec, -xc: the shell runs the -c string; the heredoc is that script's stdin, not commands
     if (/^[-+][a-zA-Z]*[oO]$/.test(w[j])) j++;   // an option that takes a value (-o pipefail)
     else if (!/^[-+]/.test(w[j])) return false;   // a script file or other word: the body is input to it
   }
@@ -46,7 +47,15 @@ const stripHeredocs = s => {
     let m;
     // only in code: a << inside a quoted string or an arithmetic $(( )) is no heredoc (a $( ) inside double quotes is code)
     const v = shellView(line), view = v.out + (v.subs.length ? ";" + v.subs.join(";") : "");
-    while ((m = re.exec(view))) pending.push({ dash: m[1] === "-", word: m[3] || m[4], keep: feedsShell(view.slice(0, m.index)) });
+    // Linear: the start of the current simple command is tracked while scanning (no slice from 0 per heredoc), and a second
+    // heredoc in the same simple command is never fed to a bare shell (its prefix holds the first <<WORD, a non-flag word).
+    let scanned = 0, cmdStart = 0, prevStart = -1;
+    while ((m = re.exec(view))) {
+      for (; scanned < m.index; scanned++) if (";&|(){}`".indexOf(view[scanned]) >= 0) cmdStart = scanned + 1;
+      scanned = re.lastIndex;
+      pending.push({ dash: m[1] === "-", word: m[3] || m[4], keep: cmdStart !== prevStart && feedsShell(view.slice(cmdStart, m.index)) });
+      prevStart = cmdStart;
+    }
   }
   return out.join("\n");
 };
@@ -123,9 +132,12 @@ function bashWrites(cmd) {
   // the spec file: the same path rule as a Write/Edit call; a bare 01-spec.md only after a cd into .agents/handoff still in effect
   const spec = p => /(^|\/)\.agents\/handoff\/01-spec\.md$/.test(p.replace(/\\/g, "/")) || (inHand && /^(\.\/)?01-spec\.md$/.test(p));
   // a write target: an src write ends the scan (nothing after it can put the spec first); a spec write before it is noted
-  const hit = p => { if (src(p)) sawSrc = true; else if (spec(p)) sawSpec = true; return sawSrc; };
+  // one simple command that writes both counts the src write first: a spec write noted in the same command is taken back
+  let specAtStart = false;
+  const hit = p => { if (src(p)) { sawSrc = true; sawSpec = specAtStart; } else if (spec(p)) sawSpec = true; return sawSrc; };
   const hits = list => { for (const p of list) if (hit(p)) return true; return false; };
-  const done = () => {
+  const done = () => { const r = done0(); specAtStart = sawSpec; return r; };
+  const done0 = () => {
     const w = words; words = [];
     if (!w.length) return false;
     const verb = bare(w[0]).replace(/^.*\//, ""), args = w.slice(1), plain = args.filter(a => !/^-/.test(a));
