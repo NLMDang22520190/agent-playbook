@@ -25,9 +25,11 @@
 # Test infrastructure (runners, shared test helpers) is opt-in: project key test_infra_regex (ERE on
 # repo-relative paths, empty = off). Matching paths classify as "infra" (before the test regex); the
 # tester and the implementer may not change them, and size counts them like production files.
-# Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index) is a
+# Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index, also a drop
+# that is only staged, also a rename that drops the bit: the new path is named) is a
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
-# PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths). Gaining the bit or deleting a file is fine.
+# PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths; a path that contains a colon cannot be listed there).
+# Gaining the bit or deleting a file is fine.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref)
@@ -99,8 +101,9 @@ case "$cmd" in
     [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$(shown "$INFRA_RE")"
     [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$(shown "$INFRA_SHADOW")"
 
-    changed="$( { git -c core.quotepath=off diff --name-only --no-renames "$base" --
-                  git -c core.quotepath=off ls-files --others --exclude-standard; } | sort -u )"
+    # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
+    changed="$( { git -c core.quotepath=off diff --name-only -z --no-renames "$base" --
+                  git -c core.quotepath=off ls-files -z --others --exclude-standard; } | tr '\000' '\n' | sort -u )"
 
     violations=0
     checked=0
@@ -125,15 +128,18 @@ $changed
 EOF
     # a lost executable bit (100755 -> 100644) is a violation for every role, work tree and staged index together.
     # The escape is PB_ALLOW_MODE_CHANGE: colon-separated exact repo-relative paths (a case pattern: no glob, no split).
-    modes="$(git -c core.quotepath=off diff --raw --no-renames "$base" --)" || pb_die "git diff failed" 3
-    while IFS=$'\t' read -r meta mpath; do
-      case "$meta" in ':100755 100644 '*) ;; *) continue ;; esac
+    # The work-tree list and the staged list (git diff --cached) are merged, duplicates removed: a drop that is only staged
+    # is caught too. A rename that drops the bit (delete 100755 + add 100644, same blob) names the NEW path.
+    modes_wt="$(pb_raw_lines "$base" --)" || pb_die "git diff failed" 3
+    modes_ix="$(pb_raw_lines --cached "$base" --)" || pb_die "git diff failed" 3
+    lost="$( { printf '%s\n' "$modes_wt"; printf '%s\n' "$modes_ix"; } | pb_lost_exec_paths )"
+    while IFS= read -r mpath; do
       [ -n "$mpath" ] || continue
       case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
       printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
       violations=$((violations + 1))
     done <<EOF
-$modes
+$lost
 EOF
     if [ "$violations" -gt 0 ]; then
       printf 'role gate FAILED for %s: %d violation(s), base=%s\n' "$role" "$violations" "$base"

@@ -59,3 +59,26 @@ pb_redact() {
     -e 's#([Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+)[A-Za-z0-9._~+/=-]{8,}#\1[REDACTED]#g' \
     -e 's#(sk-|ghp_|gho_|ghs_|xox[bap]-|AKIA)[A-Za-z0-9_-]{12,}#[REDACTED]#g'
 }
+
+# pb_raw_lines GIT-DIFF-ARGS... -> one "META<TAB>PATH" line per changed path from `git diff --raw -z` (paths unquoted, so a
+# path with a double quote or a tab is printed as it is). META is ":OLDMODE NEWMODE OLDSHA NEWSHA STATUS". Exit: git's.
+pb_raw_lines() {
+  local out
+  out="$(git -c core.quotepath=off diff --raw -z --no-abbrev --no-renames --no-ext-diff "$@" | tr '\000' '\n'; exit "${PIPESTATUS[0]}")" || return 1
+  [ -z "$out" ] || printf '%s\n' "$out" | awk 'NR % 2 == 1 { m = $0; next } { print m "\t" $0 }'
+  return 0
+}
+
+# pb_lost_exec_paths < RAW-LINES -> the paths that lost the executable bit, one per line, sorted, no duplicates: 100755 ->
+# 100644, or (a rename seen as delete + add) a deleted 100755 path whose blob is added at 100644 under another path
+# (the NEW path is named).
+pb_lost_exec_paths() {
+  awk '
+    { t = index($0, "\t"); if (t == 0) next
+      split(substr($0, 1, t - 1), m, " "); p = substr($0, t + 1)
+      if (m[1] == ":100755" && m[2] == "100644") print p
+      else if (m[1] == ":100755" && m[2] == "000000") del[m[3]] = 1
+      else if (m[1] == ":000000" && m[2] == "100644") { na++; ap[na] = p; as[na] = m[4] } }
+    END { for (i = 1; i <= na; i++) if (as[i] in del) print ap[i] }
+  ' | LC_ALL=C sort -u
+}

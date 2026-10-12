@@ -29,6 +29,9 @@ echo "bsd-check: awk is $name ($src)"
 
 b32=""
 pathb32="$(command -v bash3.2 2>/dev/null)" || pathb32=""
+if [ -n "${PB_BASH32:-}" ] && { [ ! -f "$PB_BASH32" ] || [ ! -x "$PB_BASH32" ]; }; then
+  echo "bsd-check: note: PB_BASH32 is set to $PB_BASH32 but that is not an executable file; trying the next candidate" >&2
+fi
 # candidates in order; only a real 3.2 counts (a bash3.2 that reports another version would give a false "macOS-like" run):
 # a rejected one is named with its version and the next one is tried
 for c in "${PB_BASH32:-}" "${HOME:-/nonexistent}/.local/bin/bash3.2" "$pathb32"; do
