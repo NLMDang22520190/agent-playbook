@@ -38,18 +38,18 @@ nofiles() {
 # in prose (a line of a heredoc body or other text) opens a quote that hides a later # comment on that line, so a comment word can be
 # read as code; the result is a conservative false positive (a flagged line), never a missed one. The sed section has the same limit.
 AWKSTRIP='
-function strip(s,   i, n, c, q, bs, pc) {
+function strip(s,   i, n, c, q, bs, pc, cc) {
   CMT = ""
   if (index(s, "#") == 0) return s
-  n = length(s); q = ""; bs = 0
+  n = split(s, cc, ""); q = ""; bs = 0
   for (i = 1; i <= n; i++) {
-    c = substr(s, i, 1)
+    c = cc[i]
     if (bs) { bs = 0; continue }
     if (q == "") {
       if (c == "\\") bs = 1
       else if (c == "\"" || c == "\047") q = c
       else if (c == "#") {
-        pc = (i > 1) ? substr(s, i - 1, 1) : " "
+        pc = (i > 1) ? cc[i - 1] : " "
         if (pc == " " || pc == "\t" || index(";&|()", pc) > 0) { CMT = substr(s, i); return substr(s, 1, i - 1) }
       }
     } else if (q == "\"") {
@@ -256,42 +256,42 @@ ggnu="$(awk '
   function flush() { if (t != "") { TK[++nk] = t; t = "" } }
   # scan(s): the words of one line, with the quote state (sp/MS/PD/inS) carried over from the line before.
   # MS[sp] is "c" (code), "d" (inside double quotes) or "b" (a backtick command inside double quotes).
-  function scan(s,   i, n, c, m, j, c2, q, w, dash, ch, u) {
-    nk = 0; t = ""; CMT = ""; n = length(s); i = 1
+  function scan(s,   i, n, c, m, j, c2, q, w, dash, u, cc) {
+    nk = 0; t = ""; CMT = ""; n = split(s, cc, ""); i = 1
     ar = 0; ao = 0; ac = 0   # ar: open (( or $(( groups in code mode on this line; ao/ac: a paren already counted as half of a pair
     if (inS) {   # still inside a single-quoted string that began on an earlier line
-      while (i <= n && substr(s, i, 1) != "\047") i++
+      while (i <= n && cc[i] != "\047") i++
       if (i > n) return
       inS = 0; i++
     }
     for (; i <= n; i++) {
-      c = substr(s, i, 1); m = MS[sp]
+      c = cc[i]; m = MS[sp]
       if (m == "d") {   # inside double quotes: hidden, except a command substitution
         if (c == "\\") i++
         else if (c == "\"") { sp--; flush() }
-        else if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") ar++; sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
+        else if (c == "$" && cc[i + 1] == "(") { if (cc[i + 2] == "(") ar++; sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
         else if (c == "`") { sp++; MS[sp] = "b"; PD[sp] = 0; flush(); TK[++nk] = ";" }
         continue
       }
-      if (c == "(" && i != ao && substr(s, i + 1, 1) == "(") { ar++; ao = i + 1 }   # arithmetic opens (code mode only, never inside quotes)
-      else if (c == ")" && i != ac && substr(s, i + 1, 1) == ")") { if (ar > 0) ar--; ac = i + 1 }
+      if (c == "(" && i != ao && cc[i + 1] == "(") { ar++; ao = i + 1 }   # arithmetic opens (code mode only, never inside quotes)
+      else if (c == ")" && i != ac && cc[i + 1] == ")") { if (ar > 0) ar--; ac = i + 1 }
       if (c == "\\") { i++; flush() }
-      else if (c == "\047") { flush(); i++; while (i <= n && substr(s, i, 1) != "\047") i++; if (i > n) inS = 1 }   # single quotes: hidden
-      else if (c == "$" && substr(s, i + 1, 1) == "\047") {   # ANSI-C quote: a backslash escapes the next character
+      else if (c == "\047") { flush(); i++; while (i <= n && cc[i] != "\047") i++; if (i > n) inS = 1 }   # single quotes: hidden
+      else if (c == "$" && cc[i + 1] == "\047") {   # ANSI-C quote: a backslash escapes the next character
         flush(); i += 2
-        while (i <= n) { c2 = substr(s, i, 1); if (c2 == "\\") i += 2; else if (c2 == "\047") break; else i++ }
+        while (i <= n) { c2 = cc[i]; if (c2 == "\\") i += 2; else if (c2 == "\047") break; else i++ }
       }
       else if (c == "\"") { flush(); sp++; MS[sp] = "d" }
-      else if (c == "#" && (i == 1 || index(" \t;&|()", substr(s, i - 1, 1)) > 0)) { CMT = substr(s, i); break }   # a comment starts a word: after a blank or an operator
-      else if (c == "<" && !nohd && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<" && (i == 1 || substr(s, i - 1, 1) != "<")) {
+      else if (c == "#" && (i == 1 || index(" \t;&|()", cc[i - 1]) > 0)) { CMT = substr(s, i); break }   # a comment starts a word: after a blank or an operator
+      else if (c == "<" && !nohd && cc[i + 1] == "<" && cc[i + 2] != "<" && (i == 1 || cc[i - 1] != "<")) {
         j = i + 2; dash = 0
-        if (substr(s, j, 1) == "-") { dash = 1; j++ }
-        while (substr(s, j, 1) == " " || substr(s, j, 1) == "\t") j++
-        q = substr(s, j, 1)
+        if (cc[j] == "-") { dash = 1; j++ }
+        while (cc[j] == " " || cc[j] == "\t") j++
+        q = cc[j]
         if (q == "\"" || q == "\047" || q == "\\") j++; else q = ""
         w = ""
-        while (j <= n && substr(s, j, 1) ~ /[-A-Za-z0-9_]/) { w = w substr(s, j, 1); j++ }
-        if (!ar && w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
+        while (j <= n && cc[j] ~ /[-A-Za-z0-9_]/) { w = w cc[j]; j++ }
+        if (!ar && w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || cc[j] == q)) {
           if (hn == 0) hi = 1
           hn++; HDW[hn] = w; HDD[hn] = dash
           if (q == "\"" || q == "\047") j++
@@ -300,10 +300,10 @@ ggnu="$(awk '
         flush()
       }
       else if (c == " " || c == "\t" || c == "<" || c == ">") flush()
-      else if (c == "$" && substr(s, i + 1, 1) == "{" && ((u = substr(s, i + 2, 64)) != "") && match(u, /^[A-Za-z_][A-Za-z0-9_]*[}]/)) {   # ${NAME}: one word
+      else if (c == "$" && cc[i + 1] == "{" && ((u = substr(s, i + 2, 64)) != "") && match(u, /^[A-Za-z_][A-Za-z0-9_]*[}]/)) {   # ${NAME}: one word
         t = t substr(s, i, RLENGTH + 2); i += RLENGTH + 1
       }
-      else if (c == "{" && substr(s, i + 1, 1) == "}") { t = t "{}"; i++ }   # find -exec {} and xargs -I {}
+      else if (c == "{" && cc[i + 1] == "}") { t = t "{}"; i++ }   # find -exec {} and xargs -I {}
       else if (c == ")" && m == "c" && sp > 1 && PD[sp] == 0) { flush(); TK[++nk] = ";"; sp-- }
       else if (c == "`" && m == "b") { flush(); TK[++nk] = ";"; sp-- }
       else if (index(";|&(){}`", c) > 0) {
@@ -413,11 +413,11 @@ gsoh="$(awk "$AWKSTRIP"'
   {
     line = strip($0)
     if (index(line, "\\") == 0) next
-    n = length(line)
+    n = split(line, cc, "")
     for (i = 1; i <= n; i++) {
-      if (substr(line, i, 1) != "\\") continue
-      j = i; while (substr(line, j + 1, 1) == "\\") j++
-      rest = substr(line, j + 1, 4)
+      if (cc[i] != "\\") continue
+      j = i; while (cc[j + 1] == "\\") j++
+      rest = cc[j + 1] cc[j + 2] cc[j + 3] cc[j + 4]
       if ((j - i + 1) % 2 == 1 && (rest ~ /^0?001/ || rest ~ /^x01/ || rest ~ /^01([^0-7]|$)/)) { out = out FILENAME ":" FNR " "; break }
       i = j
     }

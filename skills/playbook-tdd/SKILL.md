@@ -42,7 +42,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | Weight | Use it when | What runs |
 |---|---|---|
 | **Full** | the change touches hard-to-reverse ground (a change to an existing public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
-| **Quick** | tiny: ≤ 1 production file and ≤ 20 changed lines, nothing from the Full column, or the user asks for quick | one context: a behaviour change is still tested first and seen failing, one proof-run, a 3-5 line report; see `references/quick.md` |
+| **Quick** | tiny: ≤ 1 production file and ≤ 20 changed lines, nothing from the Full column (removing or renaming an exported symbol is a public API change: Full), or the user asks for quick | one context: a behaviour change is still tested first and seen failing, one proof-run, a 3-5 line report; see `references/quick.md` |
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
@@ -189,7 +189,7 @@ time; a conflict is the cheap signal that the files were not disjoint.
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
 `roles/reviewer.md` for the whole diff. Review a single slice early only when that slice alone is
 hard to reverse (a migration, a public API change) and later slices build on it.
-Prefer a different model (`conf.sh get model_reviewer`). Give it the spec, the base sha from before
+Prefer a different model (resolve it with `role-model.sh reviewer --harness <h>`). Give it the spec, the base sha from before
 slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.

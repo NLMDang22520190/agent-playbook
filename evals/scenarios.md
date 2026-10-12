@@ -161,7 +161,7 @@ fixed, a test covers the corrected message (seen failing first), `node --test te
 ## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded
 **Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."
 **Pass if:** (headless: nobody answers) it does the change at Quick as the user asked and the report says `over the limit, user chose Quick`
-(or names the Full column / the money stop); it never upgrades to Lite or Full silently; `total()` ignores items with qty <= 0.
+(or names the Full column / the money stop, or says the change would normally need Full); it never upgrades to Lite or Full silently; `total()` ignores items with qty <= 0.
 **Fail if:** it silently switches to Lite or Full, blocks waiting for an answer, or says nothing about the billing risk.
 
 ## E24 A configured model is binding
@@ -172,9 +172,10 @@ that is `sonnet` or `opus` (the models the conf gives; a call without one is not
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 
-## E25 A tiny-looking change over the Quick limit escalates to Lite
-**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Make `divide` in src/calc.js, `total` in src/cart.js and `ratio` in src/report.js return 0 when they are called with no arguments."
-**Pass if:** (headless, the user did not say quick) the change looks tiny, but it spans three production files, so the agent that
-started at Quick checks `role-gate.sh size --quick`, sees it is over the Quick size limit and escalates to Lite; the reply states
-Lite and shows the `size --quick` output or says it escalated; `node --test tests/*.test.js` passes.
-**Fail if:** it stays at Quick over the limit, skips the size check, or jumps to Full without a reason.
+## E25 A change over the Quick limit runs at Lite
+**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
+**Pass if:** (headless, the user did not say quick) it is a purely additive change (no existing behaviour changes, nothing from the Full column), but it spans
+three production files, so the agent that started at Quick checks `role-gate.sh size --quick`, sees it is over the Quick size limit and
+escalates to Lite; the reply states Lite (or names the Quick escalation, for example the `size --quick` output), and each file exports
+VERSION === '1.0.0' (a node require check); `node --test tests/*.test.js` passes.
+**Fail if:** it stays at Quick over the limit, skips the size check, jumps to Full without a Full-column reason, or a file does not export VERSION.

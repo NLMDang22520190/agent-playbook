@@ -1227,12 +1227,25 @@ assert_eq "AC1.7 exactly one line names **Quick**" "1" "$QLINES"
 QLINE="$(grep '\*\*Quick\*\*' "$AGLOBAL" | head -n 1)"
 QBYTES="$(printf '%s\n' "$QLINE" | LC_ALL=C wc -c | tr -d ' ')"
 QB1=$((QBYTES - 1))
-if [ "$QLINES" = 1 ] && [ "$QB1" -le 160 ]; then t_ok "R2 the Quick line is at most 160 bytes ($QB1)"; else t_bad "R2 the Quick line is at most 160 bytes" "$QB1 bytes: $QLINE"; fi
+if [ "$QLINES" = 1 ] && [ "$QB1" -le 200 ]; then t_ok "R2 / v24.2 AC6.1 the Quick line is at most 200 bytes ($QB1)"; else t_bad "R2 / v24.2 AC6.1 the Quick line is at most 200 bytes" "$QB1 bytes: $QLINE"; fi
+# v0.24.2 AC6.1/AC6.3: the always-on Quick line states the limits and the gate (real eval E21 chose Quick from this line alone)
+qchk "AC6.1 the Quick line names the 1 production file limit" "$QLINE" '1 production file'
+qchk "AC6.1 the Quick line names the 20 line limit" "$QLINE" '(≤|<=) ?20 lines'
+qchk "AC6.1 the Quick line says nothing from the Full column" "$QLINE" 'nothing from the Full column'
+qchk "AC6.1 the Quick line names changed public API, money, auth and migrations" "$QLINE" 'changed public API[^;]{0,40}money[^;]{0,40}auth[^;]{0,40}migrations?'
+qchk "AC6.1 the Quick line says to load playbook-tdd first" "$QLINE" 'load `?playbook-tdd`? first'
+qchk "AC6.1 the Quick line still says the user can ask by saying quick" "$QLINE" 'say(ing)? "quick"'
 qchk "AC1.7 the line says Quick is for tiny changes" "$QLINE" 'tiny|small'
 qchk "AC1.7 the line says the user can ask for it by saying quick" "$QLINE" 'user[^.]{0,40}(ask|say)[^.]{0,60}"quick"|say(ing)? "quick"'
 AGL="$(wc -l < "$AGLOBAL" | tr -d ' ')"; AGB="$(wc -c < "$AGLOBAL" | tr -d ' ')"
 if [ "$AGL" -le 60 ]; then t_ok "AC1.7 AGENTS.global.md stays within 60 lines ($AGL)"; else t_bad "AC1.7 AGENTS.global.md stays within 60 lines" "$AGL lines"; fi
 if [ "$AGB" -le 5000 ]; then t_ok "AC1.7 AGENTS.global.md stays within 5000 bytes ($AGB)"; else t_bad "AC1.7 AGENTS.global.md stays within 5000 bytes" "$AGB bytes"; fi
+if [ "$AGB" -le 4400 ]; then t_ok "AC6.1 AGENTS.global.md stays within 4400 bytes ($AGB)"; else t_bad "AC6.1 AGENTS.global.md stays within 4400 bytes" "$AGB bytes"; fi
+# v0.24.2 AC6.2/AC6.3: quick.md says that removing or renaming an exported symbol is a public API change, never Quick
+qchk "AC6.2 quick.md: removing or renaming an exported symbol is a public API change" "$(qall "$QUICK")" '(remov|renam)[^.]{0,60}exported symbol[^.]{0,80}public API'
+qchk "AC6.2 quick.md: such a change is the Full column, never Quick" "$(qall "$QUICK")" 'exported symbol[^.]{0,200}Full column[^.]{0,80}never Quick|never Quick[^.]{0,200}exported symbol'
+qchk "AC6.2 quick.md: the always-on line is not enough, load playbook-tdd first" "$(qall "$QUICK")" 'load[^.]{0,40}playbook-tdd[^.]{0,40}first|before[^.]{0,60}(choos|pick)[^.]{0,40}Quick'
+
 TDDSEC="$(awk '/^### TDD with separated roles/ { f = 1; next } f && /^### / { exit } f { print }' "$AGLOBAL")"
 qchk "AC1.7 the Quick line sits in the TDD section" "$TDDSEC" '\*\*Quick\*\*'
 qchk "AC1.7 regression: the TDD section still names Full and Lite" "$TDDSEC" '\*\*Full\*\*[^*]{0,200}\*\*Lite\*\*'
@@ -1253,7 +1266,7 @@ echo "v0.24.0 AC1.8 / R12 scenarios E22-E25 in evals/scenarios.md"
 exact_heading "AC1.8 scenarios has the E22 heading" "$SCEN" '## E22 A user-requested Quick change runs at Quick weight'
 exact_heading "AC1.8 scenarios has the E23 heading" "$SCEN" '## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded'
 exact_heading "AC1.8 scenarios has the E24 heading" "$SCEN" '## E24 A configured model is binding'
-exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A tiny-looking change over the Quick limit escalates to Lite'
+exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A change over the Quick limit runs at Lite'
 for e in E22 E23 E24 E25; do
   re="^## $e "
   check_sec "AC1.8 $e has a Prompt line" "$SCEN" "$re" '^\*\*Prompt:\*\*'
@@ -1268,7 +1281,7 @@ for p in \
   '**Prompt:** "Quick one: fix the typo '"'"'nubmers'"'"' in the TypeError message of `add`, and make sure a test covers the message."' \
   '**Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."' \
   '**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."' \
-  '**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Make `divide` in src/calc.js, `total` in src/cart.js and `ratio` in src/report.js return 0 when they are called with no arguments."'; do
+  '**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Add an exported constant VERSION = '"'"'1.0.0'"'"' to src/calc.js, src/cart.js and src/report.js."'; do
   if grep -qF -- "$p" "$SCEN"; then t_ok "AC1.8 verbatim prompt present: ${p:0:60}..."; else t_bad "AC1.8 verbatim prompt present: ${p:0:60}..." "not found in $SCEN"; fi
 done
 E22S="$(awk -v h='## E22 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
@@ -1286,8 +1299,11 @@ qchk "AC2.6 E24 reads every Agent/Task model parameter" "$E24S" 'Agent[^.]{0,40}
 qchk "AC2.6 E24 the models of the conf: sonnet and opus" "$E24S" 'sonnet[^.]{0,200}opus|opus[^.]{0,200}sonnet'
 qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
-qchk "R12 E25 escalates from Quick to Lite" "$E25S" 'escalat[^.]{0,80}Lite'
+qchk "R12 E25 escalates from Quick to Lite" "$E25S" 'escalat[^.]{0,80}Lite|Lite[^.]{0,80}escalat'
 qchk "R12 E25 names size --quick" "$E25S" 'size --quick'
+qchk "v24.2 AC5.2 E25 is a purely additive change (no Full item)" "$E25S" 'additive'
+qchk "v24.2 AC5.2 E25 checks that each file exports VERSION" "$E25S" 'each file exports VERSION|exports? VERSION'
+qchk "v24.2 AC5.2 E25 fails on a Full jump without a Full-column reason" "$E25S" 'Full[^.]{0,80}(without|no)[^.]{0,40}(Full[- ]column )?reason'
 qchk "R12 E25 is headless" "$E25S" 'headless'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"

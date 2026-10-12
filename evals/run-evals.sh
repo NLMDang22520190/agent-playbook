@@ -300,7 +300,7 @@ reply_matches() { local r
 # `Weight: Lite|Full` is exempt (Quick drops the line unless a rule misfired); the words full or lite elsewhere in the reply do not
 # cancel it. With no weight line, or Lite or Full, the check applies as before.
 feedback_line_unless_quick() { local r
-  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight: *quick' && ! printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then return 0; fi
+  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' && ! printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then return 0; fi
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"; }
 # red_unchanged -> 0 when tests/ is as the RED commit left it (no edit, deletion or new file)
 red_unchanged() { git -C "$WD" diff --quiet "$E4_RED" -- tests &&
@@ -318,7 +318,7 @@ only_typo()     { git -C "$WD" show "$E10_BASE:src/calc.js" | sed 's/nubmers/num
                   [ -z "$(git -C "$WD" ls-files --others --exclude-standard -- src)" ]; }
 grade_E10() {
   check "only the typo changed in src/" only_typo
-  check "the typo is fixed" grep -qF 'expects numbers' "$WD/src/calc.js"
+  check "the typo is fixed" typo_fixed
 }
 heading_changed() { [ "$(sed -n 1p "$WD/docs/notes.md" 2>/dev/null)" != "# Notes" ]; }
 # pin_test -> 0 when one file under tests/ mentions both pageSize and the word 50 (paths may contain spaces)
@@ -379,7 +379,7 @@ grade_E15() {
   # the weight is read from the final reply: Lite with "no independent review", or Quick; a plain-text log keeps the old reading
   local r
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight: *quick' ||
+    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' ||
        { printf '%s' "$r" | grep -qiwE 'lite' && printf '%s' "$r" | grep -qiE 'no independent review'; }; then
       record PASS "the reply states the weight: Lite with no independent review, or Quick"
     else record FAIL "the reply states the weight: Lite with no independent review, or Quick"; fi
@@ -402,8 +402,10 @@ grade_E21() {
     *) record MANUAL "the spec is written before the first src/ edit" ;;
   esac
 }
+# typo_fixed -> 0 when src/calc.js has the corrected text and the misspelling nubmers is gone from it
+typo_fixed()    { grep -qF 'expects numbers' "$WD/src/calc.js" && not_in_calc nubmers; }
 grade_E22() {
-  check "the typo is fixed" grep -qF 'expects numbers' "$WD/src/calc.js"
+  check "the typo is fixed" typo_fixed
   check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
   reply_matches 'Weight: Quick \(user-requested\)' "the reply states Weight: Quick (user-requested)"
@@ -412,11 +414,11 @@ grade_E22() {
 grade_E23() {
   check "total() ignores items whose qty is zero or negative" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 5, qty: 2 }, { price: 7, qty: 0 }, { price: 9, qty: -1 }]) === 10 ? 0 : 1)'
   check "node --test tests/*.test.js passes" tests_pass
-  reply_matches 'over the limit, user chose Quick|Full (column|stop)|money|billing' "the reply names the limit or the Full stop"
+  reply_matches 'over the limit, user chose Quick|Full (column|stop)|normally (need|needs|get|gets) (the )?full' "the reply names the limit or the Full stop"
   # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
   local r
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then record FAIL "the reply keeps the Quick weight"
+    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then record FAIL "the reply keeps the Quick weight"
     else record PASS "the reply keeps the Quick weight"; fi
   else record MANUAL "the reply keeps the Quick weight"; fi
 }
@@ -453,11 +455,26 @@ grade_E24() {
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "total() returns integer cents and every caller is updated"
 }
+# exports_version -> 0 when src/calc.js, src/cart.js and src/report.js each export VERSION === '1.0.0' (node require check)
+exports_version() { local f
+  for f in calc cart report; do
+    node -e 'process.exit(require(process.argv[1]).VERSION === "1.0.0" ? 0 : 1)' "$WD/src/$f.js" 2>/dev/null || return 1
+  done
+  return 0; }
 grade_E25() {
+  local r w name="the reply states Lite or escalation"
   stream_result
   check "node --test tests/*.test.js passes" tests_pass
-  reply_matches 'Weight: *Lite' "the reply states Lite"
-  reply_matches 'size --quick|escalat' "the reply names the Quick escalation"
+  # a reply with a weight statement is graded on that word (bold allowed): only Lite passes, Quick and Full FAIL even when the reply
+  # names size --quick or escalation; a reply with no weight statement passes on the size --quick or escalat wording
+  if r="$(result_text)"; then
+    w="$(printf '%s' "$r" | grep -ioE 'weight:[ *_]*(full|lite|quick)' | head -n 1 | grep -ioE '(full|lite|quick)$' | tr 'A-Z' 'a-z')"
+    if [ -n "$w" ]; then
+      if [ "$w" = lite ]; then record PASS "$name"; else record FAIL "$name"; fi
+    elif printf '%s' "$r" | grep -qiE 'size --quick|escalat'; then record PASS "$name"
+    else record FAIL "$name"; fi
+  else record MANUAL "$name"; fi
+  check "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" exports_version
 }
 
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0

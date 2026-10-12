@@ -68,3 +68,19 @@ comparison runs on the installed v0.24.0 and is recorded in v0.24.1 (decision D1
 
 Total 4.58 USD. Quick works as specified; on this fixture it saves about 10-20 % per tiny fix, because a Lite typo
 fix already costs about 0.39 USD (the 1.1 USD figure in the Quick plan came from older, heavier Lite runs).
+
+## Run 6: v0.24.1 installed - eval guard for the shorter always-on block (cap 4 USD)
+
+| Scenario | Auto passed / total | Cost (USD) |
+|---|---|---|
+| E1 | 6/6 (+1 manual) | 0.40 |
+| E3 | 4/4 (+1 manual) | 0.22 |
+| E5 | 4/4 | 0.22 |
+| E8 | 4/4 (+1 manual) | 0.15 |
+| E10 | 3/3 | 0.36 |
+| E21 | 3/6 | 0.24 |
+
+Total 1.57 USD. The shorter block keeps E1, E3, E5, E8 and E10 passing. E21 regressed (it passed 6/6 on v0.23.2): the
+agent chose "the playbook's Quick test level" from the always-on line for a two-file rename that removed a public
+export, without loading playbook-tdd, so no spec was written. v0.24.2 fixes the Quick line and quick.md; E21 is re-run
+on the installed v0.24.2.
