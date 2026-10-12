@@ -142,6 +142,13 @@ cd ~/agent-playbook && bash tests/run-all.sh                 # must be green
 
 Caveat: in PowerShell, `bash` usually resolves to `C:\Windows\System32\bash.exe`, which is the **WSL launcher**, not Git Bash. Agents on Windows should run the playbook scripts with Git Bash (`"C:\Program Files\Git\bin\bash.exe" ~/.agents/playbook/scripts/...`); Claude Code's own shell tool already is Git Bash.
 
+WSL idle behaviour (per Microsoft's [`.wslconfig` / `wsl.conf` reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)), which matters for long agent runs:
+- A distro stops about 15 seconds after its last process exits: `instanceIdleTimeout` (key under `[general]` in `.wslconfig`, default 15000 ms, `-1` disables it). That kills background work (dev servers, test runs started from a closed terminal).
+- The WSL 2 VM itself stops after `vmIdleTimeout` (key under `[wsl2]`, default 60000 ms).
+- For a long session keep a process alive (for example `wsl -e sleep infinity` in a spare terminal) or set `instanceIdleTimeout=-1` and run `wsl --shutdown`.
+- `autoMemoryReclaim` is a key under `[experimental]`, not under `[wsl2]`.
+- On one machine we observed `/tmp` inside WSL being wiped on each restart; that is an observation from one machine, not WSL documentation, so keep evidence and drafts under your home directory.
+
 The installer is safe to re-run, backs files up before changing them, never overwrites anything it does not own, and records every target so `update` refreshes them all. Then open a **new session** and say *"set up the playbook"*.
 
 ## Improves itself from real use

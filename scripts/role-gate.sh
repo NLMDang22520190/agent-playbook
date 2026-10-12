@@ -25,6 +25,9 @@
 # Test infrastructure (runners, shared test helpers) is opt-in: project key test_infra_regex (ERE on
 # repo-relative paths, empty = off). Matching paths classify as "infra" (before the test regex); the
 # tester and the implementer may not change them, and size counts them like production files.
+# Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index) is a
+# violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
+# PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths). Gaining the bit or deleting a file is fine.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref)
@@ -119,6 +122,18 @@ case "$cmd" in
       fi
     done <<EOF
 $changed
+EOF
+    # a lost executable bit (100755 -> 100644) is a violation for every role, work tree and staged index together.
+    # The escape is PB_ALLOW_MODE_CHANGE: colon-separated exact repo-relative paths (a case pattern: no glob, no split).
+    modes="$(git -c core.quotepath=off diff --raw --no-renames "$base" --)" || pb_die "git diff failed" 3
+    while IFS=$'\t' read -r meta mpath; do
+      case "$meta" in ':100755 100644 '*) ;; *) continue ;; esac
+      [ -n "$mpath" ] || continue
+      case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
+      printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+      violations=$((violations + 1))
+    done <<EOF
+$modes
 EOF
     if [ "$violations" -gt 0 ]; then
       printf 'role gate FAILED for %s: %d violation(s), base=%s\n' "$role" "$violations" "$base"

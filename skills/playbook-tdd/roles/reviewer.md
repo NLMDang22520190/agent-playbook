@@ -59,4 +59,9 @@ Findings:
 Re-run evidence: <proof-run block>
 ```
 
+## Check the executable bit
+In the diff, run `git diff --raw <BASE_SHA>..HEAD` and look for a mode change `100755 -> 100644`: an editor or write
+tool can drop the executable bit of a script it rewrites. Report each one as a finding (`major`) unless the change is
+deliberate and its exact path is listed in `PB_ALLOW_MODE_CHANGE` (colon-separated). You change nothing yourself.
+
 Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Refuses secrets and private literals in ADDED lines (a guard against leaking into a public repository).
-#   leak-check.sh scan --staged            the staged change (index vs HEAD)
+#   leak-check.sh scan --staged            the staged change (index vs HEAD); also refuses a staged 100755 -> 100644 change
+#                                          ("VIOLATION (mode)", escape: PB_ALLOW_MODE_CHANGE=path1:path2, exact paths) and warns
+#                                          on stderr about a new staged file that starts with #! at mode 100644
 #   leak-check.sh scan --range A..B        the lines added by the commits of that range
 #   leak-check.sh scan --unpushed SHA [--remote NAME]   the commits of SHA that are on no remote (the pre-push hook uses it
-#                                          for a new branch); with NAME (a configured remote) only that remote counts
+#                                          for a new branch); with NAME (a configured remote) only the refs it owns count:
+#                                          a ref belongs to the remote whose fetch refspec destination matches it longest, so
+#                                          with a remote "origin/foo", origin's own branch foo/x is origin/foo's and is scanned
+#                                          too when pushing to origin (scanning more is the safe side)
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -22,7 +27,7 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 MARKER='# agent-playbook leak-check'
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -102,7 +107,38 @@ EOF3
     printf 'leak-check: %s finding(s); the matches are masked above\n' "$(wc -l < "$TMP/shown" | tr -d ' ')"
     return 1
   fi
+  if [ "${MODEBAD:-0}" -gt 0 ]; then
+    printf 'leak-check: %d mode violation(s); no secret found\n' "$MODEBAD"
+    return 1
+  fi
   echo "leak-check: clean"
+  return 0
+}
+
+# mode_check: scan --staged only. Refuses a staged 100755 -> 100644 change (sets MODEBAD) unless the path is listed in
+# PB_ALLOW_MODE_CHANGE (colon-separated exact paths; a case pattern, so no glob and no splitting); warns on stderr
+# about a newly added staged file that starts with #! at mode 100644. Raw lines: ":OLDMODE NEWMODE SHA SHA STATUS<TAB>PATH".
+mode_check() {
+  MODEBAD=0
+  local meta mpath
+  while IFS=$'\t' read -r meta mpath; do
+    case "$meta" in ':100755 100644 '*) ;; *) continue ;; esac
+    [ -n "$mpath" ] || continue
+    case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
+    printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+    MODEBAD=$((MODEBAD + 1))
+  done <<EOF
+$(git -c core.quotePath=false diff --cached --raw --no-renames --no-ext-diff 2>/dev/null)
+EOF
+  while IFS=$'\t' read -r meta mpath; do
+    case "$meta" in ':000000 100644 '*) ;; *) continue ;; esac
+    [ -n "$mpath" ] || continue
+    case "$(git show ":$mpath" 2>/dev/null | head -n 1)" in
+      '#!'*) printf 'leak-check: warning: new file %s starts with #! but is mode 100644 (not executable); fix: git update-index --chmod=+x -- %s\n' "$mpath" "$mpath" >&2 ;;
+    esac
+  done <<EOF
+$(git -c core.quotePath=false diff --cached --raw --no-renames --no-ext-diff --diff-filter=A 2>/dev/null)
+EOF
   return 0
 }
 
@@ -121,6 +157,38 @@ diff_to_added() {
       ln++; next }
   '
   : >> "$TMP/idx"; : >> "$TMP/txt"
+}
+
+# owned_refs NAME -> the refs/remotes refs that belong to remote NAME, one per line. A ref belongs to the remote whose
+# fetch refspec destination (remote.<r>.fetch) matches it with the longest prefix; on a tie it is not NAME's (scan more).
+# A remote with no fetch refspec owns refs/remotes/NAME/*.
+owned_refs() {
+  {
+    git config --get-regexp '^remote\..*\.fetch$' 2>/dev/null | sed 's/^/C /'
+    git for-each-ref --format='%(refname)' refs/remotes 2>/dev/null | sed 's/^/R /'
+  } | awk -v want="$1" '
+    $1 == "C" { key = $2; sub(/^remote\./, "", key); sub(/\.fetch$/, "", key)
+      v = $0; sub(/^C [^ ]+ /, "", v); sub(/^\+/, "", v)
+      i = index(v, ":"); if (i == 0) next
+      dst = substr(v, i + 1); if (dst == "") next
+      star = index(dst, "*")
+      n++; rn[n] = key; if (star) { rp[n] = substr(dst, 1, star - 1); re[n] = 0 } else { rp[n] = dst; re[n] = 1 }
+      if (key == want) has = 1
+      next }
+    $1 == "R" { refs[++m] = $2 }
+    END {
+      if (!has) { n++; rn[n] = want; rp[n] = "refs/remotes/" want "/"; re[n] = 0 }
+      for (k = 1; k <= m; k++) {
+        bl = -1; bw = 0
+        for (i = 1; i <= n; i++) {
+          if (re[i] ? (refs[k] != rp[i]) : (index(refs[k], rp[i]) != 1)) continue
+          l = length(rp[i])
+          if (l > bl) { bl = l; bw = (rn[i] == want) }
+          else if (l == bl && rn[i] != want) bw = 0
+        }
+        if (bw) print refs[k]
+      }
+    }'
 }
 
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
@@ -146,17 +214,23 @@ do_scan() {
       in_repo
       git -c core.quotePath=false diff --cached --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ > "$TMP/diff" 2>/dev/null ||
         { echo "leak-check: git diff failed" >&2; exit 3; }
-      diff_to_added "$TMP/diff" ;;
+      diff_to_added "$TMP/diff"
+      mode_check ;;
     range|unpushed)
       in_repo
       if [ "$mode" = range ]; then
         git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for range $val" >&2; exit 3; }
       else
-        # --remote NAME with NAME exactly a configured remote: only that remote counts; otherwise (a URL push) any remote
-        local notremotes="--remotes"
-        if [ "$hasremote" = 1 ] && [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then notremotes="--remotes=$remote"; fi
-        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not "$notremotes" -- > "$TMP/diff" 2>/dev/null ||
+        # --remote NAME with NAME exactly a configured remote: only the refs NAME owns count; otherwise (a URL push) any remote
+        local owned="--remotes"
+        if [ "$hasremote" = 1 ] && [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then
+          owned="$(owned_refs "$remote")"
+          [ -n "$owned" ] || owned="--remotes=$remote-has-no-refs"   # owns no ref yet: nothing is excluded
+        fi
+        # a ref name has no space, glob or bracket character, so the unquoted word splitting of $owned is safe
+        # shellcheck disable=SC2086
+        git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" --not $owned -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for $val" >&2; exit 3; }
       fi
       diff_to_added "$TMP/diff" ;;
