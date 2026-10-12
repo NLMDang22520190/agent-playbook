@@ -836,8 +836,11 @@ assert_rc "AC7.1 without --remote any remote counts: exit 0" 0
 echo "v0.23.2 AC7.1 with a configured remote origin/foo, its commits are scanned when pushing to origin"
 git -C "$R" update-ref -d refs/remotes/origin/foo/x
 git -C "$R" push -q "$RF" sec:main
-git -C "$R" remote add origin/foo "$RF"
-git -C "$R" fetch -q origin/foo
+# newer git refuses `remote add origin/foo` when origin exists ("subset of existing remote"); such remotes still
+# exist through config (older git, hand edits), so the fixture writes the config directly
+git -C "$R" config remote.origin/foo.url "$RF"
+git -C "$R" config remote.origin/foo.fetch '+refs/heads/*:refs/remotes/origin/foo/*'
+git -C "$R" update-ref refs/remotes/origin/foo/main "$SEC"
 assert_eq "AC7.1 fixture: refs/remotes/origin/foo/main holds the secret commit" "$SEC" "$(git -C "$R" rev-parse --verify -q refs/remotes/origin/foo/main 2>/dev/null)"
 run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin
 assert_rc "AC7.1 a commit only on remote origin/foo IS scanned when pushing to origin: exit 1" 1
@@ -928,7 +931,10 @@ newrepo
 git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
 RO="$(mk_tmp)/o.git"; RF="$(mk_tmp)/f.git"; git init -q --bare "$RO"; git init -q --bare "$RF"
 git -C "$R" remote add origin "$RO"
-git -C "$R" remote add origin/foo "$RF"
+# newer git refuses `remote add origin/foo` when origin exists ("subset of existing remote"); such remotes still
+# exist through config (older git, hand edits), so the fixture writes the config directly
+git -C "$R" config remote.origin/foo.url "$RF"
+git -C "$R" config remote.origin/foo.fetch '+refs/heads/*:refs/remotes/origin/foo/*'
 git -C "$R" config --unset remote.origin/foo.fetch
 assert_eq "MAJOR-2a fixture: origin/foo has no fetch line" "" "$(git -C "$R" config --get-all remote.origin/foo.fetch)"
 assert_contains "MAJOR-2a fixture: origin keeps its standard fetch line" "$(git -C "$R" config --get-all remote.origin.fetch)" "refs/remotes/origin/*"
