@@ -30,7 +30,7 @@ case "$cmd" in
       esac
       shift
     done
-    pb_valid_key "$key" || pb_die "invalid key '$key' (use lowercase letters, digits, underscore)" 2
+    pb_valid_key "$key" || pb_die "invalid key '$key' (use lowercase letters, digits, underscore, dash)" 2
     case "$value" in *"
 "*) pb_die "value must be a single line" 2 ;; esac
     if [ "$scope" = "project" ]; then file="$(pb_conf_project)"; else file="$(pb_conf_global)"; fi
@@ -70,8 +70,8 @@ case "$cmd" in
   list)
     g="$(pb_conf_global)"; p="$(pb_conf_project)"
     {
-      [ -f "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_]*=/{s/$/  [global]/;p;}' "$g"
-      [ -f "$p" ] && [ "$p" != "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_]*=/{s/$/  [project]/;p;}' "$p"
+      [ -f "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_-]*=/{s/$/  [global]/;p;}' "$g"
+      [ -f "$p" ] && [ "$p" != "$g" ] && sed -n '/^[[:lower:]][[:lower:][:digit:]_-]*=/{s/$/  [project]/;p;}' "$p"
     } | awk '{
         k = $0; sub(/=.*/, "", k)
         last[k] = $0

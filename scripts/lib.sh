@@ -45,7 +45,7 @@ pb_epoch_day() {
   date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d' "$1" +%s 2>/dev/null   # gnu-ok: BSD fallback follows
 }
 
-pb_valid_key() { case "$1" in "" | [!abcdefghijklmnopqrstuvwxyz]* | *[!abcdefghijklmnopqrstuvwxyz0123456789_]*) return 1 ;; esac; return 0; }
+pb_valid_key() { case "$1" in "" | [!abcdefghijklmnopqrstuvwxyz]* | *[!abcdefghijklmnopqrstuvwxyz0123456789_-]*) return 1 ;; esac; return 0; }
 
 pb_sha256() { # stdin -> hex digest
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
@@ -74,6 +74,37 @@ pb_raw_lines() {
   return 0
 }
 
+# pb_hash_bisect LIST [skip] -> one line per path of LIST (newline-terminated paths): its blob sha, or "-" when it cannot
+# be hashed. LIST is hashed in one git hash-object --stdin-paths call; when that fails or returns a wrong count the list
+# is split in two halves, each handled the same way, and a single path that fails prints "-". With a second argument
+# the first call is skipped (the caller already saw it fail).
+pb_hash_bisect() {
+  local list="$1" out p n=0 h1="" h2="" half i=0 nl
+  nl="
+"
+  [ -n "$list" ] || return 0
+  while IFS= read -r p; do [ -n "$p" ] && n=$((n + 1)); done <<EOF
+$list
+EOF
+  if [ $# -lt 2 ]; then
+    if out="$(printf '%s' "$list" | git hash-object --stdin-paths 2>/dev/null)" &&
+       [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = "$n" ]; then
+      printf '%s\n' "$out"; return 0
+    fi
+  fi
+  if [ "$n" -le 1 ]; then printf -- '-\n'; return 0; fi
+  half=$((n / 2))
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    i=$((i + 1))
+    if [ "$i" -le "$half" ]; then h1="$h1$p$nl"; else h2="$h2$p$nl"; fi
+  done <<EOF
+$list
+EOF
+  pb_hash_bisect "$h1"
+  pb_hash_bisect "$h2"
+}
+
 # pb_lost_exec_paths < RAW-LINES -> one line per finding, sorted, no duplicates: "L<path>" for a path that lost the
 # executable bit (100755 -> 100644, or, a rename seen as delete + add, a deleted 100755 path whose blob is added at 100644
 # under another path: the NEW path is named; the empty blob never pairs, an empty file is not a rename source) and
@@ -81,9 +112,11 @@ pb_raw_lines() {
 # entry has the sha 0{40} (git diff BASE does not hash the work tree): those paths are hashed in ONE git hash-object
 # --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree); when that call
 # fails or returns a wrong count, the paths that are not readable regular files are set aside ("cannot hash") and ONE
-# batch runs for the rest; only when that fails too is each path hashed on its own (bounded cost for a big change).
-# The 10-process bound holds for unreadable files (set aside before the batch). A readable file whose clean filter
-# fails still falls back to hashing per path.
+# batch runs for the rest; only when that fails too is the batch bisected (pb_hash_bisect: halves, recursively, single
+# paths at the leaves), so the cost stays bounded for a big change.
+# The 10-process bound holds for unreadable files (set aside before the batch). A readable file that cannot be hashed
+# (for example a required clean filter fails) is found by bisecting the batch: about 2 * log2(N) processes for one such
+# file among N paths, instead of one process per path.
 pb_lost_exec_paths() {
   local raw zp hs p h nl hok rd flags hs2 rest
   nl="
@@ -110,15 +143,8 @@ EOF
         hs2="$(printf '%s' "$rd" | git hash-object --stdin-paths 2>/dev/null)" || hok=0
         [ "$(printf '%s\n' "$hs2" | wc -l | tr -d ' ')" = "$(printf '%s' "$rd" | wc -l | tr -d ' ')" ] || hok=0
         if [ "$hok" = 0 ]; then
-          hs2=""
-          while IFS= read -r p; do
-            [ -n "$p" ] || continue
-            h="$(git hash-object -- "$p" 2>/dev/null)" && [ -n "$h" ] || h="-"
-            hs2="$hs2$h$nl"
-          done <<EOF
-$rd
-EOF
-          hs2="${hs2%"$nl"}"
+          # the batch of the readable paths failed (or, when nothing was set aside, it is the batch that just failed)
+          if [ "$rd" = "$zp$nl" ]; then hs2="$(pb_hash_bisect "$rd" skip)"; else hs2="$(pb_hash_bisect "$rd")"; fi
         fi
       fi
       rest="$hs2$nl"; hs=""

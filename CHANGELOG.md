@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.24.1 - 2026-10-13
+- **Faster CI**: the largest suites are split again - test-leak-check (598 s on the Windows runner) into three,
+  test-ci-tree-tested (562 s), test-role-gate (462 s) and test-evals-grade2-e20 (447 s) into two each, with every
+  assertion kept (sorted assertion names identical before and after); shard weights estimated for the new suites.
+- **Shorter always-on block**: AGENTS.global.md went from 44 lines / 4,835 bytes to 40 lines / 4,293 bytes with the
+  same rules (every heading and Why line pinned by tests), so later edits fit under the 5,000-byte cap.
+- **Config keys may contain a dash** (`conf.sh set model_tester_open-code ...`), matching harness names; other
+  characters are still refused.
+- **The exec-bit check bisects** a batch that fails to hash (a failing clean filter): about 16 git calls for 200 files
+  instead of one per file.
+- **`role-model.sh` refuses a harness name that collides with a role key** (`--harness light` would read
+  `model_reviewer_light`, the reviewer_light role's key).
+- **leak-check**: a new leak assertion (pushurls pub then fork) kills a mutant that only note-wording tests caught.
+- **Real evals on the installed v0.24.0** (cap 6 USD, results file): E10 (typo, no "quick") 3/3 for 0.35 USD
+  (baseline 0.39); E22 (user says quick) 5/5 at `Weight: Quick (user-requested)` for 0.32 USD; E23 (quick on billing
+  code) kept Quick and named the risk, 0.32 USD; E25 chose Full for a sound reason (the change altered existing billing
+  behaviour), so the scenario was wrong and is redesigned in v0.24.2; E24 was skipped by the cost guard. Quick saves
+  about 10-20 % per tiny fix, not the 50 % the plan hoped for: a Lite typo fix already costs ~0.39 USD.
+
 ## 0.24.0 - 2026-10-13
 - **Quick weight** for tiny changes (≤ 1 production file, ≤ 20 changed lines, nothing from the Full column), in
   `skills/playbook-tdd/references/quick.md`: restate the request in one sentence, one call-site grep with the hit count,
