@@ -414,7 +414,7 @@ grade_E22() {
 grade_E23() {
   check "total() ignores items whose qty is zero or negative" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 5, qty: 2 }, { price: 7, qty: 0 }, { price: 9, qty: -1 }]) === 10 ? 0 : 1)'
   check "node --test tests/*.test.js passes" tests_pass
-  reply_matches 'over the limit, user chose Quick|Full (column|stop)' "the reply names the limit or the Full stop"
+  reply_matches 'over the limit, user chose Quick|Full (column|stop)|normally (need|needs|get|gets) (the )?full' "the reply names the limit or the Full stop"
   # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
   local r
   if r="$(result_text)"; then
@@ -455,11 +455,23 @@ grade_E24() {
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "total() returns integer cents and every caller is updated"
 }
+# exports_version -> 0 when src/calc.js, src/cart.js and src/report.js each export VERSION === '1.0.0' (node require check)
+exports_version() { local f
+  for f in calc cart report; do
+    node -e 'process.exit(require(process.argv[1]).VERSION === "1.0.0" ? 0 : 1)' "$WD/src/$f.js" 2>/dev/null || return 1
+  done
+  return 0; }
 grade_E25() {
+  local r name="the reply states Lite or escalation"
   stream_result
   check "node --test tests/*.test.js passes" tests_pass
-  reply_matches 'Weight: *Lite' "the reply states Lite"
-  reply_matches 'size --quick|escalat' "the reply names the Quick escalation"
+  # Lite (or the Quick escalation) is right for an additive change over the Quick limit; a Full weight is a FAIL even when it says escalate
+  if r="$(result_text)"; then
+    if printf '%s' "$r" | grep -qiE 'weight: *full'; then record FAIL "$name"
+    elif printf '%s' "$r" | grep -qiE 'weight: *lite|size --quick|escalat'; then record PASS "$name"
+    else record FAIL "$name"; fi
+  else record MANUAL "$name"; fi
+  check "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" exports_version
 }
 
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0

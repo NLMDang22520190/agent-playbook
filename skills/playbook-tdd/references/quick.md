@@ -4,6 +4,8 @@ Quick is the cheapest weight. It is for a tiny change that one person could revi
 change is at most 1 production file and at most 20 changed lines with nothing from the Full column, or when the user
 asks for it. It keeps the test-first rule and drops the paperwork.
 
+Removing or renaming an exported symbol is a public API change, so it is in the Full column and never Quick, even when it is one line. The always-on line in AGENTS.global.md is only a summary: load `playbook-tdd` first, then pick the weight.
+
 **Why:** at this size the hand-off files and the review ritual cost more than the change. The test, the evidence and an
 honest report are what protect the user, so those stay.
 
