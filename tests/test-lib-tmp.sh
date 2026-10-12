@@ -19,6 +19,17 @@ SD="$(mk_tmp)"    # the stubs live here, outside every private TMPDIR
 stub() { STUB="$SD/$1.sh"; printf '. "%s/tests/lib.sh"\n%s\n' "$PB_ROOT" "$2" > "$STUB"; }
 # run_stub PRIV -> runs STUB with TMPDIR=PRIV; sets OUT and RC
 run_stub() { run env TMPDIR="$1" bash "$STUB"; }
+# run_stub_sig PRIV -> like run_stub, for stubs that signal themselves. A suite started in the background (run-all, CI, bsd-check
+# on macOS bash 3.2) inherits SIGINT as ignored, and a non-interactive bash cannot trap or receive what was ignored on entry,
+# not even under set -m. perl (on macOS and Linux) resets INT to the default before it execs the stub, so the signal the
+# stub sends itself is delivered whatever the caller's state. Without perl the stub is run as it is.
+run_stub_sig() {
+  if command -v perl >/dev/null 2>&1; then
+    run perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' env TMPDIR="$1" bash "$STUB"
+  else
+    run env TMPDIR="$1" bash "$STUB"
+  fi
+}
 # left PRIV -> what is still in PRIV (names, one per line)
 left() { ls -A "$1" 2>/dev/null; }
 # priv -> a fresh private TMPDIR (a mk_tmp dir of this suite)
@@ -64,7 +75,7 @@ assert_eq "AC3.1 and is gone after exit" "" "$(left "$P")"
 echo "AC3.2 INT: cleans up and exits 130"
 P="$(priv)"
 stub sigint 'a=$(mk_tmp); b=$(mk_tmp); echo "ready"; kill -INT $$; sleep 5; echo "not-reached"'
-run_stub "$P"
+run_stub_sig "$P"
 assert_rc "AC3.2 INT: exit 130" 130
 assert_contains "AC3.2 INT: the suite got as far as the signal" "$OUT" "ready"
 assert_not_contains "AC3.2 INT: the suite stopped" "$OUT" "not-reached"
@@ -73,7 +84,7 @@ assert_eq "AC3.2 INT: the private TMPDIR is empty" "" "$(left "$P")"
 echo "AC3.2 TERM: cleans up and exits 143"
 P="$(priv)"
 stub sigterm 'a=$(mk_tmp); b=$(mk_tmp); echo "ready"; kill -TERM $$; sleep 5; echo "not-reached"'
-run_stub "$P"
+run_stub_sig "$P"
 assert_rc "AC3.2 TERM: exit 143" 143
 assert_contains "AC3.2 TERM: the suite got as far as the signal" "$OUT" "ready"
 assert_not_contains "AC3.2 TERM: the suite stopped" "$OUT" "not-reached"
@@ -175,8 +186,11 @@ assert_eq "AC3.1 after both ended the private TMPDIR is empty" "" "$(left "$P")"
 # ---- v0.23.0 review: TMPDIR forms ("//", relative) and a glob in T_TMPS ----
 # bash_list -> the bash binaries to run a stub with: the one on PATH, and bash 3.2 when ~/.local/bin/bash3.2 exists
 BASHES="bash"
-[ -x "/home/dev/.local/bin/bash3.2" ] && BASHES="bash /home/dev/.local/bin/bash3.2"
-[ -x "$HOME/.local/bin/bash3.2" ] && [ "$HOME" != "/home/dev" ] && BASHES="$BASHES $HOME/.local/bin/bash3.2"
+B32=""
+if [ -n "${PB_BASH32:-}" ] && [ -x "$PB_BASH32" ]; then B32="$PB_BASH32"
+elif [ -x "${HOME:-/nonexistent}/.local/bin/bash3.2" ]; then B32="$HOME/.local/bin/bash3.2"
+else B32="$(command -v bash3.2 2>/dev/null)" || B32=""; fi
+[ -n "$B32" ] && BASHES="bash $B32"
 
 echo "AC3.2 review: a TMPDIR with // (internal or trailing) leaves no pbtest.* behind, under every bash"
 for BB in $BASHES; do
@@ -193,6 +207,8 @@ for BB in $BASHES; do
     assert_eq "AC3.2 review: [$form] under $(basename "$BB"): the TMPDIR is empty afterwards" "" "$(left "$P/sub")"
   done
 done
+
+if [ -z "$B32" ]; then t_skip 6 "AC3.2 review: the // TMPDIR cases under bash 3.2 (no bash 3.2: set PB_BASH32 or build ~/.local/bin/bash3.2 with tools/get-bash32.sh)"; fi
 
 echo "AC3.2 review: a relative TMPDIR is refused at load or made absolute, never left behind"
 P="$(priv)"; mkdir "$P/rel"
