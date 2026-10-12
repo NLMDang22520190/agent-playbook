@@ -224,14 +224,22 @@ owned_refs() {
     }'
 }
 
-# same_place A B -> 0 when two destinations are one place: the same string, or (Git Bash: git keeps a local path as
-# C:/x in the config but expands insteadOf to /c/x) two existing local paths that are the same file. A spelling that ends
-# in / is never compared by file: a trailing / is not normalized (see url_remotes).
+# win_path P -> P, with a drive path C:/x written as /c/x on Windows shells only (Git Bash: git keeps a local path as
+# C:/x in the config but expands insteadOf to /c/x). Elsewhere P is unchanged (c:/x is a host there).
+win_path() {
+  case "$(uname -s 2>/dev/null)" in
+    MINGW* | MSYS* | CYGWIN*)
+      case "$1" in
+        [A-Za-z]:/*) printf '/%s%s' "$(printf '%s' "${1%"${1#?}"}" | tr 'A-Z' 'a-z')" "${1#?:}"; return 0 ;;
+      esac ;;
+  esac
+  printf '%s' "$1"
+}
+
+# same_place A B -> 0 when two destinations are one place: the same string (after win_path). Nothing else is normalized
+# (a trailing .git or /, ssh vs https: see url_remotes).
 same_place() {
-  [ "$1" = "$2" ] && return 0
-  case "$1" in */) return 1 ;; esac
-  case "$2" in */) return 1 ;; esac
-  [ -e "$1" ] && [ -e "$2" ] && [ "$1" -ef "$2" ]
+  [ "$(win_path "$1")" = "$(win_path "$2")" ]
 }
 
 # url_remotes NAME -> the configured remotes whose destination NAME is, one per line. NAME counts for a remote R when
