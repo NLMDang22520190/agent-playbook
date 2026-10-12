@@ -176,4 +176,33 @@ SHIM
   assert_eq "only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
   chmod 644 bulk/unreadable.txt 2>/dev/null
 else t_skip 5 "bounded fallback ($FB_WHY)"; fi
+
+echo "v0.24.1 a readable file whose clean filter fails among 200 readable ones: the hash fallback bisects"
+unset PB_ALLOW_MODE_CHANGE
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+mkdir -p bulk
+bfi=0; while [ "$bfi" -lt 200 ]; do printf 'y%d\n' "$bfi" > "bulk/g$bfi.txt"; bfi=$((bfi + 1)); done
+printf 'bad\n' > bulk/bad.txt
+printf 'bulk/bad.txt filter=bad\n' > .gitattributes
+git config filter.bad.clean false
+git config filter.bad.required true
+git add -N -- bulk
+BLOG="$(mk_tmp)/hash.log"; : > "$BLOG"
+BSHIM="$(mk_tmp)/shim"; mkdir -p "$BSHIM"
+BREAL="$(command -v git)"
+cat > "$BSHIM/git" <<SHIM
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in hash-object) echo "\$*" >> "$BLOG"; break ;; esac
+done
+exec "$BREAL" "\$@"
+SHIM
+chmod +x "$BSHIM/git"
+run env PLAYBOOK_HOME="$IH" PATH="$BSHIM:$PATH" bash "$GATE" check implementer
+BN="$(wc -l < "$BLOG" | tr -d ' ')"
+if [ "$BN" -ge 1 ]; then t_ok "bisect fixture: the shim saw git hash-object ($BN call(s))"; else t_bad "bisect fixture: the shim saw git hash-object" "0 calls"; fi
+if [ "$BN" -le 20 ]; then t_ok "bisect: hash-object is started at most 20 times for 201 paths ($BN)"; else t_bad "bisect: hash-object is started at most 20 times for 201 paths" "$BN hash-object processes: one per readable path"; fi
+assert_rc "bisect: the gate fails (the filter failure)" 1
+assert_contains "bisect: the filter failure is reported: cannot hash" "$OUT" "VIOLATION (mode): cannot hash bulk/bad.txt; the mode check is incomplete"
+assert_eq "bisect: only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
 t_summary
