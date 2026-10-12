@@ -30,7 +30,7 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 MARKER='# agent-playbook leak-check'
 
 usage() {
-  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -132,7 +132,7 @@ mode_check() {
   # The check never fails open: a failing raw list, or a path with a newline (no escape: rename it), is a violation.
   raw="$(pb_raw_lines --cached 2>/dev/null)"; rrc=$?
   if [ "$rrc" = 4 ]; then
-    printf 'VIOLATION (mode): a path contains a newline; the mode check is incomplete\n'
+    printf 'VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete\n'
     MODEBAD=$((MODEBAD + 1)); return 0
   elif [ "$rrc" != 0 ]; then
     printf 'VIOLATION (mode): git diff --raw failed; the mode check is incomplete\n'
@@ -276,6 +276,23 @@ $(git remote 2>/dev/null)
 EOF
 }
 
+# push_rewritten NAME -> 0 when some url.<base>.pushInsteadOf value is a prefix of NAME (the raw NAME, or NAME after
+# insteadOf expansion): git then pushes somewhere else than NAME names, so no remote's refs say what that place holds.
+# The key is url.<base>.pushinsteadof (git prints it lowercase; <base> may hold dots), the value follows the first space
+# after the key's end. An empty value is skipped.
+push_rewritten() {
+  local name="$1" exp v
+  exp="$(git ls-remote --get-url "$name" 2>/dev/null)" || exp=""
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    case "$name" in "$v"*) return 0 ;; esac
+    case "$exp" in "$v"*) [ -z "$exp" ] || return 0 ;; esac
+  done <<EOF
+$(git config --get-regexp '^url\..*\.pushinsteadof$' 2>/dev/null | awk '{ i = index($0, ".pushinsteadof "); if (i) print substr($0, i + 15) }')
+EOF
+  return 1
+}
+
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
 
 do_scan() {
@@ -318,7 +335,8 @@ do_scan() {
             owned_refs "$remote" > "$TMP/own"   # owns no ref yet: the list is empty, nothing is excluded
           else
             local rems rn
-            rems="$(url_remotes "$remote")"
+            rems=""
+            push_rewritten "$remote" || rems="$(url_remotes "$remote")"   # a pushInsteadOf rewrite: the full range
             if [ -n "$rems" ]; then
               while IFS= read -r rn; do
                 [ -n "$rn" ] || continue

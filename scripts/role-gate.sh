@@ -30,8 +30,8 @@
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
 # PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths; a path that contains a colon cannot be listed there).
 # The check never fails open: a work-tree file git cannot hash is "VIOLATION (mode): cannot hash PATH; the mode check is
-# incomplete" (the escape silences that path only); a path with a newline is "VIOLATION (mode): a path contains a newline;
-# the mode check is incomplete" and has no escape (rename the file).
+# incomplete" (the escape silences that path only); a path with a newline or a control byte (\002 is the marker) is
+# "VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete" and has no escape (rename the file).
 # Gaining the bit or deleting a file is fine.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
@@ -141,7 +141,7 @@ EOF
     modes_ix="$(pb_raw_lines --cached "$base" --)"; rc=$?
     case "$rc" in 0) ;; 4) nlbad=1; modes_ix="" ;; *) pb_die "git diff failed" 3 ;; esac
     if [ "$nlbad" = 1 ]; then
-      printf 'VIOLATION (mode): a path contains a newline; the mode check is incomplete\n'
+      printf 'VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete\n'
       violations=$((violations + 1))
     fi
     lost="$( { printf '%s\n' "$modes_wt"; printf '%s\n' "$modes_ix"; } | pb_lost_exec_paths )"

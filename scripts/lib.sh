@@ -80,9 +80,10 @@ pb_raw_lines() {
 # "U<path>" for an added work-tree path that could not be hashed (the check is incomplete for it). An added work-tree
 # entry has the sha 0{40} (git diff BASE does not hash the work tree): those paths are hashed in ONE git hash-object
 # --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree); when that call
-# fails or returns a wrong count, each path is hashed on its own, so one unreadable file does not hide the others.
+# fails or returns a wrong count, the paths that are not readable regular files are set aside ("cannot hash") and ONE
+# batch runs for the rest; only when that fails too is each path hashed on its own (bounded cost for a big change).
 pb_lost_exec_paths() {
-  local raw zp hs p h nl hok
+  local raw zp hs p h nl hok rd flags hs2 rest
   nl="
 "
   raw="$(cat)"
@@ -95,14 +96,35 @@ pb_lost_exec_paths() {
     hok=1
     hs="$(printf '%s\n' "$zp" | git hash-object --stdin-paths 2>/dev/null)" || hok=0
     if [ "$hok" = 0 ] || [ "$(printf '%s\n' "$hs" | wc -l | tr -d ' ')" != "$(printf '%s\n' "$zp" | wc -l | tr -d ' ')" ]; then
-      hs=""
+      rd=""; flags=""
       while IFS= read -r p; do
         [ -n "$p" ] || continue
-        h="$(git hash-object -- "$p" 2>/dev/null)" && [ -n "$h" ] || h="-"
-        hs="$hs$h$nl"
+        if [ -f "$p" ] && [ -r "$p" ]; then rd="$rd$p$nl"; flags="${flags}1"; else flags="${flags}0"; fi
       done <<EOF
 $zp
 EOF
+      hs2=""; hok=1
+      if [ -n "$rd" ]; then
+        hs2="$(printf '%s' "$rd" | git hash-object --stdin-paths 2>/dev/null)" || hok=0
+        [ "$(printf '%s\n' "$hs2" | wc -l | tr -d ' ')" = "$(printf '%s' "$rd" | wc -l | tr -d ' ')" ] || hok=0
+        if [ "$hok" = 0 ]; then
+          hs2=""
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            h="$(git hash-object -- "$p" 2>/dev/null)" && [ -n "$h" ] || h="-"
+            hs2="$hs2$h$nl"
+          done <<EOF
+$rd
+EOF
+          hs2="${hs2%"$nl"}"
+        fi
+      fi
+      rest="$hs2$nl"; hs=""
+      while [ -n "$flags" ]; do
+        if [ "${flags%"${flags#?}"}" = 1 ]; then h="${rest%%"$nl"*}"; rest="${rest#*"$nl"}"; else h="-"; fi
+        flags="${flags#?}"
+        hs="$hs$h$nl"
+      done
     fi
   fi
   { printf '%s\n' "$hs" | sed 's/^/@/'; printf '%s\n' "$raw"; } | awk '

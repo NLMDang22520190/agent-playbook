@@ -6,7 +6,8 @@
 # Also links bash 3.2 (the bash macOS ships) as `bash` in that dir, so nested `bash tests/...` calls use it: PB_BASH32, else
 # ~/.local/bin/bash3.2, else `bash3.2` on PATH (build one with tools/get-bash32.sh). Prints "bsd-check: bash is <path>";
 # a candidate that is not 3.2.x is named with its version and the next one is tried; a candidate that does not answer
-# the version probe within PB_BSD_PROBE_SECS seconds (default 5; background + kill, no `timeout`) is rejected with
+# the version probe within PB_BSD_PROBE_SECS seconds (default 5; background + kill of its whole process group, so a child
+# it started does not survive; no `timeout`) is rejected with
 # "no answer within N s"; a candidate that is the same file as an earlier one is not probed or named twice;
 # without one it prints a hint and runs with the bash on PATH.
 # Prints the awk it used. Exit: the suites' exit code; 2 when neither awk is installed (apt install original-awk).
@@ -42,10 +43,14 @@ case "$psecs" in "" | *[!0-9]* | 0) psecs=5 ;; esac
 probe_version() {
   local pid kp
   rm -f "$AWKD/probe.hung" "$AWKD/probe.out"
+  # set -m: each background job is its own process group (PGID = its pid), so the whole group can be killed
+  set -m
   "$1" -c 'echo "$BASH_VERSION"' > "$AWKD/probe.out" 2>/dev/null &
   pid=$!
-  ( sp=""; trap 'kill "$sp" 2>/dev/null; exit 0' TERM; sleep "$psecs" & sp=$!; wait "$sp"; : > "$AWKD/probe.hung"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  ( sp=""; trap 'kill "$sp" 2>/dev/null; exit 0' TERM; sleep "$psecs" & sp=$!; wait "$sp"; : > "$AWKD/probe.hung"
+    pkill -P "$pid" 2>/dev/null; kill -- "-$pid" 2>/dev/null; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
   kp=$!
+  set +m
   { wait "$pid"; } 2>/dev/null
   kill "$kp" 2>/dev/null; { wait "$kp"; } 2>/dev/null
   [ ! -f "$AWKD/probe.hung" ] || return 1
