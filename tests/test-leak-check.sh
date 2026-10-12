@@ -1032,8 +1032,8 @@ modrepo
 QP='bin/we"ird.sh'
 TP="$(printf 'bin/ta\tb.sh')"
 for P in "$QP" "$TP"; do
-  if ( cd "$R" && cp bin/run.sh "$P" ) 2>/dev/null && [ -f "$R/$P" ]; then
-    ( cd "$R" && git add -- "$P" && git update-index --chmod=+x -- "$P" && G commit -q -m "add odd name" )
+  if ( cd "$R" && cp bin/run.sh "$P" && git add -- "$P" ) 2>/dev/null && [ -f "$R/$P" ] && [ -n "$(git -C "$R" ls-files -- "$P")" ]; then
+    ( cd "$R" && git update-index --chmod=+x -- "$P" && G commit -q -m "add odd name" )
     git -C "$R" update-index --chmod=-x -- "$P"
     run_in "$R" bash "$LC" scan --staged
     assert_rc "LOW-6 [$P] mode drop is refused: exit 1" 1
@@ -1041,7 +1041,7 @@ for P in "$QP" "$TP"; do
     run_in "$R" env PB_ALLOW_MODE_CHANGE="$P" bash "$LC" scan --staged
     assert_rc "LOW-6 [$P] PB_ALLOW_MODE_CHANGE with the real path lets it pass: exit 0" 0
     git -C "$R" update-index --chmod=+x -- "$P"
-  else t_skip 4 "LOW-6 path [$P] (this file system refuses the name)"; fi
+  else rm -f -- "$R/$P" 2>/dev/null; t_skip 3 "LOW-6 path [$P] (this file system or git refuses the name)"; fi
 done
 run_in "$R" bash "$LC" scan
 assert_rc "LOW-6 usage: exit 2" 2

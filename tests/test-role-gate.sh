@@ -674,21 +674,25 @@ assert_not_contains "AC1.1 fileMode=false: the other, only chmod-ed, file is not
 gchk_allow "src/run.sh" implementer; assert_rc "AC1.1 fileMode=false: the escape works for the staged drop" 0
 
 
+# fm_true_ok: core.fileMode=true and the fresh fixture still shows no mode change, i.e. this file system keeps
+# executable bits (Git Bash on NTFS does not: every 100755 file would look dropped)
+fm_true_ok() { git config core.fileMode true; [ -z "$(git diff --raw 2>/dev/null)" ]; }
+
 # ---- v0.23.2 fix round (lane A): staged-only drops, renamed drops, odd path names ----
 echo "v0.23.2 fix MINOR-3 a staged-only mode drop (work tree still executable, core.fileMode=true) is caught"
 for spec in tester:tests/run.sh implementer:src/run.sh reviewer:src/run.sh infra:ci/run.sh; do
   role="${spec%%:*}"; p="${spec#*:}"
   MSG="VIOLATION (mode): $p lost its executable bit (100755 -> 100644)"
   R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
-  git config core.fileMode true
+  fmok=0; fm_true_ok && fmok=1
   git update-index --chmod=-x -- "$p"
   assert_eq "MINOR-3 $role: fixture: the index says 100644" "100644" "$(git ls-files -s -- "$p" | cut -d' ' -f1)"
-  if [ -x "$p" ]; then
+  if [ "$fmok" = 1 ] && [ -x "$p" ]; then
     gchk "$role"; assert_rc "MINOR-3 $role: a staged-only drop fails" 1
     assert_contains "MINOR-3 $role: it prints the mode message" "$OUT" "$MSG"
     gchk_allow "$p" "$role"
     assert_not_contains "MINOR-3 $role: PB_ALLOW_MODE_CHANGE=path silences it" "$OUT" "VIOLATION (mode)"
-  else t_skip 4 "MINOR-3 $role (work-tree file is not executable here)"; fi
+  else t_skip 3 "MINOR-3 $role (this file system does not keep executable bits)"; fi
 done
 
 echo "v0.23.2 fix MINOR-5 a rename plus a mode drop is a lost executable bit"
@@ -718,14 +722,14 @@ R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
 QP='src/we"ird.sh'
 TP="$(printf 'src/ta\tb.sh')"
 for P in "$QP" "$TP"; do
-  if cp src/run.sh "$P" 2>/dev/null && [ -f "$P" ]; then
-    git add -- "$P" && git update-index --chmod=+x -- "$P" && git commit -q -m "add odd name"
+  if cp src/run.sh "$P" 2>/dev/null && [ -f "$P" ] && git add -- "$P" 2>/dev/null && [ -n "$(git ls-files -- "$P")" ]; then
+    git update-index --chmod=+x -- "$P" && git commit -q -m "add odd name"
     git update-index --chmod=-x -- "$P"
     gchk implementer; assert_rc "LOW-6 [$P] a staged drop fails" 1
     assert_contains "LOW-6 [$P] the real path is printed unquoted" "$OUT" "VIOLATION (mode): $P lost its executable bit (100755 -> 100644)"
     gchk_allow "$P" implementer; assert_rc "LOW-6 [$P] PB_ALLOW_MODE_CHANGE with the real path passes" 0
     git update-index --chmod=+x -- "$P"
-  else t_skip 4 "LOW-6 path [$P] (this file system refuses the name)"; fi
+  else rm -f -- "$P" 2>/dev/null; t_skip 3 "LOW-6 path [$P] (this file system or git refuses the name)"; fi
 done
 HDR="$(sed -n 1,45p "$GATE" | tr 'A-Z' 'a-z')"
 assert_contains "LOW-6 the help says a path with a colon cannot be listed in PB_ALLOW_MODE_CHANGE" "$HDR" "cannot be listed"
@@ -735,9 +739,9 @@ for spec in tester:tests/run.sh:tests/renamed.sh implementer:src/run.sh:src/rena
   role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
   MSG="VIOLATION (mode): $new lost its executable bit (100755 -> 100644)"
   R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
-  git config core.fileMode true
+  if ! fm_true_ok; then t_skip 4 "MINOR-B $role (this file system does not keep executable bits)"; continue; fi
   git mv "$old" "$new"; chmod -x "$new" 2>/dev/null          # the new path is NOT re-added: the index still says 100755
-  if [ -x "$new" ]; then t_skip 3 "MINOR-B $role (chmod -x has no effect here)"; continue; fi
+  if [ -x "$new" ]; then t_skip 4 "MINOR-B $role (chmod -x has no effect here)"; continue; fi
   assert_eq "MINOR-B $role: fixture: the index still says $new is 100755" "100755" "$(git ls-files -s -- "$new" | cut -d' ' -f1)"
   gchk "$role"; assert_rc "MINOR-B $role: a work-tree-only rename + drop fails" 1
   assert_contains "MINOR-B $role: the NEW path is named with both modes" "$OUT" "$MSG"
@@ -748,7 +752,7 @@ echo "v0.23.2 round 2 MINOR-B a work-tree-only rename that keeps the bit is not 
 for spec in implementer:src/run.sh:src/renamed.sh tester:tests/run.sh:tests/renamed.sh; do
   role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
   R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
-  git config core.fileMode true
+  if ! fm_true_ok; then t_skip 1 "MINOR-B $role keep (this file system does not keep executable bits)"; continue; fi
   git mv "$old" "$new"
   gchk "$role"
   assert_not_contains "MINOR-B $role: a rename that keeps 100755 has no mode violation" "$OUT" "(mode)"
@@ -757,7 +761,7 @@ done
 echo "v0.23.2 round 2 LOW-a an empty executable deleted and an empty 644 file added is not a rename"
 for role in tester implementer reviewer infra; do
   R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
-  git config core.fileMode true
+  if ! fm_true_ok; then t_skip 2 "LOW-a $role (this file system does not keep executable bits)"; continue; fi
   : > keep.sh; chmod +x keep.sh 2>/dev/null
   git add keep.sh; git update-index --chmod=+x -- keep.sh; git commit -q -m "empty exec"
   git rm -q keep.sh
