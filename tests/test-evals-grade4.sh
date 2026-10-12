@@ -518,6 +518,13 @@ assert_rc "R1 E15 Lite without 'no independent review': exit 1" 1
 run_x E15 qlitenofb "$E15_FIX" "$INIT" "$SKT" "$(res "$LITE_OK")"
 assert_eq "R1 E15 Lite (reviewless) without a feedback line: the feedback check FAILs" "FAIL" "$(e_state E15 "$FBK")"
 assert_eq "R1 E15 Lite without a feedback line: it is the only FAIL" "1" "$(count_lines E15 FAIL)"
+echo "v0.24.2 review round 2 F2: E15 bold weights"
+run_x E15 qboldquick "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: **Quick**. Fixed the typo and added a test.')"
+assert_eq "R2 F2 E15 Weight: **Quick** without a feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E15 qboldlite "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: **Lite** (one-line reversible fix), no independent review. Fixed the typo and added a test.')"
+assert_eq "R2 F2 E15 Weight: **Lite** without a feedback line: the feedback check FAILs" "FAIL" "$(e_state E15 "$FBK")"
+run_x E15 qboldlitefb "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: **Lite** (one-line reversible fix), no independent review. Fixed the typo and added a test. Playbook feedback: none')"
+assert_eq "R2 F2 E15 Weight: **Lite** with no independent review and a feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
 run_x E15 qfull "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Full. Fixed the typo and added a test. Playbook feedback: none')"
 if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qi 'weight'; then t_ok "R1 E15 Weight: Full for a typo fix: the weight check FAILs"; else t_bad "R1 E15 Weight: Full for a typo fix: the weight check FAILs" "$OUT"; fi
 run_x E15 qnone "$E15_FIX" "$INIT" "$SKT" "$(res 'Fixed the typo and added a test.')"

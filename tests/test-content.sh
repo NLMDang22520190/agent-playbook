@@ -1232,7 +1232,7 @@ if [ "$QLINES" = 1 ] && [ "$QB1" -le 200 ]; then t_ok "R2 / v24.2 AC6.1 the Quic
 qchk "AC6.1 the Quick line names the 1 production file limit" "$QLINE" '1 production file'
 qchk "AC6.1 the Quick line names the 20 line limit" "$QLINE" '(≤|<=) ?20 lines'
 qchk "AC6.1 the Quick line says nothing from the Full column" "$QLINE" 'nothing from the Full column'
-qchk "AC6.1 the Quick line names public API, money, auth and migrations" "$QLINE" 'public API[^;]{0,40}money[^;]{0,40}auth[^;]{0,40}migrations?'
+qchk "AC6.1 the Quick line names changed public API, money, auth and migrations" "$QLINE" 'changed public API[^;]{0,40}money[^;]{0,40}auth[^;]{0,40}migrations?'
 qchk "AC6.1 the Quick line says to load playbook-tdd first" "$QLINE" 'load `?playbook-tdd`? first'
 qchk "AC6.1 the Quick line still says the user can ask by saying quick" "$QLINE" 'say(ing)? "quick"'
 qchk "AC1.7 the line says Quick is for tiny changes" "$QLINE" 'tiny|small'
@@ -1266,7 +1266,7 @@ echo "v0.24.0 AC1.8 / R12 scenarios E22-E25 in evals/scenarios.md"
 exact_heading "AC1.8 scenarios has the E22 heading" "$SCEN" '## E22 A user-requested Quick change runs at Quick weight'
 exact_heading "AC1.8 scenarios has the E23 heading" "$SCEN" '## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded'
 exact_heading "AC1.8 scenarios has the E24 heading" "$SCEN" '## E24 A configured model is binding'
-exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A tiny-looking change over the Quick limit escalates to Lite'
+exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A change over the Quick limit runs at Lite'
 for e in E22 E23 E24 E25; do
   re="^## $e "
   check_sec "AC1.8 $e has a Prompt line" "$SCEN" "$re" '^\*\*Prompt:\*\*'
