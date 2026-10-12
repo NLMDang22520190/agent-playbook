@@ -2,7 +2,7 @@
 # Refuses secrets and private literals in ADDED lines (a guard against leaking into a public repository).
 #   leak-check.sh scan --staged            the staged change (index vs HEAD); also refuses a staged 100755 -> 100644 change
 #                                          ("VIOLATION (mode)", escape: PB_ALLOW_MODE_CHANGE=path1:path2, exact paths; a path
-#                                          with a colon cannot be listed) also when a rename drops the bit (the new path is named),
+#                                          with a colon cannot be listed) also when a rename with unchanged content drops the bit (the new path is named),
 #                                          and warns on stderr about a new staged file that starts with #! at mode 100644
 #   leak-check.sh scan --range A..B        the lines added by the commits of that range
 #   leak-check.sh scan --unpushed SHA [--remote NAME]   the commits of SHA that are on no remote (the pre-push hook uses it

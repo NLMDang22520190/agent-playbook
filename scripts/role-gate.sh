@@ -26,7 +26,7 @@
 # repo-relative paths, empty = off). Matching paths classify as "infra" (before the test regex); the
 # tester and the implementer may not change them, and size counts them like production files.
 # Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index, also a drop
-# that is only staged, also a rename that drops the bit: the new path is named) is a
+# that is only staged, also a rename with unchanged content that drops the bit: the new path is named) is a
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
 # PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths; a path that contains a colon cannot be listed there).
 # Gaining the bit or deleting a file is fine.

@@ -71,14 +71,32 @@ pb_raw_lines() {
 
 # pb_lost_exec_paths < RAW-LINES -> the paths that lost the executable bit, one per line, sorted, no duplicates: 100755 ->
 # 100644, or (a rename seen as delete + add) a deleted 100755 path whose blob is added at 100644 under another path
-# (the NEW path is named).
+# (the NEW path is named). The empty blob never pairs (an empty file is not a rename source). An added work-tree entry
+# has the sha 0{40} (git diff BASE does not hash the work tree): those paths are hashed in ONE git hash-object
+# --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree).
 pb_lost_exec_paths() {
-  awk '
+  local raw zp hs
+  raw="$(cat)"
+  zp="$(printf '%s\n' "$raw" | awk '
+    { t = index($0, "\t"); if (t == 0) next
+      split(substr($0, 1, t - 1), m, " ")
+      if (m[1] == ":000000" && m[2] == "100644" && m[4] ~ /^0+$/) print substr($0, t + 1) }')"
+  hs=""
+  if [ -n "$zp" ]; then
+    hs="$(printf '%s\n' "$zp" | git hash-object --stdin-paths 2>/dev/null)" || hs=""
+    [ "$(printf '%s\n' "$hs" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$zp" | wc -l | tr -d ' ')" ] || hs=""
+  fi
+  { printf '%s\n' "$hs" | sed 's/^/@/'; printf '%s\n' "$raw"; } | awk '
+    BEGIN { empty = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"; nh = 0; k = 0 }
+    /^@/ { if (length($0) > 1) hsha[++nh] = substr($0, 2); next }
     { t = index($0, "\t"); if (t == 0) next
       split(substr($0, 1, t - 1), m, " "); p = substr($0, t + 1)
       if (m[1] == ":100755" && m[2] == "100644") print p
-      else if (m[1] == ":100755" && m[2] == "000000") del[m[3]] = 1
-      else if (m[1] == ":000000" && m[2] == "100644") { na++; ap[na] = p; as[na] = m[4] } }
+      else if (m[1] == ":100755" && m[2] == "000000") { if (m[3] != empty) del[m[3]] = 1 }
+      else if (m[1] == ":000000" && m[2] == "100644") {
+        sha = m[4]
+        if (sha ~ /^0+$/) { k++; sha = (nh > 0 ? hsha[k] : "") }
+        if (sha != "" && sha != empty) { na++; ap[na] = p; as[na] = sha } } }
     END { for (i = 1; i <= na; i++) if (as[i] in del) print ap[i] }
   ' | LC_ALL=C sort -u
 }
