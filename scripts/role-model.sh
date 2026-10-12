@@ -89,6 +89,12 @@ while [ $# -gt 0 ]; do
 done
 if [ -n "$harness" ]; then
   valid_harness "$harness" || pb_die "invalid harness: $harness (use [a-z0-9-]+)" 2
+  # model_<role>_<harness> must not equal another role's generic key (reviewer + light = reviewer_light)
+  for r in tester implementer reviewer reviewer_light mechanical; do
+    for r2 in tester implementer reviewer reviewer_light mechanical; do
+      [ "${r}_$harness" = "$r2" ] && pb_die "harness name '$harness' collides with role $r2" 2
+    done
+  done
 fi
 
 if [ "$cmd" = "check" ]; then
