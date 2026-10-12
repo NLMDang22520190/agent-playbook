@@ -42,6 +42,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | Weight | Use it when | What runs |
 |---|---|---|
 | **Full** | the change touches hard-to-reverse ground (a change to an existing public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
+| **Quick** | tiny: ≤ 1 production file and ≤ 20 changed lines, nothing from the Full column, or the user asks for quick | one context: a behaviour change is still tested first and seen failing, one proof-run, a 3-5 line report; see `references/quick.md` |
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
@@ -55,7 +56,7 @@ The weight line quotes the file:line or rule that decided it.
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
 choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
 limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
-continue with separate roles from there.
+continue with separate roles from there. Quick escalates to Lite the same way (steps in `references/quick.md`).
 
 **Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
 reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
@@ -192,6 +193,7 @@ Prefer a different model (`conf.sh get model_reviewer`). Give it the spec, the b
 slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
+Release speed rules (a cap of 2 review rounds, introduced and pre-existing findings, the weight per item, slow platform runs once) are in `references/release.md`.
 
 ### Phase 4: Close-out (orchestrator)
 - Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change. Sub-agents
@@ -235,6 +237,10 @@ which step of the playbook let it through.
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
 (`--harness` takes `claude`, `codex` or `opencode`: the harness you are running in)
 and pass it when starting the role. `session` means do not override the session model.
+A configured model is binding: the agent never upgrades or downgrades it on its own judgement (a hard task or Full weight is not a reason). Before starting roles, print `role-model.sh plan --harness <h>`.
+Ask the user once, with the reason and the cost difference, only when you want a different model, when a role resolves to session on a Full task, or when confirm_models=always.
+confirm_models=on-change is the default (an unknown value counts as on-change); never ask when confirm_models=never. Headless: use the conf, never upgrade, never block.
+Pass the effort (`role-model.sh <role> --harness <h> --effort`) where the harness supports it: Agent `effort` parameter, `codex exec -c model_reasoning_effort=<e>`, OpenCode per-agent config; otherwise print it only.
 Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
 sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
 the fixed prefix is identical across runs and can be cached. For the mechanical RED or GREEN step

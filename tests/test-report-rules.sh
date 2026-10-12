@@ -52,4 +52,22 @@ assert_eq "AC17.1 the line appears exactly once in the template" "1" "$(grep -cx
 AFTER="$(awk -v l="$LINE" '$0 == l { seen = 1; next } seen && NF { n++ } END { print (seen ? n + 0 : "line missing") }' "$FINAL" 2>/dev/null)"
 assert_eq "AC17.1 no non-empty line follows it" "0" "$AFTER"
 
+
+# ---- v0.24.0 R8 (Lite, content): the final-report template has a Models used line before the learnings ----
+echo "v0.24.0 R8 templates/final-report.md: **Models used:** before ## Learnings proposed, the feedback line stays last"
+MLINE="$(grep -F '**Models used:**' "$FINAL" 2>/dev/null | head -n 1)"
+assert_eq "R8 the template has exactly one **Models used:** line" "1" "$(grep -cF '**Models used:**' "$FINAL" 2>/dev/null)"
+case "$MLINE" in *"tester="*"implementer="*"reviewer="*) t_ok "R8 the Models used line lists tester=, implementer= and reviewer=" ;; *) t_bad "R8 the Models used line lists tester=, implementer= and reviewer=" "[$MLINE]" ;; esac
+case "$MLINE" in *"(<effort>)"* | *"(effort)"* | *"(<e>)"*) t_ok "R8 the Models used line shows the effort in parentheses" ;; *) t_bad "R8 the Models used line shows the effort in parentheses" "[$MLINE]" ;; esac
+case "$MLINE" in *"Lite/Quick"*"session"*"one context"*) t_ok "R8 the line says Lite/Quick: session, one context" ;; *) t_bad "R8 the line says Lite/Quick: session, one context" "[$MLINE]" ;; esac
+LM="$(grep -nF '**Models used:**' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+LL="$(grep -nxF '## Learnings proposed' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$LM" ] && [ -n "$LL" ] && [ "$LM" -lt "$LL" ]; then t_ok "R8 the Models used line comes before ## Learnings proposed"; else t_bad "R8 the Models used line comes before ## Learnings proposed" "models line [$LM], learnings heading [$LL]"; fi
+LP="$(grep -nF "$LINE" "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$LM" ] && [ -n "$LP" ] && [ "$LM" -lt "$LP" ]; then t_ok "R8 the Models used line comes before the Playbook feedback line"; else t_bad "R8 the Models used line comes before the Playbook feedback line" "models line [$LM], feedback line [$LP]"; fi
+LC="$(grep -nxF '## Cost' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$LM" ] && [ -n "$LC" ] && [ "$LM" -gt "$LC" ]; then t_ok "R8 the Models used line sits after the Cost section"; else t_bad "R8 the Models used line sits after the Cost section" "models line [$LM], cost heading [$LC]"; fi
+assert_eq "R8 regression: the last non-empty line is still the Playbook feedback line" "$LINE" "$(grep -v '^[[:space:]]*$' "$FINAL" 2>/dev/null | tail -n 1)"
+assert_eq "R8 regression: nothing non-empty follows the Playbook feedback line" "0" "$(awk -v l="$LINE" '$0 == l { seen = 1; next } seen && NF { n++ } END { print n + 0 }' "$FINAL")"
+
 t_summary

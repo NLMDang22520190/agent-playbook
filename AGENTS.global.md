@@ -27,6 +27,7 @@ Why: unrequested changes hide in diffs nobody reviews; a weakened gate protects 
 
 ### TDD with separated roles
 For any change that adds or alters behaviour, or fixes a bug, use skill `playbook-tdd`, always tests first, at a weight chosen by risk and stated with its reason: **Full** (tester, implementer and reviewer in different contexts) for hard-to-reverse ground or core logic, and whenever unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes. Exempt, but say so: docs-only, config-only without behaviour change, and throwaway spikes. If the user asks to skip tests for a behaviour change, ask once and offer the test (a failing test is cheap; headless: offer it without waiting); if they decline, label the result untested.
+**Quick** for tiny changes (≤1 file, ≤20 lines); the user can ask for it by saying "quick".
 Why: an agent that writes the code and its tests writes tests that agree with its mistakes; spend separate contexts where a mistake is expensive.
 
 ### When other skills overlap

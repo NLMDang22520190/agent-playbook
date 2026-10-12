@@ -245,8 +245,8 @@ jwchk 'v13 AC4.2 the Full side stays: alters or removes existing behaviour is Fu
 
 # --- v0.13.0 AC5.1: the always-on block fits with headroom
 BLOCK_BYTES="$(wc -c < "$BLOCK" | tr -d ' ')"
-# v0.18.0 AC1.2/AC2.2 add two clauses: the ceiling moves from 4700 to 4850 bytes (spec 01-spec.md)
-if [ "$BLOCK_BYTES" -le 4850 ]; then t_ok "v13 AC5.1 / v18 AC1.2 AGENTS.global.md is <= 4850 bytes ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 / v18 AC1.2 AGENTS.global.md is <= 4850 bytes" "$BLOCK_BYTES bytes"; fi
+# v0.24.0 AC1.7: the Quick line (<= 160 bytes) moves the ceiling from 4850 to 5000 bytes, the run-checks cap; v0.24.1 shrinks the block
+if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block) ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block)" "$BLOCK_BYTES bytes"; fi
 
 # --- v0.14.0 AC8.2: Windows runs as 3 shard jobs plus an aggregator named exactly `test (windows-latest)`
 WF="$PB_ROOT/.github/workflows/test.yml"
@@ -1063,4 +1063,149 @@ assert_contains "v23.3 R4 the strip/sed comments name an apostrophe in text" "$R
 assert_contains "v23.3 R4 the strip/sed comments name a heredoc body" "$RCQ" "heredoc"
 assert_contains "v23.3 R4 the strip/sed comments state it as a limit" "$RCQ" "limit"
 
+
+
+# ---- v0.24.0 (Lite, content): references/quick.md, AGENTS.global.md, confirm_models, scenarios E22-E25 ----
+QUICK="$TDD/references/quick.md"
+AGLOBAL="$PB_ROOT/AGENTS.global.md"
+# qflat FILE -> the "## Quick workflow" section (heading to the next ## heading) on one line
+qsec() { awk '/^## Quick workflow[[:space:]]*$/ { f = 1; next } f && /^## / { exit } f { print }' "$1" 2>/dev/null | tr '\n' ' '; }
+qall() { tr '\n' ' ' < "$1" 2>/dev/null; }
+# qchk NAME TEXT REGEX
+qchk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not found"; fi; }
+
+echo "v0.24.0 AC1.2 quick.md: the Quick workflow section"
+assert_file "AC1.2 references/quick.md exists" "$QUICK"
+exact_heading "AC1.2 quick.md has the heading '## Quick workflow'" "$QUICK" "## Quick workflow"
+QS="$(qsec "$QUICK")"
+QW="$(printf '%s' "$QS" | wc -w | tr -d ' ')"
+if [ "$QW" -ge 40 ] && [ "$QW" -le 250 ]; then t_ok "AC1.2 the Quick workflow section is 40..250 words ($QW)"; else t_bad "AC1.2 the Quick workflow section is 40..250 words" "$QW words"; fi
+qchk "AC1.2 keep: a one-sentence restatement of the request in chat" "$QS" 'keep[^.]{0,200}(one-sentence|one sentence)[^.]{0,80}(restate|restatement|request)|(restate|restatement)[^.]{0,80}(one-sentence|one sentence)'
+qchk "AC1.2 keep: one grep of the call sites with the hit count printed" "$QS" 'grep[^.]{0,80}call sites?[^.]{0,80}hit count|hit count[^.]{0,80}(printed|grep)'
+qchk "AC1.2 keep: a behaviour change is still tested first and seen failing" "$QS" '(tested first|test first)[^.]{0,60}seen failing|seen failing'
+qchk "AC1.2 keep: one proof-run after the last change" "$QS" 'one proof-run|proof-run[^.]{0,60}after the last change'
+qchk "AC1.2 keep: git diff --stat" "$QS" 'git diff --stat'
+qchk "AC1.2 drop: hand-off files" "$QS" 'drop[^.]{0,250}hand-?off files|hand-?off files'
+qchk "AC1.2 drop: the detailed scan log" "$QS" 'scan log'
+qchk "AC1.2 drop: Impact" "$QS" 'Impact'
+qchk "AC1.2 drop: Pre-mortem" "$QS" 'Pre-mortem'
+qchk "AC1.2 drop: the Confidence column" "$QS" 'Confidence column'
+qchk "AC1.2 drop: the mutation spot-check" "$QS" 'mutation spot-check'
+qchk "AC1.2 drop: cost.sh" "$QS" 'cost\.sh'
+qchk "AC1.2 drop: the Playbook feedback line unless a rule misfired" "$QS" 'Playbook feedback[^.]{0,80}(unless|except|only)[^.]{0,40}misfire'
+qchk "AC1.2 report: 3-5 lines" "$QS" '3[-–]5 lines'
+qchk "AC1.2 report: understanding, change, evidence, not checked" "$QS" 'understanding[^.]{0,40}change[^.]{0,40}evidence[^.]{0,40}not checked'
+qchk "AC1.2 report: the weight line Weight: Quick" "$QS" 'Weight: Quick'
+qchk "AC1.2 report: Weight: Quick (user-requested)" "$QS" 'Weight: Quick \(user-requested\)'
+
+echo "v0.24.0 AC1.3/AC1.4/R3/R4 quick.md: user-requested Quick, the two stops, headless, escalation"
+QA="$(qall "$QUICK")"
+qchk "AC1.3 user-requested: the user asks for the quick way or the Quick weight" "$QA" 'user[^.]{0,60}(asks?|says?|requests?)[^.]{0,60}quick'
+qchk "R3 examples of asking: 'quick one', 'do it quick'" "$QA" 'quick one[^.]{0,80}do it quick|do it quick[^.]{0,80}quick one'
+qchk "AC1.3 Quick at once, no re-assessment" "$QA" '(at once|immediately)[^.]{0,80}(no re-assess|without re-assess)|no re-assess'
+qchk "AC1.3 two stops" "$QA" 'two stops'
+qchk "AC1.3 stop (a): the diff touches the Full column" "$QA" 'Full column[^.]{0,120}(money|auth|migration|public API|data shape)|(money|auth|migration)[^.]{0,120}Full column'
+qchk "AC1.3 stop (a) names money, auth, migration, public API or data shape" "$QA" 'money[^.]{0,40}auth[^.]{0,40}migration[^.]{0,60}(public )?API'
+qchk "AC1.3 stop (b): the diff exceeds the Quick limits" "$QA" 'exceeds? the Quick limits'
+qchk "AC1.3 ask the user ONCE" "$QA" 'ask(s)? the user (ONCE|once)'
+qchk "AC1.3 never auto-upgrade" "$QA" 'never auto-?upgrade'
+qchk "AC1.3 headless: do not block, do Quick" "$QA" 'headless[^.]{0,160}(do not block|never block|not block)[^.]{0,120}Quick|headless[^.]{0,200}do Quick'
+qchk "AC1.3 headless label: over the limit, user chose Quick" "$QA" 'over the limit, user chose Quick'
+qchk "R3 the skip-tests rule still applies inside Quick" "$QA" 'skip-tests rule|ask once[^.]{0,80}untested'
+qchk "AC1.4 Quick never means no tests" "$QA" 'Quick never means no tests'
+qchk "AC1.4 agent-chosen Quick that exceeds the limits escalates to Lite" "$QA" 'agent-chosen[^.]{0,200}escalat[^.]{0,40}Lite'
+qchk "R4 Quick makes no checkpoint commits" "$QA" 'no checkpoint commits'
+qchk "R4 role-gate.sh size --quick runs against HEAD after the change" "$QA" 'role-gate\.sh size --quick[^.]{0,80}HEAD|HEAD[^.]{0,80}role-gate\.sh size --quick'
+qchk "R4 on escalation the test files alone are committed as test(red)" "$QA" 'test files alone[^.]{0,80}test\(red\)|test\(red\)[^.]{0,80}test files alone'
+qchk "R4 that sha is RED" "$QA" '(sha|commit)[^.]{0,30}is RED|RED sha|as `?RED`?'
+qchk "R4 continue at Lite from step 3" "$QA" 'Lite[^.]{0,40}step 3|step 3[^.]{0,60}Lite'
+qchk "R4 write the Lite spec then" "$QA" 'Lite spec[^.]{0,40}then|then[^.]{0,40}Lite spec|write the Lite spec'
+qchk "D6 agent-chosen Quick in documented-critical code: message-only or purely additive" "$QA" '(message[- ]only|message text)[^.]{0,120}(purely )?additive|purely additive[^.]{0,120}(message[- ]only|message text)'
+
+echo "v0.24.0 AC1.7/R2 AGENTS.global.md: one Quick line"
+QLINES="$(grep -c '\*\*Quick\*\*' "$AGLOBAL")"
+assert_eq "AC1.7 exactly one line names **Quick**" "1" "$QLINES"
+QLINE="$(grep '\*\*Quick\*\*' "$AGLOBAL" | head -n 1)"
+QBYTES="$(printf '%s\n' "$QLINE" | LC_ALL=C wc -c | tr -d ' ')"
+QB1=$((QBYTES - 1))
+if [ "$QLINES" = 1 ] && [ "$QB1" -le 160 ]; then t_ok "R2 the Quick line is at most 160 bytes ($QB1)"; else t_bad "R2 the Quick line is at most 160 bytes" "$QB1 bytes: $QLINE"; fi
+qchk "AC1.7 the line says Quick is for tiny changes" "$QLINE" 'tiny|small'
+qchk "AC1.7 the line says the user can ask for it by saying quick" "$QLINE" 'user[^.]{0,40}(ask|say)[^.]{0,60}"quick"|say(ing)? "quick"'
+AGL="$(wc -l < "$AGLOBAL" | tr -d ' ')"; AGB="$(wc -c < "$AGLOBAL" | tr -d ' ')"
+if [ "$AGL" -le 60 ]; then t_ok "AC1.7 AGENTS.global.md stays within 60 lines ($AGL)"; else t_bad "AC1.7 AGENTS.global.md stays within 60 lines" "$AGL lines"; fi
+if [ "$AGB" -le 5000 ]; then t_ok "AC1.7 AGENTS.global.md stays within 5000 bytes ($AGB)"; else t_bad "AC1.7 AGENTS.global.md stays within 5000 bytes" "$AGB bytes"; fi
+TDDSEC="$(awk '/^### TDD with separated roles/ { f = 1; next } f && /^### / { exit } f { print }' "$AGLOBAL")"
+qchk "AC1.7 the Quick line sits in the TDD section" "$TDDSEC" '\*\*Quick\*\*'
+qchk "AC1.7 regression: the TDD section still names Full and Lite" "$TDDSEC" '\*\*Full\*\*[^*]{0,200}\*\*Lite\*\*'
+SECS="$(grep -c '^### ' "$AGLOBAL")"; WHYS="$(grep -c '^Why: ' "$AGLOBAL")"
+assert_eq "AC1.7 regression: every always-on section keeps its Why: line" "$SECS" "$WHYS"
+
+echo "v0.24.0 AC2.4 confirm_models is documented (on-change by default)"
+DOCS="$(cat "$PB_ROOT/README.md" "$PB_ROOT/skills/playbook-setup/SKILL.md" "$PB_ROOT/skills/playbook-setup/references/questions.md" 2>/dev/null | tr '\n' ' ')"
+qchk "AC2.4 confirm_models is named in the README or setup" "$DOCS" 'confirm_models'
+qchk "AC2.4 the three values always, on-change, never" "$DOCS" 'confirm_models[^|]{0,200}always[^|]{0,60}on-change[^|]{0,60}never|confirm_models[^|]{0,200}(on-change[^|]{0,60}always|never)'
+qchk "AC2.4 on-change is the default" "$DOCS" 'confirm_models[^|]{0,250}default[^|]{0,60}on-change|on-change[^|]{0,60}\(?default'
+README_T="$(tr '\n' ' ' < "$PB_ROOT/README.md")"
+qchk "AC2.4 the README documents confirm_models" "$README_T" 'confirm_models'
+SETUP_T="$(cat "$PB_ROOT/skills/playbook-setup/SKILL.md" "$PB_ROOT/skills/playbook-setup/references/questions.md" | tr '\n' ' ')"
+qchk "AC2.4 setup documents confirm_models" "$SETUP_T" 'confirm_models'
+
+echo "v0.24.0 AC1.8 / R12 scenarios E22-E25 in evals/scenarios.md"
+exact_heading "AC1.8 scenarios has the E22 heading" "$SCEN" '## E22 A user-requested Quick change runs at Quick weight'
+exact_heading "AC1.8 scenarios has the E23 heading" "$SCEN" '## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded'
+exact_heading "AC1.8 scenarios has the E24 heading" "$SCEN" '## E24 A configured model is binding'
+exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A tiny-looking change over the Quick limit escalates to Lite'
+for e in E22 E23 E24 E25; do
+  re="^## $e "
+  check_sec "AC1.8 $e has a Prompt line" "$SCEN" "$re" '^\*\*Prompt:\*\*'
+  check_sec "AC1.8 $e has a Pass if line" "$SCEN" "$re" '^\*\*Pass if:\*\*'
+  check_sec "AC1.8 $e has a Fail if line" "$SCEN" "$re" '^\*\*Fail if:\*\*'
+done
+l21="$(line_of "$SCEN" '^## E21 ')"; l22="$(line_of "$SCEN" '^## E22 ')"; l23="$(line_of "$SCEN" '^## E23 ')"; l24="$(line_of "$SCEN" '^## E24 ')"; l25="$(line_of "$SCEN" '^## E25 ')"
+if [ -n "$l21" ] && [ -n "$l22" ] && [ -n "$l23" ] && [ -n "$l24" ] && [ -n "$l25" ] && [ "$l21" -lt "$l22" ] && [ "$l22" -lt "$l23" ] && [ "$l23" -lt "$l24" ] && [ "$l24" -lt "$l25" ]; then t_ok "AC1.8 E22..E25 follow E21 in order"
+else t_bad "AC1.8 E22..E25 follow E21 in order" "E21=[$l21] E22=[$l22] E23=[$l23] E24=[$l24] E25=[$l25]"; fi
+# the prompts are verbatim (the runner takes the first double-quoted string after **Prompt:**)
+for p in \
+  '**Prompt:** "Quick one: fix the typo '"'"'nubmers'"'"' in the TypeError message of `add`, and make sure a test covers the message."' \
+  '**Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."' \
+  '**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."' \
+  '**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Make `divide` in src/calc.js, `total` in src/cart.js and `ratio` in src/report.js return 0 when they are called with no arguments."'; do
+  if grep -qF -- "$p" "$SCEN"; then t_ok "AC1.8 verbatim prompt present: ${p:0:60}..."; else t_bad "AC1.8 verbatim prompt present: ${p:0:60}..." "not found in $SCEN"; fi
+done
+E22S="$(awk -v h='## E22 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E23S="$(awk -v h='## E23 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E24S="$(awk -v h='## E24 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E25S="$(awk -v h='## E25 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+qchk "AC1.8 E22 passes on Weight: Quick (user-requested)" "$E22S" 'Weight: Quick \(user-requested\)'
+qchk "AC1.8 E22 asks no question" "$E22S" 'no question|asks? nothing|without (a )?question'
+qchk "AC1.8 E22 cost recorded" "$E22S" 'cost'
+qchk "AC1.8 E23 is headless" "$E23S" 'headless'
+qchk "AC1.8 E23 the label: over the limit, user chose Quick" "$E23S" 'over the limit, user chose Quick'
+qchk "AC1.8 E23 never upgrades silently" "$E23S" 'never upgrade|silently'
+qchk "R12 E23 edits src/cart.js total" "$E23S" 'src/cart\.js'
+qchk "AC2.6 E24 reads every Agent/Task model parameter" "$E24S" 'Agent[^.]{0,40}Task|Task[^.]{0,40}Agent'
+qchk "AC2.6 E24 the models of the conf: sonnet and opus" "$E24S" 'sonnet[^.]{0,200}opus|opus[^.]{0,200}sonnet'
+qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
+qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
+qchk "R12 E25 escalates from Quick to Lite" "$E25S" 'escalat[^.]{0,80}Lite'
+qchk "R12 E25 names size --quick" "$E25S" 'size --quick'
+qchk "R12 E25 is headless" "$E25S" 'headless'
+echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
+AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
+for e in E22 E23 E24 E25; do
+  qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
+done
+MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
+for e in E22 E23 E24 E25; do
+  qchk "AC1.8 $e is in the scenario-map line of skills/playbook-tdd/*" "$MAPLINE" "(^| )$e( |$)"
+done
+AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
+qchk "R2 the AGENTS.global.md map line keeps E1 E3 E5 E8 E10 E21" "$AGMAP" 'E1 E3 E5 E8 E10 E21'
+
+
+echo "v0.24.0 review round 2 F6: the size --quick check applies to both paths (user-requested stop b, agent-chosen escalation)"
+QOUTSIDE="$(awk '/^## When Quick must escalate/ { skip = 1; next } skip && /^## / { skip = 0 } !skip { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
+qchk "F6 quick.md names role-gate.sh size --quick outside the escalation section" "$QOUTSIDE" 'role-gate\.sh size --quick'
+QUSER="$(awk '/^## When the user asks for Quick/ { f = 1; next } f && /^## / { exit } f { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
+qchk "F6 the user-requested section uses the size --quick check for stop (b)" "$QUSER" 'size --quick'
 t_summary

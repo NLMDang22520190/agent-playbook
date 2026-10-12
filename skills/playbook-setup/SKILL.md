@@ -75,7 +75,7 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set setup done --global
    ```
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
-   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
    shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as your email address or a private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 

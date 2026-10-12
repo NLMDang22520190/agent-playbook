@@ -2,6 +2,9 @@
 // Reads one eval transcript once and prints what the graders need, as KEY=VALUE lines:
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
+//   models=<the `model` parameter of each Agent/Task tool_use, in order, comma separated; '-' for a call without one;
+//   empty when there is no call>   (always the last key). Only calls whose subagent_type is absent or general-purpose are
+//   listed: a helper sub-agent such as Explore or Plan is not a role and may run without a model.
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
 // Limits of the cd tracking (bashWrites): a `cd` is followed only as a simple command of its own, one directory at a time. These
@@ -22,6 +25,7 @@ if (!log) { console.error("usage: node evals/transcript.js <log>"); process.exit
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
 
+const models = [];
 let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
@@ -304,7 +308,11 @@ for (const line of text.split(/\r?\n/)) {
     i++;
     const inp = b.input || {};
     const fp = String(inp.file_path || "");
-    if (b.name === "Agent" || b.name === "Task") subagent = true;
+    if (b.name === "Agent" || b.name === "Task") {
+      subagent = true;
+      const st = typeof inp.subagent_type === "string" ? inp.subagent_type : "";
+      if (st === "" || st === "general-purpose") models.push(typeof inp.model === "string" && inp.model !== "" ? inp.model : "-");
+    }
     const loads = (b.name === "Skill" && /^([^:]+:)?playbook-tdd$/.test(String(inp.skill || ""))) ||
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));
     if (loads && skill < 0) skill = i;
@@ -356,4 +364,5 @@ process.stdout.write([
   "untested_label=" + (reply === null ? "na" : b(untested(reply))),
   "ran_tests=" + (!json ? "na" : b(ran)),
   "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
+  "models=" + models.join(","),
 ].join("\n") + "\n");
