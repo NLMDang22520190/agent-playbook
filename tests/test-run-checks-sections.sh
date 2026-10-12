@@ -93,6 +93,9 @@ sed_case "attached suffix .bak, -E before"        tests/zz-sed.sh "$SD -E $FI.ba
 sed_case "a comment line mentioning it"           tests/zz-sed.sh "# do not use $SD $FI \"s/...\"" pass
 sed_case "a trailing comment mentioning it"       tests/zz-sed.sh "foo   # node, not $SD $FI: BSD" pass
 sed_case "sed without -i"                         tests/zz-sed.sh "$SD -n 's/a/b/p' f" pass
+sed_case "review F3 a (#1) inside double quotes is not a comment, the in-place sed after it is flagged" tests/zz-sed.sh "echo \"(#1)\"; $SD $FI s/a/b/ f" fail
+sed_case "review F3 a ;# inside single quotes is not a comment, the in-place sed after it is flagged" tests/zz-sed.sh "echo 'a;#b'; $SD $FI s/a/b/ f" fail
+sed_case "review F3 control: a real comment after the quoted text still hides it" tests/zz-sed.sh "echo \"(#1)\" # not $SD $FI s/a/b/ f" pass
 sed_case "grep -i is not in-place sed"                tests/zz-sed.sh "grep $FI x f" pass
 sed_case "sed -e script, no -i at all"           tests/zz-sed.sh "$SD -e 's/a/b/' f" pass
 # the message tells what is wrong, not only where

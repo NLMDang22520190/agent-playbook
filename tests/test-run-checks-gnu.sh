@@ -8,7 +8,7 @@
 # ---- v0.22.1 AC5.1: GNU-only options are refused outside comments (BSD/macOS lacks them) ----
 # Every construct is spelled through variables, so this file does not trip its own check.
 echo "v0.22.1 AC5.1 GNU-only options"
-G=grep; PF=-P; RL=readlink; FF=-f; DT=date; DD=-d; ST=stat; CC=-c; FD=find; PR=-printf; XA=xargs; XR=-r; SD2=sed
+G="grep"; PF="-P"; RL="readlink"; FF="-f"; DT="date"; DD="-d"; ST="stat"; CC="-c"; FD="find"; PR="-printf"; XA="xargs"; XR="-r"; SD2="sed"
 # gnu_case NAME FILE BODY-LINE EXPECT(fail|pass) [CONSTRUCT] -> FILE (under the copy) gets BODY-LINE as its line 3
 gnu_case() {
   local name="$1" rel="$2" line="$3" expect="$4" construct="${5:-}"

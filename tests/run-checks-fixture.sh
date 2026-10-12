@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared setup of tests/test-run-checks.sh and its split parts (test-run-checks-gnu.sh, test-run-checks-soh.sh): the copy of the
+# Shared setup of tests/test-run-checks.sh and its split parts (test-run-checks-gnu.sh, test-run-checks-gnu9.sh, test-run-checks-sections.sh): the copy of the
 # working tree that every case mutates, and the helpers that run evals/run-checks.sh inside such a copy.
 # Source it after lib.sh. It is not a suite: run-all.sh only starts tests/test-*.sh.
 SKILL=skills/playbook-proof/SKILL.md

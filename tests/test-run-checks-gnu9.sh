@@ -5,7 +5,7 @@
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
 # the pieces the fixtures are spelled from (the checker would flag this file otherwise)
-G=grep; PF=-P; RL=readlink; FF=-f; DT=date; DD=-d; ST=stat; CC=-c; FD=find; PR=-printf; XA=xargs; XR=-r; SD2=sed
+G="grep"; PF="-P"; FF="-f"; DD="-d"; CC="-c"; FD="find"; PR="-printf"; XA="xargs"; XR="-r"; SD2="sed"
 MK='# gnu-ok:'
 B='\'; Q="'"
 
@@ -145,5 +145,43 @@ gnu9 "AC7.2 control: the variable after echo is an argument" tests/zz-gnu.sh pas
 gnu9 "AC7.2 control: a longer variable name after an assignment is another variable" tests/zz-gnu.sh pass 3 "LC_ALL=C ${DL}GREPPER $PF x"
 gnu9 "AC7.2 control: an assignment alone, with no command word" tests/zz-gnu.sh pass 3 "LC_ALL=C"
 gnu9 "AC7.2 control: a GNU-ok marker with a reason exempts a wrapped variable" tests/zz-gnu.sh pass 3 "sudo -u u ${DL}GREP $PF x $MK needs PCRE here"
+
+# ---- v0.23.3 review of lane B ----
+echo "v0.23.3 review F2 a (( inside quotes is text, not arithmetic"
+# F2: a quoted (( made the later << look like arithmetic, so the heredoc was missed and its body (an apostrophe) opened a quote
+gnu9 "review F2 echo \"((\" then a heredoc with an apostrophe, then the flag" tests/zz-gnu.sh fail 6 "echo ${DQ}((${DQ}; cat <<EOF" "it${Q}s" "EOF" "$G $PF x f"
+gnu9 "review F2 echo '((' then a heredoc with an apostrophe, then the flag"  tests/zz-gnu.sh fail 6 "echo ${Q}((${Q}; cat <<EOF" "it${Q}s" "EOF" "$G $PF x f"
+gnu9 "review F2 control: a real (( )) before << is still arithmetic"         tests/zz-gnu.sh pass 3 "(( x << y ))" "echo ${Q}a" "$G $PF x" "${Q}"
+
+echo "v0.23.3 review N3 timeout DURATION before a variable command word"
+gnu9 "review N3 timeout 5 then the variable"                     tests/zz-gnu.sh fail 3 "timeout 5 ${DL}GREP $PF x"
+gnu9 "review N3 timeout -s KILL 5 then the variable"             tests/zz-gnu.sh fail 3 "timeout -s KILL 5 ${DL}GREP $PF x"
+gnu9 "review N3 timeout -k 2 5 then the braced variable"         tests/zz-gnu.sh fail 3 "timeout -k 2 5 ${DL}${LB}GREP} $PF x"
+gnu9 "review N3 corpus: timeout 5 then the tool written out"     tests/zz-gnu.sh fail 3 "timeout 5 $G $PF x"
+gnu9 "review N3 control: timeout 5 then a clean variable use"    tests/zz-gnu.sh pass 3 "timeout 5 ${DL}GREP -i x f"
+gnu9 "review N3 control: the variable as an argument of timeout's command" tests/zz-gnu.sh pass 3 "timeout 5 echo ${DL}GREP $PF"
+
+echo "v0.23.3 review F1 the arithmetic check is linear in the line length"
+# F1: for every << the check rescanned the whole line before it, so a long line with many heredoc operators took
+# O(length x operators). The same line without << is the baseline; the budget is baseline + 8 s.
+# gen_long PREFIX-COUNT WORD COUNT -> one line: PREFIX-COUNT "((a)) " groups, then COUNT copies of WORD (WORD is "x<<A " or "x A ")
+gen_long() { awk -v n="$1" -v w="$2" -v m="$3" 'BEGIN { for (i = 0; i < n; i++) s = s "((a)) "; for (i = 0; i < m; i++) s = s w; print s }'; }
+# time_long WORD COUNT -> sets LELAPSED (seconds) and RC/OUT of run-checks --only gnu over a file holding that long line, then a line A
+time_long() {
+  local line; line="$(gen_long 1000 "$1" "$2")"
+  C="$(mk_copy)"
+  printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$line" 'A' > "$C/tests/zz-gnu.sh"
+  local t0=$SECONDS
+  checks "$C" gnu
+  LELAPSED=$((SECONDS - t0))
+}
+HD="<<"
+time_long "x A " 2800
+LBASE=$LELAPSED
+assert_rc "review F1 baseline (no heredoc operators): exit 0" 0
+time_long "x${HD}A " 2800
+assert_rc "review F1 2800 heredoc operators after 1000 closed (( )) groups: exit 0" 0
+if [ "$LELAPSED" -le $((LBASE + 8)) ]; then t_ok "review F1 the heredoc line took ${LELAPSED}s, baseline ${LBASE}s (budget baseline + 8 s)"
+else t_bad "review F1 the heredoc line took ${LELAPSED}s, baseline ${LBASE}s (budget baseline + 8 s)" "quadratic in the line length"; fi
 
 t_summary

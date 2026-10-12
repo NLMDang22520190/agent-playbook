@@ -1022,4 +1022,14 @@ case "$(printf '%s' "$TSHEAD_FLAT" | tr 'A-Z' 'a-z')" in
   *) t_bad "v23.3 AC8.1 the header states these as limits (not tracked / not covered / limit)" "header: $TSHEAD_FLAT" ;;
 esac
 
+# --- v0.23.3 review N4: the known grader limits are listed in the header next to the cd limits
+echo "v23.3 review N4 transcript.js header names the heredoc and shell-feed limits"
+assert_contains "v23.3 review N4 the header names sh -c with a command-substitution heredoc" "$TSHEAD_FLAT" 'sh -c "$(cat <<EOF'
+assert_contains "v23.3 review N4 the header says that shape is read only at the end of a line" "$TSHEAD_FLAT" "end of a line"
+assert_contains "v23.3 review N4 the header names eval with a command-substitution heredoc" "$TSHEAD_FLAT" 'eval "$(cat <<EOF"'
+assert_contains "v23.3 review N4 the header names the heredoc written before its command (<<EOF cat)" "$TSHEAD_FLAT" '<<EOF cat'
+assert_contains "v23.3 review N4 the header names sudo -iu" "$TSHEAD_FLAT" "sudo -iu"
+assert_contains "v23.3 review N4 the header names a here-string after a heredoc" "$TSHEAD_FLAT" "here-string"
+assert_contains "v23.3 review N4 the here-string limit is about the position after a heredoc" "$TSHEAD_FLAT" "after a heredoc"
+
 t_summary
