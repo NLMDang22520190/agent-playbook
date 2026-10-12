@@ -407,4 +407,57 @@ assert_eq "AC4.3 docs/01-spec.md is not the spec: spec_first=0" "0" "$(sf_of "$(
 assert_eq "AC4.3 a spec mentioned only in a heredoc body is not written: spec_first=0" "0" "$(sf_of "$(btu "cat > notes.md <<EOF${NLX}echo x > .agents/handoff/01-spec.md${NLX}EOF")" "$(btu "$SEDSRC")")"
 assert_eq "AC4.3 cd .agents/handoff in a subshell does not leak: a bare 01-spec.md after it is not the spec: spec_first=0" "0" "$(sf_of "$(btu "(cd /w/E21/.agents/handoff && true); echo x > 01-spec.md")" "$(btu "$SEDSRC")")"
 
+
+
+# ---- v0.23.2 lane B review (F1): heredoc stripping is linear ----
+echo "v0.23.2 review F1 stripHeredocs is linear: 20000 'cat <<A ' on one line"
+# one Bash call built inside node (argv is capped at 128 KiB), then the spec Write and an src Write; budget = baseline + 8 s
+HL_BASE=-1
+hl_ticks() { # LIMIT -> HL_TICKS, HL_HUNG
+  node -e 'const c="cat <<A ".repeat(20000);console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:c}}]}}))' > "$TR/hl.json"
+  tu Write "$SFW" >> "$TR/hl.json"; echo >> "$TR/hl.json"
+  tu Write "$SRC" >> "$TR/hl.json"; echo >> "$TR/hl.json"
+  node "$TS" "$TR/hl.json" > "$TR/hl.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$1" ]; do sleep 0.1; i=$((i + 1)); done
+  HL_TICKS=$i; HL_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then HL_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+}
+hl_base() { # the time of a run on a tiny command
+  printf '%s\n' "$(btu "echo x")" "$(tu Write "$SFW")" "$(tu Write "$SRC")" > "$TR/hl.json"
+  node "$TS" "$TR/hl.json" > "$TR/hl.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+  HL_BASE="$i"; wait "$pid" 2>/dev/null
+}
+hl_timed() {
+  [ "$HL_BASE" -ge 0 ] || hl_base
+  hl_ticks $((HL_BASE + 80))
+  if [ "$HL_HUNG" = 1 ]; then echo SLOW; return 0; fi
+  sed -n 's/^spec_first=//p' "$TR/hl.out"
+}
+assert_eq "F1 20000 'cat <<A ' then the spec and an src write: finishes within the baseline + 8 s, spec_first=1" "1" "$(hl_timed)"
+
+# ---- v0.23.2 lane B review (F2): bash -c '...' <<EOF: the body is stdin of the -c script, not commands ----
+echo "v0.23.2 review F2 bashWritesSrc: a heredoc after bash -c is input, not commands"
+hdw no "bash -c 'cat' <<EOF" "bash -c 'cat' <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "bash -c \"cat\" <<EOF (double quotes)" "bash -c \"cat\" <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "bash -ec 'cat' <<EOF (option cluster)" "bash -ec 'cat' <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "sh -c 'cat' <<'EOF'" "sh -c 'cat' <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+# controls: the -c script itself runs
+hdw yes "bash -c with an src write as the script, heredoc body is input" "bash -c 'sed $SIH s/a/b/ src/x.js' <<EOF${NLH}input${NLH}EOF"
+hdw yes "bash <<EOF still executes the body" "bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+
+# ---- v0.23.2 lane B review (F4): one command that writes the spec and src is src-first ----
+echo "v0.23.2 review F4 spec_first: a single command writing both spec and src counts src first"
+SPECP=".agents/handoff/01-spec.md"
+assert_eq "F4 an in-place sed on src/ with a redirect into the spec: spec_first=0" "0" "$(sf_of "$(btu "sed $SIH s/a/b/ src/a.js > $SPECP")")"
+assert_eq "F4 cp into src/ with a redirect into the spec: spec_first=0" "0" "$(sf_of "$(btu "cp a src/a.js > $SPECP")")"
+assert_eq "F4 tee writing the spec and src/: spec_first=0" "0" "$(sf_of "$(btu "echo x | tee $SPECP src/a.js")")"
+assert_eq "F4 tee writing src/ and the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x | tee src/a.js $SPECP")")"
+assert_eq "F4 control: spec; src gives 1" "1" "$(sf_of "$(btu "echo x > $SPECP; sed $SIH s/a/b/ src/a.js")")"
+assert_eq "F4 control: src; spec gives 0" "0" "$(sf_of "$(btu "sed $SIH s/a/b/ src/a.js; echo x > $SPECP")")"
+assert_eq "F4 control: tee of the spec alone, then an src write: spec_first=1" "1" "$(sf_of "$(btu "echo x | tee $SPECP")" "$(tu Write "$SRC")")"
+
 t_summary

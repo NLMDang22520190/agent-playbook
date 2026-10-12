@@ -747,6 +747,14 @@ gnu9 "E2 a heredoc body with a double quote, then the flag"      tests/zz-gnu.sh
 gnu9 "E2 a comment with an apostrophe, then the flag"            tests/zz-gnu.sh fail 4 "# it${Q}s" "$G $PF y"
 gnu9 "E2 a comment with a double quote, then the flag"           tests/zz-gnu.sh fail 4 "# say ${DQ}hi" "$G $PF y"
 gnu9 "E2 a trailing comment with an apostrophe, then the flag"   tests/zz-gnu.sh fail 4 "echo a   # it${Q}s" "$G $PF y"
+# F3: a comment that starts right after an operator is a comment; its apostrophe must not open a quote
+gnu9 "F3 a comment right after ';' with an apostrophe, then the flag"  tests/zz-gnu.sh fail 4 "true;# it${Q}s" "$G $PF y"
+gnu9 "F3 a comment right after ')' with an apostrophe, then the flag"  tests/zz-gnu.sh fail 4 "( true )# it${Q}s" "$G $PF y"
+gnu9 "F3 a comment right after '|' with an apostrophe, then the flag"  tests/zz-gnu.sh fail 4 "a|# it${Q}s" "$G $PF y"
+gnu9 "F3 a comment right after '&' with an apostrophe, then the flag"  tests/zz-gnu.sh fail 4 "true &# it${Q}s" "$G $PF y"
+gnu9 "F3 a comment right after '(' with an apostrophe, then the flag"  tests/zz-gnu.sh fail 4 "(# it${Q}s" "$G $PF y"
+gnu9 "F3 a flag inside a comment after ';' is hidden"                  tests/zz-gnu.sh pass 3 "true;# $G $PF y"
+gnu9 "F3 control: a # inside a word is not a comment, the flag is code" tests/zz-gnu.sh fail 3 "echo a#b; $G $PF y"
 # AC9.3 a command word that is a variable named after a checked tool (any case) is checked like the tool
 gnu9 "variable GREP, dollar form"                                tests/zz-gnu.sh fail 3 "${DL}GREP $PF x"
 gnu9 "variable GREP, braced form"                                tests/zz-gnu.sh fail 3 "${DL}${LB}GREP} $PF x"
