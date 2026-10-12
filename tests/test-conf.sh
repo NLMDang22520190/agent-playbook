@@ -179,4 +179,33 @@ assert_eq "AC1.1 --global prints no notice" "" "$ERR"
 assert_eq "AC1.1 --global leaves the exclude file untouched" "$BEFORE" "$(cat "$EX" 2>/dev/null)"
 assert_eq "AC1.1 --global adds no exclude line" "0" "$(excl_count "$EX")"
 
+
+echo "v0.24.1 conf keys may contain a dash (a harness name like open-code)"
+rm -f "$H/.agents/playbook.conf"
+run bash "$CONF" set model_tester_open-code mm --global
+assert_rc "dash key: set exits 0" 0
+run bash "$CONF" get model_tester_open-code
+assert_rc "dash key: get exits 0" 0
+assert_eq "dash key: value read back" "mm" "$OUT"
+run bash "$CONF" set model_tester_open-code mm2 --global
+run bash "$CONF" get model_tester_open-code
+assert_eq "dash key: set overwrites" "mm2" "$OUT"
+assert_eq "dash key: no duplicate lines" "1" "$(grep -c '^model_tester_open-code=' "$H/.agents/playbook.conf")"
+run bash "$CONF" set model_tester_open mm3 --global
+run bash "$CONF" get model_tester_open-code
+assert_eq "dash key: a key that is a prefix does not clash" "mm2" "$OUT"
+run bash "$CONF" list
+assert_contains "dash key: list shows it" "$OUT" "model_tester_open-code=mm2"
+run_in "$P" bash "$CONF" set model_tester_open-code pj --project
+assert_rc "dash key: set --project exits 0" 0
+run_in "$P" bash "$CONF" get model_tester_open-code
+assert_eq "dash key: project value wins" "pj" "$OUT"
+for bad in "a b" "a=b" "a/b" "a.b" "-a" "9a" "a*" "A-b"; do
+  run bash "$CONF" set "$bad" x --global
+  assert_rc "dash key: set [$bad] still rejected" 2
+  run bash "$CONF" get "$bad"
+  assert_rc "dash key: get [$bad] still rejected" 2
+done
+LIBPK="$(bash -c ". '$PB_ROOT/scripts/lib.sh'; pb_conf_get 'model_tester_open-code'" 2>&1)"
+assert_eq "dash key: pb_conf_get reads it" "mm2" "$LIBPK"
 t_summary

@@ -695,4 +695,58 @@ reset
 role plan --harness claude
 assert_eq "F5 nothing set at all: session (no conf)" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
 reset
+echo "v0.24.1: a harness name that makes model_<role>_<H> equal another role's key is rejected"
+MSG="harness name 'light' collides with role reviewer_light"
+reset
+printf 'model_reviewer=rm\nmodel_reviewer_light=lm\n' > "$G"
+role reviewer --harness light
+assert_rc "v0.24.1 reviewer --harness light exits 2" 2
+assert_contains "v0.24.1 reviewer --harness light says why" "$OUT" "$MSG"
+role list --harness light
+assert_rc "v0.24.1 list --harness light exits 2" 2
+assert_contains "v0.24.1 list --harness light says why" "$OUT" "$MSG"
+role plan --harness light
+assert_rc "v0.24.1 plan --harness light exits 2" 2
+assert_contains "v0.24.1 plan --harness light says why" "$OUT" "$MSG"
+role check --harness light
+assert_rc "v0.24.1 check --harness light exits 2" 2
+assert_contains "v0.24.1 check --harness light says why" "$OUT" "$MSG"
+role reviewer --effort --harness light
+assert_rc "v0.24.1 reviewer --effort --harness light exits 2" 2
+assert_contains "v0.24.1 reviewer --effort --harness light says why" "$OUT" "$MSG"
+export PLAYBOOK_HARNESS=light
+role reviewer
+assert_rc "v0.24.1 PLAYBOOK_HARNESS=light reviewer exits 2" 2
+assert_contains "v0.24.1 PLAYBOOK_HARNESS=light reviewer says why" "$OUT" "$MSG"
+role list
+assert_rc "v0.24.1 PLAYBOOK_HARNESS=light list exits 2" 2
+role plan
+assert_rc "v0.24.1 PLAYBOOK_HARNESS=light plan exits 2" 2
+role check
+assert_rc "v0.24.1 PLAYBOOK_HARNESS=light check exits 2" 2
+role reviewer --effort
+assert_rc "v0.24.1 PLAYBOOK_HARNESS=light --effort exits 2" 2
+assert_contains "v0.24.1 PLAYBOOK_HARNESS=light --effort says why" "$OUT" "$MSG"
+unset PLAYBOOK_HARNESS
+
+reset
+printf 'model_reviewer=rm\nmodel_reviewer_light=lm\nmodel_reviewer_codex=cx\nmodel_reviewer_opencode=oc\nmodel_reviewer_claude=cl\nmodel_reviewer_open-code=ocd\n' > "$G"
+for h in codex opencode claude open-code; do
+  role reviewer --harness "$h"
+  assert_rc "v0.24.1 reviewer --harness $h still exits 0" 0
+done
+role reviewer --harness codex;     assert_eq "v0.24.1 codex unchanged" "cx" "$OUT"
+role reviewer --harness opencode;  assert_eq "v0.24.1 opencode unchanged" "oc" "$OUT"
+role reviewer --harness claude;    assert_eq "v0.24.1 claude unchanged" "cl" "$OUT"
+role reviewer --harness open-code; assert_eq "v0.24.1 open-code unchanged" "ocd" "$OUT"
+
+reset
+printf 'model_reviewer=rm\nmodel_reviewer_light=lm\n' > "$G"
+role reviewer_light
+assert_rc "v0.24.1 reviewer_light role still exits 0" 0
+assert_eq "v0.24.1 model_reviewer_light=X resolves for the reviewer_light role" "lm" "$OUT"
+role reviewer_light --harness codex
+assert_eq "v0.24.1 reviewer_light with another harness still reads model_reviewer_light" "lm" "$OUT"
+reset
+
 t_summary

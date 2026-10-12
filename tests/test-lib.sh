@@ -61,5 +61,5 @@ if [ -n "$LIBCMT" ]; then t_ok "R3 m3 the comment block above pb_lost_exec_paths
 if printf '%s\n' "$LIBCMT" | grep -Eq '(10|ten)[- ]process'; then t_ok "R3 m3 the comment names the 10-process bound"; else t_bad "R3 m3 the comment names the 10-process bound" "no '10 process' / '10-process' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Fq 'unreadable'; then t_ok "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')"; else t_bad "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')" "no 'unreadable' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Fq 'clean filter'; then t_ok "R3 m3 the comment names a failing clean filter"; else t_bad "R3 m3 the comment names a failing clean filter" "no 'clean filter' in the comment"; fi
-if printf '%s\n' "$LIBCMT" | grep -Eq 'per path|per-path|each path|one by one|path by path'; then t_ok "R3 m3 the comment says a readable file that fails falls back per path"; else t_bad "R3 m3 the comment says a readable file that fails falls back per path" "no per path / each path wording in the comment"; fi
+if printf '%s\n' "$LIBCMT" | grep -Eq 'bisect'; then t_ok "R3 m3 the comment says a readable file that fails bisects"; else t_bad "R3 m3 the comment says a readable file that fails bisects" "no word bisect in the comment"; fi
 t_summary

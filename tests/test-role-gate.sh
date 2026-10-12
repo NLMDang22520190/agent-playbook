@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 # Tests for scripts/role-gate.sh (enforces tester / implementer / reviewer separation)
+# Split in v0.24.1: the executable-bit sections from "paths with a double quote or a tab" on are in test-role-gate-mode.sh; shared setup:
+# role-gate-fixture.sh.
 . "$(dirname "$0")/lib.sh"
-GATE="$PB_ROOT/scripts/role-gate.sh"
-export PLAYBOOK_HOME="$(mk_tmp)"   # isolate from the real ~/.agents/playbook.conf
-# Git on Windows defaults to core.autocrlf=true and then prints "LF will be replaced by CRLF" warnings on
-# stderr, which would break the byte-identical output checks. Force it off for every git call in this suite
-# (command-line style config, git >= 2.31; it beats repository and global config).
-export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.autocrlf GIT_CONFIG_VALUE_0=false
-# One template repo (init, config, first commit) built once and copied for each case: the ~15 cases below
-# start from byte-identical repos without spawning git again.
-RTPL="$(mk_tmp)"; mk_repo "$RTPL"
-mk_repo() { cp -a "$RTPL/." "$1/"; }
+. "$(dirname "$0")/role-gate-fixture.sh"
 
 echo "classify"
 for f in src/app.test.ts pkg/foo_test.go test_foo.py tests/a.js e2e/login.spec.ts \
@@ -679,25 +672,6 @@ assert_eq "AC8.1 plain printable value unchanged" "note: test_path_regex from th
 # ---- v0.23.2 AC1.1: a lost executable bit is a violation for every role ----
 echo "v0.23.2 AC1.1 the executable bit (100755 -> 100644)"
 unset PB_ALLOW_MODE_CHANGE
-IH="$(mk_tmp)"; mkdir -p "$IH/.agents"; printf 'test_infra_regex=^ci/\n' > "$IH/.agents/playbook.conf"
-# gchk ROLE [ARGS] -> check in the current repo (global conf with an infra regex for ci/); gchk_allow LIST ROLE [ARGS] sets PB_ALLOW_MODE_CHANGE
-gchk() { run env PLAYBOOK_HOME="$IH" bash "$GATE" check "$@"; }
-gchk_allow() { local a="$1"; shift; run env PLAYBOOK_HOME="$IH" PB_ALLOW_MODE_CHANGE="$a" bash "$GATE" check "$@"; }
-# mk_mode_repo DIR -> a repo whose committed index has 100755 scripts (src/run.sh, src/second.sh, 'src/my run.sh', tests/run.sh,
-# ci/run.sh) and a 100644 src/plain.js; modes are set with update-index so Windows (no chmod) builds the same fixture
-mk_mode_repo() {
-  mk_repo "$1"
-  ( cd "$1" && mkdir -p ci &&
-    printf '#!/bin/sh\necho a\n' > src/run.sh && cp src/run.sh src/second.sh && cp src/run.sh "src/my run.sh" &&
-    cp src/run.sh tests/run.sh && cp src/run.sh ci/run.sh && printf 'plain\n' > src/plain.js &&
-    chmod +x src/run.sh src/second.sh "src/my run.sh" tests/run.sh ci/run.sh 2>/dev/null
-    git add -A &&
-    git update-index --chmod=+x -- src/run.sh src/second.sh "src/my run.sh" tests/run.sh ci/run.sh &&
-    git commit -q -m "exec scripts" )
-}
-# dropped_visible -> 0 when git itself sees a 100755 -> 100644 change against HEAD here (a chmod is a no-op on Windows)
-dropped_visible() { git diff --raw --no-renames HEAD 2>/dev/null | grep -q '^:100755 100644'; }
-
 R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
 assert_eq "AC1.1 fixture: src/run.sh is committed 100755" "100755" "$(git ls-files -s -- src/run.sh | cut -d' ' -f1)"
 assert_eq "AC1.1 fixture: src/plain.js is committed 100644" "100644" "$(git ls-files -s -- src/plain.js | cut -d' ' -f1)"
@@ -806,9 +780,6 @@ assert_not_contains "AC1.1 fileMode=false: the other, only chmod-ed, file is not
 gchk_allow "src/run.sh" implementer; assert_rc "AC1.1 fileMode=false: the escape works for the staged drop" 0
 
 
-# fm_true_ok: core.fileMode=true and the fresh fixture still shows no mode change, i.e. this file system keeps
-# executable bits (Git Bash on NTFS does not: every 100755 file would look dropped)
-fm_true_ok() { git config core.fileMode true; [ -z "$(git diff --raw 2>/dev/null)" ]; }
 
 # ---- v0.23.2 fix round (lane A): staged-only drops, renamed drops, odd path names ----
 echo "v0.23.2 fix MINOR-3 a staged-only mode drop (work tree still executable, core.fileMode=true) is caught"
@@ -849,22 +820,6 @@ printf '#!/bin/sh\necho different\n' > src/other.sh; git add src/other.sh; git u
 gchk implementer; assert_rc "MINOR-5 a deleted 100755 path plus a 100644 path with a different blob passes" 0
 assert_not_contains "MINOR-5 ... no mode violation" "$OUT" "(mode)"
 
-echo "v0.23.2 fix LOW-6 paths with a double quote or a tab: real name reported, allowed through PB_ALLOW_MODE_CHANGE"
-R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
-QP='src/we"ird.sh'
-TP="$(printf 'src/ta\tb.sh')"
-for P in "$QP" "$TP"; do
-  if cp src/run.sh "$P" 2>/dev/null && [ -f "$P" ] && git add -- "$P" 2>/dev/null && [ -n "$(git ls-files -- "$P")" ]; then
-    git update-index --chmod=+x -- "$P" && git commit -q -m "add odd name"
-    git update-index --chmod=-x -- "$P"
-    gchk implementer; assert_rc "LOW-6 [$P] a staged drop fails" 1
-    assert_contains "LOW-6 [$P] the real path is printed unquoted" "$OUT" "VIOLATION (mode): $P lost its executable bit (100755 -> 100644)"
-    gchk_allow "$P" implementer; assert_rc "LOW-6 [$P] PB_ALLOW_MODE_CHANGE with the real path passes" 0
-    git update-index --chmod=+x -- "$P"
-  else rm -f -- "$P" 2>/dev/null; t_skip 3 "LOW-6 path [$P] (this file system or git refuses the name)"; fi
-done
-HDR="$(sed -n 1,45p "$GATE" | tr 'A-Z' 'a-z')"
-assert_contains "LOW-6 the help says a path with a colon cannot be listed in PB_ALLOW_MODE_CHANGE" "$HDR" "cannot be listed"
 
 echo "v0.23.2 round 2 MINOR-B a rename plus a mode drop that exists only in the work tree (core.fileMode=true) is caught"
 for spec in tester:tests/run.sh:tests/renamed.sh implementer:src/run.sh:src/renamed.sh reviewer:src/run.sh:src/renamed.sh infra:ci/run.sh:ci/renamed.sh; do

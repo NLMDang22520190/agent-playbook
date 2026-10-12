@@ -55,3 +55,16 @@ written through Bash before the first src edit), so both v0.23.1 misses are clos
 
 Total 2.39 USD, about 5 minutes per round. The typo fix (E10) already costs about 0.39 USD on v0.23.3; the Quick
 comparison runs on the installed v0.24.0 and is recorded in v0.24.1 (decision D10).
+
+## Run 5: v0.24.0 installed - E10, E22, E23, E25, E24 (cap 6 USD)
+
+| Scenario | Auto passed / total | Cost (USD) | Note |
+|---|---|---|---|
+| E10 | 3/3 | 0.35 | typo, no "quick" (baseline on v0.23.3: 0.39 / 0.39) |
+| E22 | 5/5 (+1 manual) | 0.32 | `Weight: Quick (user-requested)` |
+| E23 | 5/5 | 0.32 | kept Quick, named the billing risk: "would normally need Full" |
+| E25 | 3/5 | 3.58 | chose Full with a sound reason (billing code, existing behaviour NaN -> 0): scenario flaw, redesigned in v0.24.2 |
+| E24 | skipped | - | cost guard: spent 4.58 + estimate 3.58 >= cap 6 |
+
+Total 4.58 USD. Quick works as specified; on this fixture it saves about 10-20 % per tiny fix, because a Lite typo
+fix already costs about 0.39 USD (the 1.1 USD figure in the Quick plan came from older, heavier Lite runs).
