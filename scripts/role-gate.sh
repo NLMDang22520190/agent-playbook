@@ -181,6 +181,8 @@ EOF
     if [ "$quick" = 1 ]; then
       [ -n "$max_files" ] || max_files="$(pb_conf_get quick_max_files 1)"
       [ -n "$max_lines" ] || max_lines="$(pb_conf_get quick_max_lines 20)"
+      [ -n "$max_files" ] || max_files=1   # an empty quick_max_files= in a conf means the default
+      [ -n "$max_lines" ] || max_lines=20
     else
       [ -n "$max_files" ] || max_files=3
       [ -n "$max_lines" ] || max_lines=100

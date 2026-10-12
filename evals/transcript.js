@@ -3,7 +3,8 @@
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 //   models=<the `model` parameter of each Agent/Task tool_use, in order, comma separated; '-' for a call without one;
-//   empty when there is no call>   (always the last key)
+//   empty when there is no call>   (always the last key). Only calls whose subagent_type is absent or general-purpose are
+//   listed: a helper sub-agent such as Explore or Plan is not a role and may run without a model.
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
 // Usage: node evals/transcript.js <log>
 // Limits of the cd tracking (bashWrites): a `cd` is followed only as a simple command of its own, one directory at a time. These
@@ -309,7 +310,8 @@ for (const line of text.split(/\r?\n/)) {
     const fp = String(inp.file_path || "");
     if (b.name === "Agent" || b.name === "Task") {
       subagent = true;
-      models.push(typeof inp.model === "string" && inp.model !== "" ? inp.model : "-");
+      const st = typeof inp.subagent_type === "string" ? inp.subagent_type : "";
+      if (st === "" || st === "general-purpose") models.push(typeof inp.model === "string" && inp.model !== "" ? inp.model : "-");
     }
     const loads = (b.name === "Skill" && /^([^:]+:)?playbook-tdd$/.test(String(inp.skill || ""))) ||
       (b.name === "Read" && /[\\/]playbook-tdd[\\/]SKILL\.md$/.test(fp));

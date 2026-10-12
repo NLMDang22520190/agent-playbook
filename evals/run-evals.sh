@@ -189,11 +189,11 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_models=
+  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_models=
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
-      result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
+      json) T_json="$v" ;; result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
       spec_first) T_spec_first="$v" ;; models) T_models="$v" ;;
@@ -296,10 +296,11 @@ reply_matches() { local r
   if r="$(result_text)"; then
     if printf '%s' "$r" | grep -qiE "$1"; then record PASS "$2"; else record FAIL "$2"; fi
   else record MANUAL "$2"; fi; }
-# feedback_line_unless_quick -> the "Playbook feedback line" check (E15, E19). A reply that states Quick and neither Lite nor Full is
-# exempt (Quick drops the line unless a rule misfired); with no weight stated, or Lite or Full, the check applies as before.
+# feedback_line_unless_quick -> the "Playbook feedback line" check (E15, E19). A reply whose weight line says `Weight: Quick` and not
+# `Weight: Lite|Full` is exempt (Quick drops the line unless a rule misfired); the words full or lite elsewhere in the reply do not
+# cancel it. With no weight line, or Lite or Full, the check applies as before.
 feedback_line_unless_quick() { local r
-  if r="$(result_text)" && printf '%s' "$r" | grep -qiw 'quick' && ! printf '%s' "$r" | grep -qiwE 'lite|full'; then return 0; fi
+  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight: *quick' && ! printf '%s' "$r" | grep -qiE 'weight: *(lite|full)'; then return 0; fi
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"; }
 # red_unchanged -> 0 when tests/ is as the RED commit left it (no edit, deletion or new file)
 red_unchanged() { git -C "$WD" diff --quiet "$E4_RED" -- tests &&
@@ -431,9 +432,11 @@ models_configured() { local allowed="" k m ok
     [ "$ok" = 0 ] || return 1
   done
   return 0; }
-# stream_result -> E24 and E25 are graded from the stream-json transcript (--harness claude): a run without a final result line
-# cannot show its sub-agent calls or its weight, so it FAILs this check instead of passing on MANUAL alone
-stream_result() { check "the run ended with a stream-json result (needs --harness claude)" result_ok; }
+# stream_result -> E24 and E25 are graded from the stream-json transcript (--harness claude): a stream-json run without a good final
+# result line FAILs this check; a log that is not stream-json (another harness) is MANUAL "needs --harness claude", never a FAIL
+stream_result() {
+  if [ "$T_json" = 1 ]; then check "the run ended with a stream-json result (needs --harness claude)" result_ok
+  else record MANUAL "the run ended with a stream-json result: needs --harness claude"; fi; }
 grade_E24() {
   local r
   stream_result

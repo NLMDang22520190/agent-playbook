@@ -168,7 +168,7 @@ fixed, a test covers the corrected message (seen failing first), `node --test te
 **Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."
 **Pass if:** (headless; setup: the runner commits a project `.agents/playbook.conf` with `model_tester_claude=sonnet`,
 `model_implementer_claude=sonnet`, `model_reviewer_claude=opus`) every Agent or Task tool call in the transcript passes a `model`
-that is `sonnet` or `opus` (the models the conf gives; a call without one is not accepted), there is at least one such call, and the
+that is `sonnet` or `opus` (the models the conf gives; a call without one is not accepted), there is at least one such call (only calls with no `subagent_type` or `general-purpose` count: a helper such as Explore is not a role and may have no model), and the
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 

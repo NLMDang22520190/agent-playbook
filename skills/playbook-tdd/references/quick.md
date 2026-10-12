@@ -21,7 +21,7 @@ The user asks for it when they say "quick", "quick one" or "do it quick", or ask
 
 There are two stops. At a stop, ask the user once and never auto-upgrade, because the choice of weight is theirs:
 - (a) the diff touches the Full column (money, auth, migration, public API or data shape);
-- (b) the diff exceeds the Quick limits.
+- (b) the diff exceeds the Quick limits, measured with `role-gate.sh size --quick` (the same check as in the escalation below; exit 1 means over).
 
 Headless (nobody answers): do not block and do Quick, and label the report "over the limit, user chose Quick" so the risk is visible. For stop (a) also name the Full item in the risk line.
 
@@ -31,7 +31,7 @@ The skip-tests rule still applies inside Quick: write the test first, or ask onc
 
 An agent-chosen Quick that exceeds the limits or touches the Full column escalates to Lite. The agent chose Quick, so it also owns the correction.
 
-1. Quick makes no checkpoint commits. After the change, run `role-gate.sh size --quick` against HEAD. Exit 0 means stay at Quick.
+1. Quick makes no checkpoint commits. After the change, run `role-gate.sh size --quick` against HEAD (the check of stop (b) too). Exit 0 means stay at Quick.
 2. On exit 1 (over the limit), stop at Lite. Commit the test files alone as `test(red)`: that sha is RED.
 3. Continue at Lite from step 3 (the code that passes the test, gated with `--base $RED`), and write the Lite spec then, with the weight line `Weight: Lite` and the reason.
 

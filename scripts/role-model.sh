@@ -5,7 +5,7 @@
 #   role-model.sh list [--harness H]     one line per role: tester=<m>, implementer=<m>, reviewer=<m>,
 #                                        reviewer_light=<m>, mechanical=<m>; "<m> (<effort>)" when an effort is set
 #   role-model.sh plan [--harness H]     one line: Models: tester=<m>, implementer=<m>, reviewer=<m> - from conf
-#                                        (or "- session (no conf)" when no role has a model in a conf)
+#                                        (or "- session (no conf)" when no role has a key in a conf; an explicit session counts as from conf)
 #   role-model.sh check [--harness H]    warn about generic model_<role> keys (they apply to every
 #                                        harness) and unknown model_* keys; exit 1 if any, 0 if none
 # Lookup (project conf before global, per pb_conf_get): model_<role>_<harness>,
@@ -127,7 +127,9 @@ if [ "$cmd" = "list" ]; then
 elif [ "$cmd" = "plan" ]; then
   out="Models:"; src="session (no conf)"; sep=" "
   for r in tester implementer reviewer; do
-    [ "$(model_for "$r" "$harness")" = session ] || src="from conf"
+    # a key present in any conf counts as from conf, also when its value is session
+    if [ -n "$harness" ] && pb_conf_get "model_${r}_${harness}" >/dev/null; then src="from conf"
+    elif pb_conf_get "model_$r" >/dev/null; then src="from conf"; fi
     out="$out$sep$r=$(role_line "$r" "$harness")"; sep=", "
   done
   printf '%s - %s\n' "$out" "$src"
