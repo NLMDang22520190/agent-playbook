@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.23.2 - 2026-10-12
+- **The executable bit is checked at commit time.** `role-gate.sh check <any role>` fails with "VIOLATION (mode):
+  PATH lost its executable bit (100755 -> 100644)" for a drop in the work tree or the index, also a rename with
+  unchanged content; `leak-check.sh scan --staged` (what the pre-commit hook runs, so existing installs get it
+  without re-running install-hooks) refuses staged drops and warns on a new `#!` file at 100644. A deliberate change
+  passes with `PB_ALLOW_MODE_CHANGE=path[:path]` (exact paths; a path containing `:` cannot be listed). The tester,
+  implementer and reviewer roles say to check `git diff --raw` after editing, because editor tools drop the bit.
+- **`leak-check --remote NAME`**: ref ownership comes from the remotes' fetch refspecs (longest destination wins, a
+  remote without a fetch line owns `refs/remotes/NAME/`, a tie is scanned), so a nested remote such as `origin/foo` is
+  no longer skipped when pushing to `origin`; revisions go to `git log` on stdin (no Windows 32K command-line limit
+  with thousands of refs).
+- **Eval graders** (`evals/transcript.js`): a heredoc body is not a command unless it is fed to a shell reading stdin
+  (`bash <<EOF`, `sh -s <<EOF`; not `bash -c '...' <<EOF` or `bash script <<EOF`), for src writes and for proof runs;
+  a Bash write of the spec (`cat > .agents/handoff/01-spec.md <<EOF`, also a bare name after `cd` into the handoff
+  folder) counts as the spec write; src first when one command writes both; the heredoc scan stays linear.
+- **Real evals** (results in `evals/results/2026-10-12-claude-code-2.1.296.md`): E15 re-run 8/8 after the v0.23.0
+  fix; E16 5/5, E17 5/5, E19 6/7, E21 5/6 on v0.23.1. E21's FAIL was a grader false FAIL (fixed above), E19's was the
+  agent paraphrasing the feedback line: **the final report now ends with the exact line
+  `**Playbook feedback:** <captured fb- ids or none>`**.
+- **`run-evals.sh --max-cost`** is a guard, not a hard limit: a scenario is skipped when spent + the largest cost so
+  far reaches the cap ("budget: spent X + estimate Y >= cap Z"), an ERROR scenario that reported a cost counts, and
+  `--help` prints the whole header.
+- **run-checks**: `--only modes` reads index modes (`git ls-files -s`) and has its own fixture test; a file glob that
+  matches nothing fails its section ("no files match GLOB"); the GNU-option scanner keeps quote state across lines and
+  handles backticks inside double quotes, ANSI-C quotes, `find -exec {} \; -printf`, `xargs -I {} -r`, comments after
+  `; & | ( )`, and `$GREP`-style tool variables.
+- **Docs-only fast path** also runs `tests/test-update.sh`.
+- **`tools/bsd-check.sh`** tries the next bash 3.2 candidate after a rejected one and names each with its version.
+- **`tools/release.sh`** names the expected and found README counts; **`scripts/mutate.sh`** reaps a run folder
+  without an owner file only after 24 hours.
+- **README**: WSL idle notes (`instanceIdleTimeout`, `vmIdleTimeout`, keeping a process alive) per Microsoft's
+  wsl-config page.
+- Built at Full weight in three parallel lanes, each with an Opus review; reviews found and closed a Windows
+  command-line overflow, a missed nested remote, a quadratic grader path and a scanner comment regression.
+
 ## 0.23.1 - 2026-10-12
 - **`scripts/mutate.sh`**: the owner file now holds the pid and its start time - on Linux the boot-relative start
   ticks from `/proc/PID/stat` (a clock step such as a WSL2 resume does not change them), elsewhere
