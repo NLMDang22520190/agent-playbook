@@ -162,6 +162,138 @@ run bash "$GATE" size --base no-such-ref;       assert_rc "AC2 bad --base exits 
 N="$(mk_tmp)"; cd "$N" || exit 3
 run bash "$GATE" size;                          assert_rc "AC2 outside git exits 3" 3
 
+# ---- v0.24.0 AC1.5 (Full): role-gate.sh size --quick ----
+# Quick limits: 1 production file, 20 changed lines; conf keys quick_max_files / quick_max_lines override; explicit
+# --max-files / --max-lines win over both; over the limit: "over the Quick size limit: escalate to Lite", exit 1.
+# Plain `size` (Lite: 3 files / 100 lines, "escalate to Full") is unchanged.
+echo "AC1.5 size --quick: defaults 1 file / 20 lines (boundary)"
+GLOBAL_CONF="$PLAYBOOK_HOME/.agents/playbook.conf"; mkdir -p "$PLAYBOOK_HOME/.agents"
+qreset() { rm -f "$GLOBAL_CONF"; }
+qrepo() { R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; qreset; }
+# qconf KEY=VAL... -> a tracked project conf (committed, so it is not itself a production-file change)
+qconf() { mkdir -p .agents && printf '%s\n' "$@" > .agents/playbook.conf && git add .agents/playbook.conf && git commit -q -m "conf"; }
+qrepo
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 exactly 1 file / 20 lines exits 0" 0
+assert_contains "AC1.5 prints the Quick limits in the summary" "$OUT" "files: 1/1 lines: 20/20"
+assert_not_contains "AC1.5 no escalation within the limits" "$OUT" "escalate"
+printf 'x\n' >> src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 21 lines exits 1" 1
+assert_contains "AC1.5 over lines: the summary" "$OUT" "files: 1/1 lines: 21/20"
+assert_contains "AC1.5 over lines: escalate to Lite" "$OUT" "over the Quick size limit: escalate to Lite"
+assert_not_contains "AC1.5 over lines: not the Lite message (escalate to Full)" "$OUT" "escalate to Full"
+rm src/a.js
+printf 'a\n' > src/a.js; printf 'b\n' > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 2 files of 1 line each exits 1" 1
+assert_contains "AC1.5 over files: the summary" "$OUT" "files: 2/1 lines: 2/20"
+assert_contains "AC1.5 over files: escalate to Lite" "$OUT" "over the Quick size limit: escalate to Lite"
+
+echo "AC1.5 size --quick: the same plain size passes (Lite is unchanged)"
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 2 files / 2 lines exits 0" 0
+assert_contains "AC1.5 plain size keeps the Lite limits in the summary" "$OUT" "files: 2/3 lines: 2/100"
+rm src/a.js src/b.js
+seq 1 21 > src/a.js
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 1 file / 21 lines exits 0 (Lite limit is 100)" 0
+assert_contains "AC1.5 plain size summary unchanged" "$OUT" "files: 1/3 lines: 21/100 (base=HEAD)"
+seq 1 101 > src/a.js
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 101 lines still exits 1" 1
+assert_contains "AC1.5 plain size still says escalate to Full" "$OUT" "over the Lite size limit: escalate to Full"
+assert_not_contains "AC1.5 plain size never says Quick" "$OUT" "Quick"
+
+echo "AC1.5 size --quick: what is counted (as in plain size)"
+qrepo
+seq 1 300 > tests/big.test.js; seq 1 300 >> tests/app.test.js; seq 1 300 > jest.config.js
+mkdir -p .agents/handoff && seq 1 300 > .agents/handoff/02-tests.md
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 test files and the handoff dir are not counted" 0
+assert_contains "AC1.5 zero production change under --quick" "$OUT" "files: 0/1 lines: 0/20"
+printf '1\n2\n3\n4\n5\n' > src/new.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 an untracked file counts all its lines" "$OUT" "files: 1/1 lines: 5/20"
+rm src/new.js
+rm src/app.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 a deleted file counts its deleted lines" "$OUT" "files: 1/1 lines: 1/20"
+git checkout -q -- src/app.js
+printf 'a\0b\0c' > src/logo.bin
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 a binary file counts as 1 line" "$OUT" "files: 1/1 lines: 1/20"
+rm src/logo.bin
+printf 'module.exports = 2;\n' > src/app.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 one changed line counts 2 (1 added + 1 deleted)" "$OUT" "files: 1/1 lines: 2/20"
+git checkout -q -- src/app.js
+
+echo "AC1.5 size --quick: --base counts committed and staged changes"
+qrepo
+BASE="$(git rev-parse HEAD)"
+seq 1 12 > src/app.js; git add -A && git commit -q -m "feat"
+seq 1 5 > src/app.js; git add src/app.js
+run bash "$GATE" size --quick --base "$BASE";   assert_rc "AC1.5 --quick --base: one file, within 20 lines" 0
+assert_contains "AC1.5 --base: net change against the base (+5 -1)" "$OUT" "files: 1/1 lines: 6/20"
+seq 1 25 > src/app.js
+run bash "$GATE" size --base "$BASE" --quick;   assert_rc "AC1.5 --base REF --quick (flag order swapped) over 20 lines exits 1" 1
+assert_contains "AC1.5 --base REF --quick: Quick message" "$OUT" "over the Quick size limit: escalate to Lite"
+
+echo "AC1.5 size --quick: conf keys quick_max_files / quick_max_lines"
+qrepo
+qconf quick_max_files=2 quick_max_lines=50
+seq 1 25 > src/a.js; seq 1 25 > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 project conf raises the limits to 2 files / 50 lines: exits 0" 0
+assert_contains "AC1.5 conf limits shown" "$OUT" "files: 2/2 lines: 50/50"
+printf 'x\n' > src/c.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 conf limits: a third file exits 1" 1
+assert_contains "AC1.5 conf limits: over files summary" "$OUT" "files: 3/2 lines: 51/50"
+assert_contains "AC1.5 conf limits: Quick message" "$OUT" "over the Quick size limit: escalate to Lite"
+rm src/c.js; printf 'y\n' >> src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 conf limits: 51 lines exits 1" 1
+qrepo
+qconf quick_max_files=1
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 only quick_max_files set: lines keep the default 20" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_lines=5
+printf 'a\nb\nc\nd\ne\nf\n' > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 quick_max_lines=5 lowers the limit: 6 lines exits 1" 1
+assert_contains "AC1.5 only quick_max_lines set: files keep the default 1" "$OUT" "files: 1/1 lines: 6/5"
+run bash "$GATE" size;                          assert_rc "AC1.5 the quick_* keys do not change plain size" 0
+assert_contains "AC1.5 plain size ignores quick_max_lines" "$OUT" "files: 1/3 lines: 6/100"
+qrepo
+printf 'quick_max_files=3\nquick_max_lines=40\n' > "$GLOBAL_CONF"
+seq 1 30 > src/a.js; seq 1 5 > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 the global conf also sets the limits" 0
+assert_contains "AC1.5 global conf limits shown" "$OUT" "files: 2/3 lines: 35/40"
+qconf quick_max_files=1
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 the project conf beats the global conf (files 1)" 1
+assert_contains "AC1.5 project quick_max_files wins, global quick_max_lines still applies" "$OUT" "files: 2/1 lines: 35/40"
+qreset
+
+echo "AC1.5 size --quick: explicit --max-files / --max-lines win"
+qrepo
+qconf quick_max_files=1 quick_max_lines=10
+seq 1 30 > src/a.js; seq 1 30 > src/b.js; seq 1 30 > src/c.js
+run bash "$GATE" size --quick --max-files 3 --max-lines 100; assert_rc "AC1.5 explicit limits beat both the defaults and the conf" 0
+assert_contains "AC1.5 explicit limits shown" "$OUT" "files: 3/3 lines: 90/100"
+run bash "$GATE" size --quick --max-files 3;    assert_rc "AC1.5 --max-files alone: lines still come from the conf (10)" 1
+assert_contains "AC1.5 explicit files + conf lines" "$OUT" "files: 3/3 lines: 90/10"
+run bash "$GATE" size --quick --max-lines 100;  assert_rc "AC1.5 --max-lines alone: files still come from the conf (1)" 1
+assert_contains "AC1.5 conf files + explicit lines" "$OUT" "files: 3/1 lines: 90/100"
+run bash "$GATE" size --max-lines 100 --quick --max-files 3; assert_rc "AC1.5 flags in any order" 0
+rm src/b.js src/c.js; seq 1 5 > src/a.js
+run bash "$GATE" size --quick --max-lines 3;    assert_rc "AC1.5 an explicit limit lower than the conf is enforced" 1
+assert_contains "AC1.5 explicit lower limit shown" "$OUT" "files: 1/1 lines: 5/3"
+qrepo
+seq 1 20 > src/a.js; seq 1 1 > src/b.js
+run bash "$GATE" size --quick --max-files 2;    assert_rc "AC1.5 --max-files 2 alone, no conf: 21 lines vs default 20 exits 1" 1
+assert_contains "AC1.5 explicit files + default lines" "$OUT" "files: 2/2 lines: 21/20"
+run bash "$GATE" size --quick --max-files 2 --max-lines 21; assert_rc "AC1.5 explicit --max-lines 21 passes" 0
+
+echo "AC1.5 size --quick: errors and usage"
+qrepo
+run bash "$GATE" size --quick --max-files;      assert_rc "AC1.5 --quick --max-files without value exits 2" 2
+run bash "$GATE" size --quick --max-lines abc;  assert_rc "AC1.5 --quick non-numeric --max-lines exits 2" 2
+run bash "$GATE" size --quick --bogus;          assert_rc "AC1.5 --quick with an unknown option exits 2" 2
+run bash "$GATE" size --quick --base no-such-ref; assert_rc "AC1.5 --quick with a bad --base exits 3" 3
+N="$(mk_tmp)"; cd "$N" || exit 3
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 --quick outside git exits 3" 3
+run bash "$GATE" no-such-command;               assert_rc "AC1.5 usage: an unknown command exits 2" 2
+assert_contains "AC1.5 the usage line mentions --quick" "$OUT" "--quick"
+
 
 # ---- v0.9.0 #4: test infrastructure has its own role (test_infra_regex) ----
 INFRA_RE='^(tests/(lib|run-all)\.sh$|ci/)'

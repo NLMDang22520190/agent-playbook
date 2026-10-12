@@ -66,4 +66,97 @@ else
   t_ok "AC15.1 review: 'string literal' alone is not the rule"
 fi
 
+
+
+# ---- v0.24.0 (Lite, content): Quick weight, binding models, release rules in SKILL.md ----
+RELEASE="$PB_ROOT/skills/playbook-tdd/references/release.md"
+QUICKMD="$PB_ROOT/skills/playbook-tdd/references/quick.md"
+REVIEWER="$PB_ROOT/skills/playbook-tdd/roles/reviewer.md"
+
+echo "v0.24.0 AC1.1 SKILL.md: a Quick row in Pick the weight"
+QROW="$(grep -E '^\| \*\*Quick\*\*' "$SKILL" 2>/dev/null | head -n 1)"
+if [ -n "$QROW" ]; then t_ok "AC1.1 the Pick the weight table has a Quick row"; else t_bad "AC1.1 the Pick the weight table has a Quick row" "no line starting '| **Quick**' in $SKILL"; fi
+chk "AC1.1 the Quick row names the 1 file limit" "$QROW" '(≤|<=|at most|up to) ?1 (production )?file|1 production file'
+chk "AC1.1 the Quick row names the 20 line limit" "$QROW" '(≤|<=|at most|up to) ?20 (changed )?lines|20 changed lines'
+chk "AC1.1 the Quick row says nothing from the Full column" "$QROW" 'nothing from the Full column'
+chk "AC1.1 the Quick row says the user can ask for quick" "$QROW" 'user (asks|says|requests)[^|]{0,40}quick|asks? for quick|says? quick'
+chk "AC1.1 the Quick row points to references/quick.md" "$QROW" 'references/quick\.md'
+LROW="$(grep -E '^\| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1)"
+chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '≤ 3 production files'
+chk "AC1.1 regression: the Lite row keeps its 100 line limit" "$LROW" '≤ 100 changed lines'
+l_quick="$(grep -n '^| \*\*Quick\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+l_lite="$(grep -n '^| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+l_full="$(grep -n '^| \*\*Full\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$l_quick" ] && [ -n "$l_lite" ] && [ -n "$l_full" ] && [ "$l_quick" -gt "$l_full" ] && [ "$l_quick" -lt "$l_lite" ]; then t_ok "AC1.1 the Quick row sits between Full and Lite"
+else t_bad "AC1.1 the Quick row sits between Full and Lite" "full=[$l_full] quick=[$l_quick] lite=[$l_lite]"; fi
+chk "AC1.4/R4 the weight section says Quick escalates to Lite the same way" "$WEIGHT" 'Quick escalates to Lite the same way'
+chk "AC1.1 the Pick the weight section still says Full when unsure" "$WEIGHT" 'When unsure,? choose Full|choose Full'
+
+echo "v0.24.0 AC1.2/AC3 SKILL.md points to references/quick.md and references/release.md and stays within its line budget"
+if grep -q 'references/quick\.md' "$SKILL"; then t_ok "SKILL.md points to references/quick.md"; else t_bad "SKILL.md points to references/quick.md" "not found"; fi
+if grep -q 'references/release\.md' "$SKILL"; then t_ok "AC3 SKILL.md points to references/release.md"; else t_bad "AC3 SKILL.md points to references/release.md" "not found"; fi
+NREL="$(grep -c 'release\.md' "$SKILL")"
+if [ "$NREL" -ge 1 ] && [ "$NREL" -le 4 ]; then t_ok "AC3 SKILL.md has at most 4 lines pointing to release.md ($NREL)"; else t_bad "AC3 SKILL.md has 1-4 lines pointing to release.md" "$NREL lines"; fi
+assert_file "references/quick.md exists" "$QUICKMD"
+assert_file "references/release.md exists" "$RELEASE"
+NL="$(wc -l < "$SKILL" | tr -d ' ')"
+if [ "$NL" -le 296 ]; then t_ok "R9 SKILL.md has at most 296 lines ($NL)"; else t_bad "R9 SKILL.md has at most 296 lines" "$NL lines"; fi
+MAXLEN="$(awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }' "$SKILL")"
+if [ "$MAXLEN" -le 540 ]; then t_ok "R9 no line of SKILL.md is longer than the current longest (540 chars): no long joined lines to dodge the cap ($MAXLEN)"; else t_bad "R9 no joined long lines" "longest line $MAXLEN chars"; fi
+
+echo "v0.24.0 AC2.5/R7/R9 SKILL.md: a configured model is binding, the plan line, ask once, headless, effort"
+ROLES="$(flat "$SKILL" '^## Starting roles per harness' 2)"
+if [ -n "$ROLES" ]; then t_ok "the Starting roles per harness section exists"; else t_bad "the Starting roles per harness section exists" "not found"; fi
+chk "AC2.5 a configured model is binding" "$ROLES" 'configured model[^.]{0,60}binding|binding[^.]{0,60}(configured )?model'
+chk "AC2.5 the agent never upgrades or downgrades it on its own judgement" "$ROLES" 'never (upgrade|downgrade)[^.]{0,80}(own|its) (judg|decision)|never upgrades? or downgrades?'
+chk "AC2.5 'hard' or 'Full' is not a reason to change the model" "$ROLES" '(hard|Full)[^.]{0,80}not a reason|not a reason[^.]{0,80}(hard|Full)'
+chk "AC2.5 it prints the role-model.sh plan line before starting roles" "$ROLES" 'role-model\.sh plan|`plan` line|plan line'
+chk "AC2.5 it asks the user ONCE" "$ROLES" 'ask(s)? the user once|ask once|once, with'
+chk "AC2.5 the reason and the cost difference go in the question" "$ROLES" 'reason[^.]{0,60}cost|cost[^.]{0,60}reason'
+chk "AC2.5 ask when it wants a different model" "$ROLES" 'wants? a different model'
+chk "AC2.5 ask when a role resolves to session on a Full task" "$ROLES" 'resolves? to session[^.]{0,60}Full|Full[^.]{0,60}resolves? to session'
+chk "AC2.5 ask when confirm_models=always" "$ROLES" 'confirm_models=always|confirm_models is always'
+chk "AC2.5 never ask when confirm_models=never" "$ROLES" 'confirm_models=never[^.]{0,80}never ask|never ask[^.]{0,80}confirm_models=never|(never|not) asks?[^.]{0,60}confirm_models=never'
+chk "AC2.5 headless: use the conf, never upgrade" "$ROLES" 'headless[^.]{0,120}(use the conf|conf)[^.]{0,80}never upgrade|headless[^.]{0,160}never upgrade'
+chk "R7 the effort is passed where the harness supports it" "$ROLES" 'effort[^.]{0,160}(Agent|codex exec|OpenCode)|(Agent|codex exec|OpenCode)[^.]{0,160}effort'
+chk "R7 the Claude Code Agent effort parameter" "$ROLES" 'Agent[^.]{0,60}`?effort`? parameter|`effort` parameter'
+chk "R7 codex exec -c model_reasoning_effort" "$ROLES" 'model_reasoning_effort'
+chk "R7 otherwise the effort is only printed" "$ROLES" '(else|otherwise)[^.]{0,60}print[^.]{0,40}(only|it)|print(ed)? (it )?only'
+chk "R7 an unknown confirm_models value is treated as on-change" "$ROLES" 'unknown[^.]{0,80}on-change|on-change[^.]{0,80}unknown'
+chk "AC2.5 on-change is the default" "$ROLES" 'on-change[^.]{0,60}default|default[^.]{0,60}on-change'
+chk "AC2.5 regression: the resolve-each-role-model rule stays" "$ROLES" 'role-model\.sh <role> --harness <h>'
+
+echo "v0.24.0 AC3.1-AC3.5 (R10, R11) references/release.md holds the release speed rules"
+REL="$(tr '\n' ' ' < "$RELEASE" 2>/dev/null)"
+if [ -n "$REL" ]; then t_ok "release.md is readable"; else t_bad "release.md is readable" "missing or empty"; fi
+chk "AC3.1 review rounds are capped at 2" "$REL" '(capped at|cap of|at most|max(imum)?( of)?) (2|two)[^.]{0,60}(review )?rounds?|(review )?rounds? (are |is )?capped at (2|two)'
+chk "AC3.1 per lane or slice" "$REL" 'per lane or slice|per lane or per slice'
+chk "AC3.1/R10 round 3 or later: only a MAJOR introduced by this change is fixed" "$REL" '(round 3|3rd round|third round)[^.]{0,200}MAJOR[^.]{0,80}introduced|MAJOR[^.]{0,80}introduced[^.]{0,200}(round 3|3rd round|third round)'
+chk "R10 that MAJOR gets one more round" "$REL" 'one more round'
+chk "AC3.1 every other finding goes to Found, not fixed" "$REL" 'Found, not fixed'
+chk "R10 the cap is for Phase 3 code-review rounds" "$REL" 'Phase 3'
+chk "R10 spec-review and dispute limits are unchanged" "$REL" 'spec-review[^.]{0,80}dispute[^.]{0,60}unchanged|dispute[^.]{0,80}spec-review[^.]{0,60}unchanged|(spec review|spec-review) and dispute limits are unchanged'
+chk "AC3.2 the reviewer marks findings introduced or pre-existing" "$REL" 'introduced[^.]{0,60}pre-existing|pre-existing[^.]{0,60}introduced'
+chk "AC3.2 pre-existing means also present at the base sha" "$REL" 'pre-existing[^.]{0,160}base sha|base sha[^.]{0,160}pre-existing'
+chk "AC3.2 pre-existing findings go to the queue" "$REL" 'pre-existing[^.]{0,120}(queue|Found, not fixed)'
+chk "AC3.2 a pre-existing security MAJOR is raised to the user in one line" "$REL" 'pre-existing[^.]{0,60}security[^.]{0,60}MAJOR[^.]{0,200}(one line|one-line)'
+chk "AC3.2 fix now or queue, not fixed silently" "$REL" 'fix now or queue|fix now[^.]{0,20}queue'
+chk "AC3.3 the weight is chosen per item or slice, not per release" "$REL" 'per item or (per )?slice[^.]{0,80}not per release|not per release'
+chk "AC3.3 one release may hold Full and Lite items" "$REL" 'Full and Lite items|Full and Lite'
+chk "AC3.3/R11 Full for security and core logic" "$REL" 'Full for[^.;]{0,40}security[^.;]{0,40}core logic'
+chk "AC3.3/R11 Lite for docs, wording, nits, test refactors" "$REL" 'Lite for[^.]{0,30}docs[^.]{0,30}wording[^.]{0,30}nits[^.]{0,30}test refactors'
+chk "AC3.4 slow platform runs happen once before the PR" "$REL" 'slow platform[^.]{0,160}once[^.]{0,60}before the PR|once before the PR'
+chk "AC3.4 the example: Windows Git Bash suites" "$REL" 'Windows Git Bash'
+chk "AC3.4 not every fix round" "$REL" 'not every fix round|rather than every fix round'
+chk "AC3.4 CI is the cross-platform gate" "$REL" 'CI is the cross-platform gate'
+chk "AC3.5 prefer releases of 3-5 items" "$REL" 'prefer releases of 3[-–]5 items|releases of 3[-–]5 items'
+
+echo "v0.24.0 AC3.2/R11 roles/reviewer.md: introduced / pre-existing, checked against the base sha"
+RV="$(tr '\n' ' ' < "$REVIEWER" 2>/dev/null)"
+chk "R11 reviewer.md marks a finding introduced" "$RV" 'introduced'
+chk "R11 reviewer.md marks a finding pre-existing" "$RV" 'pre-existing'
+chk "R11 reviewer.md checks the base sha for a pre-existing finding" "$RV" 'pre-existing[^.]{0,200}(base sha|BASE_SHA)|(base sha|BASE_SHA)[^.]{0,200}pre-existing'
+chk "R11 reviewer.md: the marking is for every finding" "$RV" 'each finding[^.]{0,100}(introduced|pre-existing)|every finding[^.]{0,100}(introduced|pre-existing)|(introduced|pre-existing)[^.]{0,100}each finding'
+chk "AC3.2 reviewer.md: regression, no evidence no finding stays" "$RV" 'No evidence, no finding'
+
 t_summary

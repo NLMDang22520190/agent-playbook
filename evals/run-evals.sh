@@ -27,7 +27,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line

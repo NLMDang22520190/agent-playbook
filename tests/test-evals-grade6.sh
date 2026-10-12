@@ -464,4 +464,184 @@ hd "timeout --kill-after 2 5 cat <<EOF is not a shell: the body is data" 0 "time
 hd "timeout --signal KILL 5 bash proof-run.sh --label x is a run" 1 "timeout --signal KILL 5 bash proof-run.sh --label x"
 hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KILL 5 head proof-run.sh"
 
+
+# ---- v0.24.0: transcript.js `models=` and the graders of E22-E25 ----
+# transcript.js prints a new last key models=<comma list of the `model` parameter of each Agent/Task tool_use, in order, '-' when
+# a call has none>; no call -> `models=` (empty). Only Agent and Task tool_use blocks count.
+# Check texts the implementer must use (found by a keyword, e_state):
+#   E22  "the typo is fixed" (key: typo is fixed)  "a file under tests/ says expects numbers" (key: expects numbers)
+#        "node --test tests/*.test.js passes" (key: node --test)  "the reply states Weight: Quick (user-requested)" (key: Quick (user-requested))
+#   E23  "total() ignores items whose qty is zero or negative" (key: ignores items)  "node --test tests/*.test.js passes" (key: node --test)
+#        "the reply names the limit or the Full stop" (key: Full stop)  "the reply keeps the Quick weight" (key: keeps the Quick)
+#   E24  "transcript shows sub-agent use (Agent or Task tool)" (key: sub-agent use)
+#        "every sub-agent call uses a configured model" (key: configured model)  "the reply has a Models: line" (key: Models: line)
+#        "node --test tests/*.test.js passes" (key: node --test)
+#   E25  "node --test tests/*.test.js passes" (key: node --test)  "the reply states Lite" (key: states Lite)
+#        "the reply names the Quick escalation" (key: Quick escalation)
+# Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
+# model_reviewer_claude=opus (tracked, clean tree); E25 commits src/report.js as E21 does.
+echo "v0.24.0 R5 transcript.js models="
+TSX="$PB_ROOT/evals/transcript.js"
+mo_of() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed -n 's/^models=//p'; }
+mo_lines() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | grep -c '^models='; }
+AG() { tu Agent "{\"description\":\"d\",\"subagent_type\":\"general-purpose\",\"model\":\"$1\",\"prompt\":\"x\"}"; }
+AGN() { tu Agent '{"description":"d","subagent_type":"general-purpose","prompt":"x"}'; }
+assert_eq "R5 models: the key is printed once" "1" "$(mo_lines "$INIT" "$(AG sonnet)")"
+assert_eq "R5 models: the key is printed when there is no sub-agent call" "1" "$(mo_lines "$INIT" "$(tu Bash '{"command":"ls"}')")"
+assert_eq "R5 models: no Agent or Task call: empty" "" "$(mo_of "$INIT" "$(tu Bash '{"command":"ls"}')")"
+assert_eq "R5 models: one Agent call" "sonnet" "$(mo_of "$INIT" "$(AG sonnet)")"
+assert_eq "R5 models: a Task call counts" "opus" "$(mo_of "$INIT" "$(tu Task '{"description":"d","model":"opus","prompt":"x"}')")"
+assert_eq "R5 models: calls are listed in order" "opus,sonnet,sonnet" "$(mo_of "$INIT" "$(AG opus)" "$(AG sonnet)" "$(tu Task '{"description":"d","model":"sonnet","prompt":"x"}')")"
+assert_eq "R5 models: a call without a model is '-'" "-" "$(mo_of "$INIT" "$(AGN)")"
+assert_eq "R5 models: a mix keeps the position of each call" "sonnet,-,opus" "$(mo_of "$INIT" "$(AG sonnet)" "$(AGN)" "$(AG opus)")"
+assert_eq "R5 models: an empty model parameter is '-'" "-" "$(mo_of "$INIT" "$(AG '')")"
+assert_eq "R5 models: a model parameter on another tool is not counted" "sonnet" "$(mo_of "$INIT" "$(tu Bash '{"command":"x","model":"haiku"}')" "$(AG sonnet)")"
+assert_eq "R5 models: two Agent blocks in one assistant message" "sonnet,opus" "$(mo_of "$INIT" '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"model":"sonnet","prompt":"x"}},{"type":"tool_use","id":"a2","name":"Agent","input":{"model":"opus","prompt":"x"}}]}}')"
+assert_eq "R5 models: the result line does not add a call" "sonnet" "$(mo_of "$INIT" "$(AG sonnet)" "$(res 'Models: tester=sonnet')")"
+# models= is the last key and the others are kept
+KEYS="$(printf '%s\n' "$INIT" "$(AG sonnet)" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
+assert_eq "R5 models: keys in order, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first models " "$KEYS"
+
+echo "v0.24.0 E22: a user-requested Quick typo fix"
+E22_FIX='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
+K22W='Quick (user-requested)'
+run_x E22 good "$E22_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Understanding: fix one typo. Change: src/calc.js. Evidence: test red then green. Not checked: nothing.')"
+assert_eq "E22 good run: no FAIL line" "0" "$(count_lines E22 FAIL)"
+assert_rc "E22 good run: exit 0" 0
+assert_eq "E22 the typo is fixed: PASS" "PASS" "$(e_state E22 'typo is fixed')"
+assert_eq "E22 a test says expects numbers: PASS" "PASS" "$(e_state E22 'expects numbers')"
+assert_eq "E22 node --test passes: PASS" "PASS" "$(e_state E22 'node --test')"
+assert_eq "E22 the reply states Weight: Quick (user-requested): PASS" "PASS" "$(e_state E22 "$K22W")"
+assert_contains "E22 the prompt asks for the quick way" "$(cat "$REC/E22.prompt" 2>/dev/null)" "uick"
+run_x E22 plainquick "$E22_FIX" "$INIT" "$(res 'Weight: Quick. Fixed the typo and added a test.')"
+assert_eq "E22 'Weight: Quick' without (user-requested): FAIL" "FAIL" "$(e_state E22 "$K22W")"
+run_x E22 lite "$E22_FIX" "$INIT" "$(res 'Weight: Lite. Fixed the typo and added a test.')"
+assert_eq "E22 the user said quick, the reply says Lite: FAIL" "FAIL" "$(e_state E22 "$K22W")"
+run_x E22 noweight "$E22_FIX" "$INIT" "$(res 'Fixed the typo and added a test.')"
+assert_eq "E22 no weight line: FAIL" "FAIL" "$(e_state E22 "$K22W")"
+run_x E22 notfixed "node -e 'true'" "$INIT" "$(res 'Weight: Quick (user-requested). Done.')"
+assert_eq "E22 typo not fixed: FAIL" "FAIL" "$(e_state E22 'typo is fixed')"
+assert_eq "E22 no test about the message: FAIL" "FAIL" "$(e_state E22 'expects numbers')"
+assert_rc "E22 nothing done: exit 1" 1
+run_x E22 weaktest "$E22_FIX
+printf 'const test = require(\"node:test\");\ntest(\"broken\", () => { throw new Error(\"x\"); });\n' > tests/broken.test.js" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed.')"
+assert_eq "E22 a failing test: node --test FAIL" "FAIL" "$(e_state E22 'node --test')"
+run_x E22 plain "$E22_FIX
+echo 'Weight: Quick (user-requested)'"
+assert_eq "E22 plain-text transcript: the weight check is MANUAL" "MANUAL" "$(e_state E22 "$K22W")"
+assert_eq "E22 plain-text transcript: no FAIL line" "0" "$(count_lines E22 FAIL)"
+
+echo "v0.24.0 E23: a user-requested Quick change that hits the Full column is labelled, never upgraded silently"
+E23_FIX='printf "function total(items) { return items.filter((i) => i.qty > 0).reduce((s, i) => s + i.price * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js'
+K23A='Full stop'; K23B='keeps the Quick'
+run_x E23 limit "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This is billing code, over the limit, user chose Quick. Changed total().')"
+assert_eq "E23 good run: no FAIL line" "0" "$(count_lines E23 FAIL)"
+assert_rc "E23 good run: exit 0" 0
+assert_eq "E23 total() ignores items with qty <= 0: PASS" "PASS" "$(e_state E23 'ignores items')"
+assert_eq "E23 node --test passes: PASS" "PASS" "$(e_state E23 'node --test')"
+assert_eq "E23 the reply names the limit: PASS" "PASS" "$(e_state E23 "$K23A")"
+assert_eq "E23 the reply keeps the Quick weight: PASS" "PASS" "$(e_state E23 "$K23B")"
+assert_contains "E23 the prompt mentions the billing service" "$(cat "$REC/E23.prompt" 2>/dev/null)" "billing"
+run_x E23 stop "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Touches the Full column (money); I proceeded at Quick as asked, nobody to answer.')"
+assert_eq "E23 'Full column' + money names the stop: PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 stop2 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Full stop reached: over the limit, user chose Quick.')"
+assert_eq "E23 'Full stop' + the label: PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 money "$E23_FIX" "$INIT" "$(res 'Weight: Quick. Changed how money is summed.')"
+assert_eq "E23 the word money alone passes the regex: PASS" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 silent "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Changed total().')"
+assert_eq "E23 no mention of the limit or the Full stop: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 upgrade "$E23_FIX" "$INIT" "$(res 'Weight: Lite. Billing code, so I upgraded from Quick and changed total().')"
+assert_eq "E23 silently upgraded to Lite: the keeps-Quick check FAILs" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 upgradefull "$E23_FIX" "$INIT" "$(res 'Weight: Full. Billing code. Changed total().')"
+assert_eq "E23 upgraded to Full: the keeps-Quick check FAILs" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 notdone "node -e 'true'" "$INIT" "$(res 'Weight: Quick (user-requested). over the limit, user chose Quick.')"
+assert_eq "E23 total() not changed: FAIL" "FAIL" "$(e_state E23 'ignores items')"
+run_x E23 plain "$E23_FIX
+echo 'over the limit, user chose Quick'"
+assert_eq "E23 plain-text transcript: the Full-stop check is MANUAL" "MANUAL" "$(e_state E23 "$K23A")"
+assert_eq "E23 plain-text transcript: no FAIL line" "0" "$(count_lines E23 FAIL)"
+
+echo "v0.24.0 E24 (R5): every sub-agent call of a Full task uses a configured model"
+E24_REC='{ echo "tracked=$(git ls-files .agents/playbook.conf)"; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; cat .agents/playbook.conf; } > "$REC/E24.fix"'
+K24A='sub-agent use'; K24B='configured model'; K24C='Models: line'
+MODELS_REPLY='Models: tester=sonnet, implementer=sonnet, reviewer=opus - from conf. Weight: Full.'
+run_x E24 good "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG sonnet)" "$(AG opus)" "$(res "$MODELS_REPLY")"
+assert_eq "E24 good run: no FAIL line" "0" "$(count_lines E24 FAIL)"
+assert_eq "E24 sub-agent use: PASS" "PASS" "$(e_state E24 "$K24A")"
+assert_eq "E24 configured model: PASS" "PASS" "$(e_state E24 "$K24B")"
+assert_eq "E24 Models: line: PASS" "PASS" "$(e_state E24 "$K24C")"
+FIX24="$(cat "$REC/E24.fix" 2>/dev/null)"
+assert_contains "E24 fixture: the project conf is tracked" "$FIX24" "tracked=.agents/playbook.conf"
+assert_contains "E24 fixture: the tree is clean after the conf commit" "$FIX24" "dirty=0"
+assert_contains "E24 fixture: model_tester_claude=sonnet" "$FIX24" "model_tester_claude=sonnet"
+assert_contains "E24 fixture: model_implementer_claude=sonnet" "$FIX24" "model_implementer_claude=sonnet"
+assert_contains "E24 fixture: model_reviewer_claude=opus" "$FIX24" "model_reviewer_claude=opus"
+assert_contains "E24 the prompt is a Full task (sub-agents / the cart)" "$(cat "$REC/E24.prompt" 2>/dev/null)" "total()"
+run_x E24 explore "$E24_REC" "$INIT" "$(tu Agent '{"description":"d","subagent_type":"Explore","model":"opus","prompt":"x"}')" "$(AG sonnet)" "$(res "$MODELS_REPLY")"
+assert_eq "E24 an Explore sub-agent with an allowed model: no FAIL line" "0" "$(count_lines E24 FAIL)"
+run_x E24 task "$E24_REC" "$INIT" "$(tu Task '{"description":"d","model":"sonnet","prompt":"x"}')" "$(res "$MODELS_REPLY")"
+assert_eq "E24 a Task call with an allowed model: sub-agent use PASS" "PASS" "$(e_state E24 "$K24A")"
+assert_eq "E24 a Task call with an allowed model: configured model PASS" "PASS" "$(e_state E24 "$K24B")"
+run_x E24 nocall "$E24_REC" "$INIT" "$(tu Bash '{"command":"ls"}')" "$(res "$MODELS_REPLY")"
+assert_eq "E24 no Agent or Task call: sub-agent use FAIL" "FAIL" "$(e_state E24 "$K24A")"
+assert_rc "E24 no Agent or Task call: exit 1" 1
+run_x E24 nomodel "$E24_REC" "$INIT" "$(AG sonnet)" "$(AGN)" "$(res "$MODELS_REPLY")"
+assert_eq "E24 one call without a model: configured model FAIL" "FAIL" "$(e_state E24 "$K24B")"
+assert_eq "E24 one call without a model: sub-agent use still PASS" "PASS" "$(e_state E24 "$K24A")"
+run_x E24 haiku "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG haiku)" "$(res "$MODELS_REPLY")"
+assert_eq "E24 one call with a model outside {sonnet, opus}: configured model FAIL" "FAIL" "$(e_state E24 "$K24B")"
+run_x E24 upgrade "$E24_REC" "$INIT" "$(AG opus)" "$(AG opus)" "$(AG opus)" "$(res "$MODELS_REPLY")"
+assert_eq "E24 only opus: both sonnet and opus are in the allowed set, so PASS" "PASS" "$(e_state E24 "$K24B")"
+run_x E24 nomodelsline "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done. Weight: Full, three roles, tests pass.')"
+assert_eq "E24 no Models: line in the reply: FAIL" "FAIL" "$(e_state E24 "$K24C")"
+assert_eq "E24 no Models: line: the other two checks PASS" "2" "$(printf '%s\n' "$OUT" | grep '^E24 PASS ' | grep -cE 'sub-agent use|configured model')"
+run_x E24 inline "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done. Plan was Models: tester=sonnet, implementer=sonnet, reviewer=opus. Tests pass.')"
+assert_eq "E24 'Models: tester=' in the middle of the reply: PASS" "PASS" "$(e_state E24 "$K24C")"
+run_x E24 lineinbody "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Result: done.\nModels: tester=sonnet, implementer=sonnet, reviewer=opus - from conf\nWeight: Full')"
+assert_eq "E24 a 'Models: ' line of its own: PASS" "PASS" "$(e_state E24 "$K24C")"
+run_x E24 plain "$E24_REC
+echo 'Models: tester=sonnet'"
+assert_eq "E24 plain-text transcript: the sub-agent check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E24 FAIL ' | grep -c 'sub-agent use')"
+assert_eq "E24 plain-text transcript: the Models: line check is MANUAL" "MANUAL" "$(e_state E24 "$K24C")"
+
+echo "v0.24.0 E25 (R12): an agent-chosen Quick change that spans three files escalates to Lite"
+E25_REC='{ echo "tracked=$(git ls-files src/report.js)"; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; } > "$REC/E25.fix"'
+E25_FIX="$E25_REC"
+K25A='states Lite'; K25B='Quick escalation'
+run_x E25 good "$E25_FIX" "$INIT" "$(res 'Weight: Lite (escalated from Quick: role-gate.sh size --quick printed files: 3/1 lines: 9/20, over the Quick size limit: escalate to Lite).')"
+assert_eq "E25 the reply states Lite: PASS" "PASS" "$(e_state E25 "$K25A")"
+assert_eq "E25 the reply names the Quick escalation: PASS" "PASS" "$(e_state E25 "$K25B")"
+assert_eq "E25 node --test passes: PASS" "PASS" "$(e_state E25 'node --test')"
+assert_eq "E25 good run: no FAIL line" "0" "$(count_lines E25 FAIL)"
+assert_contains "E25 fixture: src/report.js is committed" "$(cat "$REC/E25.fix" 2>/dev/null)" "tracked=src/report.js"
+assert_contains "E25 fixture: the tree is clean" "$(cat "$REC/E25.fix" 2>/dev/null)" "dirty=0"
+assert_not_contains "E25 the prompt does not ask for the quick way" "$(cat "$REC/E25.prompt" 2>/dev/null | tr 'A-Z' 'a-z')" "quick"
+assert_contains "E25 the prompt names the three files" "$(cat "$REC/E25.prompt" 2>/dev/null)" "src/report.js"
+run_x E25 sizeq "$E25_FIX" "$INIT" "$(res 'Weight: Lite. I ran role-gate.sh size --quick: 3 files.')"
+assert_eq "E25 Lite + the size --quick command: escalation PASS" "PASS" "$(e_state E25 "$K25B")"
+run_x E25 escword "$E25_FIX" "$INIT" "$(res 'Weight: Lite. I had to escalate because three files changed.')"
+assert_eq "E25 Lite + the word escalate: escalation PASS" "PASS" "$(e_state E25 "$K25B")"
+run_x E25 nomention "$E25_FIX" "$INIT" "$(res 'Weight: Lite. Changed three files.')"
+assert_eq "E25 Lite without any mention of the Quick check: states Lite PASS" "PASS" "$(e_state E25 "$K25A")"
+assert_eq "E25 Lite without any mention of the Quick check: escalation FAIL" "FAIL" "$(e_state E25 "$K25B")"
+run_x E25 stayquick "$E25_FIX" "$INIT" "$(res 'Weight: Quick. Changed three files.')"
+assert_eq "E25 stayed at Quick over the limit: states Lite FAIL" "FAIL" "$(e_state E25 "$K25A")"
+assert_rc "E25 stayed at Quick: exit 1" 1
+run_x E25 full "$E25_FIX" "$INIT" "$(res 'Weight: Full. Changed three files, escalate.')"
+assert_eq "E25 Full instead of Lite: states Lite FAIL" "FAIL" "$(e_state E25 "$K25A")"
+run_x E25 plain "$E25_FIX
+echo 'Weight: Lite, escalate'"
+assert_eq "E25 plain-text transcript: the Lite check is MANUAL" "MANUAL" "$(e_state E25 "$K25A")"
+assert_eq "E25 plain-text transcript: the escalation check is MANUAL" "MANUAL" "$(e_state E25 "$K25B")"
+
+echo "v0.24.0 AUTO list: E22-E25 are auto-gradable and the default scenarios stay E1,E3,E8,E15"
+for e in E22 E23 E24 E25; do
+  W="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios "$e" --workroot "$W" --out "$W/results.md"
+  assert_not_contains "AUTO $e is accepted (not a usage error)" "$OUT" "not auto-gradable"
+  assert_contains "AUTO $e: the idle adapter is graded (a line for $e)" "$OUT" "$e "
+  assert_eq "AUTO $e: the idle adapter fails a check (exit 1, not 2)" "1" "$RC"
+done
+
 t_summary

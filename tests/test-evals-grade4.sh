@@ -45,13 +45,13 @@ printf "const test = require(\"node:test\");\nconst assert = require(\"node:asse
 MUL_OK='printf "function multiply(a, b) { return a * b; }\nmodule.exports.multiply = multiply;\n" >> src/calc.js
 printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { multiply } = require(\"../src/calc\");\ntest(\"multiply\", () => { assert.strictEqual(multiply(3, 4), 12); });\n" > tests/multiply.test.js'
 
-run_x E15 fbnone "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite (one-line reversible fix). Fixed the typo and added a test. Playbook feedback: none')"
+run_x E15 fbnone "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite (one-line reversible fix), no independent review. Fixed the typo and added a test. Playbook feedback: none')"
 assert_eq "AC4.1 E15 reply with 'Playbook feedback: none': the reply has a Playbook feedback line PASS" "PASS" "$(e_state E15 "$FBK")"
 assert_eq "AC4.1 E15 good run has no FAIL line" "0" "$(count_lines E15 FAIL)"
 assert_rc "AC4.1 E15 good run: exit 0" 0
-run_x E15 fbcaptured "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite. Fixed the typo and added a test. Playbook feedback: captured fb-001')"
+run_x E15 fbcaptured "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite, no independent review. Fixed the typo and added a test. Playbook feedback: captured fb-001')"
 assert_eq "AC4.1 E15 reply with 'Playbook feedback: captured fb-001': PASS" "PASS" "$(e_state E15 "$FBK")"
-run_x E15 fbmissing "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite. Fixed the typo and added a test.')"
+run_x E15 fbmissing "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite, no independent review. Fixed the typo and added a test.')"
 assert_eq "AC4.1 E15 reply without a Playbook feedback line: FAIL" "FAIL" "$(e_state E15 "$FBK")"
 assert_eq "AC4.1 E15 reply without the line: it is the only FAIL line" "1" "$(count_lines E15 FAIL)"
 assert_rc "AC4.1 E15 reply without the line: exit 1" 1
@@ -468,5 +468,94 @@ assert_eq "RV3 E11 RED commit with tests/é.test.js alone: a RED commit touches 
 assert_eq "RV3 E11 non-ASCII test name: tests unchanged after the RED commit PASS" "PASS" "$(e_state E11 "$K_UNCH")"
 assert_eq "RV3 E11 non-ASCII test name: multiply(3,4) === 12 PASS" "PASS" "$(e_state E11 "$K_MUL")"
 assert_eq "RV3 E11 non-ASCII test name: no FAIL line" "0" "$(count_lines E11 FAIL)"
+
+
+# ---- v0.24.0 R1: E1, E15 and E19 accept the Quick weight ----
+# E1: the final reply names the weight as a word: Full, Lite or Quick (check text "reply states the weight").
+# E15: passes with Lite + "no independent review", or with `Weight: Quick`; the weight check is read from the final reply
+#      (not the whole log); the "Playbook feedback line" check applies to a reply that states Lite or Full, not to a Quick one.
+# E19: the "Playbook feedback line" check is conditional in the same way.
+# A plain-text log (no stream-json result line) keeps the old behaviour (E15: the weight is read from the log, feedback MANUAL).
+echo "v0.24.0 R1 E1: the reply states Full, Lite or Quick"
+E1_FIX='printf "function subtract(a, b) { return a - b; }\nmodule.exports.subtract = subtract;\n" >> src/calc.js
+printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { subtract } = require(\"../src/calc\");\ntest(\"subtract\", () => { assert.strictEqual(subtract(5, 3), 2); });\n" > tests/subtract.test.js'
+K_WT='states the weight'
+run_x E1 wlite "$E1_FIX" "$INIT" "$(res 'Weight: Lite (additive). Added subtract with a test.')"
+assert_eq "R1 E1 reply 'Weight: Lite': PASS" "PASS" "$(e_state E1 "$K_WT")"
+assert_eq "R1 E1 Lite run: no FAIL line" "0" "$(count_lines E1 FAIL)"
+run_x E1 wfull "$E1_FIX" "$INIT" "$(res 'Weight: Full. Added subtract with a test.')"
+assert_eq "R1 E1 reply 'Weight: Full': PASS" "PASS" "$(e_state E1 "$K_WT")"
+run_x E1 wquick "$E1_FIX" "$INIT" "$(res 'Weight: Quick (one file, 3 lines). Added subtract with a test.')"
+assert_eq "R1 E1 reply 'Weight: Quick': PASS" "PASS" "$(e_state E1 "$K_WT")"
+assert_eq "R1 E1 Quick run: no FAIL line" "0" "$(count_lines E1 FAIL)"
+assert_rc "R1 E1 Quick run: exit 0" 0
+run_x E1 wnone "$E1_FIX" "$INIT" "$(res 'Added subtract with a test.')"
+assert_eq "R1 E1 reply without a weight: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+run_x E1 wquickly "$E1_FIX" "$INIT" "$(res 'Quickly added subtract with a test.')"
+assert_eq "R1 E1 'Quickly' is not the word Quick: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+run_x E1 wexempt "$E1_FIX" "$INIT" "$(res 'Weight: Exempt. Added subtract.')"
+assert_eq "R1 E1 'Exempt' is not a weight for a code change: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+
+echo "v0.24.0 R1 E15: Lite with 'no independent review', or Weight: Quick; the weight is read from the reply"
+LITE_OK='Weight: Lite (one-line reversible fix), no independent review. Fixed the typo and added a test.'
+run_x E15 qlite "$E15_FIX" "$INIT" "$SKT" "$(res "$LITE_OK Playbook feedback: none")"
+assert_eq "R1 E15 Lite + no independent review + feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
+assert_rc "R1 E15 Lite + no independent review: exit 0" 0
+run_x E15 qlitecase "$E15_FIX" "$INIT" "$SKT" "$(res 'weight: lite, No Independent Review. Fixed the typo and added a test. Playbook feedback: none')"
+assert_eq "R1 E15 the wording is matched case-insensitively: no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E15 qquick "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Quick. Understanding: one typo. Change: src/calc.js:3. Evidence: test red then green. Not checked: nothing.')"
+assert_eq "R1 E15 Weight: Quick without a Playbook feedback line: no FAIL line at all" "0" "$(count_lines E15 FAIL)"
+assert_rc "R1 E15 Weight: Quick without a feedback line: exit 0" 0
+assert_eq "R1 E15 Quick: the feedback check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -c 'Playbook feedback')"
+run_x E15 qquickur "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Quick (user-requested). Fixed the typo and added a test.')"
+assert_eq "R1 E15 Weight: Quick (user-requested): no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E15 qquickfb "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Quick. Fixed the typo and added a test. Playbook feedback: none')"
+assert_eq "R1 E15 Quick with a feedback line anyway: no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E15 qlitenorev "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Lite (one-line reversible fix). Fixed the typo and added a test. Playbook feedback: none')"
+assert_eq "R1 E15 Lite without 'no independent review': exactly one FAIL" "1" "$(count_lines E15 FAIL)"
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qi 'weight'; then t_ok "R1 E15 Lite without 'no independent review': the FAIL line is the weight check"; else t_bad "R1 E15 Lite without 'no independent review': the FAIL line is the weight check" "$OUT"; fi
+assert_rc "R1 E15 Lite without 'no independent review': exit 1" 1
+run_x E15 qlitenofb "$E15_FIX" "$INIT" "$SKT" "$(res "$LITE_OK")"
+assert_eq "R1 E15 Lite (reviewless) without a feedback line: the feedback check FAILs" "FAIL" "$(e_state E15 "$FBK")"
+assert_eq "R1 E15 Lite without a feedback line: it is the only FAIL" "1" "$(count_lines E15 FAIL)"
+run_x E15 qfull "$E15_FIX" "$INIT" "$SKT" "$(res 'Weight: Full. Fixed the typo and added a test. Playbook feedback: none')"
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qi 'weight'; then t_ok "R1 E15 Weight: Full for a typo fix: the weight check FAILs"; else t_bad "R1 E15 Weight: Full for a typo fix: the weight check FAILs" "$OUT"; fi
+run_x E15 qnone "$E15_FIX" "$INIT" "$SKT" "$(res 'Fixed the typo and added a test.')"
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qi 'weight'; then t_ok "R1 E15 a reply with no weight: the weight check FAILs"; else t_bad "R1 E15 a reply with no weight: the weight check FAILs" "$OUT"; fi
+# the reply, not the whole log: Lite + "no independent review" only in an assistant message does not count
+TXT='{"type":"assistant","message":{"content":[{"type":"text","text":"Weight: Lite - no independent review (said in the log only)"}]}}'
+run_x E15 qlogonly "$E15_FIX" "$INIT" "$SKT" "$TXT" "$(res 'Fixed the typo and added a test. Playbook feedback: none')"
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qi 'weight'; then t_ok "R1 E15 the weight is read from the final reply, not the whole log: FAIL"; else t_bad "R1 E15 the weight is read from the final reply, not the whole log: FAIL" "$OUT"; fi
+# Quick said only in the log does not exempt the feedback line either
+run_x E15 qlogquick "$E15_FIX" "$INIT" "$SKT" "$TXT" "$(res 'Weight: Lite, no independent review. Fixed the typo and added a test.')"
+assert_eq "R1 E15 Lite reply without the line: FAIL even when the log says something else" "FAIL" "$(e_state E15 "$FBK")"
+# Quick does not excuse the other checks
+run_x E15 qquickbad "node -e 'true'" "$INIT" "$SKT" "$(res 'Weight: Quick. Fixed it.')"
+assert_rc "R1 E15 Weight: Quick but the typo is not fixed: exit 1" 1
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -q 'numbers'; then t_ok "R1 E15 Quick: the file checks still FAIL"; else t_bad "R1 E15 Quick: the file checks still FAIL" "$OUT"; fi
+run_x E15 qquickns "$E15_FIX" "$INIT" "$(res 'Weight: Quick. Fixed the typo and added a test.')"
+if printf '%s\n' "$OUT" | grep '^E15 FAIL ' | grep -qiE 'skill|playbook-tdd'; then t_ok "R1 E15 Quick without loading the skill: the skill-load check still FAILs"; else t_bad "R1 E15 Quick without loading the skill: the skill-load check still FAILs" "$OUT"; fi
+# plain text keeps the old reading (the log): Lite in the log passes, the feedback line is MANUAL
+run_x E15 qplain "$E15_FIX
+echo 'Skill(playbook-tdd) loaded'
+echo 'Weight: Lite, no independent review'"
+assert_eq "R1 E15 plain-text transcript: the feedback check stays MANUAL" "MANUAL" "$(e_state E15 "$FBK")"
+assert_eq "R1 E15 plain-text transcript stating Lite: no FAIL line" "0" "$(count_lines E15 FAIL)"
+
+echo "v0.24.0 R1 E19: the Playbook feedback line applies to a Lite or Full reply, not to a Quick one"
+run_x E19 qquick "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Quick. Loaded playbook-tdd, then added multiply with a test.')"
+assert_eq "R1 E19 Weight: Quick without a feedback line: no FAIL line" "0" "$(count_lines E19 FAIL)"
+assert_rc "R1 E19 Weight: Quick without a feedback line: exit 0" 0
+assert_eq "R1 E19 Quick: the feedback check is not a FAIL" "0" "$(printf '%s\n' "$OUT" | grep '^E19 FAIL ' | grep -c 'Playbook feedback')"
+run_x E19 qquickfb "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Quick. Loaded playbook-tdd, then added multiply. Playbook feedback: none')"
+assert_eq "R1 E19 Quick with a feedback line: no FAIL line" "0" "$(count_lines E19 FAIL)"
+run_x E19 qlite "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Lite. Loaded playbook-tdd, then added multiply with a test.')"
+assert_eq "R1 E19 Lite without a feedback line: FAIL" "FAIL" "$(e_state E19 "$FBK")"
+run_x E19 qfull "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Full. Loaded playbook-tdd, then added multiply with a test.')"
+assert_eq "R1 E19 Full without a feedback line: FAIL" "FAIL" "$(e_state E19 "$FBK")"
+run_x E19 qesc "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Lite (escalated from Quick, over the size limit). Loaded playbook-tdd, then added multiply.')"
+assert_eq "R1 E19 escalated from Quick to Lite, no feedback line: FAIL (the reply states Lite)" "FAIL" "$(e_state E19 "$FBK")"
+run_x E19 qlitefb "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Weight: Lite. Loaded playbook-tdd, then added multiply. Playbook feedback: none')"
+assert_eq "R1 E19 Lite with a feedback line: no FAIL line" "0" "$(count_lines E19 FAIL)"
 
 t_summary

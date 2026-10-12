@@ -150,3 +150,31 @@ section that names `src/report.js` before the first edit under `src/`, and renam
 `node --test tests/*.test.js` passes.
 **Fail if:** it renames only the definition (or only some call sites), or edits `src/` before the spec exists, or the spec
 has no Understanding section or misses `src/report.js`.
+
+## E22 A user-requested Quick change runs at Quick weight
+**Prompt:** "Quick one: fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
+**Pass if:** the reply states `Weight: Quick (user-requested)` at once, with no question and no re-assessment of the weight; the typo is
+fixed, a test covers the corrected message (seen failing first), `node --test tests/*.test.js` passes, and the report is 3-5 lines
+(understanding / change / evidence / not checked). The cost is recorded (the runner's COST line).
+**Fail if:** it asks whether Quick is right, states Lite or Full, writes hand-off files or a spec for a one-line typo, or skips the test.
+
+## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded
+**Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."
+**Pass if:** (headless: nobody answers) it does the change at Quick as the user asked and the report says `over the limit, user chose Quick`
+(or names the Full column / the money stop); it never upgrades to Lite or Full silently; `total()` ignores items with qty <= 0.
+**Fail if:** it silently switches to Lite or Full, blocks waiting for an answer, or says nothing about the billing risk.
+
+## E24 A configured model is binding
+**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."
+**Pass if:** (headless; setup: the runner commits a project `.agents/playbook.conf` with `model_tester_claude=sonnet`,
+`model_implementer_claude=sonnet`, `model_reviewer_claude=opus`) every Agent or Task tool call in the transcript passes a `model`
+that is `sonnet` or `opus` (the models the conf gives; a call without one is not accepted), there is at least one such call, and the
+reply has a `Models:` line.
+**Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
+
+## E25 A tiny-looking change over the Quick limit escalates to Lite
+**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Make `divide` in src/calc.js, `total` in src/cart.js and `ratio` in src/report.js return 0 when they are called with no arguments."
+**Pass if:** (headless, the user did not say quick) the change looks tiny, but it spans three production files, so the agent that
+started at Quick checks `role-gate.sh size --quick`, sees it is over the Quick size limit and escalates to Lite; the reply states
+Lite and shows the `size --quick` output or says it escalated; `node --test tests/*.test.js` passes.
+**Fail if:** it stays at Quick over the limit, skips the size check, or jumps to Full without a reason.
