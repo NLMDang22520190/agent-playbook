@@ -929,4 +929,51 @@ done
 
 # --- v0.23.0 review: the README does not oversell the reduced path
 if flat "$README" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review README does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review README does not say the reduced checks run in "every required job"'; fi
+
+# --- v0.23.2 AC8.1 / E1: the reduced docs-only set is the grep result plus tests/test-update.sh (D4)
+echo "v23.2 AC8.1 workflow: the reduced docs-only set is pinned"
+# The expected set is built here from the same grep the workflow runs (never a hard-coded list), plus the two names the
+# workflow adds by name: tests/test-content.sh and tests/test-update.sh. tests/test-docs-rules.sh (lane A of v0.23.2) reads
+# the README, so the grep finds it and the pin includes it (E1).
+EXPECT_SET="$( cd "$PB_ROOT" && { grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh; echo tests/test-update.sh; } | sort -u )"
+# the workflow's own computation: the text of the run block before its `for t in` loop is evaluated in the repo root
+# (contract: it assigns the list of suites to the shell variable suites)
+for id in test windows-shard; do
+  DS23="$(wf_step "$id" 'Docs-only checks')"
+  assert_contains "v23.2 AC8.1 job $id: the Docs-only step names tests/test-update.sh" "$DS23" 'test-update.sh'
+  SETCODE="$(printf '%s\n' "$DS23" | awk '/^        run:/ { f = 1; next } f && /for t in/ { exit } f { print }')"
+  GOT_SET="$( cd "$PB_ROOT" && suites=""; eval "$SETCODE" >/dev/null 2>&1; printf '%s\n' $suites | sort -u )"
+  assert_eq "v23.2 AC8.1 job $id: the reduced set is exactly the grep result plus test-content.sh and test-update.sh" "$EXPECT_SET" "$GOT_SET"
+  case "
+$GOT_SET
+" in *"
+tests/test-update.sh
+"*) t_ok "v23.2 AC8.1 job $id: tests/test-update.sh is in the reduced set" ;; *) t_bad "v23.2 AC8.1 job $id: tests/test-update.sh is in the reduced set" "set: $GOT_SET" ;; esac
+  case "
+$GOT_SET
+" in *"
+tests/test-docs-rules.sh
+"*) t_ok "v23.2 AC8.1 job $id: tests/test-docs-rules.sh is in the reduced set (E1)" ;; *) t_bad "v23.2 AC8.1 job $id: tests/test-docs-rules.sh is in the reduced set (E1)" "set: $GOT_SET" ;; esac
+  # D4: no wider grep. The grep stays on the two README/CHANGELOG patterns, so heavy suites stay out
+  assert_not_contains "v23.2 AC8.1 job $id: the heavy suite tests/test-install.sh stays out (D4)" "
+$GOT_SET
+" "
+tests/test-install.sh
+"
+  assert_not_contains "v23.2 AC8.1 job $id: the heavy suite tests/test-run-checks.sh stays out (D4)" "
+$GOT_SET
+" "
+tests/test-run-checks.sh
+"
+done
+assert_file "v23.2 AC8.1 E1 tests/test-docs-rules.sh exists" "$PB_ROOT/tests/test-docs-rules.sh"
+if [ -f "$PB_ROOT/tests/test-docs-rules.sh" ]; then
+  if grep -q 'PB_ROOT/README.md' "$PB_ROOT/tests/test-docs-rules.sh"; then t_ok 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)'; else t_bad 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)' 'the literal is missing'; fi
+fi
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  assert_eq 'v23.2 AC8.1 E1 tests/test-docs-rules.sh is committed or staged at mode 100755' "100755" "$(git -C "$PB_ROOT" ls-files -s -- tests/test-docs-rules.sh | cut -d' ' -f1)"
+else
+  t_skip 1 'v23.2 AC8.1 E1 mode of tests/test-docs-rules.sh needs a git checkout'
+fi
+
 t_summary

@@ -43,4 +43,10 @@ List them under "Found, not fixed" with `path:line`. Do not fix them.
 The orchestrator then runs `role-gate.sh check implementer --base <RED_SHA>`. Any test-path
 change fails your hand-back.
 
+## Keep the executable bit
+After you edit or write a file, check that `git diff --raw` shows no mode change you did not mean. An editor or write
+tool can drop the executable bit (100755 -> 100644) of a script it rewrites; `role-gate.sh check` and the pre-commit
+leak-check refuse that. Restore it (`chmod +x` and `git update-index --chmod=+x -- <path>`). A deliberate change lists
+the exact path in `PB_ALLOW_MODE_CHANGE` (colon-separated).
+
 Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).

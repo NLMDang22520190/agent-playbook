@@ -51,7 +51,7 @@ Verdict: ... (model: ...). Findings resolved: ... Open: ...
 ## Found, not fixed / [UNVERIFIED]
 - ...
 
-**Playbook feedback:** captured ids (fb-...) or none
-
 ## Learnings proposed
 - ...
+
+**Playbook feedback:** <captured fb- ids or none>

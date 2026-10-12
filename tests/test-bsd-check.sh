@@ -241,4 +241,85 @@ FB32="$W/fb7/bash3.2"; fake_bash "$FB32" "$W/fb7.log" "3.2.57(1)-release"
 run env -i PATH="$W/bb7:$BARE" HOME="$W/home6" TMPDIR="$W" PB_BASH32="$FB32" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_contains "AC4.2 review: a 3.2 report is accepted" "$OUT" "bsd-check: bash is $FB32"
 
+
+# ---- v0.23.2 AC5.1: a rejected candidate is followed by the next one ----
+echo "v0.23.2 AC5.1 a rejected PB_BASH32 is followed by ~/.local/bin/bash3.2"
+D="$W/c1"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc1" original-awk "$W/bc1.log"
+HC="$W/homec1"; mkdir -p "$HC/.local/bin"
+fake_bash "$HC/.local/bin/bash3.2" "$W/c1home.log" "3.2.57(1)-release"
+fake_bash "$W/c1env/bash3.2" "$W/c1env.log" "5.2.15(1)-release"
+run env -i PATH="$W/bc1:$BARE" HOME="$HC" TMPDIR="$W" PB_BASH32="$W/c1env/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC5.1 next candidate: 'bash is' names ~/.local/bin/bash3.2" "$OUT" "bsd-check: bash is $HC/.local/bin/bash3.2"
+assert_contains "AC5.1 next candidate: the rejected PB_BASH32 is named" "$OUT" "$W/c1env/bash3.2"
+assert_contains "AC5.1 next candidate: the rejected version (5.2) is named" "$OUT" "5.2"
+assert_not_contains "AC5.1 next candidate: no 'no bash 3.2 found' when one is 3.2" "$OUT" "no bash 3.2 found"
+assert_not_contains "AC5.1 next candidate: the rejected bash never ran the suite" "$(cat "$W/c1env.log" 2>/dev/null)" "tests/test-b.sh"
+assert_contains "AC5.1 next candidate: the 3.2 from HOME ran the suite" "$(cat "$W/c1home.log" 2>/dev/null)" "tests/test-b.sh"
+assert_contains "AC5.1 next candidate: the suite still ran" "$OUT" "suite b ran"
+assert_rc "AC5.1 next candidate: exit 0" 0
+
+echo "v0.23.2 AC5.1 a rejected ~/.local/bin/bash3.2 is followed by bash3.2 on PATH"
+D="$W/c2"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc2" original-awk "$W/bc2.log"
+HC2="$W/homec2"; mkdir -p "$HC2/.local/bin"
+fake_bash "$HC2/.local/bin/bash3.2" "$W/c2home.log" "4.4.20(1)-release"
+fake_bash "$W/c2path/bash3.2" "$W/c2path.log" "3.2.57(1)-release"
+run env -i PATH="$W/bc2:$W/c2path:$BARE" HOME="$HC2" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC5.1 PATH candidate: 'bash is' names bash3.2 on PATH" "$OUT" "bsd-check: bash is $W/c2path/bash3.2"
+assert_contains "AC5.1 PATH candidate: the rejected HOME one is named" "$OUT" "$HC2/.local/bin/bash3.2"
+assert_contains "AC5.1 PATH candidate: the rejected version (4.4) is named" "$OUT" "4.4"
+assert_not_contains "AC5.1 PATH candidate: no 'no bash 3.2 found'" "$OUT" "no bash 3.2 found"
+
+echo "v0.23.2 AC5.1 two rejected candidates, then a 3.2: each one named with its version"
+D="$W/c3"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc3" original-awk "$W/bc3.log"
+HC3="$W/homec3"; mkdir -p "$HC3/.local/bin"
+fake_bash "$W/c3env/bash3.2" "$W/c3env.log" "5.2.15(1)-release"
+fake_bash "$HC3/.local/bin/bash3.2" "$W/c3home.log" "4.4.20(1)-release"
+fake_bash "$W/c3path/bash3.2" "$W/c3path.log" "3.2.57(1)-release"
+run env -i PATH="$W/bc3:$W/c3path:$BARE" HOME="$HC3" TMPDIR="$W" PB_BASH32="$W/c3env/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC5.1 three candidates: the last one (3.2) is used" "$OUT" "bsd-check: bash is $W/c3path/bash3.2"
+assert_contains "AC5.1 three candidates: PB_BASH32 is named as rejected" "$OUT" "$W/c3env/bash3.2"
+assert_contains "AC5.1 three candidates: the HOME one is named as rejected" "$OUT" "$HC3/.local/bin/bash3.2"
+assert_contains "AC5.1 three candidates: version 5.2 is named" "$OUT" "5.2"
+assert_contains "AC5.1 three candidates: version 4.4 is named" "$OUT" "4.4"
+assert_not_contains "AC5.1 three candidates: no 'no bash 3.2 found'" "$OUT" "no bash 3.2 found"
+
+echo "v0.23.2 AC5.1 'no bash 3.2 found' only when none of the candidates is 3.2"
+D="$W/c4"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc4" original-awk "$W/bc4.log"
+HC4="$W/homec4"; mkdir -p "$HC4/.local/bin"
+fake_bash "$W/c4env/bash3.2" "$W/c4env.log" "5.2.15(1)-release"
+fake_bash "$HC4/.local/bin/bash3.2" "$W/c4home.log" "4.4.20(1)-release"
+fake_bash "$W/c4path/bash3.2" "$W/c4path.log" "5.0.17(1)-release"
+run env -i PATH="$W/bc4:$W/c4path:$BARE" HOME="$HC4" TMPDIR="$W" PB_BASH32="$W/c4env/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC5.1 none is 3.2: 'no bash 3.2 found' is printed" "$OUT" "no bash 3.2 found"
+assert_not_contains "AC5.1 none is 3.2: no 'bash is' line" "$OUT" "bsd-check: bash is"
+assert_contains "AC5.1 none is 3.2: PB_BASH32 is named with 5.2" "$OUT" "$W/c4env/bash3.2"
+assert_contains "AC5.1 none is 3.2: the HOME one is named" "$OUT" "$HC4/.local/bin/bash3.2"
+assert_contains "AC5.1 none is 3.2: the PATH one is named" "$OUT" "$W/c4path/bash3.2"
+assert_contains "AC5.1 none is 3.2: version 4.4 is named" "$OUT" "4.4"
+assert_contains "AC5.1 none is 3.2: version 5.0 is named" "$OUT" "5.0"
+assert_contains "AC5.1 none is 3.2: the suite still ran" "$OUT" "suite b ran"
+assert_rc "AC5.1 none is 3.2: the suite's exit code (0) is the tool's" 0
+
+echo "v0.23.2 AC5.1 a missing PB_BASH32 file falls through to the next candidate (no rejection message needed)"
+D="$W/c5"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc5" original-awk "$W/bc5.log"
+HC5="$W/homec5"; mkdir -p "$HC5/.local/bin"
+fake_bash "$HC5/.local/bin/bash3.2" "$W/c5home.log" "3.2.57(1)-release"
+run env -i PATH="$W/bc5:$BARE" HOME="$HC5" TMPDIR="$W" PB_BASH32="$W/c5none/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC5.1 PB_BASH32 not executable: ~/.local/bin/bash3.2 is used" "$OUT" "bsd-check: bash is $HC5/.local/bin/bash3.2"
+
+
+echo "v0.23.2 fix LOW-8 a PB_BASH32 that is missing or not executable is named in a note"
+D="$W/c6"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc6" original-awk "$W/bc6.log"
+HC6="$W/homec6"; mkdir -p "$HC6/.local/bin"
+fake_bash "$HC6/.local/bin/bash3.2" "$W/c6home.log" "3.2.57(1)-release"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6none/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "LOW-8 a missing PB_BASH32 is named in a note" "$OUT" "$W/c6none/bash3.2"
+assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
+assert_contains "LOW-8 ... and the next candidate is still used" "$OUT" "bsd-check: bash is $HC6/.local/bin/bash3.2"
+mkdir -p "$W/c6ne"; printf '#!/bin/sh\nexit 0\n' > "$W/c6ne/bash3.2"; chmod -x "$W/c6ne/bash3.2"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6ne/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "LOW-8 a non-executable PB_BASH32 is named in a note" "$OUT" "$W/c6ne/bash3.2"
+assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_not_contains "LOW-8 with PB_BASH32 unset there is no such note" "$OUT" "PB_BASH32"
 t_summary

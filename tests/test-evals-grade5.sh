@@ -192,7 +192,7 @@ assert_eq "AC5.2 spec_first=1: the first spec write counts even if the spec is e
 assert_eq "AC5.2 spec_first=1: Windows-style paths (backslashes)" "1" "$(sf_of "$(tu Write '{"file_path":"C:\\w\\E21\\.agents\\handoff\\01-spec.md","content":"x"}')" "$(tu Write '{"file_path":"C:\\w\\E21\\src\\calc.js","content":"x"}')")"
 assert_eq "AC5.2 spec_first=0: a spec-like file in another directory is not the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/docs/01-spec.md","content":"x"}')" "$(tu Write "$SRC")")"
 assert_eq "AC5.2 spec_first=0: a different file name in .agents/handoff is not the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/.agents/handoff/notes.md","content":"x"}')" "$(tu Write "$SRC")")"
-assert_eq "AC5.2 spec_first=0: a Bash command that mentions the spec path is not a Write or Edit" "0" "$(sf_of "$(tu Bash '{"command":"echo x > .agents/handoff/01-spec.md"}')" "$(tu Write "$SRC")")"
+assert_eq "AC5.2 spec_first=0: a Bash command that only mentions (reads) the spec path is not a spec write" "0" "$(sf_of "$(tu Bash '{"command":"cat .agents/handoff/01-spec.md"}')" "$(tu Write "$SRC")")"
 assert_eq "AC5.2 spec_first=0: a Bash read of the spec between an src Write and the spec Write changes nothing" "0" "$(sf_of "$(tu Write "$SRC")" "$(tu Bash '{"command":"cat .agents/handoff/01-spec.md"}')" "$(tu Write "$SFW")")"
 printf 'wrote the spec, then edited src/calc.js\nsecond line\n' > "$TR/p.txt"
 assert_eq "AC5.2 spec_first=na for a plain-text transcript" "na" "$(node "$TS" "$TR/p.txt" 2>/dev/null | sed -n 's/^spec_first=//p')"
@@ -316,5 +316,148 @@ gc_timed() { # PAIRS TAIL -> the spec_first value, or SLOW
 }
 assert_eq "M5 200000 'git -C d' pairs then 'mv a src/b' before the spec: finishes within the baseline + 8 s and still counts as an src write (spec_first=0)" "0" "$(gc_timed 200000 " mv a src/b")"
 assert_eq "M5 200000 'git -C d' pairs then a read-only 'mv a b': finishes within the baseline + 8 s, not an src write (spec_first=1)" "1" "$(gc_timed 200000 " mv a b")"
+
+
+# ---- v0.23.2 AC4: bashWritesSrc reads the heredoc-stripped command; a heredoc fed to a shell is executed (D3) ----
+echo "v0.23.2 AC4.1 bashWritesSrc: a heredoc body is data (opener line still counts)"
+NLH='
+'
+SIH="-i"   # a variable, so no literal in-place sed sits in this file
+# hw_of COMMAND -> spec_first when the command comes first, then the spec, then an src write:
+#   1 = the command was not an src write; 0 = the command was an src write before the spec
+hw_of() { sf_of "$(btu "$1")" "$(tu Write "$SFW")" "$(tu Write "$SRC")"; }
+# hw_before COMMAND -> spec_first when only the command comes before the spec (0 = the command wrote under src/)
+hw_before() { sf_of "$(btu "$1")" "$(tu Write "$SFW")"; }
+hdw() { # KIND(no|yes) NAME COMMAND
+  if [ "$1" = no ]; then assert_eq "AC4.1 not an src write: $2" "1" "$(hw_of "$3")"
+  else assert_eq "AC4.1 an src write: $2" "0" "$(hw_before "$3")"; fi
+}
+# corpus first: these hold today and must keep holding
+hdw yes "the opener line redirects into src/ (cat > src/x.js <<EOF)" "cat > src/x.js <<EOF${NLH}content${NLH}EOF"
+hdw yes "the opener appends into src/ with a quoted word (cat >> src/x.js <<'EOF')" "cat >> src/x.js <<'EOF'${NLH}content${NLH}EOF"
+hdw yes "a write after the heredoc has ended" "cat > notes.md <<EOF${NLH}notes${NLH}EOF${NLH}sed $SIH 's/a/b/' src/x.js"
+hdw yes "a write before the heredoc" "sed $SIH 's/a/b/' src/x.js${NLH}cat > notes.md <<EOF${NLH}notes${NLH}EOF"
+hdw yes "bash <<EOF with an in-place sed on src/ in the body" "bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "no heredoc, a read of src/" "cat src/x.js"
+# AC4.1: the body of a heredoc that no shell reads is data
+hdw no "body has an in-place sed on src/ (opener cat > notes.md <<EOF)" "cat > notes.md <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "body has an in-place sed on src/ (opener cat > notes.md <<'EOF')" "cat > notes.md <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "body mentions sed -i.bak on src/ (cat <<EOF, no redirect)" "cat <<EOF${NLH}sed $SIH.bak 's/a/b/' src/x.js${NLH}EOF"
+hdw no "body redirects into src/ (cat <<EOF)" "cat <<EOF${NLH}echo hi > src/x.js${NLH}EOF"
+hdw no "body mentions tee into src/ (cat > notes.md <<-EOF, tab-indented)" "cat > notes.md <<-EOF${NLH}	echo x | tee src/x.js${NLH}	EOF"
+hdw no "body mentions mv into src/ (git commit message in a substitution)" "git commit -m \"\$(cat <<EOF${NLH}mv a src/b${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF${NLH})\""
+hdw no "body mentions node writeFileSync into src/ (cat > notes.md <<EOF)" "cat > notes.md <<EOF${NLH}node -e \"require('fs').writeFileSync('src/x','')\"${NLH}EOF"
+
+echo "v0.23.2 AC4.2 bashWritesSrc: a heredoc fed to a shell is executed (D3)"
+hdw yes "bash <<'EOF' (quoted word)" "bash <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "sh -s <<EOF" "sh -s <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "zsh <<EOF" "zsh <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "bash -e <<EOF" "bash -e <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "bash -eu -o pipefail <<EOF (option with a value)" "bash -eu -o pipefail <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "sh -s -- <<EOF" "sh -s -- <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "zsh -x <<'EOF'" "zsh -x <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "/bin/bash <<EOF (path to the shell)" "/bin/bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "bash <<-EOF (tab-indented terminator)" "bash <<-EOF${NLH}	sed $SIH 's/a/b/' src/x.js${NLH}	EOF"
+hdw yes "bash <<EOF with an echo redirect into src/ in the body" "bash <<EOF${NLH}echo hi > src/x.js${NLH}EOF"
+hdw yes "bash <<EOF with a read first and a write second in the body" "bash <<EOF${NLH}cat src/x.js${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw yes "a harmless heredoc, then bash <<EOF with the write" "cat <<EOF${NLH}notes${NLH}EOF${NLH}bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "bash <<EOF whose body only reads src/" "bash <<EOF${NLH}cat src/x.js${NLH}EOF"
+hdw no "bash <<EOF whose body writes outside src/" "bash <<EOF${NLH}sed $SIH 's/a/b/' lib/x.js${NLH}EOF"
+# assumption (see the lane report): a shell that is given a script file reads its heredoc as stdin input, not as commands
+hdw no "bash build.sh <<EOF: the body is input to the script, not commands" "bash build.sh <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "cat <<EOF followed by a pipe word: the body of cat is data" "cat <<EOF | tr a b${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+
+
+echo "v0.23.2 AC4.1 real E21 transcript (v0.23.1 false FAIL): the spec written through a heredoc is not an src write"
+NLX='
+'
+BTK='`'
+SPECCMD="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}# Spec${NLX}## Understanding${NLX}  - ${BTK}grep -rn \"divide\" .${BTK} -> 4 hits: src/calc.js:5, src/report.js:1${NLX}In scope: src/calc.js definition${NLX}EOF"
+SPECEDIT="$(tu Edit '{"file_path":"/w/E21/.agents/handoff/01-spec.md","old_string":"# Spec","new_string":"# Spec v2"}')"
+SEDSRC="sed $SIH 's/a/b/' src/calc.js"
+assert_eq "AC4.1 E21: heredoc spec call, the spec edit, then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPECCMD")" "$SPECEDIT" "$(btu "$SEDSRC")")"
+assert_eq "AC4.1 E21: a read first, then the in-place sed on src/, then the spec edit: spec_first=0" "0" "$(sf_of "$(btu "cat src/calc.js")" "$(btu "$SEDSRC")" "$SPECEDIT")"
+
+# the same shape with an arrow that points straight at an src path in the body (a redirect-looking token before a path)
+SPECCMD2="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}## Understanding${NLX}  - the call sites -> src/calc.js:5 and src/report.js:1${NLX}EOF"
+assert_eq "AC4.1 E21 arrow variant: heredoc spec call, the spec edit, then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPECCMD2")" "$SPECEDIT" "$(btu "$SEDSRC")")"
+assert_eq "AC4.1 E21 arrow variant: the heredoc spec call alone is not an src write (spec edit, then src Write after it: spec_first=1)" "1" "$(sf_of "$(btu "$SPECCMD2")" "$SPECEDIT" "$(tu Write "$SRC")")"
+
+
+# ---- v0.23.2 AC4.3 (D8): a Bash call that writes the spec file is the spec write ----
+echo "v0.23.2 AC4.3 spec_first: a Bash write of .agents/handoff/01-spec.md sets the spec write"
+SPB1="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}# Spec${NLX}## Understanding${NLX}  - ${BTK}grep -rn \"divide\" .${BTK} -> 4 hits: src/calc.js:5, src/report.js:1${NLX}In scope: src/calc.js definition${NLX}EOF"
+SPB4="cat > .agents/handoff/01-spec.md <<EOF${NLX}## Understanding${NLX}  - the call sites -> src/calc.js:5 and src/report.js:1${NLX}EOF"
+# no Write/Edit tool call of the spec anywhere in these transcripts: only Bash calls
+assert_eq "AC4.3 case 1: cd .agents/handoff && cat > 01-spec.md <<'EOF', then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPB1")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 2: the in-place sed on src/ first, then the heredoc spec call: spec_first=0" "0" "$(sf_of "$(btu "$SEDSRC")" "$(btu "$SPB1")")"
+assert_eq "AC4.3 case 3: echo x > notes.md is not the spec, then an src write: spec_first=0" "0" "$(sf_of "$(btu "echo x > notes.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 4: cat > .agents/handoff/01-spec.md <<EOF with '-> src/calc.js:5' in the body, then an src write: spec_first=1 (the real E21 shape)" "1" "$(sf_of "$(btu "$SPB4")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 4b: the same with a Write tool call of src/ after it: spec_first=1" "1" "$(sf_of "$(btu "$SPB4")" "$(tu Write "$SRC")")"
+assert_eq "AC4.3 case 4c: the same but the src Write comes first: spec_first=0" "0" "$(sf_of "$(tu Write "$SRC")" "$(btu "$SPB4")")"
+# other ways to write the spec, and near misses
+assert_eq "AC4.3 an append (>>) to the spec counts: spec_first=1" "1" "$(sf_of "$(btu "echo x >> .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 an in-place sed of the spec counts: spec_first=1" "1" "$(sf_of "$(btu "sed $SIH.bak 's/a/b/' .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 an absolute spec path counts: spec_first=1" "1" "$(sf_of "$(btu "echo x > /w/E21/.agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 the spec call and the src write in one command, spec first: spec_first=1" "1" "$(sf_of "$(btu "echo x > .agents/handoff/01-spec.md && $SEDSRC")")"
+assert_eq "AC4.3 the same in one command, src first: spec_first=0" "0" "$(sf_of "$(btu "$SEDSRC && echo x > .agents/handoff/01-spec.md")")"
+assert_eq "AC4.3 reading the spec is not writing it (cat, then an src write): spec_first=0" "0" "$(sf_of "$(btu "cat .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 a bare 01-spec.md without the handoff dir is not the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x > 01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 docs/01-spec.md is not the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x > docs/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 a spec mentioned only in a heredoc body is not written: spec_first=0" "0" "$(sf_of "$(btu "cat > notes.md <<EOF${NLX}echo x > .agents/handoff/01-spec.md${NLX}EOF")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 cd .agents/handoff in a subshell does not leak: a bare 01-spec.md after it is not the spec: spec_first=0" "0" "$(sf_of "$(btu "(cd /w/E21/.agents/handoff && true); echo x > 01-spec.md")" "$(btu "$SEDSRC")")"
+
+
+
+# ---- v0.23.2 lane B review (F1): heredoc stripping is linear ----
+echo "v0.23.2 review F1 stripHeredocs is linear: 20000 'cat <<A ' on one line"
+# one Bash call built inside node (argv is capped at 128 KiB), then the spec Write and an src Write; budget = baseline + 8 s
+HL_BASE=-1
+hl_ticks() { # LIMIT -> HL_TICKS, HL_HUNG
+  node -e 'const c="cat <<A ".repeat(20000);console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:c}}]}}))' > "$TR/hl.json"
+  tu Write "$SFW" >> "$TR/hl.json"; echo >> "$TR/hl.json"
+  tu Write "$SRC" >> "$TR/hl.json"; echo >> "$TR/hl.json"
+  node "$TS" "$TR/hl.json" > "$TR/hl.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$1" ]; do sleep 0.1; i=$((i + 1)); done
+  HL_TICKS=$i; HL_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then HL_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+}
+hl_base() { # the time of a run on a tiny command
+  printf '%s\n' "$(btu "echo x")" "$(tu Write "$SFW")" "$(tu Write "$SRC")" > "$TR/hl.json"
+  node "$TS" "$TR/hl.json" > "$TR/hl.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+  HL_BASE="$i"; wait "$pid" 2>/dev/null
+}
+hl_timed() {
+  [ "$HL_BASE" -ge 0 ] || hl_base
+  hl_ticks $((HL_BASE + 80))
+  if [ "$HL_HUNG" = 1 ]; then echo SLOW; return 0; fi
+  sed -n 's/^spec_first=//p' "$TR/hl.out"
+}
+assert_eq "F1 20000 'cat <<A ' then the spec and an src write: finishes within the baseline + 8 s, spec_first=1" "1" "$(hl_timed)"
+
+# ---- v0.23.2 lane B review (F2): bash -c '...' <<EOF: the body is stdin of the -c script, not commands ----
+echo "v0.23.2 review F2 bashWritesSrc: a heredoc after bash -c is input, not commands"
+hdw no "bash -c 'cat' <<EOF" "bash -c 'cat' <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "bash -c \"cat\" <<EOF (double quotes)" "bash -c \"cat\" <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "bash -ec 'cat' <<EOF (option cluster)" "bash -ec 'cat' <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+hdw no "sh -c 'cat' <<'EOF'" "sh -c 'cat' <<'EOF'${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+# controls: the -c script itself runs
+hdw yes "bash -c with an src write as the script, heredoc body is input" "bash -c 'sed $SIH s/a/b/ src/x.js' <<EOF${NLH}input${NLH}EOF"
+hdw yes "bash <<EOF still executes the body" "bash <<EOF${NLH}sed $SIH 's/a/b/' src/x.js${NLH}EOF"
+
+# ---- v0.23.2 lane B review (F4): one command that writes the spec and src is src-first ----
+echo "v0.23.2 review F4 spec_first: a single command writing both spec and src counts src first"
+SPECP=".agents/handoff/01-spec.md"
+assert_eq "F4 an in-place sed on src/ with a redirect into the spec: spec_first=0" "0" "$(sf_of "$(btu "sed $SIH s/a/b/ src/a.js > $SPECP")")"
+assert_eq "F4 cp into src/ with a redirect into the spec: spec_first=0" "0" "$(sf_of "$(btu "cp a src/a.js > $SPECP")")"
+assert_eq "F4 tee writing the spec and src/: spec_first=0" "0" "$(sf_of "$(btu "echo x | tee $SPECP src/a.js")")"
+assert_eq "F4 tee writing src/ and the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x | tee src/a.js $SPECP")")"
+assert_eq "F4 control: spec; src gives 1" "1" "$(sf_of "$(btu "echo x > $SPECP; sed $SIH s/a/b/ src/a.js")")"
+assert_eq "F4 control: src; spec gives 0" "0" "$(sf_of "$(btu "sed $SIH s/a/b/ src/a.js; echo x > $SPECP")")"
+assert_eq "F4 control: tee of the spec alone, then an src write: spec_first=1" "1" "$(sf_of "$(btu "echo x | tee $SPECP")" "$(tu Write "$SRC")")"
 
 t_summary

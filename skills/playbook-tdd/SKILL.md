@@ -77,8 +77,9 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
    one real observation of the behaviour in this session: a screenshot or browser read for a UI, a
    curl call for an API, the CLI command for a CLI. Unit tests alone are not enough for it. If it
    cannot be run, say so under "Not checked" in the report.
-5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough), and always a "Playbook feedback:"
-   line (the captured id, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
+   The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`
+   (fill the placeholder with the captured ids, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask (as in Phase 4).
 
 ### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
@@ -209,6 +210,7 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
   the result could still be wrong, each with the command run to check it and its outcome).
+- The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
   review majors and rework rounds the tasks had. It is advice only and changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
