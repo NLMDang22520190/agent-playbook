@@ -874,4 +874,217 @@ assert_rc "AC7.1 no scan arguments: usage, exit 2" 2
 assert_contains "AC7.1 the usage text names the origin/foo case" "$OUT" "origin/foo"
 assert_contains "AC7.1 the usage text says the nested ref is scanned too" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "scanned"
 
+
+# ---- v0.23.2 fix round (lane A): bounded argv, implicit remote ownership, renamed and odd-named mode drops ----
+# gitshim DIR -> DIR/git, a wrapper that logs every call. GIT_SHIM_LOG gets one line per call: "<argc> <subcommand-ish first word>".
+# GIT_SHIM_MAXARGS (when set) makes a call with more arguments fail like a too-long command line (exit 126).
+gitshim() {
+  local real; real="$(command -v git)"
+  mkdir -p "$1"
+  cat > "$1/git" <<SHIM
+#!/bin/sh
+echo "\$# \$1" >> "\${GIT_SHIM_LOG:-/dev/null}"
+if [ -n "\${GIT_SHIM_MAXARGS:-}" ] && [ "\$#" -gt "\$GIT_SHIM_MAXARGS" ]; then
+  echo "shim: Argument list too long" >&2
+  exit 126
+fi
+exec "$real" "\$@"
+SHIM
+  chmod +x "$1/git"
+}
+# shim_max LOG -> the largest argc in the log
+shim_max() { awk 'BEGIN { m = 0 } $1 + 0 > m { m = $1 + 0 } END { print m }' "$1"; }
+SHIMD="$(mk_tmp)/shim"; gitshim "$SHIMD"
+
+echo "v0.23.2 fix MAJOR-1 scan --unpushed SHA --remote NAME with ~2000 remote refs keeps the command line bounded"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RO="$(mk_tmp)/o.git"; git init -q --bare "$RO"
+git -C "$R" remote add origin "$RO"
+BASE_SHA="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q -b sec
+stage "$R" s.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'local only secret'
+SEC="$(git -C "$R" rev-parse HEAD)"
+UR="$(mk_tmp)/refs.txt"
+awk -v s="$BASE_SHA" 'BEGIN { for (i = 1; i <= 2000; i++) printf "create refs/remotes/origin/feature/some-long-branch-name-%d %s\n", i, s }' > "$UR"
+git -C "$R" update-ref --stdin < "$UR"
+assert_eq "MAJOR-1 fixture: 2000 long remote refs exist" "2000" "$(git -C "$R" for-each-ref refs/remotes/origin/feature | wc -l | tr -d ' ')"
+SLOG="$(mk_tmp)/shim.log"; : > "$SLOG"
+run_in "$R" env PATH="$SHIMD:$PATH" GIT_SHIM_LOG="$SLOG" bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "MAJOR-1 a local-only secret is found with 2000 remote refs: exit 1 (not 3)" 1
+assert_contains "MAJOR-1 ... the finding is named" "$OUT" "s.txt:1: github-token"
+assert_not_contains "MAJOR-1 ... no 'git log failed'" "$OUT" "git log failed"
+assert_eq "MAJOR-1 no git call gets more than 50 arguments (Windows has a 32K command line)" "ok" "$([ "$(shim_max "$SLOG")" -le 50 ] && echo ok || echo "max argc $(shim_max "$SLOG")")"
+: > "$SLOG"
+run_in "$R" env PATH="$SHIMD:$PATH" GIT_SHIM_LOG="$SLOG" GIT_SHIM_MAXARGS=1000 bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "MAJOR-1 with a 1000-argument limit on git calls the secret is still found: exit 1" 1
+assert_not_contains "MAJOR-1 ... no 'git log failed' under the limit" "$OUT" "git log failed"
+# a commit that IS on a ref of origin is still skipped
+run_in "$R" bash "$LC" scan --unpushed "$BASE_SHA" --remote origin
+assert_rc "MAJOR-1 a commit on one of the 2000 refs is skipped: exit 0" 0
+
+echo "v0.23.2 fix MAJOR-2a a remote without a fetch line still owns refs/remotes/NAME/*"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RO="$(mk_tmp)/o.git"; RF="$(mk_tmp)/f.git"; git init -q --bare "$RO"; git init -q --bare "$RF"
+git -C "$R" remote add origin "$RO"
+git -C "$R" remote add origin/foo "$RF"
+git -C "$R" config --unset remote.origin/foo.fetch
+assert_eq "MAJOR-2a fixture: origin/foo has no fetch line" "" "$(git -C "$R" config --get-all remote.origin/foo.fetch)"
+assert_contains "MAJOR-2a fixture: origin keeps its standard fetch line" "$(git -C "$R" config --get-all remote.origin.fetch)" "refs/remotes/origin/*"
+git -C "$R" checkout -q -b sec
+stage "$R" s.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret only on origin/foo/main'
+SEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/foo/main "$SEC"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "MAJOR-2a a commit only on fetch-less remote origin/foo IS scanned when pushing to origin: exit 1" 1
+assert_contains "MAJOR-2a ... the finding is named" "$OUT" "s.txt:1: github-token"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin/foo
+assert_rc "MAJOR-2a ... and skipped when pushing to origin/foo itself (MAJOR-2c): exit 0" 0
+run_in "$R" bash "$LC" scan --unpushed "$SEC"
+assert_rc "MAJOR-2a without --remote any remote counts: exit 0" 0
+
+echo "v0.23.2 fix MAJOR-2a variant: remote o owns refs/remotes/o*, remote o2 has no fetch line"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RO="$(mk_tmp)/o.git"; R2="$(mk_tmp)/o2.git"; git init -q --bare "$RO"; git init -q --bare "$R2"
+git -C "$R" remote add o "$RO"
+git -C "$R" config --replace-all remote.o.fetch '+refs/heads/*:refs/remotes/o*'
+git -C "$R" remote add o2 "$R2"
+git -C "$R" config --unset remote.o2.fetch
+git -C "$R" checkout -q -b sec
+stage "$R" s.txt "k $GHS"; G -C "$R" commit -q --no-verify -m 'secret only on o2/main'
+SEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/o2/main "$SEC"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote o
+assert_rc "MAJOR-2a variant: a commit only on fetch-less remote o2 IS scanned when pushing to o: exit 1" 1
+assert_contains "MAJOR-2a variant: ... the finding is named" "$OUT" "s.txt:1: github-token"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote o2
+assert_rc "MAJOR-2a variant: ... and skipped when pushing to o2: exit 0" 0
+
+echo "v0.23.2 fix MAJOR-2b a tie between two remotes: the ref is scanned when pushing to either, in either config order"
+for order in "ta tb" "tb ta"; do
+  newrepo
+  git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+  for rn in $order; do
+    RT="$(mk_tmp)/$rn.git"; git init -q --bare "$RT"
+    git -C "$R" remote add "$rn" "$RT"
+    git -C "$R" config --replace-all "remote.$rn.fetch" '+refs/heads/*:refs/remotes/shared/*'
+  done
+  git -C "$R" checkout -q -b sec
+  stage "$R" s.txt "k $AWS"; G -C "$R" commit -q --no-verify -m 'secret on the tied ref'
+  SEC="$(git -C "$R" rev-parse HEAD)"
+  git -C "$R" update-ref refs/remotes/shared/main "$SEC"
+  run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote ta
+  assert_rc "MAJOR-2b order [$order]: scanned when pushing to ta: exit 1" 1
+  assert_contains "MAJOR-2b order [$order]: ta: the finding is named" "$OUT" "s.txt:1: aws-key"
+  run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote tb
+  assert_rc "MAJOR-2b order [$order]: scanned when pushing to tb: exit 1" 1
+  assert_contains "MAJOR-2b order [$order]: tb: the finding is named" "$OUT" "s.txt:1: aws-key"
+done
+
+echo "v0.23.2 fix MAJOR-2c a fetch-less remote owns refs/remotes/NAME/*: its commits are not re-scanned when pushing to it"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RO="$(mk_tmp)/o.git"; RN="$(mk_tmp)/n.git"; git init -q --bare "$RO"; git init -q --bare "$RN"
+git -C "$R" remote add origin "$RO"
+git -C "$R" remote add nofetch "$RN"
+git -C "$R" config --unset remote.nofetch.fetch
+git -C "$R" checkout -q -b sec
+stage "$R" s.txt "k $ANT"; G -C "$R" commit -q --no-verify -m 'secret on nofetch/x'
+SEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/nofetch/x "$SEC"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote nofetch
+assert_rc "MAJOR-2c a commit already on refs/remotes/nofetch/x is skipped when pushing to nofetch: exit 0" 0
+assert_contains "MAJOR-2c ... says clean" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --unpushed "$SEC" --remote origin
+assert_rc "MAJOR-2c ... but scanned when pushing to origin (not its ref): exit 1" 1
+
+echo "v0.23.2 fix MINOR-5 a rename plus a mode drop is a lost executable bit (scan --staged)"
+modrepo
+git -C "$R" mv bin/run.sh bin/renamed.sh
+chmod -x "$R/bin/renamed.sh" 2>/dev/null; git -C "$R" update-index --chmod=-x -- bin/renamed.sh
+assert_eq "MINOR-5 fixture: bin/renamed.sh is staged 100644" "100644" "$(git -C "$R" ls-files -s -- bin/renamed.sh | cut -d' ' -f1)"
+RENMSG="VIOLATION (mode): bin/renamed.sh lost its executable bit (100755 -> 100644)"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "MINOR-5 rename + drop is refused: exit 1" 1
+assert_contains "MINOR-5 the NEW path is named with both modes" "$OUT" "$RENMSG"
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/renamed.sh bash "$LC" scan --staged
+assert_rc "MINOR-5 PB_ALLOW_MODE_CHANGE with the new path lets it pass: exit 0" 0
+run_in "$R" env PB_ALLOW_MODE_CHANGE=bin/run.sh bash "$LC" scan --staged
+assert_rc "MINOR-5 listing the OLD path does not let it pass: exit 1" 1
+assert_contains "MINOR-5 ... the new path is still named" "$OUT" "$RENMSG"
+modrepo
+git -C "$R" rm -q bin/run.sh
+stage "$R" bin/unrelated.sh '#!/bin/sh' 'echo different'
+git -C "$R" update-index --chmod=-x -- bin/unrelated.sh
+run_in "$R" bash "$LC" scan --staged
+assert_not_contains "MINOR-5 a deleted 100755 path plus a 100644 path with a DIFFERENT blob is no mode violation" "$OUT" "(mode)"
+
+echo "v0.23.2 fix LOW-6 paths with a double quote or a tab are reported with their real name and can be allowed"
+modrepo
+QP='bin/we"ird.sh'
+TP="$(printf 'bin/ta\tb.sh')"
+for P in "$QP" "$TP"; do
+  if ( cd "$R" && cp bin/run.sh "$P" ) 2>/dev/null && [ -f "$R/$P" ]; then
+    ( cd "$R" && git add -- "$P" && git update-index --chmod=+x -- "$P" && G commit -q -m "add odd name" )
+    git -C "$R" update-index --chmod=-x -- "$P"
+    run_in "$R" bash "$LC" scan --staged
+    assert_rc "LOW-6 [$P] mode drop is refused: exit 1" 1
+    assert_contains "LOW-6 [$P] the real path is printed unquoted" "$OUT" "VIOLATION (mode): $P lost its executable bit (100755 -> 100644)"
+    run_in "$R" env PB_ALLOW_MODE_CHANGE="$P" bash "$LC" scan --staged
+    assert_rc "LOW-6 [$P] PB_ALLOW_MODE_CHANGE with the real path lets it pass: exit 0" 0
+    git -C "$R" update-index --chmod=+x -- "$P"
+  else t_skip 4 "LOW-6 path [$P] (this file system refuses the name)"; fi
+done
+run_in "$R" bash "$LC" scan
+assert_rc "LOW-6 usage: exit 2" 2
+assert_contains "LOW-6 the usage says a path with a colon cannot be listed in PB_ALLOW_MODE_CHANGE" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "cannot be listed"
+
+echo "v0.23.2 fix LOW-7 a secret and a mode violation together: the summary counts both"
+modrepo
+git -C "$R" update-index --chmod=-x -- bin/run.sh
+stage "$R" cfg.txt "k $GH"
+run_in "$R" bash "$LC" scan --staged
+assert_rc "LOW-7 secret + mode drop: exit 1" 1
+assert_contains "LOW-7 the summary has the finding count" "$OUT" "1 finding(s)"
+assert_contains "LOW-7 the summary has the mode violation count" "$OUT" "1 mode violation(s)"
+assert_contains "LOW-7 the mode violation line is printed" "$OUT" "$MODEMSG"
+assert_contains "LOW-7 the finding line is printed" "$OUT" "cfg.txt:1: github-token"
+modrepo
+git -C "$R" update-index --chmod=-x -- bin/run.sh
+run_in "$R" bash "$LC" scan --staged
+assert_contains "LOW-7 mode only: the summary still says 'no secret found'" "$OUT" "1 mode violation(s); no secret found"
+
+echo "v0.23.2 fix MINOR-4 scan --staged does not run one git process per new staged file"
+NF=3000
+# mkmany DIR MODEFLAG -> DIR gets NF new files (#! first line) staged; MODEFLAG x makes them 100755
+mkmany() {
+  local d="$1" x="$2"
+  mkdir -p "$d/gen"
+  awk -v d="$d/gen" 'BEGIN { for (i = 1; i <= '"$NF"'; i++) { f = d "/f" i ".sh"; printf "#!/bin/sh\necho %d\n", i > f; close(f) } }'
+  [ "$x" != x ] || chmod +x "$d"/gen/*.sh 2>/dev/null
+  git -C "$d" add -A
+}
+# nsecs REPO LOG -> seconds the scan takes (stdout) ; LOG gets the git shim log
+newrepo; RX="$R"; mkmany "$RX" x
+newrepo; RN="$R"; mkmany "$RN" n
+XMODES="$(git -C "$RX" ls-files -s -- gen | cut -c1-6 | sort -u | tr '\n' ' ')"
+NMODES="$(git -C "$RN" ls-files -s -- gen | cut -c1-6 | sort -u | tr '\n' ' ')"
+if [ "$XMODES" != "100755 " ] || [ "$NMODES" != "100644 " ]; then
+  t_skip 5 "MINOR-4 (cannot stage 100755 / 100644 files here: [$XMODES] [$NMODES])"
+else
+  T0="$(date +%s)"; run_in "$RX" bash "$LC" scan --staged; XRC="$RC"; T1="$(date +%s)"
+  run_in "$RN" bash "$LC" scan --staged; NRC="$RC"; T2="$(date +%s)"
+  XT=$((T1 - T0)); NT=$((T2 - T1))
+  assert_eq "MINOR-4 baseline (3000 new 100755 files) is clean: exit 0" "0" "$XRC"
+  assert_eq "MINOR-4 3000 new 100644 #! files are clean (a warning only): exit 0" "0" "$NRC"
+  assert_eq "MINOR-4 the 100644 scan takes under baseline + 10 s (baseline ${XT}s, took ${NT}s)" "ok" "$([ "$NT" -lt $((XT + 10)) ] && echo ok || echo "slow: ${NT}s vs baseline ${XT}s")"
+  SLOGX="$(mk_tmp)/x.log"; SLOGN="$(mk_tmp)/n.log"; : > "$SLOGX"; : > "$SLOGN"
+  run_in "$RX" env PATH="$SHIMD:$PATH" GIT_SHIM_LOG="$SLOGX" bash "$LC" scan --staged
+  run_in "$RN" env PATH="$SHIMD:$PATH" GIT_SHIM_LOG="$SLOGN" bash "$LC" scan --staged
+  assert_eq "MINOR-4 baseline: at most 10 git processes for 3000 new files" "ok" "$([ "$(wc -l < "$SLOGX" | tr -d ' ')" -le 10 ] && echo ok || echo "$(wc -l < "$SLOGX" | tr -d ' ') git calls")"
+  assert_eq "MINOR-4 at most 10 git processes for 3000 new 100644 files (not one per file)" "ok" "$([ "$(wc -l < "$SLOGN" | tr -d ' ')" -le 10 ] && echo ok || echo "$(wc -l < "$SLOGN" | tr -d ' ') git calls")"
+  assert_contains "MINOR-4 the #! warning is still printed for the 100644 files" "$OUT" "gen/f1.sh"
+fi
 t_summary

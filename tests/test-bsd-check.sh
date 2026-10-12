@@ -307,4 +307,19 @@ fake_bash "$HC5/.local/bin/bash3.2" "$W/c5home.log" "3.2.57(1)-release"
 run env -i PATH="$W/bc5:$BARE" HOME="$HC5" TMPDIR="$W" PB_BASH32="$W/c5none/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_contains "AC5.1 PB_BASH32 not executable: ~/.local/bin/bash3.2 is used" "$OUT" "bsd-check: bash is $HC5/.local/bin/bash3.2"
 
+
+echo "v0.23.2 fix LOW-8 a PB_BASH32 that is missing or not executable is named in a note"
+D="$W/c6"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bc6" original-awk "$W/bc6.log"
+HC6="$W/homec6"; mkdir -p "$HC6/.local/bin"
+fake_bash "$HC6/.local/bin/bash3.2" "$W/c6home.log" "3.2.57(1)-release"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6none/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "LOW-8 a missing PB_BASH32 is named in a note" "$OUT" "$W/c6none/bash3.2"
+assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
+assert_contains "LOW-8 ... and the next candidate is still used" "$OUT" "bsd-check: bash is $HC6/.local/bin/bash3.2"
+mkdir -p "$W/c6ne"; printf '#!/bin/sh\nexit 0\n' > "$W/c6ne/bash3.2"; chmod -x "$W/c6ne/bash3.2"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6ne/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "LOW-8 a non-executable PB_BASH32 is named in a note" "$OUT" "$W/c6ne/bash3.2"
+assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
+run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_not_contains "LOW-8 with PB_BASH32 unset there is no such note" "$OUT" "PB_BASH32"
 t_summary

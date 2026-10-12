@@ -673,4 +673,60 @@ assert_contains "AC1.1 fileMode=false: the staged drop prints the mode violation
 assert_not_contains "AC1.1 fileMode=false: the other, only chmod-ed, file is not reported" "$OUT" "tests/run.sh lost"
 gchk_allow "src/run.sh" implementer; assert_rc "AC1.1 fileMode=false: the escape works for the staged drop" 0
 
+
+# ---- v0.23.2 fix round (lane A): staged-only drops, renamed drops, odd path names ----
+echo "v0.23.2 fix MINOR-3 a staged-only mode drop (work tree still executable, core.fileMode=true) is caught"
+for spec in tester:tests/run.sh implementer:src/run.sh reviewer:src/run.sh infra:ci/run.sh; do
+  role="${spec%%:*}"; p="${spec#*:}"
+  MSG="VIOLATION (mode): $p lost its executable bit (100755 -> 100644)"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  git config core.fileMode true
+  git update-index --chmod=-x -- "$p"
+  assert_eq "MINOR-3 $role: fixture: the index says 100644" "100644" "$(git ls-files -s -- "$p" | cut -d' ' -f1)"
+  if [ -x "$p" ]; then
+    gchk "$role"; assert_rc "MINOR-3 $role: a staged-only drop fails" 1
+    assert_contains "MINOR-3 $role: it prints the mode message" "$OUT" "$MSG"
+    gchk_allow "$p" "$role"
+    assert_not_contains "MINOR-3 $role: PB_ALLOW_MODE_CHANGE=path silences it" "$OUT" "VIOLATION (mode)"
+  else t_skip 4 "MINOR-3 $role (work-tree file is not executable here)"; fi
+done
+
+echo "v0.23.2 fix MINOR-5 a rename plus a mode drop is a lost executable bit"
+for spec in tester:tests/run.sh:tests/renamed.sh implementer:src/run.sh:src/renamed.sh reviewer:src/run.sh:src/renamed.sh infra:ci/run.sh:ci/renamed.sh; do
+  role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
+  MSG="VIOLATION (mode): $new lost its executable bit (100755 -> 100644)"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  git mv "$old" "$new"; chmod -x "$new" 2>/dev/null; git update-index --chmod=-x -- "$new"
+  git add -A
+  assert_eq "MINOR-5 $role: fixture: $new is staged 100644" "100644" "$(git ls-files -s -- "$new" | cut -d' ' -f1)"
+  gchk "$role"; assert_rc "MINOR-5 $role: rename + drop fails" 1
+  assert_contains "MINOR-5 $role: the NEW path is named with both modes" "$OUT" "$MSG"
+  gchk_allow "$new" "$role"
+  assert_not_contains "MINOR-5 $role: PB_ALLOW_MODE_CHANGE=new path silences it" "$OUT" "VIOLATION (mode)"
+  if [ "$role" != reviewer ]; then assert_rc "MINOR-5 $role: PB_ALLOW_MODE_CHANGE=new path lets it pass" 0; fi
+  gchk_allow "$old" "$role"
+  assert_contains "MINOR-5 $role: listing the OLD path does not silence it" "$OUT" "$MSG"
+done
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+git rm -q src/run.sh
+printf '#!/bin/sh\necho different\n' > src/other.sh; git add src/other.sh; git update-index --chmod=-x -- src/other.sh
+gchk implementer; assert_rc "MINOR-5 a deleted 100755 path plus a 100644 path with a different blob passes" 0
+assert_not_contains "MINOR-5 ... no mode violation" "$OUT" "(mode)"
+
+echo "v0.23.2 fix LOW-6 paths with a double quote or a tab: real name reported, allowed through PB_ALLOW_MODE_CHANGE"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+QP='src/we"ird.sh'
+TP="$(printf 'src/ta\tb.sh')"
+for P in "$QP" "$TP"; do
+  if cp src/run.sh "$P" 2>/dev/null && [ -f "$P" ]; then
+    git add -- "$P" && git update-index --chmod=+x -- "$P" && git commit -q -m "add odd name"
+    git update-index --chmod=-x -- "$P"
+    gchk implementer; assert_rc "LOW-6 [$P] a staged drop fails" 1
+    assert_contains "LOW-6 [$P] the real path is printed unquoted" "$OUT" "VIOLATION (mode): $P lost its executable bit (100755 -> 100644)"
+    gchk_allow "$P" implementer; assert_rc "LOW-6 [$P] PB_ALLOW_MODE_CHANGE with the real path passes" 0
+    git update-index --chmod=+x -- "$P"
+  else t_skip 4 "LOW-6 path [$P] (this file system refuses the name)"; fi
+done
+HDR="$(sed -n 1,45p "$GATE" | tr 'A-Z' 'a-z')"
+assert_contains "LOW-6 the help says a path with a colon cannot be listed in PB_ALLOW_MODE_CHANGE" "$HDR" "cannot be listed"
 t_summary
