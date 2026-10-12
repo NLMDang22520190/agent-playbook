@@ -819,7 +819,7 @@ echo "v0.23.3 AC3.2 (R3) a path with a newline fails closed, there is no PB_ALLO
 R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
 NLP="$(printf 'src/new\nline.sh')"
 if printf '#!/bin/sh\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ] && git add -- "$NLP" 2>/dev/null && git ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
-  NLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  NLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
   for role in implementer tester reviewer infra; do
     gchk "$role"
     assert_rc "AC3.2 $role: a staged path with a newline fails" 1
@@ -838,11 +838,11 @@ else rm -f "$NLP" 2>/dev/null; t_skip 12 "AC3.2 newline path (this file system o
 
 # ---- v0.23.3 lane A review of 146dd98 ----
 echo "v0.23.3 lane A review MINOR-3 the header and the message name control bytes, not only newlines"
-if head -n 45 "$GATE" | grep -qi 'control byte'; then t_ok "the header (first 45 lines) mentions the control-byte limit"; else t_bad "the header (first 45 lines) mentions the control-byte limit" "no 'control byte' in lines 1-45 of scripts/role-gate.sh"; fi
+if head -n 45 "$GATE" | grep -Eqi 'control byte|\\002 byte'; then t_ok "the header (first 45 lines) mentions the control-byte limit"; else t_bad "the header (first 45 lines) mentions the control-byte limit" "no 'control byte' in lines 1-45 of scripts/role-gate.sh"; fi
 R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
 CTLP="src/ctl$(printf '\002')x.sh"
 if printf '#!/bin/sh\n' > "$CTLP" 2>/dev/null && [ -f "$CTLP" ] && git add -- "$CTLP" 2>/dev/null && git ls-files --error-unmatch -- "$CTLP" >/dev/null 2>&1; then
-  CTLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  CTLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
   for role in implementer tester reviewer infra; do
     gchk "$role"
     assert_rc "$role: a staged path with a \\002 byte fails" 1

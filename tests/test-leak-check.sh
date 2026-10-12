@@ -1303,7 +1303,7 @@ echo "v0.23.3 AC3.2 (R3) scan --staged: a path with a newline fails closed, with
 modrepo
 NLP="$(printf 'bin/new\nline.sh')"
 if printf '#!/bin/sh\n' > "$R/$NLP" 2>/dev/null && [ -f "$R/$NLP" ] && git -C "$R" add -- "$NLP" 2>/dev/null && git -C "$R" ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
-  NLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  NLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
   scan_streams
   assert_eq "AC3.2 a staged path with a newline: exit 1" "1" "$RC"
   assert_contains "AC3.2 the refusal says the path contains a newline and the check is incomplete" "$STD$ERR" "$NLMSG"
@@ -1465,7 +1465,7 @@ echo "v0.23.3 lane A review MINOR-3 scan --staged: a path with a control byte fa
 modrepo
 CTLP="bin/ctl$(printf '\002')x.sh"
 if printf '#!/bin/sh\n' > "$R/$CTLP" 2>/dev/null && [ -f "$R/$CTLP" ] && git -C "$R" add -- "$CTLP" 2>/dev/null && git -C "$R" ls-files --error-unmatch -- "$CTLP" >/dev/null 2>&1; then
-  CTLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  CTLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
   scan_streams
   assert_eq "a staged path with a \\002 byte: exit 1" "1" "$RC"
   assert_contains "... the message says a path contains a newline or control byte" "$STD$ERR" "$CTLMSG"
@@ -1474,4 +1474,88 @@ if printf '#!/bin/sh\n' > "$R/$CTLP" 2>/dev/null && [ -f "$R/$CTLP" ] && git -C 
   assert_contains "... the message is still printed" "$STD$ERR" "$CTLMSG"
   git -C "$R" rm -q --cached -f -- "$CTLP"; rm -f "${R:?}/${CTLP:?}"
 else rm -f "${R:?}/${CTLP:?}" 2>/dev/null; t_skip 4 "control-byte path (this file system or git refuses the name)"; fi
+
+# ---- v0.23.3 lane A review round 3 (fix round 3) ----
+# pfix WHERE -> sets R (work repo), D-level bare repos PRIV (origin's url), PUB (empty), FORK (empty) and PSEC (the secret commit).
+# WHERE=origin: the secret commit is on origin/main (pushed to PRIV, fetched). WHERE=fork: it is on remote fork's refs only
+# (origin holds the base commit only). Then a branch feat adds a benign commit on top, and the hooks are installed.
+pfix() {
+  local d; d="$(mk_tmp)"; PRIV="$d/priv.git"; PUB="$d/pub.git"; FORK="$d/fork.git"
+  git init -q --bare "$PRIV"; git init -q --bare "$PUB"; git init -q --bare "$FORK"
+  newrepo
+  git -C "$R" remote add origin "$PRIV"
+  git -C "$R" push -q --no-verify origin HEAD:refs/heads/main
+  git -C "$R" fetch -q origin
+  if [ "$1" = fork ]; then git -C "$R" remote add fork "$FORK"; fi
+  stage "$R" s.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret commit'
+  PSEC="$(git -C "$R" rev-parse HEAD)"
+  if [ "$1" = fork ]; then
+    git -C "$R" push -q --no-verify fork HEAD:refs/heads/main; git -C "$R" fetch -q fork
+  else
+    git -C "$R" push -q --no-verify origin HEAD:refs/heads/main; git -C "$R" fetch -q origin
+  fi
+  git -C "$R" checkout -q -b feat
+  stage "$R" b.txt 'benign'; G -C "$R" commit -q -m 'benign commit'
+  run_in "$R" bash "$LC" install-hooks
+}
+# holds BARE -> 0 when BARE has the secret commit or a feat branch
+holds_secret() { git -C "$1" cat-file -e "$PSEC" 2>/dev/null; }
+holds_feat() { git -C "$1" rev-parse --verify -q refs/heads/feat >/dev/null 2>&1; }
+
+echo "v0.23.3 lane A review round 3 MAJOR-1: a pushInsteadOf base holding '.pushinsteadof ' is not split at its first occurrence"
+pfix origin
+XB="$(mk_tmp)/x.pushinsteadof y.git"
+if git init -q --bare "$XB" 2>/dev/null && [ -d "$XB" ]; then
+  git -C "$R" config "url.$PRIV.insteadOf" 'pv:'
+  git -C "$R" config "url.$XB.pushInsteadOf" 'pv:'
+  lc_streams --unpushed "$(git -C "$R" rev-parse feat)" --remote 'pv:'
+  assert_eq "R3 M1 scan --remote pv: (insteadOf -> priv, pushInsteadOf -> a base with '.pushinsteadof y'): full range, exit 1" "1" "$RC"
+  assert_contains "R3 M1 ... the finding is named" "$STD" "s.txt:1: github-token"
+  assert_contains "R3 M1 ... stderr carries the usual note" "$ERR" "$(note_for 'pv:')"
+  run_in "$R" git push 'pv:' feat
+  if [ "$RC" != 0 ]; then t_ok "R3 M1 the installed hook refuses 'git push pv: feat' (exit $RC)"; else t_bad "R3 M1 the installed hook refuses 'git push pv: feat'" "exit 0; output: $OUT"; fi
+  assert_contains "R3 M1 ... the hook shows the finding" "$OUT" "s.txt:1: github-token"
+  if holds_secret "$XB"; then t_bad "R3 M1 the secret commit did not reach the x.pushinsteadof y.git repo" "object is there"; else t_ok "R3 M1 the secret commit did not reach the x.pushinsteadof y.git repo"; fi
+else t_skip 6 "R3 M1 a directory name with a space and '.pushinsteadof' (this file system refuses it)"; fi
+
+echo "v0.23.3 lane A review round 3 MAJOR-2 control: a plain named push, no rewrite, the secret on origin/main"
+pfix origin
+run_in "$R" git push origin feat
+assert_rc "R3 M2 control: git push origin feat with the secret on origin/main: exit 0" 0
+if holds_feat "$PRIV"; then t_ok "R3 M2 control: the push reached priv"; else t_bad "R3 M2 control: the push reached priv" "no feat on priv; output: $OUT"; fi
+
+echo "v0.23.3 lane A review round 3 MAJOR-2 F: named remote origin, pushInsteadOf on its url, no pushurl"
+pfix origin
+git -C "$R" config "url.$PUB.pushInsteadOf" "$PRIV"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R3 M2 F: git push origin feat (the push goes to pub) is refused (exit $RC)"; else t_bad "R3 M2 F: git push origin feat (the push goes to pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R3 M2 F: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R3 M2 F: pub did not receive the secret commit" "object is on pub"; else t_ok "R3 M2 F: pub did not receive the secret commit"; fi
+if holds_feat "$PUB"; then t_bad "R3 M2 F: pub did not receive the branch" "feat is on pub"; else t_ok "R3 M2 F: pub did not receive the branch"; fi
+
+echo "v0.23.3 lane A review round 3 MAJOR-2 F2: named remote origin, pushurl = pub, no pushInsteadOf"
+pfix origin
+git -C "$R" config remote.origin.pushurl "$PUB"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "R3 M2 F2: git push origin feat (pushurl is pub) is refused (exit $RC)"; else t_bad "R3 M2 F2: git push origin feat (pushurl is pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "R3 M2 F2: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "R3 M2 F2: pub did not receive the secret commit" "object is on pub"; else t_ok "R3 M2 F2: pub did not receive the secret commit"; fi
+
+echo "v0.23.3 lane A review round 3 MAJOR-2 F3: origin's pushurl is remote fork's url, and fork holds the secret commit"
+pfix fork
+git -C "$R" config remote.origin.pushurl "$FORK"
+run_in "$R" git push origin feat
+assert_rc "R3 M2 F3: git push origin feat (the push destination is fork, which holds the secret) is allowed: exit 0" 0
+assert_not_contains "R3 M2 F3: no finding is printed" "$OUT" "github-token"
+if holds_feat "$FORK"; then t_ok "R3 M2 F3: the push reached fork"; else t_bad "R3 M2 F3: the push reached fork" "no feat on fork; output: $OUT"; fi
+if holds_feat "$PRIV"; then t_bad "R3 M2 F3: the push did not go to origin's fetch url" "feat is on priv"; else t_ok "R3 M2 F3: the push did not go to origin's fetch url"; fi
+
+echo "v0.23.3 lane A review round 3 MAJOR-2 G: pushurl = url (same place) with a pushInsteadOf on that url: git ignores the rewrite"
+pfix origin
+git -C "$R" config remote.origin.pushurl "$PRIV"
+git -C "$R" config "url.$PUB.pushInsteadOf" "$PRIV"
+run_in "$R" git push origin feat
+assert_rc "R3 M2 G: git push origin feat (pushurl = url = priv; the secret is on origin/main): exit 0" 0
+if holds_feat "$PRIV"; then t_ok "R3 M2 G: git pushed to the pushurl (priv)"; else t_bad "R3 M2 G: git pushed to the pushurl (priv)" "no feat on priv; output: $OUT"; fi
+if holds_feat "$PUB"; then t_bad "R3 M2 G: nothing went to pub" "feat is on pub"; else t_ok "R3 M2 G: nothing went to pub"; fi
 t_summary

@@ -53,4 +53,13 @@ if printf 'x\n' > "$RL/$NLP" 2>/dev/null && [ -f "$RL/$NLP" ] && git -C "$RL" ad
   if [ "$RAWRC" != 0 ] && [ "$RAWRC" != "$GITFAIL_RC" ]; then t_ok "AC3.3 ... and a failure status different from a git failure ($RAWRC vs $GITFAIL_RC)"; else t_bad "AC3.3 ... and a failure status different from a git failure" "LF status $RAWRC, git failure status $GITFAIL_RC"; fi
 else rm -f "$RL/$NLP" 2>/dev/null; t_skip 2 "AC3.3 newline path (this file system or git refuses the name)"; fi
 
+
+# ---- v0.23.3 lane A review round 3 MINOR-3: the comment above pb_lost_exec_paths states the real cost bound ----
+echo "v0.23.3 lane A review round 3 MINOR-3 scripts/lib.sh: the comment on pb_lost_exec_paths says where the process bound holds"
+LIBCMT="$(awk '/^#/ { buf = buf $0 "\n"; next } /^pb_lost_exec_paths\(\)/ { printf "%s", buf; exit } { buf = "" }' "$SLIB" | tr 'A-Z' 'a-z')"
+if [ -n "$LIBCMT" ]; then t_ok "R3 m3 the comment block above pb_lost_exec_paths was found"; else t_bad "R3 m3 the comment block above pb_lost_exec_paths was found" "no # block right above 'pb_lost_exec_paths() {' in scripts/lib.sh"; fi
+if printf '%s\n' "$LIBCMT" | grep -Eq '(10|ten)[- ]process'; then t_ok "R3 m3 the comment names the 10-process bound"; else t_bad "R3 m3 the comment names the 10-process bound" "no '10 process' / '10-process' in the comment"; fi
+if printf '%s\n' "$LIBCMT" | grep -Fq 'unreadable'; then t_ok "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')"; else t_bad "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')" "no 'unreadable' in the comment"; fi
+if printf '%s\n' "$LIBCMT" | grep -Fq 'clean filter'; then t_ok "R3 m3 the comment names a failing clean filter"; else t_bad "R3 m3 the comment names a failing clean filter" "no 'clean filter' in the comment"; fi
+if printf '%s\n' "$LIBCMT" | grep -Eq 'per path|per-path|each path|one by one|path by path'; then t_ok "R3 m3 the comment says a readable file that fails falls back per path"; else t_bad "R3 m3 the comment says a readable file that fails falls back per path" "no per path / each path wording in the comment"; fi
 t_summary
