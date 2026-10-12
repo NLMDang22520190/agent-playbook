@@ -558,4 +558,39 @@ run bash "$C/evals/run-checks.sh"
 assert_rc "AC6 the real tree passes a full run-checks with the new rules" 0
 assert_contains "AC6 the gnu ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
 
+
+# ---- v0.23.0 review: four-digit octal, what the soh check documents as not covered, executable bits ----
+echo "v0.23.0 review: AC4.3 four digits"
+soh_case "printf %b with a four-digit octal escape" tests/zz-soh.sh "printf ${Q}%b${Q} ${Q}${B}0001${Q}" fail
+soh_case "four-digit octal escape in a plain printf" tests/zz-soh.sh "printf ${Q}${B}0001${Q}" fail
+
+echo "v0.23.0 review: the soh block documents what it does not cover"
+SOHBLK="$(awk '/^if want soh; then/ { f = 1 } f && /^#/ { print } f && /^fi$/ { exit }' "$PB_ROOT/evals/run-checks.sh")"
+if [ -n "$SOHBLK" ]; then t_ok "the soh block in evals/run-checks.sh has comment lines"; else t_bad "the soh block in evals/run-checks.sh has comment lines" "no '# ' lines between 'if want soh' and 'fi'"; fi
+assert_contains "the soh comment mentions the short escape (backslash 1)" "$SOHBLK" "${B}1"
+assert_contains "the soh comment mentions the short hex escape (backslash x1)" "$SOHBLK" "${B}x1"
+assert_contains "the soh comment mentions the control escape (backslash cA)" "$SOHBLK" "${B}cA"
+assert_contains "the soh comment says these are not covered" "$(printf '%s' "$SOHBLK" | tr 'A-Z' 'a-z')" "not covered"
+
+echo "v0.23.0 review: executable bits (git mode 100755) of every script"
+# Guard: every tracked file under scripts/, tools/ and evals/ whose first line is a #! line, plus tests/*.sh and install.sh,
+# is stored with mode 100755. A commit that rewrites a script as 100644 breaks `bash x` nowhere but `./x` and the CI wrappers.
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  BADMODE=""
+  LSF="$(git -C "$PB_ROOT" ls-files -s -- scripts tools evals tests install.sh)"
+  while read -r mode _ _ path; do
+    case "$path" in
+      scripts/*|tools/*|evals/*) first=""; IFS= read -r first < "$PB_ROOT/$path" 2>/dev/null; case "$first" in "#!"*) ;; *) continue ;; esac ;;
+      tests/*.sh|install.sh) ;;
+      *) continue ;;
+    esac
+    [ "$mode" = 100755 ] || BADMODE="$BADMODE $path($mode)"
+  done <<EOF
+$LSF
+EOF
+  assert_eq "every script is stored with git mode 100755" "" "$BADMODE"
+else
+  t_skip 1 "executable-bit guard needs a git checkout"
+fi
+
 t_summary

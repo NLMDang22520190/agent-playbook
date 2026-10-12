@@ -102,8 +102,23 @@ echo "AC4.2 the suites run under bash 3.2 when it is available"
 REAL_BASH="$(command -v bash)"
 # fake_bash PATH LOG -> PATH is a wrapper script: logs its arguments, then execs the real bash
 fake_bash() {
+  local ver="${3:-3.2.57(1)-release}" maj min rest
+  maj="${ver%%.*}"; rest="${ver#*.}"; min="${rest%%.*}"
   mkdir -p "$(dirname "$1")"
-  printf '#!/bin/sh\necho "called %s $*" >> "%s"\nexec "%s" "$@"\n' "$1" "$2" "$REAL_BASH" > "$1"
+  # The wrapper logs every call, answers the usual version probes itself with VER (so the tool can tell a 3.2 from a 5.x),
+  # and execs the real bash for everything else.
+  cat > "$1" <<WRAP
+#!/bin/sh
+echo "called $1 \$*" >> "$2"
+case "\$*" in
+  *'VERSINFO[0]'*) echo $maj; exit 0 ;;
+  *'VERSINFO[1]'*) echo $min; exit 0 ;;
+  *VERSINFO*) echo "$maj $min"; exit 0 ;;
+  *BASH_VERSION*) echo "$ver"; exit 0 ;;
+  *--version*|*-version*) echo "GNU bash, version $ver (fake)"; exit 0 ;;
+esac
+exec "$REAL_BASH" "\$@"
+WRAP
   chmod +x "$1"
 }
 # mk_bash_suite DIR -> DIR/tests/test-b.sh prints the bash it sees first and runs a nested bash
@@ -178,5 +193,22 @@ assert_not_contains "AC4.2 no bash 3.2: no 'bash is' line" "$OUT" "bsd-check: ba
 assert_contains "AC4.2 no bash 3.2: the awk line is still printed" "$OUT" "bsd-check: awk is original-awk"
 run env -i PATH="$W/bb5:$BARE" HOME="$W/home5" TMPDIR="$W" STUB_RC=4 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_rc "AC4.2 no bash 3.2: a failing suite's exit code (4) is passed through" 4
+
+
+# ---- v0.23.0 review: a bash that is not 3.2 is refused, not accepted silently ----
+echo "AC4.2 review: a bash3.2 that reports version 5.x is refused with a message naming the version"
+D="$W/b6"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb6" original-awk "$W/bb6.log"
+FB5="$W/fb5/bash3.2"; fake_bash "$FB5" "$W/fb5.log" "5.2.15(1)-release"
+mkdir -p "$W/home6"
+run env -i PATH="$W/bb6:$BARE" HOME="$W/home6" TMPDIR="$W" PB_BASH32="$FB5" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 review: the message names the version found (5.2)" "$OUT" "5.2"
+assert_not_contains "AC4.2 review: no 'bsd-check: bash is' line for it" "$OUT" "bsd-check: bash is $FB5"
+assert_not_contains "AC4.2 review: the suite did not run through the 5.x wrapper" "$(cat "$W/fb5.log" 2>/dev/null)" "tests/test-b.sh"
+assert_contains "AC4.2 review: the message says it is not bash 3.2 (refused) or points at get-bash32" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "3.2"
+echo "AC4.2 review: a real 3.2 version report is still accepted"
+D="$W/b7"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb7" original-awk "$W/bb7.log"
+FB32="$W/fb7/bash3.2"; fake_bash "$FB32" "$W/fb7.log" "3.2.57(1)-release"
+run env -i PATH="$W/bb7:$BARE" HOME="$W/home6" TMPDIR="$W" PB_BASH32="$FB32" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 review: a 3.2 report is accepted" "$OUT" "bsd-check: bash is $FB32"
 
 t_summary

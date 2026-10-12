@@ -316,4 +316,19 @@ e5_reply nm1 'none failed but test_x'; assert_eq "v23 AC7.3 'none failed but tes
 e5_reply nm2 'no tests failed but one'; assert_eq "v23 AC7.3 'no tests failed but one': a failure named, PASS" "PASS" "$STATE"
 e5_reply nm3 'No tests failed but the subtract test.'; assert_eq "v23 AC7.3 'No tests failed but the subtract test.': a failure named, PASS" "PASS" "$STATE"
 
+
+# ---- v0.23.0 review: deeply nested quotes and substitutions must not crash transcript.js ----
+# (4000 units is the reviewer's case; 20000 and 100000 are past the recursion limit of the first fix)
+for NEST in 4000 20000 100000; do
+  echo "v0.23.0 review: transcript.js survives $NEST nested '\"\$(' units"
+  node -e 'const s = ("\x27\"$(").repeat(+process.argv[1]); console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:s}}]}}))' "$NEST" > "$TR/deep.log"
+  run node "$PB_ROOT/evals/transcript.js" "$TR/deep.log"
+  assert_rc "v23 review [$NEST]: a deeply nested command: exit 0" 0
+  assert_not_contains "v23 review [$NEST]: no RangeError (stack overflow)" "$OUT" "RangeError"
+  assert_contains "v23 review [$NEST]: still prints json=1" "$OUT" "json=1"
+  assert_contains "v23 review [$NEST]: still prints ran_tests=" "$OUT" "ran_tests="
+  assert_contains "v23 review [$NEST]: still prints spec_first=" "$OUT" "spec_first="
+  assert_eq "v23 review [$NEST]: a nested non-run is ran_tests=0" "0" "$(printf '%s\n' "$OUT" | sed -n 's/^ran_tests=//p')"
+done
+
 t_summary

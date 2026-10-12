@@ -24,11 +24,11 @@ WEIGHT="$(flat "$SKILL" '^## Pick the weight' 3)"
 if [ -n "$WEIGHT" ]; then t_ok "the Pick the weight section exists"; else t_bad "the Pick the weight section exists" "no heading matched in $SKILL"; fi
 
 echo "AC15.1 a string-literal or message-text change is Lite, even in a sensitive module"
-chk "AC15.1 names a string literal or message text change" "$WEIGHT" 'string literal|message text'
-chk "AC15.1 limits it to no control flow" "$WEIGHT" '(string literal|message text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text)'
-chk "AC15.1 limits it to no data shape" "$WEIGHT" '(string literal|message text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text)'
-chk "AC15.1 says such a change is Lite" "$WEIGHT" '(string literal|message text).{0,250}Lite|Lite.{0,200}(string literal|message text)'
-chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHT" '(string literal|message text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text)[^.]{0,120}Lite'
+chk "AC15.1 names a string literal or message text change" "$WEIGHT" 'string literal|message text|comment text'
+chk "AC15.1 limits it to no control flow" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 limits it to no data shape" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 says such a change is Lite" "$WEIGHT" '(string literal|message text|comment text).{0,250}Lite|Lite.{0,200}(string literal|message text|comment text)'
+chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHT" '(string literal|message text|comment text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text|comment text)[^.]{0,120}Lite'
 chk "AC15.1 the sensitivity is stated as a risk line" "$WEIGHT" '(sensitiv|critical)[^.]{0,200}risk line|risk line[^.]{0,200}(sensitiv|critical)'
 # the existing rules stay: critical code that changes behaviour is still Full
 chk "AC15.1 regression: altering or removing existing behaviour of critical code is still Full" "$WEIGHT" 'alters or removes existing behaviour of critical code'
@@ -47,5 +47,23 @@ chk "AC15.2 it continues at Lite in its own context" "$RULE_SECS" 'continu[a-z]*
 chk "AC15.2 it reports that (the fallback)" "$RULE_SECS" 'non-interactive.{0,250}(fail|interrupt|time[ -]?out).{0,250}Lite.{0,250}(report|log)'
 # the interactive rule keeps asking
 chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(flat "$SKILL" '^## Stop and ask the user when' 2)" 'dispute is still open after 2 rounds'
+
+
+# ---- v0.23.0 review: the Lite exception is about user-visible message or comment text that is not parsed, matched or sent as data ----
+echo "AC15.1 review: the exception is worded by what the text is used for, not by 'string literal' alone"
+chk "AC15.1 review: names user-visible message or comment text" "$WEIGHT" 'user-visible[^.]{0,60}(message|comment)|(message|comment)[^.]{0,40}text[^.]{0,60}user-visible'
+chk "AC15.1 review: only provided the string is not parsed, matched or sent as data" "$WEIGHT" '(provided|only if|as long as|unless|when)[^.]{0,120}(not|never|no)[^.]{0,60}(parsed|matched|sent)[^.]{0,60}(parsed|matched|sent)?[^.]{0,60}(as )?data'
+chk "AC15.1 review: all three uses are named (parsed, matched, sent)" "$WEIGHT" 'parsed[^.]{0,40}matched[^.]{0,40}sent|sent[^.]{0,40}parsed[^.]{0,40}matched|matched[^.]{0,40}parsed[^.]{0,40}sent'
+chk "AC15.1 review: the rule is still Lite" "$WEIGHT" 'user-visible[^.]{0,250}Lite|Lite[^.]{0,200}user-visible'
+if printf '%s' "$WEIGHT" | grep -qi 'string literal'; then
+  chk "AC15.1 review: where 'string literal' appears, user-visible or parsed/matched/sent qualifies it nearby" "$WEIGHT" 'string literal.{0,250}(user-visible|parsed|matched|sent as data)|(user-visible|parsed|matched|sent as data).{0,250}string literal'
+else
+  t_ok "AC15.1 review: 'string literal' is not used as the rule"
+fi
+if printf '%s' "$WEIGHT" | grep -qiE 'limited to a string literal|only a string literal|just a string literal'; then
+  t_bad "AC15.1 review: 'string literal' alone is not the rule" "the section still says the change is limited to a string literal"
+else
+  t_ok "AC15.1 review: 'string literal' alone is not the rule"
+fi
 
 t_summary
