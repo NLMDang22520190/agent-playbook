@@ -331,4 +331,22 @@ for NEST in 4000 20000 100000; do
   assert_eq "v23 review [$NEST]: a nested non-run is ran_tests=0" "0" "$(printf '%s\n' "$OUT" | sed -n 's/^ran_tests=//p')"
 done
 
+
+# ---- v0.23.2 E3 (AC4.2, D3): a heredoc fed to a shell is executed, so runsProof sees its commands ----
+echo "v0.23.2 E3 runsProof: heredoc bodies fed to a shell are commands, other bodies stay data"
+hd "bash <<EOF with a proof run in the body" 1 "bash <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "bash <<'EOF' with a proof run in the body" 1 "bash <<'EOF'${NLC}bash scripts/proof-run.sh --label x${NLC}EOF"
+hd "sh -s <<EOF with a proof run in the body" 1 "sh -s <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "zsh -e <<EOF with a proof run in the body" 1 "zsh -e <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "bash -eu -o pipefail <<EOF with a proof run in the body" 1 "bash -eu -o pipefail <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+hd "bash <<EOF with the script path directly as the command" 1 "bash <<EOF${NLC}scripts/proof-run.sh --label x${NLC}EOF"
+hd "bash <<-EOF (tab-indented) with a proof run in the body" 1 "bash <<-EOF${NLC}	bash proof-run.sh --label x${NLC}	EOF"
+hd "bash proof-run.sh <<EOF: the command itself runs, the body is input" 1 "bash proof-run.sh <<EOF${NLC}input${NLC}EOF"
+hd "cat <<EOF with a proof run in the body is still data" 0 "cat <<EOF${NLC}bash proof-run.sh${NLC}EOF"
+hd "bash <<EOF whose body only mentions it with echo" 0 "bash <<EOF${NLC}echo bash proof-run.sh --label x${NLC}EOF"
+hd "bash <<EOF whose body only reads it with cat" 0 "bash <<EOF${NLC}cat proof-run.sh${NLC}EOF"
+hd "bash <<EOF whose body only reads it with ls" 0 "bash <<EOF${NLC}ls scripts/proof-run.sh${NLC}EOF"
+# assumption (see the lane report): a shell given a script file reads the heredoc as stdin input, not as commands
+hd "bash build.sh <<EOF: the body is input to build.sh, not commands" 0 "bash build.sh <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
+
 t_summary

@@ -593,4 +593,241 @@ else
   t_skip 1 "executable-bit guard needs a git checkout"
 fi
 
+
+# ---- v0.23.2 AC6: the exec-bit guard has its own fixture test ----
+# Interface chosen for the guard: `evals/run-checks.sh --only modes`. It runs inside the repository that holds the script
+# (run-checks.sh already does cd to its own repo root), reads the INDEX modes with `git ls-files -s` (never [ -x ]), and
+# prints "FAIL ... <path>" lines plus exit 1 for every tracked script stored with a mode other than 100755: a file under
+# scripts/, tools/ or evals/ whose first line is a #! line, or tests/*.sh, or install.sh. Nothing else is read, so the
+# fixture repositories below hold only run-checks.sh and a few scripts.
+echo "v0.23.2 AC6.1 exec guard: evals/run-checks.sh --only modes on fixture repositories"
+G3="git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c core.autocrlf=false"
+# mk_modes_repo -> sets MR: a repo with run-checks.sh and one script per guarded place, all stored at 100755
+mk_modes_repo() {
+  MR="$(mk_tmp)"
+  mkdir -p "$MR/evals" "$MR/scripts" "$MR/tools" "$MR/tests"
+  cp "$PB_ROOT/evals/run-checks.sh" "$MR/evals/run-checks.sh"
+  printf '#!/usr/bin/env bash\necho a\n' > "$MR/scripts/a.sh"
+  printf '#!/usr/bin/env bash\necho b\n' > "$MR/tools/b.sh"
+  printf '#!/usr/bin/env bash\necho c\n' > "$MR/evals/c.sh"
+  printf '#!/usr/bin/env bash\necho t\n' > "$MR/tests/t.sh"
+  printf '#!/usr/bin/env bash\necho i\n' > "$MR/install.sh"
+  printf 'plain data, no shebang\n' > "$MR/scripts/data.txt"
+  ( cd "$MR" && $G3 init -q && $G3 add -A && $G3 update-index --chmod=+x evals/run-checks.sh scripts/a.sh tools/b.sh evals/c.sh tests/t.sh install.sh &&
+    $G3 commit -q -m base ) >/dev/null 2>&1
+}
+# modes_run DIR -> OUT, RC of the guard in that repository
+modes_run() { run_in "$1" bash evals/run-checks.sh --only modes; }
+# stage_mode DIR MODE PATH -> change the INDEX mode of a path (+x or -x) and commit nothing
+stage_mode() { ( cd "$1" && $G3 update-index "--chmod=$2" "$3" ) >/dev/null 2>&1; }
+
+# corpus first: the all-100755 repository passes
+mk_modes_repo
+modes_run "$MR"
+assert_rc "AC6.1 all scripts at 100755: the guard exits 0" 0
+assert_not_contains "AC6.1 all scripts at 100755: no FAIL line" "$OUT" "FAIL"
+assert_eq "AC6.1 precondition: the fixture really stores run-checks.sh at 100755" "100755" "$(cd "$MR" && git ls-files -s evals/run-checks.sh | cut -d' ' -f1)"
+
+# a 100644 #! script is reported by path
+mk_modes_repo; stage_mode "$MR" -x scripts/a.sh
+assert_eq "AC6.1 precondition: scripts/a.sh is staged at 100644" "100644" "$(cd "$MR" && git ls-files -s scripts/a.sh | cut -d' ' -f1)"
+modes_run "$MR"
+assert_rc "AC6.1 a 100644 #! script under scripts/: exit 1" 1
+assert_contains "AC6.1 a 100644 #! script under scripts/: the path is reported" "$OUT" "scripts/a.sh"
+assert_not_contains "AC6.1 only the offending path is reported (tools/b.sh is fine)" "$OUT" "tools/b.sh"
+assert_contains "AC6.1 the output says FAIL" "$OUT" "FAIL"
+for p in tools/b.sh evals/c.sh tests/t.sh install.sh; do
+  mk_modes_repo; stage_mode "$MR" -x "$p"; modes_run "$MR"
+  assert_rc "AC6.1 [$p] at 100644: exit 1" 1
+  assert_contains "AC6.1 [$p] at 100644: the path is reported" "$OUT" "$p"
+done
+mk_modes_repo; stage_mode "$MR" -x scripts/a.sh; stage_mode "$MR" -x tools/b.sh; modes_run "$MR"
+assert_rc "AC6.1 two files at 100644: exit 1" 1
+assert_contains "AC6.1 two files at 100644: the first path is reported" "$OUT" "scripts/a.sh"
+assert_contains "AC6.1 two files at 100644: the second path is reported" "$OUT" "tools/b.sh"
+
+# a new file added at 100644 (committed, not just staged) is reported too
+mk_modes_repo
+printf '#!/usr/bin/env bash\necho new\n' > "$MR/scripts/new.sh"
+( cd "$MR" && $G3 add scripts/new.sh && $G3 update-index --chmod=-x scripts/new.sh && $G3 commit -q -m new ) >/dev/null 2>&1
+modes_run "$MR"
+assert_rc "AC6.1 a committed new #! script at 100644: exit 1" 1
+assert_contains "AC6.1 a committed new #! script at 100644: the path is reported" "$OUT" "scripts/new.sh"
+
+# a file under scripts/ without a #! first line is data, not a script: not reported
+mk_modes_repo
+( cd "$MR" && $G3 update-index --chmod=-x scripts/data.txt ) >/dev/null 2>&1
+modes_run "$MR"
+assert_rc "AC6.1 scripts/data.txt (no #!) at 100644 is not a script: exit 0" 0
+
+# the INDEX mode decides, never the work-tree executable bit
+mk_modes_repo; stage_mode "$MR" -x scripts/a.sh; chmod +x "$MR/scripts/a.sh"
+modes_run "$MR"
+assert_rc "AC6.1 index 100644 but the work tree file is chmod +x: still exit 1" 1
+assert_contains "AC6.1 index 100644 but the work tree file is chmod +x: the path is reported" "$OUT" "scripts/a.sh"
+mk_modes_repo; chmod -x "$MR/scripts/a.sh" "$MR/tools/b.sh"
+modes_run "$MR"
+assert_rc "AC6.1 index 100755 but the work tree file lost +x (not staged): exit 0 (the index is what is committed)" 0
+assert_not_contains "AC6.1 index 100755 but the work tree file lost +x (not staged): no FAIL line" "$OUT" "FAIL"
+
+# the section name is part of the usage text
+run bash "$PB_ROOT/evals/run-checks.sh" --only nosuchgroup
+assert_rc "AC6.1 an unknown section still exits 2" 2
+assert_contains "AC6.1 the usage text lists the modes group" "$OUT" "modes"
+
+# mutant: a guard that accepts 100644. A `git` shim rewrites the mode column of `git ls-files -s` (100644 -> 100755), which is
+# exactly what a guard that accepts 100644 would see. The fixture that must FAIL then passes, so the assertions above (exit 1,
+# path reported) are able to tell the mutant from the real guard.
+REALGIT="$(command -v git)"
+SHIM="$(mk_tmp)"
+printf '#!/bin/sh\ncase " $* " in\n  *" ls-files "*) "%s" "$@" | sed "s/^100644/100755/" ;;\n  *) exec "%s" "$@" ;;\nesac\n' "$REALGIT" "$REALGIT" > "$SHIM/git"
+chmod +x "$SHIM/git"
+mk_modes_repo; stage_mode "$MR" -x scripts/a.sh
+OUT="$(cd "$MR" && PATH="$SHIM:$PATH" bash evals/run-checks.sh --only modes 2>&1)"; RC=$?
+assert_eq "AC6.1 mutant (accepts 100644): the 100644 fixture is NOT reported, so the exit-1 assertion above kills it" "0" "$RC"
+assert_not_contains "AC6.1 mutant (accepts 100644): the offending path is not reported, so the path assertion above kills it" "$OUT" "scripts/a.sh"
+
+# the real checkout passes the guard (modes are read from its index; the work tree is not looked at)
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  run bash "$PB_ROOT/evals/run-checks.sh" --only modes
+  assert_rc "AC6.1 the real checkout passes evals/run-checks.sh --only modes" 0
+else
+  t_skip 1 "AC6.1 the real-checkout guard run needs a git checkout"
+fi
+
+# ---- v0.23.2 AC9: GNU tokenizer gaps (evals/run-checks.sh --only gnu) ----
+# Constructs are built from pieces (DL = a dollar sign, DQ = a double quote, BT = a backtick, LB = an open brace, B = one
+# backslash, Q = a single quote), so this file does not trip its own check, before or after the checker gets stricter.
+echo "v0.23.2 AC9 GNU tokenizer: constructs the per-line scanner missed"
+DL='$'; DQ='"'; BT='`'; LB='{'
+# gnu9 NAME FILE EXPECT(fail|pass) LINE-NUMBER BODY-LINE... -> FILE (under the copy) gets #! and a comment line, then the
+# BODY-LINEs from line 3 on; for fail the output names FILE:LINE-NUMBER, for pass the file is not named
+gnu9() {
+  local name="$1" rel="$2" expect="$3" ln="$4"; shift 4
+  C="$(mk_copy)"
+  mkdir -p "$C/$(dirname "$rel")"
+  printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$@" > "$C/$rel"
+  checks "$C" gnu
+  if [ "$expect" = fail ]; then
+    assert_rc "AC9 $name: exit 1" 1
+    assert_contains "AC9 $name: names $rel:$ln" "$OUT" "$rel:$ln"
+  else
+    assert_rc "AC9 $name: exit 0" 0
+    assert_not_contains "AC9 $name: the file is not named" "$OUT" "$rel"
+  fi
+}
+# corpus first: forms that hold today and must keep holding
+gnu9 "corpus: a flag after a plain line"                         tests/zz-gnu.sh fail 4 "echo hi" "$G $PF x"
+gnu9 "corpus: a flag in a one-line double-quoted text is hidden" tests/zz-gnu.sh pass 3 "echo ${DQ}$G $PF x${DQ}"
+gnu9 "corpus: a flag in a one-line single-quoted text is hidden" tests/zz-gnu.sh pass 3 "echo ${Q}$G $PF x${Q}"
+gnu9 "corpus: a flag in a command substitution inside double quotes" tests/zz-gnu.sh fail 3 "echo ${DQ}${DL}($G $PF x)${DQ}"
+gnu9 "corpus: a flag in a full-line comment is hidden"          tests/zz-gnu.sh pass 3 "# $G $PF x"
+
+# AC9.1 flagged
+gnu9 "a backtick command inside double quotes"                   tests/zz-gnu.sh fail 3 "x=${DQ}${BT}$G $PF y${BT}${DQ}"
+gnu9 "a backtick command inside double quotes, after other text" tests/zz-gnu.sh fail 3 "x=${DQ}a ${BT}$G $PF y${BT} b${DQ}"
+gnu9 "after an ANSI-C quoted word with an escaped quote"        tests/zz-gnu.sh fail 3 "x=${DL}${Q}a${B}${Q}b${Q}; $G $PF y"
+gnu9 "after an ANSI-C quoted word without an escape"            tests/zz-gnu.sh fail 3 "x=${DL}${Q}ab${Q}; $G $PF y"
+gnu9 "find -exec echo {} escaped-semicolon -printf"             tests/zz-gnu.sh fail 3 "$FD . -exec echo {} ${B}; $PR '%p'"
+gnu9 "find -exec with a plus terminator and -printf"            tests/zz-gnu.sh fail 3 "$FD . -exec echo {} + $PR '%p'"
+gnu9 "xargs -I {} then the GNU no-run-if-empty flag"            tests/zz-gnu.sh fail 3 "echo a | $XA -I {} $XR echo {}"
+gnu9 "xargs -I {} on a command with a trailing brace word"      tests/zz-gnu.sh fail 3 "echo a | $XA -I {} $XR echo x{}y"
+# AC9.2 quote state carries across lines
+gnu9 "a double quote opened on one line closes on the next"      tests/zz-gnu.sh fail 4 "x=${DQ}a" "${DQ}; $G $PF y"
+gnu9 "a single quote opened on one line closes on the next"      tests/zz-gnu.sh fail 4 "x=${Q}a" "b${Q}; $G $PF y"
+gnu9 "a double quote over three lines, the flag after it closes" tests/zz-gnu.sh fail 5 "x=${DQ}a" "b" "${DQ}; $G $PF y"
+gnu9 "a flag inside a multi-line double-quoted string is text"   tests/zz-gnu.sh pass 3 "x=${DQ}a" "$G $PF y" "${DQ}"
+gnu9 "a flag inside a multi-line single-quoted string is text"   tests/zz-gnu.sh pass 3 "x=${Q}a" "$G $PF y" "${Q}"
+gnu9 "a flag line before a multi-line string is still code"      tests/zz-gnu.sh fail 3 "$G $PF y" "x=${DQ}a" "b${DQ}"
+gnu9 "a # inside a multi-line string body is not a comment"      tests/zz-gnu.sh fail 5 "x=${DQ}a" "# it${Q}s" "${DQ}; $G $PF y"
+gnu9 "a clean line after a closed multi-line string is clean"    tests/zz-gnu.sh pass 3 "x=${DQ}a" "b${DQ}" "echo done"
+# E2: comments and heredoc bodies never change the quote state
+gnu9 "E2 a heredoc body with an apostrophe, then the flag"       tests/zz-gnu.sh fail 6 "cat <<EOF" "don${Q}t" "EOF" "$G $PF y"
+gnu9 "E2 a heredoc body with a double quote, then the flag"      tests/zz-gnu.sh fail 6 "cat <<EOF" "say ${DQ}hi" "EOF" "$G $PF y"
+gnu9 "E2 a comment with an apostrophe, then the flag"            tests/zz-gnu.sh fail 4 "# it${Q}s" "$G $PF y"
+gnu9 "E2 a comment with a double quote, then the flag"           tests/zz-gnu.sh fail 4 "# say ${DQ}hi" "$G $PF y"
+gnu9 "E2 a trailing comment with an apostrophe, then the flag"   tests/zz-gnu.sh fail 4 "echo a   # it${Q}s" "$G $PF y"
+# AC9.3 a command word that is a variable named after a checked tool (any case) is checked like the tool
+gnu9 "variable GREP, dollar form"                                tests/zz-gnu.sh fail 3 "${DL}GREP $PF x"
+gnu9 "variable GREP, braced form"                                tests/zz-gnu.sh fail 3 "${DL}${LB}GREP} $PF x"
+gnu9 "variable GREP in a pipeline"                               tests/zz-gnu.sh fail 3 "cat f | ${DL}GREP $PF x"
+gnu9 "variable GREP in a command substitution"                   tests/zz-gnu.sh fail 3 "y=${DL}(${DL}GREP $PF x f)"
+gnu9 "variable sed in lower case"                                tests/zz-gnu.sh fail 3 "${DL}$SD2 -r 's/a/b/' f"
+gnu9 "variable Grep in mixed case"                               tests/zz-gnu.sh fail 3 "${DL}Grep $PF x"
+gnu9 "variable SED"                                              tests/zz-gnu.sh fail 3 "${DL}SED -r 's/a/b/' f"
+gnu9 "variable STAT"                                             tests/zz-gnu.sh fail 3 "${DL}STAT $CC %Y f"
+gnu9 "variable DATE"                                             tests/zz-gnu.sh fail 3 "${DL}DATE $DD yesterday"
+gnu9 "variable XARGS"                                            tests/zz-gnu.sh fail 3 "echo a | ${DL}XARGS $XR echo"
+gnu9 "variable FIND"                                             tests/zz-gnu.sh fail 3 "${DL}FIND . $PR '%p'"
+gnu9 "variable READLINK"                                         tests/zz-gnu.sh fail 3 "${DL}READLINK $FF x"
+gnu9 "variable GREP without a GNU option is clean"               tests/zz-gnu.sh pass 3 "${DL}GREP -i x f"
+# decision: only the exact tool names, with or without braces and in any case, count; a longer variable name is a different variable
+gnu9 "variable GREPPER is not a tool name"                       tests/zz-gnu.sh pass 3 "${DL}GREPPER $PF x"
+gnu9 "variable GREPPER, braced, is not a tool name"              tests/zz-gnu.sh pass 3 "${DL}${LB}GREPPER} $PF x"
+gnu9 "a variable named after a tool, used as an argument, is not a command word" tests/zz-gnu.sh pass 3 "echo ${DL}GREP $PF"
+gnu9 "a GNU-ok marker with a reason still exempts the variable form" tests/zz-gnu.sh pass 3 "${DL}GREP $PF x $MK needs PCRE here"
+
+# the real tree still passes the stricter scanner, alone and in a full run
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh" --only gnu
+assert_rc "AC9 the real tree passes run-checks --only gnu" 0
+assert_contains "AC9 the gnu ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
+
+
+# ---- v0.23.2 AC16.1: a file glob that matches nothing fails its section (a renamed directory is not a silent pass) ----
+# Sections covered: dupmax, sed, gnu, soh (globs tests/*.sh, scripts/*.sh, tools/*.sh), skills (skills/*/), shellcheck (scripts/*.sh,
+# tools/*.sh; only where shellcheck is installed) and the full run (the files group loops over the same globs).
+# evals/*.sh is not emptied: evals/run-checks.sh itself always matches it. A directory is renamed, never globbed away.
+echo "v0.23.2 AC16.1 a glob that matches no file is reported and fails the section"
+# glob_case SECTION DIR GLOB -> in a copy whose DIR is renamed, run-checks --only SECTION says "no files match GLOB" and exits 1
+glob_case() {
+  local sec="$1" dir="$2" glob="$3"
+  C="$(mk_copy)"
+  mv "$C/$dir" "$C/$dir-renamed"
+  run bash "$C/evals/run-checks.sh" --only "$sec"
+  assert_rc "AC16.1 [$sec] $dir/ renamed: exit 1" 1
+  assert_contains "AC16.1 [$sec] $dir/ renamed: reports no files match $glob" "$OUT" "no files match $glob"
+}
+# corpus first: the real tree has files for every glob, so each section passes and never says it
+C="$(mk_copy)"
+for sec in dupmax sed gnu soh; do
+  run bash "$C/evals/run-checks.sh" --only "$sec"
+  assert_rc "AC16.1 the real tree passes --only $sec" 0
+  assert_not_contains "AC16.1 the real tree: --only $sec never says no files match" "$OUT" "no files match"
+done
+for sec in dupmax sed gnu soh; do
+  glob_case "$sec" tools   'tools/*.sh'
+  glob_case "$sec" scripts 'scripts/*.sh'
+  glob_case "$sec" tests   'tests/*.sh'
+done
+# only the empty glob is named
+C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"
+run bash "$C/evals/run-checks.sh" --only gnu
+assert_not_contains "AC16.1 only the empty glob is named (scripts/*.sh matches, so it is not reported)" "$OUT" "no files match scripts/*.sh"
+assert_not_contains "AC16.1 only the empty glob is named (tests/*.sh matches, so it is not reported)" "$OUT" "no files match tests/*.sh"
+# a section that does not read the glob does not fail for it
+run bash "$C/evals/run-checks.sh" --only scenarios
+assert_rc "AC16.1 --only scenarios does not read tools/*.sh: exit 0" 0
+# skills
+C="$(mk_copy)"; mv "$C/skills" "$C/skills-renamed"
+run bash "$C/evals/run-checks.sh" --only skills
+assert_rc "AC16.1 [skills] skills/ renamed: exit 1" 1
+assert_contains "AC16.1 [skills] skills/ renamed: reports no files match skills/*" "$OUT" "no files match skills/*"
+# shellcheck, where it is installed
+if command -v shellcheck >/dev/null 2>&1; then
+  glob_case shellcheck tools   'tools/*.sh'
+  glob_case shellcheck scripts 'scripts/*.sh'
+else
+  t_skip 4 "AC16.1 [shellcheck] needs shellcheck installed"
+fi
+# the full run: the files group loops over the same globs
+C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"
+run bash "$C/evals/run-checks.sh"
+assert_rc "AC16.1 [full run] tools/ renamed: exit 1" 1
+assert_contains "AC16.1 [full run] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
+C="$(mk_copy)"; mv "$C/scripts" "$C/scripts-renamed"
+run bash "$C/evals/run-checks.sh"
+assert_rc "AC16.1 [full run] scripts/ renamed: exit 1" 1
+assert_contains "AC16.1 [full run] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
+
 t_summary
