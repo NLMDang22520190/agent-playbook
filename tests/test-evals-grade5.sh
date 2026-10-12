@@ -243,4 +243,78 @@ assert_eq "RV9 spec_first=1: a Bash write under node_modules/x/src/ is not an sr
 assert_eq "RV9 spec_first=1: a Bash sed edit under node_modules/x/src/ is not an src/ write" "1" "$(sf_of "$(btu "sed $SI 's/a/b/' node_modules/x/src/a.js")" "$(tu Write "$SFW")")"
 assert_eq "RV9 spec_first=0: a real src/ write after a node_modules one and before the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/node_modules/x/src/a.js","content":"x"}')" "$(tu Write "$SRC")" "$(tu Write "$SFW")")"
 
+echo "v0.23.1 AC9.1 bashWritesSrc: cd into src, git mv, node writeFileSync, with read-only twins"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "AC9.1 spec_first=0: a Bash write to src/ before the spec [$cmd]" "0" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")")"
+  assert_eq "AC9.1 spec_first=1: the same write after the spec [$cmd]" "1" "$(sf_of "$(tu Write "$SFW")" "$(btu "$cmd")")"
+done <<XEOF
+cd src && sed $SI 's/divide/safeDivide/g' calc.js
+cd src; sed $SI.bak 's/a/b/' calc.js
+cd ./src && sed $SI 's/a/b/' calc.js
+cd /w/E21/src && sed $SI 's/a/b/' calc.js
+git mv x src/y
+git mv src/a src/b
+node -e "require('fs').writeFileSync('src/x','')"
+node -e "require('fs').writeFileSync('./src/x.js','y')"
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "AC9.1 not an src/ write [$cmd]: spec_first stays 1 when the spec comes first and src is edited later" "1" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+done <<'XEOF'
+cd src && cat calc.js
+cd src && grep -n divide calc.js
+git mv a b
+git mv docs/a docs/b
+node -e "require('fs').readFileSync('src/x','utf8')"
+node -e "readFileSync('src/x')"
+XEOF
+assert_eq "AC9.1 spec_first=1: a cd into src/ and back out, then an edit elsewhere, is not an src/ write" "1" "$(sf_of "$(btu 'cd src && cat calc.js && cd .. && echo x > notes.txt')" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+
+echo "v0.23.1 review M3/M4 bashWritesSrc: relative cd chains, subshell cd, git -C mv"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "M3/M4 spec_first=0: a Bash write to src/ before the spec [$cmd]" "0" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")")"
+  assert_eq "M3/M4 spec_first=1: the same write after the spec [$cmd]" "1" "$(sf_of "$(tu Write "$SFW")" "$(btu "$cmd")")"
+done <<XEOF
+cd src && cd lib && sed $SI 's/a/b/' x.js
+cd src; cd lib; sed $SI 's/a/b/' x.js
+(cd src && sed $SI 's/a/b/' calc.js)
+(cd src; sed $SI.bak 's/a/b/' calc.js)
+git -C . mv a src/b
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "M3/M4 not an src/ write [$cmd]: spec_first stays 1 when the spec comes first and src is edited later" "1" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+done <<'XEOF'
+git mv src/a lib/b
+git -C . mv src/a lib/b
+git -C . mv a b
+(cd src && cat calc.js)
+XEOF
+assert_eq "M4 spec_first=1: a subshell cd does not leak: a write after it, outside the subshell, is not in src" "1" "$(sf_of "$(btu "(cd src && cat calc.js); echo x > notes.txt")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+
+echo "v0.23.1 review: skipping 'git -C d' options in bashWritesSrc is linear"
+# a transcript (a Bash command, then the spec Write) run with a watchdog: budget = a run on a tiny command + 8 s (no GNU timeout on macOS)
+# The command is built inside node from a repeat count: one argv string is capped at 128 KiB (MAX_ARG_STRLEN) on Linux.
+GC_BASE=-1
+gc_ticks() { # PAIRS TAIL LIMIT -> GC_TICKS (tenths of a second), GC_HUNG; the command is "git" + PAIRS x " -C d" + TAIL (PAIRS 0: TAIL alone)
+  node -e 'const n=+process.argv[1],t=process.argv[2];const c=n>0?"git"+" -C d".repeat(n)+t:t;console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"b1",name:"Bash",input:{command:c}}]}}))' "$1" "$2" > "$TR/gc.json"
+  tu Write "$SFW" >> "$TR/gc.json"; echo >> "$TR/gc.json"
+  node "$TS" "$TR/gc.json" > "$TR/gc.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$3" ]; do sleep 0.1; i=$((i + 1)); done
+  GC_TICKS=$i; GC_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then GC_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+}
+gc_timed() { # PAIRS TAIL -> the spec_first value, or SLOW
+  if [ "$GC_BASE" -lt 0 ]; then gc_ticks 0 "echo x" 600; GC_BASE="$GC_TICKS"; fi
+  gc_ticks "$1" "$2" $((GC_BASE + 80))
+  if [ "$GC_HUNG" = 1 ]; then echo SLOW; return 0; fi
+  sed -n 's/^spec_first=//p' "$TR/gc.out"
+}
+assert_eq "M5 200000 'git -C d' pairs then 'mv a src/b' before the spec: finishes within the baseline + 8 s and still counts as an src write (spec_first=0)" "0" "$(gc_timed 200000 " mv a src/b")"
+assert_eq "M5 200000 'git -C d' pairs then a read-only 'mv a b': finishes within the baseline + 8 s, not an src write (spec_first=1)" "1" "$(gc_timed 200000 " mv a b")"
+
 t_summary

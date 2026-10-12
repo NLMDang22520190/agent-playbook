@@ -96,6 +96,36 @@ assert_contains "AC5.1 neither awk on PATH: the message says how to install it (
 assert_not_contains "AC5.1 neither awk on PATH: the suite did not run" "$OUT" "suite x ran"
 
 
+echo "v0.23.1 AC12.1 when ln -s fails, bsd-check copies the awk and the copy is executable"
+D="$W/t6"; mk_tree "$D"; fake_awk "$W/b6" original-awk "$W/b6.log"
+cat > "$D/tests/test-y.sh" <<'SUITE'
+#!/usr/bin/env bash
+a="$(command -v awk)"
+echo "awk path: $a"
+if [ -L "$a" ]; then echo "awk is a symlink: yes"; else echo "awk is a symlink: no"; fi
+if [ -x "$a" ]; then echo "awk is executable: yes"; else echo "awk is executable: no"; fi
+if [ -f "$a" ]; then echo "awk is a regular file: yes"; else echo "awk is a regular file: no"; fi
+if [ "$(cat "$a" 2>/dev/null)" = "$(cat "$SRC_AWK" 2>/dev/null)" ]; then echo "awk has the source content: yes"; else echo "awk has the source content: no"; fi
+awk 'BEGIN { print "awk output" }'
+SUITE
+# a PATH stub: ln always fails (and records that it was asked), in front of the bare tool dir
+LNB="$W/lnfail"; mkdir -p "$LNB"
+printf '#!/bin/sh\necho "ln called: $*" >> "%s"\nexit 1\n' "$W/ln.log" > "$LNB/ln"
+chmod +x "$LNB/ln"
+rm -f "$W/ln.log"
+run env PATH="$LNB:$W/b6:$BARE" SRC_AWK="$W/b6/original-awk" bash "$D/tools/bsd-check.sh" tests/test-y.sh
+assert_rc "AC12.1 with ln failing, bsd-check still works: exit 0" 0
+assert_contains "AC12.1 the stub ln was asked to link (so the fallback is what ran)" "$(cat "$W/ln.log" 2>/dev/null)" "ln called"
+assert_contains "AC12.1 the tool still prints the awk it used" "$OUT" "original-awk"
+assert_contains "AC12.1 the suite sees awk" "$OUT" "awk path: "
+assert_contains "AC12.1 the awk the suite sees is not a symlink (a copy)" "$OUT" "awk is a symlink: no"
+assert_contains "AC12.1 the copy is a regular file" "$OUT" "awk is a regular file: yes"
+assert_contains "AC12.1 the copy is executable" "$OUT" "awk is executable: yes"
+assert_contains "AC12.1 the copy has the content of the original awk" "$OUT" "awk has the source content: yes"
+assert_contains "AC12.1 the suite's awk output came through the copy" "$OUT" "awk output"
+assert_contains "AC12.1 the copied original-awk was the one called" "$(cat "$W/b6.log" 2>/dev/null)" "called original-awk"
+run env PATH="$LNB:$W/b6:$BARE" SRC_AWK="$W/b6/original-awk" STUB_RC=5 bash "$D/tools/bsd-check.sh" tests/test-x.sh
+assert_rc "AC12.1 with ln failing the suite's exit code (5) is still passed through" 5
 # ---- v0.23.0 AC4.2: bash 3.2 is linked as `bash` next to awk, so nested `bash tests/...` calls use it ----
 # The fake bash 3.2 is a wrapper that logs and execs the real bash, so no real bash 3.2 is needed.
 echo "AC4.2 the suites run under bash 3.2 when it is available"

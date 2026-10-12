@@ -94,25 +94,47 @@ const unwrap = s => { for (let i = 0; i < 10; i++) { const u = unwrap1(s); if (u
 // a path under src/ (not under node_modules/)
 const isSrc = p => /(^|\/)src\//.test(p) && !/(^|\/)node_modules\//.test(p);
 // does a shell command write under src/? Quote-aware tokens (linear: no nested unbounded quantifiers), split into
-// simple commands at ; & | and newlines; redirects, tee, mv/cp targets and sed/perl in-place edits count
+// simple commands at ; & | and newlines; redirects, tee, mv/cp/git mv targets, sed/perl in-place edits and node
+// writeFileSync/appendFileSync calls count. After a `cd src` (or ./src, or <abs>/src) a relative path is inside src until
+// a later cd that leaves it.
 function bashWritesSrc(cmd) {
-  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n]|[^\s;&|<>"']+/g) || [];
+  const toks = cmd.match(/"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||>>|[;&|>\n()]|[^\s;&|<>()"']+/g) || [];
   const bare = t => t.replace(/^["']|["']$/g, "");
-  let words = [];
+  let words = [], inSrc = false;
+  const saved = [];   // inSrc at each open "(": a subshell's cd does not leak out of it
+  const rel = p => p !== "" && !/^(\/|~|\.\.|-)/.test(p);
+  const src = p => isSrc(p) || (inSrc && rel(p));
   const done = () => {
     const w = words; words = [];
     if (!w.length) return false;
     const verb = bare(w[0]).replace(/^.*\//, ""), args = w.slice(1), plain = args.filter(a => !/^-/.test(a));
     const flags = args.filter(a => /^-/.test(a));
-    if (verb === "tee") return plain.some(a => isSrc(bare(a)));
-    if (verb === "mv" || verb === "cp") return plain.length > 0 && isSrc(bare(plain[plain.length - 1]));
-    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => isSrc(bare(a)));
-    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => isSrc(bare(a)));
+    if (verb === "cd") {
+      const d = plain.length ? bare(plain[0]) : "";
+      inSrc = (inSrc && rel(d)) || isSrc(d + "/");
+      return false;
+    }
+    if (verb === "tee") return plain.some(a => src(bare(a)));
+    if (verb === "mv" || verb === "cp") return plain.length > 0 && src(bare(plain[plain.length - 1]));
+    if (verb === "git") {
+      let j = 0;
+      while (j + 1 < args.length && bare(args[j]) === "-C") j += 2;   // git -C DIR mv ... (an index walk: linear)
+      const q = args.slice(j).filter(x => !/^-/.test(x));
+      return q[0] === "mv" && q.length > 2 && src(bare(q[q.length - 1]));
+    }
+    if (verb === "sed") return flags.some(f => /^-[a-zA-Z]*i|^--in-place/.test(f)) && plain.some(a => src(bare(a)));
+    if (verb === "perl") return flags.some(f => /^-[a-zA-Z]*i/.test(f)) && plain.some(a => src(bare(a)));
+    if (verb === "node" || verb === "nodejs") {
+      const re = /\b(?:writeFileSync|appendFileSync)\s*\(\s*\x5c?["'`]([^"'`\x5c]*)/g;
+      for (const a of plain) { let m; while ((m = re.exec(a))) if (src(m[1])) return true; }
+    }
     return false;
   };
   for (let k = 0; k < toks.length; k++) {
     const t = toks[k];
-    if (t === ">" || t === ">>") { if (k + 1 < toks.length && isSrc(bare(toks[k + 1]))) return true; k++; continue; }
+    if (t === ">" || t === ">>") { if (k + 1 < toks.length && src(bare(toks[k + 1]))) return true; k++; continue; }
+    if (t === "(") { if (done()) return true; saved.push(inSrc); continue; }
+    if (t === ")") { if (done()) return true; if (saved.length) inSrc = saved.pop(); continue; }
     if (/^(&&|\|\||[;&|\n])$/.test(t)) { if (done()) return true; continue; }
     words.push(t);
   }

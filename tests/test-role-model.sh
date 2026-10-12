@@ -421,4 +421,51 @@ rm_flat_has "AC3.3 playbook-setup SKILL.md lists reviewer_light" "$RMSETUP" 'rev
 rm_flat_has "AC3.3 playbook-setup SKILL.md lists mechanical" "$RMSETUP" 'mechanical'
 rm_flat_has "AC3.3 playbook-setup lists the keys with the per-harness form (model_reviewer_light_<harness>)" "$RMSETUP" 'model_reviewer_light_<harness>|model_reviewer_light_<h>|reviewer_light[^.]{0,80}<harness>'
 rm_flat_has "AC3.3 playbook-setup lists the per-harness mechanical key (model_mechanical_<harness>)" "$RMSETUP" 'model_mechanical_<harness>|model_mechanical_<h>|mechanical[^.]{0,80}<harness>'
+
+# --- v0.23.1 AC11.1: list under --harness and PLAYBOOK_HARNESS, every named line with its resolved model
+# line_of NAME -> the one line of $OUT that starts with NAME=
+line_of() { printf '%s\n' "$OUT" | grep -x "$1=.*"; }
+reset
+printf 'model_tester=t\nmodel_implementer_codex=ic\nmodel_reviewer=r\nmodel_reviewer_codex=rc\nmodel_mechanical=m\nmodel_mechanical_codex=mc\n' > "$G"
+role list --harness codex
+assert_rc "AC11.1 list --harness codex exits 0" 0
+assert_eq "AC11.1 --harness codex: tester= (generic)" "tester=t" "$(line_of tester)"
+assert_eq "AC11.1 --harness codex: implementer= (per-harness)" "implementer=ic" "$(line_of implementer)"
+assert_eq "AC11.1 --harness codex: reviewer= (per-harness beats generic)" "reviewer=rc" "$(line_of reviewer)"
+assert_eq "AC11.1 --harness codex: reviewer_light= (no own key: the reviewer's model for that harness)" "reviewer_light=rc" "$(line_of reviewer_light)"
+assert_eq "AC11.1 --harness codex: mechanical= (per-harness)" "mechanical=mc" "$(line_of mechanical)"
+assert_eq "AC11.1 --harness codex: exactly five role lines" "5" "$(printf '%s\n' "$OUT" | grep -c '=')"
+export PLAYBOOK_HARNESS=codex
+role list
+assert_rc "AC11.1 list under PLAYBOOK_HARNESS=codex exits 0" 0
+assert_eq "AC11.1 PLAYBOOK_HARNESS: tester=" "tester=t" "$(line_of tester)"
+assert_eq "AC11.1 PLAYBOOK_HARNESS: implementer=" "implementer=ic" "$(line_of implementer)"
+assert_eq "AC11.1 PLAYBOOK_HARNESS: reviewer=" "reviewer=rc" "$(line_of reviewer)"
+assert_eq "AC11.1 PLAYBOOK_HARNESS: reviewer_light=" "reviewer_light=rc" "$(line_of reviewer_light)"
+assert_eq "AC11.1 PLAYBOOK_HARNESS: mechanical=" "mechanical=mc" "$(line_of mechanical)"
+role list --harness other
+assert_eq "AC11.1 --harness other beats PLAYBOOK_HARNESS: tester=" "tester=t" "$(line_of tester)"
+assert_eq "AC11.1 --harness other: implementer= (no key for it: session)" "implementer=session" "$(line_of implementer)"
+assert_eq "AC11.1 --harness other: reviewer= (generic)" "reviewer=r" "$(line_of reviewer)"
+assert_eq "AC11.1 --harness other: reviewer_light= (the generic reviewer)" "reviewer_light=r" "$(line_of reviewer_light)"
+assert_eq "AC11.1 --harness other: mechanical= (generic)" "mechanical=m" "$(line_of mechanical)"
+unset PLAYBOOK_HARNESS
+reset
+printf 'model_reviewer=r\nmodel_reviewer_light=rl\nmodel_reviewer_light_codex=rlc\nmodel_tester_codex=tc\nmodel_implementer=i\n' > "$G"
+role list --harness codex
+assert_eq "AC11.1 own reviewer_light per-harness key wins: reviewer_light=" "reviewer_light=rlc" "$(line_of reviewer_light)"
+assert_eq "AC11.1 reviewer= falls to its generic key under codex" "reviewer=r" "$(line_of reviewer)"
+assert_eq "AC11.1 tester= per-harness only" "tester=tc" "$(line_of tester)"
+assert_eq "AC11.1 implementer= generic" "implementer=i" "$(line_of implementer)"
+assert_eq "AC11.1 mechanical= never falls back to another role: session" "mechanical=session" "$(line_of mechanical)"
+role list --harness claude-code
+assert_eq "AC11.1 reviewer_light= generic key for another harness" "reviewer_light=rl" "$(line_of reviewer_light)"
+assert_eq "AC11.1 tester= has no key for another harness: session" "tester=session" "$(line_of tester)"
+export PLAYBOOK_HARNESS=codex
+role list
+assert_eq "AC11.1 PLAYBOOK_HARNESS (second config): reviewer_light=" "reviewer_light=rlc" "$(line_of reviewer_light)"
+assert_eq "AC11.1 PLAYBOOK_HARNESS (second config): tester=" "tester=tc" "$(line_of tester)"
+unset PLAYBOOK_HARNESS
+reset
+
 t_summary

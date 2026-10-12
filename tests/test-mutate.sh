@@ -477,4 +477,167 @@ mrun "$R" --base base --test true --include-docs --exclude 'docs/*'
 no_text "AC1.1 --exclude still applies next to --include-docs" "docs/g.md"
 has_line "AC1.1 --exclude next to --include-docs keeps the other .md file" "survived: NOTES.md:1: x == y -> x != y"
 
+echo "v0.23.1 AC8.1 pid reuse: an owner is reaped when its pid is dead or its start string differs; a failing ps never reaps"
+# Assumed owner file format (tester): line 1 = pid, line 2 = the start string (a v0.22.4 file has line 1 only, N4).
+# The start string is, on Linux (when /proc/self/stat exists), field 22 of /proc/PID/stat (start ticks since boot, immune to
+# wall-clock steps), and elsewhere the trimmed `LC_ALL=C TZ=UTC0 ps -o lstart= -p PID`. A fake ps on PATH decides the
+# elsewhere case. FPS_MODE: out (print FPS_OUT) | empty (print nothing, exit 0) | fail (exit 1).
+LIN=0; [ -r /proc/self/stat ] && LIN=1
+# ticks PID -> field 22 of /proc/PID/stat (after the comm in parentheses, which may hold blanks: field 3 is then field 1)
+ticks() { sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk '{ print $20 }'; }
+FB="$W/fakebin"; mkdir -p "$FB"
+cat > "$FB/ps" <<'EOF'
+#!/bin/sh
+printf 'LC_ALL=%s TZ=%s ARGS=%s\n' "${LC_ALL:-}" "${TZ:-}" "$*" >> "${FPS_LOG:-/dev/null}"
+case "${FPS_MODE:-out}" in
+  empty) exit 0 ;;
+  fail) exit 1 ;;
+  *) printf '%s\n' "${FPS_OUT:-}" ;;
+esac
+EOF
+chmod +x "$FB/ps"
+R="$W/reuse"; mkfx "$R"
+( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+commit_all "$R" change
+RT_START='Mon Oct 12 10:00:00 2026'
+# stale_case NAME OWNER_CONTENT MODE PSOUT -> a registered worktree under its own TMPDIR with that owner file; runs
+# mutate.sh with the fake ps; sets REAPED=1|0 (the stale dir is gone) and OUT, RC
+stale_case() {
+  local name="$1" content="$2" mode="$3" psout="$4" tb rb
+  tb="$W/rt-$name"; mkdir -p "$tb"; rb="$(cd "$tb" && pwd -P)"
+  mkdir -p "$rb/pbmutate.stale"
+  ( cd "$R" && git worktree add -q --detach "$rb/pbmutate.stale/wt" HEAD >/dev/null 2>&1 ) || { t_bad "AC8.1 fixture [$name]: worktree add" "failed"; }
+  printf '%s' "$content" > "$rb/pbmutate.stale/owner"
+  OUT="$(cd "$R" && env TMPDIR="$tb" PATH="$FB:$PATH" FPS_MODE="$mode" FPS_OUT="$psout" bash "$MUT" --base base --test true 2>&1)"; RC=$?
+  if [ -d "$rb/pbmutate.stale" ]; then REAPED=0; else REAPED=1; fi
+  ( cd "$R" && git worktree remove --force "$rb/pbmutate.stale/wt" >/dev/null 2>&1; git worktree prune >/dev/null 2>&1 ) || true
+  rm -rf "$rb/pbmutate.stale"
+}
+sleep 300 & LIVE=$!
+sleep 300 & LIVE2=$!
+DEADP=999999; while kill -0 "$DEADP" 2>/dev/null; do DEADP=$((DEADP + 1)); done
+# the start string a correct owner file holds for LIVE on this system, and one that differs from it
+if [ "$LIN" = 1 ]; then SMATCH="$(ticks "$LIVE")"; else SMATCH="$RT_START"; fi
+SDIFF="${SMATCH}7"
+[ -n "$SMATCH" ] || t_bad "AC8.1 fixture: the start string of the live pid" "empty"
+CR="$(printf '\r')"
+
+stale_case live-match "$LIVE
+$SMATCH
+" out "$RT_START"
+assert_rc "AC8.1 live pid + matching start string: the run itself exits 0" 0
+assert_eq "AC8.1 live pid + matching start string: never reaped" "0" "$REAPED"
+stale_case live-match-sp "$LIVE
+$SMATCH
+" out "  $RT_START  "
+assert_eq "AC8.1 the current start string is trimmed before comparing: never reaped" "0" "$REAPED"
+stale_case live-diff "$LIVE
+$SDIFF
+" out "$RT_START"
+assert_rc "AC8.1 live pid + differing start string: the run exits 0" 0
+assert_eq "AC8.1 live pid + a differing non-empty start string counts as reused: reaped" "1" "$REAPED"
+stale_case live-cur-empty "$LIVE
+$SMATCH
+" empty ""
+assert_eq "AC8.1 live pid, stored string set, ps prints nothing now: never reaped" "0" "$REAPED"
+stale_case live-cur-fail "$LIVE
+$SMATCH
+" fail ""
+assert_eq "AC8.1 live pid, stored string set, ps fails now: never reaped" "0" "$REAPED"
+stale_case live-stored-empty "$LIVE
+
+" out "$RT_START"
+assert_eq "AC8.1 live pid, empty stored string, ps works now: never reaped" "0" "$REAPED"
+stale_case live-both-empty "$LIVE
+
+" empty ""
+assert_eq "AC8.1 live pid, ps empty on both sides: never reaped" "0" "$REAPED"
+stale_case live-oneline-out "$LIVE
+" out "$RT_START"
+assert_eq "AC8.1 a one-line owner (v0.22.4: pid only) of a live pid, ps works: kill -0 says alive, never reaped (N4)" "0" "$REAPED"
+stale_case live-oneline-empty "$LIVE
+" empty ""
+assert_eq "AC8.1 a one-line owner of a live pid, ps empty: never reaped (N4)" "0" "$REAPED"
+stale_case dead-oneline "$DEADP
+" out "$RT_START"
+assert_rc "AC8.1 a one-line owner of a dead pid: the run exits 0" 0
+assert_eq "AC8.1 a one-line owner of a dead pid is reaped by kill -0 (N4)" "1" "$REAPED"
+stale_case dead-match "$DEADP
+$SMATCH
+" out "$RT_START"
+assert_eq "AC8.1 a dead pid is reaped even when the start strings match" "1" "$REAPED"
+stale_case dead-ps-empty "$DEADP
+$SMATCH
+" empty ""
+assert_eq "AC8.1 a dead pid is reaped when ps prints nothing" "1" "$REAPED"
+
+echo "v0.23.1 M2 clock-step safety: on Linux liveness uses field 22 of /proc/PID/stat, not the wall-clock lstart"
+if [ "$LIN" = 1 ]; then
+  stale_case clock-step "$LIVE
+$SMATCH
+" out "Tue Dec 31 23:59:59 1999"
+  assert_rc "M2 the run exits 0 (a fake ps that prints a different lstart)" 0
+  assert_eq "M2 same start ticks in /proc, a DIFFERENT lstart from ps (the clock stepped): a live pid is not reaped" "0" "$REAPED"
+  stale_case clock-step-2 "$LIVE
+$SMATCH
+" fail ""
+  assert_eq "M2 same start ticks, ps failing: not reaped" "0" "$REAPED"
+  stale_case ticks-diff "$LIVE
+$SDIFF
+" out "$RT_START"
+  assert_eq "M2 a differing field 22 for a live pid counts as reused: reaped" "1" "$REAPED"
+  stale_case ticks-diff-same-ps "$LIVE
+$SDIFF
+" out "$SDIFF"
+  assert_eq "M2 a differing field 22 is reused even when ps prints the stored string: reaped" "1" "$REAPED"
+else
+  t_skip 5 "M2 clock-step safety (no /proc/self/stat on this system)"
+fi
+
+echo "v0.23.1 CRLF owner file: a live pid with CRLF line endings is not reaped"
+stale_case crlf-live "$LIVE$CR
+$SMATCH$CR
+" out "$RT_START"
+assert_eq "CRLF an owner file with CRLF endings of a live pid (pid and start string): never reaped" "0" "$REAPED"
+stale_case crlf-oneline "$LIVE$CR
+" out "$RT_START"
+assert_eq "CRLF a one-line CRLF owner file of a live pid: never reaped" "0" "$REAPED"
+stale_case crlf-dead "$DEADP$CR
+$SMATCH$CR
+" out "$RT_START"
+assert_eq "CRLF a CRLF owner file of a dead pid is still reaped" "1" "$REAPED"
+kill -9 "$LIVE" "$LIVE2" 2>/dev/null; wait "$LIVE" "$LIVE2" 2>/dev/null
+
+echo "v0.23.1 AC8.1 the owner file stores the pid and its start string"
+R="$W/own"; mkfx "$R"
+( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+commit_all "$R" change
+rm -f "$W/own.copy" "$W/own.stat" "$W/fps.log"
+OUT="$(cd "$R" && env TMPDIR="$W/tmp" PATH="$FB:$PATH" FPS_MODE=out FPS_OUT="  $RT_START  " FPS_LOG="$W/fps.log" LC_ALL=de_DE.UTF-8 TZ=Asia/Tokyo bash "$MUT" --base base --test "cat ../owner > $W/own.copy; p=\$(sed -n 1p ../owner); cat /proc/\$p/stat > $W/own.stat 2>/dev/null; true" 2>&1)"; RC=$?
+assert_rc "AC8.1 the run with a fake ps exits 0" 0
+OWN1="$(sed -n 1p "$W/own.copy" 2>/dev/null)"; OWN2="$(sed -n 2p "$W/own.copy" 2>/dev/null)"
+case "$OWN1" in "" | *[!0-9]*) t_bad "AC8.1 owner line 1 is the pid" "got [$OWN1]" ;; *) t_ok "AC8.1 owner line 1 is the pid" ;; esac
+FLOG="$(cat "$W/fps.log" 2>/dev/null)"
+if [ "$LIN" = 1 ]; then
+  WANT="$(sed 's/^.*) //' "$W/own.stat" 2>/dev/null | awk '{ print $20 }')"
+  assert_eq "AC8.1 Linux: owner line 2 is field 22 of /proc/PID/stat of the run" "$WANT" "$OWN2"
+  case "$OWN2" in "" | *[!0-9]*) t_bad "AC8.1 Linux: owner line 2 is the start tick count (digits)" "got [$OWN2]" ;; *) t_ok "AC8.1 Linux: owner line 2 is the start tick count (digits)" ;; esac
+else
+  assert_eq "AC8.1 owner line 2 is the trimmed start string" "$RT_START" "$OWN2"
+  assert_contains "AC8.1 ps was called as ps -o lstart= -p <pid of the run>" "$FLOG" "-o lstart= -p $OWN1"
+  if printf '%s\n' "$FLOG" | grep -F -- "-p $OWN1" | grep -qF 'LC_ALL=C TZ=UTC0 '; then t_ok "AC8.1 that ps call ran with LC_ALL=C and TZ=UTC0"; else t_bad "AC8.1 that ps call ran with LC_ALL=C and TZ=UTC0" "log: $FLOG"; fi
+fi
+if [ "$LIN" = 0 ]; then
+  rm -f "$W/own.copy"
+  OUT="$(cd "$R" && env TMPDIR="$W/tmp" PATH="$FB:$PATH" FPS_MODE=empty bash "$MUT" --base base --test "cat ../owner > $W/own.copy" 2>&1)"; RC=$?
+  assert_rc "AC8.1 a run whose ps prints nothing still exits 0" 0
+  OWN1="$(sed -n 1p "$W/own.copy" 2>/dev/null)"; OWN2="$(sed -n 2p "$W/own.copy" 2>/dev/null)"
+  case "$OWN1" in "" | *[!0-9]*) t_bad "AC8.1 empty ps: owner line 1 is still the pid" "got [$OWN1]" ;; *) t_ok "AC8.1 empty ps: owner line 1 is still the pid" ;; esac
+  assert_eq "AC8.1 empty ps: owner line 2 is empty" "" "$OWN2"
+fi
+
 t_summary
