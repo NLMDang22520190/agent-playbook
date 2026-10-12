@@ -95,4 +95,120 @@ assert_contains "AC5.1 neither awk on PATH: the message names original-awk" "$OU
 assert_contains "AC5.1 neither awk on PATH: the message says how to install it (apt install original-awk)" "$OUT" "apt install original-awk"
 assert_not_contains "AC5.1 neither awk on PATH: the suite did not run" "$OUT" "suite x ran"
 
+
+# ---- v0.23.0 AC4.2: bash 3.2 is linked as `bash` next to awk, so nested `bash tests/...` calls use it ----
+# The fake bash 3.2 is a wrapper that logs and execs the real bash, so no real bash 3.2 is needed.
+echo "AC4.2 the suites run under bash 3.2 when it is available"
+REAL_BASH="$(command -v bash)"
+# fake_bash PATH LOG -> PATH is a wrapper script: logs its arguments, then execs the real bash
+fake_bash() {
+  local ver="${3:-3.2.57(1)-release}" maj min rest
+  maj="${ver%%.*}"; rest="${ver#*.}"; min="${rest%%.*}"
+  mkdir -p "$(dirname "$1")"
+  # The wrapper logs every call, answers the usual version probes itself with VER (so the tool can tell a 3.2 from a 5.x),
+  # and execs the real bash for everything else.
+  cat > "$1" <<WRAP
+#!/bin/sh
+echo "called $1 \$*" >> "$2"
+case "\$*" in
+  *'VERSINFO[0]'*) echo $maj; exit 0 ;;
+  *'VERSINFO[1]'*) echo $min; exit 0 ;;
+  *VERSINFO*) echo "$maj $min"; exit 0 ;;
+  *BASH_VERSION*) echo "$ver"; exit 0 ;;
+  *--version*|*-version*) echo "GNU bash, version $ver (fake)"; exit 0 ;;
+esac
+exec "$REAL_BASH" "\$@"
+WRAP
+  chmod +x "$1"
+}
+# mk_bash_suite DIR -> DIR/tests/test-b.sh prints the bash it sees first and runs a nested bash
+mk_bash_suite() {
+  cat > "$1/tests/test-b.sh" <<'SUITE'
+#!/usr/bin/env bash
+echo "suite b ran"
+echo "first bash: $(command -v bash)"
+bash -c 'echo nested ran'
+exit "${STUB_RC:-0}"
+SUITE
+}
+# bc ARGS... -> run the tool with ARGS (env settings) in D with the fake original-awk first on PATH, HOME isolated
+D="$W/b1"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb1" original-awk "$W/bb1.log"
+FB1="$W/fb1/bash3.2"; fake_bash "$FB1" "$W/fb1.log"
+mkdir -p "$W/home1"
+run env -i PATH="$W/bb1:$BARE" HOME="$W/home1" TMPDIR="$W" PB_BASH32="$FB1" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_rc "AC4.2 with PB_BASH32: a passing suite exits 0" 0
+assert_contains "AC4.2 the suite ran" "$OUT" "suite b ran"
+assert_contains "AC4.2 the nested bash call ran" "$OUT" "nested ran"
+assert_contains "AC4.2 the tool prints 'bsd-check: bash is <path>'" "$OUT" "bsd-check: bash is $FB1"
+assert_contains "AC4.2 the awk line is still printed" "$OUT" "bsd-check: awk is original-awk"
+assert_not_contains "AC4.2 the suite's first bash is not the real one" "$OUT" "first bash: $REAL_BASH"
+case "$OUT" in *"first bash: $BARE/bash"*) t_bad "AC4.2 the suite's first bash is not the bash of the plain PATH" "$OUT" ;; *) t_ok "AC4.2 the suite's first bash is not the bash of the plain PATH" ;; esac
+assert_contains "AC4.2 the suite's first bash is a link in a temp dir (named bash)" "$OUT" "/bash"
+LOG="$(cat "$W/fb1.log" 2>/dev/null)"
+NCALLS=$(printf '%s\n' "$LOG" | grep -c '^called ')
+if [ "$NCALLS" -ge 2 ]; then t_ok "AC4.2 the fake bash 3.2 was called for the suite and for the nested call (at least 2 calls)"; else t_bad "AC4.2 the fake bash 3.2 was called at least twice" "calls: $NCALLS; log: $LOG"; fi
+assert_contains "AC4.2 the suite itself was started through the wrapper" "$LOG" "tests/test-b.sh"
+assert_contains "AC4.2 the nested call went through the wrapper" "$LOG" "nested ran"
+
+echo "AC4.2 the suite's exit code is still passed through under bash 3.2"
+D="$W/b2"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb2" original-awk "$W/bb2.log"
+run env -i PATH="$W/bb2:$BARE" HOME="$W/home1" TMPDIR="$W" PB_BASH32="$FB1" STUB_RC=5 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_rc "AC4.2 a suite that exits 5 under bash 3.2: the tool exits 5" 5
+
+echo "AC4.2 no arguments: run-all.sh runs under bash 3.2 too"
+D="$W/b3"; mk_tree "$D"; fake_awk "$W/bb3" original-awk "$W/bb3.log"; rm -f "$W/fb1.log"
+run env -i PATH="$W/bb3:$BARE" HOME="$W/home1" TMPDIR="$W" PB_BASH32="$FB1" "$BASH_BIN" "$D/tools/bsd-check.sh"
+assert_rc "AC4.2 run-all under bash 3.2: exit 0" 0
+assert_contains "AC4.2 run-all ran" "$OUT" "run-all ran"
+assert_contains "AC4.2 run-all was started through the wrapper" "$(cat "$W/fb1.log" 2>/dev/null)" "run-all.sh"
+
+echo "AC4.2 lookup order: PB_BASH32, then ~/.local/bin/bash3.2, then bash3.2 on PATH"
+D="$W/b4"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb4" original-awk "$W/bb4.log"
+HB="$W/home4"; mkdir -p "$HB/.local/bin"
+fake_bash "$HB/.local/bin/bash3.2" "$W/fb4home.log"; fake_bash "$W/fb4/bash3.2" "$W/fb4env.log"; fake_bash "$W/fb4path/bash3.2" "$W/fb4path.log"
+run env -i PATH="$W/bb4:$W/fb4path:$BARE" HOME="$HB" TMPDIR="$W" PB_BASH32="$W/fb4/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 PB_BASH32 is used first (printed)" "$OUT" "bsd-check: bash is $W/fb4/bash3.2"
+assert_contains "AC4.2 PB_BASH32 is used first (called)" "$(cat "$W/fb4env.log" 2>/dev/null)" "called"
+assert_not_contains "AC4.2 PB_BASH32 first: ~/.local/bin/bash3.2 not called" "$(cat "$W/fb4home.log" 2>/dev/null)" "called"
+assert_not_contains "AC4.2 PB_BASH32 first: bash3.2 on PATH not called" "$(cat "$W/fb4path.log" 2>/dev/null)" "called"
+rm -f "$W/fb4home.log" "$W/fb4path.log"
+run env -i PATH="$W/bb4:$W/fb4path:$BARE" HOME="$HB" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 without PB_BASH32, ~/.local/bin/bash3.2 is used (printed)" "$OUT" "bsd-check: bash is $HB/.local/bin/bash3.2"
+assert_contains "AC4.2 without PB_BASH32, ~/.local/bin/bash3.2 is used (called)" "$(cat "$W/fb4home.log" 2>/dev/null)" "called"
+assert_not_contains "AC4.2 ~/.local/bin first: bash3.2 on PATH not called" "$(cat "$W/fb4path.log" 2>/dev/null)" "called"
+mkdir -p "$W/home4b"
+run env -i PATH="$W/bb4:$W/fb4path:$BARE" HOME="$W/home4b" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 last, bash3.2 on PATH is used (printed)" "$OUT" "bsd-check: bash is $W/fb4path/bash3.2"
+assert_contains "AC4.2 last, bash3.2 on PATH is used (called)" "$(cat "$W/fb4path.log" 2>/dev/null)" "called"
+
+echo "AC4.2 without bash 3.2: the get-bash32 hint is printed and the suites still run"
+D="$W/b5"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb5" original-awk "$W/bb5.log"
+mkdir -p "$W/home5"
+run env -i PATH="$W/bb5:$BARE" HOME="$W/home5" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_rc "AC4.2 no bash 3.2: the suite's exit code (0) is the tool's" 0
+assert_contains "AC4.2 no bash 3.2: the hint names tools/get-bash32.sh" "$OUT" "get-bash32"
+assert_contains "AC4.2 no bash 3.2: the suite still ran" "$OUT" "suite b ran"
+assert_contains "AC4.2 no bash 3.2: the nested call still ran" "$OUT" "nested ran"
+assert_not_contains "AC4.2 no bash 3.2: no 'bash is' line" "$OUT" "bsd-check: bash is"
+assert_contains "AC4.2 no bash 3.2: the awk line is still printed" "$OUT" "bsd-check: awk is original-awk"
+run env -i PATH="$W/bb5:$BARE" HOME="$W/home5" TMPDIR="$W" STUB_RC=4 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_rc "AC4.2 no bash 3.2: a failing suite's exit code (4) is passed through" 4
+
+
+# ---- v0.23.0 review: a bash that is not 3.2 is refused, not accepted silently ----
+echo "AC4.2 review: a bash3.2 that reports version 5.x is refused with a message naming the version"
+D="$W/b6"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb6" original-awk "$W/bb6.log"
+FB5="$W/fb5/bash3.2"; fake_bash "$FB5" "$W/fb5.log" "5.2.15(1)-release"
+mkdir -p "$W/home6"
+run env -i PATH="$W/bb6:$BARE" HOME="$W/home6" TMPDIR="$W" PB_BASH32="$FB5" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 review: the message names the version found (5.2)" "$OUT" "5.2"
+assert_not_contains "AC4.2 review: no 'bsd-check: bash is' line for it" "$OUT" "bsd-check: bash is $FB5"
+assert_not_contains "AC4.2 review: the suite did not run through the 5.x wrapper" "$(cat "$W/fb5.log" 2>/dev/null)" "tests/test-b.sh"
+assert_contains "AC4.2 review: the message says it is not bash 3.2 (refused) or points at get-bash32" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "3.2"
+echo "AC4.2 review: a real 3.2 version report is still accepted"
+D="$W/b7"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bb7" original-awk "$W/bb7.log"
+FB32="$W/fb7/bash3.2"; fake_bash "$FB32" "$W/fb7.log" "3.2.57(1)-release"
+run env -i PATH="$W/bb7:$BARE" HOME="$W/home6" TMPDIR="$W" PB_BASH32="$FB32" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC4.2 review: a 3.2 report is accepted" "$OUT" "bsd-check: bash is $FB32"
+
 t_summary

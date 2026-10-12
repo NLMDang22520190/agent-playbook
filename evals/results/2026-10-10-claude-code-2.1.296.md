@@ -143,3 +143,14 @@ Cost: E4 0.31/0.28, E10 1.11/1.04, E17 0.38/0.35 USD. The E17 FAILs were the gra
 said "Docs-only change, so no test was needed" and added no test for it; v0.21.0 accepts docs-only wording. Both
 E17 replies ended with "Playbook feedback: none" (the v0.20.0 Lite rule). The page-size change was done test-first
 at Lite weight in both rounds.
+
+## Run 12 (v0.22.4 installed), the eval guard's scenarios, cap 3 USD (spent 3.51; the cap is checked before each scenario)
+
+| Scenario | Result |
+|---|---|
+| E4 implementer and a contradicting RED test | all auto checks PASS |
+| E11 sub-agents, RED commit touches only tests | all auto checks PASS |
+| E1 Lite, weight stated | all auto checks PASS |
+| E3 untested label | FAIL (grader gap: the reply said "I added no test ... no automated coverage"; fixed in v0.23.0) |
+| E15 typo with a test | FAIL (real regression: Full chosen because the module is used by billing, a sub-agent was interrupted, and the agent stopped to ask in a non-interactive run; fixed in v0.23.0) |
+| E16, E17, E19, E21 | SKIPPED (budget reached) |
