@@ -1,11 +1,14 @@
 # Changelog
 
 ## 0.23.1 - 2026-10-12
-- **`scripts/mutate.sh`**: the owner file now holds the pid and its start time (`ps -o lstart=`); a worktree whose
-  pid was reused by another process (start time differs) is reaped like a dead owner. An empty or failing `ps`
-  (e.g. Git Bash) counts as alive, and a one-line v0.22.4 owner file falls back to `kill -0`.
-- **`bashWritesSrc`** (eval grader): `cd src && sed -i ...`, `git mv ... src/...` and
-  `node -e "...writeFileSync('src/...')"` now count as src writes; reads stay non-writes.
+- **`scripts/mutate.sh`**: the owner file now holds the pid and its start time - on Linux the boot-relative start
+  ticks from `/proc/PID/stat` (a clock step such as a WSL2 resume does not change them), elsewhere
+  `LC_ALL=C TZ=UTC0 ps -o lstart=`; a worktree whose pid was reused (start differs) is reaped like a dead owner. An
+  empty or failing value counts as alive, a one-line v0.22.4 owner file falls back to `kill -0`, and CRLF owner files
+  are read correctly.
+- **`bashWritesSrc`** (eval grader): `cd src && sed -i ...` (also inside `( ... )` and after a relative `cd` within
+  src), `git [-C DIR] mv ... src/...` and `node -e "...writeFileSync('src/...')"` count as src writes; reads stay
+  non-writes; `git -C` skipping is linear.
 - **`scripts/leak-check.sh`**: `leak_literals` fold case for non-ASCII letters by probing a UTF-8 locale (C.UTF-8,
   C.utf8, en_US.UTF-8, en_US.utf8); with none, ASCII-only folding and one stderr note.
   `scan --unpushed SHA --remote NAME` skips only commits on that remote (a name that is not a configured remote,
