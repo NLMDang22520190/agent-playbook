@@ -774,4 +774,65 @@ done
 echo "v0.23.2 round 2 LOW-b the header describes rename detection as a rename with unchanged content"
 HDR2="$(sed -n 1,45p "$GATE" | sed 's/^# \{0,1\}//' | tr 'A-Z' 'a-z' | tr -s ' \n\t' '   ')"
 assert_contains "LOW-b the header says 'a rename with unchanged content'" "$HDR2" "a rename with unchanged content"
+
+# ---- v0.23.3 lane A (tester): AC3 (R3) the mode check never fails open ----
+echo "v0.23.3 AC3.1 (R3) a work-tree file git cannot hash is reported, and it does not hide the other drops"
+unset PB_ALLOW_MODE_CHANGE
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+UNH_OK=0
+if [ "$(id -u)" = 0 ]; then UNH_WHY="running as root (chmod 000 does not stop root)"
+elif ! fm_true_ok; then UNH_WHY="this file system does not keep executable bits"
+else
+  # two renamed work-tree files: src/renamed.sh just loses its bit (hashed, paired with the deleted src/run.sh);
+  # src/second2.sh cannot be read at all (chmod 000), so git hash-object fails on it
+  git mv src/run.sh src/renamed.sh; git mv src/second.sh src/second2.sh
+  chmod -x src/renamed.sh 2>/dev/null; chmod 000 src/second2.sh 2>/dev/null
+  if cat src/second2.sh >/dev/null 2>&1 || [ -x src/renamed.sh ]; then UNH_WHY="chmod 000 / chmod -x have no effect here"
+  else UNH_OK=1; fi
+fi
+if [ "$UNH_OK" = 1 ]; then
+  LOSTMSG="VIOLATION (mode): src/renamed.sh lost its executable bit (100755 -> 100644)"
+  CANTMSG="VIOLATION (mode): cannot hash src/second2.sh; the mode check is incomplete"
+  gchk implementer
+  assert_rc "AC3.1 an unhashable file next to a normal drop: the gate fails" 1
+  assert_contains "AC3.1 the normal drop is reported as a lost bit (the unhashable file does not hide it)" "$OUT" "$LOSTMSG"
+  assert_contains "AC3.1 the unhashable file is reported: cannot hash PATH; the mode check is incomplete" "$OUT" "$CANTMSG"
+  gchk_allow "src/second2.sh" implementer
+  assert_rc "AC3.1 PB_ALLOW_MODE_CHANGE with the unhashable path: the normal drop still fails" 1
+  assert_contains "AC3.1 ... the normal drop is still reported" "$OUT" "$LOSTMSG"
+  assert_not_contains "AC3.1 ... the allowed unhashable path is silenced (and only it)" "$OUT" "cannot hash"
+  gchk_allow "src/renamed.sh" implementer
+  assert_rc "AC3.1 PB_ALLOW_MODE_CHANGE with the normal path: the unhashable one still fails" 1
+  assert_contains "AC3.1 ... the unhashable path is still reported" "$OUT" "$CANTMSG"
+  assert_not_contains "AC3.1 ... the allowed normal path is silenced" "$OUT" "VIOLATION (mode): src/renamed.sh"
+  gchk_allow "src/renamed.sh:src/second2.sh" implementer
+  assert_rc "AC3.1 both listed: the gate passes" 0
+  assert_not_contains "AC3.1 both listed: no mode violation" "$OUT" "(mode)"
+  # alone, the unhashable file still fails closed (it is not just a side effect of the other drop)
+  chmod +x src/renamed.sh 2>/dev/null   # src/renamed.sh keeps its bit now: only the unreadable file is left
+  gchk implementer
+  assert_contains "AC3.1 the unhashable file alone is reported too" "$OUT" "$CANTMSG"
+  chmod 644 src/second2.sh 2>/dev/null
+else t_skip 12 "AC3.1 unhashable work-tree file ($UNH_WHY)"; fi
+
+echo "v0.23.3 AC3.2 (R3) a path with a newline fails closed, there is no PB_ALLOW_MODE_CHANGE escape"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+NLP="$(printf 'src/new\nline.sh')"
+if printf '#!/bin/sh\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ] && git add -- "$NLP" 2>/dev/null && git ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
+  NLMSG="VIOLATION (mode): a path contains a newline; the mode check is incomplete"
+  for role in implementer tester reviewer infra; do
+    gchk "$role"
+    assert_rc "AC3.2 $role: a staged path with a newline fails" 1
+    assert_contains "AC3.2 $role: the message says a path contains a newline and the mode check is incomplete" "$OUT" "$NLMSG"
+  done
+  gchk_allow "$NLP" implementer
+  assert_rc "AC3.2 PB_ALLOW_MODE_CHANGE with the whole path is no escape" 1
+  assert_contains "AC3.2 ... the message is still printed" "$OUT" "$NLMSG"
+  gchk_allow "src/new:line.sh:src/new
+line.sh" implementer
+  assert_rc "AC3.2 PB_ALLOW_MODE_CHANGE with the pieces is no escape either" 1
+  git rm -q --cached -f -- "$NLP"; rm -f "$NLP"
+  gchk implementer
+  assert_rc "AC3.2 once the path is gone the gate passes again" 0
+else rm -f "$NLP" 2>/dev/null; t_skip 12 "AC3.2 newline path (this file system or git refuses the name)"; fi
 t_summary
