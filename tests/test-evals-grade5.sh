@@ -271,4 +271,27 @@ node -e "readFileSync('src/x')"
 XEOF
 assert_eq "AC9.1 spec_first=1: a cd into src/ and back out, then an edit elsewhere, is not an src/ write" "1" "$(sf_of "$(btu 'cd src && cat calc.js && cd .. && echo x > notes.txt')" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
 
+echo "v0.23.1 review M3/M4 bashWritesSrc: relative cd chains, subshell cd, git -C mv"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "M3/M4 spec_first=0: a Bash write to src/ before the spec [$cmd]" "0" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")")"
+  assert_eq "M3/M4 spec_first=1: the same write after the spec [$cmd]" "1" "$(sf_of "$(tu Write "$SFW")" "$(btu "$cmd")")"
+done <<XEOF
+cd src && cd lib && sed $SI 's/a/b/' x.js
+cd src; cd lib; sed $SI 's/a/b/' x.js
+(cd src && sed $SI 's/a/b/' calc.js)
+(cd src; sed $SI.bak 's/a/b/' calc.js)
+git -C . mv a src/b
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "M3/M4 not an src/ write [$cmd]: spec_first stays 1 when the spec comes first and src is edited later" "1" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+done <<'XEOF'
+git mv src/a lib/b
+git -C . mv src/a lib/b
+git -C . mv a b
+(cd src && cat calc.js)
+XEOF
+assert_eq "M4 spec_first=1: a subshell cd does not leak: a write after it, outside the subshell, is not in src" "1" "$(sf_of "$(btu "(cd src && cat calc.js); echo x > notes.txt")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+
 t_summary
