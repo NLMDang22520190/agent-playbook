@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.24.2 - 2026-10-13
+- **Quick can no longer be chosen from the summary** (a regression found by a real eval of v0.24.1: E21 picked
+  "the playbook's Quick test level" for a two-file rename that removed a public export, without loading playbook-tdd,
+  writing a spec or adding a test). The always-on Quick line now states the limits that matter - one production file,
+  ≤ 20 lines, nothing from the Full column (public API, money, auth, migrations) - and says to load `playbook-tdd`
+  first; quick.md and the SKILL.md Quick row say removing or renaming an exported symbol is a public API change.
+- **run-checks reads characters in linear time** under BSD awk / one-true-awk (macOS): a 60,000-character line took
+  35 s and now takes 3 s. The suites' wall time on macOS did not change - it comes from process start-up and tree
+  copies, measured, and is the next CI item.
+- **Eval graders**: E22 checks the misspelling is gone; E23 needs the reply to name the limit or the Full stop
+  (including "would normally need Full"), not just "billing"; E25 is redesigned as an additive change over three
+  files (Lite is right), because the real run chose Full for a sound reason.
+- SKILL.md tells the orchestrator to resolve the reviewer model with `role-model.sh reviewer --harness <h>`.
+- Shard weights from real timings of the v0.24.1 CI run (the slowest Windows shard was 437 s, down from 633 s).
+- **Real evals** of the shorter always-on block on the installed v0.24.1 (results file): E1, E3, E5, E8, E10 pass
+  (1.57 USD in total with E21); E21 failed its three spec checks, which this release fixes.
+
 ## 0.24.1 - 2026-10-13
 - **Faster CI**: the largest suites are split again - test-leak-check (598 s on the Windows runner) into three,
   test-ci-tree-tested (562 s), test-role-gate (462 s) and test-evals-grade2-e20 (447 s) into two each, with every
