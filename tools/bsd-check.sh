@@ -5,7 +5,10 @@
 # Uses `original-awk`, else `nawk`, linked as `awk` in a temp dir put first on PATH (a copy when links fail).
 # Also links bash 3.2 (the bash macOS ships) as `bash` in that dir, so nested `bash tests/...` calls use it: PB_BASH32, else
 # ~/.local/bin/bash3.2, else `bash3.2` on PATH (build one with tools/get-bash32.sh). Prints "bsd-check: bash is <path>";
-# a candidate that is not 3.2.x is named with its version and the next one is tried;
+# a candidate that is not 3.2.x is named with its version and the next one is tried; a candidate that does not answer
+# the version probe within PB_BSD_PROBE_SECS seconds (default 5; background + kill of its whole process group, so a child
+# it started does not survive; no `timeout`) is rejected with
+# "no answer within N s"; a candidate that is the same file as an earlier one is not probed or named twice;
 # without one it prints a hint and runs with the bash on PATH.
 # Prints the awk it used. Exit: the suites' exit code; 2 when neither awk is installed (apt install original-awk).
 set -u
@@ -34,9 +37,42 @@ if [ -n "${PB_BASH32:-}" ] && { [ ! -f "$PB_BASH32" ] || [ ! -x "$PB_BASH32" ]; 
 fi
 # candidates in order; only a real 3.2 counts (a bash3.2 that reports another version would give a false "macOS-like" run):
 # a rejected one is named with its version and the next one is tried
+psecs="${PB_BSD_PROBE_SECS:-5}"
+case "$psecs" in "" | *[!0-9]* | 0) psecs=5 ;; esac
+# probe_version CMD -> prints CMD's $BASH_VERSION; status 1 when CMD gave no answer within $psecs seconds (killed)
+probe_version() {
+  local pid kp
+  rm -f "$AWKD/probe.hung" "$AWKD/probe.out"
+  # set -m: each background job is its own process group (PGID = its pid), so the whole group can be killed
+  set -m
+  "$1" -c 'echo "$BASH_VERSION"' > "$AWKD/probe.out" 2>/dev/null &
+  pid=$!
+  ( sp=""; trap 'kill "$sp" 2>/dev/null; exit 0' TERM; sleep "$psecs" & sp=$!; wait "$sp"; : > "$AWKD/probe.hung"
+    pkill -P "$pid" 2>/dev/null; kill -- "-$pid" 2>/dev/null; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  kp=$!
+  set +m
+  { wait "$pid"; } 2>/dev/null
+  kill "$kp" 2>/dev/null; { wait "$kp"; } 2>/dev/null
+  [ ! -f "$AWKD/probe.hung" ] || return 1
+  cat "$AWKD/probe.out" 2>/dev/null
+  return 0
+}
+seen=""   # candidates already probed (a later one that is the same file is skipped)
 for c in "${PB_BASH32:-}" "${HOME:-/nonexistent}/.local/bin/bash3.2" "$pathb32"; do
   [ -n "$c" ] && [ -x "$c" ] || continue
-  b32ver="$("$c" -c 'echo "$BASH_VERSION"' 2>/dev/null)" || b32ver=""
+  dup=0
+  while IFS= read -r s; do
+    [ -n "$s" ] && [ "$c" -ef "$s" ] && dup=1
+  done <<EOF
+$seen
+EOF
+  [ "$dup" = 0 ] || continue
+  seen="$seen$c
+"
+  if b32ver="$(probe_version "$c")"; then :; else
+    echo "bsd-check: $c gave no answer within $psecs s; ignoring it. Build the right one with tools/get-bash32.sh (installs ~/.local/bin/bash3.2) to match macOS." >&2
+    continue
+  fi
   case "$b32ver" in
     3.2.*) b32="$c"; break ;;
     *) echo "bsd-check: $c reports bash version '${b32ver:-unknown}', not 3.2.x; ignoring it. Build the right one with tools/get-bash32.sh (installs ~/.local/bin/bash3.2) to match macOS." >&2 ;;

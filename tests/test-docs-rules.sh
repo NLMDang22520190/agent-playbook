@@ -35,4 +35,9 @@ if grep -Ei '/tmp' "$README" | grep -Ei 'wiped|cleared|emptied' | grep -Eiq 'obs
 if grep -Eq 'vmIdleTimeout[[:space:]]*(=|:)?[[:space:]]*`?-1' "$README"; then t_bad "AC11 README does not claim vmIdleTimeout=-1" "found a vmIdleTimeout -1 claim"; else t_ok "AC11 README does not claim vmIdleTimeout=-1"; fi
 if grep -F 'vmIdleTimeout' "$README" | grep -Eq '(=|: ?)-1'; then t_bad "AC11 no vmIdleTimeout line carries =-1" "a vmIdleTimeout line has -1"; else t_ok "AC11 no vmIdleTimeout line carries =-1"; fi
 
+
+echo "v0.23.3 AC9.3 README: vmIdleTimeout needs Windows 11"
+if grep -F 'vmIdleTimeout' "$README" | grep -Fq 'Windows 11'; then t_ok "AC9.3 the vmIdleTimeout line says Windows 11"; else t_bad "AC9.3 the vmIdleTimeout line says Windows 11" "no vmIdleTimeout line with 'Windows 11'"; fi
+if grep -F 'vmIdleTimeout' "$README" | grep -Eiq 'only'; then t_ok "AC9.3 the vmIdleTimeout line says Windows 11 only"; else t_bad "AC9.3 the vmIdleTimeout line says Windows 11 only" "no 'only' on the vmIdleTimeout line"; fi
+
 t_summary

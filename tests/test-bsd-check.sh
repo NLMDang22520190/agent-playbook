@@ -322,4 +322,99 @@ assert_contains "LOW-8 a non-executable PB_BASH32 is named in a note" "$OUT" "$W
 assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
 run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_not_contains "LOW-8 with PB_BASH32 unset there is no such note" "$OUT" "PB_BASH32"
+
+# ---- v0.23.3 lane A (tester): AC9 (R11) a candidate that hangs, a candidate that is the same file as an earlier one ----
+# hang_bash PATH LOG -> PATH is a "bash" that logs its call and then never answers (exec: killing it ends the sleep too)
+hang_bash() {
+  mkdir -p "$(dirname "$1")"
+  printf '#!/bin/sh\necho "called" >> "%s"\nexec sleep 30\n' "$2" > "$1"
+  chmod +x "$1"
+}
+echo "v0.23.3 AC9.1 a candidate whose version probe hangs is rejected after PB_BSD_PROBE_SECS, and the next one is tried"
+D="$W/d1"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bd1" original-awk "$W/bd1.log"
+HD1="$W/homed1"; mkdir -p "$HD1/.local/bin"
+fake_bash "$HD1/.local/bin/bash3.2" "$W/d1home.log" "3.2.57(1)-release"
+hang_bash "$W/d1hang/bash3.2" "$W/d1hang.log"
+T0="$(date +%s)"
+run env -i PATH="$W/bd1:$BARE" HOME="$HD1" TMPDIR="$W" PB_BASH32="$W/d1hang/bash3.2" PB_BSD_PROBE_SECS=1 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+T1="$(date +%s)"
+assert_rc "AC9.1 a hanging first candidate, a good second one: exit 0" 0
+assert_contains "AC9.1 the hanging candidate is named" "$OUT" "$W/d1hang/bash3.2"
+assert_contains "AC9.1 the rejection says: no answer within 1 s" "$OUT" "no answer within 1 s"
+assert_contains "AC9.1 the next candidate is used" "$OUT" "bsd-check: bash is $HD1/.local/bin/bash3.2"
+assert_not_contains "AC9.1 no 'no bash 3.2 found' when the next one is 3.2" "$OUT" "no bash 3.2 found"
+assert_contains "AC9.1 the hanging candidate was asked once" "$(cat "$W/d1hang.log" 2>/dev/null)" "called"
+assert_contains "AC9.1 the good candidate ran the suite" "$(cat "$W/d1home.log" 2>/dev/null)" "tests/test-b.sh"
+assert_contains "AC9.1 the suite ran" "$OUT" "suite b ran"
+assert_eq "AC9.1 the tool did not wait for the 30 s sleep of the hanging candidate (took $((T1 - T0)) s)" "ok" "$([ $((T1 - T0)) -lt 25 ] && echo ok || echo "took $((T1 - T0)) s")"
+
+echo "v0.23.3 AC9.1 the probe limit is 5 s by default"
+D="$W/d1b"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bd1b" original-awk "$W/bd1b.log"
+rm -f "$W/d1hang.log"
+run env -i PATH="$W/bd1b:$BARE" HOME="$HD1" TMPDIR="$W" PB_BASH32="$W/d1hang/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_rc "AC9.1 default limit: a hanging first candidate, a good second one: exit 0" 0
+assert_contains "AC9.1 default limit: the rejection says: no answer within 5 s" "$OUT" "no answer within 5 s"
+assert_contains "AC9.1 default limit: the next candidate is used" "$OUT" "bsd-check: bash is $HD1/.local/bin/bash3.2"
+
+echo "v0.23.3 AC9.1 every candidate hanging: the hint is printed and the suites still run"
+D="$W/d1c"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bd1c" original-awk "$W/bd1c.log"
+mkdir -p "$W/homed1c"
+run env -i PATH="$W/bd1c:$BARE" HOME="$W/homed1c" TMPDIR="$W" PB_BASH32="$W/d1hang/bash3.2" PB_BSD_PROBE_SECS=1 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_contains "AC9.1 all candidates hung: the hanging one is named with the limit" "$OUT" "no answer within 1 s"
+assert_contains "AC9.1 all candidates hung: 'no bash 3.2 found'" "$OUT" "no bash 3.2 found"
+assert_contains "AC9.1 all candidates hung: the suite still ran" "$OUT" "suite b ran"
+assert_rc "AC9.1 all candidates hung: the suite's exit code (0) is the tool's" 0
+
+echo "v0.23.3 AC9.2 a candidate that is the same file as an earlier one is not probed or named twice"
+# a symlink to the earlier candidate, then a hard link to it
+for kind in symlink hardlink; do
+  D="$W/e_$kind"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/be_$kind" original-awk "$W/be_$kind.log"
+  HE="$W/homee_$kind"; mkdir -p "$HE/.local/bin"
+  FA="$W/e_${kind}_a/bash3.2"; fake_bash "$FA" "$W/e_$kind.log" "5.2.15(1)-release"
+  fake_bash "$W/e_${kind}_path/bash3.2" "$W/e_${kind}_good.log" "3.2.57(1)-release"
+  DUP=""
+  case "$kind" in
+    symlink) if [ "$SYMLINKS" = 1 ] && ln -s "$FA" "$HE/.local/bin/bash3.2" 2>/dev/null; then DUP="$HE/.local/bin/bash3.2"; fi ;;
+    hardlink) if ln "$FA" "$HE/.local/bin/bash3.2" 2>/dev/null && [ "$HE/.local/bin/bash3.2" -ef "$FA" ]; then DUP="$HE/.local/bin/bash3.2"; fi ;;
+  esac
+  if [ -z "$DUP" ]; then t_skip 6 "AC9.2 $kind (this file system cannot make one)"; continue; fi
+  rm -f "$W/e_$kind.log"
+  run env -i PATH="$W/be_$kind:$W/e_${kind}_path:$BARE" HOME="$HE" TMPDIR="$W" PB_BASH32="$FA" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+  assert_eq "AC9.2 $kind: the earlier candidate is named once (one 'reports bash version' line)" "1" "$(printf '%s\n' "$OUT" | grep -c 'reports bash version')"
+  assert_contains "AC9.2 $kind: the earlier candidate is named with its version" "$OUT" "$FA"
+  assert_eq "AC9.2 $kind: the earlier candidate was probed once" "1" "$(grep -c '^called ' "$W/e_$kind.log" 2>/dev/null)"
+  assert_not_contains "AC9.2 $kind: the second spelling of the same file is not named" "$OUT" "$DUP"
+  assert_contains "AC9.2 $kind: a later, different 3.2 on PATH is used" "$OUT" "bsd-check: bash is $W/e_${kind}_path/bash3.2"
+  assert_rc "AC9.2 $kind: exit 0" 0
+done
+echo "v0.23.3 AC9.2 the same path from PB_BASH32 and from PATH is probed and named once"
+D="$W/e_sp"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/be_sp" original-awk "$W/be_sp.log"
+mkdir -p "$W/homee_sp"
+FA="$W/e_sp_a/bash3.2"; fake_bash "$FA" "$W/e_sp.log" "5.2.15(1)-release"
+run env -i PATH="$W/be_sp:$W/e_sp_a:$BARE" HOME="$W/homee_sp" TMPDIR="$W" PB_BASH32="$FA" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+assert_eq "AC9.2 same path: named once (one 'reports bash version' line)" "1" "$(printf '%s\n' "$OUT" | grep -c 'reports bash version')"
+assert_eq "AC9.2 same path: probed once" "1" "$(grep -c '^called ' "$W/e_sp.log" 2>/dev/null)"
+assert_contains "AC9.2 same path: no 3.2 anywhere, so 'no bash 3.2 found'" "$OUT" "no bash 3.2 found"
+
+# ---- v0.23.3 lane A review of 146dd98 ----
+echo "v0.23.3 lane A review NIT-5 a hanging candidate that started a child leaves no child behind (checked with ps, by a marker argument)"
+if ps -A -o args= >/dev/null 2>&1; then
+  D="$W/d5"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bd5" original-awk "$W/bd5.log"
+  mkdir -p "$W/homed5" "$W/d5kid"
+  KIDMARK="7$$"
+  KIDPID="$W/d5kid.pid"
+  printf '#!/bin/sh\nsleep %s &\necho $! > "%s"\nwait\n' "$KIDMARK" "$KIDPID" > "$W/d5kid/bash3.2"
+  chmod +x "$W/d5kid/bash3.2"
+  run env -i PATH="$W/bd5:$BARE" HOME="$W/homed5" TMPDIR="$W" PB_BASH32="$W/d5kid/bash3.2" PB_BSD_PROBE_SECS=1 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+  assert_contains "fixture: the wrapper hung and was rejected" "$OUT" "no answer within 1 s"
+  assert_file "fixture: the wrapper started its child" "$KIDPID"
+  KN=0; ki=0
+  while [ "$ki" -lt 10 ]; do
+    KN="$(ps -A -o args= 2>/dev/null | grep -F "sleep $KIDMARK" | grep -vc grep)"
+    [ "$KN" = 0 ] && break
+    sleep 1; ki=$((ki + 1))
+  done
+  assert_eq "no child of the rejected candidate (sleep $KIDMARK) is left after bsd-check returned" "0" "$KN"
+  [ ! -s "$KIDPID" ] || kill "$(cat "$KIDPID")" 2>/dev/null
+else t_skip 3 "probe children (ps cannot list process arguments here)"; fi
 t_summary
