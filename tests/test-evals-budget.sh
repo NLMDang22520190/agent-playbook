@@ -146,6 +146,22 @@ for v in 5 1.0 0.50 2.75 100; do
   case "$RC" in 0|1) t_ok "AC5.1 --max-cost $v is a valid amount (exit 0 or 1)" ;; *) t_bad "AC5.1 --max-cost $v is a valid amount" "exit $RC: $OUT" ;; esac
 done
 
+echo "v0.23.1 AC11.2 --max-cost .5 and 0.5 are accepted and the budget works; ., 0. and 5. are rejected"
+for v in .5 0.5; do
+  go --cmd "bash $A/c06.sh" --scenarios E1,E3,E8 --max-cost "$v"
+  case "$RC" in 0|1) t_ok "AC11.2 --max-cost $v is accepted (exit 0 or 1)" ;; *) t_bad "AC11.2 --max-cost $v is accepted (exit 0 or 1)" "exit $RC: $OUT" ;; esac
+  if ran E1 && ! ran E3 && ! ran E8; then t_ok "AC11.2 --max-cost $v: the first scenario (0.6) reaches the budget, the others are skipped"; else t_bad "AC11.2 --max-cost $v: the budget works" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+  assert_eq "AC11.2 --max-cost $v: a SKIPPED line for E3" "1" "$(printf '%s\n' "$OUT" | grep -c '^E3 SKIPPED budget reached')"
+  assert_eq "AC11.2 --max-cost $v: a SKIPPED line for E8" "1" "$(printf '%s\n' "$OUT" | grep -c '^E8 SKIPPED budget reached')"
+done
+go --cmd "bash $A/c06.sh" --scenarios E1,E3 --max-cost .75
+if ran E1 && ran E3; then t_ok "AC11.2 --max-cost .75 is a budget of 0.75: 0.6 does not reach it, the second scenario runs"; else t_bad "AC11.2 --max-cost .75 is a budget of 0.75" "ran: $(ls "$REC" | tr '\n' ' ')"; fi
+for v in . 0. 5. 1.; do
+  go --cmd "bash $A/c06.sh" --scenarios E1 --max-cost "$v"
+  assert_rc "AC11.2 --max-cost [$v] exits 2" 2
+  if ran E1; then t_bad "AC11.2 --max-cost [$v] runs no scenario" "adapter ran"; else t_ok "AC11.2 --max-cost [$v] runs no scenario"; fi
+done
+
 echo "AC5.1 usage text"
 go --cmd "bash $A/c06.sh" --scenarios E1 --bogus
 assert_rc "AC5.1 unknown option still exits 2" 2

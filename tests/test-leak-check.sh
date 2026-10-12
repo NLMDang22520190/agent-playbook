@@ -548,6 +548,142 @@ run_in "$R" bash "$LC" scan --staged
 assert_rc "RV7 case-insensitive does not make the dot a wildcard: exit 0" 0
 rm -f "$PH/.agents/playbook.conf"
 
+echo "v0.23.1 AC10.1 leak_literals: a UTF-8 locale is probed, so non-ASCII literals fold case under LC_ALL=C"
+# the literal and the added text are built from bytes (octal escapes): a d-stroke a-dot-below n g, lower and upper case
+LIT_LOW="$(printf '\304\221\341\272\267ng')"
+LIT_UP="$(printf '\304\220\341\272\266NG')"
+NOTE='leak-check: no UTF-8 locale; literal case folding is ASCII-only'
+# the same probe as the script's: the first candidate locale where grep -i folds the case of a non-ASCII letter
+ERRF="$(mk_tmp)/err"
+HAVE_UTF8=0
+for cand in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  if printf '\304\220' | LC_ALL="$cand" grep -qiF "$(printf '\304\221')" 2>/dev/null; then HAVE_UTF8=1; break; fi
+done
+conf_global "leak_literals=$LIT_LOW"
+newrepo
+stage "$R" l.txt 'x' "name $LIT_UP here"
+OUT="$(cd "$R" && LC_ALL=C bash "$LC" scan --staged 2>"$ERRF")"; RC=$?
+ERR="$(cat "$ERRF")"
+if [ "$HAVE_UTF8" = 1 ]; then
+  assert_rc "AC10.1 under LC_ALL=C a UTF-8 locale is found: the literal matches the upper-case text: exit 1" 1
+  assert_contains "AC10.1 reported as user-literal at file:line" "$OUT" "l.txt:2: user-literal"
+  assert_not_contains "AC10.1 no ASCII-only note when a UTF-8 locale works" "$ERR" "$NOTE"
+else
+  assert_rc "AC10.1 no UTF-8 locale: ASCII-only folding does not match the upper-case text: exit 0" 0
+  assert_contains "AC10.1 no UTF-8 locale: the stderr note says so" "$ERR" "$NOTE"
+fi
+newrepo
+stage "$R" l.txt 'x' "name $LIT_LOW here"
+OUT="$(cd "$R" && LC_ALL=C bash "$LC" scan --staged 2>/dev/null)"; RC=$?
+assert_rc "AC10.1 the same-case non-ASCII literal always matches (byte match): exit 1" 1
+assert_contains "AC10.1 the same-case literal is reported as user-literal" "$OUT" "l.txt:2: user-literal"
+# the ASCII-only case folding of the existing literals keeps working under LC_ALL=C
+conf_global "leak_literals=$EML"
+newrepo
+stage "$R" c.txt 'mail DEV@EXAMPLE.INVALID today'
+OUT="$(cd "$R" && LC_ALL=C bash "$LC" scan --staged 2>/dev/null)"; RC=$?
+assert_rc "AC10.1 an ASCII literal still folds case under LC_ALL=C: exit 1" 1
+rm -f "$PH/.agents/playbook.conf"
+
+echo "v0.23.1 AC10.2 scan --unpushed SHA --remote NAME: only the commits on that remote are skipped"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RA="$(mk_tmp)/a.git"; RB="$(mk_tmp)/b.git"
+git init -q --bare "$RA"; git init -q --bare "$RB"
+git -C "$R" remote add origin "$RA"; git -C "$R" remote add origin2 "$RB"
+stage "$R" only-b.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret, pushed to origin2 only'
+git -C "$R" push -q origin2 main
+SECRET_B="$(git -C "$R" rev-parse HEAD)"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote origin
+assert_rc "AC10.2 a commit pushed only to origin2 is scanned when pushing to origin: exit 1" 1
+assert_contains "AC10.2 ... and the finding is named" "$OUT" "only-b.txt:1: github-token"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote origin2
+assert_rc "AC10.2 the same commit is skipped when pushing to origin2 (it is on that remote): exit 0" 0
+assert_contains "AC10.2 ... says 'leak-check: clean'" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B"
+assert_rc "AC10.2 without --remote the old behaviour holds (any remote counts): exit 0" 0
+# and the other way round: a commit on origin only is scanned for origin2; origin does not match origin2
+git -C "$R" checkout -q -b other "$SECRET_B"
+stage "$R" only-a.txt "k $AWS"; G -C "$R" commit -q --no-verify -m 'secret, pushed to origin only'
+git -C "$R" push -q origin other
+SECRET_A="$(git -C "$R" rev-parse HEAD)"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_A" --remote origin2
+assert_rc "AC10.2 a commit pushed only to origin is scanned when pushing to origin2: exit 1" 1
+assert_contains "AC10.2 ... the finding of the origin-only commit is named" "$OUT" "only-a.txt:1: aws-key"
+assert_not_contains "AC10.2 ... the commit on origin2 itself is not rescanned" "$OUT" "only-b.txt"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_A" --remote origin
+assert_rc "AC10.2 the origin-only commit is skipped when pushing to origin: exit 0" 0
+# a NAME that is not a configured remote (a URL push): the old behaviour, --not --remotes
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote "$RA"
+assert_rc "AC10.2 a URL is not a configured remote: it falls back to any remote counting: exit 0" 0
+assert_contains "AC10.2 ... says 'leak-check: clean'" "$OUT" "leak-check: clean"
+run_in "$R" bash "$LC" scan --unpushed "$SECRET_B" --remote nosuchremote
+assert_rc "AC10.2 an unknown remote name falls back to the old behaviour: exit 0" 0
+git -C "$R" checkout -q -b fresh main
+stage "$R" fresh.txt "k $GHS"; G -C "$R" commit -q --no-verify -m 'secret, pushed nowhere'
+run_in "$R" bash "$LC" scan --unpushed HEAD --remote "$RA"
+assert_rc "AC10.2 a URL push still scans a commit that is on no remote: exit 1" 1
+assert_contains "AC10.2 ... the finding is named" "$OUT" "fresh.txt:1: github-token"
+
+echo "v0.23.1 AC10.2 --unpushed usage: SHA plus an optional --remote NAME, anything else exits 2"
+run_in "$R" bash "$LC" scan --unpushed
+assert_rc "AC10.2 --unpushed alone: exit 2" 2
+run_in "$R" bash "$LC" scan --unpushed HEAD --remote
+assert_rc "AC10.2 --remote without a NAME: exit 2" 2
+run_in "$R" bash "$LC" scan --unpushed HEAD --bogus origin
+assert_rc "AC10.2 an unknown option after the SHA: exit 2" 2
+run_in "$R" bash "$LC" scan --unpushed HEAD --remote origin extra
+assert_rc "AC10.2 a stray word after --remote NAME: exit 2" 2
+run_in "$R" bash "$LC" scan --unpushed HEAD --remote origin --remote origin2
+assert_rc "AC10.2 --remote given twice: exit 2" 2
+run_in "$R" bash "$LC" scan --staged --remote origin
+assert_rc "AC10.2 --remote is not accepted with --staged: exit 2" 2
+run_in "$R" bash "$LC" scan --range HEAD~1..HEAD --remote origin
+assert_rc "AC10.2 --remote is not accepted with --range: exit 2" 2
+
+echo "v0.23.1 AC10.2 the pre-push hook passes the remote name (\$1)"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+RA="$(mk_tmp)/a.git"; RB="$(mk_tmp)/b.git"
+git init -q --bare "$RA"; git init -q --bare "$RB"
+git -C "$R" remote add origin "$RA"; git -C "$R" remote add origin2 "$RB"
+git -C "$R" push -q origin main
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC10.2 hook setup: install-hooks exit 0" 0
+assert_contains "AC10.2 the pre-push hook passes --remote to the scan" "$(cat "$R/.git/hooks/pre-push" 2>/dev/null)" "--remote"
+stage "$R" hk.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret'
+git -C "$R" push -q --no-verify origin2 main
+run_in "$R" git push origin "HEAD:refs/heads/feature"
+if [ "$RC" != 0 ]; then t_ok "AC10.2 a new branch pushed to origin is blocked although origin2 holds the secret commit (exit $RC)"; else t_bad "AC10.2 a new branch pushed to origin is blocked although origin2 holds the secret commit" "exit 0; output: $OUT"; fi
+assert_contains "AC10.2 the hook shows the finding" "$OUT" "hk.txt:1: github-token"
+if git -C "$RA" rev-parse --verify -q refs/heads/feature >/dev/null; then t_bad "AC10.2 the blocked push did not reach origin" "feature is on origin"; else t_ok "AC10.2 the blocked push did not reach origin"; fi
+run_in "$R" git push -q origin2 "HEAD:refs/heads/feature"
+assert_rc "AC10.2 pushing the same commit to origin2, which holds it already: exit 0" 0
+run_in "$R" git push -q "$RA" "HEAD:refs/heads/viaurl"
+assert_rc "AC10.2 a push to a bare URL falls back to the old behaviour (the commit is on a remote): exit 0" 0
+
+echo "v0.23.1 AC10.3 install-hooks rewrites an old marked hook, and the docs say to re-run it"
+newrepo
+HOOKS="$R/.git/hooks"; mkdir -p "$HOOKS"
+for h in pre-commit pre-push; do
+  printf '#!/bin/sh\n%s\n# an old body from a previous version\nOLD_BODY_LINE=1\nexec true\n' "$MARK" > "$HOOKS/$h"
+  chmod +x "$HOOKS/$h"
+done
+run_in "$R" bash "$LC" install-hooks
+assert_rc "AC10.3 install-hooks over marked old hooks: exit 0" 0
+for h in pre-commit pre-push; do
+  assert_not_contains "AC10.3 $h: the old body is gone" "$(cat "$HOOKS/$h" 2>/dev/null)" "OLD_BODY_LINE"
+  assert_eq "AC10.3 $h has the marker exactly once" "1" "$(grep -cF "$MARK" "$HOOKS/$h" 2>/dev/null)"
+  if [ -x "$HOOKS/$h" ]; then t_ok "AC10.3 $h is executable"; else t_bad "AC10.3 $h is executable" "$(ls -l "$HOOKS/$h" 2>&1)"; fi
+done
+assert_contains "AC10.3 the rewritten pre-push hook passes --remote" "$(cat "$HOOKS/pre-push" 2>/dev/null)" "--remote"
+assert_contains "AC10.3 the rewritten pre-commit hook scans the staged change" "$(cat "$HOOKS/pre-commit" 2>/dev/null)" "--staged"
+CL_SEC="$(awk '/^## /{n++} n==1' "$PB_ROOT/CHANGELOG.md" 2>/dev/null)"
+case "$CL_SEC" in *0.23.1*) t_ok "AC10.3 the newest CHANGELOG section is 0.23.1" ;; *) t_bad "AC10.3 the newest CHANGELOG section is 0.23.1" "first section: $(printf '%s\n' "$CL_SEC" | head -n 1)" ;; esac
+if printf '%s\n' "$CL_SEC" | grep -qi 'install-hooks'; then t_ok "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks"; else t_bad "AC10.3 the 0.23.1 CHANGELOG section mentions install-hooks" "not in the newest section"; fi
+if printf '%s\n' "$CL_SEC" | grep -qiE 're-?run|again'; then t_ok "AC10.3 the 0.23.1 CHANGELOG section says to re-run it"; else t_bad "AC10.3 the 0.23.1 CHANGELOG section says to re-run it" "no re-run/again wording"; fi
+if grep -i 'install-hooks' "$README" 2>/dev/null | grep -qiE 're-?run|again'; then t_ok "AC10.3 README says existing installs re-run install-hooks"; else t_bad "AC10.3 README says existing installs re-run install-hooks" "no README line with install-hooks and re-run/again"; fi
+
 echo "docs"
 if grep -q 'leak_literals' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-setup SKILL.md mentions leak_literals"; else t_bad "AC1.5 playbook-setup SKILL.md mentions leak_literals" "not in $SETUP_MD"; fi
 if grep -q 'install-hooks' "$SETUP_MD" 2>/dev/null; then t_ok "AC1.5 playbook-setup SKILL.md mentions install-hooks"; else t_bad "AC1.5 playbook-setup SKILL.md mentions install-hooks" "not in $SETUP_MD"; fi

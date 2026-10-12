@@ -243,4 +243,32 @@ assert_eq "RV9 spec_first=1: a Bash write under node_modules/x/src/ is not an sr
 assert_eq "RV9 spec_first=1: a Bash sed edit under node_modules/x/src/ is not an src/ write" "1" "$(sf_of "$(btu "sed $SI 's/a/b/' node_modules/x/src/a.js")" "$(tu Write "$SFW")")"
 assert_eq "RV9 spec_first=0: a real src/ write after a node_modules one and before the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/node_modules/x/src/a.js","content":"x"}')" "$(tu Write "$SRC")" "$(tu Write "$SFW")")"
 
+echo "v0.23.1 AC9.1 bashWritesSrc: cd into src, git mv, node writeFileSync, with read-only twins"
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "AC9.1 spec_first=0: a Bash write to src/ before the spec [$cmd]" "0" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")")"
+  assert_eq "AC9.1 spec_first=1: the same write after the spec [$cmd]" "1" "$(sf_of "$(tu Write "$SFW")" "$(btu "$cmd")")"
+done <<XEOF
+cd src && sed $SI 's/divide/safeDivide/g' calc.js
+cd src; sed $SI.bak 's/a/b/' calc.js
+cd ./src && sed $SI 's/a/b/' calc.js
+cd /w/E21/src && sed $SI 's/a/b/' calc.js
+git mv x src/y
+git mv src/a src/b
+node -e "require('fs').writeFileSync('src/x','')"
+node -e "require('fs').writeFileSync('./src/x.js','y')"
+XEOF
+while IFS= read -r cmd; do
+  [ -n "$cmd" ] || continue
+  assert_eq "AC9.1 not an src/ write [$cmd]: spec_first stays 1 when the spec comes first and src is edited later" "1" "$(sf_of "$(btu "$cmd")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+done <<'XEOF'
+cd src && cat calc.js
+cd src && grep -n divide calc.js
+git mv a b
+git mv docs/a docs/b
+node -e "require('fs').readFileSync('src/x','utf8')"
+node -e "readFileSync('src/x')"
+XEOF
+assert_eq "AC9.1 spec_first=1: a cd into src/ and back out, then an edit elsewhere, is not an src/ write" "1" "$(sf_of "$(btu 'cd src && cat calc.js && cd .. && echo x > notes.txt')" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
+
 t_summary

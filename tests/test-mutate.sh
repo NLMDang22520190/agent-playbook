@@ -477,4 +477,114 @@ mrun "$R" --base base --test true --include-docs --exclude 'docs/*'
 no_text "AC1.1 --exclude still applies next to --include-docs" "docs/g.md"
 has_line "AC1.1 --exclude next to --include-docs keeps the other .md file" "survived: NOTES.md:1: x == y -> x != y"
 
+echo "v0.23.1 AC8.1 pid reuse: an owner is reaped when its pid is dead or its start string differs; a failing ps never reaps"
+# Assumed owner file format (tester): line 1 = pid, line 2 = the trimmed start string (a v0.22.4 file has line 1 only, N4).
+# A fake ps on PATH decides the start string. FPS_MODE: out (print FPS_OUT) | empty (print nothing, exit 0) | fail (exit 1).
+FB="$W/fakebin"; mkdir -p "$FB"
+cat > "$FB/ps" <<'EOF'
+#!/bin/sh
+printf 'LC_ALL=%s TZ=%s ARGS=%s\n' "${LC_ALL:-}" "${TZ:-}" "$*" >> "${FPS_LOG:-/dev/null}"
+case "${FPS_MODE:-out}" in
+  empty) exit 0 ;;
+  fail) exit 1 ;;
+  *) printf '%s\n' "${FPS_OUT:-}" ;;
+esac
+EOF
+chmod +x "$FB/ps"
+R="$W/reuse"; mkfx "$R"
+( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+commit_all "$R" change
+RT_START='Mon Oct 12 10:00:00 2026'
+# stale_case NAME OWNER_CONTENT MODE PSOUT -> a registered worktree under its own TMPDIR with that owner file; runs
+# mutate.sh with the fake ps; sets REAPED=1|0 (the stale dir is gone) and OUT, RC
+stale_case() {
+  local name="$1" content="$2" mode="$3" psout="$4" tb rb
+  tb="$W/rt-$name"; mkdir -p "$tb"; rb="$(cd "$tb" && pwd -P)"
+  mkdir -p "$rb/pbmutate.stale"
+  ( cd "$R" && git worktree add -q --detach "$rb/pbmutate.stale/wt" HEAD >/dev/null 2>&1 ) || { t_bad "AC8.1 fixture [$name]: worktree add" "failed"; }
+  printf '%s' "$content" > "$rb/pbmutate.stale/owner"
+  OUT="$(cd "$R" && env TMPDIR="$tb" PATH="$FB:$PATH" FPS_MODE="$mode" FPS_OUT="$psout" bash "$MUT" --base base --test true 2>&1)"; RC=$?
+  if [ -d "$rb/pbmutate.stale" ]; then REAPED=0; else REAPED=1; fi
+  ( cd "$R" && git worktree remove --force "$rb/pbmutate.stale/wt" >/dev/null 2>&1; git worktree prune >/dev/null 2>&1 ) || true
+  rm -rf "$rb/pbmutate.stale"
+}
+sleep 300 & LIVE=$!
+sleep 300 & LIVE2=$!
+DEADP=999999; while kill -0 "$DEADP" 2>/dev/null; do DEADP=$((DEADP + 1)); done
+
+stale_case live-match "$LIVE
+$RT_START
+" out "$RT_START"
+assert_rc "AC8.1 live pid + matching start string: the run itself exits 0" 0
+assert_eq "AC8.1 live pid + matching start string: never reaped" "0" "$REAPED"
+stale_case live-match-sp "$LIVE
+$RT_START
+" out "  $RT_START  "
+assert_eq "AC8.1 the current start string is trimmed before comparing: never reaped" "0" "$REAPED"
+stale_case live-diff "$LIVE
+$RT_START
+" out "Tue Oct 13 11:11:11 2026"
+assert_rc "AC8.1 live pid + differing start string: the run exits 0" 0
+assert_eq "AC8.1 live pid + a differing non-empty start string counts as reused: reaped" "1" "$REAPED"
+stale_case live-cur-empty "$LIVE
+$RT_START
+" empty ""
+assert_eq "AC8.1 live pid, stored string set, ps prints nothing now: never reaped" "0" "$REAPED"
+stale_case live-cur-fail "$LIVE
+$RT_START
+" fail ""
+assert_eq "AC8.1 live pid, stored string set, ps fails now: never reaped" "0" "$REAPED"
+stale_case live-stored-empty "$LIVE
+
+" out "$RT_START"
+assert_eq "AC8.1 live pid, empty stored string, ps works now: never reaped" "0" "$REAPED"
+stale_case live-both-empty "$LIVE
+
+" empty ""
+assert_eq "AC8.1 live pid, ps empty on both sides: never reaped" "0" "$REAPED"
+stale_case live-oneline-out "$LIVE
+" out "$RT_START"
+assert_eq "AC8.1 a one-line owner (v0.22.4: pid only) of a live pid, ps works: kill -0 says alive, never reaped (N4)" "0" "$REAPED"
+stale_case live-oneline-empty "$LIVE
+" empty ""
+assert_eq "AC8.1 a one-line owner of a live pid, ps empty: never reaped (N4)" "0" "$REAPED"
+stale_case dead-oneline "$DEADP
+" out "$RT_START"
+assert_rc "AC8.1 a one-line owner of a dead pid: the run exits 0" 0
+assert_eq "AC8.1 a one-line owner of a dead pid is reaped by kill -0 (N4)" "1" "$REAPED"
+stale_case dead-match "$DEADP
+$RT_START
+" out "$RT_START"
+assert_eq "AC8.1 a dead pid is reaped even when the start strings match" "1" "$REAPED"
+stale_case dead-ps-empty "$DEADP
+$RT_START
+" empty ""
+assert_eq "AC8.1 a dead pid is reaped when ps prints nothing" "1" "$REAPED"
+kill -9 "$LIVE" "$LIVE2" 2>/dev/null; wait "$LIVE" "$LIVE2" 2>/dev/null
+
+echo "v0.23.1 AC8.1 the owner file stores the pid and the trimmed start string from LC_ALL=C TZ=UTC0 ps -o lstart= -p PID"
+R="$W/own"; mkfx "$R"
+( cd "$R" && mkdir -p src && printf 'const k = 1;\n' > src/a.js ) || exit 3
+set_base "$R"
+( cd "$R" && printf 'const q = a == b;\n' >> src/a.js ) || exit 3
+commit_all "$R" change
+rm -f "$W/own.copy" "$W/fps.log"
+OUT="$(cd "$R" && env TMPDIR="$W/tmp" PATH="$FB:$PATH" FPS_MODE=out FPS_OUT="  $RT_START  " FPS_LOG="$W/fps.log" LC_ALL=de_DE.UTF-8 TZ=Asia/Tokyo bash "$MUT" --base base --test "cat ../owner > $W/own.copy" 2>&1)"; RC=$?
+assert_rc "AC8.1 the run with a fake ps exits 0" 0
+OWN1="$(sed -n 1p "$W/own.copy" 2>/dev/null)"; OWN2="$(sed -n 2p "$W/own.copy" 2>/dev/null)"
+case "$OWN1" in "" | *[!0-9]*) t_bad "AC8.1 owner line 1 is the pid" "got [$OWN1]" ;; *) t_ok "AC8.1 owner line 1 is the pid" ;; esac
+assert_eq "AC8.1 owner line 2 is the trimmed start string" "$RT_START" "$OWN2"
+FLOG="$(cat "$W/fps.log" 2>/dev/null)"
+assert_contains "AC8.1 ps was called as ps -o lstart= -p <pid of the run>" "$FLOG" "-o lstart= -p $OWN1"
+if printf '%s\n' "$FLOG" | grep -F -- "-p $OWN1" | grep -qF 'LC_ALL=C TZ=UTC0 '; then t_ok "AC8.1 that ps call ran with LC_ALL=C and TZ=UTC0 (whatever the caller's locale and zone)"; else t_bad "AC8.1 that ps call ran with LC_ALL=C and TZ=UTC0" "log: $FLOG"; fi
+# an empty ps: the owner still names the pid, with an empty start string
+rm -f "$W/own.copy"
+OUT="$(cd "$R" && env TMPDIR="$W/tmp" PATH="$FB:$PATH" FPS_MODE=empty bash "$MUT" --base base --test "cat ../owner > $W/own.copy" 2>&1)"; RC=$?
+assert_rc "AC8.1 a run whose ps prints nothing still exits 0" 0
+OWN1="$(sed -n 1p "$W/own.copy" 2>/dev/null)"; OWN2="$(sed -n 2p "$W/own.copy" 2>/dev/null)"
+case "$OWN1" in "" | *[!0-9]*) t_bad "AC8.1 empty ps: owner line 1 is still the pid" "got [$OWN1]" ;; *) t_ok "AC8.1 empty ps: owner line 1 is still the pid" ;; esac
+assert_eq "AC8.1 empty ps: owner line 2 is empty" "" "$OWN2"
+
 t_summary
