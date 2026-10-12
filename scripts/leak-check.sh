@@ -132,7 +132,7 @@ mode_check() {
   # The check never fails open: a failing raw list, or a path with a newline (no escape: rename it), is a violation.
   raw="$(pb_raw_lines --cached 2>/dev/null)"; rrc=$?
   if [ "$rrc" = 4 ]; then
-    printf 'VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete\n'
+    printf 'VIOLATION (mode): a path contains a newline or a \\002 byte; the mode check is incomplete\n'
     MODEBAD=$((MODEBAD + 1)); return 0
   elif [ "$rrc" != 0 ]; then
     printf 'VIOLATION (mode): git diff --raw failed; the mode check is incomplete\n'
@@ -278,19 +278,66 @@ EOF
 
 # push_rewritten NAME -> 0 when some url.<base>.pushInsteadOf value is a prefix of NAME (the raw NAME, or NAME after
 # insteadOf expansion): git then pushes somewhere else than NAME names, so no remote's refs say what that place holds.
-# The key is url.<base>.pushinsteadof (git prints it lowercase; <base> may hold dots), the value follows the first space
-# after the key's end. An empty value is skipped.
+# The key names are listed on their own (git config --name-only: <base> may hold dots or spaces, nothing is split on the
+# key) and each key's values are read by name. An empty value is skipped.
 push_rewritten() {
-  local name="$1" exp v
+  local name="$1" exp v key
   exp="$(git ls-remote --get-url "$name" 2>/dev/null)" || exp=""
-  while IFS= read -r v; do
-    [ -n "$v" ] || continue
-    case "$name" in "$v"*) return 0 ;; esac
-    case "$exp" in "$v"*) [ -z "$exp" ] || return 0 ;; esac
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      case "$name" in "$v"*) return 0 ;; esac
+      case "$exp" in "$v"*) [ -z "$exp" ] || return 0 ;; esac
+    done <<EOF
+$(git config --get-all "$key" 2>/dev/null)
+EOF
   done <<EOF
-$(git config --get-regexp '^url\..*\.pushinsteadof$' 2>/dev/null | awk '{ i = index($0, ".pushinsteadof "); if (i) print substr($0, i + 15) }')
+$(git config --name-only --get-regexp '^url\..*\.pushinsteadof$' 2>/dev/null | sort -u)
 EOF
   return 1
+}
+
+# dest_owned DEST... -> appends to $TMP/own the owned refs of the remotes the destinations are, and returns 0; returns 1
+# when some DEST is rewritten by pushInsteadOf or is no configured remote's place (the caller scans the full range).
+dest_owned() {
+  local d rems rn all=""
+  for d in "$@"; do
+    push_rewritten "$d" && return 1
+    rems="$(url_remotes "$d")"
+    [ -n "$rems" ] || return 1
+    all="$all
+$rems"
+  done
+  while IFS= read -r rn; do
+    [ -n "$rn" ] || continue
+    owned_refs "$rn" >> "$TMP/own"
+  done <<EOF
+$all
+EOF
+  return 0
+}
+
+# remote_pushes_home R -> 0 when every push destination of configured remote R (git remote get-url --push --all: pushurl
+# and pushInsteadOf already applied, pushInsteadOf ignored when a pushurl is set) is one of R's own fetch urls.
+remote_pushes_home() {
+  local r="$1" pd fu d f ok
+  pd="$(git remote get-url --push --all "$r" 2>/dev/null)" || return 1
+  fu="$(git remote get-url --all "$r" 2>/dev/null)" || return 1
+  [ -n "$pd" ] || return 1
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    ok=0
+    while IFS= read -r f; do
+      [ -z "$f" ] || ! same_place "$d" "$f" || ok=1
+    done <<EOF
+$fu
+EOF
+    [ "$ok" = 1 ] || return 1
+  done <<EOF
+$pd
+EOF
+  return 0
 }
 
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
@@ -332,19 +379,24 @@ do_scan() {
         if [ "$hasremote" = 1 ]; then
           : > "$TMP/own"
           if [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then
-            owned_refs "$remote" > "$TMP/own"   # owns no ref yet: the list is empty, nothing is excluded
-          else
-            local rems rn
-            rems=""
-            push_rewritten "$remote" || rems="$(url_remotes "$remote")"   # a pushInsteadOf rewrite: the full range
-            if [ -n "$rems" ]; then
-              while IFS= read -r rn; do
-                [ -n "$rn" ] || continue
-                owned_refs "$rn" >> "$TMP/own"
-              done <<EOF
-$rems
-EOF
+            if remote_pushes_home "$remote"; then
+              owned_refs "$remote" > "$TMP/own"   # owns no ref yet: the list is empty, nothing is excluded
             else
+              # the push goes elsewhere (pushurl, pushInsteadOf): treat it as a push to those destinations
+              local pd d
+              pd="$(git remote get-url --push --all "$remote" 2>/dev/null)" || pd=""
+              set --
+              while IFS= read -r d; do [ -z "$d" ] || set -- "$@" "$d"; done <<EOF
+$pd
+EOF
+              if [ $# -eq 0 ] || ! dest_owned "$@"; then
+                : > "$TMP/own"
+                printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+              fi
+            fi
+          else
+            if push_rewritten "$remote" || ! dest_owned "$remote"; then
+              : > "$TMP/own"
               printf 'leak-check: %s is not a configured remote; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
             fi
           fi

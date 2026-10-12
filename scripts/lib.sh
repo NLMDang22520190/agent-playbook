@@ -82,6 +82,8 @@ pb_raw_lines() {
 # --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree); when that call
 # fails or returns a wrong count, the paths that are not readable regular files are set aside ("cannot hash") and ONE
 # batch runs for the rest; only when that fails too is each path hashed on its own (bounded cost for a big change).
+# The 10-process bound holds for unreadable files (set aside before the batch). A readable file whose clean filter
+# fails still falls back to hashing per path.
 pb_lost_exec_paths() {
   local raw zp hs p h nl hok rd flags hs2 rest
   nl="
