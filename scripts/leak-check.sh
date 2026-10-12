@@ -224,24 +224,41 @@ owned_refs() {
     }'
 }
 
+# same_place A B -> 0 when two destinations are one place: the same string, or (Git Bash: git keeps a local path as
+# C:/x in the config but expands insteadOf to /c/x) two existing local paths that are the same file. A spelling that ends
+# in / is never compared by file: a trailing / is not normalized (see url_remotes).
+same_place() {
+  [ "$1" = "$2" ] && return 0
+  case "$1" in */) return 1 ;; esac
+  case "$2" in */) return 1 ;; esac
+  [ -e "$1" ] && [ -e "$2" ] && [ "$1" -ef "$2" ]
+}
+
 # url_remotes NAME -> the configured remotes whose destination NAME is, one per line. NAME counts for a remote R when
 # every url and pushurl value of R names one place (compared after insteadOf expansion: git remote get-url --all, and
 # --push --all) and NAME is one of R's raw values or, expanded (git ls-remote --get-url NAME), is that place. A trailing
 # .git or /, or ssh vs https forms, are not normalized: such a NAME matches nothing (the caller then scans everything).
 url_remotes() {
-  local name="$1" exp r raws exps hit v
+  local name="$1" exp r raws exps first hit v mixed
   [ -n "$name" ] || return 0
   exp="$(git ls-remote --get-url "$name" 2>/dev/null)" || exp=""
   while IFS= read -r r; do
     [ -n "$r" ] || continue
-    exps="$( { git remote get-url --all "$r" 2>/dev/null; git remote get-url --push --all "$r" 2>/dev/null; } | LC_ALL=C sort -u)"
+    exps="$( { git remote get-url --all "$r" 2>/dev/null; git remote get-url --push --all "$r" 2>/dev/null; } )"
     [ -n "$exps" ] || continue
-    [ "$(printf '%s\n' "$exps" | wc -l | tr -d ' ')" = 1 ] || continue   # the values name different places
+    first="$(printf '%s\n' "$exps" | sed -n 1p)"
+    mixed=0
+    while IFS= read -r v; do
+      same_place "$v" "$first" || mixed=1   # the values name different places
+    done <<EOF
+$exps
+EOF
+    [ "$mixed" = 0 ] || continue
     hit=0
-    [ -z "$exp" ] || [ "$exp" != "$exps" ] || hit=1
+    [ -z "$exp" ] || ! same_place "$exp" "$first" || hit=1
     raws="$( { git config --get-all "remote.$r.url" 2>/dev/null; git config --get-all "remote.$r.pushurl" 2>/dev/null; } )"
     while IFS= read -r v; do
-      [ "$v" != "$name" ] || hit=1
+      [ -z "$v" ] || ! same_place "$v" "$name" || hit=1
     done <<EOF
 $raws
 EOF
