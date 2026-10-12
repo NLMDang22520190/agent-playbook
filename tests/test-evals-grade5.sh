@@ -192,7 +192,7 @@ assert_eq "AC5.2 spec_first=1: the first spec write counts even if the spec is e
 assert_eq "AC5.2 spec_first=1: Windows-style paths (backslashes)" "1" "$(sf_of "$(tu Write '{"file_path":"C:\\w\\E21\\.agents\\handoff\\01-spec.md","content":"x"}')" "$(tu Write '{"file_path":"C:\\w\\E21\\src\\calc.js","content":"x"}')")"
 assert_eq "AC5.2 spec_first=0: a spec-like file in another directory is not the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/docs/01-spec.md","content":"x"}')" "$(tu Write "$SRC")")"
 assert_eq "AC5.2 spec_first=0: a different file name in .agents/handoff is not the spec" "0" "$(sf_of "$(tu Write '{"file_path":"/w/E21/.agents/handoff/notes.md","content":"x"}')" "$(tu Write "$SRC")")"
-assert_eq "AC5.2 spec_first=0: a Bash command that mentions the spec path is not a Write or Edit" "0" "$(sf_of "$(tu Bash '{"command":"echo x > .agents/handoff/01-spec.md"}')" "$(tu Write "$SRC")")"
+assert_eq "AC5.2 spec_first=0: a Bash command that only mentions (reads) the spec path is not a spec write" "0" "$(sf_of "$(tu Bash '{"command":"cat .agents/handoff/01-spec.md"}')" "$(tu Write "$SRC")")"
 assert_eq "AC5.2 spec_first=0: a Bash read of the spec between an src Write and the spec Write changes nothing" "0" "$(sf_of "$(tu Write "$SRC")" "$(tu Bash '{"command":"cat .agents/handoff/01-spec.md"}')" "$(tu Write "$SFW")")"
 printf 'wrote the spec, then edited src/calc.js\nsecond line\n' > "$TR/p.txt"
 assert_eq "AC5.2 spec_first=na for a plain-text transcript" "na" "$(node "$TS" "$TR/p.txt" 2>/dev/null | sed -n 's/^spec_first=//p')"
@@ -376,7 +376,7 @@ SPECCMD="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}# Spec${NLX}
 SPECEDIT="$(tu Edit '{"file_path":"/w/E21/.agents/handoff/01-spec.md","old_string":"# Spec","new_string":"# Spec v2"}')"
 SEDSRC="sed $SIH 's/a/b/' src/calc.js"
 assert_eq "AC4.1 E21: heredoc spec call, the spec edit, then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPECCMD")" "$SPECEDIT" "$(btu "$SEDSRC")")"
-assert_eq "AC4.1 E21: the same, with the in-place sed on src/ BEFORE the spec edit: spec_first=0" "0" "$(sf_of "$(btu "$SPECCMD")" "$(btu "$SEDSRC")" "$SPECEDIT")"
+assert_eq "AC4.1 E21: a read first, then the in-place sed on src/, then the spec edit: spec_first=0" "0" "$(sf_of "$(btu "cat src/calc.js")" "$(btu "$SEDSRC")" "$SPECEDIT")"
 
 # the same shape with an arrow that points straight at an src path in the body (a redirect-looking token before a path)
 SPECCMD2="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}## Understanding${NLX}  - the call sites -> src/calc.js:5 and src/report.js:1${NLX}EOF"
