@@ -34,7 +34,9 @@ nofiles() {
 
 # AWKSTRIP: awk code shared by the gnu and soh checks. strip(s) returns the code part of a line and leaves the comment text
 # (from its #) in CMT. A # starts a comment only at the start of a line, after a blank or right after ; & | ( ), and only outside single and double
-# quotes (a backslash escapes the next character outside single quotes). Quote state is per line.
+# quotes (a backslash escapes the next character outside single quotes). Quote state is per line: that is a limit. An apostrophe
+# in prose (a line of a heredoc body or other text) opens a quote that hides a later # comment on that line, so a comment word can be
+# read as code; the result is a conservative false positive (a flagged line), never a missed one. The sed section has the same limit.
 AWKSTRIP='
 function strip(s,   i, n, c, q, bs, pc) {
   CMT = ""
@@ -234,6 +236,8 @@ nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # variable named exactly after one of those tools ($GREP, ${sed}, any case) is checked like the tool.
 # Comments are ignored: a # starts one at the start of a line or after a blank when it is not inside quotes. Comments and
 # heredoc bodies never change the quote state (a heredoc body line is read as code on its own).
+# Not tracked: an arithmetic (( )) spanning lines (a (( with no closing )) on the same line); a << on a later line of it is read as a
+# heredoc, and its body is then skipped or read as code accordingly.
 # A line may opt out with "# gnu-ok: <reason>" (a non-blank reason) in its real trailing comment, that line only.
 # The names are spelled in pieces so this file does not trip its own check.
 # Limits (not covered): text inside single quotes (bash -c '...', awk programs) is not looked at; a tool named through
@@ -243,7 +247,7 @@ ggnu="$(awk '
   function flush() { if (t != "") { TK[++nk] = t; t = "" } }
   # scan(s): the words of one line, with the quote state (sp/MS/PD/inS) carried over from the line before.
   # MS[sp] is "c" (code), "d" (inside double quotes) or "b" (a backtick command inside double quotes).
-  function scan(s,   i, n, c, m, j, c2, q, w, dash, ch) {
+  function scan(s,   i, n, c, m, j, c2, q, w, dash, ch, u) {
     nk = 0; t = ""; CMT = ""; n = length(s); i = 1
     ar = 0; ao = 0; ac = 0   # ar: open (( or $(( groups in code mode on this line; ao/ac: a paren already counted as half of a pair
     if (inS) {   # still inside a single-quoted string that began on an earlier line
@@ -287,7 +291,7 @@ ggnu="$(awk '
         flush()
       }
       else if (c == " " || c == "\t" || c == "<" || c == ">") flush()
-      else if (c == "$" && substr(s, i + 1, 1) == "{" && match(substr(s, i + 2, 64), /^[A-Za-z_][A-Za-z0-9_]*[}]/)) {   # ${NAME}: one word
+      else if (c == "$" && substr(s, i + 1, 1) == "{" && ((u = substr(s, i + 2, 64)) != "") && match(u, /^[A-Za-z_][A-Za-z0-9_]*[}]/)) {   # ${NAME}: one word
         t = t substr(s, i, RLENGTH + 2); i += RLENGTH + 1
       }
       else if (c == "{" && substr(s, i + 1, 1) == "}") { t = t "{}"; i++ }   # find -exec {} and xargs -I {}
@@ -313,7 +317,7 @@ ggnu="$(awk '
     for (k = 1; k <= sp; k++) { MS[k] = SM[k]; PD[k] = SD[k] }
   }
   # a variable used as a command word: at the start of a command (after an assignment, a reserved word such as if/then/do, or a
-  # wrapper sudo [-u U] / env [-u V] / nice [-n N] / time [-p] / command (not -v/-V) / exec [-a N] / timeout [-s SIG] [-k DUR] DUR with its flags)
+  # wrapper sudo [-u U] / env [-u V] / nice [-n N] / time [-p] / command (not -v/-V) / exec [-a N] / timeout [-s SIG | --signal SIG] [-k DUR | --kill-after DUR] DUR with its flags)
   function cmdpos(i,   j, k, b, t) {
     j = i - 1
     while (j >= 1 && TK[j] != ";") j--
@@ -325,7 +329,7 @@ ggnu="$(awk '
         if (b == "command" && (TK[k + 1] == "-v" || TK[k + 1] == "-V")) return 0
         k++
         while (k < i && TK[k] ~ /^-/) {
-          if ((b == "sudo" && TK[k] ~ /^-[ugphCDRTU]$/) || (b == "env" && TK[k] ~ /^-[uCS]$/) || (b == "nice" && TK[k] == "-n") || (b == "exec" && TK[k] == "-a") || (b == "timeout" && TK[k] ~ /^-[sk]$/)) k++
+          if ((b == "sudo" && TK[k] ~ /^-[ugphCDRTU]$/) || (b == "env" && TK[k] ~ /^-[uCS]$/) || (b == "nice" && TK[k] == "-n") || (b == "exec" && TK[k] == "-a") || (b == "timeout" && TK[k] ~ /^(-[sk]|--signal|--kill-after)$/)) k++
           k++
         }
         if (b == "timeout" && k < i) k++   # the DURATION word

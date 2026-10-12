@@ -14,7 +14,7 @@
 //   - eval "$(cat <<EOF" is not read that way: eval is not a shell the grader follows, so that body stays data.
 //   - a heredoc written before its command in the -c shape (<<EOF cat) is not read as the -c script.
 //   - sudo -iu USER (a flag cluster that starts a login shell) is not recognised as a shell reading its stdin.
-//   - a here-string (<<<) used after a heredoc on the same line is not followed: the position after a heredoc is not tracked.
+//   - a here-string (<<<) after a heredoc on the same line replaces the shell's stdin, but the body is still read as commands.
 "use strict";
 const fs = require("fs");
 const log = process.argv[2];
@@ -31,7 +31,7 @@ const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // as commands: its body is kept (the terminator line is dropped), so the graders read it like any other command text.
 // feedsWords(w, wantC): w are the words of one simple command (the heredoc operators removed). True when the command is a bare
 // shell reading its stdin: after the reserved words, assignments and wrappers (sudo [-u U], env [-u V], nice [-n N], time,
-// nohup, exec [-a N], timeout DUR, command but not command -v/-V; sudo -s / -i is a shell itself) comes sh, bash or zsh whose
+// nohup, exec [-a N], timeout [-s SIG] [-k DUR] DUR, command but not command -v/-V; sudo -s / -i is a shell itself) comes sh, bash or zsh whose
 // words are flags only (options with a value: -o X, --rcfile F, --init-file F; -s may be followed by -- and arguments) and
 // redirects (2>&1, >&2, <&0, 2>f, >f, &>f). A script file or any other word, or -c, makes the body input to something else.
 // With wantC the shell must end in -c (the heredoc is inside the -c string, see subC): true for that shape only.
@@ -49,7 +49,7 @@ const feedsWords = (w, wantC) => {
       const f = w[k];
       if (b === "sudo" && /^(?:-[a-zA-Z]*[si][a-zA-Z]*|--shell|--login)$/.test(f)) sudoShell = true;
       k += (b === "sudo" && /^-[ugphCDRTU]$/.test(f)) || (b === "env" && /^-[uCS]$/.test(f)) || (b === "nice" && f === "-n") ||
-        (b === "exec" && f === "-a") || (b === "timeout" && /^-[sk]$/.test(f)) ? 2 : 1;
+        (b === "exec" && f === "-a") || (b === "timeout" && /^(?:-[sk]|--signal|--kill-after)$/.test(f)) ? 2 : 1;
     }
     if (b === "timeout") k++;   // the duration
   }
@@ -258,7 +258,7 @@ function runsProof(cmd) {
   const isP = t => /(^|\/)proof-run\.sh$/.test(t);
   const RESERVED = /^(if|then|do|else|elif|while|until|!)$/;
   const PREFIX = /^(sudo|env|nice|timeout|time|nohup|exec|command)$/;
-  const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/ };
+  const FLAGARG = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^(?:-[sk]|--signal|--kill-after)$/ };
   // a substitution that is part of a word (${X}, or $(..) and `..` touching other characters) becomes one word character, so
   // "cat $(dirname x)/proof-run.sh" stays one token; a standalone $(..) or `..` is still split open (bounded: linear)
   const SEP = "[^\\s;&|(){}`=]";   // = is not in the class: x=$(..) is a captured run, not a word
