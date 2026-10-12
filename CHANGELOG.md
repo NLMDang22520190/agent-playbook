@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.24.0 - 2026-10-13
+- **Quick weight** for tiny changes (≤ 1 production file, ≤ 20 changed lines, nothing from the Full column), in
+  `skills/playbook-tdd/references/quick.md`: restate the request in one sentence, one call-site grep with the hit count,
+  a behaviour change is still tested first and seen failing, one proof-run and `git diff --stat`, a 3-5 line report.
+  No hand-off files, Impact, Pre-mortem, Confidence column, mutation check or cost line. When the user says "quick" the
+  agent uses Quick at once; it asks once only if the diff touches the Full column or exceeds the limits (headless: it
+  proceeds and labels the report). Agent-chosen Quick that grows escalates to Lite. `role-gate.sh size --quick` checks
+  the limits (`quick_max_files`, `quick_max_lines`); run-checks caps the Quick workflow at 250 words. Existing evals
+  accept Quick where it is eligible (E1, E15, E19).
+- **Models are visible and binding**: `role-model.sh plan` prints `Models: tester=<m> (<effort>), ...`; reasoning effort
+  is read from `model_<role>_reasoning_effort[_<harness>]` and passed where the harness supports it; `role-model.sh
+  check` warns about unknown `model_*` keys (e.g. `model_orchestrator`). A configured model is never upgraded or
+  downgraded on the agent's own judgement; a different model needs one question with the reason and the cost
+  difference. New conf key `confirm_models=always|on-change|never` (default on-change). The final report lists the
+  models used.
+- **Release speed rules** (`references/release.md`): at most 2 code-review rounds per lane or slice (later only a MAJOR
+  introduced by the change is fixed); the reviewer marks findings introduced or pre-existing, and pre-existing ones go
+  to the queue (a pre-existing security MAJOR is raised to the user in one line); weight per item, not per release;
+  slow platform runs once before the PR; releases of 3-5 items.
+- **New eval scenarios** E22 (user says quick), E23 (quick on billing code, headless), E24 (models match the project
+  conf), E25 (agent Quick over the limit escalates to Lite). Baseline before Quick (v0.23.3, two runs each):
+  E10 0.39/0.39 USD, E15 0.40/0.36, E17 0.41/0.44, all PASS. The typo fix already costs ~0.39 USD (the 1.1 USD in the
+  Quick plan was older data), so the ">= 50% cheaper" target is measured after release and reported in v0.24.1, not a
+  ship gate (decision D3).
+
 ## 0.23.3 - 2026-10-12
 - **`leak-check` scans every push that goes somewhere the remote's refs do not cover** (the pre-push hook body is
   unchanged, so existing installs get it):

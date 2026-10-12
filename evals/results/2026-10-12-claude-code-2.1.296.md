@@ -44,3 +44,14 @@ Evidence: transcripts kept locally, not in the repo (they hold local paths).
 
 Total: 2.62 USD. E19 now ends with the Playbook feedback line and E21's spec_first is graded correctly (the spec was
 written through Bash before the first src edit), so both v0.23.1 misses are closed.
+
+## Run 4: baseline before the Quick weight - E10, E15, E17 on v0.23.3, two runs each
+
+| Scenario | Run 1 (USD) | Run 2 (USD) | Auto passed |
+|---|---|---|---|
+| E10 | 0.39 | 0.39 | 3/3, 3/3 |
+| E15 | 0.40 | 0.36 | 8/8, 8/8 |
+| E17 | 0.41 | 0.44 | 5/5, 5/5 |
+
+Total 2.39 USD, about 5 minutes per round. The typo fix (E10) already costs about 0.39 USD on v0.23.3; the Quick
+comparison runs on the installed v0.24.0 and is recorded in v0.24.1 (decision D10).

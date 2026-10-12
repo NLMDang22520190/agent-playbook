@@ -3,7 +3,7 @@
 # Kept small on purpose: the guard prints one capped command, and real runs cost money.
 AGENTS.global.md E1 E3 E5 E8 E10 E21
 skills/playbook-tdd/roles/* E4 E11
-skills/playbook-tdd/* E1 E3 E4 E15 E16 E17 E19 E21
+skills/playbook-tdd/* E1 E3 E4 E15 E16 E17 E19 E21 E22 E23 E24 E25
 skills/playbook-proof/* E5
 skills/playbook-learn/* E19
 skills/playbook-setup/* E19

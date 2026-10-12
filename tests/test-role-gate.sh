@@ -155,6 +155,138 @@ run bash "$GATE" size --base no-such-ref;       assert_rc "AC2 bad --base exits 
 N="$(mk_tmp)"; cd "$N" || exit 3
 run bash "$GATE" size;                          assert_rc "AC2 outside git exits 3" 3
 
+# ---- v0.24.0 AC1.5 (Full): role-gate.sh size --quick ----
+# Quick limits: 1 production file, 20 changed lines; conf keys quick_max_files / quick_max_lines override; explicit
+# --max-files / --max-lines win over both; over the limit: "over the Quick size limit: escalate to Lite", exit 1.
+# Plain `size` (Lite: 3 files / 100 lines, "escalate to Full") is unchanged.
+echo "AC1.5 size --quick: defaults 1 file / 20 lines (boundary)"
+GLOBAL_CONF="$PLAYBOOK_HOME/.agents/playbook.conf"; mkdir -p "$PLAYBOOK_HOME/.agents"
+qreset() { rm -f "$GLOBAL_CONF"; }
+qrepo() { R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; qreset; }
+# qconf KEY=VAL... -> a tracked project conf (committed, so it is not itself a production-file change)
+qconf() { mkdir -p .agents && printf '%s\n' "$@" > .agents/playbook.conf && git add .agents/playbook.conf && git commit -q -m "conf"; }
+qrepo
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 exactly 1 file / 20 lines exits 0" 0
+assert_contains "AC1.5 prints the Quick limits in the summary" "$OUT" "files: 1/1 lines: 20/20"
+assert_not_contains "AC1.5 no escalation within the limits" "$OUT" "escalate"
+printf 'x\n' >> src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 21 lines exits 1" 1
+assert_contains "AC1.5 over lines: the summary" "$OUT" "files: 1/1 lines: 21/20"
+assert_contains "AC1.5 over lines: escalate to Lite" "$OUT" "over the Quick size limit: escalate to Lite"
+assert_not_contains "AC1.5 over lines: not the Lite message (escalate to Full)" "$OUT" "escalate to Full"
+rm src/a.js
+printf 'a\n' > src/a.js; printf 'b\n' > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 2 files of 1 line each exits 1" 1
+assert_contains "AC1.5 over files: the summary" "$OUT" "files: 2/1 lines: 2/20"
+assert_contains "AC1.5 over files: escalate to Lite" "$OUT" "over the Quick size limit: escalate to Lite"
+
+echo "AC1.5 size --quick: the same plain size passes (Lite is unchanged)"
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 2 files / 2 lines exits 0" 0
+assert_contains "AC1.5 plain size keeps the Lite limits in the summary" "$OUT" "files: 2/3 lines: 2/100"
+rm src/a.js src/b.js
+seq 1 21 > src/a.js
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 1 file / 21 lines exits 0 (Lite limit is 100)" 0
+assert_contains "AC1.5 plain size summary unchanged" "$OUT" "files: 1/3 lines: 21/100 (base=HEAD)"
+seq 1 101 > src/a.js
+run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 101 lines still exits 1" 1
+assert_contains "AC1.5 plain size still says escalate to Full" "$OUT" "over the Lite size limit: escalate to Full"
+assert_not_contains "AC1.5 plain size never says Quick" "$OUT" "Quick"
+
+echo "AC1.5 size --quick: what is counted (as in plain size)"
+qrepo
+seq 1 300 > tests/big.test.js; seq 1 300 >> tests/app.test.js; seq 1 300 > jest.config.js
+mkdir -p .agents/handoff && seq 1 300 > .agents/handoff/02-tests.md
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 test files and the handoff dir are not counted" 0
+assert_contains "AC1.5 zero production change under --quick" "$OUT" "files: 0/1 lines: 0/20"
+printf '1\n2\n3\n4\n5\n' > src/new.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 an untracked file counts all its lines" "$OUT" "files: 1/1 lines: 5/20"
+rm src/new.js
+rm src/app.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 a deleted file counts its deleted lines" "$OUT" "files: 1/1 lines: 1/20"
+git checkout -q -- src/app.js
+printf 'a\0b\0c' > src/logo.bin
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 a binary file counts as 1 line" "$OUT" "files: 1/1 lines: 1/20"
+rm src/logo.bin
+printf 'module.exports = 2;\n' > src/app.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 one changed line counts 2 (1 added + 1 deleted)" "$OUT" "files: 1/1 lines: 2/20"
+git checkout -q -- src/app.js
+
+echo "AC1.5 size --quick: --base counts committed and staged changes"
+qrepo
+BASE="$(git rev-parse HEAD)"
+seq 1 12 > src/app.js; git add -A && git commit -q -m "feat"
+seq 1 5 > src/app.js; git add src/app.js
+run bash "$GATE" size --quick --base "$BASE";   assert_rc "AC1.5 --quick --base: one file, within 20 lines" 0
+assert_contains "AC1.5 --base: net change against the base (+5 -1)" "$OUT" "files: 1/1 lines: 6/20"
+seq 1 25 > src/app.js
+run bash "$GATE" size --base "$BASE" --quick;   assert_rc "AC1.5 --base REF --quick (flag order swapped) over 20 lines exits 1" 1
+assert_contains "AC1.5 --base REF --quick: Quick message" "$OUT" "over the Quick size limit: escalate to Lite"
+
+echo "AC1.5 size --quick: conf keys quick_max_files / quick_max_lines"
+qrepo
+qconf quick_max_files=2 quick_max_lines=50
+seq 1 25 > src/a.js; seq 1 25 > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 project conf raises the limits to 2 files / 50 lines: exits 0" 0
+assert_contains "AC1.5 conf limits shown" "$OUT" "files: 2/2 lines: 50/50"
+printf 'x\n' > src/c.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 conf limits: a third file exits 1" 1
+assert_contains "AC1.5 conf limits: over files summary" "$OUT" "files: 3/2 lines: 51/50"
+assert_contains "AC1.5 conf limits: Quick message" "$OUT" "over the Quick size limit: escalate to Lite"
+rm src/c.js; printf 'y\n' >> src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 conf limits: 51 lines exits 1" 1
+qrepo
+qconf quick_max_files=1
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_contains "AC1.5 only quick_max_files set: lines keep the default 20" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_lines=5
+printf 'a\nb\nc\nd\ne\nf\n' > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 quick_max_lines=5 lowers the limit: 6 lines exits 1" 1
+assert_contains "AC1.5 only quick_max_lines set: files keep the default 1" "$OUT" "files: 1/1 lines: 6/5"
+run bash "$GATE" size;                          assert_rc "AC1.5 the quick_* keys do not change plain size" 0
+assert_contains "AC1.5 plain size ignores quick_max_lines" "$OUT" "files: 1/3 lines: 6/100"
+qrepo
+printf 'quick_max_files=3\nquick_max_lines=40\n' > "$GLOBAL_CONF"
+seq 1 30 > src/a.js; seq 1 5 > src/b.js
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 the global conf also sets the limits" 0
+assert_contains "AC1.5 global conf limits shown" "$OUT" "files: 2/3 lines: 35/40"
+qconf quick_max_files=1
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 the project conf beats the global conf (files 1)" 1
+assert_contains "AC1.5 project quick_max_files wins, global quick_max_lines still applies" "$OUT" "files: 2/1 lines: 35/40"
+qreset
+
+echo "AC1.5 size --quick: explicit --max-files / --max-lines win"
+qrepo
+qconf quick_max_files=1 quick_max_lines=10
+seq 1 30 > src/a.js; seq 1 30 > src/b.js; seq 1 30 > src/c.js
+run bash "$GATE" size --quick --max-files 3 --max-lines 100; assert_rc "AC1.5 explicit limits beat both the defaults and the conf" 0
+assert_contains "AC1.5 explicit limits shown" "$OUT" "files: 3/3 lines: 90/100"
+run bash "$GATE" size --quick --max-files 3;    assert_rc "AC1.5 --max-files alone: lines still come from the conf (10)" 1
+assert_contains "AC1.5 explicit files + conf lines" "$OUT" "files: 3/3 lines: 90/10"
+run bash "$GATE" size --quick --max-lines 100;  assert_rc "AC1.5 --max-lines alone: files still come from the conf (1)" 1
+assert_contains "AC1.5 conf files + explicit lines" "$OUT" "files: 3/1 lines: 90/100"
+run bash "$GATE" size --max-lines 100 --quick --max-files 3; assert_rc "AC1.5 flags in any order" 0
+rm src/b.js src/c.js; seq 1 5 > src/a.js
+run bash "$GATE" size --quick --max-lines 3;    assert_rc "AC1.5 an explicit limit lower than the conf is enforced" 1
+assert_contains "AC1.5 explicit lower limit shown" "$OUT" "files: 1/1 lines: 5/3"
+qrepo
+seq 1 20 > src/a.js; seq 1 1 > src/b.js
+run bash "$GATE" size --quick --max-files 2;    assert_rc "AC1.5 --max-files 2 alone, no conf: 21 lines vs default 20 exits 1" 1
+assert_contains "AC1.5 explicit files + default lines" "$OUT" "files: 2/2 lines: 21/20"
+run bash "$GATE" size --quick --max-files 2 --max-lines 21; assert_rc "AC1.5 explicit --max-lines 21 passes" 0
+
+echo "AC1.5 size --quick: errors and usage"
+qrepo
+run bash "$GATE" size --quick --max-files;      assert_rc "AC1.5 --quick --max-files without value exits 2" 2
+run bash "$GATE" size --quick --max-lines abc;  assert_rc "AC1.5 --quick non-numeric --max-lines exits 2" 2
+run bash "$GATE" size --quick --bogus;          assert_rc "AC1.5 --quick with an unknown option exits 2" 2
+run bash "$GATE" size --quick --base no-such-ref; assert_rc "AC1.5 --quick with a bad --base exits 3" 3
+N="$(mk_tmp)"; cd "$N" || exit 3
+run bash "$GATE" size --quick;                  assert_rc "AC1.5 --quick outside git exits 3" 3
+run bash "$GATE" no-such-command;               assert_rc "AC1.5 usage: an unknown command exits 2" 2
+assert_contains "AC1.5 the usage line mentions --quick" "$OUT" "--quick"
+
 
 # ---- v0.9.0 #4: test infrastructure has its own role (test_infra_regex) ----
 INFRA_RE='^(tests/(lib|run-all)\.sh$|ci/)'
@@ -689,4 +821,177 @@ gchk implementer; assert_rc "MINOR-5 a deleted 100755 path plus a 100644 path wi
 assert_not_contains "MINOR-5 ... no mode violation" "$OUT" "(mode)"
 
 
+echo "v0.23.2 round 2 MINOR-B a rename plus a mode drop that exists only in the work tree (core.fileMode=true) is caught"
+for spec in tester:tests/run.sh:tests/renamed.sh implementer:src/run.sh:src/renamed.sh reviewer:src/run.sh:src/renamed.sh infra:ci/run.sh:ci/renamed.sh; do
+  role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
+  MSG="VIOLATION (mode): $new lost its executable bit (100755 -> 100644)"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  if ! fm_true_ok; then t_skip 4 "MINOR-B $role (this file system does not keep executable bits)"; continue; fi
+  git mv "$old" "$new"; chmod -x "$new" 2>/dev/null          # the new path is NOT re-added: the index still says 100755
+  if [ -x "$new" ]; then t_skip 4 "MINOR-B $role (chmod -x has no effect here)"; continue; fi
+  assert_eq "MINOR-B $role: fixture: the index still says $new is 100755" "100755" "$(git ls-files -s -- "$new" | cut -d' ' -f1)"
+  gchk "$role"; assert_rc "MINOR-B $role: a work-tree-only rename + drop fails" 1
+  assert_contains "MINOR-B $role: the NEW path is named with both modes" "$OUT" "$MSG"
+  gchk_allow "$new" "$role"
+  assert_not_contains "MINOR-B $role: PB_ALLOW_MODE_CHANGE=new path silences it" "$OUT" "VIOLATION (mode)"
+done
+echo "v0.23.2 round 2 MINOR-B a work-tree-only rename that keeps the bit is not reported"
+for spec in implementer:src/run.sh:src/renamed.sh tester:tests/run.sh:tests/renamed.sh; do
+  role="${spec%%:*}"; rest="${spec#*:}"; old="${rest%%:*}"; new="${rest#*:}"
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  if ! fm_true_ok; then t_skip 1 "MINOR-B $role keep (this file system does not keep executable bits)"; continue; fi
+  git mv "$old" "$new"
+  gchk "$role"
+  assert_not_contains "MINOR-B $role: a rename that keeps 100755 has no mode violation" "$OUT" "(mode)"
+done
+
+echo "v0.23.2 round 2 LOW-a an empty executable deleted and an empty 644 file added is not a rename"
+for role in tester implementer reviewer infra; do
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+  if ! fm_true_ok; then t_skip 2 "LOW-a $role (this file system does not keep executable bits)"; continue; fi
+  : > keep.sh; chmod +x keep.sh 2>/dev/null
+  git add keep.sh; git update-index --chmod=+x -- keep.sh; git commit -q -m "empty exec"
+  git rm -q keep.sh
+  mkdir -p pkg; : > pkg/__init__.py; git add pkg/__init__.py
+  assert_eq "LOW-a $role: fixture: keep.sh was committed 100755" "100755" "$(git ls-tree HEAD -- keep.sh | cut -d' ' -f1)"
+  gchk "$role"
+  assert_not_contains "LOW-a $role: no mode violation for a delete + an unrelated empty add" "$OUT" "(mode)"
+done
+
+echo "v0.23.2 round 2 LOW-b the header describes rename detection as a rename with unchanged content"
+HDR2="$(sed -n 1,45p "$GATE" | sed 's/^# \{0,1\}//' | tr 'A-Z' 'a-z' | tr -s ' \n\t' '   ')"
+assert_contains "LOW-b the header says 'a rename with unchanged content'" "$HDR2" "a rename with unchanged content"
+
+# ---- v0.23.3 lane A (tester): AC3 (R3) the mode check never fails open ----
+echo "v0.23.3 AC3.1 (R3) a work-tree file git cannot hash is reported, and it does not hide the other drops"
+unset PB_ALLOW_MODE_CHANGE
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+UNH_OK=0
+if [ "$(id -u)" = 0 ]; then UNH_WHY="running as root (chmod 000 does not stop root)"
+elif ! fm_true_ok; then UNH_WHY="this file system does not keep executable bits"
+else
+  # two renamed work-tree files: src/renamed.sh just loses its bit (hashed, paired with the deleted src/run.sh);
+  # src/second2.sh cannot be read at all (chmod 000), so git hash-object fails on it
+  git mv src/run.sh src/renamed.sh; git mv src/second.sh src/second2.sh
+  chmod -x src/renamed.sh 2>/dev/null; chmod 000 src/second2.sh 2>/dev/null
+  if cat src/second2.sh >/dev/null 2>&1 || [ -x src/renamed.sh ]; then UNH_WHY="chmod 000 / chmod -x have no effect here"
+  else UNH_OK=1; fi
+fi
+if [ "$UNH_OK" = 1 ]; then
+  LOSTMSG="VIOLATION (mode): src/renamed.sh lost its executable bit (100755 -> 100644)"
+  CANTMSG="VIOLATION (mode): cannot hash src/second2.sh; the mode check is incomplete"
+  gchk implementer
+  assert_rc "AC3.1 an unhashable file next to a normal drop: the gate fails" 1
+  assert_contains "AC3.1 the normal drop is reported as a lost bit (the unhashable file does not hide it)" "$OUT" "$LOSTMSG"
+  assert_contains "AC3.1 the unhashable file is reported: cannot hash PATH; the mode check is incomplete" "$OUT" "$CANTMSG"
+  gchk_allow "src/second2.sh" implementer
+  assert_rc "AC3.1 PB_ALLOW_MODE_CHANGE with the unhashable path: the normal drop still fails" 1
+  assert_contains "AC3.1 ... the normal drop is still reported" "$OUT" "$LOSTMSG"
+  assert_not_contains "AC3.1 ... the allowed unhashable path is silenced (and only it)" "$OUT" "cannot hash"
+  gchk_allow "src/renamed.sh" implementer
+  assert_rc "AC3.1 PB_ALLOW_MODE_CHANGE with the normal path: the unhashable one still fails" 1
+  assert_contains "AC3.1 ... the unhashable path is still reported" "$OUT" "$CANTMSG"
+  assert_not_contains "AC3.1 ... the allowed normal path is silenced" "$OUT" "VIOLATION (mode): src/renamed.sh"
+  gchk_allow "src/renamed.sh:src/second2.sh" implementer
+  assert_rc "AC3.1 both listed: the gate passes" 0
+  assert_not_contains "AC3.1 both listed: no mode violation" "$OUT" "(mode)"
+  # alone, the unhashable file still fails closed (it is not just a side effect of the other drop)
+  chmod +x src/renamed.sh 2>/dev/null   # src/renamed.sh keeps its bit now: only the unreadable file is left
+  gchk implementer
+  assert_contains "AC3.1 the unhashable file alone is reported too" "$OUT" "$CANTMSG"
+  chmod 644 src/second2.sh 2>/dev/null
+else t_skip 12 "AC3.1 unhashable work-tree file ($UNH_WHY)"; fi
+
+echo "v0.23.3 AC3.2 (R3) a path with a newline fails closed, there is no PB_ALLOW_MODE_CHANGE escape"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+NLP="$(printf 'src/new\nline.sh')"
+if printf '#!/bin/sh\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ] && git add -- "$NLP" 2>/dev/null && git ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
+  NLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
+  for role in implementer tester reviewer infra; do
+    gchk "$role"
+    assert_rc "AC3.2 $role: a staged path with a newline fails" 1
+    assert_contains "AC3.2 $role: the message says a path contains a newline and the mode check is incomplete" "$OUT" "$NLMSG"
+  done
+  gchk_allow "$NLP" implementer
+  assert_rc "AC3.2 PB_ALLOW_MODE_CHANGE with the whole path is no escape" 1
+  assert_contains "AC3.2 ... the message is still printed" "$OUT" "$NLMSG"
+  gchk_allow "src/new:line.sh:src/new
+line.sh" implementer
+  assert_rc "AC3.2 PB_ALLOW_MODE_CHANGE with the pieces is no escape either" 1
+  git rm -q --cached -f -- "$NLP"; rm -f "$NLP"
+  gchk implementer
+  assert_rc "AC3.2 once the path is gone the gate passes again" 0
+else rm -f "$NLP" 2>/dev/null; t_skip 12 "AC3.2 newline path (this file system or git refuses the name)"; fi
+
+# ---- v0.23.3 lane A review of 146dd98 ----
+echo "v0.23.3 lane A review MINOR-3 the header and the message name control bytes, not only newlines"
+if head -n 45 "$GATE" | grep -Eqi 'control byte|\\002 byte'; then t_ok "the header (first 45 lines) mentions the control-byte limit"; else t_bad "the header (first 45 lines) mentions the control-byte limit" "no 'control byte' in lines 1-45 of scripts/role-gate.sh"; fi
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+CTLP="src/ctl$(printf '\002')x.sh"
+if printf '#!/bin/sh\n' > "$CTLP" 2>/dev/null && [ -f "$CTLP" ] && git add -- "$CTLP" 2>/dev/null && git ls-files --error-unmatch -- "$CTLP" >/dev/null 2>&1; then
+  CTLMSG="VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete"
+  for role in implementer tester reviewer infra; do
+    gchk "$role"
+    assert_rc "$role: a staged path with a \\002 byte fails" 1
+    assert_contains "$role: the message says a path contains a newline or control byte" "$OUT" "$CTLMSG"
+  done
+  gchk_allow "$CTLP" implementer
+  assert_rc "PB_ALLOW_MODE_CHANGE with the path is no escape" 1
+  assert_contains "... the message is still printed" "$OUT" "$CTLMSG"
+  git rm -q --cached -f -- "$CTLP"; rm -f "${R:?}/${CTLP:?}"
+else rm -f "${R:?}/${CTLP:?}" 2>/dev/null; t_skip 11 "control-byte path (this file system or git refuses the name)"; fi
+
+echo "v0.23.3 lane A review MINOR-4 one unreadable intent-to-add file among 1000 readable ones: the fallback stays bounded"
+unset PB_ALLOW_MODE_CHANGE
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+FB_OK=0
+if [ "$(id -u)" = 0 ]; then FB_WHY="running as root (chmod 000 does not stop root)"
+else
+  mkdir -p bulk
+  fbi=0; while [ "$fbi" -lt 1000 ]; do printf 'x%d\n' "$fbi" > "bulk/f$fbi.txt"; fbi=$((fbi + 1)); done
+  printf 'locked\n' > bulk/unreadable.txt
+  git add -N -- bulk
+  chmod 000 bulk/unreadable.txt 2>/dev/null
+  if cat bulk/unreadable.txt >/dev/null 2>&1; then FB_WHY="chmod 000 has no effect here"; else FB_OK=1; fi
+fi
+if [ "$FB_OK" = 1 ]; then
+  FBLOG="$(mk_tmp)/hash.log"; : > "$FBLOG"
+  FBSHIM="$(mk_tmp)/shim"; mkdir -p "$FBSHIM"
+  FBREAL="$(command -v git)"
+  cat > "$FBSHIM/git" <<SHIM
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in hash-object) echo "\$*" >> "$FBLOG"; break ;; esac
+done
+exec "$FBREAL" "\$@"
+SHIM
+  chmod +x "$FBSHIM/git"
+  run env PLAYBOOK_HOME="$IH" PATH="$FBSHIM:$PATH" bash "$GATE" check implementer
+  FBN="$(wc -l < "$FBLOG" | tr -d ' ')"
+  if [ "$FBN" -ge 1 ]; then t_ok "fixture: the shim saw git hash-object ($FBN call(s))"; else t_bad "fixture: the shim saw git hash-object" "0 calls; shim not on the path of the gate, or no intent-to-add path reached the hash step"; fi
+  if [ "$FBN" -le 10 ]; then t_ok "hash-object is started at most 10 times for 1001 paths ($FBN)"; else t_bad "hash-object is started at most 10 times for 1001 paths" "$FBN hash-object processes: one per readable path"; fi
+  assert_rc "the gate fails (the unreadable file)" 1
+  assert_contains "the one unreadable file is still reported: cannot hash" "$OUT" "VIOLATION (mode): cannot hash bulk/unreadable.txt; the mode check is incomplete"
+  assert_eq "only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
+  chmod 644 bulk/unreadable.txt 2>/dev/null
+else t_skip 5 "bounded fallback ($FB_WHY)"; fi
+
+echo "v0.24.0 review round 2 F7: an empty quick_max_files= or quick_max_lines= falls back to the default"
+qrepo
+qconf quick_max_files= quick_max_lines=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 both quick keys empty: exits 0, not 2" 0
+assert_contains "F7 both quick keys empty: the defaults 1 / 20 apply" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_files=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_files only: exits 0" 0
+assert_contains "F7 empty quick_max_files only: default files 1" "$OUT" "files: 1/1 lines: 20/20"
+qrepo
+qconf quick_max_lines=
+seq 1 20 > src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_lines only: exits 0" 0
+assert_contains "F7 empty quick_max_lines only: default lines 20" "$OUT" "files: 1/1 lines: 20/20"
+printf 'x\n' >> src/a.js
+run bash "$GATE" size --quick;                  assert_rc "F7 an empty key keeps the default limit: 21 lines exits 1" 1
 t_summary

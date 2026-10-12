@@ -468,4 +468,231 @@ assert_eq "AC11.1 PLAYBOOK_HARNESS (second config): tester=" "tester=tc" "$(line
 unset PLAYBOOK_HARNESS
 reset
 
+
+# ---- v0.24.0 AC2.1-AC2.3 (Full), R6, R7: effort lookup, check of unknown model_* keys, plan ----
+echo "AC2.1 --effort: lookup model_<role>_reasoning_effort_<harness>, then model_<role>_reasoning_effort"
+reset
+role tester --effort
+assert_rc "AC2.1 --effort with nothing configured exits 0" 0
+assert_eq "AC2.1 --effort with nothing configured prints nothing" "" "$OUT"
+role tester --harness codex --effort
+assert_eq "AC2.1 --effort with --harness and nothing configured prints nothing" "" "$OUT"
+printf 'model_tester_reasoning_effort=high\n' > "$G"
+role tester --effort;                     assert_eq "AC2.1 generic effort" "high" "$OUT"
+role tester --harness codex --effort;     assert_eq "AC2.1 generic effort applies to a harness without its own key" "high" "$OUT"
+role implementer --effort;                assert_eq "AC2.1 the effort is per role (implementer unset)" "" "$OUT"
+role reviewer --harness codex --effort;   assert_eq "AC2.1 the effort is per role (reviewer unset)" "" "$OUT"
+role tester;                              assert_eq "AC2.1 without --effort the model is printed, not the effort (session)" "session" "$OUT"
+printf 'model_tester_reasoning_effort=high\nmodel_tester_reasoning_effort_codex=low\nmodel_tester_reasoning_effort_claude-code=max\n' > "$G"
+role tester --harness codex --effort;       assert_eq "AC2.1 per-harness effort beats generic (codex)" "low" "$OUT"
+role tester --harness claude-code --effort; assert_eq "AC2.1 per-harness effort with a hyphenated harness" "max" "$OUT"
+role tester --harness opencode --effort;    assert_eq "AC2.1 a harness without its own effort key falls back to the generic one" "high" "$OUT"
+role tester --effort;                       assert_eq "AC2.1 no harness: only the generic effort applies" "high" "$OUT"
+role tester --effort --harness codex
+assert_eq "AC2.1 --effort before --harness gives the same answer" "low" "$OUT"
+export PLAYBOOK_HARNESS=codex
+role tester --effort;                       assert_eq "AC2.1 --effort honours PLAYBOOK_HARNESS" "low" "$OUT"
+role tester --harness opencode --effort;    assert_eq "AC2.1 --harness beats PLAYBOOK_HARNESS for the effort" "high" "$OUT"
+unset PLAYBOOK_HARNESS
+# the effort is independent of the model keys
+reset
+printf 'model_implementer_codex=imod\nmodel_implementer_reasoning_effort_codex=medium\n' > "$G"
+role implementer --harness codex;           assert_eq "AC2.1 the model is unchanged by an effort key" "imod" "$OUT"
+role implementer --harness codex --effort;  assert_eq "AC2.1 the effort is printed with --effort" "medium" "$OUT"
+printf 'model_implementer_reasoning_effort=high\n' > "$G"
+role implementer --effort;                  assert_eq "AC2.1 an effort without a model key: --effort prints it" "high" "$OUT"
+role implementer;                           assert_eq "AC2.1 an effort without a model key: the model is still session" "session" "$OUT"
+# project conf beats global conf, as for models
+reset
+printf 'model_reviewer_reasoning_effort=low\n' > "$G"; printf 'model_reviewer_reasoning_effort=high\n' > "$L"
+role reviewer --effort;                     assert_eq "AC2.1 project effort beats global effort" "high" "$OUT"
+# an empty value counts as unset for the printed effort
+reset
+printf 'model_tester_reasoning_effort=\n' > "$G"
+role tester --effort;                       assert_eq "AC2.1 an empty effort value prints nothing" "" "$OUT"
+
+echo "AC2.1/R6 effort fallback: reviewer_light falls back to the reviewer's effort, mechanical has none"
+reset
+printf 'model_reviewer_reasoning_effort=high\n' > "$G"
+role reviewer_light --effort;               assert_eq "R6 reviewer_light has no effort key: the reviewer's generic effort" "high" "$OUT"
+role mechanical --effort;                   assert_eq "R6 mechanical never falls back to the reviewer's effort" "" "$OUT"
+printf 'model_reviewer_reasoning_effort=high\nmodel_reviewer_reasoning_effort_codex=max\n' > "$G"
+role reviewer_light --harness codex --effort; assert_eq "R6 reviewer_light falls back to the reviewer's per-harness effort first" "max" "$OUT"
+role reviewer_light --harness claude --effort; assert_eq "R6 reviewer_light falls back to the reviewer's generic effort for another harness" "high" "$OUT"
+role mechanical --harness codex --effort;   assert_eq "R6 mechanical: still no fallback under a harness" "" "$OUT"
+printf 'model_reviewer_reasoning_effort=high\nmodel_reviewer_light_reasoning_effort=low\n' > "$G"
+role reviewer_light --effort;               assert_eq "R6 reviewer_light's own generic effort beats the reviewer's" "low" "$OUT"
+role reviewer --effort;                     assert_eq "R6 the reviewer keeps its own effort" "high" "$OUT"
+printf 'model_reviewer_reasoning_effort=high\nmodel_reviewer_light_reasoning_effort_codex=min\nmodel_reviewer_light_reasoning_effort=low\n' > "$G"
+role reviewer_light --harness codex --effort; assert_eq "R6 reviewer_light's own per-harness effort beats its generic one" "min" "$OUT"
+role reviewer_light --harness claude --effort; assert_eq "R6 reviewer_light's own generic effort for another harness" "low" "$OUT"
+printf 'model_reviewer_reasoning_effort_codex=max\nmodel_reviewer_light_reasoning_effort=low\n' > "$G"
+role reviewer_light --harness codex --effort; assert_eq "R6 reviewer_light's own generic effort beats the reviewer's per-harness effort (as for models)" "low" "$OUT"
+printf 'model_mechanical_reasoning_effort_codex=low\n' > "$G"
+role mechanical --harness codex --effort;   assert_eq "R6 mechanical has its own effort keys" "low" "$OUT"
+role mechanical --harness claude --effort;  assert_eq "R6 mechanical's per-harness effort is not used for another harness" "" "$OUT"
+
+echo "AC2.1 list: role=model (effort) when an effort is set"
+reset
+printf 'model_tester_codex=tc\nmodel_tester_reasoning_effort_codex=high\nmodel_implementer_codex=ic\nmodel_reviewer_codex=rc\nmodel_reviewer_reasoning_effort=low\n' > "$G"
+role list --harness codex
+assert_rc "AC2.1 list exits 0" 0
+assert_eq "AC2.1 list: an effort is shown in parentheses" "tester=tc (high)" "$(line_of tester)"
+assert_eq "AC2.1 list: no effort set: the line is unchanged" "implementer=ic" "$(line_of implementer)"
+assert_eq "AC2.1 list: generic effort shown" "reviewer=rc (low)" "$(line_of reviewer)"
+assert_eq "AC2.1 list: reviewer_light shows the reviewer's effort and model it falls back to" "reviewer_light=rc (low)" "$(line_of reviewer_light)"
+assert_eq "AC2.1 list: mechanical has no effort fallback" "mechanical=session" "$(line_of mechanical)"
+assert_eq "AC2.1 list: still exactly five lines" "5" "$(printf '%s\n' "$OUT" | grep -c '=')"
+printf 'model_tester_reasoning_effort=high\n' > "$G"
+role list
+assert_eq "AC2.1 list: a session model with an effort" "tester=session (high)" "$(line_of tester)"
+reset
+role list
+assert_eq "AC2.1 list: nothing configured, no parentheses anywhere" "0" "$(printf '%s\n' "$OUT" | grep -c '(')"
+export PLAYBOOK_HARNESS=codex
+printf 'model_tester_reasoning_effort_codex=xhigh\nmodel_tester_codex=t1\n' > "$G"
+role list
+assert_eq "AC2.1 list honours PLAYBOOK_HARNESS for the effort" "tester=t1 (xhigh)" "$(line_of tester)"
+unset PLAYBOOK_HARNESS
+
+echo "AC2.2/R6 check: unknown model_* keys warn (exit 1), known ones do not"
+reset
+printf 'model_orchestrator=opus\n' > "$G"
+role check
+assert_rc "AC2.2 an unknown key model_orchestrator: exit 1" 1
+assert_contains "AC2.2 the warning names model_orchestrator" "$OUT" "model_orchestrator"
+assert_contains "AC2.2 the output is a warning line" "$OUT" "warning:"
+assert_not_contains "AC2.2 not the clean message" "$OUT" "ok: no generic model keys"
+reset
+printf 'model_foo_bar=x\nmodel_orchestrator=opus\n' > "$G"
+role check
+assert_rc "AC2.2 two unknown keys: exit 1" 1
+assert_contains "AC2.2 names model_foo_bar" "$OUT" "model_foo_bar"
+assert_contains "AC2.2 names model_orchestrator too" "$OUT" "model_orchestrator"
+assert_eq "AC2.2 one warning line per unknown key" "2" "$(printf '%s\n' "$OUT" | grep -c '^warning:')"
+reset
+printf 'model_orchestrator=opus\n' > "$L"
+role check
+assert_rc "AC2.2 an unknown key in the project conf: exit 1" 1
+assert_contains "AC2.2 the project-conf key is named" "$OUT" "model_orchestrator"
+reset
+printf 'model_tester=gen\nmodel_orchestrator=opus\n' > "$G"
+role check
+assert_rc "AC2.2 a generic key and an unknown key: exit 1" 1
+assert_contains "AC2.2 the generic key warning is kept" "$OUT" "model_tester=gen"
+assert_contains "AC2.2 the unknown key is also named" "$OUT" "model_orchestrator"
+for k in model_unknownrole_codex model_reasoning_effort model_tester_Codex model_tester_reasoning_effort_codex_extra \
+         model_reviewer_light_foo_bar model_tester_reasoning_effort_ model_models_tester; do
+  reset
+  printf '%s=x\n' "$k" > "$G"
+  role check
+  assert_rc "AC2.2 unknown key $k: exit 1" 1
+  assert_contains "AC2.2 unknown key $k is named" "$OUT" "$k"
+done
+# known keys: model_R, model_R_H, model_R_reasoning_effort, model_R_reasoning_effort_H for every role (R6)
+for r in tester implementer reviewer reviewer_light mechanical; do
+  reset
+  printf 'model_%s_codex=m\nmodel_%s_claude-code=m\nmodel_%s_reasoning_effort=high\nmodel_%s_reasoning_effort_codex=low\nmodel_%s_reasoning_effort_opencode-2=low\n' "$r" "$r" "$r" "$r" "$r" > "$G"
+  role check
+  assert_rc "R6 $r: per-harness model keys and the effort keys are known: exit 0" 0
+  assert_eq "R6 $r: the clean output stays 'ok: no generic model keys'" "ok: no generic model keys" "$OUT"
+done
+reset
+printf 'model_reviewer_light_codex=a\nmodel_reviewer_light_reasoning_effort_codex=b\nmodel_reviewer_light_reasoning_effort=c\nmodel_mechanical_claude=d\n' > "$G"
+role check
+assert_rc "R6 longest role first: reviewer_light keys are known, not reviewer + a bad harness" 0
+assert_eq "R6 reviewer_light/mechanical keys: clean output" "ok: no generic model keys" "$OUT"
+reset
+printf 'model_tester_reasoning_effort=high\n' > "$L"
+role check
+assert_rc "R6 a generic model_R_reasoning_effort key gets no warning (the documented fallback)" 0
+assert_eq "R6 generic effort key: clean output" "ok: no generic model keys" "$OUT"
+reset
+printf 'model_tester=gen\n' > "$G"
+role check
+assert_rc "AC2.2 regression: a generic model key still warns (exit 1)" 1
+assert_contains "AC2.2 regression: the generic warning text is unchanged" "$OUT" "applies to every harness; use model_tester_"
+reset
+printf 'default_autonomy=ask\nmodels_note=x\n' > "$G"
+role check
+assert_rc "AC2.2 keys that do not start with model_ are ignored" 0
+assert_eq "AC2.2 non-model keys: clean output" "ok: no generic model keys" "$OUT"
+reset
+role check
+assert_eq "AC2.2 no conf at all: clean output" "ok: no generic model keys" "$OUT"
+
+echo "AC2.3/R7 plan: the Models line"
+reset
+role plan
+assert_rc "AC2.3 plan exits 0" 0
+assert_eq "AC2.3 nothing configured: every role is session, no conf" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+printf 'model_tester_claude=sonnet\nmodel_implementer_claude=sonnet\nmodel_reviewer_claude=opus\n' > "$G"
+role plan --harness claude
+assert_eq "AC2.3 three roles from conf" "Models: tester=sonnet, implementer=sonnet, reviewer=opus - from conf" "$OUT"
+assert_eq "AC2.3 exactly one line" "1" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')"
+role plan --harness codex
+assert_eq "AC2.3 another harness without keys: session, no conf" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+role plan
+assert_eq "AC2.3 no harness: per-harness keys do not apply" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+printf 'model_tester_claude=sonnet\nmodel_implementer_claude=sonnet\nmodel_reviewer_claude=opus\nmodel_tester_reasoning_effort_claude=high\nmodel_reviewer_reasoning_effort=max\n' > "$G"
+role plan --harness claude
+assert_eq "AC2.3 the effort is shown only when set (per-harness and generic)" "Models: tester=sonnet (high), implementer=sonnet, reviewer=opus (max) - from conf" "$OUT"
+printf 'model_reviewer_claude=opus\n' > "$G"
+role plan --harness claude
+assert_eq "AC2.3 one role from conf is enough for 'from conf'; the others show session" "Models: tester=session, implementer=session, reviewer=opus - from conf" "$OUT"
+printf 'model_tester=gen\nmodel_implementer=gen2\nmodel_reviewer=gen3\n' > "$G"
+role plan --harness claude
+assert_eq "AC2.3 generic keys resolve like list" "Models: tester=gen, implementer=gen2, reviewer=gen3 - from conf" "$OUT"
+printf 'model_tester_claude=sonnet\n' > "$G"; printf 'model_tester_claude=haiku\nmodel_reviewer_claude=opus\n' > "$L"
+role plan --harness claude
+assert_eq "AC2.3 the project conf beats the global conf in the plan" "Models: tester=haiku, implementer=session, reviewer=opus - from conf" "$OUT"
+reset
+printf 'model_tester_reasoning_effort=high\n' > "$G"
+role plan
+assert_contains "AC2.3 a session model with an effort still shows the effort" "$OUT" "tester=session (high)"
+reset
+printf 'model_reviewer_light_claude=lite\nmodel_mechanical_claude=mech\n' > "$G"
+role plan --harness claude
+assert_not_contains "AC2.3 reviewer_light is not part of the plan line" "$OUT" "reviewer_light"
+assert_not_contains "AC2.3 mechanical is not part of the plan line" "$OUT" "mechanical"
+assert_contains "AC2.3 the line starts with Models:" "$OUT" "Models: tester="
+reset
+printf 'model_tester_codex=tc\nmodel_implementer_codex=ic\nmodel_reviewer_codex=rc\nmodel_tester_claude=tcl\n' > "$G"
+export PLAYBOOK_HARNESS=codex
+role plan
+assert_eq "AC2.3/R6 plan honours PLAYBOOK_HARNESS" "Models: tester=tc, implementer=ic, reviewer=rc - from conf" "$OUT"
+role plan --harness claude
+assert_eq "AC2.3/R6 --harness beats PLAYBOOK_HARNESS in plan" "Models: tester=tcl, implementer=session, reviewer=session - from conf" "$OUT"
+unset PLAYBOOK_HARNESS
+role plan --harness "bad harness";  assert_rc "AC2.3 plan: an invalid harness exits 2" 2
+role plan --harness;                assert_rc "AC2.3 plan: --harness without a value exits 2" 2
+role plan --bogus;                  assert_rc "AC2.3 plan: an unknown option exits 2" 2
+reset
+role no-such-command
+assert_rc "R6 the usage error exits 2" 2
+assert_contains "R6 the usage line mentions plan" "$OUT" "plan"
+reset
+
+
+echo "v0.24.0 review round 2 F5: a key present in any conf counts as from conf, even when it says session"
+reset
+printf 'model_tester_claude=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 an explicit model_tester_claude=session in the global conf: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_reviewer_claude=session\n' > "$L"
+role plan --harness claude
+assert_eq "F5 an explicit session key in the project conf: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_implementer=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 an explicit generic session key: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+reset
+printf 'model_tester_codex=session\n' > "$G"
+role plan --harness claude
+assert_eq "F5 a session key of another harness does not count" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+reset
+role plan --harness claude
+assert_eq "F5 nothing set at all: session (no conf)" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+reset
 t_summary

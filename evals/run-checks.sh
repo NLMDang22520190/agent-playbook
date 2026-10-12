@@ -97,6 +97,15 @@ for d in skills/*/; do
   desc_total=$((desc_total + len))
   lines="$(wc -l < "$f" | tr -d ' ')"
   [ "$lines" -le 300 ] && ok "$n: SKILL.md $lines lines (<=300)" || bad "$f: $lines lines (>300, move detail to references/)"
+  qm="$s/references/quick.md"
+  if [ "$n" = playbook-tdd ]; then
+    if [ -f "$qm" ]; then
+      qw="$(awk '/^## Quick workflow[[:space:]]*$/ { f = 1; next } f && /^## / { exit } f { print }' "$qm" | wc -w | tr -d ' ')"
+      if ! grep -q '^## Quick workflow[[:space:]]*$' "$qm"; then bad "$qm: no '## Quick workflow' section"
+      elif [ "$qw" -le 250 ]; then ok "$n: references/quick.md Quick workflow section $qw words (<=250)"
+      else bad "$qm: the '## Quick workflow' section is $qw words (>250)"; fi
+    else bad "$qm: missing (the '## Quick workflow' section is required)"; fi
+  fi
   for ref in $(cat "$s"/SKILL.md "$s"/roles/*.md 2>/dev/null | grep -Eo '(references|roles|templates)/[A-Za-z0-9._-]+\.md' | sort -u); do
     [ -f "$s/$ref" ] || bad "$n: referenced file missing: $ref"
   done

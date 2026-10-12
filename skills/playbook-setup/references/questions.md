@@ -15,6 +15,7 @@ Ask only what inspection could not settle. Every question has a default; "defaul
 | 8 | `feedback_repo` (global), `feedback_interval_days` (global) | Where should playbook improvement proposals go, and how often may I ask? | a **private** repo the user owns (OWNER/REPO; suggest creating one, e.g. `gh repo create OWNER/playbook-feedback --private`), never the public playbook repo; `7` days | `playbook-feedback` sends approved proposals there as issues. `submit` refuses (exit 5) a public repo or one whose visibility it cannot read, unless `--allow-public` is passed. |
 
 Optional, only when relevant:
+- `confirm_models` (global): `always` / `on-change` / `never`; default `on-change`. When the agent asks before starting roles: always every time, on-change only when it wants a different model or a role resolves to session on a Full task, never not at all. An unknown value counts as on-change.
 - `learnings_path` (project): default `.agents/LEARNINGS.md`.
 - `learn_max_entries` (project): default `40`.
 
