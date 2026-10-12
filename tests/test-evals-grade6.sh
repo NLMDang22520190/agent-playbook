@@ -381,4 +381,87 @@ hd "sh -c 'cat' <<'EOF' with a proof run in the body" 0 "sh -c 'cat' <<'EOF'${NL
 hd "bash -c 'bash proof-run.sh --label x' <<EOF: the -c script runs" 1 "bash -c 'bash proof-run.sh --label x' <<EOF${NLC}input${NLC}EOF"
 hd "bash <<EOF still executes the body" 1 "bash <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
 
+# ---- v0.23.3 AC6.1: the queue of terminated heredocs is linear ----
+echo "v0.23.3 AC6.1 stripHeredocs queue is linear: 320000 'cat <<A ' then 320000 terminator lines"
+# the command is built inside node (argv is capped at 128 KiB); the budget is the baseline + 8 s, as in rt_heredocs_timed above
+rt_ticks_n() { # N LIMIT -> RT_TICKS, RT_HUNG; one Bash call "cat <<A " x N followed by N lines "A"
+  node -e 'const n=+process.argv[1];const c="cat <<A ".repeat(n)+"\nA".repeat(n);console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:c}}]}}))' "$1" > "$TR/big.json"
+  node "$PB_ROOT/evals/transcript.js" "$TR/big.json" > "$TR/big.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$2" ]; do sleep 0.1; i=$((i + 1)); done
+  RT_TICKS=$i; RT_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then RT_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+}
+rt_queue_timed() {
+  rt_ticks "echo x" 600; local base="$RT_TICKS"
+  rt_ticks_n "$1" $((base + 80))
+  if [ "$RT_HUNG" = 1 ]; then echo SLOW; return 0; fi
+  sed -n 's/^ran_tests=//p' "$TR/big.out"
+}
+assert_eq "AC6.1 320000 'cat <<A ' then 320000 'A' lines: finishes within the baseline + 8 s, ran_tests=0" "0" "$(rt_queue_timed 320000)"
+
+# ---- v0.23.3 AC6.2 / R7: which words between the shell and its heredoc still feed it ----
+echo "v0.23.3 AC6.2 feedsShell: options with values, -s with arguments, redirects, wrappers; the last heredoc body is the input"
+PR="bash proof-run.sh --label x"
+hd "bash --rcfile f <<EOF (the option takes a value)" 1 "bash --rcfile f <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash --init-file f <<EOF (the option takes a value)" 1 "bash --init-file f <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash -s -- a <<EOF" 1 "bash -s -- a <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash -s arg <<EOF" 1 "bash -s arg <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash 2>&1 <<EOF (a redirect, not a separator)" 1 "bash 2>&1 <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash 2>/dev/null <<EOF" 1 "bash 2>/dev/null <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash >f <<EOF" 1 "bash >f <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash >>f <<EOF" 1 "bash >>f <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash &>f <<EOF" 1 "bash &>f <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash <&0 <<EOF" 1 "bash <&0 <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash >&2 <<EOF" 1 "bash >&2 <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash <<A <<B with the proof run only in B (bash reads the last body)" 1 "bash <<A <<B${NLC}echo hi${NLC}A${NLC}${PR}${NLC}B"
+hd "bash <<A <<B with the proof run only in A (an earlier body is data)" 0 "bash <<A <<B${NLC}${PR}${NLC}A${NLC}echo hi${NLC}B"
+hd "bash <<EOF <input.txt (the file after the heredoc is the stdin: the body is data)" 0 "bash <<EOF <input.txt${NLC}${PR}${NLC}EOF"
+hd "sudo -u x bash <<EOF (the wrapper flag takes a value)" 1 "sudo -u x bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "env FOO=1 bash <<EOF" 1 "env FOO=1 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "nice -n 5 bash <<EOF (the wrapper flag takes a value)" 1 "nice -n 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "exec -a n bash <<EOF (-a takes a value)" 1 "exec -a n bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "sudo -s <<EOF (sudo starts a shell that reads the body)" 1 "sudo -s <<EOF${NLC}${PR}${NLC}EOF"
+hd "sudo -i <<EOF (sudo starts a login shell that reads the body)" 1 "sudo -i <<EOF${NLC}${PR}${NLC}EOF"
+# controls that hold today and must keep holding
+hd "command -v bash <<EOF is a lookup, the body is input" 0 "command -v bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash 2>&1 build.sh <<EOF: a script file, the body is input to it" 0 "bash 2>&1 build.sh <<EOF${NLC}${PR}${NLC}EOF"
+hd "bash --rcfile f build.sh <<EOF: a script file after the option value" 0 "bash --rcfile f build.sh <<EOF${NLC}${PR}${NLC}EOF"
+hd "sudo cat <<EOF is not a shell" 0 "sudo cat <<EOF${NLC}${PR}${NLC}EOF"
+hd "env FOO=1 cat <<EOF is not a shell" 0 "env FOO=1 cat <<EOF${NLC}${PR}${NLC}EOF"
+
+# ---- v0.23.3 AC6.3: sh -c "$(cat <<'EOF' ... EOF)" runs the body ----
+echo "v0.23.3 AC6.3 a heredoc inside the -c string of a shell is commands; a commit message stays data"
+hd "sh -c \"\$(cat <<'EOF' ...)\" runs the body" 1 "sh -c \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
+hd "bash -c \"\$(cat <<'EOF' ...)\" runs the body" 1 "bash -c \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
+hd "zsh -c \"\$(cat <<'EOF' ...)\" runs the body" 1 "zsh -c \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
+hd "sh -c \"\$(cat <<EOF ...)\" (bare word) runs the body" 1 "sh -c \"\$(cat <<EOF${NLC}${PR}${NLC}EOF${NLC})\""
+hd "sh -c '\$(cat <<EOF ...)' (single quotes around the substitution) runs the body" 1 "sh -c '\$(cat <<EOF${NLC}${PR}${NLC}EOF${NLC})'"
+hd "bash -c '\$(cat <<EOF ...)' (single quotes) runs the body" 1 "bash -c '\$(cat <<EOF${NLC}${PR}${NLC}EOF${NLC})'"
+hd "git commit -m \"\$(cat <<EOF ...)\" stays data" 0 "git commit -m \"\$(cat <<EOF${NLC}${PR}${NLC}EOF${NLC})\""
+hd "git commit -m \"\$(cat <<'EOF' ...)\" stays data" 0 "git commit -m \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
+hd "echo \"\$(cat <<EOF ...)\" stays data" 0 "echo \"\$(cat <<EOF${NLC}${PR}${NLC}EOF${NLC})\""
+hd "sh -c \"\$(cat <<'EOF' ...)\" whose body only reads the script is not a run" 0 "sh -c \"\$(cat <<'EOF'${NLC}cat proof-run.sh${NLC}EOF${NLC})\""
+
+# ---- v0.23.3 AC6.4 / R8: a heredoc word may contain a dash ----
+echo "v0.23.3 AC6.4 a heredoc word with a dash (<<END-X) ends at its own terminator line"
+hd "cat <<END-X, body, END-X, then a run" 1 "cat <<END-X${NLC}notes${NLC}END-X${NLC}${PR}"
+hd "cat <<'END-X' (quoted), body, END-X, then a run" 1 "cat <<'END-X'${NLC}notes${NLC}END-X${NLC}${PR}"
+hd "cat <<\"END-X\" (double-quoted), body, END-X, then a run" 1 "cat <<\"END-X\"${NLC}notes${NLC}END-X${NLC}${PR}"
+hd "cat <<-END-X (tab-indented), body, END-X, then a run" 1 "cat <<-END-X${NLC}	notes${NLC}	END-X${NLC}${PR}"
+hd "cat <<END-X with a proof run in the body is data" 0 "cat <<END-X${NLC}${PR}${NLC}END-X"
+hd "cat <<'END-X' with a proof run in the body is data" 0 "cat <<'END-X'${NLC}${PR}${NLC}END-X"
+hd "bash <<END-X with a proof run in the body is fed to the shell" 1 "bash <<END-X${NLC}${PR}${NLC}END-X"
+
+# ---- v0.23.3 round 3 R7: timeout with long options before the shell that reads the heredoc ----
+echo "v0.23.3 round 3 R7 timeout --signal SIG DUR / --kill-after DUR DUR before a shell reading its heredoc"
+hd "timeout --signal KILL 5 bash <<EOF: the body is fed to the shell" 1 "timeout --signal KILL 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --kill-after 2 5 bash <<EOF: the body is fed to the shell" 1 "timeout --kill-after 2 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal=KILL 5 bash <<EOF (attached value): the body is fed to the shell" 1 "timeout --signal=KILL 5 bash <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal KILL 5 cat <<EOF is not a shell: the body is data" 0 "timeout --signal KILL 5 cat <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --kill-after 2 5 cat <<EOF is not a shell: the body is data" 0 "timeout --kill-after 2 5 cat <<EOF${NLC}${PR}${NLC}EOF"
+hd "timeout --signal KILL 5 bash proof-run.sh --label x is a run" 1 "timeout --signal KILL 5 bash proof-run.sh --label x"
+hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KILL 5 head proof-run.sh"
+
 t_summary

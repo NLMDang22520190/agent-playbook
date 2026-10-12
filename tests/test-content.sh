@@ -960,12 +960,42 @@ $GOT_SET
 " "
 tests/test-install.sh
 "
-  assert_not_contains "v23.2 AC8.1 job $id: the heavy suite tests/test-run-checks.sh stays out (D4)" "
+  # v0.23.3 R5: the heavy suites stay out, every part of the two split suites (tests/test-run-checks*.sh and
+  # tests/test-evals-grade2*.sh, found by glob so a part added later is covered too)
+  for HEAVY in $(cd "$PB_ROOT" && ls tests/test-run-checks*.sh tests/test-evals-grade2*.sh 2>/dev/null); do
+    assert_not_contains "v23.3 R5 job $id: the heavy suite $HEAVY stays out (D4)" "
 $GOT_SET
 " "
-tests/test-run-checks.sh
+$HEAVY
 "
+  done
 done
+# v0.23.3 AC1a / R5: the suites are split, no part reads the README or the CHANGELOG (the grep above would pull it into the reduced
+# set), every part is stored at mode 100755, and the shared fixture is a helper that run-all.sh does not start
+for FAMILY in test-run-checks test-evals-grade2; do
+  NPARTS="$(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$NPARTS" -ge 2 ]; then t_ok "v23.3 AC1a tests/$FAMILY.sh is split into $NPARTS suites"; else t_bad "v23.3 AC1a tests/$FAMILY.sh is split into at least 2 suites" "found $NPARTS"; fi
+  for PART in $(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null); do
+    assert_eq "v23.3 R5 $PART names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$PB_ROOT/$PART")"
+    if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      assert_eq "v23.3 AC1a $PART is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- "$PART" | cut -d' ' -f1)"
+    else
+      t_skip 1 "v23.3 AC1a mode of $PART needs a git checkout"
+    fi
+  done
+done
+HELPER="$PB_ROOT/tests/run-checks-fixture.sh"
+assert_file "v23.3 R5 the shared run-checks fixture exists" "$HELPER"
+case "$(basename "$HELPER")" in test-*.sh) t_bad "v23.3 R5 the fixture helper is not named test-*.sh" "name: $(basename "$HELPER")" ;; *) t_ok "v23.3 R5 the fixture helper is not named test-*.sh" ;; esac
+FIRSTL=""; IFS= read -r FIRSTL < "$HELPER" 2>/dev/null
+case "$FIRSTL" in "#!"*) t_ok "v23.3 R5 the fixture helper has a #! line" ;; *) t_bad "v23.3 R5 the fixture helper has a #! line" "first line: $FIRSTL" ;; esac
+if bash -n "$HELPER" 2>/dev/null; then t_ok "v23.3 R5 the fixture helper passes bash -n"; else t_bad "v23.3 R5 the fixture helper passes bash -n"; fi
+assert_eq "v23.3 R5 the fixture helper names neither PB_ROOT/README.md nor PB_ROOT/CHANGELOG.md" "0" "$(grep -c -e 'PB_ROOT/README.md' -e 'PB_ROOT/CHANGELOG.md' "$HELPER" 2>/dev/null)"
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  assert_eq "v23.3 R5 the fixture helper is stored at mode 100755" "100755" "$(git -C "$PB_ROOT" ls-files -s -- tests/run-checks-fixture.sh | cut -d' ' -f1)"
+else
+  t_skip 1 "v23.3 R5 mode of the fixture helper needs a git checkout"
+fi
 assert_file "v23.2 AC8.1 E1 tests/test-docs-rules.sh exists" "$PB_ROOT/tests/test-docs-rules.sh"
 if [ -f "$PB_ROOT/tests/test-docs-rules.sh" ]; then
   if grep -q 'PB_ROOT/README.md' "$PB_ROOT/tests/test-docs-rules.sh"; then t_ok 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)'; else t_bad 'v23.2 AC8.1 E1 tests/test-docs-rules.sh reads PB_ROOT/README.md (so the grep finds it)' 'the literal is missing'; fi
@@ -975,5 +1005,58 @@ if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   t_skip 1 'v23.2 AC8.1 E1 mode of tests/test-docs-rules.sh needs a git checkout'
 fi
+
+
+# --- v0.23.3 AC8.1 / D5: the cd tracking limits of evals/transcript.js are documented in its header (not implemented)
+echo "v23.3 AC8.1 transcript.js header names the cd tracking limits"
+TSJS="$PB_ROOT/evals/transcript.js"
+# the header is the comment block at the top of the file, up to the first line that is not a comment
+TSHEAD="$(awk '/^(#!|\/\/)/ { print; next } { exit }' "$TSJS")"
+TSHEAD_FLAT="$(printf '%s\n' "$TSHEAD" | tr '\n' ' ' | tr -s ' ')"
+assert_contains "v23.3 AC8.1 the header names the chained form cd .agents; cd handoff" "$TSHEAD_FLAT" "cd .agents; cd handoff"
+assert_contains "v23.3 AC8.1 the header names pushd" "$TSHEAD_FLAT" "pushd"
+assert_contains "v23.3 AC8.1 the header says the cwd is not kept across Bash calls" "$TSHEAD_FLAT" "across Bash calls"
+assert_contains "v23.3 AC8.1 the header uses the word cwd" "$TSHEAD_FLAT" "cwd"
+case "$(printf '%s' "$TSHEAD_FLAT" | tr 'A-Z' 'a-z')" in
+  *"not tracked"*|*"not followed"*|*"not kept"*|*"not covered"*|*"limit"*) t_ok "v23.3 AC8.1 the header states these as limits (not tracked / not covered / limit)" ;;
+  *) t_bad "v23.3 AC8.1 the header states these as limits (not tracked / not covered / limit)" "header: $TSHEAD_FLAT" ;;
+esac
+
+# --- v0.23.3 review N4: the known grader limits are listed in the header next to the cd limits
+echo "v23.3 review N4 transcript.js header names the heredoc and shell-feed limits"
+assert_contains "v23.3 review N4 the header names sh -c with a command-substitution heredoc" "$TSHEAD_FLAT" 'sh -c "$(cat <<EOF'
+assert_contains "v23.3 review N4 the header says that shape is read only at the end of a line" "$TSHEAD_FLAT" "end of a line"
+assert_contains "v23.3 review N4 the header names eval with a command-substitution heredoc" "$TSHEAD_FLAT" 'eval "$(cat <<EOF"'
+assert_contains "v23.3 review N4 the header names the heredoc written before its command (<<EOF cat)" "$TSHEAD_FLAT" '<<EOF cat'
+assert_contains "v23.3 review N4 the header names sudo -iu" "$TSHEAD_FLAT" "sudo -iu"
+assert_contains "v23.3 review N4 the header names a here-string after a heredoc" "$TSHEAD_FLAT" "here-string"
+assert_contains "v23.3 review N4 the here-string limit is about the position after a heredoc" "$TSHEAD_FLAT" "after a heredoc"
+
+# --- v0.23.3 round 3 R5: the here-string limit says what really happens (the here-string replaces the shell's stdin)
+echo "v23.3 round 3 R5 the here-string limit is worded as what the grader does"
+assert_not_contains "v23.3 R5 the header no longer says the position after a heredoc is not tracked" "$TSHEAD_FLAT" "position after a heredoc is not tracked"
+# the text from the here-string bullet to the end of the header is that one limit (it is the last bullet)
+TSHS="${TSHEAD_FLAT#*here-string}"
+assert_contains "v23.3 R5 the here-string limit says the here-string replaces the shell's stdin" "$TSHS" "stdin"
+assert_contains "v23.3 R5 the here-string limit says the heredoc body is still read as commands" "$TSHS" "commands"
+assert_contains "v23.3 R5 the here-string limit keeps its subject: after a heredoc" "$TSHS" "after a heredoc"
+
+# --- v0.23.3 round 3 R2 / R4: two limits of evals/run-checks.sh are documented in its own comments (not implemented)
+echo "v23.3 round 3 R2 R4 run-checks.sh documents the arithmetic and quote-state limits"
+RCSH="$PB_ROOT/evals/run-checks.sh"
+# the comment lines of the gnu section (up to its first command) and of the strip() helper, one line each
+RCGNU="$(awk '/^if want gnu; then/ { f = 1; next } f && /^#/ { print } f && /^ggnu=/ { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+RCSTRIP="$(awk '/^# AWKSTRIP:/ { f = 1 } f && /^#/ { print; next } f { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+RCSEDC="$(awk '/^if want sed; then/ { f = 1; next } f && /^#/ { print } f && /^gsed=/ { exit }' "$RCSH" | tr '\n' ' ' | tr -s ' ' | tr 'A-Z' 'a-z')"
+if [ -n "$RCGNU" ] && [ -n "$RCSTRIP" ] && [ -n "$RCSEDC" ]; then t_ok "v23.3 R2 R4 the gnu, strip and sed comment blocks were found in evals/run-checks.sh"
+else t_bad "v23.3 R2 R4 the gnu, strip and sed comment blocks were found in evals/run-checks.sh" "gnu=${#RCGNU} strip=${#RCSTRIP} sed=${#RCSEDC} chars"; fi
+# R2: arithmetic state is per line
+assert_contains "v23.3 R2 the gnu header names an arithmetic (( )) that spans lines" "$RCGNU" "(( ))"
+assert_contains "v23.3 R2 the gnu header says that case is not tracked" "$RCGNU" "not tracked"
+# R4: quote state in strip() is per line; an apostrophe in prose or a heredoc body hides a later # (a false positive for the sed check)
+RCQ="$RCSTRIP $RCSEDC"
+assert_contains "v23.3 R4 the strip/sed comments name an apostrophe in text" "$RCQ" "apostrophe"
+assert_contains "v23.3 R4 the strip/sed comments name a heredoc body" "$RCQ" "heredoc"
+assert_contains "v23.3 R4 the strip/sed comments state it as a limit" "$RCQ" "limit"
 
 t_summary
