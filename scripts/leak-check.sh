@@ -319,21 +319,16 @@ EOF
 }
 
 # remote_pushes_home R -> 0 when every push destination of configured remote R (git remote get-url --push --all: pushurl
-# and pushInsteadOf already applied, pushInsteadOf ignored when a pushurl is set) is one of R's own fetch urls.
+# and pushInsteadOf already applied, pushInsteadOf ignored when a pushurl is set) is R's FIRST url. Git fetches only from
+# the first url, so refs/remotes/R/* reflect that url alone; a second url or a pushurl elsewhere holds none of those commits.
 remote_pushes_home() {
-  local r="$1" pd fu d f ok
+  local r="$1" pd fu d
   pd="$(git remote get-url --push --all "$r" 2>/dev/null)" || return 1
-  fu="$(git remote get-url --all "$r" 2>/dev/null)" || return 1
+  fu="$(git remote get-url "$r" 2>/dev/null)" || return 1
   [ -n "$pd" ] || return 1
   while IFS= read -r d; do
     [ -n "$d" ] || continue
-    ok=0
-    while IFS= read -r f; do
-      [ -z "$f" ] || ! same_place "$d" "$f" || ok=1
-    done <<EOF
-$fu
-EOF
-    [ "$ok" = 1 ] || return 1
+    same_place "$d" "$fu" || return 1
   done <<EOF
 $pd
 EOF
@@ -385,13 +380,23 @@ do_scan() {
               # the push goes elsewhere (pushurl, pushInsteadOf): treat it as a push to those destinations
               local pd d
               pd="$(git remote get-url --push --all "$remote" 2>/dev/null)" || pd=""
+              local fu1 hf=0
+              fu1="$(git remote get-url "$remote" 2>/dev/null)" || fu1=""
               set --
-              while IFS= read -r d; do [ -z "$d" ] || set -- "$@" "$d"; done <<EOF
+              while IFS= read -r d; do
+                [ -z "$d" ] && continue
+                set -- "$@" "$d"
+                [ -z "$fu1" ] || ! same_place "$d" "$fu1" || hf=1
+              done <<EOF
 $pd
 EOF
               if [ $# -eq 0 ] || ! dest_owned "$@"; then
                 : > "$TMP/own"
-                printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+                if [ "$hf" = 1 ]; then
+                  printf 'leak-check: %s pushes to a place its fetched refs do not cover; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+                else
+                  printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+                fi
               fi
             fi
           else
