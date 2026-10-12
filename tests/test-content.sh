@@ -909,4 +909,24 @@ for id in test windows-shard; do
   assert_contains "v23.0 AC5.2 job $id: the reduced set adds evals/run-checks.sh" "$DS" 'run-checks.sh'
 done
 assert_not_contains 'v23.0 AC5.2 the Windows reduced step does not skip suites by shard (every shard runs the whole set)' "$(wf_step windows-shard 'Docs-only checks')" 'PB_SHARD'
+
+# --- v0.23.0 review: the shas reach the changes job through env:, never interpolated into the script text
+echo "v23.0 review: changes passes the shas through env:"
+PRREF_LINES="$(printf '%s\n' "$CHB" | grep 'github\.event\.pull_request')"
+PRREF_N="$(printf '%s\n' "$PRREF_LINES" | grep -c 'github\.event\.pull_request')"
+if [ "$PRREF_N" -ge 2 ]; then t_ok 'v23.0 review changes reads the base and the head sha from the event (>= 2 references)'; else t_bad 'v23.0 review changes reads the base and the head sha from the event (>= 2 references)' "lines: $PRREF_LINES"; fi
+BAD_REF="$(printf '%s\n' "$PRREF_LINES" | grep -v -E '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*\$\{\{[[:space:]]*github\.event\.pull_request\.(base|head)\.sha[[:space:]]*\}\}[[:space:]]*$')"
+assert_eq 'v23.0 review every pull_request reference in changes is an env mapping (NAME: ${{ ... }})' "" "$BAD_REF"
+CH_RUN="$(printf '%s\n' "$CHB" | awk '/^        run:/ { f = 1 } f { print }')"
+assert_not_contains 'v23.0 review the run: text of changes has no ${{ github.event.pull_request' "$CH_RUN" '${{ github.event.pull_request'
+assert_not_contains 'v23.0 review the run: text of changes has no ${{ github.event at all' "$CH_RUN" '${{ github.event'
+if printf '%s\n' "$CHB" | grep -Eq '^        env:'; then t_ok 'v23.0 review the docs step of changes has an env: block'; else t_bad 'v23.0 review the docs step of changes has an env: block' "block: $CHB"; fi
+# the env names are used in the script as quoted shell variables
+ENVNAMES="$(printf '%s\n' "$PRREF_LINES" | grep -E '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*:[[:space:]]*\$\{\{' | sed 's/^[[:space:]]*//; s/:.*//')"
+for nm in $ENVNAMES; do
+  case "$CH_RUN" in *"\$$nm"*|*"\${$nm}"*) t_ok "v23.0 review changes uses \$$nm in its script" ;; *) t_bad "v23.0 review changes uses \$$nm in its script" "run text: $CH_RUN" ;; esac
+done
+
+# --- v0.23.0 review: the README does not oversell the reduced path
+if flat "$README" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review README does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review README does not say the reduced checks run in "every required job"'; fi
 t_summary

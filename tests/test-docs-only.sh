@@ -113,4 +113,43 @@ OUT="$(cd "$D" && bash "$TOOL" 2>/dev/null)"; RC=$?; expect "no arguments" false
 OUT="$(cd "$(mk_tmp)" && bash "$TOOL" "$BASE" "$HEADSHA" 2>/dev/null)"; RC=$?; expect "run outside a git repository" false
 assert_eq "AC5.1 stdout is one word and nothing else (true case)" "1" "$( (cd "$D" && bash "$TOOL" "$BASE" "$HEADSHA" 2>/dev/null) | wc -l | tr -d ' ')"
 
+echo "AC5.1 review: glob-safe paths (run from the repo root, where the real CHANGELOG.md and README.md exist)"
+mkrepo; printf 'x\n' > "$D/CHANGELO[G].md"; commit_all
+assert_file "AC5.1 fixture: the real CHANGELOG.md is in the repo root the tool runs from" "$D/CHANGELOG.md"
+docs "$BASE" "$HEADSHA"; expect "a file literally named CHANGELO[G].md" false
+mkrepo; printf 'x\n' > "$D/READM[E].md"; commit_all
+assert_file "AC5.1 fixture: the real README.md is in the repo root the tool runs from" "$D/README.md"
+docs "$BASE" "$HEADSHA"; expect "a file literally named READM[E].md" false
+mkrepo; printf 'x\n' > "$D/*.md"; commit_all
+docs "$BASE" "$HEADSHA"; expect "a file literally named *.md" false
+mkrepo; printf 'x\n' > "$D/R?ADME.md"; commit_all
+docs "$BASE" "$HEADSHA"; expect "a file literally named R?ADME.md" false
+
+echo "AC5.1 review: rename detection must be off (the doc path is new in the PR)"
+mkrepo; ( cd "$D" && G rm -q CHANGELOG.md && G commit -q -m 'no changelog' ); BASE="$(cd "$D" && git rev-parse HEAD)"
+( cd "$D" && G mv scripts/x.sh CHANGELOG.md ); commit_all
+docs "$BASE" "$HEADSHA"; expect "base has no CHANGELOG.md; scripts/x.sh moved onto CHANGELOG.md" false
+mkrepo; ( cd "$D" && G rm -q README.md && G commit -q -m 'no readme' ); BASE="$(cd "$D" && git rev-parse HEAD)"
+( cd "$D" && G mv scripts/x.sh README.md ); commit_all
+docs "$BASE" "$HEADSHA"; expect "base has no README.md; scripts/x.sh moved onto README.md" false
+mkrepo; ( cd "$D" && G rm -q CHANGELOG.md && G commit -q -m 'no changelog' ); BASE="$(cd "$D" && git rev-parse HEAD)"
+( cd "$D" && cp src/app.js CHANGELOG.md && G rm -q src/app.js ); commit_all
+docs "$BASE" "$HEADSHA"; expect "base has no CHANGELOG.md; src/app.js moved (copied then removed) onto CHANGELOG.md" false
+
+echo "AC5.1 review: README.md and CHANGELOG.md must be regular blobs"
+mkrepo; ( cd "$D" && G rm -q --cached README.md && G update-index --add --cacheinfo "160000,$BASE,README.md" ); commit_all
+docs "$BASE" "$HEADSHA"; expect "README.md replaced by a gitlink (mode 160000) at head" false
+mkrepo; ( cd "$D" && G rm -q --cached CHANGELOG.md && G update-index --add --cacheinfo "160000,$BASE,CHANGELOG.md" ); commit_all
+docs "$BASE" "$HEADSHA"; expect "CHANGELOG.md replaced by a gitlink at head" false
+mkrepo; ( cd "$D" && G rm -q --cached README.md && G update-index --add --cacheinfo "160000,$BASE,README.md" && G commit -q -m 'readme is a gitlink' ); BASE="$(cd "$D" && git rev-parse HEAD)"
+printf '# demo\nprose\n' > "$D/README.md"; ( cd "$D" && G rm -q --cached README.md 2>/dev/null; G add README.md ); commit_all
+docs "$BASE" "$HEADSHA"; expect "README.md is a gitlink at base and a blob at head" false
+mkrepo; ( cd "$D" && G rm -q --cached CHANGELOG.md && G update-index --add --cacheinfo "160000,$BASE,CHANGELOG.md" && G commit -q -m 'changelog is a gitlink' ); BASE="$(cd "$D" && git rev-parse HEAD)"
+( cd "$D" && G rm -q --cached CHANGELOG.md 2>/dev/null; printf '# Changelog\n' > CHANGELOG.md && G add CHANGELOG.md ); commit_all
+docs "$BASE" "$HEADSHA"; expect "CHANGELOG.md is a gitlink at base and a blob at head" false
+if [ "$SYMLINKS" = 1 ]; then
+  mkrepo; ( cd "$D" && rm -f CHANGELOG.md && ln -s docs/README.md CHANGELOG.md ); commit_all
+  docs "$BASE" "$HEADSHA"; expect "CHANGELOG.md replaced by a symlink (mode 120000)" false
+else t_skip 1 "AC5.1 symlink as CHANGELOG.md (no symlink rights here)"; fi
+
 t_summary
