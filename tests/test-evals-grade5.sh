@@ -383,4 +383,28 @@ SPECCMD2="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}## Understa
 assert_eq "AC4.1 E21 arrow variant: heredoc spec call, the spec edit, then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPECCMD2")" "$SPECEDIT" "$(btu "$SEDSRC")")"
 assert_eq "AC4.1 E21 arrow variant: the heredoc spec call alone is not an src write (spec edit, then src Write after it: spec_first=1)" "1" "$(sf_of "$(btu "$SPECCMD2")" "$SPECEDIT" "$(tu Write "$SRC")")"
 
+
+# ---- v0.23.2 AC4.3 (D8): a Bash call that writes the spec file is the spec write ----
+echo "v0.23.2 AC4.3 spec_first: a Bash write of .agents/handoff/01-spec.md sets the spec write"
+SPB1="cd /w/E21/.agents/handoff && cat > 01-spec.md <<'EOF'${NLX}# Spec${NLX}## Understanding${NLX}  - ${BTK}grep -rn \"divide\" .${BTK} -> 4 hits: src/calc.js:5, src/report.js:1${NLX}In scope: src/calc.js definition${NLX}EOF"
+SPB4="cat > .agents/handoff/01-spec.md <<EOF${NLX}## Understanding${NLX}  - the call sites -> src/calc.js:5 and src/report.js:1${NLX}EOF"
+# no Write/Edit tool call of the spec anywhere in these transcripts: only Bash calls
+assert_eq "AC4.3 case 1: cd .agents/handoff && cat > 01-spec.md <<'EOF', then an in-place sed on src/: spec_first=1" "1" "$(sf_of "$(btu "$SPB1")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 2: the in-place sed on src/ first, then the heredoc spec call: spec_first=0" "0" "$(sf_of "$(btu "$SEDSRC")" "$(btu "$SPB1")")"
+assert_eq "AC4.3 case 3: echo x > notes.md is not the spec, then an src write: spec_first=0" "0" "$(sf_of "$(btu "echo x > notes.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 4: cat > .agents/handoff/01-spec.md <<EOF with '-> src/calc.js:5' in the body, then an src write: spec_first=1 (the real E21 shape)" "1" "$(sf_of "$(btu "$SPB4")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 case 4b: the same with a Write tool call of src/ after it: spec_first=1" "1" "$(sf_of "$(btu "$SPB4")" "$(tu Write "$SRC")")"
+assert_eq "AC4.3 case 4c: the same but the src Write comes first: spec_first=0" "0" "$(sf_of "$(tu Write "$SRC")" "$(btu "$SPB4")")"
+# other ways to write the spec, and near misses
+assert_eq "AC4.3 an append (>>) to the spec counts: spec_first=1" "1" "$(sf_of "$(btu "echo x >> .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 an in-place sed of the spec counts: spec_first=1" "1" "$(sf_of "$(btu "sed $SIH.bak 's/a/b/' .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 an absolute spec path counts: spec_first=1" "1" "$(sf_of "$(btu "echo x > /w/E21/.agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 the spec call and the src write in one command, spec first: spec_first=1" "1" "$(sf_of "$(btu "echo x > .agents/handoff/01-spec.md && $SEDSRC")")"
+assert_eq "AC4.3 the same in one command, src first: spec_first=0" "0" "$(sf_of "$(btu "$SEDSRC && echo x > .agents/handoff/01-spec.md")")"
+assert_eq "AC4.3 reading the spec is not writing it (cat, then an src write): spec_first=0" "0" "$(sf_of "$(btu "cat .agents/handoff/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 a bare 01-spec.md without the handoff dir is not the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x > 01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 docs/01-spec.md is not the spec: spec_first=0" "0" "$(sf_of "$(btu "echo x > docs/01-spec.md")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 a spec mentioned only in a heredoc body is not written: spec_first=0" "0" "$(sf_of "$(btu "cat > notes.md <<EOF${NLX}echo x > .agents/handoff/01-spec.md${NLX}EOF")" "$(btu "$SEDSRC")")"
+assert_eq "AC4.3 cd .agents/handoff in a subshell does not leak: a bare 01-spec.md after it is not the spec: spec_first=0" "0" "$(sf_of "$(btu "(cd /w/E21/.agents/handoff && true); echo x > 01-spec.md")" "$(btu "$SEDSRC")")"
+
 t_summary
