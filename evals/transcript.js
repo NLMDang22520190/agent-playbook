@@ -9,6 +9,12 @@
 // is not .agents/handoff and a bare 01-spec.md written after it is not seen as the spec), `pushd` / `popd` (not followed at all), and
 // the cwd kept across Bash calls (every call starts in the project root; a cd in an earlier call is not carried over). A spec or
 // src write made through such a shape is not seen by spec_first. This is a limit, not a bug; the shapes are rare in real runs.
+// Known limits of the shell-feed and heredoc reading (not covered either, also rare):
+//   - sh -c "$(cat <<EOF is read as the -c script only when the << is at the end of a line; text after it on that line is not.
+//   - eval "$(cat <<EOF" is not read that way: eval is not a shell the grader follows, so that body stays data.
+//   - a heredoc written before its command in the -c shape (<<EOF cat) is not read as the -c script.
+//   - sudo -iu USER (a flag cluster that starts a login shell) is not recognised as a shell reading its stdin.
+//   - a here-string (<<<) used after a heredoc on the same line is not followed: the position after a heredoc is not tracked.
 "use strict";
 const fs = require("fs");
 const log = process.argv[2];

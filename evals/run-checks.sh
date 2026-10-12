@@ -214,8 +214,8 @@ fi
 if want sed; then
 nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # BSD sed (macOS) reads the word after -i as the backup suffix, so `sed -i 's/a/b/' f` edits nothing there;
-# an attached suffix (sed -i.bak) works on both. Comments (from a # at the start, after a blank or right after ; & | ( )) are ignored.
-gsed="$(awk '{ line = $0; sub(/(^|[[:space:];&|()])#.*$/, "", line)
+# an attached suffix (sed -i.bak) works on both. Comments (from a # at the start, after a blank or right after ; & | ( )) are ignored; a # inside quotes is not one (strip()).
+gsed="$(awk "$AWKSTRIP"'{ line = strip($0)
              if (line ~ /(^|[^[:alnum:]_])sed([[:space:]]+-[[:alnum:]]+)*[[:space:]]+(-[[:alpha:]]*i([[:space:]"'"'"']|$)|--in-place([[:space:]=]|$))/) print FILENAME ":" FNR }' \
   tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | sort -u | tr '\n' ' ')"
 si=-i   # spelled through a variable so this file does not trip its own check
@@ -245,6 +245,7 @@ ggnu="$(awk '
   # MS[sp] is "c" (code), "d" (inside double quotes) or "b" (a backtick command inside double quotes).
   function scan(s,   i, n, c, m, j, c2, q, w, dash, ch) {
     nk = 0; t = ""; CMT = ""; n = length(s); i = 1
+    ar = 0; ao = 0; ac = 0   # ar: open (( or $(( groups in code mode on this line; ao/ac: a paren already counted as half of a pair
     if (inS) {   # still inside a single-quoted string that began on an earlier line
       while (i <= n && substr(s, i, 1) != "\047") i++
       if (i > n) return
@@ -255,10 +256,12 @@ ggnu="$(awk '
       if (m == "d") {   # inside double quotes: hidden, except a command substitution
         if (c == "\\") i++
         else if (c == "\"") { sp--; flush() }
-        else if (c == "$" && substr(s, i + 1, 1) == "(") { sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
+        else if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") ar++; sp++; MS[sp] = "c"; PD[sp] = 0; i++; flush(); TK[++nk] = ";" }
         else if (c == "`") { sp++; MS[sp] = "b"; PD[sp] = 0; flush(); TK[++nk] = ";" }
         continue
       }
+      if (c == "(" && i != ao && substr(s, i + 1, 1) == "(") { ar++; ao = i + 1 }   # arithmetic opens (code mode only, never inside quotes)
+      else if (c == ")" && i != ac && substr(s, i + 1, 1) == ")") { if (ar > 0) ar--; ac = i + 1 }
       if (c == "\\") { i++; flush() }
       else if (c == "\047") { flush(); i++; while (i <= n && substr(s, i, 1) != "\047") i++; if (i > n) inS = 1 }   # single quotes: hidden
       else if (c == "$" && substr(s, i + 1, 1) == "\047") {   # ANSI-C quote: a backslash escapes the next character
@@ -275,7 +278,7 @@ ggnu="$(awk '
         if (q == "\"" || q == "\047" || q == "\\") j++; else q = ""
         w = ""
         while (j <= n && substr(s, j, 1) ~ /[-A-Za-z0-9_]/) { w = w substr(s, j, 1); j++ }
-        if (!inarith(substr(s, 1, i - 1)) && w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
+        if (!ar && w ~ /^[A-Za-z_]/ && (q == "" || q == "\\" || substr(s, j, 1) == q)) {
           if (hn == 0) hi = 1
           hn++; HDW[hn] = w; HDD[hn] = dash
           if (q == "\"" || q == "\047") j++
@@ -309,14 +312,8 @@ ggnu="$(awk '
     nohd = 0; sp = sv; inS = si
     for (k = 1; k <= sp; k++) { MS[k] = SM[k]; PD[k] = SD[k] }
   }
-  # inarith(p): the text p (the line up to a <<) ends inside an arithmetic (( )) or $(( )) that is not closed yet
-  function inarith(p,   r, k, e, last) {
-    last = 0; r = p; k = 0
-    while ((e = index(r, "((")) > 0) { last = k + e; k += e + 1; r = substr(r, e + 2) }
-    return (last > 0 && index(substr(p, last + 2), "))") == 0)
-  }
   # a variable used as a command word: at the start of a command (after an assignment, a reserved word such as if/then/do, or a
-  # wrapper sudo [-u U] / env [-u V] / nice [-n N] / time [-p] / command (not -v/-V) / exec [-a N] with its flags)
+  # wrapper sudo [-u U] / env [-u V] / nice [-n N] / time [-p] / command (not -v/-V) / exec [-a N] / timeout [-s SIG] [-k DUR] DUR with its flags)
   function cmdpos(i,   j, k, b, t) {
     j = i - 1
     while (j >= 1 && TK[j] != ";") j--
@@ -324,13 +321,14 @@ ggnu="$(awk '
     while (k < i) {
       t = TK[k]; b = t; sub(/^.*\//, "", b)
       if ((t in RW) || t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { k++; continue }
-      if (b == "sudo" || b == "env" || b == "nice" || b == "time" || b == "command" || b == "exec" || b == "nohup") {
+      if (b == "sudo" || b == "env" || b == "nice" || b == "time" || b == "command" || b == "exec" || b == "nohup" || b == "timeout") {
         if (b == "command" && (TK[k + 1] == "-v" || TK[k + 1] == "-V")) return 0
         k++
         while (k < i && TK[k] ~ /^-/) {
-          if ((b == "sudo" && TK[k] ~ /^-[ugphCDRTU]$/) || (b == "env" && TK[k] ~ /^-[uCS]$/) || (b == "nice" && TK[k] == "-n") || (b == "exec" && TK[k] == "-a")) k++
+          if ((b == "sudo" && TK[k] ~ /^-[ugphCDRTU]$/) || (b == "env" && TK[k] ~ /^-[uCS]$/) || (b == "nice" && TK[k] == "-n") || (b == "exec" && TK[k] == "-a") || (b == "timeout" && TK[k] ~ /^-[sk]$/)) k++
           k++
         }
+        if (b == "timeout" && k < i) k++   # the DURATION word
         continue
       }
       return 0
