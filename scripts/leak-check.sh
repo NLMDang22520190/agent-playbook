@@ -224,13 +224,23 @@ owned_refs() {
     }'
 }
 
-# win_path P -> P, with a drive path C:/x written as /c/x on Windows shells only (Git Bash: git keeps a local path as
-# C:/x in the config but expands insteadOf to /c/x). Elsewhere P is unchanged (c:/x is a host there).
+# win_path P -> P in one spelling on Windows shells only. Git Bash hands native git a POSIX path converted (/tmp/x and
+# /c/x become C:/...), keeps C:/x in the config and expands insteadOf to either form, so a local path is mapped with
+# `cygpath -m` (all of /tmp/x, /c/x, C:/x -> C:/x) and the drive letter lowercased; without cygpath, C:/x -> /c/x.
+# Elsewhere P is unchanged (c:/x is a host there).
 win_path() {
   case "$(uname -s 2>/dev/null)" in
     MINGW* | MSYS* | CYGWIN*)
       case "$1" in
-        [A-Za-z]:/*) printf '/%s%s' "$(printf '%s' "${1%"${1#?}"}" | tr 'A-Z' 'a-z')" "${1#?:}"; return 0 ;;
+        /* | [A-Za-z]:/*)
+          local w=""
+          if command -v cygpath >/dev/null 2>&1; then w="$(cygpath -m -- "$1" 2>/dev/null)" || w=""; fi
+          case "$w" in
+            [A-Za-z]:/*) printf '%s%s' "$(printf '%s' "${w%"${w#?}"}" | tr 'A-Z' 'a-z')" "${w#?}"; return 0 ;;
+          esac
+          case "$1" in
+            [A-Za-z]:/*) printf '/%s%s' "$(printf '%s' "${1%"${1#?}"}" | tr 'A-Z' 'a-z')" "${1#?:}"; return 0 ;;
+          esac ;;
       esac ;;
   esac
   printf '%s' "$1"
