@@ -294,4 +294,26 @@ git -C . mv a b
 XEOF
 assert_eq "M4 spec_first=1: a subshell cd does not leak: a write after it, outside the subshell, is not in src" "1" "$(sf_of "$(btu "(cd src && cat calc.js); echo x > notes.txt")" "$(tu Write "$SFW")" "$(tu Write "$SRC")")"
 
+echo "v0.23.1 review: skipping 'git -C d' options in bashWritesSrc is linear"
+# a transcript (a Bash command, then the spec Write) run with a watchdog: budget = a run on a tiny command + 8 s (no GNU timeout on macOS)
+GC_BASE=-1
+gc_ticks() { # COMMAND LIMIT -> GC_TICKS (tenths of a second), GC_HUNG
+  printf '%s\n%s\n' "$(btu "$1")" "$(tu Write "$SFW")" > "$TR/gc.json"
+  node "$TS" "$TR/gc.json" > "$TR/gc.out" 2>/dev/null &
+  local pid=$! i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$2" ]; do sleep 0.1; i=$((i + 1)); done
+  GC_TICKS=$i; GC_HUNG=0
+  if kill -0 "$pid" 2>/dev/null; then GC_HUNG=1; kill -9 "$pid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+}
+gc_timed() { # COMMAND -> the spec_first value, or SLOW
+  if [ "$GC_BASE" -lt 0 ]; then gc_ticks "echo x" 600; GC_BASE="$GC_TICKS"; fi
+  gc_ticks "$1" $((GC_BASE + 80))
+  if [ "$GC_HUNG" = 1 ]; then echo SLOW; return 0; fi
+  sed -n 's/^spec_first=//p' "$TR/gc.out"
+}
+GCPAIRS="$(node -e 'process.stdout.write(" -C d".repeat(200000))')"
+assert_eq "M5 200000 'git -C d' pairs then 'mv a src/b' before the spec: finishes within the baseline + 8 s and still counts as an src write (spec_first=0)" "0" "$(gc_timed "git$GCPAIRS mv a src/b")"
+assert_eq "M5 200000 'git -C d' pairs then a read-only 'mv a b': finishes within the baseline + 8 s, not an src write (spec_first=1)" "1" "$(gc_timed "git$GCPAIRS mv a b")"
+
 t_summary
