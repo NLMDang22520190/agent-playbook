@@ -235,6 +235,36 @@ if printf '%s\n' "$HLP" | grep -iE 'first scenario' | grep -qi 'pass'; then t_ok
 HDR2="$(sed -n '1,30p' "$RUNNER")"
 assert_contains "AC13.3 the header comment says the cap is a guard" "$HDR2" "guard"
 assert_contains "AC13.3 the header comment names the estimate" "$HDR2" "estimate"
+# v0.23.2 lane C review LOW-1: --help prints the whole header comment, including the --clean-env description
+assert_contains "LOW-1 --help includes the --clean-env description" "$HLP" "drop every CLAUDE"
+assert_contains "LOW-1 --help includes the --clean-env detail (ANTHROPIC_BASE_URL)" "$HLP" "ANTHROPIC_BASE_URL"
+assert_contains "LOW-1 --help still includes the guard text" "$HLP" "guard"
+assert_contains "LOW-1 --help still includes the estimate text" "$HLP" "estimate"
+
+echo "v0.23.2 lane C review LOW-3: an ERROR scenario that reported a cost still counts it"
+# mk_errcost NAME COST_E1 COST_E3: E1 succeeds with COST_E1; E3 reports COST_E3 (empty = none) and then exits 9 (ERROR)
+mk_errcost() {
+  mk_adapter "$1" "$GOOD_BODY
+echo '$INIT'
+case \"\$P\" in
+  *divide*)
+    if [ -n '$3' ]; then echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":$3,\"result\":\"Weight: Lite.\"}'; fi
+    exit 9 ;;
+esac
+echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":$2,\"result\":\"Weight: Lite.\"}'"
+}
+mk_errcost ec1 0.6 0.6
+go --cmd "bash $A/ec1.sh" --scenarios E1,E3,E8 --max-cost 1.5
+assert_eq "LOW-3 E3 is an ERROR line" "1" "$(printf '%s\n' "$OUT" | grep -c '^E3 ERROR ')"
+if ran E8; then t_bad "LOW-3 E8 is skipped (spent 1.2 incl. the ERROR scenario + estimate 0.6 >= 1.5)" "adapter ran for E8"; else t_ok "LOW-3 E8 is skipped (spent 1.2 incl. the ERROR scenario + estimate 0.6 >= 1.5)"; fi
+if skipline E8 'budget: spent 1\.20* \+ estimate 0?\.60* >= cap 1\.50*($|[^0-9.])'; then t_ok "LOW-3 the E8 skip line says spent 1.2 + estimate 0.6"; else t_bad "LOW-3 the E8 skip line says spent 1.2 + estimate 0.6" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|E3')"; fi
+assert_rc "LOW-3 the exit code stays 4 (harness error)" 4
+# an ERROR scenario with no reported cost changes nothing
+mk_errcost ec2 0.6 ""
+go --cmd "bash $A/ec2.sh" --scenarios E1,E3,E8 --max-cost 1.5
+assert_eq "LOW-3 no-cost ERROR: E3 is an ERROR line" "1" "$(printf '%s\n' "$OUT" | grep -c '^E3 ERROR ')"
+if ran E8; then t_ok "LOW-3 no-cost ERROR adds nothing: E8 runs (spent 0.6 + estimate 0.6 < 1.5)"; else t_bad "LOW-3 no-cost ERROR adds nothing: E8 runs" "$(printf '%s\n' "$OUT" | grep -E 'SKIPPED|E3')"; fi
+assert_eq "LOW-3 no-cost ERROR: nothing is SKIPPED" "0" "$(printf '%s\n' "$OUT" | grep -c SKIPPED)"
 
 echo "AC5.1 usage text"
 go --cmd "bash $A/c06.sh" --scenarios E1 --bogus
