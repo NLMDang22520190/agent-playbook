@@ -819,7 +819,7 @@ echo "v0.23.3 AC3.2 (R3) a path with a newline fails closed, there is no PB_ALLO
 R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
 NLP="$(printf 'src/new\nline.sh')"
 if printf '#!/bin/sh\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ] && git add -- "$NLP" 2>/dev/null && git ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
-  NLMSG="VIOLATION (mode): a path contains a newline; the mode check is incomplete"
+  NLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
   for role in implementer tester reviewer infra; do
     gchk "$role"
     assert_rc "AC3.2 $role: a staged path with a newline fails" 1
@@ -835,4 +835,57 @@ line.sh" implementer
   gchk implementer
   assert_rc "AC3.2 once the path is gone the gate passes again" 0
 else rm -f "$NLP" 2>/dev/null; t_skip 12 "AC3.2 newline path (this file system or git refuses the name)"; fi
+
+# ---- v0.23.3 lane A review of 146dd98 ----
+echo "v0.23.3 lane A review MINOR-3 the header and the message name control bytes, not only newlines"
+if head -n 45 "$GATE" | grep -qi 'control byte'; then t_ok "the header (first 45 lines) mentions the control-byte limit"; else t_bad "the header (first 45 lines) mentions the control-byte limit" "no 'control byte' in lines 1-45 of scripts/role-gate.sh"; fi
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+CTLP="src/ctl$(printf '\002')x.sh"
+if printf '#!/bin/sh\n' > "$CTLP" 2>/dev/null && [ -f "$CTLP" ] && git add -- "$CTLP" 2>/dev/null && git ls-files --error-unmatch -- "$CTLP" >/dev/null 2>&1; then
+  CTLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  for role in implementer tester reviewer infra; do
+    gchk "$role"
+    assert_rc "$role: a staged path with a \\002 byte fails" 1
+    assert_contains "$role: the message says a path contains a newline or control byte" "$OUT" "$CTLMSG"
+  done
+  gchk_allow "$CTLP" implementer
+  assert_rc "PB_ALLOW_MODE_CHANGE with the path is no escape" 1
+  assert_contains "... the message is still printed" "$OUT" "$CTLMSG"
+  git rm -q --cached -f -- "$CTLP"; rm -f "${R:?}/${CTLP:?}"
+else rm -f "${R:?}/${CTLP:?}" 2>/dev/null; t_skip 11 "control-byte path (this file system or git refuses the name)"; fi
+
+echo "v0.23.3 lane A review MINOR-4 one unreadable intent-to-add file among 1000 readable ones: the fallback stays bounded"
+unset PB_ALLOW_MODE_CHANGE
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+FB_OK=0
+if [ "$(id -u)" = 0 ]; then FB_WHY="running as root (chmod 000 does not stop root)"
+else
+  mkdir -p bulk
+  fbi=0; while [ "$fbi" -lt 1000 ]; do printf 'x%d\n' "$fbi" > "bulk/f$fbi.txt"; fbi=$((fbi + 1)); done
+  printf 'locked\n' > bulk/unreadable.txt
+  git add -N -- bulk
+  chmod 000 bulk/unreadable.txt 2>/dev/null
+  if cat bulk/unreadable.txt >/dev/null 2>&1; then FB_WHY="chmod 000 has no effect here"; else FB_OK=1; fi
+fi
+if [ "$FB_OK" = 1 ]; then
+  FBLOG="$(mk_tmp)/hash.log"; : > "$FBLOG"
+  FBSHIM="$(mk_tmp)/shim"; mkdir -p "$FBSHIM"
+  FBREAL="$(command -v git)"
+  cat > "$FBSHIM/git" <<SHIM
+#!/bin/sh
+for a in "\$@"; do
+  case "\$a" in hash-object) echo "\$*" >> "$FBLOG"; break ;; esac
+done
+exec "$FBREAL" "\$@"
+SHIM
+  chmod +x "$FBSHIM/git"
+  run env PLAYBOOK_HOME="$IH" PATH="$FBSHIM:$PATH" bash "$GATE" check implementer
+  FBN="$(wc -l < "$FBLOG" | tr -d ' ')"
+  if [ "$FBN" -ge 1 ]; then t_ok "fixture: the shim saw git hash-object ($FBN call(s))"; else t_bad "fixture: the shim saw git hash-object" "0 calls; shim not on the path of the gate, or no intent-to-add path reached the hash step"; fi
+  if [ "$FBN" -le 10 ]; then t_ok "hash-object is started at most 10 times for 1001 paths ($FBN)"; else t_bad "hash-object is started at most 10 times for 1001 paths" "$FBN hash-object processes: one per readable path"; fi
+  assert_rc "the gate fails (the unreadable file)" 1
+  assert_contains "the one unreadable file is still reported: cannot hash" "$OUT" "VIOLATION (mode): cannot hash bulk/unreadable.txt; the mode check is incomplete"
+  assert_eq "only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
+  chmod 644 bulk/unreadable.txt 2>/dev/null
+else t_skip 5 "bounded fallback ($FB_WHY)"; fi
 t_summary

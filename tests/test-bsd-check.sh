@@ -395,4 +395,26 @@ run env -i PATH="$W/be_sp:$W/e_sp_a:$BARE" HOME="$W/homee_sp" TMPDIR="$W" PB_BAS
 assert_eq "AC9.2 same path: named once (one 'reports bash version' line)" "1" "$(printf '%s\n' "$OUT" | grep -c 'reports bash version')"
 assert_eq "AC9.2 same path: probed once" "1" "$(grep -c '^called ' "$W/e_sp.log" 2>/dev/null)"
 assert_contains "AC9.2 same path: no 3.2 anywhere, so 'no bash 3.2 found'" "$OUT" "no bash 3.2 found"
+
+# ---- v0.23.3 lane A review of 146dd98 ----
+echo "v0.23.3 lane A review NIT-5 a hanging candidate that started a child leaves no child behind (checked with ps, by a marker argument)"
+if ps -A -o args= >/dev/null 2>&1; then
+  D="$W/d5"; mk_tree "$D"; mk_bash_suite "$D"; fake_awk "$W/bd5" original-awk "$W/bd5.log"
+  mkdir -p "$W/homed5" "$W/d5kid"
+  KIDMARK="7$$"
+  KIDPID="$W/d5kid.pid"
+  printf '#!/bin/sh\nsleep %s &\necho $! > "%s"\nwait\n' "$KIDMARK" "$KIDPID" > "$W/d5kid/bash3.2"
+  chmod +x "$W/d5kid/bash3.2"
+  run env -i PATH="$W/bd5:$BARE" HOME="$W/homed5" TMPDIR="$W" PB_BASH32="$W/d5kid/bash3.2" PB_BSD_PROBE_SECS=1 "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
+  assert_contains "fixture: the wrapper hung and was rejected" "$OUT" "no answer within 1 s"
+  assert_file "fixture: the wrapper started its child" "$KIDPID"
+  KN=0; ki=0
+  while [ "$ki" -lt 10 ]; do
+    KN="$(ps -A -o args= 2>/dev/null | grep -F "sleep $KIDMARK" | grep -vc grep)"
+    [ "$KN" = 0 ] && break
+    sleep 1; ki=$((ki + 1))
+  done
+  assert_eq "no child of the rejected candidate (sleep $KIDMARK) is left after bsd-check returned" "0" "$KN"
+  [ ! -s "$KIDPID" ] || kill "$(cat "$KIDPID")" 2>/dev/null
+else t_skip 3 "probe children (ps cannot list process arguments here)"; fi
 t_summary

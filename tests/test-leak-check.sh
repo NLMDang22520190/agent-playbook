@@ -1303,7 +1303,7 @@ echo "v0.23.3 AC3.2 (R3) scan --staged: a path with a newline fails closed, with
 modrepo
 NLP="$(printf 'bin/new\nline.sh')"
 if printf '#!/bin/sh\n' > "$R/$NLP" 2>/dev/null && [ -f "$R/$NLP" ] && git -C "$R" add -- "$NLP" 2>/dev/null && git -C "$R" ls-files --error-unmatch -- "$NLP" >/dev/null 2>&1; then
-  NLMSG="VIOLATION (mode): a path contains a newline; the mode check is incomplete"
+  NLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
   scan_streams
   assert_eq "AC3.2 a staged path with a newline: exit 1" "1" "$RC"
   assert_contains "AC3.2 the refusal says the path contains a newline and the check is incomplete" "$STD$ERR" "$NLMSG"
@@ -1399,4 +1399,79 @@ else
   assert_not_contains "AC11 ... and not a fifth letter (per character, not per byte)" "$L2" "$E2$E2$E2$E2$E2"
   rm -f "$PH/.agents/playbook.conf"
 fi
+
+# ---- v0.23.3 lane A review of 146dd98 ----
+echo "v0.23.3 lane A review MAJOR-1 pushInsteadOf: git pushes to the NAME after pushInsteadOf, so a rewritten push scans the full range"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+PU="$(mk_tmp)/u.git"; PZ="$(mk_tmp)/z.git"
+git init -q --bare "$PU"; git init -q --bare "$PZ"
+git -C "$R" remote add origin "$PU"
+git -C "$R" config remote.origin.pushurl "$PU"
+git -C "$R" push -q "$PZ" main
+stage "$R" p1.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret held by origin/main only'
+PSEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/main "$PSEC"
+lc_streams --unpushed "$PSEC" --remote "$PU"
+assert_eq "P1 control: no pushInsteadOf, origin's exact url uses origin's refs: exit 0" "0" "$RC"
+assert_not_contains "P1 control: no note" "$ERR" "is not a configured remote"
+git -C "$R" config "url.$PZ.pushInsteadOf" "$PU"
+lc_streams --unpushed "$PSEC" --remote "$PU"
+assert_eq "P1 origin url = pushurl = U, pushInsteadOf U -> Z: the full range is scanned, exit 1" "1" "$RC"
+assert_contains "P1 ... the finding is named" "$STD" "p1.txt:1: github-token"
+assert_contains "P1 ... stderr carries the usual note" "$ERR" "$(note_for "$PU")"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "P1 hook setup: install-hooks exit 0" 0
+run_in "$R" git push "$PU" "main:refs/heads/newbr"
+if [ "$RC" != 0 ]; then t_ok "P1 the installed hook refuses 'git push U main:newbr' (exit $RC)"; else t_bad "P1 the installed hook refuses 'git push U main:newbr'" "exit 0; output: $OUT"; fi
+assert_contains "P1 ... the hook shows the finding" "$OUT" "p1.txt:1: github-token"
+if git -C "$PZ" rev-parse --verify -q refs/heads/newbr >/dev/null; then t_bad "P1 Z.git did not receive the branch" "newbr is on Z"; else t_ok "P1 Z.git did not receive the branch"; fi
+if git -C "$PZ" cat-file -e "$PSEC" 2>/dev/null; then t_bad "P1 Z.git did not receive the secret commit" "object is on Z"; else t_ok "P1 Z.git did not receive the secret commit"; fi
+git -C "$R" config --unset-all "url.$PZ.pushInsteadOf"
+git -C "$R" config "url.$PZ.pushInsteadOf" "no-such-prefix:"
+lc_streams --unpushed "$PSEC" --remote "$PU"
+assert_eq "P1 control: a pushInsteadOf whose value is no prefix of NAME changes nothing: exit 0" "0" "$RC"
+
+echo "v0.23.3 lane A review MAJOR-1 P2: insteadOf and pushInsteadOf on one prefix, origin with no pushurl"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+QU="$(mk_tmp)/u.git"; QZ="$(mk_tmp)/z.git"
+git init -q --bare "$QU"; git init -q --bare "$QZ"
+git -C "$R" remote add origin "$QU"
+git -C "$R" config "url.$QU.insteadOf" 'short:'
+git -C "$R" config "url.$QZ.pushInsteadOf" 'short:'
+git -C "$R" push -q "$QZ" main
+stage "$R" p2.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'secret held by origin/main only (P2)'
+QSEC="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" update-ref refs/remotes/origin/main "$QSEC"
+lc_streams --unpushed "$QSEC" --remote 'short:'
+assert_eq "P2 NAME short: (insteadOf -> U, pushInsteadOf -> Z): the full range is scanned, exit 1" "1" "$RC"
+assert_contains "P2 ... the finding is named" "$STD" "p2.txt:1: github-token"
+assert_contains "P2 ... stderr carries the usual note" "$ERR" "$(note_for 'short:')"
+run_in "$R" bash "$LC" install-hooks
+assert_rc "P2 hook setup: install-hooks exit 0" 0
+run_in "$R" git push 'short:' "main:refs/heads/newbr"
+if [ "$RC" != 0 ]; then t_ok "P2 the installed hook refuses 'git push short: main:newbr' (exit $RC)"; else t_bad "P2 the installed hook refuses 'git push short: main:newbr'" "exit 0; output: $OUT"; fi
+if git -C "$QZ" cat-file -e "$QSEC" 2>/dev/null; then t_bad "P2 Z.git did not receive the secret commit" "object is on Z"; else t_ok "P2 Z.git did not receive the secret commit"; fi
+
+echo "v0.23.3 lane A review MINOR-2 the usage text shows the Exit line"
+newrepo
+run_in "$R" bash "$LC"
+assert_rc "usage: no arguments, exit 2" 2
+assert_contains "usage prints the Exit line (0 clean, 1 a hit, 2 usage, 3 not a git repo)" "$OUT" "Exit: 0 clean"
+assert_contains "usage prints the whole Exit line (up to exit 3)" "$OUT" "3 not a git repo"
+
+echo "v0.23.3 lane A review MINOR-3 scan --staged: a path with a control byte fails closed with the control-byte message"
+modrepo
+CTLP="bin/ctl$(printf '\002')x.sh"
+if printf '#!/bin/sh\n' > "$R/$CTLP" 2>/dev/null && [ -f "$R/$CTLP" ] && git -C "$R" add -- "$CTLP" 2>/dev/null && git -C "$R" ls-files --error-unmatch -- "$CTLP" >/dev/null 2>&1; then
+  CTLMSG="VIOLATION (mode): a path contains a newline or control byte; the mode check is incomplete"
+  scan_streams
+  assert_eq "a staged path with a \\002 byte: exit 1" "1" "$RC"
+  assert_contains "... the message says a path contains a newline or control byte" "$STD$ERR" "$CTLMSG"
+  scan_streams PB_ALLOW_MODE_CHANGE="$CTLP"
+  assert_eq "... PB_ALLOW_MODE_CHANGE with the path is no escape: exit 1" "1" "$RC"
+  assert_contains "... the message is still printed" "$STD$ERR" "$CTLMSG"
+  git -C "$R" rm -q --cached -f -- "$CTLP"; rm -f "${R:?}/${CTLP:?}"
+else rm -f "${R:?}/${CTLP:?}" 2>/dev/null; t_skip 4 "control-byte path (this file system or git refuses the name)"; fi
 t_summary
