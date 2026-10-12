@@ -144,7 +144,7 @@ Caveat: in PowerShell, `bash` usually resolves to `C:\Windows\System32\bash.exe`
 
 WSL idle behaviour (per Microsoft's [`.wslconfig` / `wsl.conf` reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)), which matters for long agent runs:
 - A distro stops about 15 seconds after its last process exits: `instanceIdleTimeout` (key under `[general]` in `.wslconfig`, default 15000 ms, `-1` disables it). That kills background work (dev servers, test runs started from a closed terminal).
-- The WSL 2 VM itself stops after `vmIdleTimeout` (key under `[wsl2]`, default 60000 ms).
+- The WSL 2 VM itself stops after `vmIdleTimeout` (key under `[wsl2]`, default 60000 ms; Windows 11 only, per the footnote on the same Microsoft page).
 - For a long session keep a process alive (for example `wsl -e sleep infinity` in a spare terminal) or set `instanceIdleTimeout=-1` and run `wsl --shutdown`.
 - `autoMemoryReclaim` is a key under `[experimental]`, not under `[wsl2]`.
 - On one machine we observed `/tmp` inside WSL being wiped on each restart; that is an observation from one machine, not WSL documentation, so keep evidence and drafts under your home directory.

@@ -61,21 +61,30 @@ pb_redact() {
 }
 
 # pb_raw_lines GIT-DIFF-ARGS... -> one "META<TAB>PATH" line per changed path from `git diff --raw -z` (paths unquoted, so a
-# path with a double quote or a tab is printed as it is). META is ":OLDMODE NEWMODE OLDSHA NEWSHA STATUS". Exit: git's.
+# path with a double quote or a tab is printed as it is). META is ":OLDMODE NEWMODE OLDSHA NEWSHA STATUS".
+# Status: 0 ok, 1 git failed, 4 a path has an LF inside its -z record (it cannot be split into lines safely; nothing is
+# printed). The LF is mapped to \002 while the NULs become line ends, so a \002 in the stream marks that case (a path
+# holding a literal \002 byte is refused the same way: the safe side).
 pb_raw_lines() {
-  local out
-  out="$(git -c core.quotepath=off diff --raw -z --no-abbrev --no-renames --no-ext-diff "$@" | tr '\000' '\n'; exit "${PIPESTATUS[0]}")" || return 1
+  local out ctl
+  ctl="$(printf '\002')"
+  out="$(git -c core.quotepath=off diff --raw -z --no-abbrev --no-renames --no-ext-diff "$@" | tr '\n\000' '\002\n'; exit "${PIPESTATUS[0]}")" || return 1
+  case "$out" in *"$ctl"*) return 4 ;; esac
   [ -z "$out" ] || printf '%s\n' "$out" | awk 'NR % 2 == 1 { m = $0; next } { print m "\t" $0 }'
   return 0
 }
 
-# pb_lost_exec_paths < RAW-LINES -> the paths that lost the executable bit, one per line, sorted, no duplicates: 100755 ->
-# 100644, or (a rename seen as delete + add) a deleted 100755 path whose blob is added at 100644 under another path
-# (the NEW path is named). The empty blob never pairs (an empty file is not a rename source). An added work-tree entry
-# has the sha 0{40} (git diff BASE does not hash the work tree): those paths are hashed in ONE git hash-object
-# --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree).
+# pb_lost_exec_paths < RAW-LINES -> one line per finding, sorted, no duplicates: "L<path>" for a path that lost the
+# executable bit (100755 -> 100644, or, a rename seen as delete + add, a deleted 100755 path whose blob is added at 100644
+# under another path: the NEW path is named; the empty blob never pairs, an empty file is not a rename source) and
+# "U<path>" for an added work-tree path that could not be hashed (the check is incomplete for it). An added work-tree
+# entry has the sha 0{40} (git diff BASE does not hash the work tree): those paths are hashed in ONE git hash-object
+# --stdin-paths call (paths relative to the current directory, so run it at the top of the work tree); when that call
+# fails or returns a wrong count, each path is hashed on its own, so one unreadable file does not hide the others.
 pb_lost_exec_paths() {
-  local raw zp hs
+  local raw zp hs p h nl hok
+  nl="
+"
   raw="$(cat)"
   zp="$(printf '%s\n' "$raw" | awk '
     { t = index($0, "\t"); if (t == 0) next
@@ -83,20 +92,31 @@ pb_lost_exec_paths() {
       if (m[1] == ":000000" && m[2] == "100644" && m[4] ~ /^0+$/) print substr($0, t + 1) }')"
   hs=""
   if [ -n "$zp" ]; then
-    hs="$(printf '%s\n' "$zp" | git hash-object --stdin-paths 2>/dev/null)" || hs=""
-    [ "$(printf '%s\n' "$hs" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$zp" | wc -l | tr -d ' ')" ] || hs=""
+    hok=1
+    hs="$(printf '%s\n' "$zp" | git hash-object --stdin-paths 2>/dev/null)" || hok=0
+    if [ "$hok" = 0 ] || [ "$(printf '%s\n' "$hs" | wc -l | tr -d ' ')" != "$(printf '%s\n' "$zp" | wc -l | tr -d ' ')" ]; then
+      hs=""
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        h="$(git hash-object -- "$p" 2>/dev/null)" && [ -n "$h" ] || h="-"
+        hs="$hs$h$nl"
+      done <<EOF
+$zp
+EOF
+    fi
   fi
   { printf '%s\n' "$hs" | sed 's/^/@/'; printf '%s\n' "$raw"; } | awk '
     BEGIN { empty = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"; nh = 0; k = 0 }
     /^@/ { if (length($0) > 1) hsha[++nh] = substr($0, 2); next }
     { t = index($0, "\t"); if (t == 0) next
       split(substr($0, 1, t - 1), m, " "); p = substr($0, t + 1)
-      if (m[1] == ":100755" && m[2] == "100644") print p
+      if (m[1] == ":100755" && m[2] == "100644") print "L" p
       else if (m[1] == ":100755" && m[2] == "000000") { if (m[3] != empty) del[m[3]] = 1 }
       else if (m[1] == ":000000" && m[2] == "100644") {
         sha = m[4]
-        if (sha ~ /^0+$/) { k++; sha = (nh > 0 ? hsha[k] : "") }
+        if (sha ~ /^0+$/) { k++; sha = (nh > 0 ? hsha[k] : "")
+          if (sha == "-") { print "U" p; next } }
         if (sha != "" && sha != empty) { na++; ap[na] = p; as[na] = sha } } }
-    END { for (i = 1; i <= na; i++) if (as[i] in del) print ap[i] }
+    END { for (i = 1; i <= na; i++) if (as[i] in del) print "L" ap[i] }
   ' | LC_ALL=C sort -u
 }

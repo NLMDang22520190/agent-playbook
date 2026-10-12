@@ -29,6 +29,9 @@
 # that is only staged, also a rename with unchanged content that drops the bit: the new path is named) is a
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
 # PB_ALLOW_MODE_CHANGE (colon-separated, exact repo-relative paths; a path that contains a colon cannot be listed there).
+# The check never fails open: a work-tree file git cannot hash is "VIOLATION (mode): cannot hash PATH; the mode check is
+# incomplete" (the escape silences that path only); a path with a newline is "VIOLATION (mode): a path contains a newline;
+# the mode check is incomplete" and has no escape (rename the file).
 # Gaining the bit or deleting a file is fine.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
@@ -130,13 +133,27 @@ EOF
     # The escape is PB_ALLOW_MODE_CHANGE: colon-separated exact repo-relative paths (a case pattern: no glob, no split).
     # The work-tree list and the staged list (git diff --cached) are merged, duplicates removed: a drop that is only staged
     # is caught too. A rename that drops the bit (delete 100755 + add 100644, same blob) names the NEW path.
-    modes_wt="$(pb_raw_lines "$base" --)" || pb_die "git diff failed" 3
-    modes_ix="$(pb_raw_lines --cached "$base" --)" || pb_die "git diff failed" 3
+    # A path that cannot be hashed ("cannot hash PATH") is reported too, and the escape silences exactly that path.
+    # A path with a newline cannot be listed in the escape: it fails closed with no escape (rename it).
+    nlbad=0
+    modes_wt="$(pb_raw_lines "$base" --)"; rc=$?
+    case "$rc" in 0) ;; 4) nlbad=1; modes_wt="" ;; *) pb_die "git diff failed" 3 ;; esac
+    modes_ix="$(pb_raw_lines --cached "$base" --)"; rc=$?
+    case "$rc" in 0) ;; 4) nlbad=1; modes_ix="" ;; *) pb_die "git diff failed" 3 ;; esac
+    if [ "$nlbad" = 1 ]; then
+      printf 'VIOLATION (mode): a path contains a newline; the mode check is incomplete\n'
+      violations=$((violations + 1))
+    fi
     lost="$( { printf '%s\n' "$modes_wt"; printf '%s\n' "$modes_ix"; } | pb_lost_exec_paths )"
     while IFS= read -r mpath; do
       [ -n "$mpath" ] || continue
+      mkind="${mpath%"${mpath#?}"}"; mpath="${mpath#?}"
       case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
-      printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+      if [ "$mkind" = U ]; then
+        printf 'VIOLATION (mode): cannot hash %s; the mode check is incomplete\n' "$mpath"
+      else
+        printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+      fi
       violations=$((violations + 1))
     done <<EOF
 $lost

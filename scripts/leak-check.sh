@@ -9,7 +9,9 @@
 #                                          for a new branch); with NAME (a configured remote) only the refs it owns count:
 #                                          a ref belongs to the remote whose fetch refspec destination matches it longest, so
 #                                          with a remote "origin/foo", origin's own branch foo/x is origin/foo's and is scanned
-#                                          too when pushing to origin (scanning more is the safe side)
+#                                          too when pushing to origin (scanning more is the safe side). A NAME that is no
+#                                          configured remote (a URL push) uses the refs of the remotes that url names (raw or after
+#                                          insteadOf; only when all their url/pushurl values are one place), else every commit is scanned
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -28,7 +30,7 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 MARKER='# agent-playbook leak-check'
 
 usage() {
-  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -125,14 +127,27 @@ EOF3
 # about a newly added staged file that starts with #! at mode 100644. Raw lines: ":OLDMODE NEWMODE SHA SHA STATUS<TAB>PATH".
 mode_check() {
   MODEBAD=0
-  local raw lost mpath
-  # one git call for the raw list (paths unquoted, see pb_raw_lines in lib.sh); a rename that drops the bit is found by blob
-  raw="$(pb_raw_lines --cached 2>/dev/null)" || raw=""
+  local raw lost mpath mkind rrc
+  # one git call for the raw list (paths unquoted, see pb_raw_lines in lib.sh); a rename that drops the bit is found by blob.
+  # The check never fails open: a failing raw list, or a path with a newline (no escape: rename it), is a violation.
+  raw="$(pb_raw_lines --cached 2>/dev/null)"; rrc=$?
+  if [ "$rrc" = 4 ]; then
+    printf 'VIOLATION (mode): a path contains a newline; the mode check is incomplete\n'
+    MODEBAD=$((MODEBAD + 1)); return 0
+  elif [ "$rrc" != 0 ]; then
+    printf 'VIOLATION (mode): git diff --raw failed; the mode check is incomplete\n'
+    MODEBAD=$((MODEBAD + 1)); return 0
+  fi
   lost="$(printf '%s\n' "$raw" | pb_lost_exec_paths)"
   while IFS= read -r mpath; do
     [ -n "$mpath" ] || continue
+    mkind="${mpath%"${mpath#?}"}"; mpath="${mpath#?}"
     case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
-    printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+    if [ "$mkind" = U ]; then
+      printf 'VIOLATION (mode): cannot hash %s; the mode check is incomplete\n' "$mpath"
+    else
+      printf 'VIOLATION (mode): %s lost its executable bit (100755 -> 100644)\n' "$mpath"
+    fi
     MODEBAD=$((MODEBAD + 1))
   done <<EOF
 $lost
@@ -158,7 +173,8 @@ EOF
 # diff_to_added FILE -> idx and txt from a unified diff (-U0) of FILE: the added lines only
 diff_to_added() {
   # NUL bytes (binary files) end a line early in BSD awk and grep (macOS): turn them into spaces first
-  tr '\000' ' ' < "$1" | awk -v idx="$TMP/idx" -v txt="$TMP/txt" '
+  # LC_ALL=C: bytes, not characters (gawk in a UTF-8 locale warns about invalid bytes); only the masking awk keeps the locale
+  tr '\000' ' ' < "$1" | LC_ALL=C awk -v idx="$TMP/idx" -v txt="$TMP/txt" '
     /^diff --(git|cc|combined) / { hdr = 1; file = ""; next }
     hdr && /^\+\+\+ / { f = $0; sub(/^\+\+\+ /, "", f); sub(/\t.*$/, "", f)
       if (f == "/dev/null") file = ""; else { sub(/^b\//, "", f); file = f }; next }
@@ -208,6 +224,33 @@ owned_refs() {
     }'
 }
 
+# url_remotes NAME -> the configured remotes whose destination NAME is, one per line. NAME counts for a remote R when
+# every url and pushurl value of R names one place (compared after insteadOf expansion: git remote get-url --all, and
+# --push --all) and NAME is one of R's raw values or, expanded (git ls-remote --get-url NAME), is that place. A trailing
+# .git or /, or ssh vs https forms, are not normalized: such a NAME matches nothing (the caller then scans everything).
+url_remotes() {
+  local name="$1" exp r raws exps hit v
+  [ -n "$name" ] || return 0
+  exp="$(git ls-remote --get-url "$name" 2>/dev/null)" || exp=""
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    exps="$( { git remote get-url --all "$r" 2>/dev/null; git remote get-url --push --all "$r" 2>/dev/null; } | LC_ALL=C sort -u)"
+    [ -n "$exps" ] || continue
+    [ "$(printf '%s\n' "$exps" | wc -l | tr -d ' ')" = 1 ] || continue   # the values name different places
+    hit=0
+    [ -z "$exp" ] || [ "$exp" != "$exps" ] || hit=1
+    raws="$( { git config --get-all "remote.$r.url" 2>/dev/null; git config --get-all "remote.$r.pushurl" 2>/dev/null; } )"
+    while IFS= read -r v; do
+      [ "$v" != "$name" ] || hit=1
+    done <<EOF
+$raws
+EOF
+    [ "$hit" = 0 ] || printf '%s\n' "$r"
+  done <<EOF
+$(git remote 2>/dev/null)
+EOF
+}
+
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
 
 do_scan() {
@@ -239,11 +282,30 @@ do_scan() {
         git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= "$val" -- > "$TMP/diff" 2>/dev/null ||
           { echo "leak-check: git log failed for range $val" >&2; exit 3; }
       else
-        # --remote NAME with NAME exactly a configured remote: only the refs NAME owns count; otherwise (a URL push) any remote
+        # --remote NAME with NAME exactly a configured remote: only the refs NAME owns count. NAME that is a url of a
+        # configured remote (url_remotes): the union of those remotes' owned refs. Any other NAME (a new destination holds
+        # none of the commits): nothing is excluded, the full range is scanned, with a note. No --remote: any remote counts.
         # The owned refs go through stdin ("^REF" per line, git log --stdin), never as one argument each: thousands of
         # remote refs would overflow the command line (Windows: 32K).
-        if [ "$hasremote" = 1 ] && [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then
-          owned_refs "$remote" | sed 's/^/^/' > "$TMP/not"   # owns no ref yet: the list is empty, nothing is excluded
+        if [ "$hasremote" = 1 ]; then
+          : > "$TMP/own"
+          if [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then
+            owned_refs "$remote" > "$TMP/own"   # owns no ref yet: the list is empty, nothing is excluded
+          else
+            local rems rn
+            rems="$(url_remotes "$remote")"
+            if [ -n "$rems" ]; then
+              while IFS= read -r rn; do
+                [ -n "$rn" ] || continue
+                owned_refs "$rn" >> "$TMP/own"
+              done <<EOF
+$rems
+EOF
+            else
+              printf 'leak-check: %s is not a configured remote; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+            fi
+          fi
+          LC_ALL=C sort -u "$TMP/own" | sed 's/^/^/' > "$TMP/not"
           git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= --stdin "$val" -- < "$TMP/not" > "$TMP/diff" 2>/dev/null ||
             { echo "leak-check: git log failed for $val" >&2; exit 3; }
         else
