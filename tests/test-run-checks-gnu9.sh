@@ -2,6 +2,7 @@
 # Tests of the GNU-only scanner's tokenizer (evals/run-checks.sh --only gnu): quote state across lines, heredocs, arithmetic,
 # variables named after a checked tool, wrappers (split from test-run-checks.sh in v0.23.3).
 # Each test runs run-checks.sh inside a fresh copy of the repository, so mutations never touch the real tree.
+# Cases whose findings come only from their own fixture file run in mk_min_copy (run-checks-fixture.sh); the real-tree runs (the AC9 pass and AC1.3) use mk_copy.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
 # the pieces the fixtures are spelled from (the checker would flag this file otherwise)
@@ -18,7 +19,7 @@ DL='$'; DQ='"'; BT='`'; LB='{'
 # BODY-LINEs from line 3 on; for fail the output names FILE:LINE-NUMBER, for pass the file is not named
 gnu9() {
   local name="$1" rel="$2" expect="$3" ln="$4"; shift 4
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   mkdir -p "$C/$(dirname "$rel")"
   printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$@" > "$C/$rel"
   checks "$C" gnu
@@ -192,7 +193,7 @@ while [ "$r3_k" -lt 6 ]; do r3_lines+=("sudo ${DL}${LB}GREP} $PF x" "${DL}${LB}G
 # r3_runs LABEL COUNT [AWKDIR] -> COUNT runs of --only gnu over the twelve-line fixture; each must exit 1 and name lines 3..14
 r3_runs() {
   local label="$1" cnt="$2" awd="${3:-}" r=0 oldp="$PATH" ln missing
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   printf '%s\n' '#!/usr/bin/env bash' '# fixture' "${r3_lines[@]}" > "$C/tests/zz-gnu.sh"
   while [ "$r" -lt "$cnt" ]; do
     r=$((r + 1))
@@ -229,7 +230,7 @@ gen_long() { awk -v n="$1" -v w="$2" -v m="$3" 'BEGIN { for (i = 0; i < n; i++) 
 # time_long WORD COUNT -> sets LELAPSED (seconds) and RC/OUT of run-checks --only gnu over a file holding that long line, then a line A
 time_long() {
   local line; line="$(gen_long 1000 "$1" "$2")"
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$line" 'A' > "$C/tests/zz-gnu.sh"
   local t0=$SECONDS
   checks "$C" gnu
@@ -261,7 +262,7 @@ g9_lines+=("$g9_seg $G $PF x")
 # g9_time LABEL AWKDIR LINE... -> TSEC (seconds), TRC, TOUT of --only gnu over tests/zz-gnu.sh holding the LINEs (AWKDIR empty: default awk)
 g9_time() {
   local label="$1" awd="$2" oldp="$PATH" t0; shift 2
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   printf '%s\n' '#!/usr/bin/env bash' '# fixture' "$@" > "$C/tests/zz-gnu.sh"
   if [ -n "$awd" ]; then PATH="$awd:$oldp"; fi
   t0=$SECONDS
