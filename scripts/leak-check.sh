@@ -30,6 +30,7 @@
 # Exit: 0 clean ("leak-check: clean"), 1 a hit (or, for install-hooks, a hook left alone), 2 usage, 3 not a git repo or git failed.
 # Bash 3.2 and BSD tool compatible.
 set -u
+unset PB_LC_OS   # never trust an inherited value (see win_path)
 SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 . "$SELF_DIR/lib.sh"
 
@@ -234,8 +235,10 @@ owned_refs() {
 # /c/x become C:/...), keeps C:/x in the config and expands insteadOf to either form, so a local path is mapped with
 # `cygpath -m` (all of /tmp/x, /c/x, C:/x -> C:/x) and the drive letter lowercased; without cygpath, C:/x -> /c/x.
 # Elsewhere P is unchanged (c:/x is a host there).
+# The kernel name is looked up once per process (PB_LC_OS, set before the first caller that can run inside $(...) or a
+# subshell, where a lookup would not be remembered); with it unset each call looks it up.
 win_path() {
-  case "$(uname -s 2>/dev/null)" in
+  case "${PB_LC_OS-$(uname -s 2>/dev/null)}" in
     MINGW* | MSYS* | CYGWIN*)
       case "$1" in
         /* | [A-Za-z]:/*)
@@ -388,6 +391,7 @@ do_scan() {
         # The owned refs go through stdin ("^REF" per line, git log --stdin), never as one argument each: thousands of
         # remote refs would overflow the command line (Windows: 32K).
         if [ "$hasremote" = 1 ]; then
+          PB_LC_OS="$(uname -s 2>/dev/null)"
           : > "$TMP/own"
           if [ -n "$remote" ] && git remote 2>/dev/null | grep -qxF -e "$remote"; then
             if remote_pushes_home "$remote"; then
