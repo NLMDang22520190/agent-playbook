@@ -73,3 +73,21 @@ e3_state() { printf '%s\n' "$OUT" | grep "^E3 " | grep -F "$E3CHK" | awk '{print
 e_state() { printf '%s\n' "$OUT" | grep "^$1 " | grep -F "$2" | awk '{print $2}' | head -n 1; }
 count_err() { printf '%s\n' "$OUT" | grep -c ' ERROR '; }
 e3_reply() { run_e3 "$1" "$INIT" "${RES_PRE}\"$2\"}"; }
+
+# ---- transcript cases built in one node call per table (v0.24.5) ----
+# tq_add KEY NAME EXPECT COMMAND queues one case: a transcript whose only tool_use is Bash running COMMAND, graded by
+# evals/transcript.js; the assertion NAME is that its KEY= line (ran_tests, feedback_captured) equals EXPECT. tq_flush builds the
+# transcripts of every queued case with ONE node call (the commands go in through a NUL-separated file, so no argv limit), then runs
+# transcript.js on each one and asserts, in the order they were queued. Needs $TR (a temp dir) when it is called.
+TQ_K=(); TQ_N=(); TQ_E=(); TQ_C=()
+tq_add() { TQ_K[${#TQ_K[@]}]="$1"; TQ_N[${#TQ_N[@]}]="$2"; TQ_E[${#TQ_E[@]}]="$3"; TQ_C[${#TQ_C[@]}]="$4"; }
+tq_flush() {
+  local n="${#TQ_C[@]}" i
+  [ "$n" -gt 0 ] || return 0
+  printf '%s\0' "${TQ_C[@]}" > "$TR/q.cmds"
+  node -e 'const fs=require("fs"),d=process.argv[1];const cs=fs.readFileSync(d+"/q.cmds","utf8").split("\0");cs.pop();cs.forEach((c,i)=>fs.writeFileSync(d+"/q"+i+".json",JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:c}}]}})+"\n"))' "$TR"
+  for ((i = 0; i < n; i++)); do
+    assert_eq "${TQ_N[$i]}" "${TQ_E[$i]}" "$(node "$PB_ROOT/evals/transcript.js" "$TR/q$i.json" 2>/dev/null | sed -n "s/^${TQ_K[$i]}=//p")"
+  done
+  TQ_K=(); TQ_N=(); TQ_E=(); TQ_C=()
+}

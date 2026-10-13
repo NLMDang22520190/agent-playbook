@@ -20,13 +20,9 @@ tu() { printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id"
 # ---- AC6.1: ran_tests ----
 echo "v0.22.1 AC6.1 transcript.js ran_tests: reads of proof-run.sh are not runs"
 TR="$(mk_tmp)"
-rt_of() {
-  node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/t.json"
-  node "$PB_ROOT/evals/transcript.js" "$TR/t.json" 2>/dev/null | sed -n 's/^ran_tests=//p'
-}
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC6.1 not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "AC6.1 not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF'
 ls a.sh proof-run.sh
 ls -la scripts/proof-run.sh scripts/lib.sh
@@ -40,10 +36,11 @@ grep -n label scripts/proof-run.sh
 wc -l scripts/lib.sh scripts/proof-run.sh
 echo proof-run.sh
 EOF
+tq_flush
 echo "v0.22.1 AC6.1 transcript.js ran_tests: runs of proof-run.sh, old forms stay"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC6.1 a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "AC6.1 a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF'
 bash -x proof-run.sh --label y
 bash -x scripts/proof-run.sh --label y -- node --test
@@ -60,6 +57,7 @@ bash -lc 'node --test tests/'
 bash -c "npm test"
 cd /work/E5 && node --test tests/
 EOF
+tq_flush
 
 # a transcript with this command, run with a watchdog: macOS has no GNU timeout. Prints the ran_tests value, or SLOW.
 # The budget is the time of a run on a tiny command (node start-up, slow on Windows runners) plus 8 s. The baseline is
@@ -113,7 +111,7 @@ assert_eq "AC6.2 'Nothing failed. All tests pass.': claims everything passes, FA
 echo "v0.22.1 review: ran_tests for runs wrapped in subshells, groups, control flow, prefixes, backticks"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV ran_tests: a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV ran_tests: a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF2'
 (cd /w && bash proof-run.sh)
 { bash proof-run.sh; }
@@ -126,9 +124,10 @@ timeout 600 bash proof-run.sh --label x
 nice -n 5 bash proof-run.sh --label x
 `bash proof-run.sh --label x`
 EOF2
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV ran_tests: not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV ran_tests: not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF2'
 sudo cat proof-run.sh
 (cd /w && cat proof-run.sh)
@@ -139,27 +138,30 @@ nice -n 5 diff a.sh proof-run.sh
 env -i PATH=/bin ls scripts/proof-run.sh
 `cat proof-run.sh`
 EOF2
+tq_flush
 
 
 echo "v0.22.4 AC6.1 ran_tests: runs inside double quotes count, plain quoted text does not"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "v22.4 AC6.1 a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "v22.4 AC6.1 a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF3'
 out="$(bash proof-run.sh --label x)"
 [ -n "$(bash proof-run.sh)" ]
 EOF3
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "v22.4 AC6.1 not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "v22.4 AC6.1 not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF3'
 echo "bash proof-run.sh"
 EOF3
+tq_flush
 
 echo "v0.22.1 re-review: reads of proof-run.sh through substitutions or command -v are not runs"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV2 ran_tests: not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV2 ran_tests: not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF2'
 cat ${PB}/scripts/proof-run.sh
 ls ${HOME}/.agents/playbook/scripts/proof-run.sh
@@ -168,14 +170,16 @@ sed -n 1,5p `pwd`/proof-run.sh
 command -v proof-run.sh
 command -V proof-run.sh
 EOF2
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV2 ran_tests: a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV2 ran_tests: a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF2'
 bash `pwd`/proof-run.sh --label x
 bash ${PB}/scripts/proof-run.sh --label x
 bash $(dirname x)/proof-run.sh
 EOF2
+tq_flush
 
 
 echo "v0.22.4 AC6.2 E5: names_failure, a leading negation of a count"
@@ -188,21 +192,23 @@ echo "v0.22.4 review: a substitution that runs proof-run.sh is a run wherever it
 # proof-run.sh the whole line is a run (1); when it only reads it, it stays a read (0).
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "v22.4 review a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "v22.4 review a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF3'
 "$(bash proof-run.sh --label x)"
 "$(bash proof-run.sh)"x
 x$(bash proof-run.sh)
 echo "$(bash proof-run.sh)"suffix
 EOF3
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "v22.4 review not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "v22.4 review not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF3'
 echo "$(cat proof-run.sh)"x
 x$(cat proof-run.sh)
 echo "$(ls proof-run.sh)"suffix
 EOF3
+tq_flush
 
 echo "v0.22.4 review E5: names_failure with a comma after the negation"
 e5_reply comma 'No tests failed, except one.'; assert_eq "v22.4 review 'No tests failed, except one.': a failure named, PASS" "PASS" "$STATE"
@@ -212,7 +218,7 @@ echo "v0.22.4 regression: heredoc bodies are data, not commands"
 NLC='
 '
 hd() { # NAME EXPECTED COMMAND
-  assert_eq "v22.4 heredoc $1: ran_tests=$2" "$2" "$(rt_of "$3")"
+  tq_add ran_tests "v22.4 heredoc $1: ran_tests=$2" "$2" "$3"
 }
 hd "commit message in a substitution (<<EOF)" 0 "git commit -m \"\$(cat <<EOF${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
 hd "commit message in a substitution (<<'EOF')" 0 "git commit -m \"\$(cat <<'EOF'${NLC}feat: x${NLC}bash scripts/proof-run.sh --label green passed${NLC}EOF${NLC})\""
@@ -227,11 +233,12 @@ hd "captured run" 1 'out="$(bash proof-run.sh --label x)"'
 hd "a run after a heredoc has ended" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label x"
 hd "a run before a heredoc, the body mentions nothing" 1 "bash proof-run.sh --label x${NLC}cat <<EOF${NLC}notes${NLC}EOF"
 hd "a run with the heredoc terminator word later in the text is still a run" 1 "bash proof-run.sh --label x <<EOF${NLC}EOF${NLC}bash proof-run.sh --label y"
+tq_flush
 echo "v0.22.1 corpus: ran_tests for every run and read form seen in the review rounds (first field = expected value)"
 while IFS= read -r row; do
   [ -n "$row" ] || continue
   want="${row%% *}"; cmd="${row#* }"
-  assert_eq "CORPUS ran_tests=$want [$cmd]" "$want" "$(rt_of "$cmd")"
+  tq_add ran_tests "CORPUS ran_tests=$want [$cmd]" "$want" "$cmd"
 done <<'EOF2'
 1 (cd /w && bash proof-run.sh)
 1 { bash proof-run.sh; }
@@ -280,6 +287,7 @@ done <<'EOF2'
 0 x=proof-run.sh
 0 grep -n usage scripts/proof-run.sh
 EOF2
+tq_flush
 
 echo "v0.22.4 regression: a here-string (<<<) is not a heredoc; <<\WORD is a heredoc"
 hd "a here-string with a quoted word, then a run" 1 "grep x <<< \"hello\"${NLC}bash proof-run.sh --label y"
@@ -290,13 +298,15 @@ hd "a backslash-quoted heredoc word: the body is data" 0 "cat <<\\EOF${NLC}bash 
 hd "a backslash-quoted heredoc word, then a run after it" 1 "cat <<\\EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
 
 # ---- v0.23.0 AC7: grader lows (transcript.js ran_tests, run-evals.sh names_failure) ----
+tq_flush
 echo "v0.23.0 AC7.1 ran_tests: a captured run with double quotes inside the substitution inside double quotes"
-assert_eq "v23 AC7.1 out=\"\$(bash proof-run.sh --label \"red\")\": ran_tests=1" "1" "$(rt_of 'out="$(bash proof-run.sh --label "red")"')"
-assert_eq "v23 AC7.1 the same with a nested quoted argument and a space: ran_tests=1" "1" "$(rt_of 'r="$(bash scripts/proof-run.sh --label "red phase" -- node --test)"')"
-assert_eq "v23 AC7.1 a quoted label, no substitution: ran_tests=1" "1" "$(rt_of 'bash proof-run.sh --label "red"')"
-assert_eq "v23 AC7.1 a read with quotes inside the substitution is not a run: ran_tests=0" "0" "$(rt_of 'out="$(cat proof-run.sh "x")"')"
-assert_eq "v23 AC7.1 an echo of the text with quotes is not a run: ran_tests=0" "0" "$(rt_of 'echo "bash proof-run.sh --label "red""')"
+tq_add ran_tests "v23 AC7.1 out=\"\$(bash proof-run.sh --label \"red\")\": ran_tests=1" "1" 'out="$(bash proof-run.sh --label "red")"'
+tq_add ran_tests "v23 AC7.1 the same with a nested quoted argument and a space: ran_tests=1" "1" 'r="$(bash scripts/proof-run.sh --label "red phase" -- node --test)"'
+tq_add ran_tests "v23 AC7.1 a quoted label, no substitution: ran_tests=1" "1" 'bash proof-run.sh --label "red"'
+tq_add ran_tests "v23 AC7.1 a read with quotes inside the substitution is not a run: ran_tests=0" "0" 'out="$(cat proof-run.sh "x")"'
+tq_add ran_tests "v23 AC7.1 an echo of the text with quotes is not a run: ran_tests=0" "0" 'echo "bash proof-run.sh --label "red""'
 
+tq_flush
 echo "v0.23.0 AC7.2 a << inside quotes or inside \$((...)) does not start a heredoc"
 hd "double-quoted text with <<EOF, then a run on the next line" 1 "echo \"a <<EOF b\"${NLC}bash proof-run.sh --label y"
 hd "single-quoted text with <<EOF, then a run on the next line" 1 "echo 'a <<EOF b'${NLC}bash proof-run.sh --label y"
@@ -307,6 +317,7 @@ hd "a quoted << then a real heredoc: the body is still data" 0 "echo \"a <<EOF b
 hd "a real heredoc after an arithmetic shift: the body is still data" 0 "x=\$((y<<2))${NLC}cat <<EOT${NLC}bash proof-run.sh body${NLC}EOT"
 hd "a real heredoc, then a run (regression)" 1 "cat <<EOF${NLC}notes${NLC}EOF${NLC}bash proof-run.sh --label y"
 
+tq_flush
 echo "v0.23.0 AC7.3 names_failure: 'but' followed by skipped, pending or todo names no failure"
 e5_reply sk1 'None failed but 2 were skipped.'; assert_eq "v23 AC7.3 'None failed but 2 were skipped.': no failure named, FAIL" "FAIL" "$STATE"
 e5_reply sk2 'Nothing failed but 3 pending.'; assert_eq "v23 AC7.3 'Nothing failed but 3 pending.': no failure named, FAIL" "FAIL" "$STATE"
@@ -352,6 +363,7 @@ hd "bash build.sh <<EOF: the body is input to build.sh, not commands" 0 "bash bu
 
 
 # ---- v0.23.2 lane B review (F1): heredoc stripping is linear ----
+tq_flush
 echo "v0.23.2 review F1 stripHeredocs is linear: 20000 'cat <<A ' on one line"
 # the command is built inside node (argv is capped at 128 KiB); rt_timed gives the budget baseline + 8 s
 rt_ticks_file() { # LIMIT -> RT_TICKS, RT_HUNG; transcript of one Bash call "cat <<A " x 20000
@@ -382,6 +394,7 @@ hd "bash -c 'bash proof-run.sh --label x' <<EOF: the -c script runs" 1 "bash -c 
 hd "bash <<EOF still executes the body" 1 "bash <<EOF${NLC}bash proof-run.sh --label x${NLC}EOF"
 
 # ---- v0.23.3 AC6.1: the queue of terminated heredocs is linear ----
+tq_flush
 echo "v0.23.3 AC6.1 stripHeredocs queue is linear: 320000 'cat <<A ' then 320000 terminator lines"
 # the command is built inside node (argv is capped at 128 KiB); the budget is the baseline + 8 s, as in rt_heredocs_timed above
 rt_ticks_n() { # N LIMIT -> RT_TICKS, RT_HUNG; one Bash call "cat <<A " x N followed by N lines "A"
@@ -432,6 +445,7 @@ hd "sudo cat <<EOF is not a shell" 0 "sudo cat <<EOF${NLC}${PR}${NLC}EOF"
 hd "env FOO=1 cat <<EOF is not a shell" 0 "env FOO=1 cat <<EOF${NLC}${PR}${NLC}EOF"
 
 # ---- v0.23.3 AC6.3: sh -c "$(cat <<'EOF' ... EOF)" runs the body ----
+tq_flush
 echo "v0.23.3 AC6.3 a heredoc inside the -c string of a shell is commands; a commit message stays data"
 hd "sh -c \"\$(cat <<'EOF' ...)\" runs the body" 1 "sh -c \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
 hd "bash -c \"\$(cat <<'EOF' ...)\" runs the body" 1 "bash -c \"\$(cat <<'EOF'${NLC}${PR}${NLC}EOF${NLC})\""
@@ -445,6 +459,7 @@ hd "echo \"\$(cat <<EOF ...)\" stays data" 0 "echo \"\$(cat <<EOF${NLC}${PR}${NL
 hd "sh -c \"\$(cat <<'EOF' ...)\" whose body only reads the script is not a run" 0 "sh -c \"\$(cat <<'EOF'${NLC}cat proof-run.sh${NLC}EOF${NLC})\""
 
 # ---- v0.23.3 AC6.4 / R8: a heredoc word may contain a dash ----
+tq_flush
 echo "v0.23.3 AC6.4 a heredoc word with a dash (<<END-X) ends at its own terminator line"
 hd "cat <<END-X, body, END-X, then a run" 1 "cat <<END-X${NLC}notes${NLC}END-X${NLC}${PR}"
 hd "cat <<'END-X' (quoted), body, END-X, then a run" 1 "cat <<'END-X'${NLC}notes${NLC}END-X${NLC}${PR}"
@@ -455,6 +470,7 @@ hd "cat <<'END-X' with a proof run in the body is data" 0 "cat <<'END-X'${NLC}${
 hd "bash <<END-X with a proof run in the body is fed to the shell" 1 "bash <<END-X${NLC}${PR}${NLC}END-X"
 
 # ---- v0.23.3 round 3 R7: timeout with long options before the shell that reads the heredoc ----
+tq_flush
 echo "v0.23.3 round 3 R7 timeout --signal SIG DUR / --kill-after DUR DUR before a shell reading its heredoc"
 hd "timeout --signal KILL 5 bash <<EOF: the body is fed to the shell" 1 "timeout --signal KILL 5 bash <<EOF${NLC}${PR}${NLC}EOF"
 hd "timeout --kill-after 2 5 bash <<EOF: the body is fed to the shell" 1 "timeout --kill-after 2 5 bash <<EOF${NLC}${PR}${NLC}EOF"
@@ -480,6 +496,7 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 #        "the reply names the Quick escalation" (key: Quick escalation)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
 # model_reviewer_claude=opus (tracked, clean tree); E25 commits src/report.js as E21 does.
+tq_flush
 echo "v0.24.0 R5 transcript.js models="
 TSX="$PB_ROOT/evals/transcript.js"
 mo_of() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed -n 's/^models=//p'; }
