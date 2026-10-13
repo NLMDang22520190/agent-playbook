@@ -61,10 +61,11 @@ run follow the user with no question. Record `Weight: Lite (user override; Full 
 The tests are never skipped: the test comes first and is seen failing, role gates and evidence all still run; the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
 
 **The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
-If the work meets a Full criterion, the user override above applies, with its label.
+If the work meets a Full criterion, the user override above applies, with its label. If quick work grows past the Lite size limit
+with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
 
-**Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
-reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
+**Why:** three fresh contexts cost minutes and tokens per slice; for a small
+reversible fix that buys little; for hard-to-reverse changes it is the cheapest insurance.
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
@@ -81,8 +82,8 @@ reversible fix that cost buys little, while for hard-to-reverse changes it is th
    real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
    command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
-   The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`
-   (the captured ids, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
+   The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`.
+   If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask.
 
 ### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
@@ -118,11 +119,11 @@ without hiding which behaviour broke.
 ### Phase 1: Spec (orchestrator)
 Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, acceptance criteria with
 ids (AC1…) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
-constraints, and **slices** (see "Slice size"), each building on the previous. Nothing goes into the spec that the source did not say.
+constraints, and **slices**, each building on the previous. Nothing goes into the spec that the source did not say.
 
 **Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
 (`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from the existing
-code and tests plus the earlier bug reports, not from the source (which describes the new behaviour). The first RED covers
+code and tests plus the earlier bug reports, not from the source. The first RED covers
 the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
 
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
@@ -136,13 +137,13 @@ sentence with the ACs. Its report is its only output: the orchestrator saves it 
 runs `role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
 rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
 
-Gaps, by reversibility: an ambiguity that changes assertions AND is hard to reverse is asked before any
+Gaps, by reversibility: a reading that is ambiguous and hard to reverse is asked before any
 code, in one batched message; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
 `templates/decisions.md`, and mark the code `DECISION[Dn]`. Get the user's OK on the AC list when
 the request was ambiguous. Re-read the AC table before each commit.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
-**Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough, so fresh roles do not re-scan the repository.
+**Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough.
 
 For slice S:
 1. **RED (tester).** Start a fresh tester with `roles/tester.md` and the inputs it lists. When it
@@ -164,7 +165,7 @@ For slice S:
 4. **REFACTOR (optional, implementer).** Only on green, with tests untouched (same gate and
    `--base $RED`), and green again afterwards.
 
-**First-slice checkpoint.** When several slices repeat a pattern (screens, endpoints or files), in an
+**First-slice checkpoint.** When more than one slice repeats a pattern (screens, endpoints or files), in an
 interactive run show the first finished slice to the user and wait for an OK before the rest. With
 `autonomy=full`, show it in the report and do not wait. In a non-interactive run, continue without waiting and log in
 `decisions.md` that the checkpoint was skipped.

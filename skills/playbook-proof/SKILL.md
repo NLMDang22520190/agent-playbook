@@ -6,7 +6,7 @@ description: Use when stating results, diagnoses, comparisons or recommendations
 # Proof for every claim
 
 **Why:** green that nobody looked at has shipped the wrong screen before, and a plausible
-invention written into a handoff costs the next session a day.
+invention in a handoff costs the next session a day.
 
 **Rule:** a claim without evidence the reader can check is a guess. Label it as one, or go get the evidence.
 
@@ -24,9 +24,9 @@ Label the claims that matter to a decision. Do not decorate every sentence.
 | "tests pass / build works / bug fixed" | output of the command run **in this session after the last change**: `proof-run.sh` block (command, exit code, git sha, tail, log hash) |
 | "the code does X" / "X is defined in Y" | `path:line` you read this session, with a short quote when it decides the point |
 | "library/API/CLI behaves like X", versions, flags | official docs URL + the version they describe; or a minimal reproduction you ran |
-| "the bug is caused by X" | a reproduction that fails, plus the change that makes it pass (before/after evidence) |
+| "the bug is caused by X" | a reproduction that fails, plus the change that makes it pass |
 | numbers (sizes, timings, counts) | the command that produced them; for timings, several runs and the spread |
-| "nothing else uses X" | the search command and its output (`rg -n 'X'`) |
+| "nothing else uses X" | the search command and its output (`rg -n 'X'`), naming what was searched |
 | recommendations | the criteria, the evidence for each option, and what would change the recommendation |
 
 A user-visible change (UI, HTTP API, CLI output, file format) needs one real observation of the behaviour in
