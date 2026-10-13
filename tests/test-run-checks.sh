@@ -24,6 +24,11 @@ done
 cp "$MASTER/README.md" "$MASTER/.gitattributes" "$FMIN/"
 printf 'plain note\n' > "$FMIN/docs/note.md"
 cp -a "$MASTER/skills/playbook-proof" "$FMIN/skills/playbook-proof"
+# word budgets for exactly the files FMIN holds (its one skill; it has no AGENTS.global.md): the skills group fails closed without a
+# table, so a case that expects another rule's FAIL would otherwise pass for the wrong reason. Slack 200 leaves room for the cases that lengthen a line.
+{ printf '# fixture budgets\n'
+  printf 'skills/playbook-proof/SKILL.md %s\n' "$(( $(wc -w < "$FMIN/skills/playbook-proof/SKILL.md" | tr -d ' ') + 200 ))"
+} > "$FMIN/evals/word-budgets"
 # mk_fmin_copy -> temp dir, not a git repo; mk_fmin_git_copy -> the same, committed into a fresh repo with LF in the index
 mk_fmin_copy() { local d; d="$(mk_tmp)"; cp -a "$FMIN/." "$d/"; printf '%s\n' "$d"; }
 FMING="$(mk_tmp)"
@@ -42,6 +47,7 @@ set_line "$C" description 'description: Use when stating results. Note: keep it 
 checks "$C" skills
 assert_rc "AC5 unquoted description containing ': ' fails (exit 1)" 1
 assert_contains "AC5 failure names the SKILL.md" "$OUT" "$SKILL"
+assert_not_contains "AC5 the unquoted-colon failure is its own rule, not the word budget" "$OUT" "word budget"
 
 C="$(mk_fmin_copy)"
 set_line "$C" description 'description: "Use when stating results. Note: keep it short."'
@@ -64,6 +70,7 @@ if python3 -c 'import yaml' >/dev/null 2>&1; then
   checks "$C" skills
   assert_rc "AC5 frontmatter that PyYAML cannot parse fails (exit 1)" 1
   assert_contains "AC5 parse failure names the SKILL.md" "$OUT" "$SKILL"
+  assert_not_contains "AC5 the parse failure is its own rule, not the word budget" "$OUT" "word budget"
 else
   t_skip 2 "AC5 PyYAML parse test: python3 -c 'import yaml' failed"
 fi
@@ -85,6 +92,20 @@ OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" --only skills 2>&1)"; RC
 assert_rc "AC5 without PyYAML an unquoted description containing ': ' still fails (exit 1)" 1
 assert_contains "AC5 without PyYAML the failure says unquoted" "$OUT" "unquoted"
 assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKILL"
+assert_not_contains "AC5 without PyYAML the failure is its own rule, not the word budget" "$OUT" "word budget"
+
+echo "description length limit (450 characters)"
+C="$(mk_fmin_copy)"
+set_line "$C" description "description: $(awk 'BEGIN { for (i = 0; i < 451; i++) printf "a" }')"
+checks "$C" skills
+assert_rc "a 451-character description fails (exit 1)" 1
+assert_contains "the 451-character failure names the 450 limit" "$OUT" "450"
+assert_contains "the 451-character failure names its length" "$OUT" "description length 451"
+assert_not_contains "the 451-character failure is its own rule, not the word budget" "$OUT" "word budget"
+C="$(mk_fmin_copy)"
+set_line "$C" description "description: $(awk 'BEGIN { for (i = 0; i < 450; i++) printf "a" }')"
+checks "$C" skills
+assert_rc "a 450-character description passes (exit 0)" 0
 
 echo "CRLF check judges what git stores (Windows checkouts convert to CRLF)"
 C="$(mk_fmin_git_copy)"
