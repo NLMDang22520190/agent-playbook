@@ -67,6 +67,7 @@ json_obj() {
 emit() { # $1 = JSON text; apply --jq/-q when given
   if [ -n "$expr" ]; then
     if command -v jq >/dev/null 2>&1; then printf '%s\n' "$1" | jq -r "$expr"; return; fi
+    case "$1" in '[]'|null) return ;; esac   # no jq: an empty list or null selects nothing, so print nothing
     # no jq: print the value of every .field named in the expression, one per line
     for t in $(printf '%s' "$expr" | grep -oE '\.[A-Za-z_]+' | tr -d .); do val "$t"; done
     return

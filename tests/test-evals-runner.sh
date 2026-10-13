@@ -1168,7 +1168,10 @@ assert_eq "T7 a leftover dir is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c 
 find "$RF_TD" -maxdepth 2 -type d -exec chmod u+rwx {} + 2>/dev/null
 
 echo "v0.24.7 T8 a scenario TMPDIR that cannot be removed at all: a NOTE names the path, the scenario does not fail"
-if [ "$(id -u)" != 0 ]; then
+T8PROBE="$(mktemp -d "${TMPDIR:-/tmp}/t8probe.XXXXXX")"; mkdir "$T8PROBE/child"; chmod 555 "$T8PROBE"; rm -rf "$T8PROBE/child" 2>/dev/null; chmod 755 "$T8PROBE"
+T8BLOCKS=1; [ -d "$T8PROBE/child" ] || T8BLOCKS=0   # 0: chmod does not block removal here (root, NTFS)
+rm -rf "$T8PROBE"
+if [ "$(id -u)" != 0 ] && [ "$T8BLOCKS" = 1 ]; then
 mk_adapter t8 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t8.tmpdir"
 chmod 555 "$(dirname "$TMPDIR")"
 true'
@@ -1178,6 +1181,6 @@ chmod 755 "$RF_TD" 2>/dev/null
 T8D="$(cat "$REC/t8.tmpdir" 2>/dev/null)"
 if [ -n "$T8D" ] && printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T8D"; then t_ok "T8 a NOTE names the path that could not be removed"; else t_bad "T8 a NOTE names the path that could not be removed" "dir [$T8D], output: $OUT"; fi
 assert_eq "T8 it is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
-else t_skip 2 "v0.24.7 T8 (running as root: a read-only parent does not stop the removal)"; fi
+else t_skip 2 "v0.24.7 T8 (chmod 555 on a parent does not stop the removal here: root or NTFS)"; fi
 
 t_summary
