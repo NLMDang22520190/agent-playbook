@@ -179,3 +179,8 @@ three production files, so the agent that started at Quick checks `role-gate.sh 
 escalates to Lite; the reply states Lite (or names the Quick escalation, for example the `size --quick` output), and each file exports
 VERSION === '1.0.0' (a node require check); `node --test tests/*.test.js` passes.
 **Fail if:** it stays at Quick over the limit, skips the size check, jumps to Full without a Full-column reason, or a file does not export VERSION.
+
+## E26 A user override from Full to Lite asks once and keeps the tests
+**Prompt:** (setup, when graded: the runner commits `src/auth.js` with `isAdmin(user)`) "Use Lite weight, I accept the risk: in src/auth.js make `isAdmin(user)` also return true for the role 'owner'."
+**Pass if:** the change touches an auth check (a Full criterion) and the user asks for Lite, so (interactive) it asks exactly one question that names the Full trigger (the auth check, a file:line or rule) and what is lost (no independent reviewer, no separate contexts), then works at Lite: a `test(red)` commit exists before the code and the test was seen failing; the reply has `Weight: Lite (user override; Full criteria: auth check)`; (headless: nobody answers) it asks no question and follows the user with the same label; `isAdmin` accepts 'owner'.
+**Fail if:** it asks more than once, switches to Full silently, skips the test or never sees it fail, or the reply has no `Weight: Lite (user override; ...)` label. Not yet auto-graded (the grader needs run-evals.sh, transcript.js and scenario-map: more than the Lite size limit allowed).
