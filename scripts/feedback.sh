@@ -53,6 +53,11 @@ find_item() { # id [dirs...] -> path
   return 1
 }
 
+# The body temp file of a submit (pbfb.*) is feedback.sh's own, so it is removed on every exit (success, failure,
+# die, INT, TERM). Nothing else is touched: feedback.sh never creates other temp files or dirs in the storage folders.
+body=""
+cleanup_tmp() { [ -z "$body" ] || rm -f "$body"; return 0; }
+
 render_body() { # file
   load_item "$1"
   {
@@ -70,6 +75,12 @@ render_body() { # file
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
+case "$cmd" in
+  capture | submit)
+    trap cleanup_tmp EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM ;;
+esac
 
 case "$cmd" in
   capture)

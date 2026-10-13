@@ -502,4 +502,21 @@ assert_contains "D5 three Full tasks with one major in total print 'review major
 has_metric "D5 tasks stay a whole count (3)" "$DL" "tasks" "3"
 if printf '%s\n' "$DL" | grep -qiE 'tokens[^0-9]{0,20}100\.3([^0-9]|$)'; then t_ok "D5 the average tokens (300.33 / 3 = 100.33) print as 100.3"; else t_bad "D5 the average tokens print as 100.3" "line: $DL"; fi
 if printf '%s\n' "$DL" | grep -qiE 'rework[^0-9]{0,20}0\.3([^0-9]|$)'; then t_ok "D5 the rework per task (1, 0, 0) prints as 0.3"; else t_bad "D5 the rework per task prints as 0.3" "line: $DL"; fi
+
+echo "v0.24.5: cost.sh accepts the spec_reviewer role and reports it after the reviewer"
+newp
+cost add --role spec_reviewer --tokens 70 --seconds 5 --model sm --weight Full
+assert_rc "v0.24.5 add --role spec_reviewer exits 0" 0
+assert_eq "v0.24.5 the spec_reviewer row is logged" "2" "$(lines)"
+cost add --role reviewer --tokens 30 --seconds 3 --model rm --weight Full
+cost add --role tester --tokens 10 --seconds 1 --weight Full
+cost summary
+assert_rc "v0.24.5 summary with a spec_reviewer row exits 0" 0
+ROWS="$(printf '%s\n' "$OUT" | grep -E '^\| (tester|implementer|reviewer|spec_reviewer|orchestrator) ' | awk -F'|' '{ gsub(/ /, "", $2); printf "%s ", $2 }')"
+assert_eq "v0.24.5 the report orders spec_reviewer after the reviewer" "tester reviewer spec_reviewer " "$ROWS"
+has_cell "v0.24.5 the spec_reviewer row sums its tokens" "$(cells '^spec_reviewer$')" "70"
+cost summary --json
+assert_contains "v0.24.5 the json report has a spec_reviewer entry" "$OUT" "\"spec_reviewer\":{\"runs\":1,\"tokens\":70,\"seconds\":5}"
+cost add --role spec-reviewer --tokens 1
+assert_rc "v0.24.5 a misspelt role is still rejected" 2
 t_summary

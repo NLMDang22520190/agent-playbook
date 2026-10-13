@@ -434,7 +434,7 @@ assert_eq "AC11.1 --harness codex: implementer= (per-harness)" "implementer=ic" 
 assert_eq "AC11.1 --harness codex: reviewer= (per-harness beats generic)" "reviewer=rc" "$(line_of reviewer)"
 assert_eq "AC11.1 --harness codex: reviewer_light= (no own key: the reviewer's model for that harness)" "reviewer_light=rc" "$(line_of reviewer_light)"
 assert_eq "AC11.1 --harness codex: mechanical= (per-harness)" "mechanical=mc" "$(line_of mechanical)"
-assert_eq "AC11.1 --harness codex: exactly five role lines" "5" "$(printf '%s\n' "$OUT" | grep -c '=')"
+assert_eq "AC11.1 --harness codex: exactly six role lines (v0.24.5 adds spec_reviewer)" "6" "$(printf '%s\n' "$OUT" | grep -c '=')"
 export PLAYBOOK_HARNESS=codex
 role list
 assert_rc "AC11.1 list under PLAYBOOK_HARNESS=codex exits 0" 0
@@ -542,7 +542,7 @@ assert_eq "AC2.1 list: no effort set: the line is unchanged" "implementer=ic" "$
 assert_eq "AC2.1 list: generic effort shown" "reviewer=rc (low)" "$(line_of reviewer)"
 assert_eq "AC2.1 list: reviewer_light shows the reviewer's effort and model it falls back to" "reviewer_light=rc (low)" "$(line_of reviewer_light)"
 assert_eq "AC2.1 list: mechanical has no effort fallback" "mechanical=session" "$(line_of mechanical)"
-assert_eq "AC2.1 list: still exactly five lines" "5" "$(printf '%s\n' "$OUT" | grep -c '=')"
+assert_eq "AC2.1 list: exactly six lines (v0.24.5 adds spec_reviewer)" "6" "$(printf '%s\n' "$OUT" | grep -c '=')"
 printf 'model_tester_reasoning_effort=high\n' > "$G"
 role list
 assert_eq "AC2.1 list: a session model with an effort" "tester=session (high)" "$(line_of tester)"
@@ -749,4 +749,72 @@ role reviewer_light --harness codex
 assert_eq "v0.24.1 reviewer_light with another harness still reads model_reviewer_light" "lm" "$OUT"
 reset
 
+
+echo "v0.24.5: the spec_reviewer role (Full weight's spec reviewer sub-agent) falls back to the reviewer"
+reset
+role spec_reviewer
+assert_rc "v0.24.5 spec_reviewer is a known role (exit 0)" 0
+assert_eq "v0.24.5 spec_reviewer with nothing configured -> session" "session" "$OUT"
+reset
+printf 'model_reviewer=rv\n' > "$G"
+role spec_reviewer
+assert_eq "v0.24.5 spec_reviewer falls back to the reviewer's generic model" "rv" "$OUT"
+reset
+printf 'model_reviewer=rv\nmodel_spec_reviewer=sv\n' > "$G"
+role spec_reviewer
+assert_eq "v0.24.5 model_spec_reviewer beats the reviewer's model" "sv" "$OUT"
+role reviewer
+assert_eq "v0.24.5 the reviewer itself is not changed by model_spec_reviewer" "rv" "$OUT"
+reset
+printf 'model_reviewer_codex=rcx\nmodel_reviewer=rv\n' > "$G"
+role spec_reviewer --harness codex
+assert_eq "v0.24.5 spec_reviewer falls back to the reviewer's per-harness model" "rcx" "$OUT"
+reset
+printf 'model_reviewer_codex=rcx\nmodel_spec_reviewer_codex=scx\nmodel_spec_reviewer=sv\n' > "$G"
+role spec_reviewer --harness codex
+assert_eq "v0.24.5 model_spec_reviewer_<harness> wins" "scx" "$OUT"
+role spec_reviewer --harness claude
+assert_eq "v0.24.5 another harness reads the generic model_spec_reviewer" "sv" "$OUT"
+reset
+printf 'model_reviewer_reasoning_effort=high\n' > "$G"
+role spec_reviewer --effort
+assert_eq "v0.24.5 spec_reviewer effort falls back to the reviewer's effort" "high" "$OUT"
+reset
+printf 'model_reviewer_reasoning_effort=high\nmodel_spec_reviewer_reasoning_effort_codex=low\n' > "$G"
+role spec_reviewer --effort --harness codex
+assert_eq "v0.24.5 model_spec_reviewer_reasoning_effort_<harness> wins" "low" "$OUT"
+reset
+printf 'model_reviewer=rv\nmodel_spec_reviewer=sv\n' > "$G"
+role list
+assert_eq "v0.24.5 list has the spec_reviewer line" "spec_reviewer=sv" "$(printf '%s\n' "$OUT" | grep -x 'spec_reviewer=.*')"
+assert_eq "v0.24.5 list puts spec_reviewer right after reviewer" "reviewer=rv
+spec_reviewer=sv" "$(printf '%s\n' "$OUT" | grep -A1 -x 'reviewer=.*')"
+reset
+printf 'model_tester=t\nmodel_implementer=i\nmodel_reviewer=rv\nmodel_spec_reviewer=sv\n' > "$G"
+role plan
+assert_eq "v0.24.5 plan shows spec_reviewer after the reviewer when it differs" "Models: tester=t, implementer=i, reviewer=rv, spec_reviewer=sv - from conf" "$OUT"
+reset
+printf 'model_tester=t\nmodel_implementer=i\nmodel_reviewer=rv\n' > "$G"
+role plan
+assert_eq "v0.24.5 plan hides spec_reviewer when it equals the reviewer" "Models: tester=t, implementer=i, reviewer=rv - from conf" "$OUT"
+reset
+printf 'model_spec_reviewer=sv\n' > "$G"
+role plan
+assert_eq "v0.24.5 a spec_reviewer key alone counts as from conf" "Models: tester=session, implementer=session, reviewer=session, spec_reviewer=sv - from conf" "$OUT"
+reset
+printf 'model_spec_reviewer=sv\nmodel_spec_reviewer_codex=sc\nmodel_spec_reviewer_reasoning_effort=low\nmodel_spec_reviewer_reasoning_effort_codex=high\n' > "$G"
+role check
+assert_rc "v0.24.5 check knows every model_spec_reviewer key form (only generic warnings)" 1
+assert_not_contains "v0.24.5 check does not call model_spec_reviewer_codex unknown" "$OUT" "unknown key model_spec_reviewer_codex"
+assert_not_contains "v0.24.5 check does not call the spec_reviewer effort keys unknown" "$OUT" "unknown key model_spec_reviewer_reasoning"
+assert_contains "v0.24.5 check warns about the generic model_spec_reviewer" "$OUT" "model_spec_reviewer=sv"
+reset
+printf 'model_spec_reviewerx=1\n' > "$G"
+role check
+assert_contains "v0.24.5 check still flags a misspelt spec_reviewer key" "$OUT" "unknown key model_spec_reviewerx"
+reset
+role spec_reviewer --harness light
+assert_rc "v0.24.5 the harness collision check still works with spec_reviewer in the lists" 2
+assert_contains "v0.24.5 the collision names reviewer_light" "$OUT" "collides with role reviewer_light"
+reset
 t_summary

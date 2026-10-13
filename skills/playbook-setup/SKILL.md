@@ -59,7 +59,7 @@ agent-playbook repo. Do not improvise an installation.
    reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or
    low-tier, each with a reason and its relative cost. Label any sample table "example". The user
    accepts it or picks others. Store each pick with
-   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting, stored as `model_reviewer_light_<harness>` and `model_mechanical_<harness>`).
+   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting, stored as `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`).
    Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
    never write keys that are not documented in step 6 (no harness-specific extras).
 
@@ -74,8 +74,8 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set test_cmd "pnpm test" --project     # per-project values: --project
    bash $C set setup done --global
    ```
-   Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
-   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
+   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
    shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as your email address or a private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 

@@ -81,14 +81,10 @@ assert_rc "AC4.1 E19 plain-text transcript: exit 0" 0
 # ---- v0.21.0 AC5.1: transcript.js unwraps wrapper forms whose options take a value ----
 echo "v0.21.0 AC5.1 transcript.js unwraps bash -o pipefail -c, +o, -O, --rcfile, --init-file, --noprofile --norc"
 TR="$(mk_tmp)"
-# fb_of COMMAND -> the feedback_captured value of a transcript whose only tool_use is Bash running COMMAND
-fb_of() {
-  node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/t.json"
-  node "$PB_ROOT/evals/transcript.js" "$TR/t.json" 2>/dev/null | sed -n 's/^feedback_captured=//p'
-}
+# tq_add feedback_captured NAME EXPECT COMMAND (evals-fixture.sh) -> the feedback_captured value of a transcript whose only tool_use is Bash running COMMAND; tq_flush grades a whole table
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC5.1 captured through a wrapper [$cmd]: feedback_captured=1" "1" "$(fb_of "$cmd")"
+  tq_add feedback_captured "AC5.1 captured through a wrapper [$cmd]: feedback_captured=1" "1" "$cmd"
 done <<'EOF'
 bash -o pipefail -c 'bash scripts/feedback.sh capture --summary x'
 bash -o pipefail -c "bash scripts/feedback.sh capture --summary x"
@@ -102,9 +98,10 @@ bash -o pipefail -lc 'bash scripts/feedback.sh capture --summary x'
 bash -c "bash -o pipefail -c 'bash scripts/feedback.sh capture --summary x'"
 cd /home/dev/p && bash -eo pipefail -c "bash scripts/feedback.sh capture --summary x"
 EOF
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC5.1 not a capture [$cmd]: feedback_captured=0" "0" "$(fb_of "$cmd")"
+  tq_add feedback_captured "AC5.1 not a capture [$cmd]: feedback_captured=0" "0" "$cmd"
 done <<'EOF'
 bash -o pipefail -c "echo 'feedback.sh capture'"
 bash -eo pipefail -c 'echo "feedback.sh capture"'
@@ -113,6 +110,7 @@ bash -n 'feedback.sh capture'
 bash -o pipefail script.sh 'feedback.sh capture'
 bash -o pipefail -c "bash scripts/feedback.sh list"
 EOF
+tq_flush
 
 # ---- v0.21.0 AC6.1: E20 gate_item accepts the underscore forms ----
 echo "v0.21.0 AC6.1 E20 the captured item names the gate misfire: tester_gate, gate_check, role_gate"
@@ -146,13 +144,9 @@ done
 
 # ---- v0.21.0 AC7.1: E5 (completion claim without a fresh run) is auto-graded ----
 echo "v0.21.0 AC7.1 transcript.js ran_tests"
-rt_of() {
-  node -e 'console.log(JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:process.argv[1]}}]}}))' "$1" > "$TR/t.json"
-  node "$PB_ROOT/evals/transcript.js" "$TR/t.json" 2>/dev/null | sed -n 's/^ran_tests=//p'
-}
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC7.1 a run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "AC7.1 a run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'EOF'
 node --test
 node --test tests/*.test.js
@@ -163,9 +157,10 @@ bash -lc 'node --test tests/'
 bash -c "npm test"
 cd /work/E5 && node --test tests/
 EOF
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "AC7.1 not a run [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "AC7.1 not a run [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'EOF'
 echo "node --test"
 echo 'npm test'
@@ -173,6 +168,7 @@ bash -lc "echo 'node --test'"
 cat package.json
 ls tests
 EOF
+tq_flush
 assert_eq "AC7.1 a transcript with no tool_use at all: ran_tests=0" "0" "$(printf '%s\n%s\n' "$INIT" "$(res 'All tests pass')" > "$TR/n.json"; node "$PB_ROOT/evals/transcript.js" "$TR/n.json" 2>/dev/null | sed -n 's/^ran_tests=//p')"
 assert_eq "AC7.1 a Write whose content says npm test is not a run: ran_tests=0" "0" "$(tu Write '{"file_path":"/w/notes.md","content":"npm test"}' > "$TR/w.json"; node "$PB_ROOT/evals/transcript.js" "$TR/w.json" 2>/dev/null | sed -n 's/^ran_tests=//p')"
 assert_eq "AC7.1 a plain-text transcript: ran_tests=na" "na" "$(printf 'ran npm test\nall tests pass\n' > "$TR/p.txt"; node "$PB_ROOT/evals/transcript.js" "$TR/p.txt" 2>/dev/null | sed -n 's/^ran_tests=//p')"
@@ -405,7 +401,7 @@ assert_rc "AC1.1 E17 plain-text transcript, everything done: exit 0" 0
 echo "v0.21.0 review: ran_tests counts a real proof-run call, not a mention of it"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV1 proof-run run [$cmd]: ran_tests=1" "1" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV1 proof-run run [$cmd]: ran_tests=1" "1" "$cmd"
 done <<'XEOF'
 bash ~/.agents/playbook/scripts/proof-run.sh --label red -- npm test
 ~/.agents/playbook/scripts/proof-run.sh --label x
@@ -417,9 +413,10 @@ echo hi | scripts/proof-run.sh --label x
 sh scripts/proof-run.sh --label x
 bash -lc 'scripts/proof-run.sh --label x'
 XEOF
+tq_flush
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
-  assert_eq "RV1 proof-run only mentioned [$cmd]: ran_tests=0" "0" "$(rt_of "$cmd")"
+  tq_add ran_tests "RV1 proof-run only mentioned [$cmd]: ran_tests=0" "0" "$cmd"
 done <<'XEOF'
 cat ~/.agents/playbook/scripts/proof-run.sh
 grep -n usage scripts/proof-run.sh
@@ -427,6 +424,7 @@ less scripts/proof-run.sh
 ls -l scripts/proof-run.sh
 head -n 5 ~/.agents/playbook/scripts/proof-run.sh
 XEOF
+tq_flush
 
 echo "v0.21.0 review: transcript.js does not hang on a wrapper-like command with many options and no closing quote"
 node -e '

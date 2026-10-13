@@ -227,4 +227,22 @@ echo "#11 skill names are lowercase only (locale-independent check)"
 cap "Uppercase skill name" --skill Playbook-TDD
 assert_rc "#11 uppercase skill name rejected" 2
 
+
+echo "v0.24.5: feedback.sh leaves no pbfb.* temp file behind"
+pbleft() { find "$D" -name 'pbfb.*' 2>/dev/null | wc -l | tr -d ' '; }
+cap "Temp file one"
+IDT="$(printf '%s' "$OUT" | sed -n 's/^captured \([^ ]*\).*/\1/p')"
+run bash "$FB" submit "$IDT" --repo o/r
+assert_rc "v0.24.5 submit with the fake gh exits 0" 0
+assert_file "v0.24.5 the submitted item moved to sent/" "$D/sent/$IDT.md"
+cap "Temp file two"
+IDF="$(printf '%s' "$OUT" | sed -n 's/^captured \([^ ]*\).*/\1/p')"
+GH_FAIL=1 run bash "$FB" submit "$IDF" --repo o/r
+if [ "$RC" -ne 0 ]; then t_ok "v0.24.5 failing submit exits non-zero"; else t_bad "v0.24.5 failing submit exits non-zero"; fi
+assert_eq "v0.24.5 after a failing submit no pbfb.* file is left" "0" "$(pbleft)"
+assert_file "v0.24.5 the failed item is still pending" "$D/pending/$IDF.md"
+# the body temp file is gone too, also when TMPDIR points into the storage folder
+TD="$D/sent"; mkdir -p "$TD"
+TMPDIR="$TD" run bash "$FB" submit "$IDF" --repo o/r
+assert_eq "v0.24.5 TMPDIR inside sent/: no pbfb.* file is left behind" "0" "$(pbleft)"
 t_summary

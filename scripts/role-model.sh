@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # Print the model to use for a TDD role.
-#   role-model.sh ROLE [--harness H] [--effort]  ROLE = tester|implementer|reviewer|reviewer_light|mechanical
+#   role-model.sh ROLE [--harness H] [--effort]  ROLE = tester|implementer|reviewer|spec_reviewer|reviewer_light|mechanical
 #                                        --effort prints the reasoning effort instead (empty when unset)
 #   role-model.sh list [--harness H]     one line per role: tester=<m>, implementer=<m>, reviewer=<m>,
-#                                        reviewer_light=<m>, mechanical=<m>; "<m> (<effort>)" when an effort is set
-#   role-model.sh plan [--harness H]     one line: Models: tester=<m>, implementer=<m>, reviewer=<m> - from conf
+#                                        spec_reviewer=<m>, reviewer_light=<m>, mechanical=<m>; "<m> (<effort>)" when an effort is set
+#   role-model.sh plan [--harness H]     one line: Models: tester=<m>, implementer=<m>, reviewer=<m>[, spec_reviewer=<m>] - from conf
+#                                        (spec_reviewer is shown only when it differs from the reviewer)
 #                                        (or "- session (no conf)" when no role has a key in a conf; an explicit session counts as from conf)
 #   role-model.sh check [--harness H]    warn about generic model_<role> keys (they apply to every
 #                                        harness) and unknown model_* keys; exit 1 if any, 0 if none
 # Lookup (project conf before global, per pb_conf_get): model_<role>_<harness>,
 # then model_<role>, else "session" (= do not override the session model).
-# reviewer_light falls back to the reviewer's model before "session"; mechanical never falls back
+# reviewer_light and spec_reviewer (the Full-weight spec reviewer sub-agent) fall back to the reviewer's model before
+# "session"; mechanical never falls back
 # to another role (a diff of tests/docs/skill text uses reviewer_light, release prep and counts use mechanical).
 # Effort lookup: model_<role>_reasoning_effort_<harness>, then model_<role>_reasoning_effort; reviewer_light
-# falls back to the reviewer's effort, mechanical has no fallback.
+# and spec_reviewer fall back to the reviewer's effort, mechanical has no fallback.
 # Harness: --harness H, else env PLAYBOOK_HARNESS, else none. H matches [a-z0-9-]+.
 # Exit: 0 ok, 1 generic keys found (check), 2 usage error.
 set -u
@@ -25,8 +27,8 @@ model_for() { # role harness
   local v=""
   if [ -n "$2" ]; then v="$(pb_conf_get "model_$1_$2")" || v=""; fi
   if [ -z "$v" ]; then
-    if [ "$1" = reviewer_light ]; then
-      v="$(pb_conf_get "model_reviewer_light")" || v=""
+    if [ "$1" = reviewer_light ] || [ "$1" = spec_reviewer ]; then
+      v="$(pb_conf_get "model_$1")" || v=""
       [ -n "$v" ] || v="$(model_for reviewer "$2")"
     else
       v="$(pb_conf_get "model_$1" session)"
@@ -39,7 +41,7 @@ effort_for() { # role harness
   local v=""
   if [ -n "$2" ]; then v="$(pb_conf_get "model_$1_reasoning_effort_$2")" || v=""; fi
   [ -n "$v" ] || { v="$(pb_conf_get "model_$1_reasoning_effort")" || v=""; }
-  if [ -z "$v" ] && [ "$1" = reviewer_light ]; then v="$(effort_for reviewer "$2")"; fi
+  if [ -z "$v" ] && { [ "$1" = reviewer_light ] || [ "$1" = spec_reviewer ]; }; then v="$(effort_for reviewer "$2")"; fi
   printf '%s' "$v"
 }
 
@@ -53,7 +55,7 @@ role_line() {
 # known_model_key KEY: model_<role>[_<harness>] or model_<role>_reasoning_effort[_<harness>]
 known_model_key() {
   local k="$1" r h
-  for r in reviewer_light tester implementer reviewer mechanical; do
+  for r in reviewer_light spec_reviewer tester implementer reviewer mechanical; do
     case "$k" in
       "model_$r" | "model_${r}_reasoning_effort") return 0 ;;
       "model_${r}_reasoning_effort_"*) h="${k#"model_${r}_reasoning_effort_"}"; valid_harness "$h" && return 0 ;;
@@ -68,8 +70,8 @@ known_model_key() {
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
-  tester | implementer | reviewer | reviewer_light | mechanical | list | plan | check) ;;
-  *) pb_die "usage: role-model.sh tester|implementer|reviewer|reviewer_light|mechanical [--effort] | list | plan | check [--harness H]" 2 ;;
+  tester | implementer | reviewer | spec_reviewer | reviewer_light | mechanical | list | plan | check) ;;
+  *) pb_die "usage: role-model.sh tester|implementer|reviewer|spec_reviewer|reviewer_light|mechanical [--effort] | list | plan | check [--harness H]" 2 ;;
 esac
 
 harness="${PLAYBOOK_HARNESS:-}"
@@ -90,8 +92,8 @@ done
 if [ -n "$harness" ]; then
   valid_harness "$harness" || pb_die "invalid harness: $harness (use [a-z0-9-]+)" 2
   # model_<role>_<harness> must not equal another role's generic key (reviewer + light = reviewer_light)
-  for r in tester implementer reviewer reviewer_light mechanical; do
-    for r2 in tester implementer reviewer reviewer_light mechanical; do
+  for r in tester implementer reviewer spec_reviewer reviewer_light mechanical; do
+    for r2 in tester implementer reviewer spec_reviewer reviewer_light mechanical; do
       [ "${r}_$harness" = "$r2" ] && pb_die "harness name '$harness' collides with role $r2" 2
     done
   done
@@ -103,7 +105,7 @@ if [ "$cmd" = "check" ]; then
   for origin in global project; do
     if [ "$origin" = global ]; then f="$g"; else f="$p"; [ "$p" = "$g" ] && continue; fi
     [ -f "$f" ] || continue
-    for r in tester implementer reviewer reviewer_light mechanical; do
+    for r in tester implementer reviewer spec_reviewer reviewer_light mechanical; do
       v="$(pb_conf_read "$f" "model_$r")" || continue   # an empty value counts: it overrides "session" too
       found=1
       printf 'warning: model_%s=%s (%s) applies to every harness; use model_%s_%s instead\n' \
@@ -127,16 +129,19 @@ if [ "$cmd" = "check" ]; then
 fi
 
 if [ "$cmd" = "list" ]; then
-  for r in tester implementer reviewer reviewer_light mechanical; do
+  for r in tester implementer reviewer spec_reviewer reviewer_light mechanical; do
     printf '%s=%s\n' "$r" "$(role_line "$r" "$harness")"
   done
 elif [ "$cmd" = "plan" ]; then
   out="Models:"; src="session (no conf)"; sep=" "
-  for r in tester implementer reviewer; do
+  for r in tester implementer reviewer spec_reviewer; do
     # a key present in any conf counts as from conf, also when its value is session
     if [ -n "$harness" ] && pb_conf_get "model_${r}_${harness}" >/dev/null; then src="from conf"
     elif pb_conf_get "model_$r" >/dev/null; then src="from conf"; fi
-    out="$out$sep$r=$(role_line "$r" "$harness")"; sep=", "
+    line="$(role_line "$r" "$harness")"
+    # spec_reviewer only when it differs from the reviewer (it falls back to the reviewer, so equal = no news)
+    [ "$r" = spec_reviewer ] && [ "$line" = "$(role_line reviewer "$harness")" ] && continue
+    out="$out$sep$r=$line"; sep=", "
   done
   printf '%s - %s\n' "$out" "$src"
 elif [ "$want_effort" = 1 ]; then
