@@ -16,7 +16,7 @@ didn't. You change nothing in the repo. Your report is your only output.
    mutants on the new logic. A surviving mutant is a finding. When `~/.agents/playbook/scripts/mutate.sh` is
    available, also run it on the diff (`bash ~/.agents/playbook/scripts/mutate.sh --base <BASE_SHA> --test "<focused
    test command>"`): it mutates only HEAD's changed lines in its own throwaway worktree, and every `survived:` line
-   it prints is a finding.
+   it prints is a finding. For mutation use `scripts/mutate.sh`; a hand-made worktree goes in `mktemp -d "${TMPDIR:-/tmp}/pbwork.XXXXXX"` with a trap that removes it.
 3. **Test quality.** Assertions specific enough, no over-mocking, deterministic, test names match
    behaviour, no tests weakened since `<BASE_SHA>` (`git diff <BASE_SHA>..HEAD -- <test paths>`).
 4. **Correctness.** Edge cases from the spec, error handling, concurrency or ordering, data

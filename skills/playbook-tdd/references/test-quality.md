@@ -7,7 +7,7 @@ Mutation testing does: change the code slightly (a "mutant") and check that some
 `scripts/mutate.sh --base <sha> --test "<focused test command>"` flips operators (`==`, `-eq`, `&&`, `true`, `return 0`, and
 `===` `!==`, and outside shell files `<` `>` `+` `-` `*` `/`) on the lines the diff added, one mutant per line and
 operator, in a throwaway worktree in the system temp dir (`${TMPDIR:-/tmp}`; your tree is never written), and prints `survived:` for every mutant the tests did not catch. Use it first; the manual
-spot-check below covers what its small operator list cannot.
+spot-check below covers what its small operator list cannot. For mutation use `scripts/mutate.sh`; a hand-made worktree goes in `mktemp -d "${TMPDIR:-/tmp}/pbwork.XXXXXX"` with a trap that removes it.
 
 ## Mutation spot-check (manual, reviewer, about 10 minutes)
 Do it in a throwaway worktree in the system temp dir, never inside the repo, so the main tree stays untouched (the
