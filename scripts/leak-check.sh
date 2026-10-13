@@ -11,7 +11,13 @@
 #                                          with a remote "origin/foo", origin's own branch foo/x is origin/foo's and is scanned
 #                                          too when pushing to origin (scanning more is the safe side). A NAME that is no
 #                                          configured remote (a URL push) uses the refs of the remotes that url names (raw or after
-#                                          insteadOf; only when all their url/pushurl values are one place), else every commit is scanned
+#                                          insteadOf; only when all their url/pushurl values are one place), else every commit is scanned.
+#                                          Escape for that full scan: PB_LEAK_SCAN_BASE=<full commit id> (exactly 40 lowercase hex
+#                                          characters, no name or expression) scans only ID..SHA (the destination is taken to hold
+#                                          ID; your explicit choice, never applied by itself, not used when a configured remote
+#                                          limits the scan). No silent fallback: an id that is not a full commit id of this
+#                                          repository, an empty range (ID is SHA or a descendant of it) or an ID that is not an
+#                                          ancestor of SHA exits 3
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -348,7 +354,7 @@ EOF
 in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "leak-check: not a git repository" >&2; exit 3; }; }
 
 do_scan() {
-  local mode="" val="" remote="" hasremote=0
+  local mode="" val="" remote="" hasremote=0 fullscan=0 bsha="" fullnote="" nbase=0
   [ $# -gt 0 ] || usage
   case "$1" in
     --staged) [ $# -eq 1 ] || usage; mode=staged ;;
@@ -401,21 +407,42 @@ do_scan() {
 $pd
 EOF
               if [ $# -eq 0 ] || ! dest_owned "$@"; then
-                : > "$TMP/own"
+                : > "$TMP/own"; fullscan=1
                 if [ "$hf" = 1 ]; then
-                  printf 'leak-check: %s pushes to a place its fetched refs do not cover; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+                  fullnote="$(printf 'leak-check: %s pushes to a place its fetched refs do not cover; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
                 else
-                  printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+                  fullnote="$(printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
                 fi
               fi
             fi
           else
             if push_rewritten "$remote" || ! dest_owned "$remote"; then
-              : > "$TMP/own"
-              printf 'leak-check: %s is not a configured remote; scanning the full range (push through a named remote to limit it)\n' "$remote" >&2
+              : > "$TMP/own"; fullscan=1
+              fullnote="$(printf 'leak-check: %s is not a configured remote; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
             fi
           fi
           LC_ALL=C sort -u "$TMP/own" | sed 's/^/^/' > "$TMP/not"
+          # PB_LEAK_SCAN_BASE=<full commit id>: the user's explicit choice, only for a full-range scan; the destination is taken to hold it.
+          # Exactly 40 lowercase hex: a name or an expression can move or be rewritten between this check and the push.
+          if [ "$fullscan" = 1 ] && [ -n "${PB_LEAK_SCAN_BASE:-}" ]; then
+            case "$PB_LEAK_SCAN_BASE" in
+              *[!0-9a-f]*) bsha="" ;;
+              *) if [ "${#PB_LEAK_SCAN_BASE}" -eq 40 ]; then bsha="$PB_LEAK_SCAN_BASE"; else bsha=""; fi ;;
+            esac
+            [ -n "$bsha" ] || { printf 'leak-check: PB_LEAK_SCAN_BASE=%s must be a full commit id (40 lowercase hex characters); refusing to fall back to the full range (unset it to scan everything)\n' "$(printf '%s' "$PB_LEAK_SCAN_BASE" | LC_ALL=C tr -c 'A-Za-z0-9._@{}~^/+=:-' '?' | cut -c1-64)" >&2; exit 3; }
+            git rev-parse --verify -q "${bsha}^{commit}" >/dev/null 2>&1 ||
+              { printf 'leak-check: PB_LEAK_SCAN_BASE=%s is not a commit in this repository; it must be a full commit id; refusing to fall back to the full range (unset it to scan everything)\n' "$bsha" >&2; exit 3; }
+            if git merge-base --is-ancestor "$val" "$bsha" >/dev/null 2>&1; then
+              printf 'leak-check: PB_LEAK_SCAN_BASE=%s is the pushed commit or one of its descendants, so the range is empty: nothing to scan; unset PB_LEAK_SCAN_BASE\n' "$bsha" >&2; exit 3
+            fi
+            git merge-base --is-ancestor "$bsha" "$val" >/dev/null 2>&1 ||
+              { printf 'leak-check: PB_LEAK_SCAN_BASE=%s is not an ancestor of the pushed commit; it must be a full commit id of a commit the pushed commit contains; refusing to fall back to the full range (unset it to scan everything)\n' "$bsha" >&2; exit 3; }
+            printf '^%s\n' "$bsha" >> "$TMP/not"
+            nbase="$(git rev-list --count "$bsha..$val" 2>/dev/null)" || nbase="?"
+            case "$nbase" in 1) printf 'leak-check: PB_LEAK_SCAN_BASE is set: scanning 1 commit after %s\n' "$bsha" >&2 ;; *) printf 'leak-check: PB_LEAK_SCAN_BASE is set: scanning %s commits after %s\n' "$nbase" "$bsha" >&2 ;; esac
+          elif [ -n "$fullnote" ]; then
+            printf '%s\n' "$fullnote" >&2
+          fi
           git -c core.quotePath=false log -p --cc --text -U0 --no-color --no-ext-diff --no-renames --src-prefix=a/ --dst-prefix=b/ --format= --stdin "$val" -- < "$TMP/not" > "$TMP/diff" 2>/dev/null ||
             { echo "leak-check: git log failed for $val" >&2; exit 3; }
         else

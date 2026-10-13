@@ -95,3 +95,12 @@ on the installed v0.24.2.
 
 Total 4.37 USD. Isolation check on the real machine: the real feedback queue was byte-identical before and after
 both runs, no temp home was left in TMPDIR, and E24's feedback item and cost log landed in its evidence folder.
+
+## Run 8: v0.24.2 installed - E21 re-run (2026-10-13, cap 3 USD)
+
+| Scenario | Auto passed / total | Cost (USD) | Note |
+|---|---|---|---|
+| E21 | 6/6 | 1.79 | all six checks pass (every call site renamed, tests pass, spec with Understanding naming report.js written before the first src/ edit, nothing written outside the workdir); v0.24.1 scored 3/6 |
+| E10 | skipped | - | cost guard: spent 1.79 + estimate 1.79 >= cap 3 |
+
+Total 1.79 USD (Claude Code 2.1.296, 22 turns). This confirms the v0.24.2 fix of the Quick line for E21.

@@ -315,4 +315,24 @@ else
   t_skip 3 "AC1.3 the base scanner is not available (git, or $G9BASE_SHA, missing)"
 fi
 
+echo "v0.24.4 AC6 the gnu check fails closed: a missing file in the scanned list is a FAIL, never an ok"
+# install.sh is named in the scanned list; when it is missing awk aborts on it, and the section used to print ok and exit 0.
+C="$(mk_min_copy)"
+rm -f "$C/install.sh"
+run bash "$C/evals/run-checks.sh" --only gnu
+G6M_RC=$RC; G6M_OUT="$OUT"
+assert_eq "AC6 install.sh missing: exit 1" "1" "$G6M_RC"
+assert_contains "AC6 install.sh missing: a FAIL line" "$G6M_OUT" "FAIL"
+assert_contains "AC6 install.sh missing: the missing file is named" "$G6M_OUT" "install.sh"
+assert_not_contains "AC6 install.sh missing: no ok line for the GNU check" "$G6M_OUT" "ok   GNU-only options absent"
+C="$(mk_min_copy)"
+run bash "$C/evals/run-checks.sh" --only gnu
+assert_eq "AC6 regression: all scanned files present: exit 0" "0" "$RC"
+assert_contains "AC6 regression: all scanned files present: the ok line stays" "$OUT" "ok   GNU-only options absent"
+C="$(mk_min_copy)"
+rm -f "$C/tools/stub.sh"
+run bash "$C/evals/run-checks.sh" --only gnu
+assert_eq "AC6 regression: an empty glob (tools/*.sh) still FAILs" "1" "$RC"
+assert_contains "AC6 regression: an empty glob is still named" "$OUT" "no files match tools/*.sh"
+
 t_summary

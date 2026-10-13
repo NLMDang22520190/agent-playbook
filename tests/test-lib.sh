@@ -33,6 +33,7 @@ SLIB="$PB_ROOT/scripts/lib.sh"
 RL="$(mk_tmp)"; mk_repo "$RL"
 # rawlines DIR GITSHIMDIR -> sets RAWOUT and RAWRC: pb_raw_lines --cached in DIR (a git shim dir in front of PATH when given)
 rawlines() {
+  # shellcheck source=/dev/null
   RAWOUT="$( cd "$1" && { [ -z "${2:-}" ] || PATH="$2:$PATH"; . "$SLIB"; pb_raw_lines --cached; echo "rc=$?"; } 2>/dev/null )"
   RAWRC="${RAWOUT##*rc=}"; RAWOUT="${RAWOUT%rc=*}"
 }

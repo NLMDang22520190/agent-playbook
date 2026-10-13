@@ -213,6 +213,7 @@ Release speed rules (a cap of 2 review rounds, introduced and pre-existing findi
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
   the result could still be wrong, each with the command run to check it and its outcome).
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
+- When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite/Quick: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
   review majors and rework rounds the tasks had. It is advice only and changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.

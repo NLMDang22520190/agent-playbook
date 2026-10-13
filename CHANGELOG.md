@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.4 - 2026-10-13
+- **The graders read the weight however the agent writes it** (found by the real v0.24.3 evals: E25 passed in substance
+  but the grader missed "at **Lite** weight"). One helper, `stated_weight`, now serves the graders of E1, E15/E19 (the
+  feedback line unless Quick), E23 and E25. A `Weight:` label wins over prose. A prose "X weight" counts unless one of
+  not, never, normally, no need, would need, would have been or n't comes within 3 words before it, so "would normally need
+  Full weight" is not read as a Full statement. A reply with no statement falls back to each grader's old rule.
+- **E24 accepts the models line**: a `Models used:` line or a role=model line counts, and the final report template
+  asks for the `**Models used:**` line verbatim whenever sub-agents ran (E24 had named the models only in prose).
+- **`run-checks.sh` fails closed**: the gnu, dupmax, sed and soh scans used to print "ok" when a scanned file was missing
+  or unreadable, or when awk or grep failed part-way, because the error went to /dev/null and an empty result read as "no
+  findings". They now report FAIL with the file or the exit status.
+- **`PB_LEAK_SCAN_BASE=<full commit id>` for the pre-push leak scan**: when a push goes to a place no configured remote
+  owns (a URL push), `leak-check.sh` scans every commit. Setting the variable bounds that full scan to ID..SHA and prints
+  "scanning N commit(s) after ID". It is your explicit choice and is never applied by itself, and is ignored when a
+  configured remote already limits the scan. No silent fallback: a value that is not a full 40-hex commit id, not a
+  commit of the repository, an empty range, or an id that is not an ancestor of the pushed commit exits 3. Control
+  bytes in the value are never echoed.
+- **Tests**: shellcheck warnings cleaned in test-role-gate, test-conf and test-lib.
+- **Review**: two Opus review rounds plus a final fix; the suites were re-run by the maintainer.
+- **Real evals** (results file): E21 re-run on the installed v0.24.2 - 6/6 for 1.79 USD (it was 3/6 on v0.24.1).
+
 ## 0.24.3 - 2026-10-13
 - **Faster CI where the time really went** (measured first): each GNU-scanner test case ran `run-checks` over the whole
   repository (84 files, 23k lines) although only its one fixture can produce findings - 98 % of those suites' time.
