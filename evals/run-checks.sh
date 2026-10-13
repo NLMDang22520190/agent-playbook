@@ -69,13 +69,15 @@ function strip(s,   i, n, c, q, bs, pc, cc) {
 '
 
 # Word budgets (evals/word-budgets: lines "PATH WORDS"; # starts a comment). wbcheck FILE: ok when `wc -w FILE` is within its budget;
-# FAIL names the file, its count and its budget; a file with no entry, or a missing table, is a FAIL (new files declare a budget).
+# FAIL names the file, its count and its budget; a file with no entry, or a missing table, is a FAIL (new files declare a budget);
+# a missing or unreadable file is "missing, no word count"; a CR at the end of a table line is ignored (CRLF checkouts).
 WB=evals/word-budgets
 wbcheck() {
   local f="$1" w b
   if [ ! -f "$WB" ]; then bad "$f: no word budget ($WB is missing)"; return; fi
+  if [ ! -r "$f" ]; then bad "$f: missing, no word count"; return; fi
   w="$(wc -w < "$f" | tr -d ' ')"
-  b="$(awk -v p="$f" '$1 == p && $2 ~ /^[0-9]+$/ { print $2; exit }' "$WB")"
+  b="$(awk -v p="$f" '{ gsub(/\r/, "", $2) } $1 == p && $2 ~ /^[0-9]+$/ { print $2; exit }' "$WB")"
   if [ -z "$b" ]; then bad "$f: no word budget (add a line '$f WORDS' to $WB)"
   elif [ "$w" -le "$b" ]; then ok "$f: $w words (budget $b)"
   else bad "$f: $w words, over its budget of $b (a new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason)"; fi
@@ -131,6 +133,12 @@ for d in skills/*/; do
     [ -f "$s/$ref" ] || bad "$n: referenced file missing: $ref"
   done
 done
+# a table entry for a file that does not exist is stale
+if [ -f "$WB" ]; then
+  for p in $(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { print $1 }' "$WB"); do
+    [ -f "$p" ] || bad "$p: in $WB but missing"
+  done
+fi
 [ "$desc_total" -le 2000 ] && ok "all descriptions together: $desc_total chars (<=2000, keeps the skill list cheap)" || bad "descriptions total $desc_total chars (>2000)"
 fi
 
