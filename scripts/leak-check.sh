@@ -12,9 +12,12 @@
 #                                          too when pushing to origin (scanning more is the safe side). A NAME that is no
 #                                          configured remote (a URL push) uses the refs of the remotes that url names (raw or after
 #                                          insteadOf; only when all their url/pushurl values are one place), else every commit is scanned.
-#                                          Escape for that full scan: PB_LEAK_SCAN_BASE=REF scans only REF..SHA (the destination is
-#                                          taken to hold REF; your explicit choice, never applied by itself, not used when a
-#                                          configured remote limits the scan; a REF that is no commit exits 3, no silent fallback)
+#                                          Escape for that full scan: PB_LEAK_SCAN_BASE=<full commit id> (exactly 40 lowercase hex
+#                                          characters, no name or expression) scans only ID..SHA (the destination is taken to hold
+#                                          ID; your explicit choice, never applied by itself, not used when a configured remote
+#                                          limits the scan). No silent fallback: an id that is not a full commit id of this
+#                                          repository, an empty range (ID is SHA or a descendant of it) or an ID that is not an
+#                                          ancestor of SHA exits 3
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -432,6 +435,8 @@ EOF
             if git merge-base --is-ancestor "$val" "$bsha" >/dev/null 2>&1; then
               printf 'leak-check: PB_LEAK_SCAN_BASE=%s is the pushed commit or one of its descendants, so the range is empty: nothing to scan; unset PB_LEAK_SCAN_BASE\n' "$bsha" >&2; exit 3
             fi
+            git merge-base --is-ancestor "$bsha" "$val" >/dev/null 2>&1 ||
+              { printf 'leak-check: PB_LEAK_SCAN_BASE=%s is not an ancestor of the pushed commit; it must be a full commit id of a commit the pushed commit contains; refusing to fall back to the full range (unset it to scan everything)\n' "$bsha" >&2; exit 3; }
             printf '^%s\n' "$bsha" >> "$TMP/not"
             nbase="$(git rev-list --count "$bsha..$val" 2>/dev/null)" || nbase="?"
             case "$nbase" in 1) printf 'leak-check: PB_LEAK_SCAN_BASE is set: scanning 1 commit after %s\n' "$bsha" >&2 ;; *) printf 'leak-check: PB_LEAK_SCAN_BASE is set: scanning %s commits after %s\n' "$nbase" "$bsha" >&2 ;; esac

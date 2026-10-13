@@ -336,12 +336,12 @@ stated_weight() {
   # a label (`Weight: X`, `**Weight:** X`, `Weight: **X**`) wins over any prose statement
   w="$(printf '%s\n' "$t" | grep -ioE 'weight:[ *_]*(full|lite|quick)' | head -n 1 | grep -ioE 'full|lite|quick' | head -n 1 | tr 'A-Z' 'a-z')"
   if [ -n "$w" ]; then printf '%s\n' "$w"; return 0; fi
-  # else the first prose `X weight` not preceded, within three words, by not, normally, would or need(s)
+  # else the first prose `X weight` not preceded, within three words, by a real negation (not, never, no need, would need, n't, would have been, normally)
   while IFS= read -r m; do
     [ -n "$m" ] || continue
     m="$(printf '%s' "$m" | tr 'A-Z' 'a-z')"
     pre="$(printf '%s' "$m" | sed -E 's/(full|lite|quick)[*_]* +weight.*//')"
-    if printf '%s' "$pre" | grep -qE "(^|[^[:alnum:]])(not|normally|would|needs?)([^[:alnum:]]|\$)"; then continue; fi
+    if printf '%s' "$pre" | grep -qE "(^|[^[:alnum:]])(not|never|normally|no need|would need|would have been)([^[:alnum:]]|\$)|n't"; then continue; fi
     printf '%s\n' "$m" | grep -oE '(full|lite|quick)[*_]* +weight' | head -n 1 | grep -oE 'full|lite|quick' | head -n 1
     return 0
   done <<EOF
