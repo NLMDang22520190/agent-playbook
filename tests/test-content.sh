@@ -1311,4 +1311,36 @@ case " $AUTOS " in
   *) t_ok "v24.8 r1 E26 is not in AUTO (no grade_E26 yet)" ;;
 esac
 
+echo "v0.24.10 slice C: word cuts (AC7, AC8), lowered budgets (AC9), headings kept (R2-4)"
+WB="$PB_ROOT/evals/word-budgets"
+budget_of() { awk -v f="$1" '$1==f{print $2; exit}' "$WB" 2>/dev/null; }
+TDD_WORDS="$(wc -w < "$SKILL" | tr -d ' ')"
+PROOF_MD="$PB_ROOT/skills/playbook-proof/SKILL.md"
+PROOF_WORDS="$(wc -w < "$PROOF_MD" | tr -d ' ')"
+if [ "$TDD_WORDS" -le 3793 ]; then t_ok "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)"; else t_bad "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)" "$TDD_WORDS words"; fi
+if [ "$PROOF_WORDS" -le 647 ]; then t_ok "v24.10 AC8 playbook-proof SKILL.md is at most 647 words"; else t_bad "v24.10 AC8 playbook-proof SKILL.md is at most 647 words" "$PROOF_WORDS words"; fi
+TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
+if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
+if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -le $((PROOF_WORDS + 50)) ] && [ "$PB" -le 650 ]; then t_ok "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650"; else t_bad "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650" "budget [$PB] count $PROOF_WORDS"; fi
+EXPECT_HEADS="$(cat <<'HEADS'
+## Pick the weight (before Phase 1)
+### Lite workflow
+### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
+## Slice size
+## Preconditions
+## Workflow
+### Phase 1: Spec (orchestrator)
+### Phase 2: Loop per slice (vertical slices, never "all tests first")
+### Phase 3: Review (reviewer, read-only)
+### Phase 4: Close-out (orchestrator)
+## When the user says it is wrong
+## Starting roles per harness (`conf.sh get subagents`)
+## Stop and ask the user when
+## Resuming
+## Hand-off files (`.agents/handoff/`, git-ignored)
+HEADS
+)"
+GOT_HEADS="$(grep -E '^###? ' "$SKILL")"
+if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order"; else t_bad "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order" "headings differ: $(diff <(printf '%s\n' "$EXPECT_HEADS") <(printf '%s\n' "$GOT_HEADS") | head -6 | tr '\n' '|')"; fi
+
 t_summary
