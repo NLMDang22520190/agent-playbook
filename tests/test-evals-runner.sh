@@ -911,6 +911,9 @@ rf_run() {
 }
 alive() { local s; s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')"; [ -n "$s" ] && [ "${s#Z}" = "$s" ]; }
 
+# the F1 cases need real symlinks; Git Bash without symlink rights makes a copy for ln -s, so skip them there
+F1D="$(mk_tmp)"; : > "$F1D/t"; ln -s t "$F1D/l" 2>/dev/null
+if [ -L "$F1D/l" ]; then
 echo "v0.24.3 F1a a cost.tsv that is a link to a file outside is not copied as evidence"
 SEC="$(mk_tmp)"; printf 'OUTSIDE-SECRET-F1A\n' > "$SEC/secret.tsv"
 mk_adapter f1a 'mkdir -p .agents/handoff; rm -f .agents/handoff/cost.tsv; ln -s "'"$SEC"'/secret.tsv" .agents/handoff/cost.tsv; true'
@@ -962,6 +965,7 @@ assert_file "F1d handoff link: the adapter ran" "$REC/E1.args"
 assert_eq "F1d handoff link: the outside content is not in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1D2)"
 assert_eq "F1d handoff link: no cost.tsv in the evidence" "0" "$(nnamed "$OD" cost.tsv)"
 assert_eq "F1d handoff link: no symlink in the evidence" "0" "$(nlinks "$OD")"
+else t_skip 20 "v0.24.3 F1 symlink cases (ln -s makes a copy on this file system)"; fi
 
 echo "v0.24.3 F2 the evidence is per run: --out D/run-A.md and D/run-B.md keep separate E1 folders"
 mk_adapter f2 "$(RF_FB 'F2-FB-$RUNTAG-$e')"'
