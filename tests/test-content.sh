@@ -1330,4 +1330,32 @@ if printf '%s' "$TDDDESC" | grep -qiE 'user says "?quick'; then t_ok "v24.6 the 
 if printf '%s' "$TDDDESC" | grep -q 'Lite' && printf '%s' "$TDDDESC" | grep -q 'Full'; then t_ok "v24.6 the playbook-tdd description still names Lite and Full"; else t_bad "v24.6 the playbook-tdd description still names Lite and Full" "$TDDDESC"; fi
 if [ "${#TDDDESC}" -ge 1 ] && [ "${#TDDDESC}" -le 450 ]; then t_ok "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks (${#TDDDESC})"; else t_bad "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks" "${#TDDDESC} chars"; fi
 
+echo "v0.24.8: a user override from Full to Lite (ask once, label it, never drop the tests)"
+PICKW="$(awk '/^## Pick the weight/ { f = 1; next } f && /^## / { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+qchk "v24.8 Pick the weight has the user override rule" "$PICKW" 'user override'
+qchk "v24.8 the override asks once" "$PICKW" '[Aa]sks? once'
+qchk "v24.8 the question names the Full trigger (file:line or rule)" "$PICKW" 'ask[^.]{0,40}once[^.]{0,200}(file:line|rule)'
+qchk "v24.8 the question names what is lost: no independent reviewer, no separate contexts" "$PICKW" 'no independent reviewer[^.]{0,60}no separate contexts'
+qchk "v24.8 the override is labelled Weight: Lite (user override; Full criteria: <x>)" "$PICKW" 'Weight: Lite \(user override; Full criteria: <x>\)'
+qchk "v24.8 the label goes to decisions.md and the final report" "$PICKW" 'user override[^.]{0,200}decisions\.md[^.]{0,60}final report'
+qchk "v24.8 the tests are never skipped" "$PICKW" 'tests? (are|is) never skipped|never skips? (the )?tests?'
+qchk "v24.8 the override still runs test first, seen failing, role gates and evidence" "$PICKW" 'seen failing[^.]{0,80}role gates[^.]{0,40}evidence'
+qchk "v24.8 a headless run follows the user with no question" "$PICKW" 'headless[^.]{0,120}(no question|without (a )?question)'
+qchk "v24.8 the skip-tests rule is unchanged" "$PICKW" 'skip-tests rule is unchanged'
+qchk "v24.8 the final-report template shows the user override weight line" "$(tr '\n' ' ' < "$FINAL")" 'Lite \(user override; Full criteria: <x>\)'
+echo "v0.24.8 E26 scenario definition (not yet auto-graded)"
+exact_heading "v24.8 scenarios has the E26 heading" "$SCEN" '## E26 A user override from Full to Lite asks once and keeps the tests'
+check_sec "v24.8 E26 has a Prompt line" "$SCEN" '^## E26 ' '^\*\*Prompt:\*\*'
+check_sec "v24.8 E26 has a Pass if line" "$SCEN" '^## E26 ' '^\*\*Pass if:\*\*'
+check_sec "v24.8 E26 has a Fail if line" "$SCEN" '^## E26 ' '^\*\*Fail if:\*\*'
+l25="$(line_of "$SCEN" '^## E25 ')"; l26="$(line_of "$SCEN" '^## E26 ')"
+if [ -n "$l25" ] && [ -n "$l26" ] && [ "$l25" -lt "$l26" ]; then t_ok "v24.8 E26 follows E25"; else t_bad "v24.8 E26 follows E25" "E25=[$l25] E26=[$l26]"; fi
+E26S="$(awk -v h='## E26 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+qchk "v24.8 E26 touches an auth check and the user asks for Lite" "$E26S" 'auth[^.]{0,200}Lite|Lite[^.]{0,200}auth'
+qchk "v24.8 E26 expects exactly one question naming the Full trigger" "$E26S" 'exactly one question'
+qchk "v24.8 E26 expects the Weight: Lite (user override; ...) line" "$E26S" 'Weight: Lite \(user override;'
+qchk "v24.8 E26 expects the test seen failing (a test(red) commit)" "$E26S" 'test\(red\)'
+qchk "v24.8 E26 covers the headless case" "$E26S" 'headless'
+qchk "v24.8 E26 fails on a silent switch or a skipped test" "$E26S" 'Fail if:[^.]{0,250}(skip|without a test)'
+
 t_summary
