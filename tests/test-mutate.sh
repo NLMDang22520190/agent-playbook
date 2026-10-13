@@ -127,13 +127,13 @@ has_line "AC1.5 the total drops to four" "mutants: 4, killed: 0, survived: 4"
 echo "AC1.2 whole tokens only; nothing mutable gives mutants: 0"
 R="$W/tok"; mkfx "$R"; set_base "$R"
 ( cd "$R" && mkdir -p src &&
-  printf 'const s = a === b;\nconst s2 = a !== b;\nconst untrue = is_true(x);\nreturn 10;\n' > src/t.js &&
+  printf 'const untrue = is_true(x);\nreturn 10;\n' > src/t.js &&
   printf 'cat in > out\nread a < in\necho hi >> log\nexec 2>&1\n' > src/t.sh ) || exit 3
 commit_all "$R" change
 mrun "$R" --base base --test true
 assert_rc "AC1.5 nothing mutable: exit 0" 0
 has_line "AC1.5 nothing mutable: mutants: 0, killed: 0, survived: 0" "mutants: 0, killed: 0, survived: 0"
-assert_eq "AC1.2 === !== untrue is_true 'return 10' and shell redirections give no mutant" "" "$(surv)"
+assert_eq "AC1.2 untrue is_true 'return 10' and shell redirections give no mutant" "" "$(surv)"
 
 # =====================================================================================================
 echo "AC1.2 operators, order, --max"
@@ -678,5 +678,62 @@ else
   assert_rc "AC15.1 25 h old, no owner file: the run itself exits 0" 0
   assert_eq "AC15.1 a run dir without an owner file that is 25 h old IS reaped" "1" "$REAPED"
 fi
+
+# =====================================================================================================
+echo "v0.24.7 U1 JS strict equality: === and !== are swapped, == and != are never double-mutated into !==="
+R="$W/seq"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' 'const s = a === b;' 'const s2 = a !== b;' 'const s3 = a == b;' 'const s4 = a != b;' 'const s5 = a ==== b;' > src/s.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "U1 run exits 0" 0
+assert_eq "U1 one mutant per strict/loose equality line; === gives !==, !== gives ===, no !=== or ===== anywhere" \
+  "$(printf '%s\n' \
+    'survived: src/s.js:1: const s = a === b; -> const s = a !== b;' \
+    'survived: src/s.js:2: const s2 = a !== b; -> const s2 = a === b;' \
+    'survived: src/s.js:3: const s3 = a == b; -> const s3 = a != b;' \
+    'survived: src/s.js:4: const s4 = a != b; -> const s4 = a == b;')" "$(surv)"
+has_line "U1 total line" "mutants: 4, killed: 0, survived: 4"
+
+# =====================================================================================================
+echo "v0.24.7 U2 a rename with edits: its changed lines are mutated (regression pin)"
+R="$W/ren"; mkfx "$R"
+( cd "$R" && mkdir -p src &&
+  printf 'l1\nl2\nl3\nif (a === b) x();\nl5\nl6\nl7\nl8\nl9\nl10\n' > src/old.js ) || exit 3
+set_base "$R"
+( cd "$R" && mkdir -p "my lib" && git mv src/old.js "my lib/new name.js" &&
+  printf 'l1\nl2\nl3\nif (a === b) x();\nl5\nl6\nif (p !== q) y();\nl8\nl9\nl10\n' > "my lib/new name.js" ) || exit 3
+commit_all "$R" rename
+( cd "$R" && git diff -M --diff-filter=R --name-status base...HEAD ) > "$W/ren.status"
+case "$(cat "$W/ren.status")" in R*) t_ok "U2 fixture: git sees a rename" ;; *) t_bad "U2 fixture: git sees a rename" "$(cat "$W/ren.status")" ;; esac
+mrun "$R" --base base --test true
+assert_rc "U2 run exits 0" 0
+assert_eq "U2 only the edited line of the renamed file is mutated (the unchanged === line is not)" \
+  'survived: my lib/new name.js:7: if (p !== q) y(); -> if (p === q) y();' "$(surv)"
+
+# =====================================================================================================
+echo "v0.24.7 U3 arithmetic: + - * / are swapped as binary operators with blanks around them, guards do not hide them"
+R="$W/ari"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' \
+    'function add(a, b) {' \
+    '  if (a > 0) return a + b;' \
+    '  const r = a * b / c;' \
+    '  return r - 1;' \
+    '  i++; x += 1; y -= 1; p->q; k = a-b; n = m*2; /* c */' \
+    '}' > src/a.js &&
+  printf '%s\n' 'list:' '  - item' > src/a.yml &&
+  printf '%s\n' 'echo $((a + b))' 'ls src/ * -a' > src/a.sh ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "U3 run exits 0" 0
+assert_eq "U3 comparison first, then + - * / in list order; no mutant for ++ += -= -> a-b m*2 /* */, a YAML dash or a shell file" \
+  "$(printf '%s\n' \
+    'survived: src/a.js:2:   if (a > 0) return a + b; ->   if (a <= 0) return a + b;' \
+    'survived: src/a.js:2:   if (a > 0) return a + b; ->   if (a > 0) return a - b;' \
+    'survived: src/a.js:3:   const r = a * b / c; ->   const r = a / b / c;' \
+    'survived: src/a.js:3:   const r = a * b / c; ->   const r = a * b * c;' \
+    'survived: src/a.js:4:   return r - 1; ->   return r + 1;')" "$(surv)"
+has_line "U3 total line" "mutants: 5, killed: 0, survived: 5"
 
 t_summary
