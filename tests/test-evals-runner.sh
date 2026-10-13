@@ -892,4 +892,162 @@ assert_file "R2 cost add writes the project cost log (not the home)" "$PR/.agent
 BYP="$(cd "$PB_ROOT" && grep -nE '\$HOME|\$\{HOME|~/|USERPROFILE' scripts/*.sh | grep -v '^scripts/lib\.sh:' | grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' | tr '\n' ' ')"
 assert_eq "R2 no script under scripts/ (but lib.sh's pb_home) names HOME, ~/ or USERPROFILE outside a comment" "" "$BYP"
 
+
+# ---- v0.24.3 review round 2 (lane B): the evidence copy never follows a link; evidence is per run; the temp home is removed
+# when the runner dies; E20 and --real-home make no evidence folder; the adapter starts in the workdir; --help says so ----
+# Evidence layout (pinned): ${OUT%.md}.$E.evidence, e.g. --out D/run-A.md -> D/run-A.E1.evidence
+RF_FB() { printf 'bash "%s/scripts/feedback.sh" capture --skill playbook-tdd --kind bug --source failure --harness other --summary "%s" --observed "obs" --expected "exp" --evidence "ev" --proposal "prop" --eval "E20" >/dev/null' "$PB_ROOT" "$1"; }
+# leaks DIR TEXT -> number of files under DIR (links followed) that contain TEXT
+leaks() { grep -RIl -- "$2" "$1" 2>/dev/null | wc -l | tr -d ' '; }
+# nlinks DIR -> number of symbolic links anywhere under DIR
+nlinks() { find "$1" -type l 2>/dev/null | wc -l | tr -d ' '; }
+# nfiles DIR NAME -> number of entries called NAME under DIR (a link counts)
+nnamed() { find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' '; }
+# rf_run ADAPTER OUTDIR WORKROOT SCENARIOS [env VAR=..]... -> runs the runner with a stand-in real home and a private TMPDIR ($RF_TD)
+rf_run() {
+  local ad="$1" od="$2" wr="$3" sc="$4"; shift 4
+  IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+  run env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" "$@" bash "$RUNNER" --cmd "bash $A/$ad.sh" --scenarios "$sc" --workroot "$wr" --out "$od/results.md"
+}
+alive() { local s; s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')"; [ -n "$s" ] && [ "${s#Z}" = "$s" ]; }
+
+echo "v0.24.3 F1a a cost.tsv that is a link to a file outside is not copied as evidence"
+SEC="$(mk_tmp)"; printf 'OUTSIDE-SECRET-F1A\n' > "$SEC/secret.tsv"
+mk_adapter f1a 'mkdir -p .agents/handoff; rm -f .agents/handoff/cost.tsv; ln -s "'"$SEC"'/secret.tsv" .agents/handoff/cost.tsv; true'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/E1.args"
+rf_run f1a "$OD" "$W" E1
+assert_file "F1a the adapter ran" "$REC/E1.args"
+assert_eq "F1a the outside secret is not in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1A)"
+assert_eq "F1a no cost.tsv was copied from the link" "0" "$(nnamed "$OD" cost.tsv)"
+assert_eq "F1a the evidence holds no symlink" "0" "$(nlinks "$OD")"
+
+echo "v0.24.3 F1b a playbook-feedback dir replaced by a link to an outside dir is not copied"
+SEC="$(mk_tmp)"; mkdir -p "$SEC/sub"; printf 'OUTSIDE-SECRET-F1B\n' > "$SEC/leak.md"; printf 'OUTSIDE-SECRET-F1B\n' > "$SEC/sub/deep.md"
+mk_adapter f1b 'rm -rf "$PLAYBOOK_HOME/.agents/playbook-feedback"; ln -s "'"$SEC"'" "$PLAYBOOK_HOME/.agents/playbook-feedback"; true'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/E1.args"
+rf_run f1b "$OD" "$W" E1
+assert_file "F1b the adapter ran" "$REC/E1.args"
+assert_eq "F1b the evidence holds no symlink" "0" "$(nlinks "$OD")"
+assert_eq "F1b nothing of the outside dir is in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1B)"
+assert_eq "F1b no leak.md or deep.md in the evidence" "0" "$(( $(nnamed "$OD" leak.md) + $(nnamed "$OD" deep.md) ))"
+
+echo "v0.24.3 F1c a link inside the feedback tree is not copied; the regular items still are"
+SEC="$(mk_tmp)"; printf 'OUTSIDE-SECRET-F1C\n' > "$SEC/secret.md"; printf 'OUTSIDE-SECRET-F1C\n' > "$SEC/dirfile.md"
+mk_adapter f1c "$(RF_FB 'F1C-FB-$e')"'
+FB="$PLAYBOOK_HOME/.agents/playbook-feedback"
+ln -s "'"$SEC"'/secret.md" "$FB/pending/zz-link.md"
+ln -s "'"$SEC"'" "$FB/linkdir"
+true'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/E1.args"
+rf_run f1c "$OD" "$W" E1
+assert_file "F1c the adapter ran" "$REC/E1.args"
+assert_eq "F1c the evidence holds no symlink" "0" "$(nlinks "$OD")"
+assert_eq "F1c the outside content is not in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1C)"
+assert_eq "F1c the regular feedback item is still copied" "1" "$(leaks "$OD" F1C-FB-E1 | awk '{print ($1>=1) ? 1 : 0}')"
+
+echo "v0.24.3 F1d .agents or .agents/handoff in the workdir being a link: nothing is copied from its target"
+SEC="$(mk_tmp)"; mkdir -p "$SEC/handoff"; printf 'OUTSIDE-SECRET-F1D\n' > "$SEC/handoff/cost.tsv"
+mk_adapter f1d1 'rm -rf .agents; ln -s "'"$SEC"'" .agents; true'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/E1.args"
+rf_run f1d1 "$OD" "$W" E1
+assert_file "F1d .agents link: the adapter ran" "$REC/E1.args"
+assert_eq "F1d .agents link: the outside content is not in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1D)"
+assert_eq "F1d .agents link: no cost.tsv in the evidence" "0" "$(nnamed "$OD" cost.tsv)"
+assert_eq "F1d .agents link: no symlink in the evidence" "0" "$(nlinks "$OD")"
+SEC="$(mk_tmp)"; printf 'OUTSIDE-SECRET-F1D2\n' > "$SEC/cost.tsv"
+mk_adapter f1d2 'mkdir -p .agents; rm -rf .agents/handoff; ln -s "'"$SEC"'" .agents/handoff; true'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/E1.args"
+rf_run f1d2 "$OD" "$W" E1
+assert_file "F1d handoff link: the adapter ran" "$REC/E1.args"
+assert_eq "F1d handoff link: the outside content is not in the evidence" "0" "$(leaks "$OD" OUTSIDE-SECRET-F1D2)"
+assert_eq "F1d handoff link: no cost.tsv in the evidence" "0" "$(nnamed "$OD" cost.tsv)"
+assert_eq "F1d handoff link: no symlink in the evidence" "0" "$(nlinks "$OD")"
+
+echo "v0.24.3 F2 the evidence is per run: --out D/run-A.md and D/run-B.md keep separate E1 folders"
+mk_adapter f2 "$(RF_FB 'F2-FB-$RUNTAG-$e')"'
+bash "'"$PB_ROOT"'/scripts/cost.sh" add --role tester --tokens 5 --note "F2-COST-$RUNTAG-$e" >/dev/null'
+OD="$(mk_tmp)"; W="$(mk_tmp)"
+for t in A B; do
+  IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+  run env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" RUNTAG="$t" bash "$RUNNER" --cmd "bash $A/f2.sh" --scenarios E1 --workroot "$W" --out "$OD/run-$t.md"
+done
+assert_dir "F2 run A keeps D/run-A.E1.evidence" "$OD/run-A.E1.evidence"
+assert_dir "F2 run B keeps D/run-B.E1.evidence" "$OD/run-B.E1.evidence"
+assert_eq "F2 run A evidence holds run A feedback" "1" "$(leaks "$OD/run-A.E1.evidence" F2-FB-A-E1 | awk '{print ($1>=1) ? 1 : 0}')"
+assert_eq "F2 run B evidence holds run B feedback" "1" "$(leaks "$OD/run-B.E1.evidence" F2-FB-B-E1 | awk '{print ($1>=1) ? 1 : 0}')"
+assert_eq "F2 run A evidence has no run B feedback" "0" "$(leaks "$OD/run-A.E1.evidence" F2-FB-B)"
+assert_eq "F2 run B evidence has no run A feedback" "0" "$(leaks "$OD/run-B.E1.evidence" F2-FB-A)"
+assert_eq "F2 run A cost log is the run A one" "1" "$(leaks "$OD/run-A.E1.evidence/cost.tsv" F2-COST-A-E1)"
+assert_eq "F2 run B cost log is the run B one" "1" "$(leaks "$OD/run-B.E1.evidence/cost.tsv" F2-COST-B-E1)"
+assert_no_path "F2 no per-scenario D/E1.evidence (the old layout) is made" "$OD/E1.evidence"
+
+echo "v0.24.3 F3a a runner that dies on a failed evidence copy leaves no temp home"
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/f3a.ph"
+mk_adapter f3a 'printf "%s\n" "$PLAYBOOK_HOME" > "'"$REC"'/f3a.ph"
+'"$(RF_FB 'F3A-FB-$e')"'
+chmod 555 "'"$OD"'"
+true'
+rf_run f3a "$OD" "$W" E1
+chmod 755 "$OD"
+if [ -s "$REC/f3a.ph" ]; then t_ok "F3a the adapter ran"; else t_bad "F3a the adapter ran" "no record of the adapter"; fi
+if [ "$RC" -ne 0 ]; then t_ok "F3a the runner exits non-zero when the evidence cannot be kept"; else t_bad "F3a the runner exits non-zero when the evidence cannot be kept" "rc=$RC"; fi
+gone_home "F3a the temp home is gone" "$REC/f3a.ph"
+assert_eq "F3a no pb-evhome.* is left in TMPDIR" "0" "$(find "$RF_TD" -maxdepth 1 -name 'pb-evhome.*' 2>/dev/null | wc -l | tr -d ' ')"
+
+echo "v0.24.3 F3b a runner killed with SIGTERM while the adapter sleeps leaves no temp home"
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/f3b.mark" "$REC/f3b.mark.tmp" "$REC/f3b.ph"
+mk_adapter f3b 'printf "%s\n" "$PLAYBOOK_HOME" > "'"$REC"'/f3b.ph"; printf "%s\n" "$$" > "'"$REC"'/f3b.mark.tmp"; mv "'"$REC"'/f3b.mark.tmp" "'"$REC"'/f3b.mark"; exec sleep 30'
+IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/f3b.sh" --scenarios E1 --workroot "$W" --out "$OD/results.md" >/dev/null 2>&1 &
+RP=$!
+for _ in $(seq 1 100); do [ -f "$REC/f3b.mark" ] && break; sleep 0.1; done
+if [ -f "$REC/f3b.mark" ]; then
+  t_ok "F3b the adapter started"
+  kill -TERM "$RP" 2>/dev/null
+  for _ in $(seq 1 50); do alive "$RP" || break; sleep 0.1; done
+  # a runner that only reacts after its foreground child ended is released by ending the sleeping adapter
+  kill "$(sed -n 1p "$REC/f3b.mark")" 2>/dev/null
+  for _ in $(seq 1 30); do alive "$RP" || break; sleep 0.1; done
+  kill -KILL "$RP" 2>/dev/null; wait "$RP" 2>/dev/null
+  gone_home "F3b the temp home is gone after SIGTERM" "$REC/f3b.ph"
+  assert_eq "F3b no pb-evhome.* is left in TMPDIR" "0" "$(find "$RF_TD" -maxdepth 1 -name 'pb-evhome.*' 2>/dev/null | wc -l | tr -d ' ')"
+else
+  t_bad "F3b the adapter started" "no marker after 10 s"
+  kill -KILL "$RP" 2>/dev/null; wait "$RP" 2>/dev/null
+fi
+
+echo "v0.24.3 F4 E20 and --real-home make no evidence folder; default-mode E1 still makes one"
+mk_adapter f4 "$(RF_FB 'F4-FB-$e')"
+OD="$(mk_tmp)"; W="$(mk_tmp)"
+IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --real-home --cmd "bash $A/f4.sh" --scenarios E20 --workroot "$W" --out "$OD/results.md"
+assert_eq "F4 the adapter ran (feedback in E20's own home)" "1" "$(ls "$W"/E20.home/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "F4 --real-home E20: no *.E20.evidence" "0" "$(find "$OD" -maxdepth 1 -name '*E20*evidence*' | wc -l | tr -d ' ')"
+OD="$(mk_tmp)"; W="$(mk_tmp)"
+IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/f4.sh" --scenarios E1,E20 --workroot "$W" --out "$OD/results.md"
+assert_eq "F4 default mode: E20 adapter wrote into E20.home" "1" "$(ls "$W"/E20.home/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "F4 default mode: no *.E20.evidence" "0" "$(find "$OD" -maxdepth 1 -name '*E20*evidence*' | wc -l | tr -d ' ')"
+assert_dir "F4 default mode: E1 still gets D/results.E1.evidence" "$OD/results.E1.evidence"
+assert_eq "F4 default mode: the E1 evidence holds the E1 feedback" "1" "$(leaks "$OD/results.E1.evidence" F4-FB-E1 | awk '{print ($1>=1) ? 1 : 0}')"
+
+echo "v0.24.3 F5 an adapter that does not cd writes its cost log in the scenario workdir, which is kept as evidence"
+cat > "$A/f5.sh" <<EOF
+#!/usr/bin/env bash
+pwd -P > "$REC/f5.cwd"
+bash "$PB_ROOT/scripts/cost.sh" add --role tester --tokens 5 --note "F5-COST-MARK" >/dev/null
+exit 0
+EOF
+OD="$(mk_tmp)"; W="$(mk_tmp)"; CW="$(mk_tmp)"; rm -f "$REC/f5.cwd"
+IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+run_in "$CW" env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/f5.sh" --scenarios E1 --workroot "$W" --out "$OD/results.md"
+assert_eq "F5 the adapter started in the scenario workdir" "$(physdir "$W")/E1" "$(cat "$REC/f5.cwd" 2>/dev/null)"
+assert_eq "F5 the cost log is in the workdir" "1" "$(leaks "$W/E1/.agents/handoff/cost.tsv" F5-COST-MARK)"
+assert_eq "F5 the cost log is in the evidence" "1" "$(leaks "$OD/results.E1.evidence/cost.tsv" F5-COST-MARK)"
+assert_no_path "F5 nothing was written under the caller's cwd" "$CW/.agents"
+
+echo "v0.24.3 F6 --help tells a custom --cmd to use an absolute path"
+run bash "$RUNNER" --help
+if printf '%s' "$OUT" | tr '\n' ' ' | grep -qiE '(--cmd|adapter|COMMAND).{0,300}absolute path|absolute path.{0,300}(--cmd|adapter|COMMAND)'; then t_ok "F6 the usage text says a custom --cmd should use an absolute path"; else t_bad "F6 the usage text says a custom --cmd should use an absolute path" "no 'absolute path' near --cmd/adapter in: $OUT"; fi
+
 t_summary
