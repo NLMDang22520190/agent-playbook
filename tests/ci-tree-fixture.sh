@@ -23,10 +23,10 @@ done
 if [ -n "${FAKE_FAIL:-}" ]; then case "$path" in *"$FAKE_FAIL"*) echo "gh: HTTP 500 (simulated)" >&2; exit 1 ;; esac; fi
 if [ -n "${FAKE_BAD:-}" ]; then case "$path" in *"$FAKE_BAD"*) echo '{"this is": not json,'; exit 0 ;; esac; fi
 key="${path%%\?*}"
-f="$(printf '%s' "$key" | tr '/' '_')"
+f="${key//\//_}"   # builtins only: this fake runs once per gh call (no tr, no cat)
 case "$path" in *head_sha=*) hs="${path#*head_sha=}"; hs="${hs%%&*}"; f="${f}_hs_$hs" ;; esac
 [ -f "$FAKE_DATA/$f" ] || { echo "gh: HTTP 404 Not Found ($path)" >&2; exit 1; }
-if [ -n "$expr" ] && command -v jq >/dev/null 2>&1; then jq -r "$expr" < "$FAKE_DATA/$f"; else cat "$FAKE_DATA/$f"; fi
+if [ -n "$expr" ] && command -v jq >/dev/null 2>&1; then jq -r "$expr" < "$FAKE_DATA/$f"; else IFS= read -r -d '' body < "$FAKE_DATA/$f"; printf '%s' "$body"; fi
 EOF
 chmod +x "$BIN/gh"
 
@@ -36,9 +36,9 @@ SHA="$(h40 1)"; PAR="$(h40 2)"; HEAD="$(h40 3)"; TREE="$(h40 4)"
 NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "windows shard 1/4" "windows shard 2/4" "windows shard 3/4" "windows shard 4/4")
 
 # put KEYPATH JSON -> the response of `gh api <KEYPATH>` (query string left out; runs also by head sha: use put_runs)
-put() { printf '%s\n' "$2" | tr -d '\r' > "$DATA/$(printf '%s' "$1" | tr '/' '_')"; }
+put() { local v="$2"; printf '%s\n' "${v//$'\r'/}" > "$DATA/${1//\//_}"; }
 put_runs() { put_raw "repos/$R/actions/workflows/test.yml/runs" "$1" "$2"; }
-put_raw() { printf '%s\n' "$3" > "$DATA/$(printf '%s' "$1" | tr '/' '_')_hs_$2"; }
+put_raw() { printf '%s\n' "$3" > "$DATA/${1//\//_}_hs_$2"; }
 pull_json() { # NUMBER HEADSHA [REPO] [BASEREF]  (REPO "null" = a deleted head repository; the PR is closed: it is merged)
   local b="${4:-main}"
   if [ "${3:-}" = null ]; then printf '{"number":%s,"state":"closed","base":{"ref":"%s"},"head":{"sha":"%s","repo":null}}' "$1" "$b" "$2"
