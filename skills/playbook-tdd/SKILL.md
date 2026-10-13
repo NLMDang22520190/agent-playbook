@@ -7,11 +7,10 @@ description: Use when adding or changing behaviour or fixing a bug in code - tes
 
 If a generic TDD or sub-agent skill also applies (for example Superpowers `test-driven-development`
 or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
-reviewer's re-run. Their "implementer writes and runs its own tests" model does not apply here.
+reviewer's re-run, not their "implementer writes and runs its own tests" model.
 
-At **Full** weight: three roles, three fresh contexts. The **orchestrator** (you, in the main
-session) coordinates and does not write tests or production code itself, except in `none` mode
-(see below). **Lite** weight runs the same discipline in one context (see "Pick the weight").
+At **Full** weight the **orchestrator** (you, in the main session) coordinates and writes no tests or
+production code, except in `none` mode (see below); **Lite** runs in one context (see "Pick the weight").
 
 | Role | Writes | Must not | Prompt |
 |---|---|---|---|
@@ -25,10 +24,9 @@ Prompt rules alone are not enough. The gate runs after every role hand-back.
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
 `test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
-implementer may change. Order for an infra change: the tester first writes the tests that exercise
-the infra change and sees them fail (`check tester`, commit RED); then a different context makes the
-infra change and passes `role-gate.sh check infra --base $RED`. Without the key, infra files count as
-tests, as before.
+implementer may change. Order: the tester first writes tests that exercise the infra change and sees
+them fail (`check tester`, commit RED); then a different context makes the change and passes
+`role-gate.sh check infra --base $RED`. Without the key, infra files count as tests.
 
 **Why:** an agent that writes both code and tests writes tests that agree with its own mistakes,
 and a test nobody saw fail proves nothing. Separate contexts plus a git gate make "the tests were
@@ -49,7 +47,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
 A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
 A new exported function counts as additive: it changes no existing public API.
-A change limited to user-visible message or comment text (a typo, a wording fix), with no control flow and no data shape touched, is Lite even in a sensitive module, provided the string is not parsed, matched or sent as data: then it alters no behaviour that money, auth or data depends on (an error code, a key, a log format or a message another system matches on is data, so Full applies). State the sensitivity as a risk line in the spec and the report (for example "risk: billing module, message text only"), not as the reason for Full.
+A change limited to user-visible message or comment text (a typo, a wording fix), with no control flow and no data shape touched, is Lite even in a sensitive module, provided the string is not parsed, matched or sent as data (an error code, a key, a log format or a message another system matches on is data, so Full applies). State the sensitivity as a risk line in the spec and the report (for example "risk: billing module, message text only"), not as the reason for Full.
 The weight line quotes the file:line or rule that decided it.
 
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
@@ -63,32 +61,29 @@ run follow the user with no question. Record `Weight: Lite (user override; Full 
 The tests are never skipped: the test comes first and is seen failing, role gates and evidence all still run; the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
 
 **The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
-If the work meets a Full criterion, the user override above applies (ask once; headless, follow the user) and the label is `Weight: Lite (user override; Full criteria: <x>)`.
+If the work meets a Full criterion, the user override above applies, with its label.
 
 **Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
 reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
-   with a short `## Understanding` (the request in your own words, a scan log of searches with hit counts,
-   other readings, in and out of scope) and a short `## Impact` (callers or users of what changes), a few
-   lines each. Write both before any test or code. A reading that is ambiguous and hard to reverse is
-   asked before any code, in one batched question; a reversible one gets a logged default.
+   with short `## Understanding` and `## Impact` sections (as in Phase 1) written before any test or code.
+   A reading that is ambiguous and hard to reverse is asked before any code, in one batched question; a
+   reversible one gets a logged default.
 2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
-   must pass (this is what proves you did not bend the test after seeing it fail).
-   `role-gate.sh size --base $RED` is the machine check of the Lite limits (≤ 3 production files,
-   ≤ 100 changed lines); if it exits 1, escalate to Full.
+   must pass (proof you did not bend the test). `role-gate.sh size --base $RED` checks the Lite limits;
+   if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended. For a user-visible change (UI, HTTP API, CLI output, file format) also make
-   one real observation of the behaviour in this session: a screenshot or browser read for a UI, a
-   curl call for an API, the CLI command for a CLI. Unit tests alone are not enough for it. If it
-   cannot be run, say so under "Not checked" in the report.
-5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every sentence of the raw request), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
+   logic is recommended. A user-visible change (UI, HTTP API, CLI output, file format) also needs one
+   real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
+   command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
    The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`
-   (fill the placeholder with the captured ids, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
-   gate or script misfired, capture it with `playbook-feedback` first, with no need to ask (as in Phase 4).
+   (the captured ids, or "none"). If the user wants a review, run Phase 3 on the result. If a rule,
+   gate or script misfired, capture it with `playbook-feedback` first, with no need to ask.
 
 ### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
 - **docs-only**: README, comments, guides; no executable or configuration change.
@@ -102,9 +97,8 @@ permissions, build or deploy settings), generated code that ships, "small" fixes
 and anything in the Full column. These are at least Lite.
 
 ## Slice size
-A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices (a single
-test per round trip multiplies the startup cost of every role) and avoid slices that bundle
-unrelated behaviours. Split a slice when it touches more than one public surface (for example a
+A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
+that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
 CLI flag and a file format, or two endpoints).
 
 **Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low
@@ -124,34 +118,31 @@ without hiding which behaviour broke.
 ### Phase 1: Spec (orchestrator)
 Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, acceptance criteria with
 ids (AC1…) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
-constraints, and **slices**. A slice is one observable behaviour, about 1 to 5 tests. Order the
-slices so each one builds on the previous. Nothing goes into the spec that the source did not say.
+constraints, and **slices** (see "Slice size"), each building on the previous. Nothing goes into the spec that the source did not say.
 
 **Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
-(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from
-the existing code and tests, not from the source: the source describes the new behaviour, so read the old behaviour
-from the code, its tests and the earlier bug reports. The first RED covers
+(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from the existing
+code and tests plus the earlier bug reports, not from the source (which describes the new behaviour). The first RED covers
 the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
 
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
 search command, its hit count and the files read, other readings and why this one, in and out of scope) and
 `## Impact` (who calls or uses what changes: command, hits, file:line). Search for every place the request
-touches before you fix the scope. A reading that is ambiguous and hard to reverse is asked before any code,
-in one batched question.
+touches before you fix the scope.
 
 **Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
 context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
-sentence with the ACs. Its report is its only output: the orchestrator saves the report to `.agents/handoff/01b-spec-review.md` and
+sentence with the ACs. Its report is its only output: the orchestrator saves it to `.agents/handoff/01b-spec-review.md` and
 runs `role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
 rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
 
-Gaps, by reversibility: ask (one batched message) only about those that change assertions AND are
-hard to reverse; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
+Gaps, by reversibility: an ambiguity that changes assertions AND is hard to reverse is asked before any
+code, in one batched message; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
 `templates/decisions.md`, and mark the code `DECISION[Dn]`. Get the user's OK on the AC list when
 the request was ambiguous. Re-read the AC table before each commit.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
-**Context pack.** For each slice the orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when the pack is not enough, so each fresh role does not re-scan the repository.
+**Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough, so fresh roles do not re-scan the repository.
 
 For slice S:
 1. **RED (tester).** Start a fresh tester with `roles/tester.md` and the inputs it lists. When it
@@ -173,24 +164,23 @@ For slice S:
 4. **REFACTOR (optional, implementer).** Only on green, with tests untouched (same gate and
    `--base $RED`), and green again afterwards.
 
-**First-slice checkpoint.** When a task has more than one slice that repeats a pattern (several
-screens, endpoints or files), then in an interactive run show the first finished slice to the user and
-wait for an OK before the rest. With `autonomy=full`, show the first finished slice in the report and do not wait
-for an OK. In a non-interactive run, continue without waiting and log in
+**First-slice checkpoint.** When several slices repeat a pattern (screens, endpoints or files), in an
+interactive run show the first finished slice to the user and wait for an OK before the rest. With
+`autonomy=full`, show it in the report and do not wait. In a non-interactive run, continue without waiting and log in
 `decisions.md` that the checkpoint was skipped.
 
 **Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
 
-**Parallel slices.** Slices whose files are disjoint (compare the files each one names in the spec's Impact section)
-may run in parallel: each slice gets its own git worktree on its own branch, with its tester and then its
-implementer working there, and its own red and green commits and role gates (`role-gate.sh check ... --base` the
+**Parallel slices.** Slices whose files are disjoint (per the spec's Impact section)
+may run in parallel: each slice gets its own git worktree on its own branch, where its tester and then its
+implementer work, with its own red and green commits and role gates (`role-gate.sh check ... --base` the
 slice's own RED sha, run inside that worktree). The orchestrator merges the slice branches into the feature branch.
 A merge conflict means the slices were not disjoint after all, so those slices go back to serial work. Slices that
-share a file stay serial from the start. After the merge there is one review of the merged feature (Phase 3), never
+share a file stay serial from the start. After the merge, one review covers the merged feature (Phase 3), never
 one per parallel slice. Remove the slice worktrees once their branches are merged.
 
-**Why:** disjoint slices cannot break each other, so waiting for one to finish before the next starts only costs
-time; a conflict is the cheap signal that the files were not disjoint.
+**Why:** disjoint slices cannot break each other, so serial work only costs time; a conflict cheaply signals
+that they were not disjoint.
 
 ### Phase 3: Review (reviewer, read-only)
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
@@ -200,7 +190,7 @@ Prefer a different model (resolve it with `role-model.sh reviewer --harness <h>`
 slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
-Release speed rules (a cap of 2 review rounds, introduced and pre-existing findings, the weight per item, slow platform runs once) are in `references/release.md`.
+Release speed rules (review-round cap, introduced vs pre-existing findings, per-item weight, slow runs once) are in `references/release.md`.
 
 ### Phase 4: Close-out (orchestrator)
 - Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change. Sub-agents
@@ -209,12 +199,11 @@ Release speed rules (a cap of 2 review rounds, introduced and pre-existing findi
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
   --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
   --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess); `--rework` is the
-  rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` (the per-role
-  and per-phase tables, rework rounds and review majors) into the final report's Cost section.
+  rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` into the
+  final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- For a user-visible change (UI, HTTP API, CLI output, file format) the gates also include one real
-  observation of the real behaviour in this session (screenshot or browser read, curl, the CLI command),
-  as `playbook-proof` describes; unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
+- For a user-visible change the gates also include one real observation of the behaviour in this session
+  (screenshot or browser read, curl, the CLI command), as `playbook-proof` describes; unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence with a confidence for each AC, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
@@ -222,7 +211,7 @@ Release speed rules (a cap of 2 review rounds, introduced and pre-existing findi
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
-  review majors and rework rounds the tasks had. It is advice only and changes no setting.
+  review majors and rework rounds the tasks had; it is advice only and changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
@@ -243,7 +232,7 @@ which step of the playbook let it through.
 
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
-(`--harness` takes `claude`, `codex` or `opencode`: the harness you are running in)
+(`claude`, `codex` or `opencode`: the harness you run in)
 and pass it when starting the role. `session` means do not override the session model.
 A configured model is binding: the agent never upgrades or downgrades it on its own judgement (a hard task or Full weight is not a reason). Before starting roles, print `role-model.sh plan --harness <h>`.
 Ask the user once, with the reason and the cost difference, only when you want a different model, when a role resolves to session on a Full task, or when confirm_models=always.
@@ -251,15 +240,15 @@ confirm_models=on-change is the default (an unknown value counts as on-change); 
 Pass the effort (`role-model.sh <role> --harness <h> --effort`) where the harness supports it: Agent `effort` parameter, `codex exec -c model_reasoning_effort=<e>`, OpenCode per-agent config; otherwise print it only.
 Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
 sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
-the fixed prefix is identical across runs and can be cached. For the mechanical RED or GREEN step
+the fixed prefix can be cached. For the mechanical RED or GREEN step
 (gate, then the test command as evidence, optional checkpoint commit) use
 `bash ~/.agents/playbook/scripts/tdd-step.sh red|green`.
 
 **Why:** the reviewer should be a different, stronger model, and an unchanged prompt prefix is
-cheaper to reuse than a rewritten one.
+cheaper to reuse.
 
 - **native**: spawn a sub-agent per role, each with a fresh context. Pass the full text of the role
-  file plus paths of the allowed inputs, not your own conversation or opinions about the solution.
+  file plus paths of the allowed inputs, not your conversation or opinions about the solution.
   - Claude Code: the `Agent`/`Task` tool; pass the resolved model in its `model` parameter (general-purpose for tester and implementer). For the
     reviewer a read-only agent type is fine: it returns the report text and you save it.
   - OpenCode: the `task` tool (a general sub-agent; an explore/read-only one for the reviewer). A model per role needs a
@@ -268,13 +257,13 @@ cheaper to reuse than a rewritten one.
 - **manual**: run each role as a separate headless process or a new session, with the prompt
   built from the role file and the handoff paths. For example `claude -p "<prompt>"`,
   `codex exec "<prompt>"`, `opencode run "<prompt>"`. Flags differ by version: check `--help`.
-  You run the gates between processes, exactly as above.
+  You run the gates between processes.
 - **none** (degraded): you play the roles one after another. Between roles, commit, then re-read
   only the handoff files, never your earlier reasoning. Gates still run. Say "degraded mode: roles
   shared one context" in the final report, because the independence guarantee is weaker.
 
 Honest limit: the same model in fresh contexts still shares blind spots. A different reviewer
-model, the mutation spot-check, and the user's own review of the AC table reduce this. They do not
+model, the mutation spot-check, and the user's own review of the AC table reduce this but do not
 remove it.
 
 ## Stop and ask the user when
