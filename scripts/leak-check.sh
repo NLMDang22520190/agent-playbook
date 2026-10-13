@@ -18,6 +18,8 @@
 #                                          limits the scan). No silent fallback: an id that is not a full commit id of this
 #                                          repository, an empty range (ID is SHA or a descendant of it) or an ID that is not an
 #                                          ancestor of SHA exits 3
+#                                          Limit: a configured remote whose pushurl is another remote's url, where that remote's own
+#                                          pushurl differs (a chain), is not followed: it takes this full scan too (conservative)
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -415,7 +417,7 @@ EOF
                 if [ "$hf" = 1 ]; then
                   fullnote="$(printf 'leak-check: %s pushes to a place its fetched refs do not cover; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
                 else
-                  fullnote="$(printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
+                  fullnote="$(printf 'leak-check: %s pushes to a place that no configured remote fully owns (its push places differ); scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
                 fi
               fi
             fi
