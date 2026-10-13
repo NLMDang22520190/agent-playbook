@@ -478,4 +478,92 @@ for sec in dupmax sed soh; do
   assert_not_contains "F3 --only $sec, tests/zz.sh unreadable: no ok line" "$OUT" "  ok   "
 done
 
+echo "v0.24.8 word budgets: evals/word-budgets holds one budget per skills/*/SKILL.md and one for AGENTS.global.md; run-checks fails a file over its budget"
+# wc output is space-padded on BSD, so every count goes through tr -d ' '. The cases write their own budget table into the copy (file + slack), so they
+# do not depend on today's sizes; the real table is checked as itself in the last cases.
+WB_SLACK=10
+wcw() { wc -w < "$1" | tr -d ' '; }
+# wb_table DIR -> evals/word-budgets in DIR: AGENTS.global.md and every skills/*/SKILL.md at its current words + WB_SLACK
+wb_table() {
+  local d="$1" f
+  {
+    printf '# fixture budgets\n\n'
+    for f in AGENTS.global.md "$d"/skills/*/SKILL.md; do
+      case "$f" in "$d"/*) f="${f#"$d"/}" ;; esac
+      printf '%s %s\n' "$f" "$(( $(wcw "$d/$f") + WB_SLACK ))"
+    done
+  } > "$d/evals/word-budgets"
+}
+# wb_pad DIR FILE N -> append one line of N words to FILE
+wb_pad() { { printf '\n'; words_of "$3"; } >> "$1/$2"; }
+# the real table exists and names every skill and the always-on block
+assert_file "AC1 evals/word-budgets exists" "$PB_ROOT/evals/word-budgets"
+for f in AGENTS.global.md "$PB_ROOT"/skills/*/SKILL.md; do
+  f="${f#"$PB_ROOT"/}"
+  if grep -Eq "^${f}[[:space:]]+[0-9]+" "$PB_ROOT/evals/word-budgets" 2>/dev/null; then t_ok "AC1 evals/word-budgets has an entry for $f"; else t_bad "AC1 evals/word-budgets has an entry for $f"; fi
+done
+if grep -qi 'raising a budget needs a CHANGELOG line' "$PB_ROOT/evals/word-budgets" 2>/dev/null; then t_ok "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; else t_bad "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; fi
+
+# the real tree passes the skills group
+C="$(mk_copy)"
+checks "$C" skills
+assert_rc "AC2 the real tree passes the word budgets (skills group)" 0
+assert_not_contains "AC2 the real tree: no budget failure" "$OUT" "over its budget"
+
+# a skill 1 word over its budget fails and the output names file, count and budget
+C="$(mk_copy)"; wb_table "$C"
+b="$(( $(wcw "$C/$SKILL") + WB_SLACK ))"
+wb_pad "$C" "$SKILL" $((WB_SLACK + 1))
+checks "$C" skills
+assert_rc "AC3 a SKILL.md 1 word over its budget: exit 1" 1
+assert_contains "AC3 names the file" "$OUT" "$SKILL"
+assert_contains "AC3 says over its budget" "$OUT" "over its budget"
+assert_contains "AC3 names its count" "$OUT" "$((b + 1)) words"
+assert_contains "AC3 names its budget" "$OUT" "budget of $b"
+
+# exactly at its budget passes
+C="$(mk_copy)"; wb_table "$C"
+wb_pad "$C" "$SKILL" "$WB_SLACK"
+checks "$C" skills
+assert_rc "AC4 a SKILL.md exactly at its budget: exit 0" 0
+assert_not_contains "AC4 no budget failure" "$OUT" "over its budget"
+
+# every skill is checked, not only one: the largest skill over its budget by 1 fails
+C="$(mk_copy)"; wb_table "$C"
+big=skills/playbook-tdd/SKILL.md
+wb_pad "$C" "$big" $((WB_SLACK + 1))
+checks "$C" skills
+assert_rc "AC3 playbook-tdd 1 over: exit 1" 1
+assert_contains "AC3 playbook-tdd 1 over: names it" "$OUT" "$big"
+
+# a skill with no budget entry fails with a clear message
+C="$(mk_copy)"; wb_table "$C"
+grep -v "^$SKILL " "$C/evals/word-budgets" > "$C/evals/word-budgets.new" && mv "$C/evals/word-budgets.new" "$C/evals/word-budgets"
+checks "$C" skills
+assert_rc "AC5 a skill without a budget entry: exit 1" 1
+assert_contains "AC5 names the skill file" "$OUT" "$SKILL"
+assert_contains "AC5 says it has no word budget" "$OUT" "no word budget"
+
+# a missing table fails closed
+C="$(mk_copy)"; rm -f "$C/evals/word-budgets"
+checks "$C" skills
+assert_rc "AC5 evals/word-budgets missing: exit 1" 1
+assert_contains "AC5 evals/word-budgets missing: names the file" "$OUT" "word-budgets"
+
+# AGENTS.global.md has its own budget (always-on group: a full run)
+C="$(mk_copy)"; wb_table "$C"
+b="$(( $(wcw "$C/AGENTS.global.md") + WB_SLACK ))"
+wb_pad "$C" AGENTS.global.md $((WB_SLACK + 1))
+checks "$C"
+assert_rc "AC3 AGENTS.global.md 1 word over its budget: exit 1" 1
+assert_contains "AC3 AGENTS.global.md: names the file and the overrun" "$OUT" "AGENTS.global.md: $((b + 1)) words, over its budget of $b"
+C="$(mk_copy)"; wb_table "$C"
+wb_pad "$C" AGENTS.global.md "$WB_SLACK"
+checks "$C"
+assert_not_contains "AC4 AGENTS.global.md exactly at its budget: no budget failure" "$OUT" "over its budget"
+C="$(mk_copy)"; wb_table "$C"
+grep -v '^AGENTS.global.md ' "$C/evals/word-budgets" > "$C/evals/word-budgets.new" && mv "$C/evals/word-budgets.new" "$C/evals/word-budgets"
+checks "$C"
+assert_contains "AC5 AGENTS.global.md without a budget entry: says no word budget" "$OUT" "no word budget"
+
 t_summary
