@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
-# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes) and prints only its lines plus the summary;
-# a missing or unknown SECTION exits 2. Without --only everything runs; the always-on and files checks only then.
+# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files) and prints only its lines plus the summary;
+# a missing or unknown SECTION exits 2. Without --only everything runs; the always-on checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
 P=0
@@ -10,10 +10,10 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
 ONLY=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes]" >&2; exit 2; }
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files]" >&2; exit 2; }
   case "$2" in
-    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes) ONLY="$2" ;;
-    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes)" >&2; exit 2 ;;
+    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes | files) ONLY="$2" ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files)" >&2; exit 2 ;;
   esac
 fi
 # want NAME: this group runs (always without --only)
@@ -175,6 +175,9 @@ for w in docs-only config-only spike; do grep -qi "$w" "$T" && ok "exemption cov
 grep -qi 'not exempt' "$T" && ok "exemptions say what is NOT exempt" || bad "$T does not say what is not exempt"
 for e in E15 E16 E17; do grep -q "^## $e " evals/scenarios.md && ok "eval $e exists" || bad "evals/scenarios.md lacks $e"; done
 
+fi   # always-on group ends here
+
+if want files; then
 echo "files"
 # CRLF: judge what git stores. On Windows, core.autocrlf converts tracked LF files to CRLF in the
 # working tree; that is not a repo problem. Untracked files, and copies outside git, are read as they are.
@@ -208,7 +211,7 @@ done
 for f in install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh scripts/feedback.sh; do
   [ -x "$f" ] && ok "executable: $f" || bad "not executable: $f (chmod +x)"
 done
-fi   # full-run-only groups end here
+fi   # files group ends here
 
 if want shellcheck; then
 if command -v shellcheck >/dev/null 2>&1; then

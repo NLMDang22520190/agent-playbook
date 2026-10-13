@@ -11,34 +11,34 @@ mk_gmaster   # the CRLF cases below copy a committed git repo of the tree
 
 echo "frontmatter checks (AC5)"
 C="$(mk_copy)"
-checks "$C"
+checks "$C" skills
 assert_rc "AC5 current skills pass run-checks (exit 0)" 0
 
 C="$(mk_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
-checks "$C"
+checks "$C" skills
 assert_rc "AC5 unquoted description containing ': ' fails (exit 1)" 1
 assert_contains "AC5 failure names the SKILL.md" "$OUT" "$SKILL"
 
 C="$(mk_copy)"
 set_line "$C" description 'description: "Use when stating results. Note: keep it short."'
-checks "$C"
+checks "$C" skills
 assert_rc "AC5 double-quoted description containing ': ' passes" 0
 
 C="$(mk_copy)"
 set_line "$C" description "description: 'Use when stating results. Note: keep it short.'"
-checks "$C"
+checks "$C" skills
 assert_rc "AC5 single-quoted description containing ': ' passes" 0
 
 C="$(mk_copy)"
 set_line "$C" description 'description: Use when stating results at a 1:2 ratio or more.'
-checks "$C"
+checks "$C" skills
 assert_rc "AC5 unquoted description with ':' not followed by a space passes" 0
 
 if python3 -c 'import yaml' >/dev/null 2>&1; then
   C="$(mk_copy)"
   add_line "$C" 'metadata: [unclosed'
-  checks "$C"
+  checks "$C" skills
   assert_rc "AC5 frontmatter that PyYAML cannot parse fails (exit 1)" 1
   assert_contains "AC5 parse failure names the SKILL.md" "$OUT" "$SKILL"
 else
@@ -50,7 +50,7 @@ C="$(mk_copy)"
 add_line "$C" 'metadata: [unclosed'
 FAKE="$(mk_tmp)"
 printf '#!/bin/sh\nexit 1\n' > "$FAKE/python3"; chmod +x "$FAKE/python3"
-OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" 2>&1)"; RC=$?; only_problems
+OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" --only skills 2>&1)"; RC=$?; only_problems
 assert_rc "AC5 without PyYAML the parse check does not fail the run" 0
 SKIPLINE="$(printf '%s\n' "$OUT" | grep -i 'skip' | grep -i 'yaml')"
 assert_contains "AC5 without PyYAML a skip note mentioning yaml is printed" "$(printf '%s' "$SKIPLINE" | tr 'A-Z' 'a-z')" "yaml"
@@ -58,7 +58,7 @@ assert_contains "AC5 without PyYAML a skip note mentioning yaml is printed" "$(p
 # Without PyYAML the explicit unquoted ': ' check alone must still catch the bad description.
 C="$(mk_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
-OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" 2>&1)"; RC=$?; only_problems
+OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" --only skills 2>&1)"; RC=$?; only_problems
 assert_rc "AC5 without PyYAML an unquoted description containing ': ' still fails (exit 1)" 1
 assert_contains "AC5 without PyYAML the failure says unquoted" "$OUT" "unquoted"
 assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKILL"
@@ -66,7 +66,7 @@ assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKI
 echo "CRLF check judges what git stores (Windows checkouts convert to CRLF)"
 C="$(mk_git_copy)"
 to_crlf "$C/README.md"; to_crlf "$C/.gitattributes"
-checks "$C"
+checks "$C" files
 assert_not_contains "CRLF only in the working tree of a tracked LF file is not a failure" "$OUT" "CRLF found"
 # "* text=auto eol=lf" would normalise CRLF to LF on add, so override it for this file
 # (-text) to really store CRLF in the index.
@@ -74,32 +74,82 @@ C="$(mk_git_copy)"
 printf 'docs/crlf-note.md -text\n' >> "$C/.gitattributes"
 printf 'line one\r\nline two\r\n' > "$C/docs/crlf-note.md"
 ( cd "$C" && git add .gitattributes docs/crlf-note.md && git commit -q -m crlf ) >/dev/null 2>&1
-checks "$C"
+checks "$C" files
 assert_rc "CRLF stored in the git index fails" 1
 assert_contains "the failure names the CRLF file" "$OUT" "docs/crlf-note.md"
 C="$(mk_git_copy)"
 printf 'untracked\r\n' > "$C/docs/untracked-crlf.md"
-checks "$C"
+checks "$C" files
 assert_contains "an untracked CRLF file still fails" "$OUT" "docs/untracked-crlf.md"
 C="$(mk_copy)"
 printf 'no git here\r\n' > "$C/docs/plain-crlf.md"
-checks "$C"
+checks "$C" files
 assert_contains "outside git, working-tree CRLF still fails" "$OUT" "docs/plain-crlf.md"
 
 # when `cat` fails, the one-pass CR scan must fall back to the per-file check, not report "no CR"
 C="$(mk_copy)"
 printf 'no git here\r\n' > "$C/docs/catfail-crlf.md"
 FB="$(mk_tmp)"; printf '#!/bin/sh\nexit 1\n' > "$FB/cat"; chmod +x "$FB/cat"
-run env PATH="$FB:$PATH" bash "$C/evals/run-checks.sh"
+run env PATH="$FB:$PATH" bash "$C/evals/run-checks.sh" --only files
 assert_contains "CRLF file still reported when cat fails" "$(printf '%s\n' "$OUT" | grep 'CRLF found in:')" "docs/catfail-crlf.md"
 
 
 echo "#12b quoted name matches its directory"
 C="$(mk_copy)"
 set_line "$C" name 'name: "playbook-proof"'
-checks "$C"
+checks "$C" skills
 assert_rc "AC12b.2 quoted name passes run-checks" 0
 assert_not_contains "AC12b.2 no name-mismatch failure for a quoted name" "$OUT" "name '"
+
+# ---- v0.24.6 AC4: run-checks.sh --only files ----
+echo "v0.24.6 AC4 run-checks.sh --only files runs the files group and no other group"
+C="$(mk_copy)"
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC4 --only files on the real tree: exit 0" 0
+assert_contains "AC4 --only files prints the CRLF line" "$OUT" "  ok   no CRLF line endings"
+assert_contains "AC4 --only files prints a syntax line" "$OUT" "  ok   syntax: install.sh"
+assert_contains "AC4 --only files prints an executable-bit line" "$OUT" "  ok   executable: scripts/conf.sh"
+assert_contains "AC4 --only files ends with the summary" "$OUT" "run-checks: all ok"
+for other in "always-on block" "v0.3 rules" "v0.4 weights" "contains the verbatim clarify sentence" "name matches directory" \
+  "chars (<=450)" "scenarios each have" "regex repeat bounds" "has a suffix (BSD sed)" "GNU-only options" "no SOH byte" \
+  "shellcheck (warning level)" "skip shellcheck" "every script is stored with git mode 100755"; do
+  assert_not_contains "AC4 --only files prints no line of another group [$other]" "$OUT" "$other"
+done
+
+echo "v0.24.6 AC4 the files checks still fail under --only files"
+C="$(mk_copy)"
+printf 'plain file, crlf\r\n' > "$C/docs/files-only-crlf.md"
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC4 a CRLF fixture fails under --only files (exit 1)" 1
+assert_contains "AC4 the CRLF failure under --only files says CRLF found" "$OUT" "CRLF found in:"
+assert_contains "AC4 the CRLF failure under --only files names the file" "$OUT" "docs/files-only-crlf.md"
+C="$(mk_copy)"
+chmod -x "$C/scripts/conf.sh"
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC4 a script without its exec bit fails under --only files (exit 1)" 1
+assert_contains "AC4 the exec-bit failure under --only files names the script" "$OUT" "not executable: scripts/conf.sh"
+C="$(mk_copy)"
+printf 'if then\n' >> "$C/scripts/conf.sh"
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC4 a script with a syntax error fails under --only files (exit 1)" 1
+assert_contains "AC4 the syntax failure under --only files names the script" "$OUT" "bash -n failed: scripts/conf.sh"
+echo "v0.24.6 AC4 --only files runs only the files group: another group's problem is not reported"
+C="$(mk_copy)"
+set_line "$C" description 'description: Use when stating results. Note: keep it short.'
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC4 --only files ignores a skills problem (a bad description): exit 0" 0
+
+echo "v0.24.6 AC4 --only takes exactly one name; the messages name files"
+C="$(mk_min_copy)"
+run bash "$C/evals/run-checks.sh" --only files skills
+assert_rc "AC4 --only files skills (two names) still exits 2" 2
+assert_not_contains "AC4 --only files skills: no check ran" "$OUT" "  ok   "
+run bash "$C/evals/run-checks.sh" --only nosuchgroup
+assert_rc "AC4 --only nosuchgroup still exits 2" 2
+assert_contains "AC4 the unknown-section message names the files group" "$OUT" "files"
+run bash "$C/evals/run-checks.sh" --only
+assert_rc "AC4 --only without a name exits 2" 2
+assert_contains "AC4 the usage text names the files group" "$OUT" "files"
 
 echo "v0.23.0 review: executable bits (git mode 100755) of every script"
 # Guard: every tracked file under scripts/, tools/ and evals/ whose first line is a #! line, plus tests/*.sh and install.sh,
