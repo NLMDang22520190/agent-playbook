@@ -2,6 +2,8 @@
 # Tests of evals/run-checks.sh sections dupmax, sed, soh, the --only SECTION switch and the empty-glob report (split from test-run-checks.sh in v0.23.3).
 # Each test runs run-checks.sh inside a fresh copy of the repository (tracked + untracked, non-ignored files), so mutations
 # never touch the real tree. Shared setup: run-checks-fixture.sh.
+# Cases whose findings come only from their own fixture file run in mk_min_copy (run-checks-fixture.sh); the real-tree runs, and the
+# sections that read skills/, evals/scenarios.md or the installed shellcheck, use mk_copy.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
 
@@ -10,7 +12,7 @@ echo "v0.13.0 AC6.1 regex repeat bounds above 255 (BSD/macOS RE_DUP_MAX) are ref
 # bound_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
 bound_case() {
   local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   mkdir -p "$C/$(dirname "$rel")"
   printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
   checks "$C" dupmax
@@ -51,7 +53,7 @@ bound_case "tools/ file, small bounds pass" tools/zz-bound.sh "grep -E 'a{1,100}
 bound_case "install.sh, exactly 255 passes" install.sh "grep -E 'a{0,${TOP}}' f" pass
 bound_case "a bash brace list in scripts/ is not a bound" scripts/zz-bound.sh "echo {1,2,3} {a,b}" pass
 # the message tells what is wrong, not only where
-C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\ngrep -E %s f\n' "'a{,${BIG}}'" > "$C/tools/zz-bound.sh"
+C="$(mk_min_copy)"; printf '#!/usr/bin/env bash\n# fixture\ngrep -E %s f\n' "'a{,${BIG}}'" > "$C/tools/zz-bound.sh"
 checks "$C" dupmax
 assert_contains "AC7.1 the failure mentions the repeat bound" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "bound"
 
@@ -62,7 +64,7 @@ SD=sed; FI=-i
 # sed_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
 sed_case() {
   local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   mkdir -p "$C/$(dirname "$rel")"
   printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
   checks "$C" sed
@@ -99,7 +101,7 @@ sed_case "review F3 control: a real comment after the quoted text still hides it
 sed_case "grep -i is not in-place sed"                tests/zz-sed.sh "grep $FI x f" pass
 sed_case "sed -e script, no -i at all"           tests/zz-sed.sh "$SD -e 's/a/b/' f" pass
 # the message tells what is wrong, not only where
-C="$(mk_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$SD $FI 's/a/b/' f" > "$C/tests/zz-sed.sh"
+C="$(mk_min_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$SD $FI 's/a/b/' f" > "$C/tests/zz-sed.sh"
 checks "$C" sed
 assert_contains "AC2.1 the failure mentions sed" "$OUT" "$SD"
 # the repository itself stays clean and says so
@@ -131,7 +133,7 @@ other_groups_absent() {
   assert_not_contains "$1: no syntax line from the files group" "$OUT" "  ok   syntax:"
 }
 
-C="$(mk_copy)"; fixture_gnu "$C"
+C="$(mk_min_copy)"; fixture_gnu "$C"
 only_run "$C" gnu
 assert_rc "AC8.1 --only gnu on a flagged fixture: exit 1" 1
 assert_contains "AC8.1 --only gnu on a flagged fixture: names the file:line" "$OUT" "tests/zz-only.sh:3"
@@ -141,54 +143,54 @@ other_groups_absent "AC8.1 --only gnu (flagged)"
 assert_not_contains "AC8.1 --only gnu (flagged): no sed line" "$OUT" "has a suffix (BSD sed)"
 assert_not_contains "AC8.1 --only gnu (flagged): no dupmax line" "$OUT" "regex repeat bounds"
 
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 only_run "$C" gnu
 assert_rc "AC8.1 --only gnu on a clean fixture: exit 0" 0
 assert_contains "AC8.1 --only gnu on a clean fixture: the gnu ok line" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
 assert_contains "AC8.1 --only gnu on a clean fixture: run-checks: all ok" "$OUT" "run-checks: all ok"
 other_groups_absent "AC8.1 --only gnu (clean)"
 
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 only_run "$C" bogus
 assert_rc "AC8.1 --only bogus: exit 2" 2
 assert_not_contains "AC8.1 --only bogus: no check ran (no ok line)" "$OUT" "  ok   "
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 run bash "$C/evals/run-checks.sh" --only
 assert_rc "AC8.1 --only without a section: exit 2" 2
 
-C="$(mk_copy)"; fixture_sed "$C"
+C="$(mk_min_copy)"; fixture_sed "$C"
 only_run "$C" sed
 assert_rc "AC8.1 --only sed on a flagged fixture: exit 1" 1
 assert_contains "AC8.1 --only sed on a flagged fixture: names the file:line" "$OUT" "tests/zz-only.sh:3"
 other_groups_absent "AC8.1 --only sed (flagged)"
 assert_not_contains "AC8.1 --only sed (flagged): no gnu line" "$OUT" "GNU-only options"
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 only_run "$C" sed
 assert_rc "AC8.1 --only sed on a clean fixture: exit 0" 0
 assert_contains "AC8.1 --only sed on a clean fixture: the sed ok line" "$OUT" "has a suffix (BSD sed)"
 
-C="$(mk_copy)"; fixture_big "$C"
+C="$(mk_min_copy)"; fixture_big "$C"
 only_run "$C" dupmax
 assert_rc "AC8.1 --only dupmax on a flagged fixture: exit 1" 1
 assert_contains "AC8.1 --only dupmax on a flagged fixture: names the file:line" "$OUT" "tests/zz-only.sh:3"
 other_groups_absent "AC8.1 --only dupmax (flagged)"
 assert_not_contains "AC8.1 --only dupmax (flagged): no gnu line" "$OUT" "GNU-only options"
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 only_run "$C" dupmax
 assert_rc "AC8.1 --only dupmax on a clean fixture: exit 0" 0
 assert_contains "AC8.1 --only dupmax on a clean fixture: the dupmax ok line" "$OUT" "regex repeat bounds <= 255"
 
 echo "AC8.1 a section runs only its own rule: the other rules' flagged files are not reported"
-C="$(mk_copy)"; fixture_gnu "$C"
+C="$(mk_min_copy)"; fixture_gnu "$C"
 only_run "$C" sed
 assert_rc "AC8.1 --only sed ignores a gnu-flagged file: exit 0" 0
-C="$(mk_copy)"; fixture_sed "$C"
+C="$(mk_min_copy)"; fixture_sed "$C"
 only_run "$C" gnu
 assert_rc "AC8.1 --only gnu ignores a sed-flagged file: exit 0" 0
-C="$(mk_copy)"; fixture_big "$C"
+C="$(mk_min_copy)"; fixture_big "$C"
 only_run "$C" gnu
 assert_rc "AC8.1 --only gnu ignores a repeat-bound-flagged file: exit 0" 0
-C="$(mk_copy)"; fixture_gnu "$C"
+C="$(mk_min_copy)"; fixture_gnu "$C"
 only_run "$C" dupmax
 assert_rc "AC8.1 --only dupmax ignores a gnu-flagged file: exit 0" 0
 
@@ -233,7 +235,7 @@ B='\'; Q="'"
 # soh_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
 soh_case() {
   local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   mkdir -p "$C/$(dirname "$rel")"
   printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
   checks "$C" soh
@@ -288,7 +290,7 @@ C="$(mk_copy)"
 run bash "$C/evals/run-checks.sh"
 assert_rc "AC4.3 the full run on the real tree: exit 0" 0
 assert_eq "AC4.3 the full run has the soh ok line (001)" "1" "$(printf '%s\n' "$OUT" | grep '^  ok   ' | grep -c '001')"
-C="$(mk_copy)"
+C="$(mk_min_copy)"
 printf '#!/usr/bin/env bash\n# fixture\n%s\n' "printf ${Q}${B}001${Q}" > "$C/tests/zz-soh.sh"
 run bash "$C/evals/run-checks.sh" --only gnu
 assert_rc "AC4.3 --only gnu ignores a soh-flagged file: exit 0" 0
@@ -313,10 +315,11 @@ assert_contains "the soh comment says these are not covered" "$(printf '%s' "$SO
 # tools/*.sh; only where shellcheck is installed) and the full run (the files group loops over the same globs).
 # evals/*.sh is not emptied: evals/run-checks.sh itself always matches it. A directory is renamed, never globbed away.
 echo "v0.23.2 AC16.1 a glob that matches no file is reported and fails the section"
-# glob_case SECTION DIR GLOB -> in a copy whose DIR is renamed, run-checks --only SECTION says "no files match GLOB" and exits 1
+# glob_case SECTION DIR GLOB [full] -> in a copy whose DIR is renamed, run-checks --only SECTION says "no files match GLOB" and exits 1
+# (the minimal tree has a stub for every glob; "full" uses the whole tree, which the shellcheck section needs)
 glob_case() {
   local sec="$1" dir="$2" glob="$3"
-  C="$(mk_copy)"
+  if [ "${4:-}" = full ]; then C="$(mk_copy)"; else C="$(mk_min_copy)"; fi
   mv "$C/$dir" "$C/$dir-renamed"
   run bash "$C/evals/run-checks.sh" --only "$sec"
   assert_rc "AC16.1 [$sec] $dir/ renamed: exit 1" 1
@@ -335,11 +338,12 @@ for sec in dupmax sed gnu soh; do
   glob_case "$sec" tests   'tests/*.sh'
 done
 # only the empty glob is named
-C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"
+C="$(mk_min_copy)"; mv "$C/tools" "$C/tools-renamed"
 run bash "$C/evals/run-checks.sh" --only gnu
 assert_not_contains "AC16.1 only the empty glob is named (scripts/*.sh matches, so it is not reported)" "$OUT" "no files match scripts/*.sh"
 assert_not_contains "AC16.1 only the empty glob is named (tests/*.sh matches, so it is not reported)" "$OUT" "no files match tests/*.sh"
 # a section that does not read the glob does not fail for it
+C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"
 run bash "$C/evals/run-checks.sh" --only scenarios
 assert_rc "AC16.1 --only scenarios does not read tools/*.sh: exit 0" 0
 # skills
@@ -349,8 +353,8 @@ assert_rc "AC16.1 [skills] skills/ renamed: exit 1" 1
 assert_contains "AC16.1 [skills] skills/ renamed: reports no files match skills/*" "$OUT" "no files match skills/*"
 # the section named for that tool, run only where it is installed
 if command -v shellcheck >/dev/null 2>&1; then
-  glob_case shellcheck tools   'tools/*.sh'
-  glob_case shellcheck scripts 'scripts/*.sh'
+  glob_case shellcheck tools   'tools/*.sh' full
+  glob_case shellcheck scripts 'scripts/*.sh' full
 else
   t_skip 4 "AC16.1 [shellcheck] needs shellcheck installed"
 fi

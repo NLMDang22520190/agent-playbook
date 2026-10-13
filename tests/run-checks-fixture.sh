@@ -16,6 +16,25 @@ mk_copy() {
   cp -a "$MASTER/." "$d/"
   printf '%s\n' "$d"
 }
+# mk_min_copy -> prints a temp dir for the cases whose findings come only from their own fixture file and that run a section
+# reading nothing but the shell-script globs (dupmax, sed, gnu, soh: tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh).
+# It holds evals/run-checks.sh (the working-tree copy) and one stub .sh file per glob, so every glob matches (the nofiles
+# checks stay quiet) and the stubs carry no findings. The scanners reset their state per file (FNR == 1), so a finding does not
+# depend on the other files: scanning the 80 files of the whole tree for each case was 98% of a case's time. A case that
+# asserts something about the real tree (the real tree passes, equivalence over every *.sh, a section that reads skills/ or
+# evals/scenarios.md) keeps mk_copy. A new glob in a scanned section needs a stub here.
+MINMASTER="$(mk_tmp)"
+mkdir -p "$MINMASTER/evals" "$MINMASTER/tests" "$MINMASTER/scripts" "$MINMASTER/tools"
+cp "$MASTER/evals/run-checks.sh" "$MINMASTER/evals/run-checks.sh"
+for stub in tests/stub.sh scripts/stub.sh tools/stub.sh install.sh; do
+  printf '#!/usr/bin/env bash\n# stub: keeps its glob non-empty, holds no finding\n' > "$MINMASTER/$stub"
+  chmod +x "$MINMASTER/$stub"
+done
+mk_min_copy() {
+  local d; d="$(mk_tmp)"
+  cp -a "$MINMASTER/." "$d/"
+  printf '%s\n' "$d"
+}
 # set_line DIR KEY LINE -> replace the first "KEY:" line of the frontmatter of $SKILL with LINE
 set_line() {
   awk -v k="$2:" -v l="$3" 'NR<=10 && !done && index($0, k) == 1 { print l; done = 1; next } { print }' \
