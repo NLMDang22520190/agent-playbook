@@ -826,4 +826,14 @@ assert_eq "F2 E23 'Normally this needs Full weight ... Weight: Quick' keeps the 
 run_x E23 labelfull "$E23_FIX" "$INIT" "$(res 'Over the limit, user chose Quick, but I escalated. Weight: Full. Changed total().')"
 assert_eq "F2 E23 an explicit 'Weight: Full' is still an upgrade: FAIL" "FAIL" "$(e_state E23 "$K23B")"
 
+echo "v0.24.4 review round 2 N1: an affirmative needs/would still counts as the stated weight"
+sw 'This change needs Full weight: it touches auth.' full
+sw 'I would use Full weight here since it touches money.' full
+sw 'It needs Lite weight because it is small and reversible.' lite
+sw 'Normally this needs Full weight, but Quick weight fits.' quick
+sw 'This does not need Full weight; Quick weight.' quick
+sw 'This would normally get Full weight; Quick weight here.' quick
+run_x E23 needsfull "$E23_FIX" "$INIT" "$(res 'Over the limit; this needs Full weight. Changed total().')"
+assert_eq "N1 E23 a reply without a Weight: label that says 'this needs Full weight' FAILs" "FAIL" "$(e_state E23 "$K23B")"
+
 t_summary

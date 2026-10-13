@@ -562,6 +562,41 @@ lc_streams --unpushed "$NEW"
 assert_contains "B8 no --remote: the escape is not used either" "$STD" "old.txt:1: github-token"
 unset PB_LEAK_SCAN_BASE
 
+echo "v0.24.4 review round 2 N3: PB_LEAK_SCAN_BASE must be an ancestor of the pushed commit"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+U_N="$(mk_tmp)/n.git"
+stage "$R" a.txt "clean a"; G -C "$R" commit -q --no-verify -m 'A'
+N_A="$(git -C "$R" rev-parse HEAD)"
+stage "$R" s.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'S secret'
+N_S="$(git -C "$R" rev-parse HEAD)"
+stage "$R" t.txt "clean t"; G -C "$R" commit -q --no-verify -m 'T'
+N_T="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q -b side "$N_S"
+stage "$R" x.txt "clean x"; G -C "$R" commit -q --no-verify -m 'X side'
+N_X="$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q main
+export PB_LEAK_SCAN_BASE="$N_X"
+lc_streams --unpushed "$N_T" --remote "$U_N"
+assert_eq "N3 base X is on a side branch (not an ancestor of T): exit 3" "3" "$RC"
+assert_contains "N3 ... the message says not an ancestor" "$ERR" "not an ancestor"
+assert_not_contains "N3 ... is not reported clean" "$STD$ERR" "leak-check: clean"
+export PB_LEAK_SCAN_BASE="$N_A"
+lc_streams --unpushed "$N_T" --remote "$U_N"
+assert_eq "N3 control: base A is an ancestor of T: the range A..T is scanned, the secret in S is found, exit 1" "1" "$RC"
+assert_contains "N3 control: ... named" "$STD" "s.txt:1: github-token"
+export PB_LEAK_SCAN_BASE="$N_S"
+lc_streams --unpushed "$N_T" --remote "$U_N"
+assert_eq "N3 control: base S is an ancestor of T: only T is scanned, exit 0" "0" "$RC"
+unset PB_LEAK_SCAN_BASE
+
+echo "v0.24.4 review round 2 N2: the usage says PB_LEAK_SCAN_BASE takes a full commit id, not a REF"
+newrepo
+run_in "$R" bash "$LC"
+assert_rc "N2 usage: no arguments, exit 2" 2
+assert_contains "N2 the usage says a full commit id" "$OUT" "full commit id"
+assert_not_contains "N2 the usage no longer says PB_LEAK_SCAN_BASE=REF" "$OUT" "PB_LEAK_SCAN_BASE=REF"
+
 echo "v0.24.4 review F1 through the installed pre-push hook: a branch name as the base can never wave a secret through"
 newrepo
 git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
