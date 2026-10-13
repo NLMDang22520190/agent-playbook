@@ -489,7 +489,7 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 #        "node --test tests/*.test.js passes" (key: node --test)
 #   E25  retired in v0.24.10 (see test-evals-grade6-b.sh)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
-# model_reviewer_claude=opus (tracked, clean tree); E25 commits src/report.js as E21 does.
+# model_reviewer_claude=opus (tracked, clean tree).
 tq_flush
 echo "v0.24.0 R5 transcript.js models="
 assert_eq "R5 models: the key is printed once" "1" "$(mo_lines "$INIT" "$(AG sonnet)")"

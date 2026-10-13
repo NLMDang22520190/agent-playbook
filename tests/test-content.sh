@@ -1343,4 +1343,17 @@ HEADS
 GOT_HEADS="$(grep -E '^###? ' "$SKILL")"
 if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order"; else t_bad "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order" "headings differ: $(diff <(printf '%s\n' "$EXPECT_HEADS") <(printf '%s\n' "$GOT_HEADS") | head -6 | tr '\n' '|')"; fi
 
+
+echo "v0.24.10 review 1: minors (quick past the size limit, Phase 1 ask-first, proof search scope, first-slice checkpoint)"
+qchk "v24.10 r1 quick work past the Lite size limit with no Full criterion asks once before going to Full" "$PICKW" 'quick[^.;]{0,40}grows past the Lite size limit[^.;]{0,40}no Full criterion[^.;]{0,20}ask once[^.;]{0,30}Full'
+qchk "v24.10 r1 headless quick work past the size limit stays Lite and is labelled" "$PICKW" 'headless[^.;]{0,20}stay Lite[^.;]{0,20}label'
+PH1="$(awk '/^### Phase 1/ { f = 1; next } f && /^###? / { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+qchk "v24.10 r1 Phase 1 asks before any code on a reading that is ambiguous and hard to reverse" "$PH1" 'ambiguous and hard to reverse is asked before any code'
+if printf '%s' "$PH1" | grep -qiE 'changes assertions AND is hard to reverse'; then t_bad "v24.10 r1 Phase 1 does not narrow the ask to assertion changes" "found 'changes assertions AND is hard to reverse'"; else t_ok "v24.10 r1 Phase 1 does not narrow the ask to assertion changes"; fi
+PROW="$(grep -E '^\| "nothing else uses X"' "$PROOF_MD")"
+qchk "v24.10 r1 playbook-proof: the nothing-else-uses row names what was searched" "$PROW" 'naming what was searched'
+CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILL" | tr '\n' ' ')"
+qchk "v24.10 r1 the first-slice checkpoint covers more than one slice (2 slices included)" "$CHKP" 'more than one slice[^.]{0,20}repeats? a pattern'
+if printf '%s' "$CHKP" | grep -qi 'several slices'; then t_bad "v24.10 r1 the checkpoint does not say several slices" "found 'several slices'"; else t_ok "v24.10 r1 the checkpoint does not say several slices"; fi
+
 t_summary

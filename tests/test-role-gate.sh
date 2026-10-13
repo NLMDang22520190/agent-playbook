@@ -201,6 +201,14 @@ run bash "$GATE" size;                          assert_rc "AC1.5 plain size: 101
 assert_contains "AC1.5 plain size still says escalate to Full" "$OUT" "over the Lite size limit: escalate to Full"
 assert_not_contains "AC1.5 plain size never says Quick" "$OUT" "Quick"
 
+echo "v0.24.10 r1 plain size --base counts the net change against the base"
+qrepo
+BASE="$(git rev-parse HEAD)"
+seq 1 12 > src/app.js; git add -A && git commit -q -m "feat"
+seq 1 5 > src/app.js; git add src/app.js
+run bash "$GATE" size --base "$BASE";          assert_rc "v24.10 r1 plain size --base: one file within the Lite limits exits 0" 0
+assert_contains "v24.10 r1 plain size --base: net change against the base (+5 -1)" "$OUT" "files: 1/3 lines: 6/100"
+
 echo "AC3 usage"
 qrepo
 run bash "$GATE" no-such-command;               assert_rc "AC1.5 usage: an unknown command exits 2" 2
