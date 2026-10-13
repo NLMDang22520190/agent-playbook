@@ -205,4 +205,53 @@ if [ "$BN" -le 20 ]; then t_ok "bisect: hash-object is started at most 20 times 
 assert_rc "bisect: the gate fails (the filter failure)" 1
 assert_contains "bisect: the filter failure is reported: cannot hash" "$OUT" "VIOLATION (mode): cannot hash bulk/bad.txt; the mode check is incomplete"
 assert_eq "bisect: only one path is reported as unhashable" "1" "$(printf '%s\n' "$OUT" | grep -c 'cannot hash')"
+# ---- v0.24.9 lane G: a mode RESTORE (100644 -> 100755, same content) of a test path is not an implementer violation ----
+echo "v0.24.9 G a test path restored to 100755 after a RED commit that dropped it: no implementer violation, a note instead"
+unset PB_ALLOW_MODE_CHANGE
+gmode() { chmod "$1" -- "$2" 2>/dev/null; git update-index --chmod="$1" -- "$2"; }
+if ! ( R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" && fm_true_ok ); then t_skip 12 "v0.24.9 G (this file system does not keep executable bits)"; else
+  # G1 committed: RED drops the bit, a later commit restores it (same blob)
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  gmode -x tests/run.sh; git commit -q -m "test(red): accidental drop"; GRED="$(git rev-parse HEAD)"
+  gmode +x tests/run.sh; git commit -q -m "restore bit"
+  gchk implementer --base "$GRED"
+  assert_rc "G1 committed restore 100644 -> 100755 passes" 0
+  assert_not_contains "G1 no violation" "$OUT" "VIOLATION"
+  assert_contains "G1 the note names the path as a mode restore only" "$OUT" "note: tests/run.sh mode restore only"
+  # G2 uncommitted: the restore is only in the work tree
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  gmode -x tests/run.sh; git commit -q -m "test(red): accidental drop"; GRED="$(git rev-parse HEAD)"
+  chmod +x tests/run.sh
+  gchk implementer --base "$GRED"
+  assert_rc "G2 work-tree-only restore passes" 0
+  assert_not_contains "G2 no violation" "$OUT" "VIOLATION"
+  assert_contains "G2 the note names the path" "$OUT" "note: tests/run.sh mode restore only"
+  # G3 the drop itself (100755 -> 100644) stays a violation, committed and in the work tree
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  GBASE="$(git rev-parse HEAD)"
+  gmode -x tests/run.sh; git commit -q -m "drop"
+  gchk implementer --base "$GBASE"
+  assert_rc "G3 a committed drop 100755 -> 100644 fails" 1
+  assert_contains "G3 the test path is still a violation" "$OUT" "VIOLATION (implementer): tests/run.sh [test]"
+  assert_not_contains "G3 no restore note" "$OUT" "mode restore only"
+  # G4 restore plus a content change stays a violation
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  gmode -x tests/run.sh; git commit -q -m "test(red): accidental drop"; GRED="$(git rev-parse HEAD)"
+  gmode +x tests/run.sh; printf 'echo changed\n' >> tests/run.sh
+  gchk implementer --base "$GRED"
+  assert_rc "G4 restore plus a content change fails" 1
+  assert_contains "G4 the test path is a violation" "$OUT" "VIOLATION (implementer): tests/run.sh [test]"
+  assert_not_contains "G4 no restore note" "$OUT" "mode restore only"
+  # G5 a code path restore is allowed as before; G6 the other roles keep their verdicts
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  gmode -x src/run.sh; git commit -q -m "red"; GRED="$(git rev-parse HEAD)"
+  gmode +x src/run.sh
+  gchk implementer --base "$GRED"
+  assert_rc "G5 a code path mode restore passes as today" 0
+  assert_not_contains "G5 no violation" "$OUT" "VIOLATION"
+  gchk reviewer --base "$GRED"
+  assert_rc "G6 reviewer still fails on any change, restore included" 1
+  gchk tester --base "$GRED"
+  assert_rc "G6 tester still fails on a code path" 1
+fi
 t_summary
