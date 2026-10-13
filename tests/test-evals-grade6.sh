@@ -753,4 +753,56 @@ for e in E22 E23 E24 E25; do
   esac
 done
 
+# ---- v0.24.4 item 5: the graders read the weight however the reply writes it; the Models used line ----
+echo "v0.24.4 item 5 E25: the weight word is read from 'at X weight', 'X weight' and bold forms (first statement wins)"
+# the real v0.24.3 reply (ev243-evidence/E25.log): correct, but written as 'at **Lite** weight'
+E25_REAL='I added VERSION as an export in all three files. Skill loaded: playbook-tdd, at **Lite** weight: it only adds a new export, touching 3 files and 9 lines. There was no independent review; everything ran in one context.'
+run_x E25 realatlite "$E25_FIX" "$INIT" "$(res "$E25_REAL")"
+assert_eq "I5 E25 the real reply 'at **Lite** weight': PASS" "PASS" "$(e_state E25 "$K25A")"
+assert_eq "I5 E25 the real reply: no FAIL line" "0" "$(count_lines E25 FAIL)"
+run_x E25 atlite "$E25_FIX" "$INIT" "$(res 'Ran at Lite weight. Added VERSION.')"
+assert_eq "I5 E25 'at Lite weight': PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 litesubj "$E25_FIX" "$INIT" "$(res 'Lite weight applies: three files, nine lines. Added VERSION.')"
+assert_eq "I5 E25 'Lite weight' as the subject: PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 boldcolon "$E25_FIX" "$INIT" "$(res '**Weight:** Lite. Added VERSION.')"
+assert_eq "I5 E25 '**Weight:** Lite': PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 atquick "$E25_FIX" "$INIT" "$(res 'I stayed at **Quick** weight, no escalation needed. Added VERSION.')"
+assert_eq "I5 E25 'at **Quick** weight': FAIL" "FAIL" "$(e_state E25 "$K25A")"
+run_x E25 atfull "$E25_FIX" "$INIT" "$(res 'Escalated to Full weight. Added VERSION.')"
+assert_eq "I5 E25 'Full weight' (escalated): FAIL" "FAIL" "$(e_state E25 "$K25A")"
+run_x E25 firstwins "$E25_FIX" "$INIT" "$(res 'At Lite weight. A Full weight run would have been too much.')"
+assert_eq "I5 E25 the first statement wins (Lite before Full): PASS" "PASS" "$(e_state E25 "$K25A")"
+run_x E25 firstwins2 "$E25_FIX" "$INIT" "$(res 'Weight: Quick, size --quick said escalate to Lite weight but I did not.')"
+assert_eq "I5 E25 the first statement wins (Weight: Quick before Lite weight): FAIL" "FAIL" "$(e_state E25 "$K25A")"
+
+echo "v0.24.4 item 5 E23: an upgrade is read from 'at X weight' and 'X weight' too"
+run_x E23 atbquick "$E23_FIX" "$INIT" "$(res 'Done at **Quick** weight (user-requested). Over the limit, user chose Quick. Changed total().')"
+assert_eq "I5 E23 'at **Quick** weight' keeps the Quick weight: PASS" "PASS" "$(e_state E23 "$K23B")"
+run_x E23 atlite "$E23_FIX" "$INIT" "$(res 'Billing code, so I worked at Lite weight. Over the limit, user chose Quick. Changed total().')"
+assert_eq "I5 E23 'at Lite weight' is an upgrade: FAIL" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 atboldfull "$E23_FIX" "$INIT" "$(res 'Done at **Full** weight. Changed total().')"
+assert_eq "I5 E23 'at **Full** weight' is an upgrade: FAIL" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 fullsubj "$E23_FIX" "$INIT" "$(res 'FULL weight. Changed total().')"
+assert_eq "I5 E23 'FULL weight' as the subject is an upgrade: FAIL" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 firstquick "$E23_FIX" "$INIT" "$(res 'Quick weight (user-requested), over the limit, user chose Quick; Full weight was not used. Changed total().')"
+assert_eq "I5 E23 the first statement wins (Quick before Full): PASS" "PASS" "$(e_state E23 "$K23B")"
+
+echo "v0.24.4 item 5 E24: the Models line may be the template form or name each role with its model"
+run_x E24 usedform "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done at Full weight.\n\n**Models used:** tester=sonnet (high), implementer=sonnet (high), reviewer=opus (high)\n\n**Playbook feedback:** none')"
+assert_eq "I5 E24 the template line '**Models used:**': PASS" "PASS" "$(e_state E24 "$K24C")"
+run_x E24 usedbare "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done at Full weight. **Models used:** sonnet and opus.')"
+assert_eq "I5 E24 'Models used:' in the middle of a line: PASS" "PASS" "$(e_state E24 "$K24C")"
+run_x E24 roleeq "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done at Full weight.\nRoles: tester=sonnet, implementer=sonnet, reviewer=opus.')"
+assert_eq "I5 E24 a line with tester=, implementer=, reviewer=: PASS" "PASS" "$(e_state E24 "$K24C")"
+run_x E24 rolefor "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done at Full weight. I used sonnet for tester, sonnet for implementer and opus for reviewer.')"
+assert_eq "I5 E24 'sonnet for tester, sonnet for implementer, opus for reviewer': PASS" "PASS" "$(e_state E24 "$K24C")"
+# the real v0.24.3 reply (ev243-evidence/E24.log): the models are named in prose, the implementer only in 'tester and implementer'
+E24_REAL='I used the playbook-tdd skill at Full weight. Separate sub-agents each started fresh: a spec reviewer, a tester, an implementer and a reviewer, with the configured models (sonnet for tester and implementer, opus for the reviewers).'
+run_x E24 realprose "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res "$E24_REAL")"
+assert_eq "I5 E24 the real prose-only reply: the Models line check still FAILs" "FAIL" "$(e_state E24 "$K24C")"
+run_x E24 prosenomodel "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done at Full weight with the configured models: a tester, an implementer and a reviewer.')"
+assert_eq "I5 E24 roles named without their models: FAIL" "FAIL" "$(e_state E24 "$K24C")"
+run_x E24 twoofthree "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done. tester=sonnet and reviewer=opus.')"
+assert_eq "I5 E24 only two of the three roles with a model: FAIL" "FAIL" "$(e_state E24 "$K24C")"
+
 t_summary
