@@ -235,6 +235,10 @@ fi
 
 if want gnu; then
 nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
+# A file named in the scanned list (not a glob) that is missing makes awk abort on it and print nothing, which used to read as "no findings".
+gmiss=""
+[ -f install.sh ] || gmiss=" install.sh"
+[ -z "$gmiss" ] || bad "missing file$gmiss (the GNU-only scan needs it)"
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
 # Each file is read once, line by line, with the quote state carried across lines. A line is cut into words (single-quoted
 # text, ANSI-C quoted text $'...' and double-quoted text are skipped, except a $( ) or backtick command inside double quotes;
@@ -398,8 +402,12 @@ ggnu="$(awk '
       }
     }
   }
-  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
-[ -z "${ggnu// /}" ] && ok "GNU-only options absent (BSD/macOS)" || bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+grc=$?   # the exit status of the awk scan: a scan that did not finish is never an ok
+ggnu="$(printf '%s' "$ggnu" | tr -s ' ')"
+if [ "$grc" -ne 0 ]; then bad "GNU-only scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${ggnu// /}" ]; then [ -z "$gmiss" ] && ok "GNU-only options absent (BSD/macOS)"
+else bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"; fi
 fi
 
 if want soh; then

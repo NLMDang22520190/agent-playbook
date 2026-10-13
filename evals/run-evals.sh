@@ -245,7 +245,7 @@ grade_E1() {
   check "node --test tests/*.test.js passes" tests_pass
   local r   # the final reply names the weight (Full, Lite or Quick, as a word); plain text needs a human
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qwE 'Full|Lite|Quick'; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
+    if [ -n "$(stated_weight "$r")" ] || printf '%s' "$r" | grep -qwE 'Full|Lite|Quick'; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
   else record MANUAL "reply states the weight"; fi
   record MANUAL "no unnecessary questions"
 }
@@ -328,11 +328,18 @@ reply_matches() { local r
   if r="$(result_text)"; then
     if printf '%s' "$r" | grep -qiE "$1"; then record PASS "$2"; else record FAIL "$2"; fi
   else record MANUAL "$2"; fi; }
-# feedback_line_unless_quick -> the "Playbook feedback line" check (E15, E19). A reply whose weight line says `Weight: Quick` and not
-# `Weight: Lite|Full` is exempt (Quick drops the line unless a rule misfired); the words full or lite elsewhere in the reply do not
-# cancel it. With no weight line, or Lite or Full, the check applies as before.
+# stated_weight TEXT -> prints the weight (full, lite or quick, lower case) of the FIRST weight statement in TEXT, nothing when there is none.
+# A weight statement is `Weight: X`, `Weight: **X**`, `**Weight:** X`, `at X weight`, `at **X** weight` or `X weight` (X in any case).
+# The graders of E1, E15, E19, E23 and E25 all read the weight through this helper; a reply with no statement falls back to each grader's old rule.
+stated_weight() {
+  printf '%s\n' "$1" | grep -ioE 'weight:[ *_]*(full|lite|quick)|(^|[^[:alnum:]])(full|lite|quick)[*_]* +weight([^[:alnum:]]|$)' |
+    head -n 1 | grep -ioE 'full|lite|quick' | head -n 1 | tr 'A-Z' 'a-z'
+}
+# feedback_line_unless_quick -> the "Playbook feedback line" check (E15, E19). A reply whose first weight statement is Quick is exempt
+# (Quick drops the line unless a rule misfired); the words full or lite elsewhere in the reply do not cancel it. With no weight
+# statement, or Lite or Full, the check applies as before.
 feedback_line_unless_quick() { local r
-  if r="$(result_text)" && printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' && ! printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then return 0; fi
+  if r="$(result_text)" && [ "$(stated_weight "$r")" = quick ]; then return 0; fi
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"; }
 # red_unchanged -> 0 when tests/ is as the RED commit left it (no edit, deletion or new file)
 red_unchanged() { git -C "$WD" diff --quiet "$E4_RED" -- tests &&
@@ -409,10 +416,11 @@ grade_E15() {
   check "a file under tests/ says expects numbers" tests_mention "expects numbers"
   check "node --test tests/*.test.js passes" tests_pass
   # the weight is read from the final reply: Lite with "no independent review", or Quick; a plain-text log keeps the old reading
-  local r
+  local r w
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*quick' ||
-       { printf '%s' "$r" | grep -qiwE 'lite' && printf '%s' "$r" | grep -qiE 'no independent review'; }; then
+    w="$(stated_weight "$r")"
+    if [ "$w" = quick ] ||
+       { [ "$w" != full ] && printf '%s' "$r" | grep -qiwE 'lite' && printf '%s' "$r" | grep -qiE 'no independent review'; }; then
       record PASS "the reply states the weight: Lite with no independent review, or Quick"
     else record FAIL "the reply states the weight: Lite with no independent review, or Quick"; fi
   else check "the reply states the weight: Lite with no independent review, or Quick" said lite; fi
@@ -448,9 +456,10 @@ grade_E23() {
   check "node --test tests/*.test.js passes" tests_pass
   reply_matches 'over the limit, user chose Quick|Full (column|stop)|normally (need|needs|get|gets) (the )?full' "the reply names the limit or the Full stop"
   # the weight statement of the reply must not be Lite or Full (never an upgrade); a reply with no weight statement is not an upgrade
-  local r
+  local r w
   if r="$(result_text)"; then
-    if printf '%s' "$r" | grep -qiE 'weight:[ *_]*(lite|full)'; then record FAIL "the reply keeps the Quick weight"
+    w="$(stated_weight "$r")"
+    if [ "$w" = lite ] || [ "$w" = full ]; then record FAIL "the reply keeps the Quick weight"
     else record PASS "the reply keeps the Quick weight"; fi
   else record MANUAL "the reply keeps the Quick weight"; fi
 }
@@ -471,6 +480,20 @@ models_configured() { local allowed="" k m ok
 stream_result() {
   if [ "$T_json" = 1 ]; then check "the run ended with a stream-json result (needs --harness claude)" result_ok
   else record MANUAL "the run ended with a stream-json result: needs --harness claude"; fi; }
+# models_line_ok REPLY -> 0 when the reply has a Models line: `Models: ` at the start of a line, `Models: tester=`, the template form
+# `Models used:` (also bold), or one line that names each of tester, implementer and reviewer with its model (`tester=sonnet`,
+# `tester: sonnet`, `sonnet for tester`). Models named only in prose (a role missing, or no model next to it) do not count.
+models_line_ok() { local r="$1" ln role
+  printf '%s\n' "$r" | grep -qiE '^Models: |Models: tester=|Models used:' && return 0
+  while IFS= read -r ln; do
+    for role in tester implementer reviewer; do
+      printf '%s\n' "$ln" | grep -qiE "${role}[ ]*=[ ]*[*_]*[a-z]|${role}[ ]*:[ ]*[*_]*(sonnet|opus|haiku|fable|session|claude-)|(sonnet|opus|haiku|fable|session|claude-[a-z0-9.-]+)[ ]+for[ ]+(the[ ]+)?${role}([^[:alnum:]]|$)" || continue 2
+    done
+    return 0
+  done <<EOF
+$r
+EOF
+  return 1; }
 grade_E24() {
   local r
   stream_result
@@ -483,7 +506,9 @@ grade_E24() {
     record MANUAL "transcript shows sub-agent use (Agent or Task tool)"
     record MANUAL "every sub-agent call uses a configured model"
   fi
-  reply_matches '^Models: |Models: tester=' "the reply has a Models: line"
+  if r="$(result_text)"; then
+    if models_line_ok "$r"; then record PASS "the reply has a Models: line"; else record FAIL "the reply has a Models: line"; fi
+  else record MANUAL "the reply has a Models: line"; fi
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "total() returns integer cents and every caller is updated"
 }
@@ -500,7 +525,7 @@ grade_E25() {
   # a reply with a weight statement is graded on that word (bold allowed): only Lite passes, Quick and Full FAIL even when the reply
   # names size --quick or escalation; a reply with no weight statement passes on the size --quick or escalat wording
   if r="$(result_text)"; then
-    w="$(printf '%s' "$r" | grep -ioE 'weight:[ *_]*(full|lite|quick)' | head -n 1 | grep -ioE '(full|lite|quick)$' | tr 'A-Z' 'a-z')"
+    w="$(stated_weight "$r")"
     if [ -n "$w" ]; then
       if [ "$w" = lite ]; then record PASS "$name"; else record FAIL "$name"; fi
     elif printf '%s' "$r" | grep -qiE 'size --quick|escalat'; then record PASS "$name"
