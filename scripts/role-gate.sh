@@ -35,6 +35,8 @@
 # incomplete" (the escape silences that path only); a path with a newline or a \002 byte is
 # "VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete" and has no escape (rename the file).
 # Gaining the bit or deleting a file is fine.
+# implementer: a test path whose only change since REF is a mode restore (100644 -> 100755, same content) is not a violation:
+# "note: <path> mode restore only (...)" (v0.24.9). A drop, a content change or a delete of a test stays a violation.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref)
@@ -110,6 +112,19 @@ case "$cmd" in
     changed="$( { git -c core.quotepath=off diff --name-only -z --no-renames "$base" --
                   git -c core.quotepath=off ls-files -z --others --exclude-standard; } | tr '\000' '\n' | sort -u )"
 
+    # v0.24.9: a test path whose only change from base to the work tree is a mode RESTORE (base 100644, now 100755, same
+    # content) is not an implementer violation (a RED commit dropped the bit, a later commit gave it back): note it instead.
+    # Anything else (a drop, a content change, a delete) is not matched here and stays a violation.
+    mode_restore_only() {
+      local raw meta st oldm newm ent rp="$1"
+      raw="$(git -c core.quotepath=off diff --raw --no-abbrev --no-renames "$base" -- ":(literal)$rp" 2>/dev/null)" || return 1
+      [ "$(printf '%s\n' "$raw" | wc -l | tr -d ' ')" = 1 ] || return 1
+      meta="${raw%%$'\t'*}"
+      set -- $meta; oldm="${1#:}"; newm="$2"; st="$5"
+      [ "$oldm" = 100644 ] && [ "$newm" = 100755 ] && [ "$st" = M ] || return 1
+      ent="$(git hash-object -- "$rp" 2>/dev/null)" || return 1
+      [ "$ent" = "$3" ]
+    }
     violations=0
     checked=0
     while IFS= read -r f; do
@@ -117,6 +132,10 @@ case "$cmd" in
       case "$f" in .agents/handoff/*) continue ;; esac
       checked=$((checked + 1))
       kind="$(classify "$f")"
+      if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
+        printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$f"
+        continue
+      fi
       bad=0
       case "$role" in
         tester)      [ "$kind" != "test" ] && bad=1 ;;
