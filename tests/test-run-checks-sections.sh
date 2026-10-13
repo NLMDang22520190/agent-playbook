@@ -105,14 +105,15 @@ C="$(mk_min_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$SD $FI 's/a/
 checks "$C" sed
 assert_contains "AC2.1 the failure mentions sed" "$OUT" "$SD"
 # the repository itself stays clean and says so
+# One real-tree full run feeds AC2.1, AC8.2 and AC4.3 (the same run on an unmodified copy gives the same output).
 C="$(mk_copy)"
 run bash "$C/evals/run-checks.sh"
+FULL_OUT="$OUT"; FULL_RC="$RC"
 assert_rc "AC2.1 the real tree passes run-checks" 0
 assert_contains "AC2.1 the ok line is printed" "$OUT" "  ok   $SD $FI has a suffix (BSD sed)"
 
-# AC8.2: the default run (no --only) still contains the dupmax group
-C="$(mk_copy)"
-run bash "$C/evals/run-checks.sh"
+# AC8.2: the default run (no --only) still contains the dupmax group (the real-tree full run from AC2.1)
+OUT="$FULL_OUT"; RC="$FULL_RC"
 assert_rc "AC8.2 the real tree passes a full run-checks" 0
 assert_contains "AC8.2 the full run has the dupmax ok line" "$OUT" "  ok   regex repeat bounds <= 255 (BSD RE_DUP_MAX)"
 
@@ -286,8 +287,7 @@ assert_contains "AC4.3 --only soh: run-checks: all ok" "$OUT" "run-checks: all o
 assert_eq "AC4.3 --only soh prints exactly one ok line" "1" "$(printf '%s\n' "$OUT" | grep -c '^  ok   ')"
 assert_contains "AC4.3 the ok line names 001" "$(printf '%s\n' "$OUT" | grep '^  ok   ')" "001"
 assert_not_contains "AC4.3 --only soh: no gnu line" "$OUT" "GNU-only options"
-C="$(mk_copy)"
-run bash "$C/evals/run-checks.sh"
+OUT="$FULL_OUT"; RC="$FULL_RC"   # the real-tree full run from AC2.1
 assert_rc "AC4.3 the full run on the real tree: exit 0" 0
 assert_eq "AC4.3 the full run has the soh ok line (001)" "1" "$(printf '%s\n' "$OUT" | grep '^  ok   ' | grep -c '001')"
 C="$(mk_min_copy)"
@@ -359,12 +359,11 @@ else
   t_skip 4 "AC16.1 [shellcheck] needs shellcheck installed"
 fi
 # the full run: the files group loops over the same globs
-C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"
+# one run renames both directories and feeds both groups of assertions
+C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"; mv "$C/scripts" "$C/scripts-renamed"
 run bash "$C/evals/run-checks.sh"
 assert_rc "AC16.1 [full run] tools/ renamed: exit 1" 1
 assert_contains "AC16.1 [full run] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
-C="$(mk_copy)"; mv "$C/scripts" "$C/scripts-renamed"
-run bash "$C/evals/run-checks.sh"
 assert_rc "AC16.1 [full run] scripts/ renamed: exit 1" 1
 assert_contains "AC16.1 [full run] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
 
