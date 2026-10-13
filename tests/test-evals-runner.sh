@@ -1076,10 +1076,12 @@ assert_eq "T1 it existed while the adapter ran" "yes" "$(cat "$REC/t1.exists" 2>
 assert_no_path "T1 it is gone after the run" "$T1D"
 assert_eq "T1 an adapter that leaves nothing gets no NOTE line" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE ')"
 
+# the fake adapters spell out $TMPDIR/tmp.XXXXXXXXXX, which is what GNU mktemp -d does with no template:
+# macOS mktemp -d ignores TMPDIR there (seen on the v0.24.7 PR macOS job), so a bare call would land outside the scenario dir
 echo "v0.24.7 T2 an adapter that runs mktemp -d twice and leaves the dirs: reported, removed, outer TMPDIR clean"
 mk_adapter t2 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t2.tmpdir"
-mktemp -d >/dev/null
-mktemp -d >/dev/null
+mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null
+mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null
 true'
 rm -f "$REC/t2.tmpdir"
 tt_run t2
@@ -1102,7 +1104,7 @@ assert_eq "T3 nothing of the scenario TMPDIR is left" "0" "$(find "$RF_TD" -maxd
 else t_skip 2 "v0.24.7 T3 link case (ln -s makes a copy on this file system)"; fi
 
 echo "v0.24.7 T4 a runner killed with SIGTERM while the adapter sleeps leaves no scenario TMPDIR"
-mk_adapter t4 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t4.tmpdir"; mktemp -d >/dev/null; printf "%s\n" "$$" > "'"$REC"'/t4.mark.tmp"; mv "'"$REC"'/t4.mark.tmp" "'"$REC"'/t4.mark"; exec sleep 30'
+mk_adapter t4 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t4.tmpdir"; mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null; printf "%s\n" "$$" > "'"$REC"'/t4.mark.tmp"; mv "'"$REC"'/t4.mark.tmp" "'"$REC"'/t4.mark"; exec sleep 30'
 OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/t4.mark" "$REC/t4.mark.tmp" "$REC/t4.tmpdir"
 IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
 env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/t4.sh" --scenarios E1 --workroot "$W" --out "$OD/results.md" >/dev/null 2>&1 &
