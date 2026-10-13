@@ -483,4 +483,51 @@ git -C "$R" config remote.origin.pushurl "$FORK"
 run_in "$R" git push origin feat
 assert_rc "R4 F3 control: git push origin feat (the only destination is fork, which holds the secret): exit 0" 0
 if holds_feat "$FORK"; then t_ok "R4 F3 control: the push reached fork"; else t_bad "R4 F3 control: the push reached fork" "no feat on fork; output: $OUT"; fi
+
+# ---- v0.24.4 item 7: PB_LEAK_SCAN_BASE bounds the full-range scan of a push to an unknown URL (explicit escape, never automatic) ----
+echo "v0.24.4 PB_LEAK_SCAN_BASE=REF scans REF..SHA for a destination no remote owns"
+newrepo
+git -C "$R" checkout -q -b main 2>/dev/null || git -C "$R" branch -q -M main
+U_X="$(mk_tmp)/x.git"
+stage "$R" old.txt "k $GH"; G -C "$R" commit -q --no-verify -m 'old secret'
+OLD="$(git -C "$R" rev-parse HEAD)"
+stage "$R" mid.txt "clean line"; G -C "$R" commit -q --no-verify -m 'clean'
+MID="$(git -C "$R" rev-parse HEAD)"
+lc_streams --unpushed "$MID" --remote "$U_X"
+assert_eq "B1 no escape: the old secret is found (full scan unchanged), exit 1" "1" "$RC"
+assert_contains "B1 ... named" "$STD" "old.txt:1: github-token"
+assert_contains "B1 ... the note mentions the escape" "$ERR" "PB_LEAK_SCAN_BASE"
+stage "$R" new.txt "k $AWS"; G -C "$R" commit -q --no-verify -m 'new secret'
+NEW="$(git -C "$R" rev-parse HEAD)"
+export PB_LEAK_SCAN_BASE="$MID"
+lc_streams --unpushed "$NEW" --remote "$U_X"
+assert_eq "B2 base=MID: the newer secret is found, exit 1" "1" "$RC"
+assert_contains "B2 ... named" "$STD" "new.txt:1: aws-key"
+assert_not_contains "B2 ... the older secret is not reported" "$STD" "old.txt"
+assert_contains "B2 ... stderr says the scan is bounded" "$ERR" "scanning only $MID..$NEW"
+lc_streams --unpushed "$MID" --remote "$U_X"
+assert_eq "B3 base=MID with SHA=MID: nothing newer, exit 0" "0" "$RC"
+assert_contains "B3 ... clean" "$STD" "leak-check: clean"
+export PB_LEAK_SCAN_BASE="$OLD"
+lc_streams --unpushed "$NEW" --remote "$U_X"
+assert_not_contains "B4 base=OLD: the base commit itself is excluded" "$STD" "old.txt"
+assert_contains "B4 ... the newer secret is found" "$STD" "new.txt:1: aws-key"
+export PB_LEAK_SCAN_BASE="nosuchref-$$"
+lc_streams --unpushed "$NEW" --remote "$U_X"
+assert_eq "B5 a bad ref: exit 3, never a silent fallback" "3" "$RC"
+assert_contains "B5 ... the message names the variable and the ref" "$ERR" "PB_LEAK_SCAN_BASE"
+assert_contains "B5 ... and the ref" "$ERR" "nosuchref-$$"
+assert_not_contains "B5 ... nothing is scanned" "$STD" "github-token"
+export PB_LEAK_SCAN_BASE=""
+lc_streams --unpushed "$NEW" --remote "$U_X"
+assert_eq "B6 an empty value is not set: the full scan, exit 1" "1" "$RC"
+assert_contains "B6 ... the old secret is found" "$STD" "old.txt:1: github-token"
+export PB_LEAK_SCAN_BASE="$MID"
+git -C "$R" remote add origin "$(mk_tmp)/o.git"
+lc_streams --unpushed "$NEW" --remote origin
+assert_eq "B7 a configured remote name does not use the escape: its own refs limit it (nothing owned: all), exit 1" "1" "$RC"
+assert_contains "B7 ... the old secret is still found" "$STD" "old.txt:1: github-token"
+lc_streams --unpushed "$NEW"
+assert_contains "B8 no --remote: the escape is not used either" "$STD" "old.txt:1: github-token"
+unset PB_LEAK_SCAN_BASE
 t_summary
