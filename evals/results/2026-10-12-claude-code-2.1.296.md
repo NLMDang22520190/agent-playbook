@@ -104,3 +104,18 @@ both runs, no temp home was left in TMPDIR, and E24's feedback item and cost log
 | E10 | skipped | - | cost guard: spent 1.79 + estimate 1.79 >= cap 3 |
 
 Total 1.79 USD (Claude Code 2.1.296, 22 turns). This confirms the v0.24.2 fix of the Quick line for E21.
+
+## Run 9: v0.24.6 installed - E21 x3 after the playbook-tdd description change (2026-10-13, 07:52-08:15 UTC)
+
+Run from Windows Git Bash with the Claude Code harness, `--clean-env --max-cost 2.5` for each run. Purpose: check that
+the v0.24.6 change to the `playbook-tdd` description (it now names Quick and the user's word "quick") did not regress E21.
+
+| Run | Scenario | Auto passed / total | Cost (USD) |
+|---|---|---|---|
+| 1 | E21 | 6/6 | 1.88 |
+| 2 | E21 | 6/6 | 1.85 |
+| 3 | E21 | 6/6 | 1.78 |
+
+Total 5.52 USD. Every run passed all six checks: every call site renamed, node tests pass, the spec has an
+Understanding section, the spec names report.js, the spec is written before the first src/ edit, and nothing was written
+outside the workdir. No regression from the description change.

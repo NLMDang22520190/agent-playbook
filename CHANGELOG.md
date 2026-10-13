@@ -27,6 +27,7 @@
   `*-fixture.sh` files. The union of assertion names is identical (re-derived by a reviewer). The largest suite's
   Windows weight drops from about 555 to about 285. The shard weights come from the v0.24.6 run 38362314285, split by
   Linux time share.
+- **Real evals**: E21 3/3 runs at 6/6 on v0.24.6 (5.52 USD), after the skill description change.
 - **Review**: three Opus reviews. The round-2 BLOCKER is resolved by withdrawing the arithmetic mutants.
 
 ## 0.24.6 - 2026-10-13
