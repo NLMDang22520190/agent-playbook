@@ -58,6 +58,11 @@ choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion,
 limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
 continue with separate roles from there. Quick escalates to Lite the same way (steps in `references/quick.md`).
 
+**User override (Full to Lite).** When the work meets a Full criterion and the user asks for Lite, ask once, naming the Full
+trigger (a file:line or rule) and what is lost: no independent reviewer, no separate contexts; in a headless or non-interactive
+run follow the user with no question. Record `Weight: Lite (user override; Full criteria: <x>)` in decisions.md and the final report.
+The tests are never skipped: the test comes first and is seen failing, role gates and evidence all still run; the skip-tests rule is unchanged.
+
 **Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
 reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
 
