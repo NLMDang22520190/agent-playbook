@@ -566,4 +566,34 @@ grep -v '^AGENTS.global.md ' "$C/evals/word-budgets" > "$C/evals/word-budgets.ne
 checks "$C"
 assert_contains "AC5 AGENTS.global.md without a budget entry: says no word budget" "$OUT" "no word budget"
 
+# review 1 (v0.24.8): CRLF table without comments, a missing file, a stale table entry
+# a CRLF table whose lines carry no trailing comment still parses (the \r is not part of the number)
+C="$(mk_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
+checks "$C" skills
+assert_rc "R1 a CRLF budget table without comments, counts within budget: exit 0" 0
+assert_not_contains "R1 a CRLF table without comments: no 'no word budget' failure" "$OUT" "no word budget"
+C="$(mk_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
+b="$(( $(wcw "$C/$SKILL") + WB_SLACK ))"
+wb_pad "$C" "$SKILL" $((WB_SLACK + 1))
+checks "$C" skills
+assert_rc "R1 a CRLF budget table, 1 word over: exit 1" 1
+assert_contains "R1 a CRLF budget table, 1 word over: says over its budget with the budget" "$OUT" "over its budget of $b"
+
+# a missing file is "missing, no word count", never "over its budget"
+C="$(mk_copy)"; wb_table "$C"; rm -f "$C/AGENTS.global.md"
+checks "$C"
+assert_rc "R1 AGENTS.global.md deleted: exit 1" 1
+assert_contains "R1 a missing file says missing, no word count" "$OUT" "AGENTS.global.md: missing, no word count"
+assert_not_contains "R1 a missing file is not reported as over its budget" "$OUT" "over its budget"
+
+# a table entry for a file that does not exist is a failure
+C="$(mk_copy)"; wb_table "$C"
+printf 'skills/gone/SKILL.md 100\n' >> "$C/evals/word-budgets"
+checks "$C" skills
+assert_rc "R1 a stale table entry: exit 1" 1
+assert_contains "R1 a stale entry names the path and says in evals/word-budgets but missing" "$OUT" "skills/gone/SKILL.md: in evals/word-budgets but missing"
+C="$(mk_copy)"; wb_table "$C"
+checks "$C" skills
+assert_not_contains "R1 no stale entry in a table of existing files" "$OUT" "in evals/word-budgets but missing"
+
 t_summary

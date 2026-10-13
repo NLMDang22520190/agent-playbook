@@ -1358,4 +1358,18 @@ qchk "v24.8 E26 expects the test seen failing (a test(red) commit)" "$E26S" 'tes
 qchk "v24.8 E26 covers the headless case" "$E26S" 'headless'
 qchk "v24.8 E26 fails on a silent switch or a skipped test" "$E26S" 'Fail if:[^.]{0,250}(skip|without a test)'
 
+echo "v0.24.8 review 1: the override clause, and the AUTO list stays gradable"
+qchk "v24.8 r1 the override covers only the Full criteria named in the question" "$PICKW" 'override covers only the Full criteria named in the question'
+qchk "v24.8 r1 a new Full criterion, the size limit or a test that looks wrong still escalates (ask again)" "$PICKW" 'a new Full criterion[^.;]{0,80}size limit[^.;]{0,80}test that looks wrong[^.;]{0,40}escalates[^.;]{0,20}ask again'
+RUNEVALS="$PB_ROOT/evals/run-evals.sh"
+AUTOS="$(sed -n 's/^AUTO="\(.*\)"/\1/p' "$RUNEVALS" | head -n 1)"
+if [ -n "$AUTOS" ]; then t_ok "v24.8 r1 the AUTO list is readable"; else t_bad "v24.8 r1 the AUTO list is readable" "no AUTO=\"...\" line in $RUNEVALS"; fi
+for e in $AUTOS; do
+  if grep -qE "^grade_${e}\(\)" "$RUNEVALS"; then t_ok "v24.8 r1 AUTO scenario $e has a grade_$e function"; else t_bad "v24.8 r1 AUTO scenario $e has a grade_$e function" "not found in $RUNEVALS"; fi
+done
+case " $AUTOS " in
+  *" E26 "*) if grep -qE '^grade_E26\(\)' "$RUNEVALS"; then t_ok "v24.8 r1 E26 is in AUTO and has grade_E26"; else t_bad "v24.8 r1 E26 stays out of AUTO until grade_E26 exists" "E26 in AUTO without grade_E26"; fi ;;
+  *) t_ok "v24.8 r1 E26 is not in AUTO (no grade_E26 yet)" ;;
+esac
+
 t_summary
