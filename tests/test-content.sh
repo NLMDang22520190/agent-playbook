@@ -1064,9 +1064,9 @@ if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   t_skip 1 "v23.3 R5 mode of the fixture helper needs a git checkout"
 fi
-# v0.24.1 shard balance: test-leak-check.sh (3 parts), test-ci-tree-tested.sh (2) and test-role-gate.sh (3 since v0.24.7) are split by section. Every part is stored at
+# v0.24.1 shard balance: test-leak-check.sh (3 parts), test-ci-tree-tested.sh (2) and test-role-gate.sh (3 since v0.24.7) are split by section, and since v0.24.7 test-evals-grade6.sh (2). Every part is stored at
 # mode 100755. Only tests/test-leak-check.sh reads the README and the CHANGELOG (AC10.3), so only it is pulled into the docs-only reduced set by the grep.
-set -- test-leak-check 3 test-ci-tree-tested 2 test-role-gate 3
+set -- test-leak-check 3 test-ci-tree-tested 2 test-role-gate 3 test-evals-grade6 2
 while [ $# -ge 2 ]; do
   FAMILY="$1"; MINPARTS="$2"; shift 2
   NPARTS="$(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null | wc -l | tr -d ' ')"
@@ -1085,7 +1085,7 @@ while [ $# -ge 2 ]; do
   done
 done
 # the shared setup of the split suites lives in helpers that run-all.sh does not start
-for HNAME in leak-check-fixture ci-tree-fixture role-gate-fixture evals-e20-fixture; do
+for HNAME in leak-check-fixture ci-tree-fixture role-gate-fixture evals-e20-fixture evals-grade6-fixture; do
   HELPER="$PB_ROOT/tests/$HNAME.sh"
   assert_file "v24.1 the helper tests/$HNAME.sh exists" "$HELPER"
   case "$(basename "$HELPER")" in test-*.sh) t_bad "v24.1 the helper $HNAME.sh is not named test-*.sh" "name: $(basename "$HELPER")" ;; *) t_ok "v24.1 the helper $HNAME.sh is not named test-*.sh" ;; esac
