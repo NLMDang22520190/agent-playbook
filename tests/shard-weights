@@ -1,4 +1,4 @@
-# Seconds per suite on the windows-latest CI runner (shard jobs), run 38351856859.
+# Seconds per suite on the windows-latest CI runner (shard jobs), run 38351856859. Scaled by hand after v0.24.6: test-run-checks.sh 177 -> 15 (Linux 166 -> 14 s with --only files), test-leak-check-uname.sh new, ~60 (Linux 3 s x the ~20x Windows ratio of the leak-check suites).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
 test-ship.sh 568
 test-evals-grade6.sh 559
@@ -15,12 +15,13 @@ test-evals-runner.sh 289
 test-leak-check-mode.sh 274
 test-evals-budget.sh 263
 test-leak-check.sh 263
+test-leak-check-uname.sh 60
 test-run-all.sh 233
 test-evals-grade2-e20.sh 231
 test-mutate.sh 227
 test-run-checks-sections.sh 207
 test-evals-grade2-e20-capture.sh 182
-test-run-checks.sh 177
+test-run-checks.sh 15
 test-evals-grade5.sh 151
 test-release-tool.sh 130
 test-run-checks-gnu.sh 105
