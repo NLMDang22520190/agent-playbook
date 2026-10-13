@@ -227,4 +227,32 @@ echo "#11 skill names are lowercase only (locale-independent check)"
 cap "Uppercase skill name" --skill Playbook-TDD
 assert_rc "#11 uppercase skill name rejected" 2
 
+
+echo "v0.24.5: feedback.sh leaves no tmp.* entries in the storage folders"
+tmpleft() { find "$D" -name 'tmp.*' 2>/dev/null | wc -l | tr -d ' '; }
+# an eval run left empty tmp.* dirs behind (8 after one run); capture and submit now sweep empty ones
+mkdir -p "$D/sent/tmp.aaaa1111" "$D/sent/tmp.bbbb2222" "$D/pending/tmp.cccc3333" "$D/discarded/tmp.dddd4444"
+cap "Temp dir sweep one"
+assert_rc "v0.24.5 capture ok with stray temp dirs around" 0
+assert_eq "v0.24.5 after capture no tmp.* entry is left in pending, sent or discarded" "0" "$(tmpleft)"
+IDT="$(printf '%s' "$OUT" | sed -n 's/^captured \([^ ]*\).*/\1/p')"
+mkdir -p "$D/sent/tmp.eeee5555"
+mkdir -p "$D/sent/tmp.full0000"; : > "$D/sent/tmp.full0000/keep.txt"
+run bash "$FB" submit "$IDT" --repo o/r
+assert_rc "v0.24.5 submit with the fake gh exits 0" 0
+assert_file "v0.24.5 the submitted item moved to sent/" "$D/sent/$IDT.md"
+assert_no_path "v0.24.5 after submit the empty tmp dir in sent/ is gone" "$D/sent/tmp.eeee5555"
+assert_file "v0.24.5 a tmp.* dir that holds something is left alone" "$D/sent/tmp.full0000/keep.txt"
+rm -f "$D/sent/tmp.full0000/keep.txt"; rmdir "$D/sent/tmp.full0000"
+cap "Temp dir sweep two"
+IDF="$(printf '%s' "$OUT" | sed -n 's/^captured \([^ ]*\).*/\1/p')"
+mkdir -p "$D/sent/tmp.ffff6666"
+GH_FAIL=1 run bash "$FB" submit "$IDF" --repo o/r
+if [ "$RC" -ne 0 ]; then t_ok "v0.24.5 failing submit exits non-zero"; else t_bad "v0.24.5 failing submit exits non-zero"; fi
+assert_eq "v0.24.5 after a failing submit sent/ holds no tmp.* entry" "0" "$(tmpleft)"
+assert_file "v0.24.5 the failed item is still pending" "$D/pending/$IDF.md"
+# the body temp file is gone too, also when TMPDIR points into the storage folder
+TD="$D/sent"; mkdir -p "$TD"
+TMPDIR="$TD" run bash "$FB" submit "$IDF" --repo o/r
+assert_eq "v0.24.5 TMPDIR inside sent/: no pbfb.* or tmp.* file is left behind" "0" "$(find "$D" \( -name 'pbfb.*' -o -name 'tmp.*' \) | wc -l | tr -d ' ')"
 t_summary
