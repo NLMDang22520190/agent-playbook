@@ -84,3 +84,14 @@ Total 1.57 USD. The shorter block keeps E1, E3, E5, E8 and E10 passing. E21 regr
 agent chose "the playbook's Quick test level" from the always-on line for a two-file rename that removed a public
 export, without loading playbook-tdd, so no spec was written. v0.24.2 fixes the Quick line and quick.md; E21 is re-run
 on the installed v0.24.2.
+
+## Run 7: v0.24.2 installed, isolated runner (v0.24.3 branch) - E24, then E10 and E25
+
+| Scenario | Auto passed / total | Cost (USD) | Note |
+|---|---|---|---|
+| E24 | 5/6 | 3.55 | every sub-agent used the configured model (sonnet/opus); no `Models:` line in the reply |
+| E25 | 4/5 | 0.49 | loaded playbook-tdd, ran the size check 4 times, chose Lite for an additive 3-file change; the grader missed "at **Lite** weight" (grader fix in v0.24.4) |
+| E10 | 3/3 | 0.33 | typo fix (v0.23.3 baseline 0.39) |
+
+Total 4.37 USD. Isolation check on the real machine: the real feedback queue was byte-identical before and after
+both runs, no temp home was left in TMPDIR, and E24's feedback item and cost log landed in its evidence folder.

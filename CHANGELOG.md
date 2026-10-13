@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.24.3 - 2026-10-13
+- **Faster CI where the time really went** (measured first): each GNU-scanner test case ran `run-checks` over the whole
+  repository (84 files, 23k lines) although only its one fixture can produce findings - 98 % of those suites' time.
+  The cases now run on a minimal tree (run-checks.sh plus stubs); 332 paired runs gave identical stdout, stderr and
+  exit codes on the minimal and the full tree, and the assertion lists are unchanged. Under BSD awk + bash 3.2 (the
+  macOS pair): test-run-checks-gnu 268 -> 20 s, -gnu9 383 -> 20 s, -sections 168 -> 108 s. Shard weights rescaled.
+- **Evals no longer write into your home**: every scenario runs with `PLAYBOOK_HOME` set to its own temp dir (a copy
+  of the conf without `feedback_repo`; HOME and the CLI login stay real, no credential file is copied). Feedback and
+  the cost log an eval agent writes are kept as evidence in `<results>.<E>.evidence/`; the copy never follows
+  symlinks, each run has its own folder, and the temp home is removed on exit, Ctrl-C or kill. `--real-home` keeps
+  the old behaviour. Found because 7 feedback items from eval runs had landed in the real feedback queue (they are
+  real findings and stay there for the normal review).
+- **Real evals** (results file): E24 - every sub-agent used the configured model (sonnet tester/implementer, opus
+  reviewers), but the reply had no `Models:` line; E25 - the agent loaded playbook-tdd, checked the size and chose
+  Lite correctly, but the grader missed "at **Lite** weight" (fixed in v0.24.4); E10 3/3 for 0.33 USD. Verified
+  with the new runner: no temp home left behind, the real feedback queue unchanged.
+
 ## 0.24.2 - 2026-10-13
 - **Quick can no longer be chosen from the summary** (a regression found by a real eval of v0.24.1: E21 picked
   "the playbook's Quick test level" for a two-file rename that removed a public export, without loading playbook-tdd,

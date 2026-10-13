@@ -2,6 +2,7 @@
 # Tests of the GNU-only option scanner of evals/run-checks.sh (section gnu): options, the gnu-ok marker, long options, the
 # quote-aware comment stripper (split from test-run-checks.sh in v0.23.3). The tokenizer cases are in test-run-checks-gnu9.sh.
 # Each test runs run-checks.sh inside a fresh copy of the repository, so mutations never touch the real tree.
+# Cases whose findings come only from their own fixture file run in mk_min_copy (run-checks-fixture.sh); the real-tree runs use mk_copy.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
 
@@ -12,7 +13,7 @@ G="grep"; PF="-P"; RL="readlink"; FF="-f"; DT="date"; DD="-d"; ST="stat"; CC="-c
 # gnu_case NAME FILE BODY-LINE EXPECT(fail|pass) [CONSTRUCT] -> FILE (under the copy) gets BODY-LINE as its line 3
 gnu_case() {
   local name="$1" rel="$2" line="$3" expect="$4" construct="${5:-}"
-  C="$(mk_copy)"
+  C="$(mk_min_copy)"
   mkdir -p "$C/$(dirname "$rel")"
   printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
   checks "$C" gnu
@@ -71,6 +72,7 @@ C="$(mk_copy)"
 run bash "$C/evals/run-checks.sh"
 assert_rc "AC5.1 the real tree passes run-checks" 0
 assert_contains "AC5.1 the ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
+FULL_RC=$RC; FULL_OUT="$OUT"   # AC6 below asserts on the same run
 
 # ---- v0.22.1 review: an explicit exemption marker, and no GNU flag hidden in a variable ----
 echo "v0.22.1 review: gnu-ok marker"
@@ -133,8 +135,8 @@ gnu_case "a quoted # before a real trailing comment: the flag is code" tests/zz-
 gnu_case "a quoted # then a real marker with a reason exempts" tests/zz-gnu.sh "echo \"a # b\"; $G $PF x $MK needs PCRE" pass
 gnu_case "a real comment after a closed quote hides the rest" tests/zz-gnu.sh "echo \"a b\" # $G $PF x" pass
 gnu_case "a # inside quotes in a comment-free line without GNU flags" tests/zz-gnu.sh "echo \"a # b\"; $G -i x" pass
-C="$(mk_copy)"
-run bash "$C/evals/run-checks.sh"
+# the same full run as AC5.1 above (same tree, same command): its result is reused, not run a second time
+RC=$FULL_RC; OUT="$FULL_OUT"
 assert_rc "AC6 the real tree passes a full run-checks with the new rules" 0
 assert_contains "AC6 the gnu ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
 
