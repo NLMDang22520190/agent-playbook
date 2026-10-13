@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.5 - 2026-10-13
+- **`spec_reviewer` model role**: the Full-weight spec reviewer sub-agent can have its own model
+  (`model_spec_reviewer_<harness>`). `role-model.sh` falls back to the reviewer's model when none is set, `cost.sh`
+  accepts the role, and `plan` lists it only when it differs from the reviewer. README and `playbook-setup` name it.
+- **`feedback.sh` removes only its own temp file**: it cleans up the `pbfb.*` file it created and nothing else in the
+  temp directory.
+- **Faster CI, test-only** (measured first, every assertion name kept): the role-gate block that a merge had duplicated
+  is gone from `test-role-gate.sh` (67 duplicate assertions; the union of names over both suites is unchanged), the
+  sections suite shares identical full runs, the ci-tree fixture uses builtins instead of `tr` and `cat`, and the eval
+  grader tests build the transcripts of one table in a single node call. Linux, before -> after: role-gate 37.5 s ->
+  22.9 s, sections 100 s -> 66 s, grade6 75.6 s -> 55.5 s, grade4 51 s -> 41.6 s, ci-tree-tested 26.3 s -> 22.4 s,
+  ci-tree-tested-steps 24.6 s -> 21.2 s.
+- **Shard weights** refreshed from CI run 38337463462, with the six sped-up suites scaled by their measured Linux ratios.
+- **Review**: one Opus review returned SHIP with 5 mutation checks red as expected; its two minor notes (the transcript
+  batch clears old transcripts and fails loudly when node fails; a note on `read -d` in the fake gh) are fixed.
+
 ## 0.24.4 - 2026-10-13
 - **The graders read the weight however the agent writes it** (found by the real v0.24.3 evals: E25 passed in substance
   but the grader missed "at **Lite** weight"). One helper, `stated_weight`, now serves the graders of E1, E15/E19 (the
