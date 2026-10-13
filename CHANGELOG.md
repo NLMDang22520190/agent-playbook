@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.24.10 - 2026-10-13
+- **Quick is merged into Lite.** When the user says "quick", the agent runs Lite and labels it
+  `Weight: Lite (user said quick)`; the test still comes first and is seen failing. If the work meets a Full criterion,
+  the user override applies with its own label, `Weight: Lite (user override; Full criteria: <x>)`. If quick work grows
+  past the Lite size limit with no Full criterion, the agent asks once before going to Full; in a headless run it stays
+  Lite and labels it. Measured basis: Quick saved only 10-20% over Lite, which did not pay for a separate weight.
+- **Breaking CLI: `role-gate.sh size --quick` now exits 2** and prints the usage line, which no longer lists `--quick`.
+  Any unknown `size` option also exits 2 and prints the usage line. Plain `size` (3 files / 100 lines, "escalate to
+  Full") is unchanged.
+- **conf:** `quick_max_files` and `quick_max_lines` are silently ignored (no warning) in the project and the global conf.
+- **skills:** `playbook-tdd/references/quick.md` is deleted. Install in link mode and in copy mode both drop it.
+- **evals:**
+  - E22 is redefined: Lite on "quick", with a RED commit before the fix.
+  - E23 is redefined: the reply uses the user override label naming money or billing.
+  - E25 is retired.
+  - E15, E1 and E19: a stated Quick weight fails, and the `**Playbook feedback:**` line is always required.
+- **Clean-up, no behaviour change:** `playbook-tdd` went from 4043 to 3791 words (budget 3800) and `playbook-proof`
+  from 697 to 647 words (budget 650). Every rule, pinned phrase and the 15 headings are kept; `evals/word-budgets` is
+  lowered to match.
+- **Review fixes (round 1 minors):** the quick-to-Full ask above; Phase 1 again asks before any code on a reading that
+  is ambiguous and hard to reverse (the merge had narrowed it to assertion changes, so Full asked less often than Lite);
+  `playbook-proof` again names what was searched for "nothing else uses X"; the first-slice checkpoint applies to more
+  than one slice, so 2 slices count. Tests: a content test for each, an exact count for plain `size --base` (net
+  change against the base, +5 -1), and a stale E25 fixture comment removed.
+- **Process:** the spec was reviewed in 2 rounds. The Opus review returned SHIP, with 5 mutants killed; its minors are
+  fixed in this release.
+- **Real evals:** the baseline ran on v0.24.9: E1 6/6, E10 3/3, E15 7/7, E16 5/5, for 4.52 USD; E21, E22, E23 and E25
+  were skipped by the cost cap. **There is no after-run in this release.** The runner grades the installed skills, so
+  the after-run can only happen once v0.24.10 is shipped and installed; it runs right after shipping, and its results go
+  into the next release's results file.
+
 ## 0.24.9 - 2026-10-13
 - **`role-gate check implementer` accepts a mode restore of a test file.** A test file whose only change is
   100644 -> 100755 with the same content is no longer flagged; the gate prints a "mode restore only" note, passed through
