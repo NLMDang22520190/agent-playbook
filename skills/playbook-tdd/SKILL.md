@@ -1,6 +1,6 @@
 ---
 name: playbook-tdd
-description: Use when adding or changing behaviour or fixing a bug in code - test-first with separate roles (tester writes failing tests, implementer passes them without touching tests, reviewer checks read-only), enforced by git role gates and evidence; Quick, Lite or Full weight by risk, and when the user says "quick". Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or spikes.
+description: Use when adding or changing behaviour or fixing a bug in code - test-first with separate roles (tester writes failing tests, implementer passes them without touching tests, reviewer checks read-only), enforced by git role gates and evidence; Lite or Full weight by risk, also when the user says "quick" (runs Lite). Takes precedence over generic TDD or subagent skills. Skip for docs-only, config-only or spikes.
 ---
 
 # TDD with separated roles
@@ -42,7 +42,6 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | Weight | Use it when | What runs |
 |---|---|---|
 | **Full** | the change touches hard-to-reverse ground (a change to an existing public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
-| **Quick** | tiny: ≤ 1 production file and ≤ 20 changed lines, nothing from the Full column (removing or renaming an exported symbol is a public API change: Full), or the user asks for quick | one context: a behaviour change is still tested first and seen failing, one proof-run, a 3-5 line report; see `references/quick.md` |
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
@@ -56,12 +55,15 @@ The weight line quotes the file:line or rule that decided it.
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
 choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
 limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
-continue with separate roles from there. Quick escalates to Lite the same way (steps in `references/quick.md`).
+continue with separate roles from there.
 
 **User override (Full to Lite).** When the work meets a Full criterion and the user asks for Lite, ask once, naming the Full
 trigger (a file:line or rule) and what is lost: no independent reviewer, no separate contexts; in a headless or non-interactive
 run follow the user with no question. Record `Weight: Lite (user override; Full criteria: <x>)` in decisions.md and the final report.
 The tests are never skipped: the test comes first and is seen failing, role gates and evidence all still run; the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
+
+**The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
+If the work meets a Full criterion, the user override above applies (ask once; headless, follow the user) and the label is `Weight: Lite (user override; Full criteria: <x>)`.
 
 **Why:** spawning three fresh contexts costs minutes and tokens per slice; for a three-line
 reversible fix that cost buys little, while for hard-to-reverse changes it is the cheapest insurance.
@@ -218,7 +220,7 @@ Release speed rules (a cap of 2 review rounds, introduced and pre-existing findi
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
   the result could still be wrong, each with the command run to check it and its outcome).
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
-- When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite/Quick: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
+- When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
   review majors and rework rounds the tasks had. It is advice only and changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.

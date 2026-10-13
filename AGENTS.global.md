@@ -22,8 +22,7 @@ Change only what was asked: no drive-by refactors, no new dependency without ask
 Why: unasked changes go unreviewed; a weakened gate protects no one.
 
 ### TDD with separated roles
-Behaviour changes and bug fixes use `playbook-tdd`: tests first, weight chosen by risk, stated with its reason. **Full** (tester, implementer and reviewer in separate contexts) for hard-to-reverse ground, core logic, or when unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes. Exempt, but say so: docs-only, config-only without behaviour change, throwaway spikes. If the user asks to skip tests, ask once and offer the test (a failing test is cheap; headless: offer it without waiting); if they decline, label it untested.
-**Quick** for tiny changes: 1 production file, ≤20 lines, nothing from the Full column (changed public API, money, auth, migrations); load `playbook-tdd` first. The user can ask by saying "quick".
+Behaviour changes and bug fixes use `playbook-tdd`: tests first, weight chosen by risk, stated with its reason. **Full** (tester, implementer and reviewer in separate contexts) for hard-to-reverse ground, core logic, or when unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes; the user can ask for it by saying "quick". Exempt, but say so: docs-only, config-only without behaviour change, throwaway spikes. If the user asks to skip tests, ask once and offer the test (a failing test is cheap; headless: offer it without waiting); if they decline, label it untested.
 Why: an agent's tests share its code's mistakes; separate contexts pay where errors are costly.
 
 ### When other skills overlap
