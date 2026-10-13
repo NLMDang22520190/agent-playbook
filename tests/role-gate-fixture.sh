@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared setup of tests/test-role-gate.sh and its split part (test-role-gate-mode.sh; split in v0.24.1 so that neither part is the floor of a
+# Shared setup of tests/test-role-gate.sh and its split parts (test-role-gate-b.sh since v0.24.7, test-role-gate-mode.sh; split in v0.24.1 so that no part is the floor of a
 # CI shard): the isolated PLAYBOOK_HOME, the template repo and mk_repo, and the helpers of the executable-bit sections. Source it after lib.sh.
 # It is not a suite: run-all.sh only starts tests/test-*.sh.
 GATE="$PB_ROOT/scripts/role-gate.sh"
@@ -34,3 +34,18 @@ dropped_visible() { git diff --raw --no-renames HEAD 2>/dev/null | grep -q '^:10
 # fm_true_ok: core.fileMode=true and the fresh fixture still shows no mode change, i.e. this file system keeps
 # executable bits (Git Bash on NTFS does not: every 100755 file would look dropped)
 fm_true_ok() { git config core.fileMode true; [ -z "$(git diff --raw 2>/dev/null)" ]; }
+# v0.24.7: helpers of the AC1.5 size --quick and AC1.2 note sections, used by both halves of the old test-role-gate.sh
+GLOBAL_CONF="$PLAYBOOK_HOME/.agents/playbook.conf"; mkdir -p "$PLAYBOOK_HOME/.agents"
+qreset() { rm -f "$GLOBAL_CONF"; }
+qrepo() { R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; qreset; }
+# qconf KEY=VAL... -> a tracked project conf (committed, so it is not itself a production-file change)
+qconf() { mkdir -p .agents && printf '%s\n' "$@" > .agents/playbook.conf && git add .agents/playbook.conf && git commit -q -m "conf"; }
+# conf_repo CONFTEXT -> repo with src/app.js changed (a code change), conf committed (so it is no change itself)
+conf_repo() {
+  local d; d="$(mk_tmp)"; mk_repo "$d"
+  ( cd "$d" && mkdir -p .agents && printf '%b' "$1" > .agents/playbook.conf && git add -A && git commit -q -m conf &&
+    printf 'module.exports = 2;\n' > src/app.js )
+  printf '%s\n' "$d"
+}
+# notes_of -> the note: lines of $OUT
+notes_of() { printf '%s\n' "$OUT" | grep '^note:' || true; }

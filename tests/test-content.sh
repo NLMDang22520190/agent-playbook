@@ -1064,9 +1064,9 @@ if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   t_skip 1 "v23.3 R5 mode of the fixture helper needs a git checkout"
 fi
-# v0.24.1 shard balance: test-leak-check.sh (3 parts), test-ci-tree-tested.sh (2) and test-role-gate.sh (2) are split by section. Every part is stored at
+# v0.24.1 shard balance: test-leak-check.sh (3 parts), test-ci-tree-tested.sh (2) and test-role-gate.sh (3 since v0.24.7) are split by section. Every part is stored at
 # mode 100755. Only tests/test-leak-check.sh reads the README and the CHANGELOG (AC10.3), so only it is pulled into the docs-only reduced set by the grep.
-set -- test-leak-check 3 test-ci-tree-tested 2 test-role-gate 2
+set -- test-leak-check 3 test-ci-tree-tested 2 test-role-gate 3
 while [ $# -ge 2 ]; do
   FAMILY="$1"; MINPARTS="$2"; shift 2
   NPARTS="$(cd "$PB_ROOT" && ls tests/$FAMILY*.sh 2>/dev/null | wc -l | tr -d ' ')"
