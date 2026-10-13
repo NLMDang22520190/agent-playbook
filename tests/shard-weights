@@ -1,8 +1,8 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 38337463462 (v0.24.3); the suites sped up in v0.24.5 (test-role-gate, test-run-checks-sections, test-ci-tree-tested, test-ci-tree-tested-steps, test-evals-grade4, test-evals-grade6) are scaled by their measured Linux before/after ratio.
 # v0.24.7: test-role-gate.sh (CI 385 s) is split into test-role-gate.sh and test-role-gate-b.sh; each part weighs the CI weight x its share of the Linux time (12.9 / 11.8 s).
 # v0.24.7: test-evals-grade6.sh (CI 559 s) is split into test-evals-grade6.sh and test-evals-grade6-b.sh; each part weighs the CI weight x its share of the Linux time (38.7 / 36.5 s).
+# v0.24.7: test-ship.sh (CI 568 s) is split into test-ship.sh and test-ship-b.sh; each part weighs the CI weight x its share of the Linux time (22.9 / 23.7 s).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
-test-ship.sh 406
 test-evals-grade.sh 361
 test-leak-check-push.sh 341
 test-evals-grade4.sh 336
@@ -11,8 +11,10 @@ test-ci-tree-tested.sh 325
 test-ci-tree-tested-steps.sh 320
 test-run-all.sh 311
 test-run-checks.sh 307
+test-ship-b.sh 289
 test-evals-grade3.sh 287
 test-evals-grade6.sh 287
+test-ship.sh 279
 test-evals-grade6-b.sh 272
 test-role-model.sh 268
 test-evals-grade2-e20.sh 256
