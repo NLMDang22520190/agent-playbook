@@ -445,4 +445,20 @@ checks "$C" skills
 assert_not_contains "AC1.6 the real tree: no failure about quick.md" "$OUT" "quick.md"
 assert_rc "AC1.6 the real tree passes the skills section (quick.md present, section within 250 words)" 0
 
+echo "v0.24.4 AC6 dupmax, sed and soh fail closed: a missing file in the scanned list is a FAIL, never an ok"
+# install.sh is named in each scan list; when it is missing awk or grep reads nothing of it, and the section used to print ok and exit 0.
+for sec in dupmax sed soh; do
+  C="$(mk_min_copy)"
+  rm -f "$C/install.sh"
+  only_run "$C" "$sec"
+  assert_rc "AC6 --only $sec, install.sh missing: exit 1" 1
+  assert_contains "AC6 --only $sec, install.sh missing: a FAIL line" "$OUT" "FAIL"
+  assert_contains "AC6 --only $sec, install.sh missing: names the missing file" "$OUT" "missing file install.sh"
+  assert_not_contains "AC6 --only $sec, install.sh missing: no ok line" "$OUT" "  ok   "
+  C="$(mk_copy)"
+  only_run "$C" "$sec"
+  assert_rc "AC6 --only $sec, real tree: exit 0" 0
+  assert_not_contains "AC6 --only $sec, real tree: no missing-file line" "$OUT" "missing file"
+done
+
 t_summary
