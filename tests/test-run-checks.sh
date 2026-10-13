@@ -125,9 +125,11 @@ assert_contains "AC4 the CRLF failure under --only files says CRLF found" "$OUT"
 assert_contains "AC4 the CRLF failure under --only files names the file" "$OUT" "docs/files-only-crlf.md"
 C="$(mk_copy)"
 chmod -x "$C/scripts/conf.sh"
+if [ -x "$C/scripts/conf.sh" ]; then t_skip 2 "AC4 exec-bit failure under --only files (chmod -x has no effect on this file system)"; else
 run bash "$C/evals/run-checks.sh" --only files
 assert_rc "AC4 a script without its exec bit fails under --only files (exit 1)" 1
 assert_contains "AC4 the exec-bit failure under --only files names the script" "$OUT" "not executable: scripts/conf.sh"
+fi
 C="$(mk_copy)"
 printf 'if then\n' >> "$C/scripts/conf.sh"
 run bash "$C/evals/run-checks.sh" --only files

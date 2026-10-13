@@ -38,6 +38,15 @@ case "$p" in
 esac
 SHIM
 chmod +x "$WINBIN/uname" "$WINBIN/cygpath"
+# LINBIN: uname says Linux (and counts), so a "non-Windows" control is non-Windows on every host (the real uname says MINGW on Git Bash)
+LINBIN="$(mk_tmp)/lin"; mkdir -p "$LINBIN"
+cat > "$LINBIN/uname" <<'SHIM'
+#!/bin/sh
+printf 'x
+' >> "$UNAME_COUNT_FILE"
+echo Linux
+SHIM
+chmod +x "$LINBIN/uname"
 
 # lc_count BINDIR ARGS... -> runs `leak-check ARGS` in $R with BINDIR first on PATH. Sets STD, ERR, RC and UCOUNT (uname launches)
 # and CYGLOG (the cygpath argument log, "" when it was never called).
@@ -156,7 +165,8 @@ assert_eq "AC1 MINGW NAME /c/pbfake/a.git is origin's url C:/pbfake/a.git (same_
 assert_eq "AC1 MINGW ... stdout is the clean line" "leak-check: clean" "$STD"
 assert_eq "AC1 MINGW ... stderr is empty" "" "$ERR"
 assert_contains "AC1 MINGW ... cygpath was asked about /c/pbfake/a.git" "$CYGLOG" "/c/pbfake/a.git"
-lc_count "$CNTBIN" scan --unpushed "$WSEC" --remote '/c/pbfake/a.git'
+# MSYS_NO_PATHCONV: Git Bash would otherwise rewrite /c/pbfake/a.git to C:/pbfake/a.git for native git, which makes the Linux control a Windows run
+MSYS_NO_PATHCONV=1 lc_count "$LINBIN" scan --unpushed "$WSEC" --remote '/c/pbfake/a.git'
 assert_eq "AC1 non-Windows uname: /c/pbfake/a.git is NOT origin's url (strings differ): full scan, exit 1" "1" "$RC"
 assert_contains "AC1 non-Windows ... the note says it is not a configured remote" "$ERR" "/c/pbfake/a.git is not a configured remote"
 
