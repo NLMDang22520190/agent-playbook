@@ -1048,6 +1048,6 @@ assert_no_path "F5 nothing was written under the caller's cwd" "$CW/.agents"
 
 echo "v0.24.3 F6 --help tells a custom --cmd to use an absolute path"
 run bash "$RUNNER" --help
-if printf '%s' "$OUT" | tr '\n' ' ' | grep -qiE '(--cmd|adapter|COMMAND).{0,300}absolute path|absolute path.{0,300}(--cmd|adapter|COMMAND)'; then t_ok "F6 the usage text says a custom --cmd should use an absolute path"; else t_bad "F6 the usage text says a custom --cmd should use an absolute path" "no 'absolute path' near --cmd/adapter in: $OUT"; fi
+if printf '%s' "$OUT" | tr '\n' ' ' | grep -qiE '(--cmd|adapter|COMMAND).{0,200}absolute path|absolute path.{0,200}(--cmd|adapter|COMMAND)'; then t_ok "F6 the usage text says a custom --cmd should use an absolute path"; else t_bad "F6 the usage text says a custom --cmd should use an absolute path" "no 'absolute path' near --cmd/adapter in: $OUT"; fi
 
 t_summary
