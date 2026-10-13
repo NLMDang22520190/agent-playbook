@@ -775,4 +775,121 @@ assert_eq "AC6.2 E1,E3 together: E1 weight check MANUAL" "MANUAL" "$(e_state E1 
 assert_no_path "AC6.2 E1,E3 together: E1.log.result is gone" "$W/E1.log.result"
 assert_no_path "AC6.2 E1,E3 together: E3.log.result is gone" "$W/E3.log.result"
 
+# ---- v0.24.3 AC2 (+ Revision 2 R1-R3): every scenario runs with its own temp PLAYBOOK_HOME; HOME stays the real one ----
+# Design (spec revision 2): PLAYBOOK_HOME, not a HOME swap, so the CLI keeps its login and no credential file is copied.
+# Stand-in "real home" IH holds a conf, and a fake credentials file that must never be copied anywhere.
+mk_ih() { # -> a fresh stand-in real home
+  local h; h="$(mk_tmp)"; mkdir -p "$h/.agents" "$h/.claude"
+  printf 'test_cmd=make check\nfeedback_repo=acme/fb\nlanguage=vi\n' > "$h/.agents/playbook.conf"
+  printf 'SECRET-TOKEN-XYZ\n' > "$h/.claude/.credentials.json"
+  printf '%s\n' "$h"
+}
+ih_listing() { (cd "$1" && find . | LC_ALL=C sort); }
+
+echo "v0.24.3 AC2.1 / R1 each scenario gets its own temp PLAYBOOK_HOME with a conf copy; HOME is unchanged"
+mk_adapter iso1 'printf "%s\n" "${PLAYBOOK_HOME-UNSET}" > "$REC/iso1.$e.ph"
+printf "%s\n" "$HOME" > "$REC/iso1.$e.hm"
+{ cat "${PLAYBOOK_HOME:-/nonexistent}/.agents/playbook.conf" 2>/dev/null || echo MISSING; } > "$REC/iso1.$e.pconf"
+ls -A "${PLAYBOOK_HOME:-/nonexistent}" > "$REC/iso1.$e.pls" 2>&1
+grep -rl SECRET-TOKEN-XYZ "${PLAYBOOK_HOME:-/nonexistent}" > "$REC/iso1.$e.pleak" 2>/dev/null
+true'
+IH="$(mk_ih)"; IH_BEFORE="$(ih_listing "$IH")"; OD1="$(mk_tmp)"; WI1="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --cmd "bash $A/iso1.sh" --scenarios E1,E8 --workroot "$WI1" --out "$OD1/results.md"
+for e in E1 E8; do
+  ph="$(cat "$REC/iso1.$e.ph" 2>/dev/null)"
+  if [ -n "$ph" ] && [ "$ph" != UNSET ] && [ "$ph" != "$IH" ] && [ "$ph" != "$(physdir "$IH")" ]; then t_ok "AC2.1 $e: the adapter sees a PLAYBOOK_HOME that is not the real home"; else t_bad "AC2.1 $e: the adapter sees a PLAYBOOK_HOME that is not the real home" "PLAYBOOK_HOME=[$ph] real home=[$IH]"; fi
+  assert_eq "AC2.1 $e: HOME is unchanged (the CLI keeps its login)" "$IH" "$(cat "$REC/iso1.$e.hm" 2>/dev/null)"
+  assert_contains "AC2.1 $e: the temp home holds a copy of the conf (test_cmd)" "$(cat "$REC/iso1.$e.pconf" 2>/dev/null)" "test_cmd=make check"
+  assert_contains "AC2.1 $e: the temp home holds a copy of the conf (language)" "$(cat "$REC/iso1.$e.pconf" 2>/dev/null)" "language=vi"
+  # same rule as E20 (v0.19.0 AC6.1): a submit during an eval must not reach the user's feedback repo
+  assert_not_contains "AC2.1 $e: the conf copy drops feedback_repo (as the E20 copy does)" "$(cat "$REC/iso1.$e.pconf" 2>/dev/null)" "feedback_repo"
+  assert_not_contains "AC2.1 $e: no harness dir (.claude) is copied into the temp home" "$(cat "$REC/iso1.$e.pls" 2>/dev/null)" ".claude"
+  assert_eq "AC2.1 $e: no credential content anywhere under the temp home" "0" "$(grep -c . "$REC/iso1.$e.pleak" 2>/dev/null || true)"
+done
+assert_eq "AC2.1 E1 and E8 get different temp homes (per scenario)" "different" "$([ "$(cat "$REC/iso1.E1.ph" 2>/dev/null)" != "$(cat "$REC/iso1.E8.ph" 2>/dev/null)" ] && echo different || echo same)"
+gone_home() { # NAME FILE -> the PLAYBOOK_HOME recorded in FILE was a real path and no longer exists (an empty/UNSET record fails)
+  local p; p="$(cat "$2" 2>/dev/null)"
+  case "$p" in "" | UNSET) t_bad "$1" "no temp home was recorded ([$p])" ;; *) assert_no_path "$1" "$p" ;; esac
+}
+gone_home "AC2.2 the E1 temp home is gone after the run" "$REC/iso1.E1.ph"
+gone_home "AC2.2 the E8 temp home is gone after the run" "$REC/iso1.E8.ph"
+assert_eq "AC2.1 the real-home stand-in is unchanged (listing)" "$IH_BEFORE" "$(ih_listing "$IH")"
+assert_eq "AC2.1 the stand-in conf is unchanged" "test_cmd=make check
+feedback_repo=acme/fb
+language=vi" "$(cat "$IH/.agents/playbook.conf")"
+assert_eq "AC2.1 the isolation adds no stray-write FAIL for E8 (nothing outside the workdir: PASS)" "PASS" "$(e_state E8 'nothing written outside the workdir')"
+assert_eq "AC2.1 the isolation adds no stray-write FAIL for E1 (nothing outside the workdir: PASS)" "PASS" "$(e_state E1 'nothing written outside the workdir')"
+assert_not_contains "AC2.1 the results file does not print the temp home content (no secret)" "$(cat "$OD1/results.md" 2>/dev/null)" "SECRET-TOKEN-XYZ"
+
+echo "v0.24.3 AC2.2 feedback and cost written by the agent's scripts stay out of the real home and are kept as evidence"
+mk_adapter iso2 'printf "%s\n" "${PLAYBOOK_HOME-UNSET}" > "$REC/iso2.$e.ph"
+bash "'"$PB_ROOT"'/scripts/feedback.sh" capture --skill playbook-tdd --kind bug --source failure --harness other --summary "ISO-FB-$e" --observed "obs" --expected "exp" --evidence "ev" --proposal "prop" --eval "E20" >/dev/null
+bash "'"$PB_ROOT"'/scripts/cost.sh" add --role tester --tokens 5 --note "ISO-COST-$e" >/dev/null'
+IH="$(mk_ih)"; IH_BEFORE="$(ih_listing "$IH")"; OD2="$(mk_tmp)"; WI2="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --cmd "bash $A/iso2.sh" --scenarios E1,E8 --workroot "$WI2" --out "$OD2/results.md"
+assert_eq "AC2.2 the real-home stand-in has no new file (listing before = after)" "$IH_BEFORE" "$(ih_listing "$IH")"
+assert_no_path "AC2.2 no playbook-feedback store appeared in the real home" "$IH/.agents/playbook-feedback"
+for e in E1 E8; do
+  fb="$(grep -rl "ISO-FB-$e" "$OD2" 2>/dev/null | grep -v '/results.md$' | head -n 1)"
+  if [ -n "$fb" ]; then t_ok "AC2.2 $e: the result folder next to --out holds the feedback item"; else t_bad "AC2.2 $e: the result folder next to --out holds the feedback item" "nothing under $OD2 mentions ISO-FB-$e: $(find "$OD2" -type f 2>/dev/null | tr '\n' ' ')"; fi
+  case "$fb" in *.md) t_ok "AC2.2 $e: the kept feedback item is a .md item file" ;; *) t_bad "AC2.2 $e: the kept feedback item is a .md item file" "got [$fb]" ;; esac
+  cf="$(grep -rl "ISO-COST-$e" "$OD2" 2>/dev/null | grep -v '/results.md$' | head -n 1)"
+  if [ -n "$cf" ]; then t_ok "AC2.2 $e: the result folder next to --out holds the cost log"; else t_bad "AC2.2 $e: the result folder next to --out holds the cost log" "nothing under $OD2 mentions ISO-COST-$e"; fi
+  gone_home "AC2.2 $e: the temp home is removed after the scenario" "$REC/iso2.$e.ph"
+done
+# per scenario: the E1 evidence is not mixed into the E8 files
+assert_eq "AC2.2 evidence is kept per scenario (no file holds both E1 and E8 feedback)" "0" "$(grep -rl 'ISO-FB-E1' "$OD2" 2>/dev/null | while IFS= read -r f; do grep -l 'ISO-FB-E8' "$f"; done | grep -c .)"
+assert_eq "AC2.2 the E8 result line for stray writes is PASS" "PASS" "$(e_state E8 'nothing written outside the workdir')"
+
+echo "v0.24.3 AC2.3 --real-home keeps today's behaviour (writes land in the real home)"
+IH="$(mk_ih)"; OD3="$(mk_tmp)"; WI3="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --real-home --cmd "bash $A/iso2.sh" --scenarios E8 --workroot "$WI3" --out "$OD3/results.md"
+assert_eq "AC2.3 --real-home: the adapter sees no PLAYBOOK_HOME (feedback.sh then uses HOME)" "UNSET" "$(cat "$REC/iso2.E8.ph" 2>/dev/null)"
+assert_eq "AC2.3 --real-home: the feedback item lands in the real home" "1" "$(grep -l 'ISO-FB-E8' "$IH"/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$REC/iso2.E8.ph"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --cmd "bash $A/iso2.sh" --real-home --scenarios E8 --workroot "$WI3" --out "$OD3/results.md"
+assert_eq "AC2.3 --real-home after the other options works too" "UNSET" "$(cat "$REC/iso2.E8.ph" 2>/dev/null)"
+IH="$(mk_ih)"; WI3="$(mk_tmp)"; rm -f "$REC/iso1.E20.ph"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --real-home --cmd "bash $A/iso1.sh" --scenarios E20 --workroot "$WI3" --out "$WI3/results.md"
+assert_eq "AC2.3 / E20 compat: --real-home does not remove E20's own home copy" "$(physdir "$WI3")/E20.home" "$(cat "$REC/iso1.E20.ph" 2>/dev/null)"
+run bash "$RUNNER" --help
+assert_contains "AC2.3 the usage text documents --real-home" "$OUT" "--real-home"
+assert_contains "AC2.3 the usage text names PLAYBOOK_HOME" "$OUT" "PLAYBOOK_HOME"
+
+echo "v0.24.3 AC2.1 / E20 compat: E20 keeps <workroot>/E20.home (default mode)"
+IH="$(mk_ih)"; WI4="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$IH" bash "$RUNNER" --cmd "bash $A/iso1.sh" --scenarios E20 --workroot "$WI4" --out "$WI4/results.md"
+assert_eq "E20 compat: the adapter still sees PLAYBOOK_HOME=<workroot>/E20.home" "$(physdir "$WI4")/E20.home" "$(cat "$REC/iso1.E20.ph" 2>/dev/null)"
+assert_contains "E20 compat: E20.home still holds the conf copy" "$(cat "$WI4/E20.home/.agents/playbook.conf" 2>/dev/null)" "language=vi"
+
+echo "v0.24.3 R3 the harness presets inherit PLAYBOOK_HOME and HOME (a fake claude on PATH, also with --clean-env)"
+SHC="$(mk_tmp)"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${PLAYBOOK_HOME-UNSET}" > "%s/claude.ph"\nprintf "%%s\\n" "$HOME" > "%s/claude.hm"\nexit 0\n' "$REC" "$REC" > "$SHC/claude"
+chmod 755 "$SHC/claude"
+for flag in "" "--clean-env"; do
+  IH="$(mk_ih)"; WI5="$(mk_tmp)"; rm -f "$REC/claude.ph" "$REC/claude.hm"
+  run env -u PLAYBOOK_HOME HOME="$IH" PATH="$SHC:$PATH" bash "$RUNNER" --harness claude $flag --scenarios E8 --workroot "$WI5" --out "$WI5/results.md"
+  ph="$(cat "$REC/claude.ph" 2>/dev/null)"
+  if [ -n "$ph" ] && [ "$ph" != UNSET ] && [ "$ph" != "$IH" ]; then t_ok "R3 --harness claude $flag: the CLI process sees the temp PLAYBOOK_HOME"; else t_bad "R3 --harness claude $flag: the CLI process sees the temp PLAYBOOK_HOME" "got [$ph]"; fi
+  assert_eq "R3 --harness claude $flag: the CLI process sees the real HOME" "$IH" "$(cat "$REC/claude.hm" 2>/dev/null)"
+done
+
+echo "v0.24.3 R2 every home write of a playbook script goes through pb_home (HOME differs from PLAYBOOK_HOME)"
+# Inventory (v0.24.3): feedback.sh (capture, mark-asked, submit moves, discard) and conf.sh set --global write under pb_home;
+# cost.sh, learn.sh, proof-run.sh, tdd-step.sh write under the project root (pb_root_dir), never the home; install.sh is the
+# installer and targets HOME/--home on purpose. No bypass was found, so these tests pin the rule against a future one.
+HA="$(mk_tmp)"; HB="$(mk_tmp)"; PR="$(mk_tmp)"
+r2() { (cd "$PR" && env HOME="$HA" PLAYBOOK_HOME="$HB" TMPDIR="$PR" "$@" >/dev/null 2>&1); }
+r2 bash "$PB_ROOT/scripts/feedback.sh" capture --skill playbook-tdd --kind bug --source failure --harness other --summary "r2 item" --observed o --expected e --evidence ev --proposal p --eval E20
+r2 bash "$PB_ROOT/scripts/feedback.sh" mark-asked
+r2 bash "$PB_ROOT/scripts/conf.sh" set language vi --global
+r2 bash "$PB_ROOT/scripts/cost.sh" add --role tester --tokens 1
+assert_eq "R2 HOME stays empty after feedback capture, mark-asked, conf set --global and cost add" "0" "$(ls -A "$HA" | wc -l | tr -d ' ')"
+assert_eq "R2 feedback capture wrote its item under PLAYBOOK_HOME" "1" "$(ls "$HB"/.agents/playbook-feedback/pending/*.md 2>/dev/null | wc -l | tr -d ' ')"
+assert_file "R2 feedback mark-asked wrote its state under PLAYBOOK_HOME" "$HB/.agents/playbook-feedback/state"
+assert_file "R2 conf set --global wrote under PLAYBOOK_HOME" "$HB/.agents/playbook.conf"
+assert_file "R2 cost add writes the project cost log (not the home)" "$PR/.agents/handoff/cost.tsv"
+BYP="$(cd "$PB_ROOT" && grep -nE '\$HOME|\$\{HOME|~/|USERPROFILE' scripts/*.sh | grep -v '^scripts/lib\.sh:' | grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' | tr '\n' ' ')"
+assert_eq "R2 no script under scripts/ (but lib.sh's pb_home) names HOME, ~/ or USERPROFILE outside a comment" "" "$BYP"
+
 t_summary
