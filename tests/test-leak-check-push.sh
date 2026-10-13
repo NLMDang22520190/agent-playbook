@@ -476,6 +476,9 @@ assert_contains "M2: the hook shows the finding" "$OUT" "s.txt:1: github-token"
 if holds_secret "$PUB"; then t_bad "M2: pub did not receive the secret commit" "object is on pub"; else t_ok "M2: pub did not receive the secret commit"; fi
 if holds_feat "$PUB"; then t_bad "M2: pub did not receive the feat branch" "feat is on pub"; else t_ok "M2: pub did not receive the feat branch"; fi
 if holds_feat "$FORK"; then t_bad "M2: fork did not receive the feat branch either (the hook stopped the whole push)" "feat is on fork"; else t_ok "M2: fork did not receive the feat branch either (the hook stopped the whole push)"; fi
+# review round 1 MINOR-5: pub is no configured remote at all, so the note keeps the plain wording (no 'fully owns / push places differ')
+assert_contains "M2: the note says origin pushes to a place no configured remote owns" "$OUT" "origin pushes to a place no configured remote owns; scanning the full range"
+assert_not_contains "M2: the note does not use the chain wording" "$OUT" "fully owns"
 
 echo "v0.24.9 pushurl chain: origin's pushurl is remote fork's url, and fork's own pushurl is pub; the secret is on refs/remotes/fork/* only"
 # fork is configured, but it pushes elsewhere (pub), so its refs do not cover what origin's push reaches: the conservative full scan stays,

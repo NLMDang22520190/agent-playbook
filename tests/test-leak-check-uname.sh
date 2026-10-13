@@ -120,7 +120,7 @@ assert_eq "AC1 control: one uname call through the shim is counted once" "1" "$(
 # temp directory names are replaced by @T so the expectations do not depend on the run.
 echo "v0.24.6 AC1 equivalence on the Windows branch (uname MINGW64_NT-10.0, fake cygpath)"
 norm() { printf '%s' "$1" | sed "s#$PB_TMPBASE#@T#g"; }
-NOTE_PUSHELSE='leak-check: origin pushes to a place that no configured remote fully owns (its push places differ); scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA'
+NOTE_PUSHELSE='leak-check: origin pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA'
 
 mkpushrepo
 lc_count "$WINBIN" scan --unpushed "$SEC" --remote origin
@@ -134,7 +134,7 @@ LIN_PUSHURL_OUT="$STD"; LIN_PUSHURL_RC="$RC"
 lc_count "$WINBIN" scan --unpushed "$SEC" --remote origin
 assert_eq "AC1 MINGW origin with a pushurl elsewhere: full scan, exit 1" "1" "$RC"
 assert_contains "AC1 MINGW ... the finding is named" "$STD" "s.txt:1: github-token"
-assert_eq "AC1 MINGW ... stderr is the 'no configured remote fully owns' note" "$NOTE_PUSHELSE" "$(norm "$ERR")"
+assert_eq "AC1 MINGW ... stderr is the 'no configured remote owns' note" "$NOTE_PUSHELSE" "$(norm "$ERR")"
 assert_eq "AC1 MINGW ... stdout equals the stdout of the non-Windows run" "$LIN_PUSHURL_OUT" "$STD"
 assert_eq "AC1 MINGW ... exit code equals the non-Windows run" "$LIN_PUSHURL_RC" "$RC"
 git -C "$R" config --unset remote.origin.pushurl

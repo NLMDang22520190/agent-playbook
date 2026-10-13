@@ -209,7 +209,7 @@ assert_eq "bisect: only one path is reported as unhashable" "1" "$(printf '%s\n'
 echo "v0.24.9 G a test path restored to 100755 after a RED commit that dropped it: no implementer violation, a note instead"
 unset PB_ALLOW_MODE_CHANGE
 gmode() { chmod "$1" -- "$2" 2>/dev/null; git update-index --chmod="$1" -- "$2"; }
-if ! ( R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" && fm_true_ok ); then t_skip 12 "v0.24.9 G (this file system does not keep executable bits)"; else
+if ! ( R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" && fm_true_ok ); then t_skip 27 "v0.24.9 G (this file system does not keep executable bits)"; else
   # G1 committed: RED drops the bit, a later commit restores it (same blob)
   R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
   gmode -x tests/run.sh; git commit -q -m "test(red): accidental drop"; GRED="$(git rev-parse HEAD)"
@@ -253,5 +253,34 @@ if ! ( R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" && fm_true_ok ); then t_skip 12
   assert_rc "G6 reviewer still fails on any change, restore included" 1
   gchk tester --base "$GRED"
   assert_rc "G6 tester still fails on a code path" 1
+  # review round 1 MAJOR: an untracked new test file has no 'git diff --raw' line; the restore check must not die under set -u
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  printf '#!/bin/sh\necho new\n' > tests/new.sh
+  gchk implementer
+  assert_rc "G7 implementer + an untracked new test file fails (exit 1, not a crash)" 1
+  assert_contains "G7 the base VIOLATION line is printed" "$OUT" "VIOLATION (implementer): tests/new.sh [test]"
+  assert_contains "G7 the summary is printed" "$OUT" "role gate FAILED for implementer: 1 violation(s)"
+  assert_not_contains "G7 no unbound variable crash" "$OUT" "unbound variable"
+  # review round 1 AC5: reviewer and infra keep failing on a test path restore, with no restore note
+  for grole in reviewer infra; do
+    R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+    gmode -x tests/run.sh; git commit -q -m "test(red): accidental drop"; GRED="$(git rev-parse HEAD)"
+    gmode +x tests/run.sh
+    gchk "$grole" --base "$GRED"
+    assert_rc "G8 $grole: a tests/ path mode restore still fails" 1
+    assert_not_contains "G8 $grole: no 'mode restore only' note" "$OUT" "mode restore only"
+  done
+  # review round 1 MINOR: the note prints the path through shown(): an ESC byte in a name never reaches the terminal
+  R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; git config core.fileMode true
+  GESC="tests/e$(printf '\033')sc.sh"
+  if cp tests/run.sh "$GESC" 2>/dev/null && [ -f "$GESC" ] && git add -- "$GESC" 2>/dev/null && [ -n "$(git ls-files -- "$GESC")" ]; then
+    gmode +x "$GESC"; git commit -q -m "add esc name"
+    gmode -x "$GESC"; git commit -q -m "test(red): drop"; GRED="$(git rev-parse HEAD)"
+    gmode +x "$GESC"
+    gchk implementer --base "$GRED"
+    assert_rc "G9 an ESC name restored: the gate passes" 0
+    assert_contains "G9 the note names the path with the ESC shown as ?" "$OUT" "note: tests/e?sc.sh mode restore only"
+    case "$OUT" in *"$(printf '\033')"*) t_bad "G9 no raw ESC byte in the output" "an ESC byte reached the output" ;; *) t_ok "G9 no raw ESC byte in the output" ;; esac
+  else rm -f -- "$GESC" 2>/dev/null; t_skip 3 "G9 ESC path (this file system or git refuses the name)"; fi
 fi
 t_summary
