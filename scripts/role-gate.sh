@@ -118,9 +118,12 @@ case "$cmd" in
     mode_restore_only() {
       local raw meta st oldm newm ent rp="$1"
       raw="$(git -c core.quotepath=off diff --raw --no-abbrev --no-renames "$base" -- ":(literal)$rp" 2>/dev/null)" || return 1
+      [ -n "$raw" ] || return 1   # an untracked new file has no raw line: not a restore
       [ "$(printf '%s\n' "$raw" | wc -l | tr -d ' ')" = 1 ] || return 1
       meta="${raw%%$'\t'*}"
-      set -- $meta; oldm="${1#:}"; newm="$2"; st="$5"
+      set -- $meta
+      [ $# -ge 5 ] || return 1
+      oldm="${1#:}"; newm="$2"; st="$5"
       [ "$oldm" = 100644 ] && [ "$newm" = 100755 ] && [ "$st" = M ] || return 1
       ent="$(git hash-object -- "$rp" 2>/dev/null)" || return 1
       [ "$ent" = "$3" ]
@@ -133,7 +136,7 @@ case "$cmd" in
       checked=$((checked + 1))
       kind="$(classify "$f")"
       if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
-        printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$f"
+        printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$(shown "$f")"
         continue
       fi
       bad=0
