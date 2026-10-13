@@ -1128,4 +1128,56 @@ rm -f "$REC/t1.tmpdir"
 tt_run t1 --real-home
 assert_eq "T5 --real-home: the adapter sees the caller's TMPDIR" "$RF_TD" "$(cat "$REC/t1.tmpdir" 2>/dev/null)"
 
+echo "v0.24.7 T6 odd leftover names: control characters never reach the output, the count is by entry, names sit in backticks"
+ESC="$(printf '\033')"; CR="$(printf '\r')"
+PROBE="$(mk_tmp)"
+if touch "$PROBE/$(printf 'a\nb')" "$PROBE/$(printf 'c\033d')" 2>/dev/null && [ "$(find "$PROBE" -mindepth 1 | wc -l | tr -d ' ')" -ge 3 ]; then
+mk_adapter t6 'cd "$TMPDIR" || exit 1
+touch "$(printf "esc\033[31mRED")"
+touch "$(printf "cr\rE1 PASS forged")"
+touch "<img src=x onerror=alert(1)>"
+touch "$(printf "nl\nline2")"
+touch "a\`b"
+true'
+tt_run t6
+T6R="$(cat "$OD/results.md" 2>/dev/null)"
+case "$OUT" in *"$ESC"*) t_bad "T6 no raw ESC on stdout" "found ESC" ;; *) t_ok "T6 no raw ESC on stdout" ;; esac
+case "$T6R" in *"$ESC"*) t_bad "T6 no raw ESC in the results file" "found ESC" ;; *) t_ok "T6 no raw ESC in the results file" ;; esac
+case "$OUT" in *"$CR"*) t_bad "T6 no raw CR on stdout" "found CR" ;; *) t_ok "T6 no raw CR on stdout" ;; esac
+case "$T6R" in *"$CR"*) t_bad "T6 no raw CR in the results file" "found CR" ;; *) t_ok "T6 no raw CR in the results file" ;; esac
+assert_eq "T6 a name that tries to forge a result line starts no line on stdout" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 PASS forged')"
+assert_eq "T6 the forged text starts no line in the results file" "0" "$(printf '%s\n' "$T6R" | grep -c '^E1 PASS forged')"
+assert_eq "T6 the NOTE counts 5 entries (a name with a newline is one entry)" "1" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE the agent left 5 entries ')"
+assert_eq "T6 the NOTE is one line on stdout" "1" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE ')"
+assert_contains "T6 a markup name is shown in backticks" "$T6R" '`<img src=x onerror=alert(1)>`'
+assert_contains "T6 a backtick inside a name is replaced" "$T6R" "\`a'b\`"
+assert_contains "T6 the results file counts 5 entries" "$T6R" "5 entries"
+else t_skip 11 "v0.24.7 T6 odd names (this file system cannot hold names with a newline or ESC)"; fi
+
+echo "v0.24.7 T7 a leftover chmod 000 dir does not stop the removal of the scenario TMPDIR"
+mk_adapter t7 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t7.tmpdir"
+mkdir "$TMPDIR/locked" && : > "$TMPDIR/locked/f" && chmod 000 "$TMPDIR/locked"
+true'
+rm -f "$REC/t7.tmpdir"
+tt_run t7
+T7D="$(cat "$REC/t7.tmpdir" 2>/dev/null)"
+T7LEFT="$(find "$RF_TD" -maxdepth 1 -name 'pb-evtmp.*' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$T7LEFT" = 0 ] || printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T7D"; then t_ok "T7 no pb-evtmp.* left, or a NOTE names it"; else t_bad "T7 no pb-evtmp.* left, or a NOTE names it" "left $T7LEFT, dir [$T7D], output: $OUT"; fi
+assert_eq "T7 the chmod 000 dir is removed (no pb-evtmp.* in the outer TMPDIR)" "0" "$T7LEFT"
+assert_eq "T7 a leftover dir is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
+find "$RF_TD" -maxdepth 2 -type d -exec chmod u+rwx {} + 2>/dev/null
+
+echo "v0.24.7 T8 a scenario TMPDIR that cannot be removed at all: a NOTE names the path, the scenario does not fail"
+if [ "$(id -u)" != 0 ]; then
+mk_adapter t8 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t8.tmpdir"
+chmod 555 "$(dirname "$TMPDIR")"
+true'
+rm -f "$REC/t8.tmpdir"
+tt_run t8
+chmod 755 "$RF_TD" 2>/dev/null
+T8D="$(cat "$REC/t8.tmpdir" 2>/dev/null)"
+if [ -n "$T8D" ] && printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T8D"; then t_ok "T8 a NOTE names the path that could not be removed"; else t_bad "T8 a NOTE names the path that could not be removed" "dir [$T8D], output: $OUT"; fi
+assert_eq "T8 it is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
+else t_skip 2 "v0.24.7 T8 (running as root: a read-only parent does not stop the removal)"; fi
+
 t_summary
