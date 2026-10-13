@@ -712,117 +712,42 @@ assert_eq "U2 only the edited line of the renamed file is mutated (the unchanged
   'survived: my lib/new name.js:7: if (p !== q) y(); -> if (p === q) y();' "$(surv)"
 
 # =====================================================================================================
-echo "v0.24.7 U3 arithmetic: + - * / are swapped as binary operators with blanks around them, guards do not hide them"
+echo "v0.24.7 U3 (decision D-U3: arithmetic mutants + - * / are withdrawn from this release): no arithmetic mutant anywhere"
 R="$W/ari"; mkfx "$R"; set_base "$R"
 ( cd "$R" && mkdir -p src &&
   printf '%s\n' \
+    'x = """' \
+    'chmod -R go-w build * extra' \
+    '"""' \
+    'os.system("chmod -R go-w build * extra")' \
+    'y = f(a)  # a + b' > src/probe.py &&
+  printf '%s\n' '`chmod -R go-w build * extra`' > src/q.rb &&
+  printf '%s\n' \
     'function add(a, b) {' \
-    '  if (a > 0) return a + b;' \
-    '  const r = a * b / c;' \
-    '  return r - 1;' \
-    '  i++; x += 1; y -= 1; p->q; k = a-b; n = m*2; /* c */' \
-    '}' > src/a.js &&
-  printf '%s\n' 'list:' '  - item' > src/a.yml &&
-  printf '%s\n' 'echo $((a + b))' 'ls src/ * -a' > src/a.sh ) || exit 3
+    '  return a + b;' \
+    '}' \
+    'const y = a * b;' \
+    'const z = a - b / c;' \
+    'i++; x += 1; k = a-b; /* a * b */ // c + d' > src/r.js ) || exit 3
 commit_all "$R" change
 mrun "$R" --base base --test true
 assert_rc "U3 run exits 0" 0
-assert_eq "U3 comparison first, then + - * / in list order; no mutant for ++ += -= -> a-b m*2 /* */, a YAML dash or a shell file" \
-  "$(printf '%s\n' \
-    'survived: src/a.js:2:   if (a > 0) return a + b; ->   if (a <= 0) return a + b;' \
-    'survived: src/a.js:2:   if (a > 0) return a + b; ->   if (a > 0) return a - b;' \
-    'survived: src/a.js:3:   const r = a * b / c; ->   const r = a / b / c;' \
-    'survived: src/a.js:3:   const r = a * b / c; ->   const r = a * b * c;' \
-    'survived: src/a.js:4:   return r - 1; ->   return r + 1;')" "$(surv)"
-has_line "U3 total line" "mutants: 5, killed: 0, survived: 5"
+assert_eq "U3 the review probes (py docstring and os.system with *, py # comment, rb backticks) and plain js + - * / lines make no mutant" "" "$(surv)"
+has_line "U3 total line" "mutants: 0, killed: 0, survived: 0"
 
 # =====================================================================================================
-echo "v0.24.7 F1 comments: no arithmetic mutants in block-comment or JSDoc lines, or after a trailing // or /*"
-R="$W/cmt"; mkfx "$R"; set_base "$R"
+echo "v0.24.7 U3b regression vs base a753c5c: a line whose first non-blank character is * keeps its == mutant"
+R="$W/star"; mkfx "$R"; set_base "$R"
 ( cd "$R" && mkdir -p src &&
-  printf '%s\n' \
-    '/**' \
-    ' * Adds two numbers - the sum.' \
-    ' * @param a - first operand' \
-    ' * @returns a + b' \
-    ' */' \
-    'x = 1; /* a * b */' \
-    'const s = a + b; // sum' \
-    'y = a + b; /* p - q */' \
-    'z = a; // c + d' \
-    '/* a + b */ w = 1;' \
-    '  /* e * f' \
-    '   * g / h' \
-    '   */' > src/c.js ) || exit 3
+  printf '%s\n' '*p = a == b;' > src/star.c &&
+  printf '%s\n' '*rest, last = a == b' > src/star.py ) || exit 3
 commit_all "$R" change
 mrun "$R" --base base --test true
-assert_rc "F1 run exits 0" 0
-assert_eq "F1 only the code part of a code line is mutated: a + b before // or /* gives a - b, nothing inside the comment does" \
+assert_rc "U3b run exits 0" 0
+assert_eq "U3b *p = a == b; (.c) and *rest, last = a == b (.py) still give their == mutant" \
   "$(printf '%s\n' \
-    'survived: src/c.js:7: const s = a + b; // sum -> const s = a - b; // sum' \
-    'survived: src/c.js:8: y = a + b; /* p - q */ -> y = a - b; /* p - q */')" "$(surv)"
-has_line "F1 total line" "mutants: 2, killed: 0, survived: 2"
-
-# =====================================================================================================
-echo "v0.24.7 F2 allow-list: + - * / only in code extensions; comparison and boolean mutants on other files are unchanged"
-R="$W/nca"; mkfx "$R"; set_base "$R"
-( cd "$R" && mkdir -p bin &&
-  printf '%s\n' 'chmod -R go-w build * extra' 'test x == y' > bin/tool &&
-  printf '%s\n' 'jobs:' '  run: ls dist/ * foo' "  cron: '0 * * * *'" "  if: a == b" > ci.yml &&
-  printf '%s\n' 'all:' '	ls a * b' '	test x == y' > Makefile &&
-  printf '%s\n' 'FROM x' 'RUN ls * foo && echo done' > Dockerfile ) || exit 3
-commit_all "$R" change
-mrun "$R" --base base --test true
-assert_rc "F2 run exits 0" 0
-assert_eq "F2 no + - * / mutant for an extension-less script, .yml, Makefile or Dockerfile; == and && mutants stay" \
-  "$(printf '%s\n' \
-    'survived: Dockerfile:2: RUN ls * foo && echo done -> RUN ls * foo || echo done' \
-    "survived: Makefile:3: $(printf '\t')test x == y -> $(printf '\t')test x != y" \
-    'survived: bin/tool:2: test x == y -> test x != y' \
-    "survived: ci.yml:4:   if: a == b ->   if: a != b")" "$(surv)"
-has_line "F2 total line" "mutants: 4, killed: 0, survived: 4"
-
-R="$W/ext"; mkfx "$R"; set_base "$R"
-EXTS="js ts jsx tsx mjs cjs py go rs c h cc cpp hpp java kt rb php cs swift scala"
-( cd "$R" && mkdir -p src && for e in $EXTS; do printf '%s\n' 'r = a + b' > "src/f.$e"; done ) || exit 3
-commit_all "$R" change
-mrun "$R" --base base --test true --max 50
-assert_rc "F2 allow-list run exits 0" 0
-EXPECT=""
-for e in $(printf '%s\n' $EXTS | LC_ALL=C sort); do
-  EXPECT="${EXPECT}survived: src/f.$e:1: r = a + b -> r = a - b
-"
-done
-assert_eq "F2 every allow-listed extension (js ts jsx tsx mjs cjs py go rs c h cc cpp hpp java kt rb php cs swift scala) still gets a + mutant" \
-  "$(printf '%s' "$EXPECT")" "$(surv)"
-has_line "F2 allow-list total line" "mutants: 21, killed: 0, survived: 21"
-
-# =====================================================================================================
-echo "v0.24.7 F3 import/export *: a star after import or export is not multiplication"
-R="$W/imp"; mkfx "$R"; set_base "$R"
-( cd "$R" && mkdir -p src &&
-  printf '%s\n' \
-    'import * as fs from "fs"' \
-    'export * from "./x"' \
-    'import d, * as ns from "m"' \
-    'const y = a * b;' > src/i.js ) || exit 3
-commit_all "$R" change
-mrun "$R" --base base --test true
-assert_rc "F3 run exits 0" 0
-assert_eq "F3 import * and export * make no mutant; const y = a * b still gives a / b" \
-  'survived: src/i.js:4: const y = a * b; -> const y = a / b;' "$(surv)"
-has_line "F3 total line" "mutants: 1, killed: 0, survived: 1"
-
-# =====================================================================================================
-echo "v0.24.7 F4 tabs count as blanks around an arithmetic operator"
-R="$W/tab"; mkfx "$R"; set_base "$R"
-( cd "$R" && mkdir -p src &&
-  printf 'a\t+\tb\n' > src/t.js ) || exit 3
-commit_all "$R" change
-mrun "$R" --base base --test true
-assert_rc "F4 run exits 0" 0
-assert_eq "F4 a<TAB>+<TAB>b gives the - mutant" \
-  "$(printf 'survived: src/t.js:1: a\t+\tb -> a\t-\tb')" "$(surv)"
-has_line "F4 total line" "mutants: 1, killed: 0, survived: 1"
+    'survived: src/star.c:1: *p = a == b; -> *p = a != b;' \
+    'survived: src/star.py:1: *rest, last = a == b -> *rest, last = a != b')" "$(surv)"
+has_line "U3b total line" "mutants: 2, killed: 0, survived: 2"
 
 t_summary
