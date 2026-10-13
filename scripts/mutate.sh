@@ -8,8 +8,10 @@
 # --exclude glob (repeatable, e.g. '*_test.go') are left out, and so are comment lines (first non-blank character
 # is # or //).
 # One mutant per (line, operator), on the first whole-token occurrence on the line, in this order:
-#   == != | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
-#   and, only in non-shell files (shell uses < and > for redirection): < >= | > <=
+#   == != | === !== | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
+#   and, only in non-shell files (shell uses < and > for redirection and * for globs): < >= | > <= | + - | * /
+#   (+ - * / only as a binary operator with a blank and an operand on both sides, so ++ += -> a-b /* and a YAML
+#   "- item" are left alone). === and !== are swapped as whole tokens; == and != never match inside them.
 # At most --max mutants (default 20).
 #
 # Safety: your work tree is never written. Only HEAD is mutated, in a throwaway `git worktree` under
@@ -163,9 +165,12 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     function inset(c, set) { return c != "" && index(set, c) > 0 }
     function isword(c) { return c != "" && c ~ /[A-Za-z0-9_]/ }
     function iswordh(c) { return c != "" && c ~ /[A-Za-z0-9_-]/ }
-    function ok(kind, pre, post) {
+    function ok(kind, pre, post, pp, pn) {
       if (kind == "eq") return !inset(pre, "=!<>") && post != "="
       if (kind == "ne") return post != "="
+      if (kind == "seq") return !inset(pre, "=!<>") && post != "="
+      if (kind == "sne") return post != "="
+      if (kind == "arith") return pre == " " && post == " " && pp != "" && pp != " " && pp != "\t" && pn != "" && pn != " " && pn != "\t"
       if (kind == "word") return !iswordh(pre) && !iswordh(post)
       if (kind == "and") return pre != "&" && post != "&"
       if (kind == "or") return pre != "|" && post != "|"
@@ -177,13 +182,15 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       if (kind == "le") return !inset(pre, "<") && !inset(post, "=>")
       return 0
     }
-    function find(s, tok, kind,   off, p, pre, post) {
+    function find(s, tok, kind,   off, p, pre, post, pp, pn) {
       off = 0
       while ((p = index(substr(s, off + 1), tok)) > 0) {
         p += off
         pre = (p > 1) ? substr(s, p - 1, 1) : ""
         post = substr(s, p + length(tok), 1)
-        if (ok(kind, pre, post)) return p
+        pp = (p > 2) ? substr(s, p - 2, 1) : ""
+        pn = substr(s, p + length(tok) + 1, 1)
+        if (ok(kind, pre, post, pp, pn)) return p
         off = p
       }
       return 0
@@ -205,6 +212,7 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     BEGIN {
       SEP = "\034"
       add("==", "!=", "eq", 0);      add("!=", "==", "ne", 0)
+      add("===", "!==", "seq", 0);   add("!==", "===", "sne", 0)
       add("-eq", "-ne", "word", 0);  add("-ne", "-eq", "word", 0)
       add("-lt", "-ge", "word", 0);  add("-ge", "-lt", "word", 0)
       add("-gt", "-le", "word", 0);  add("-le", "-gt", "word", 0)
@@ -213,6 +221,8 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       add("return 0", "return 1", "ret", 0); add("return 1", "return 0", "ret", 0)
       add("<", ">=", "lt", 1);       add(">=", "<", "ge", 1)
       add(">", "<=", "gt", 1);       add("<=", ">", "le", 1)
+      add("+", "-", "arith", 1);     add("-", "+", "arith", 1)
+      add("*", "/", "arith", 1);     add("/", "*", "arith", 1)
     }
     FNR == NR { allowed[$0] = 1; next }
     /^diff --git / { inhunk = 0; file = ""; next }
