@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
-#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
+#                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD] [--real-home]
 # Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
 # --max-cost USD (a plain decimal > 0, e.g. 5, 0.5 or .5) is a guard, not a hard limit. Before each scenario that follows one
@@ -11,8 +11,20 @@
 # The first scenario (or one costlier than any before it) can pass the cap. Skipping never changes the exit code.
 # --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first (a desktop or nested Claude session
 # leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
+# Isolation (default): every scenario runs with PLAYBOOK_HOME set to its own temp dir that holds a copy of the playbook conf
+# (without feedback_repo, so a submit cannot reach the real feedback repository); HOME stays the real one, so the CLI keeps
+# its login and no credential file is copied. A PLAYBOOK_HOME the caller set is replaced (the copy is read from it, or from HOME).
+# The adapter then starts in the scenario's workdir, so a project-level write such as the cost log lands there.
+# After the scenario the evidence is copied to ${OUT%.md}.<E>.evidence/ (so --out D/run-A.md gives D/run-A.E1.evidence, one
+# folder per run): the temp home's .agents/playbook-feedback/ tree and the workdir's .agents/handoff/cost.tsv (each only if it
+# exists). Only regular files are copied; a symbolic link (or anything behind one) is never followed or kept. The temp home is
+# removed on every exit, also on INT or TERM. E20 keeps its own home, <workroot>/E20.home, which stays, and makes no evidence.
+# In this default mode the adapter starts in the scenario's workdir, so a custom --cmd should use an absolute path
+# (or --real-home, which keeps the caller's cwd).
+# --real-home: no isolation (today's behaviour before v0.24.3): the adapter runs with the caller's HOME and PLAYBOOK_HOME,
+# so what the agent writes (feedback, learnings) lands in the real home, and no evidence folder is made.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
-# (and E20.home). E20 runs with PLAYBOOK_HOME=<workroot>/E20.home, so a feedback capture stays out of the real store.
+# (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
 # (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
 # Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
@@ -35,7 +47,26 @@ usage() {
   exit 2
 }
 
-HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0
+# temp home of the running scenario and the pid of its adapter, for the exit trap
+CUR_HOME=""; ADPID=""
+cleanup_home() { if [ -n "$CUR_HOME" ]; then rm -rf "$CUR_HOME"; CUR_HOME=""; fi; }
+stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
+trap 'cleanup_home' EXIT
+trap 'stop_adapter; cleanup_home; trap - EXIT; exit 130' INT
+trap 'stop_adapter; cleanup_home; trap - EXIT; exit 143' TERM
+# keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
+keep_tree() {
+  local src="$1" dest="$2" rel
+  mkdir -p "$dest" || return 1
+  ( cd "$src" && find . -type f ) | while IFS= read -r rel; do
+    rel="${rel#./}"
+    mkdir -p "$dest/$(dirname "$rel")" && cp "$src/$rel" "$dest/$rel" || exit 1
+  done
+}
+
+HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
+# where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
+SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
     --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost)
@@ -51,6 +82,7 @@ while [ $# -gt 0 ]; do
     --max-cost)  MAX_COST="$2"; MAX_COST_SET=1; shift ;;
     --clean-env) CLEAN_ENV=1 ;;
     --interactive) INTERACTIVE=1 ;;
+    --real-home) REAL_HOME=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -561,28 +593,54 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$prompt" > "$PF"
   else printf '%s\n%s\n' "$prompt" "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)" > "$PF"; fi
   # E20 gets a throw-away playbook home (with a copy of the real conf), so a capture does not reach the real store
-  if [ "$E" = E20 ]; then
-    rm -rf "$WORKROOT/E20.home"; mkdir -p "$WORKROOT/E20.home/.agents" || pb_die "cannot create $WORKROOT/E20.home" 3
+  # v0.24.3: every other scenario gets its own temp playbook home (removed after it); --real-home turns that off
+  SC_HOME=""
+  if [ "$E" = E20 ]; then SC_HOME="$WORKROOT/E20.home"; rm -rf "$SC_HOME"; mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME" 3
+  elif [ "$REAL_HOME" = 0 ]; then
+    SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/pb-evhome.XXXXXX")" || pb_die "cannot create a temp playbook home" 3
+    CUR_HOME="$SC_HOME"
+    mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME/.agents" 3
+  fi
+  if [ -n "$SC_HOME" ]; then
     # without feedback_repo: a submit during the eval cannot reach the user's real feedback repository
-    [ -f "$HOME/.agents/playbook.conf" ] &&
-      { grep -v '^[[:space:]]*feedback_repo[[:space:]]*=' "$HOME/.agents/playbook.conf" > "$WORKROOT/E20.home/.agents/playbook.conf"
-        [ -f "$WORKROOT/E20.home/.agents/playbook.conf" ] || pb_die "cannot copy the playbook conf for E20" 3; }
+    [ -f "$SRC_CONF" ] &&
+      { grep -v '^[[:space:]]*feedback_repo[[:space:]]*=' "$SRC_CONF" > "$SC_HOME/.agents/playbook.conf"
+        [ -f "$SC_HOME/.agents/playbook.conf" ] || pb_die "cannot copy the playbook conf for $E" 3; }
   fi
   rm -f "$LOG.result"   # an earlier run's reply must never be graded as this one (if transcript.js fails)
   BEFORE="$(ls -A "$WORKROOT" | LC_ALL=C sort)"
   printf '== %s: running the adapter in %s\n' "$E" "$WD" >&2
   (
-    [ "$E" = E20 ] && { PLAYBOOK_HOME="$WORKROOT/E20.home"; export PLAYBOOK_HOME; }
-    if [ "$USE_TIMEOUT" = 1 ]; then
-      timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
-    else
-      bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    if [ -n "$SC_HOME" ]; then
+      PLAYBOOK_HOME="$SC_HOME"; export PLAYBOOK_HOME
+      # project-level writes (the cost log) then land in the workdir, where they are collected as evidence
+      if [ "$E" != E20 ]; then cd "$WD" || exit 1; fi
     fi
-  )
-  rc=$?
+    if [ "$USE_TIMEOUT" = 1 ]; then
+      exec timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    else
+      exec bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    fi
+  ) &
+  ADPID=$!
+  wait "$ADPID"
+  rc=$?; ADPID=""
   # anything new in the workroot besides this scenario's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
     grep -vxF -e "$E" -e "$E.log" -e "$E.prompt" -e "$( [ "$E" = E20 ] && echo E20.home || echo "$E" )" | tr '\n' ' ')"
+  # evidence: what the agent's scripts wrote (feedback items, cost log) is kept next to the results file, per scenario
+  if [ -n "$SC_HOME" ] && [ "$E" != E20 ]; then
+    EV="${OUT%.md}.$E.evidence"; rm -rf "$EV"
+    FBD="$SC_HOME/.agents/playbook-feedback"
+    if [ -d "$FBD" ] && [ ! -L "$FBD" ] && [ ! -L "$SC_HOME/.agents" ]; then
+      keep_tree "$FBD" "$EV/playbook-feedback" || pb_die "cannot keep the feedback evidence in $EV" 3
+    fi
+    CT="$WD/.agents/handoff/cost.tsv"
+    if [ -f "$CT" ] && [ ! -L "$CT" ] && [ ! -L "$WD/.agents" ] && [ ! -L "$WD/.agents/handoff" ]; then
+      mkdir -p "$EV" && cp "$CT" "$EV/cost.tsv" || pb_die "cannot keep the cost evidence in $EV" 3
+    fi
+    cleanup_home
+  fi
   load_transcript
   herr=""
   if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then herr="timed out after ${TIMEOUT}s"
