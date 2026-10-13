@@ -26,6 +26,7 @@ key="${path%%\?*}"
 f="${key//\//_}"   # builtins only: this fake runs once per gh call (no tr, no cat)
 case "$path" in *head_sha=*) hs="${path#*head_sha=}"; hs="${hs%%&*}"; f="${f}_hs_$hs" ;; esac
 [ -f "$FAKE_DATA/$f" ] || { echo "gh: HTTP 404 Not Found ($path)" >&2; exit 1; }
+# read -d '' returns 1 at end of file: fine here (no set -e in this fake); the fixtures hold no NUL byte
 if [ -n "$expr" ] && command -v jq >/dev/null 2>&1; then jq -r "$expr" < "$FAKE_DATA/$f"; else IFS= read -r -d '' body < "$FAKE_DATA/$f"; printf '%s' "$body"; fi
 EOF
 chmod +x "$BIN/gh"

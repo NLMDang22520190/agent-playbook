@@ -84,8 +84,9 @@ tq_add() { TQ_K[${#TQ_K[@]}]="$1"; TQ_N[${#TQ_N[@]}]="$2"; TQ_E[${#TQ_E[@]}]="$3
 tq_flush() {
   local n="${#TQ_C[@]}" i
   [ "$n" -gt 0 ] || return 0
+  for ((i = 0; i < n; i++)); do rm -f "$TR/q$i.json"; done   # no transcript left over from an earlier table
   printf '%s\0' "${TQ_C[@]}" > "$TR/q.cmds"
-  node -e 'const fs=require("fs"),d=process.argv[1];const cs=fs.readFileSync(d+"/q.cmds","utf8").split("\0");cs.pop();cs.forEach((c,i)=>fs.writeFileSync(d+"/q"+i+".json",JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:c}}]}})+"\n"))' "$TR"
+  node -e 'const fs=require("fs"),d=process.argv[1];const cs=fs.readFileSync(d+"/q.cmds","utf8").split("\0");cs.pop();cs.forEach((c,i)=>fs.writeFileSync(d+"/q"+i+".json",JSON.stringify({type:"assistant",message:{content:[{type:"tool_use",id:"w1",name:"Bash",input:{command:c}}]}})+"\n"))' "$TR" || t_bad "tq_flush: the batch node call failed"
   for ((i = 0; i < n; i++)); do
     assert_eq "${TQ_N[$i]}" "${TQ_E[$i]}" "$(node "$PB_ROOT/evals/transcript.js" "$TR/q$i.json" 2>/dev/null | sed -n "s/^${TQ_K[$i]}=//p")"
   done
