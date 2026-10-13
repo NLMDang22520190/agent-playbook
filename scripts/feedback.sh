@@ -53,6 +53,19 @@ find_item() { # id [dirs...] -> path
   return 1
 }
 
+# Temp files and dirs never stay in the storage folders: the body file of a submit is removed on every exit
+# (success, failure, die, INT, TERM), and empty tmp.* dirs (what `mktemp -d` makes by default; an eval run left 8
+# of them in sent/) are removed with rmdir, which refuses anything that is not empty.
+body=""
+sweep_tmp() {
+  local d t
+  for d in pending sent discarded; do
+    for t in "$DIR/$d"/tmp.*; do [ -d "$t" ] && rmdir "$t" 2>/dev/null; done
+  done
+  return 0
+}
+cleanup_tmp() { [ -z "$body" ] || rm -f "$body"; sweep_tmp; }
+
 render_body() { # file
   load_item "$1"
   {
@@ -70,6 +83,12 @@ render_body() { # file
 
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
+case "$cmd" in
+  capture | submit)
+    trap cleanup_tmp EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM ;;
+esac
 
 case "$cmd" in
   capture)

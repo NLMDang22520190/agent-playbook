@@ -2,7 +2,7 @@
 # Log and summarise the cost of TDD role runs, per project.
 #   cost.sh add --role R --tokens N [--seconds S] [--model M] [--weight Full|Lite] [--note T]
 #               [--phase spec|red|green|review|fix|release] [--rework N] [--majors N] [--task ID]
-#       R = tester|implementer|reviewer|orchestrator; N, S non-negative integers.
+#       R = tester|implementer|reviewer|spec_reviewer|orchestrator; N, S non-negative integers.
 #       --rework N = rework round (0 = first pass); --majors N = review majors found.
 #       Appends one row to <project>/.agents/handoff/cost.tsv (header on first use).
 #       --task ID = a task id, [A-Za-z0-9._-]+, used by calibrate to group the rows of one task.
@@ -54,8 +54,8 @@ case "$cmd" in
       shift 2
     done
     case "$role" in
-      tester | implementer | reviewer | orchestrator) ;;
-      *) pb_die "--role must be tester, implementer, reviewer or orchestrator" 2 ;;
+      tester | implementer | reviewer | spec_reviewer | orchestrator) ;;
+      *) pb_die "--role must be tester, implementer, reviewer, spec_reviewer or orchestrator" 2 ;;
     esac
     is_uint "$tokens" || pb_die "--tokens must be a non-negative integer" 2
     if [ -n "$seconds" ]; then is_uint "$seconds" || pb_die "--seconds must be a non-negative integer" 2; fi
@@ -118,7 +118,7 @@ case "$cmd" in
         if (p != "") { ptok[p] += $3; psec[p] += $4 }
       }
       END {
-        nr = split("tester implementer reviewer orchestrator", order, " ")
+        nr = split("tester implementer reviewer spec_reviewer orchestrator", order, " ")
         np = split("spec red green review fix release", porder, " ")
         if (json == 1) {
           printf "{\"runs\":%d,\"tokens\":%d,\"seconds\":%d,\"rework_rounds\":%d,\"review_majors\":%d,\"roles\":{", tr_, tt, ts, rw, mj
