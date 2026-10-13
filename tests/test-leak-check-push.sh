@@ -477,6 +477,19 @@ if holds_secret "$PUB"; then t_bad "M2: pub did not receive the secret commit" "
 if holds_feat "$PUB"; then t_bad "M2: pub did not receive the feat branch" "feat is on pub"; else t_ok "M2: pub did not receive the feat branch"; fi
 if holds_feat "$FORK"; then t_bad "M2: fork did not receive the feat branch either (the hook stopped the whole push)" "feat is on fork"; else t_ok "M2: fork did not receive the feat branch either (the hook stopped the whole push)"; fi
 
+echo "v0.24.9 pushurl chain: origin's pushurl is remote fork's url, and fork's own pushurl is pub; the secret is on refs/remotes/fork/* only"
+# fork is configured, but it pushes elsewhere (pub), so its refs do not cover what origin's push reaches: the conservative full scan stays,
+# and the note must not claim that no configured remote owns the place (fork does; its push places differ).
+pfix fork
+git -C "$R" config remote.fork.pushurl "$PUB"
+git -C "$R" config remote.origin.pushurl "$FORK"
+run_in "$R" git push origin feat
+if [ "$RC" != 0 ]; then t_ok "CH1: git push origin feat (origin pushurl fork, fork pushurl pub) is refused (exit $RC)"; else t_bad "CH1: git push origin feat (origin pushurl fork, fork pushurl pub) is refused" "exit 0; output: $OUT"; fi
+assert_contains "CH1: the hook shows the finding" "$OUT" "s.txt:1: github-token"
+if holds_secret "$PUB"; then t_bad "CH1: pub did not receive the secret commit" "object is on pub"; else t_ok "CH1: pub did not receive the secret commit"; fi
+assert_contains "CH1: the note says origin pushes to a place that no configured remote fully owns (its push places differ)" "$OUT" "origin pushes to a place that no configured remote fully owns (its push places differ); scanning the full range"
+assert_not_contains "CH1: the note does not say 'no configured remote owns' (fork is configured)" "$OUT" "no configured remote owns"
+
 echo "v0.23.3 lane A review round 4 F3 control: origin's pushurl is remote fork's url, fork holds the secret (still allowed)"
 pfix fork
 git -C "$R" config remote.origin.pushurl "$FORK"
