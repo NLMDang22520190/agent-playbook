@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.24.6 - 2026-10-13
+- **The `playbook-tdd` description names Quick** and the user's word "quick". The description decides whether the skill
+  loads, and it used to say only "Full or Lite". `test-content.sh` checks it.
+- **CI balance**: the shard weights now come from the real v0.24.5 run 38351856859. The Linux-scaled weights had
+  underweighted grade6 (259 vs 559 real), test-ship and role-gate, so shard 1 took 673 s while the others took 341-425 s.
+  The new partition predicts 1930 / 1930 / 1933 / 1930. `test-run-checks` and the new uname suite have hand-scaled weights.
+- **`run-checks.sh --only files`** runs the per-file group (CRLF, syntax and shebang, exec bits) on its own.
+  `tests/test-run-checks.sh` uses `--only files` and `--only skills` for its cases: 166 s -> 14 s on Linux. A full run
+  is byte-identical to before.
+- **`leak-check.sh` computes `uname` at most once per process.** It used to run up to 16 times per push check with
+  pushurls and now runs 0 times on paths that compare no destinations. A MINGW equivalence suite,
+  `tests/test-leak-check-uname.sh`, covers it.
+- **Deferred (decision D1)**: `ci-tree-tested` node batching and a one-pass classify in role-gate. The spec review found
+  that the node calls are already one per API response and chained, and that a batch grep has locale, binary-path and
+  exit-2 edge cases. Both are queued for a later release.
+- **Review**: the spec was reviewed twice. The Opus review returned SHIP; it killed 6 of 7 mutants, and the one survivor
+  is the redundant `unset`.
+
 ## 0.24.5 - 2026-10-13
 - **`spec_reviewer` model role**: the Full-weight spec reviewer sub-agent can have its own model
   (`model_spec_reviewer_<harness>`). `role-model.sh` falls back to the reviewer's model when none is set, `cost.sh`

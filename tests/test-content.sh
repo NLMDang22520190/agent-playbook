@@ -1323,4 +1323,11 @@ QOUTSIDE="$(awk '/^## When Quick must escalate/ { skip = 1; next } skip && /^## 
 qchk "F6 quick.md names role-gate.sh size --quick outside the escalation section" "$QOUTSIDE" 'role-gate\.sh size --quick'
 QUSER="$(awk '/^## When the user asks for Quick/ { f = 1; next } f && /^## / { exit } f { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
 qchk "F6 the user-requested section uses the size --quick check for stop (b)" "$QUSER" 'size --quick'
+echo "v0.24.6: the playbook-tdd front-matter description names the Quick weight (the description is what makes an agent load the skill)"
+TDDDESC="$(sed -n '2,10{s/^description: *//p;}' "$SKILL" | head -n 1)"
+if printf '%s' "$TDDDESC" | grep -q 'Quick'; then t_ok "v24.6 the playbook-tdd description names the Quick weight"; else t_bad "v24.6 the playbook-tdd description names the Quick weight" "no 'Quick' in: $TDDDESC"; fi
+if printf '%s' "$TDDDESC" | grep -qiE 'user says "?quick'; then t_ok "v24.6 the playbook-tdd description says it also applies when the user says quick"; else t_bad "v24.6 the playbook-tdd description says it also applies when the user says quick" "no 'user says quick' in: $TDDDESC"; fi
+if printf '%s' "$TDDDESC" | grep -q 'Lite' && printf '%s' "$TDDDESC" | grep -q 'Full'; then t_ok "v24.6 the playbook-tdd description still names Lite and Full"; else t_bad "v24.6 the playbook-tdd description still names Lite and Full" "$TDDDESC"; fi
+if [ "${#TDDDESC}" -ge 1 ] && [ "${#TDDDESC}" -le 450 ]; then t_ok "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks (${#TDDDESC})"; else t_bad "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks" "${#TDDDESC} chars"; fi
+
 t_summary
