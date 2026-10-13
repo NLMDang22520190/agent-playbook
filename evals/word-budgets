@@ -1,0 +1,11 @@
+# Word budgets (checked by evals/run-checks.sh: AGENTS.global.md in the always-on block, each skills/*/SKILL.md in the skills group).
+# One line per file: PATH WORDS. Words are counted with `wc -w` over the whole file, nothing excluded.
+# A new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason.
+# A skill with no line here fails the check: a new skill declares its budget.
+# Each budget is the file's size at v0.24.8 rounded up to the next 50 words (count in the comment).
+AGENTS.global.md 700   # 660 words at v0.24.8
+skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
+skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
+skills/playbook-proof/SKILL.md 700   # 697 words at v0.24.8
+skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
+skills/playbook-tdd/SKILL.md 4050   # 4015 words at v0.24.8
