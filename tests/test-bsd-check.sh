@@ -316,10 +316,13 @@ run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6none/bash
 assert_contains "LOW-8 a missing PB_BASH32 is named in a note" "$OUT" "$W/c6none/bash3.2"
 assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
 assert_contains "LOW-8 ... and the next candidate is still used" "$OUT" "bsd-check: bash is $HC6/.local/bin/bash3.2"
-mkdir -p "$W/c6ne"; printf '#!/bin/sh\nexit 0\n' > "$W/c6ne/bash3.2"; chmod -x "$W/c6ne/bash3.2"
+mkdir -p "$W/c6ne"; printf '#!/bin/sh\necho ran > "%s"\nexit 0\n' "$W/c6ne/marker" > "$W/c6ne/bash3.2"; chmod -x "$W/c6ne/bash3.2"
 run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" PB_BASH32="$W/c6ne/bash3.2" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_contains "LOW-8 a non-executable PB_BASH32 is named in a note" "$OUT" "$W/c6ne/bash3.2"
 assert_contains "LOW-8 ... the note names the variable" "$OUT" "PB_BASH32"
+assert_contains "LOW-8 ... the fallback bash is named" "$OUT" "bsd-check: bash is $HC6/.local/bin/bash3.2"
+assert_not_contains "LOW-8 ... the non-executable file was never probed (no 'reports bash version' for it)" "$OUT" "$W/c6ne/bash3.2 reports bash version"
+assert_not_contains "LOW-8 ... nor 'gave no answer'" "$OUT" "gave no answer"
 run env -i PATH="$W/bc6:$BARE" HOME="$HC6" TMPDIR="$W" "$BASH_BIN" "$D/tools/bsd-check.sh" tests/test-b.sh
 assert_not_contains "LOW-8 with PB_BASH32 unset there is no such note" "$OUT" "PB_BASH32"
 

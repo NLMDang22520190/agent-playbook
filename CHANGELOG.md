@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.9 - 2026-10-13
+- **`role-gate check implementer` accepts a mode restore of a test file.** A test file whose only change is
+  100644 -> 100755 with the same content is no longer flagged; the gate prints a "mode restore only" note, passed through
+  `shown()` so ESC bytes are visible. A drop to 100644, a restore that also changes content, an untracked or deleted test,
+  and the reviewer, tester and infra roles behave as before. Found when a tester's commit dropped an exec bit and its
+  restore was flagged.
+- **`leak-check` note wording is true in both cases.** It says "pushes to a place no configured remote owns" when no
+  remote has the place, and "no configured remote fully owns (its push places differ)" for a pushurl chain, which the
+  header now documents. Behaviour is unchanged: a reviewer compared old and new code on 25 scenarios, including crafted
+  configs, and found no difference in exit codes or stdout.
+- **Coverage**: a `bsd-check` test now catches a missing executable check on `PB_BASH32` candidates.
+- **Project learnings**: `.agents/LEARNINGS.md` gains 7 user-approved lessons, written with `learn.sh`.
+- **Shard weights** are the per-suite mean of CI runs 38378867784 (v0.24.7) and 38404302991 (v0.24.8), with
+  `test-run-checks.sh` from the second run only because it changed in v0.24.8. The v0.24.8 Windows shards ran 436, 528,
+  320 and 483 s, which was unbalanced again; the new weights predict equal shards.
+- **Review**: Opus, 2 rounds on the role-gate change. Round 1 found a crash on an untracked test file (fixed) and missing
+  coverage; round 2 gave SHIP after bypass probes (symlink, rename, submodule, special paths, filters).
+- **Notes (queue hygiene)**: 8 of the 10 planned P2 items were already fixed in earlier releases, checked by probes. Two
+  are deferred: `mutate.sh` arithmetic with a tokenizer, and the node and role-gate batching. No SKILL.md changed, so
+  `evals/word-budgets` is unchanged.
+
 ## 0.24.8 - 2026-10-13
 - **Windows CI speed, measured first.** On Windows, `test-run-checks` spent 47% of its time in `--only files` runs, and
   89% of each of those runs was 89 `bash -n` spawns at about 68 ms each; another 32% went to `--only skills` runs. The

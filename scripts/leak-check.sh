@@ -18,6 +18,8 @@
 #                                          limits the scan). No silent fallback: an id that is not a full commit id of this
 #                                          repository, an empty range (ID is SHA or a descendant of it) or an ID that is not an
 #                                          ancestor of SHA exits 3
+#                                          Limit: a configured remote whose pushurl is another remote's url, where that remote's own
+#                                          pushurl differs (a chain), is not followed: it takes this full scan too (conservative)
 #   leak-check.sh scan FILE...             every line of the given files
 #   leak-check.sh install-hooks [--repo DIR]     write .git/hooks/pre-commit and pre-push (marker: "# agent-playbook leak-check")
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
@@ -295,6 +297,24 @@ $(git remote 2>/dev/null)
 EOF
 }
 
+# place_known DEST SELF -> 0 when a configured remote other than SELF has DEST as one of its urls (raw, or after insteadOf
+# expansion), even when that remote's own pushurl names another place (a chain: then url_remotes skips it). SELF's own pushurls
+# are the destinations being asked about, so they never count. Only used to pick the wording of a note.
+place_known() {
+  local d="$1" self="$2" r v
+  while IFS= read -r r; do
+    [ -n "$r" ] && [ "$r" != "$self" ] || continue
+    while IFS= read -r v; do
+      [ -z "$v" ] || ! same_place "$v" "$d" || return 0
+    done <<EOF
+$( { git config --get-all "remote.$r.url" 2>/dev/null; git remote get-url --all "$r" 2>/dev/null; } )
+EOF
+  done <<EOF
+$(git remote 2>/dev/null)
+EOF
+  return 1
+}
+
 # push_rewritten NAME -> 0 when some url.<base>.pushInsteadOf value is a prefix of NAME (the raw NAME, or NAME after
 # insteadOf expansion): git then pushes somewhere else than NAME names, so no remote's refs say what that place holds.
 # The key names are listed on their own (git config --name-only: <base> may hold dots or spaces, nothing is split on the
@@ -400,13 +420,15 @@ do_scan() {
               # the push goes elsewhere (pushurl, pushInsteadOf): treat it as a push to those destinations
               local pd d
               pd="$(git remote get-url --push --all "$remote" 2>/dev/null)" || pd=""
-              local fu1 hf=0
+              local fu1 hf=0 unowned=0
               fu1="$(git remote get-url "$remote" 2>/dev/null)" || fu1=""
               set --
               while IFS= read -r d; do
                 [ -z "$d" ] && continue
                 set -- "$@" "$d"
                 [ -z "$fu1" ] || ! same_place "$d" "$fu1" || hf=1
+                # a destination no configured remote has (or one pushInsteadOf rewrites) keeps the plain wording
+                if push_rewritten "$d" || ! place_known "$d" "$remote"; then unowned=1; fi
               done <<EOF
 $pd
 EOF
@@ -414,8 +436,10 @@ EOF
                 : > "$TMP/own"; fullscan=1
                 if [ "$hf" = 1 ]; then
                   fullnote="$(printf 'leak-check: %s pushes to a place its fetched refs do not cover; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
-                else
+                elif [ "$unowned" = 1 ]; then
                   fullnote="$(printf 'leak-check: %s pushes to a place no configured remote owns; scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
+                else
+                  fullnote="$(printf 'leak-check: %s pushes to a place that no configured remote fully owns (its push places differ); scanning the full range (push through a named remote to limit it) or set PB_LEAK_SCAN_BASE=<full commit id> to scan only that id..SHA' "$remote")"
                 fi
               fi
             fi
