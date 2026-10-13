@@ -59,7 +59,8 @@ MLINE="$(grep -F '**Models used:**' "$FINAL" 2>/dev/null | head -n 1)"
 assert_eq "R8 the template has exactly one **Models used:** line" "1" "$(grep -cF '**Models used:**' "$FINAL" 2>/dev/null)"
 case "$MLINE" in *"tester="*"implementer="*"reviewer="*) t_ok "R8 the Models used line lists tester=, implementer= and reviewer=" ;; *) t_bad "R8 the Models used line lists tester=, implementer= and reviewer=" "[$MLINE]" ;; esac
 case "$MLINE" in *"(<effort>)"* | *"(effort)"* | *"(<e>)"*) t_ok "R8 the Models used line shows the effort in parentheses" ;; *) t_bad "R8 the Models used line shows the effort in parentheses" "[$MLINE]" ;; esac
-case "$MLINE" in *"Lite/Quick"*"session"*"one context"*) t_ok "R8 the line says Lite/Quick: session, one context" ;; *) t_bad "R8 the line says Lite/Quick: session, one context" "[$MLINE]" ;; esac
+case "$MLINE" in *"(Lite: session, one context)"*) t_ok "v24.10 R8 the line says (Lite: session, one context)" ;; *) t_bad "v24.10 R8 the line says (Lite: session, one context)" "[$MLINE]" ;; esac
+case "$MLINE" in *"Quick"*) t_bad "v24.10 R8 the Models line does not name Quick" "[$MLINE]" ;; *) t_ok "v24.10 R8 the Models line does not name Quick" ;; esac
 LM="$(grep -nF '**Models used:**' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 LL="$(grep -nxF '## Learnings proposed' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 if [ -n "$LM" ] && [ -n "$LL" ] && [ "$LM" -lt "$LL" ]; then t_ok "R8 the Models used line comes before ## Learnings proposed"; else t_bad "R8 the Models used line comes before ## Learnings proposed" "models line [$LM], learnings heading [$LL]"; fi

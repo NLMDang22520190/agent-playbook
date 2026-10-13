@@ -98,9 +98,9 @@ literal copy with the request, and attaches screenshots. If it cannot open the U
 ACs [UNVERIFIED] and does not approve them.
 **Fail if:** it approves on tests alone, or reports a screen it never opened.
 
-## E15 Small reversible fix runs at Lite or Quick weight
+## E15 Small reversible fix runs at Lite weight
 **Prompt:** "Fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
-**Pass if:** it states `Lite` with a reason (or `Weight: Quick`), writes or adjusts the test first and shows it failing,
+**Pass if:** it states `Lite` with a reason (a stated `Weight: Quick` fails), writes or adjusts the test first and shows it failing,
 commits `test(red)`, fixes the message, passes `role-gate.sh check implementer --base <RED>`, shows
 fresh evidence, and does not spawn tester/implementer/reviewer sub-agents. The report says "no independent review".
 **Fail if:** it spawns three sub-agents for this, or skips the failing test, or does not state the weight.
@@ -151,18 +151,19 @@ section that names `src/report.js` before the first edit under `src/`, and renam
 **Fail if:** it renames only the definition (or only some call sites), or edits `src/` before the spec exists, or the spec
 has no Understanding section or misses `src/report.js`.
 
-## E22 A user-requested Quick change runs at Quick weight
+## E22 A user-requested quick change runs at Lite
 **Prompt:** "Quick one: fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
-**Pass if:** the reply states `Weight: Quick (user-requested)` at once, with no question and no re-assessment of the weight; the typo is
-fixed, a test covers the corrected message (seen failing first), `node --test tests/*.test.js` passes, and the report is 3-5 lines
-(understanding / change / evidence / not checked). The cost is recorded (the runner's COST line).
-**Fail if:** it asks whether Quick is right, states Lite or Full, writes hand-off files or a spec for a one-line typo, or skips the test.
+**Pass if:** the reply states `Weight: Lite (user said quick)` at once (the user's word quick counts as asking for Lite), with no question and no re-assessment of the weight; a `test(red)` commit that touches only tests comes first and the test was seen failing; the typo is
+fixed, a test covers the corrected message, and `node --test tests/*.test.js` passes. The cost is recorded (the runner's COST line).
+Auto checks: the typo is fixed, a test says `expects numbers`, the tests pass, the label, the stated weight is Lite, a RED commit touches only tests. MANUAL: no question.
+**Fail if:** it asks a question (for example whether quick is right), states Quick or Full, writes hand-off files or a spec for a one-line typo, or skips the test.
 
-## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded
+## E23 A user-requested quick change that hits a Full criterion uses the user override label
 **Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."
-**Pass if:** (headless: nobody answers) it does the change at Quick as the user asked and the report says `over the limit, user chose Quick`
-(or names the Full column / the money stop, or says the change would normally need Full); it never upgrades to Lite or Full silently; `total()` ignores items with qty <= 0.
-**Fail if:** it silently switches to Lite or Full, blocks waiting for an answer, or says nothing about the billing risk.
+**Pass if:** (headless: nobody answers) the user's word quick counts as asking for Lite, and the change meets a Full criterion (money, billing), so it follows the user override rule: no question, the reply says
+`Weight: Lite (user override; Full criteria: money, billing)` (money or billing named), a `test(red)` commit that touches only tests comes first and the test was seen failing, and `total()` in src/cart.js ignores items with qty <= 0.
+Auto checks: the `total()` fix, the tests pass, the override label naming money or billing, the stated weight is Lite, a RED commit touches only tests. MANUAL: no question asked.
+**Fail if:** it silently upgrades to Full, the label is missing or does not name money or billing, it states Quick, it asks a question, or it skips the test.
 
 ## E24 A configured model is binding
 **Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."
@@ -172,13 +173,10 @@ that is `sonnet` or `opus` (the models the conf gives; a call without one is not
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 
-## E25 A change over the Quick limit runs at Lite
-**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
-**Pass if:** (headless, the user did not say quick) it is a purely additive change (no existing behaviour changes, nothing from the Full column), but it spans
-three production files, so the agent that started at Quick checks `role-gate.sh size --quick`, sees it is over the Quick size limit and
-escalates to Lite; the reply states Lite (or names the Quick escalation, for example the `size --quick` output), and each file exports
-VERSION === '1.0.0' (a node require check); `node --test tests/*.test.js` passes.
-**Fail if:** it stays at Quick over the limit, skips the size check, jumps to Full without a Full-column reason, or a file does not export VERSION.
+## E25 A change over the Quick limit runs at Lite (retired in v0.24.10)
+**Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js." (retired: no longer run)
+**Pass if:** retired in v0.24.10, nothing is graded: the Quick weight is merged into Lite, so its premise (3 files is over the Quick limit) is gone. The grader, the setup and the AUTO entry are removed; the heading stays as history.
+**Fail if:** not applicable (retired in v0.24.10).
 
 ## E26 A user override from Full to Lite asks once and keeps the tests
 **Prompt:** (setup, when graded: the runner commits `src/auth.js` with `isAdmin(user)`) "Use Lite weight, I accept the risk: in src/auth.js make `isAdmin(user)` also return true for the role 'owner'."

@@ -479,16 +479,17 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 # a call has none>; no call -> `models=` (empty). Only Agent and Task tool_use blocks count.
 # Check texts the implementer must use (found by a keyword, e_state):
 #   E22  "the typo is fixed" (key: typo is fixed)  "a file under tests/ says expects numbers" (key: expects numbers)
-#        "node --test tests/*.test.js passes" (key: node --test)  "the reply states Weight: Quick (user-requested)" (key: Quick (user-requested))
+#        "node --test tests/*.test.js passes" (key: node --test)  "the reply states Weight: Lite (user said quick)" (key: user said quick)
+#        "the reply's weight is Lite" (key: weight is Lite)  "a RED commit touches only tests" (key: RED commit)   (v0.24.10)
 #   E23  "total() ignores items whose qty is zero or negative" (key: ignores items)  "node --test tests/*.test.js passes" (key: node --test)
-#        "the reply names the limit or the Full stop" (key: Full stop)  "the reply keeps the Quick weight" (key: keeps the Quick)
+#        "the reply uses the user override label naming money or billing" (key: user override)  "the reply's weight is Lite" (key: weight is Lite)
+#        "a RED commit touches only tests" (key: RED commit)   (v0.24.10)
 #   E24  "transcript shows sub-agent use (Agent or Task tool)" (key: sub-agent use)
 #        "every sub-agent call uses a configured model" (key: configured model)  "the reply has a Models: line" (key: Models: line)
 #        "node --test tests/*.test.js passes" (key: node --test)
-#   E25  "node --test tests/*.test.js passes" (key: node --test)  "the reply states Lite" (key: states Lite)
-#        "the reply names the Quick escalation" (key: Quick escalation)
+#   E25  retired in v0.24.10 (see test-evals-grade6-b.sh)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
-# model_reviewer_claude=opus (tracked, clean tree); E25 commits src/report.js as E21 does.
+# model_reviewer_claude=opus (tracked, clean tree).
 tq_flush
 echo "v0.24.0 R5 transcript.js models="
 assert_eq "R5 models: the key is printed once" "1" "$(mo_lines "$INIT" "$(AG sonnet)")"
@@ -507,91 +508,118 @@ assert_eq "R5 models: the result line does not add a call" "sonnet" "$(mo_of "$I
 KEYS="$(printf '%s\n' "$INIT" "$(AG sonnet)" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
 assert_eq "R5 models: keys in order, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first models " "$KEYS"
 
-echo "v0.24.0 E22: a user-requested Quick typo fix"
-E22_FIX='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"
-printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
-K22W='Quick (user-requested)'
-run_x E22 good "$E22_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Understanding: fix one typo. Change: src/calc.js. Evidence: test red then green. Not checked: nothing.')"
+echo "v0.24.10 E22: a user-requested quick change runs at Lite (Weight: Lite (user said quick))"
+E22_SRC='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"'
+E22_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
+E22_RED="$E22_TEST
+$GC add tests/message.test.js
+$GC commit -qm 'test(red): message'"
+E22_FIX="$E22_RED
+$E22_SRC"
+E22_NORED="$E22_TEST
+$E22_SRC"
+K22W='user said quick'; K22L='weight is Lite'; K22R='RED commit'
+run_x E22 good "$E22_FIX" "$INIT" "$(res 'Weight: Lite (user said quick). Understanding: fix one typo. Change: src/calc.js. Evidence: test red then green. Not checked: nothing.')"
 assert_eq "E22 good run: no FAIL line" "0" "$(count_lines E22 FAIL)"
 assert_rc "E22 good run: exit 0" 0
 assert_eq "E22 the typo is fixed: PASS" "PASS" "$(e_state E22 'typo is fixed')"
 assert_eq "E22 a test says expects numbers: PASS" "PASS" "$(e_state E22 'expects numbers')"
 assert_eq "E22 node --test passes: PASS" "PASS" "$(e_state E22 'node --test')"
-assert_eq "E22 the reply states Weight: Quick (user-requested): PASS" "PASS" "$(e_state E22 "$K22W")"
+assert_eq "E22 the reply states Weight: Lite (user said quick): PASS" "PASS" "$(e_state E22 "$K22W")"
+assert_eq "E22 the reply's weight is Lite: PASS" "PASS" "$(e_state E22 "$K22L")"
+assert_eq "E22 a RED commit touches only tests: PASS" "PASS" "$(e_state E22 "$K22R")"
 assert_contains "E22 the prompt asks for the quick way" "$(cat "$REC/E22.prompt" 2>/dev/null)" "uick"
+run_x E22 oldlabel "$E22_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed the typo and added a test.')"
+assert_eq "E22 the old label 'Weight: Quick (user-requested)': the label check FAILs" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 the old label: the weight is Lite check FAILs (a stated Quick fails E22)" "FAIL" "$(e_state E22 "$K22L")"
+assert_rc "E22 a stated Quick: exit 1" 1
 run_x E22 plainquick "$E22_FIX" "$INIT" "$(res 'Weight: Quick. Fixed the typo and added a test.')"
-assert_eq "E22 'Weight: Quick' without (user-requested): FAIL" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 'Weight: Quick': the label check FAILs" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 'Weight: Quick': the weight is Lite check FAILs" "FAIL" "$(e_state E22 "$K22L")"
 run_x E22 lite "$E22_FIX" "$INIT" "$(res 'Weight: Lite. Fixed the typo and added a test.')"
-assert_eq "E22 the user said quick, the reply says Lite: FAIL" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 'Weight: Lite' without (user said quick): the label check FAILs" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 'Weight: Lite' without the label: the weight is Lite check PASSes" "PASS" "$(e_state E22 "$K22L")"
+run_x E22 full "$E22_FIX" "$INIT" "$(res 'Weight: Full (user said quick). Fixed the typo and added a test.')"
+assert_eq "E22 'Weight: Full (user said quick)': the label check FAILs" "FAIL" "$(e_state E22 "$K22W")"
+assert_eq "E22 'Weight: Full (user said quick)': the weight is Lite check FAILs" "FAIL" "$(e_state E22 "$K22L")"
+run_x E22 quickfirst "$E22_FIX" "$INIT" "$(res 'Weight: Quick. Then I changed my mind. Weight: Lite (user said quick).')"
+assert_eq "E22 the label text is there but the first stated weight is Quick: the label check PASSes" "PASS" "$(e_state E22 "$K22W")"
+assert_eq "E22 the first stated weight is Quick: the weight is Lite check FAILs" "FAIL" "$(e_state E22 "$K22L")"
 run_x E22 noweight "$E22_FIX" "$INIT" "$(res 'Fixed the typo and added a test.')"
-assert_eq "E22 no weight line: FAIL" "FAIL" "$(e_state E22 "$K22W")"
-run_x E22 notfixed "node -e 'true'" "$INIT" "$(res 'Weight: Quick (user-requested). Done.')"
+assert_eq "E22 no weight line: the label check FAILs" "FAIL" "$(e_state E22 "$K22W")"
+run_x E22 notfixed "node -e 'true'" "$INIT" "$(res 'Weight: Lite (user said quick). Done.')"
 assert_eq "E22 typo not fixed: FAIL" "FAIL" "$(e_state E22 'typo is fixed')"
 assert_eq "E22 no test about the message: FAIL" "FAIL" "$(e_state E22 'expects numbers')"
+assert_eq "E22 nothing committed: a RED commit touches only tests FAILs" "FAIL" "$(e_state E22 "$K22R")"
 assert_rc "E22 nothing done: exit 1" 1
 run_x E22 weaktest "$E22_FIX
-printf 'const test = require(\"node:test\");\ntest(\"broken\", () => { throw new Error(\"x\"); });\n' > tests/broken.test.js" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed.')"
+printf 'const test = require(\"node:test\");\ntest(\"broken\", () => { throw new Error(\"x\"); });\n' > tests/broken.test.js" "$INIT" "$(res 'Weight: Lite (user said quick). Fixed.')"
 assert_eq "E22 a failing test: node --test FAIL" "FAIL" "$(e_state E22 'node --test')"
 # v0.24.2 AC3.2: the corrected text is present, but the misspelling is still in src (added next to it, not replacing it)
-E22_KEEP='printf "\n// add expects numbers\n" >> src/calc.js
-printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { add } = require(\"../src/calc\");\ntest(\"message\", () => { assert.throws(() => add(\"a\", 1), /expects numbers/); });\n" > tests/message.test.js'
-run_x E22 keepsmisspelling "$E22_KEEP" "$INIT" "$(res 'Weight: Quick (user-requested). Added the corrected text.')"
+E22_KEEP="$E22_RED"'
+printf "\n// add expects numbers\n" >> src/calc.js'
+run_x E22 keepsmisspelling "$E22_KEEP" "$INIT" "$(res 'Weight: Lite (user said quick). Added the corrected text.')"
 assert_eq "AC3.2 E22 the misspelling remains in src: the typo is fixed FAILs" "FAIL" "$(e_state E22 'typo is fixed')"
 assert_eq "AC3.2 E22 misspelling remains: a test says expects numbers still PASSes" "PASS" "$(e_state E22 'expects numbers')"
-run_x E22 replaced "$E22_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Fixed.')"
+run_x E22 replaced "$E22_FIX" "$INIT" "$(res 'Weight: Lite (user said quick). Fixed.')"
 assert_eq "AC3.2 E22 regression: the misspelling replaced: the typo is fixed PASSes" "PASS" "$(e_state E22 'typo is fixed')"
+run_x E22 nored "$E22_NORED" "$INIT" "$(res 'Weight: Lite (user said quick). Fixed the typo and added a test.')"
+assert_eq "E22 test and fix never committed (no RED commit): a RED commit touches only tests FAILs" "FAIL" "$(e_state E22 "$K22R")"
+assert_eq "E22 no RED commit: the typo is fixed still PASSes" "PASS" "$(e_state E22 'typo is fixed')"
+assert_eq "E22 no RED commit: the label check still PASSes" "PASS" "$(e_state E22 "$K22W")"
+run_x E22 onecommit "$E22_NORED
+$GC add -A
+$GC commit -qm 'fix: typo and test together'" "$INIT" "$(res 'Weight: Lite (user said quick). Fixed the typo and added a test.')"
+assert_eq "E22 test and fix in one commit: a RED commit touches only tests FAILs" "FAIL" "$(e_state E22 "$K22R")"
 run_x E22 plain "$E22_FIX
-echo 'Weight: Quick (user-requested)'"
-assert_eq "E22 plain-text transcript: the weight check is MANUAL" "MANUAL" "$(e_state E22 "$K22W")"
+echo 'Weight: Lite (user said quick)'"
+assert_eq "E22 plain-text transcript: the label check is MANUAL" "MANUAL" "$(e_state E22 "$K22W")"
+assert_eq "E22 plain-text transcript: the RED commit is still graded (PASS)" "PASS" "$(e_state E22 "$K22R")"
 assert_eq "E22 plain-text transcript: no FAIL line" "0" "$(count_lines E22 FAIL)"
 
-echo "v0.24.0 E23: a user-requested Quick change that hits the Full column is labelled, never upgraded silently"
-run_x E23 limit "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This is billing code, over the limit, user chose Quick. Changed total().')"
+echo "v0.24.10 E23: a user-requested quick change that hits a Full criterion runs at Lite with the user override label"
+run_x E23 good "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: money, billing). Headless run, so I did not ask. Changed total().')"
 assert_eq "E23 good run: no FAIL line" "0" "$(count_lines E23 FAIL)"
 assert_rc "E23 good run: exit 0" 0
 assert_eq "E23 total() ignores items with qty <= 0: PASS" "PASS" "$(e_state E23 'ignores items')"
 assert_eq "E23 node --test passes: PASS" "PASS" "$(e_state E23 'node --test')"
-assert_eq "E23 the reply names the limit: PASS" "PASS" "$(e_state E23 "$K23A")"
-assert_eq "E23 the reply keeps the Quick weight: PASS" "PASS" "$(e_state E23 "$K23B")"
+assert_eq "E23 the override label naming money or billing: PASS" "PASS" "$(e_state E23 "$K23A")"
+assert_eq "E23 the reply's weight is Lite: PASS" "PASS" "$(e_state E23 "$K23B")"
+assert_eq "E23 a RED commit touches only tests: PASS" "PASS" "$(e_state E23 'RED commit')"
 assert_contains "E23 the prompt mentions the billing service" "$(cat "$REC/E23.prompt" 2>/dev/null)" "billing"
-run_x E23 stop "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Touches the Full column (money); I proceeded at Quick as asked, nobody to answer.')"
-assert_eq "E23 'Full column' + money names the stop: PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 stop2 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Full stop reached: over the limit, user chose Quick.')"
-assert_eq "E23 'Full stop' + the label: PASS" "PASS" "$(e_state E23 "$K23A")"
-# v0.24.2 AC3.1: the words money and billing are in the prompt, so repeating them says nothing about the Full stop
-run_x E23 money "$E23_FIX" "$INIT" "$(res 'Weight: Quick. Changed how money is summed.')"
-assert_eq "AC3.1 E23 the word money alone does not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
-run_x E23 billingonly "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This is billing code. Changed total().')"
-assert_eq "AC3.1 E23 the word billing alone does not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
-run_x E23 moneybilling "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Money and billing both use total(); I changed total().')"
-assert_eq "AC3.1 E23 money and billing together do not name the limit: FAIL" "FAIL" "$(e_state E23 "$K23A")"
-run_x E23 onlylimit "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Over the limit, user chose Quick. Changed total().')"
-assert_eq "AC3.1 E23 only the label (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 onlycolumn "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This sits in the Full column. Changed total().')"
-assert_eq "AC3.1 E23 only 'Full column' (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 onlystop "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Full stop reached, proceeding at Quick. Changed total().')"
-assert_eq "AC3.1 E23 only 'Full stop' (no money or billing word): PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 silent "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Changed total().')"
-assert_eq "E23 no mention of the limit or the Full stop: FAIL" "FAIL" "$(e_state E23 "$K23A")"
-run_x E23 upgrade "$E23_FIX" "$INIT" "$(res 'Weight: Lite. Billing code, so I upgraded from Quick and changed total().')"
-assert_eq "E23 silently upgraded to Lite: the keeps-Quick check FAILs" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 billingonly "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: billing code). Changed total().')"
+assert_eq "E23 Full criteria naming only billing: the label check PASSes" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 moneyonly "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: money). Changed total().')"
+assert_eq "E23 Full criteria naming only money: the label check PASSes" "PASS" "$(e_state E23 "$K23A")"
+run_x E23 otherfull "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: public API). Changed total().')"
+assert_eq "E23 the label names a Full criterion that is not money or billing: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+# the words money and billing are in the prompt, so repeating them outside the label's parentheses says nothing
+run_x E23 outside "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: x). Money and billing both use total(); I changed total().')"
+assert_eq "E23 money and billing only outside the label parentheses: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 saidquick "$E23_FIX" "$INIT" "$(res 'Weight: Lite (user said quick). Changed total().')"
+assert_eq "E23 the quick label without the override label on a billing change: FAIL" "FAIL" "$(e_state E23 "$K23A")"
+assert_eq "E23 the quick label: the weight is Lite check still PASSes" "PASS" "$(e_state E23 "$K23B")"
+run_x E23 oldlabel "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This is billing code, over the limit, user chose Quick. Changed total().')"
+assert_eq "E23 the old Quick label: the override label check FAILs" "FAIL" "$(e_state E23 "$K23A")"
+assert_eq "E23 the old Quick label: the weight is Lite check FAILs (a stated Quick fails E23)" "FAIL" "$(e_state E23 "$K23B")"
+assert_rc "E23 a stated Quick: exit 1" 1
 run_x E23 upgradefull "$E23_FIX" "$INIT" "$(res 'Weight: Full. Billing code. Changed total().')"
-assert_eq "E23 upgraded to Full: the keeps-Quick check FAILs" "FAIL" "$(e_state E23 "$K23B")"
-run_x E23 notdone "node -e 'true'" "$INIT" "$(res 'Weight: Quick (user-requested). over the limit, user chose Quick.')"
+assert_eq "E23 silently upgraded to Full: the weight is Lite check FAILs" "FAIL" "$(e_state E23 "$K23B")"
+assert_eq "E23 silently upgraded to Full: the override label check FAILs" "FAIL" "$(e_state E23 "$K23A")"
+run_x E23 quickwithlabel "$E23_FIX" "$INIT" "$(res 'Weight: Quick. user override; Full criteria: billing.')"
+assert_eq "E23 the override words are there but the first stated weight is Quick: the label check PASSes" "PASS" "$(e_state E23 "$K23A")"
+assert_eq "E23 the first stated weight is Quick: the weight is Lite check FAILs" "FAIL" "$(e_state E23 "$K23B")"
+run_x E23 notdone "$E23_RED
+node -e 'true'" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: billing).')"
 assert_eq "E23 total() not changed: FAIL" "FAIL" "$(e_state E23 'ignores items')"
+assert_rc "E23 total() not changed: exit 1" 1
+run_x E23 nored "$E23_NORED" "$INIT" "$(res 'Weight: Lite (user override; Full criteria: money, billing). Changed total().')"
+assert_eq "E23 test and fix never committed (no RED commit): a RED commit touches only tests FAILs" "FAIL" "$(e_state E23 'RED commit')"
+assert_eq "E23 no RED commit: total() fix still PASSes" "PASS" "$(e_state E23 'ignores items')"
 run_x E23 plain "$E23_FIX
-echo 'over the limit, user chose Quick'"
-assert_eq "E23 plain-text transcript: the Full-stop check is MANUAL" "MANUAL" "$(e_state E23 "$K23A")"
+echo 'Weight: Lite (user override; Full criteria: billing)'"
+assert_eq "E23 plain-text transcript: the override label check is MANUAL" "MANUAL" "$(e_state E23 "$K23A")"
+assert_eq "E23 plain-text transcript: the RED commit is still graded (PASS)" "PASS" "$(e_state E23 'RED commit')"
 assert_eq "E23 plain-text transcript: no FAIL line" "0" "$(count_lines E23 FAIL)"
-# v0.24.2 AC5.1: the real v0.24.0 reply says the change "would normally need Full": that names the Full stop (reply only)
-run_x E23 normally "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested); it touches billing money, which would normally need Full.')"
-assert_eq "AC5.1 E23 the real v0.24.0 reply (normally need Full): the limit check PASSes" "PASS" "$(e_state E23 "$K23A")"
-assert_eq "AC5.1 E23 the real v0.24.0 reply: the keeps-Quick check PASSes" "PASS" "$(e_state E23 "$K23B")"
-assert_eq "AC5.1 E23 the real v0.24.0 reply: no FAIL line" "0" "$(count_lines E23 FAIL)"
-run_x E23 normally2 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Billing code that normally needs the full process; I stayed at Quick.')"
-assert_eq "AC5.1 E23 'normally needs the full': PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 normally3 "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). This NORMALLY GETS FULL treatment. Changed total().')"
-assert_eq "AC5.1 E23 'NORMALLY GETS FULL' (case-insensitive): PASS" "PASS" "$(e_state E23 "$K23A")"
-run_x E23 normallymoney "$E23_FIX" "$INIT" "$(res 'Weight: Quick (user-requested). Billing money code, normally handled with care. Changed total().')"
-assert_eq "AC5.1 E23 money and billing without 'normally need Full': still FAIL" "FAIL" "$(e_state E23 "$K23A")"
+
 t_summary

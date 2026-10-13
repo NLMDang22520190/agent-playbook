@@ -3,9 +3,10 @@
 # A new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason.
 # A skill with no line here fails the check: a new skill declares its budget.
 # Each budget is the file's size at v0.24.8 rounded up to the next 50 words (count in the comment).
+# v0.24.10 lowered the budgets of playbook-proof and playbook-tdd to their new counts rounded up to the next 50.
 AGENTS.global.md 700   # 660 words at v0.24.8
 skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
-skills/playbook-proof/SKILL.md 700   # 697 words at v0.24.8
+skills/playbook-proof/SKILL.md 650   # 647 words at v0.24.10 (697 at v0.24.8)
 skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
-skills/playbook-tdd/SKILL.md 4050   # 4044 words at v0.24.8
+skills/playbook-tdd/SKILL.md 3800   # 3791 words at v0.24.10 (4044 at v0.24.8)

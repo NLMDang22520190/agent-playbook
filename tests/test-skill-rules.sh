@@ -68,38 +68,39 @@ fi
 
 
 
-# ---- v0.24.0 (Lite, content): Quick weight, binding models, release rules in SKILL.md ----
+# ---- v0.24.0 (Lite, content): binding models, release rules in SKILL.md; v0.24.10: the Quick weight is removed ----
 RELEASE="$PB_ROOT/skills/playbook-tdd/references/release.md"
 QUICKMD="$PB_ROOT/skills/playbook-tdd/references/quick.md"
 REVIEWER="$PB_ROOT/skills/playbook-tdd/roles/reviewer.md"
 
-echo "v0.24.0 AC1.1 SKILL.md: a Quick row in Pick the weight"
-QROW="$(grep -E '^\| \*\*Quick\*\*' "$SKILL" 2>/dev/null | head -n 1)"
-if [ -n "$QROW" ]; then t_ok "AC1.1 the Pick the weight table has a Quick row"; else t_bad "AC1.1 the Pick the weight table has a Quick row" "no line starting '| **Quick**' in $SKILL"; fi
-chk "AC1.1 the Quick row names the 1 file limit" "$QROW" '(≤|<=|at most|up to) ?1 (production )?file|1 production file'
-chk "AC1.1 the Quick row names the 20 line limit" "$QROW" '(≤|<=|at most|up to) ?20 (changed )?lines|20 changed lines'
-chk "AC1.1 the Quick row says nothing from the Full column" "$QROW" 'nothing from the Full column'
-chk "AC1.1 the Quick row says the user can ask for quick" "$QROW" 'user (asks|says|requests)[^|]{0,40}quick|asks? for quick|says? quick'
-chk "AC1.1 the Quick row points to references/quick.md" "$QROW" 'references/quick\.md'
-chk "v24.2 AC6.2 the Quick row says removing or renaming an exported symbol is a public API change (Full)" "$QROW" '(remov|renam)[^|]{0,60}exported symbol[^|]{0,60}public API[^|]{0,60}Full'
+echo "v0.24.10 AC1 SKILL.md: no Quick row in Pick the weight, and the Models line says Lite only"
+assert_eq "v24.10 AC1 the Pick the weight table has no Quick row" "0" "$(grep -cE '^\| \*\*Quick\*\*' "$SKILL")"
+assert_eq "v24.10 AC1 SKILL.md has no /Quick (the Models line says Lite only)" "0" "$(grep -c '/Quick' "$SKILL")"
+SKILL_ONE="$(tr '\n' ' ' < "$SKILL")"
+chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$SKILL_ONE" '\(Lite: session, one context\)'
+
+echo "v0.24.10 AC2 SKILL.md: the user's word quick runs Lite with its own label; a Full criterion goes through the override"
+chk "v24.10 AC2 the label Weight: Lite (user said quick)" "$WEIGHT" 'Weight: Lite \(user said quick\)'
+chk "v24.10 AC2 the word quick counts as the user asking for Lite" "$WEIGHT" 'quick[^.]{0,200}(counts? as|means|maps? to|treated as)[^.]{0,80}Lite|"quick"[^.]{0,160}(run|runs|use|uses)[^.]{0,40}Lite'
+chk "v24.10 AC2 a Full criterion with quick goes through the user override" "$WEIGHT" 'quick.{0,250}Full criteri(on|a)[^.]{0,120}(user[- ]override|override (rule|label))'
 if [ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ]; then t_ok "v24.2 AC6.2 SKILL.md stays within 296 lines"; else t_bad "v24.2 AC6.2 SKILL.md stays within 296 lines" "$(wc -l < "$SKILL") lines"; fi
 LROW="$(grep -E '^\| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1)"
 chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '≤ 3 production files'
 chk "AC1.1 regression: the Lite row keeps its 100 line limit" "$LROW" '≤ 100 changed lines'
-l_quick="$(grep -n '^| \*\*Quick\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 l_lite="$(grep -n '^| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 l_full="$(grep -n '^| \*\*Full\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
-if [ -n "$l_quick" ] && [ -n "$l_lite" ] && [ -n "$l_full" ] && [ "$l_quick" -gt "$l_full" ] && [ "$l_quick" -lt "$l_lite" ]; then t_ok "AC1.1 the Quick row sits between Full and Lite"
-else t_bad "AC1.1 the Quick row sits between Full and Lite" "full=[$l_full] quick=[$l_quick] lite=[$l_lite]"; fi
-chk "AC1.4/R4 the weight section says Quick escalates to Lite the same way" "$WEIGHT" 'Quick escalates to Lite the same way'
+l_exempt="$(grep -n '^| \*\*Exempt\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$l_full" ] && [ -n "$l_lite" ] && [ -n "$l_exempt" ] && [ "$l_full" -lt "$l_lite" ] && [ "$l_lite" -lt "$l_exempt" ] && [ "$((l_lite - l_full))" -eq 1 ]; then t_ok "v24.10 AC1 the weight table is Full, Lite, Exempt in order, Lite right after Full"
+else t_bad "v24.10 AC1 the weight table is Full, Lite, Exempt in order, Lite right after Full" "full=[$l_full] lite=[$l_lite] exempt=[$l_exempt]"; fi
+assert_eq "v24.10 AC1 the weight section no longer says Quick escalates to Lite" "0" "$(printf '%s' "$WEIGHT" | grep -ci 'Quick escalates')"
 chk "AC1.1 the Pick the weight section still says Full when unsure" "$WEIGHT" 'When unsure,? choose Full|choose Full'
 
-echo "v0.24.0 AC1.2/AC3 SKILL.md points to references/quick.md and references/release.md and stays within its line budget"
-if grep -q 'references/quick\.md' "$SKILL"; then t_ok "SKILL.md points to references/quick.md"; else t_bad "SKILL.md points to references/quick.md" "not found"; fi
+echo "v0.24.0 AC3 SKILL.md points to references/release.md and stays within its line budget (v0.24.10: references/quick.md is gone)"
+assert_eq "v24.10 AC1 SKILL.md no longer points to references/quick.md" "0" "$(grep -c 'references/quick\.md' "$SKILL")"
 if grep -q 'references/release\.md' "$SKILL"; then t_ok "AC3 SKILL.md points to references/release.md"; else t_bad "AC3 SKILL.md points to references/release.md" "not found"; fi
 NREL="$(grep -c 'release\.md' "$SKILL")"
 if [ "$NREL" -ge 1 ] && [ "$NREL" -le 4 ]; then t_ok "AC3 SKILL.md has at most 4 lines pointing to release.md ($NREL)"; else t_bad "AC3 SKILL.md has 1-4 lines pointing to release.md" "$NREL lines"; fi
-assert_file "references/quick.md exists" "$QUICKMD"
+assert_no_path "v24.10 AC1 references/quick.md is deleted" "$QUICKMD"
 assert_file "references/release.md exists" "$RELEASE"
 NL="$(wc -l < "$SKILL" | tr -d ' ')"
 if [ "$NL" -le 296 ]; then t_ok "R9 SKILL.md has at most 296 lines ($NL)"; else t_bad "R9 SKILL.md has at most 296 lines" "$NL lines"; fi
