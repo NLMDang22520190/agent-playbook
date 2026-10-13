@@ -393,56 +393,22 @@ soh_case "control: a # inside a word is not a comment" tests/zz-soh.sh "echo a#b
 soh_case "control: a # inside quotes after ';' is not a comment" tests/zz-soh.sh "true; echo ${Q}a#${B}001${Q}" fail
 
 
-echo "v0.24.0 AC1.6 run-checks: the '## Quick workflow' section of references/quick.md is at most 250 words"
-# quick_case NAME BODY-WORDS EXPECT(fail|pass) [LAYOUT] -> the copy gets references/quick.md with a '## Quick workflow' section of BODY-WORDS
-# words (the heading is not part of the body); LAYOUT: plain | after (a long section after it, which must not count) | missing (no such heading)
-# | renamed (the heading is '## Quick workflows') | deep (a '###' subsection inside the section counts for it)
+echo "v0.24.10 AC4 run-checks: references/quick.md is no longer required and its section has no word cap"
+# a tree without references/quick.md passes the skills group; a stray quick.md is not checked (the v0.24.0 cap of 250 words is gone)
 words_of() { awk -v n="$1" 'BEGIN { for (i = 1; i <= n; i++) printf "w%d%s", i, (i % 12 == 0 ? "\n" : " "); printf "\n" }'; }
-quick_case() {
-  local name="$1" n="$2" expect="$3" layout="${4:-plain}" q
-  C="$(mk_copy)"
-  q="$C/skills/playbook-tdd/references/quick.md"
-  mkdir -p "$(dirname "$q")"
-  case "$layout" in
-    missing) { printf '# Quick\n\n## Other section\n'; words_of "$n"; } > "$q" ;;
-    renamed) { printf '# Quick\n\n## Quick workflows\n'; words_of "$n"; } > "$q" ;;
-    after)   { printf '# Quick\n\n## Quick workflow\n'; words_of "$n"; printf '\n## Escalation\n'; words_of 600; } > "$q" ;;
-    before)  { printf '# Quick\n\n## Why\n'; words_of 600; printf '\n## Quick workflow\n'; words_of "$n"; } > "$q" ;;
-    deep)    { printf '# Quick\n\n## Quick workflow\n'; words_of 100; printf '\n### Detail\n'; words_of "$n"; } > "$q" ;;
-    *)       { printf '# Quick\n\n## Quick workflow\n'; words_of "$n"; } > "$q" ;;
-  esac
-  checks "$C" skills
-  if [ "$expect" = fail ]; then
-    assert_rc "AC1.6 $name: exit 1" 1
-    assert_contains "AC1.6 $name: names references/quick.md" "$OUT" "quick.md"
-  else
-    assert_rc "AC1.6 $name: exit 0" 0
-  fi
-}
-quick_case "a 100-word section passes" 100 pass
-quick_case "a 247-word body (250 with its heading) passes" 247 pass
-quick_case "a 251-word body fails" 251 fail
-quick_case "a 400-word body fails" 400 fail
-quick_case "a long section after the Quick workflow section does not count" 100 pass after
-quick_case "a long section before the Quick workflow section does not count" 100 pass before
-quick_case "the Quick workflow section over the cap, other sections short: fails" 300 fail after
-quick_case "a quick.md without the '## Quick workflow' heading fails" 100 fail missing
-quick_case "a heading '## Quick workflows' is not the section: fails" 100 fail renamed
-quick_case "a ### subsection inside the section counts for it (100 + 200 words): fails" 200 fail deep
-# the message tells what is wrong
-C="$(mk_copy)"; q="$C/skills/playbook-tdd/references/quick.md"; mkdir -p "$(dirname "$q")"
-{ printf '# Quick\n\n## Quick workflow\n'; words_of 300; } > "$q"
-checks "$C" skills
-assert_contains "AC1.6 the failure names the section" "$OUT" "Quick workflow"
-assert_contains "AC1.6 the failure mentions the limit 250" "$OUT" "250"
 C="$(mk_copy)"; rm -f "$C/skills/playbook-tdd/references/quick.md"
 checks "$C" skills
-assert_rc "AC1.6 references/quick.md missing: exit 1" 1
-assert_contains "AC1.6 references/quick.md missing: the failure names it" "$OUT" "quick.md"
+assert_rc "v24.10 AC4 a tree without references/quick.md passes the skills section" 0
+assert_not_contains "v24.10 AC4 a tree without references/quick.md: no output names quick.md" "$OUT" "quick.md"
+C="$(mk_copy)"; q="$C/skills/playbook-tdd/references/quick.md"; mkdir -p "$(dirname "$q")"
+{ printf '# Quick\n\n## Quick workflow\n'; words_of 400; } > "$q"
+checks "$C" skills
+assert_rc "v24.10 AC4 a stray quick.md with a 400-word Quick workflow section is not checked: exit 0" 0
+assert_not_contains "v24.10 AC4 a stray quick.md: no word-cap failure" "$OUT" "Quick workflow"
 C="$(mk_copy)"
 checks "$C" skills
-assert_not_contains "AC1.6 the real tree: no failure about quick.md" "$OUT" "quick.md"
-assert_rc "AC1.6 the real tree passes the skills section (quick.md present, section within 250 words)" 0
+assert_not_contains "v24.10 AC4 the real tree: no failure about quick.md" "$OUT" "quick.md"
+assert_rc "v24.10 AC4 the real tree passes the skills section" 0
 
 echo "v0.24.4 AC6 dupmax, sed and soh fail closed: a missing file in the scanned list is a FAIL, never an ok"
 # install.sh is named in each scan list; when it is missing awk or grep reads nothing of it, and the section used to print ok and exit 0.

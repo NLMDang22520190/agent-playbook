@@ -249,8 +249,8 @@ BLOCK_BYTES="$(wc -c < "$BLOCK" | tr -d ' ')"
 if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block) ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block)" "$BLOCK_BYTES bytes"; fi
 
 # --- v0.24.1: a shorter always-on block with the same rules
-# <= 4200 bytes, so the one-line Quick weight of v0.24 (<= 160 bytes) still fits under 4400
-if [ "$BLOCK_BYTES" -le 4400 ]; then t_ok "v24.1 AGENTS.global.md is <= 4400 bytes (4200 plus the v0.24.0 Quick line) ($BLOCK_BYTES)"; else t_bad "v24.1 AGENTS.global.md is <= 4400 bytes (4200 plus the v0.24.0 Quick line)" "$BLOCK_BYTES bytes"; fi
+# <= 4400 bytes (v0.24.10: the Quick line is gone)
+if [ "$BLOCK_BYTES" -le 4400 ]; then t_ok "v24.1 AGENTS.global.md is <= 4400 bytes ($BLOCK_BYTES)"; else t_bad "v24.1 AGENTS.global.md is <= 4400 bytes" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
 for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
          '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
@@ -1164,90 +1164,27 @@ assert_contains "v23.3 R4 the strip/sed comments state it as a limit" "$RCQ" "li
 
 
 
-# ---- v0.24.0 (Lite, content): references/quick.md, AGENTS.global.md, confirm_models, scenarios E22-E25 ----
+# ---- v0.24.0 (Lite, content): AGENTS.global.md, confirm_models, scenarios E22-E25; v0.24.10: the Quick weight is removed ----
 QUICK="$TDD/references/quick.md"
 AGLOBAL="$PB_ROOT/AGENTS.global.md"
-# qflat FILE -> the "## Quick workflow" section (heading to the next ## heading) on one line
-qsec() { awk '/^## Quick workflow[[:space:]]*$/ { f = 1; next } f && /^## / { exit } f { print }' "$1" 2>/dev/null | tr '\n' ' '; }
 qall() { tr '\n' ' ' < "$1" 2>/dev/null; }
 # qchk NAME TEXT REGEX
 qchk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not found"; fi; }
 
-echo "v0.24.0 AC1.2 quick.md: the Quick workflow section"
-assert_file "AC1.2 references/quick.md exists" "$QUICK"
-exact_heading "AC1.2 quick.md has the heading '## Quick workflow'" "$QUICK" "## Quick workflow"
-QS="$(qsec "$QUICK")"
-QW="$(printf '%s' "$QS" | wc -w | tr -d ' ')"
-if [ "$QW" -ge 40 ] && [ "$QW" -le 250 ]; then t_ok "AC1.2 the Quick workflow section is 40..250 words ($QW)"; else t_bad "AC1.2 the Quick workflow section is 40..250 words" "$QW words"; fi
-qchk "AC1.2 keep: a one-sentence restatement of the request in chat" "$QS" 'keep[^.]{0,200}(one-sentence|one sentence)[^.]{0,80}(restate|restatement|request)|(restate|restatement)[^.]{0,80}(one-sentence|one sentence)'
-qchk "AC1.2 keep: one grep of the call sites with the hit count printed" "$QS" 'grep[^.]{0,80}call sites?[^.]{0,80}hit count|hit count[^.]{0,80}(printed|grep)'
-qchk "AC1.2 keep: a behaviour change is still tested first and seen failing" "$QS" '(tested first|test first)[^.]{0,60}seen failing|seen failing'
-qchk "AC1.2 keep: one proof-run after the last change" "$QS" 'one proof-run|proof-run[^.]{0,60}after the last change'
-qchk "AC1.2 keep: git diff --stat" "$QS" 'git diff --stat'
-qchk "AC1.2 drop: hand-off files" "$QS" 'drop[^.]{0,250}hand-?off files|hand-?off files'
-qchk "AC1.2 drop: the detailed scan log" "$QS" 'scan log'
-qchk "AC1.2 drop: Impact" "$QS" 'Impact'
-qchk "AC1.2 drop: Pre-mortem" "$QS" 'Pre-mortem'
-qchk "AC1.2 drop: the Confidence column" "$QS" 'Confidence column'
-qchk "AC1.2 drop: the mutation spot-check" "$QS" 'mutation spot-check'
-qchk "AC1.2 drop: cost.sh" "$QS" 'cost\.sh'
-qchk "AC1.2 drop: the Playbook feedback line unless a rule misfired" "$QS" 'Playbook feedback[^.]{0,80}(unless|except|only)[^.]{0,40}misfire'
-qchk "AC1.2 report: 3-5 lines" "$QS" '3[-–]5 lines'
-qchk "AC1.2 report: understanding, change, evidence, not checked" "$QS" 'understanding[^.]{0,40}change[^.]{0,40}evidence[^.]{0,40}not checked'
-qchk "AC1.2 report: the weight line Weight: Quick" "$QS" 'Weight: Quick'
-qchk "AC1.2 report: Weight: Quick (user-requested)" "$QS" 'Weight: Quick \(user-requested\)'
+echo "v0.24.10 AC1 references/quick.md is deleted and nothing points to it"
+assert_no_path "v24.10 AC1 references/quick.md does not exist" "$QUICK"
+QREFS="$(grep -rnIF 'quick.md' "$PB_ROOT" --exclude-dir=.git --exclude-dir=tests --exclude-dir=.agents --exclude-dir=results --exclude=CHANGELOG.md 2>/dev/null)"
+assert_eq "v24.10 AC1 no file outside tests, CHANGELOG.md and evals/results names quick.md" "" "$QREFS"
 
-echo "v0.24.0 AC1.3/AC1.4/R3/R4 quick.md: user-requested Quick, the two stops, headless, escalation"
-QA="$(qall "$QUICK")"
-qchk "AC1.3 user-requested: the user asks for the quick way or the Quick weight" "$QA" 'user[^.]{0,60}(asks?|says?|requests?)[^.]{0,60}quick'
-qchk "R3 examples of asking: 'quick one', 'do it quick'" "$QA" 'quick one[^.]{0,80}do it quick|do it quick[^.]{0,80}quick one'
-qchk "AC1.3 Quick at once, no re-assessment" "$QA" '(at once|immediately)[^.]{0,80}(no re-assess|without re-assess)|no re-assess'
-qchk "AC1.3 two stops" "$QA" 'two stops'
-qchk "AC1.3 stop (a): the diff touches the Full column" "$QA" 'Full column[^.]{0,120}(money|auth|migration|public API|data shape)|(money|auth|migration)[^.]{0,120}Full column'
-qchk "AC1.3 stop (a) names money, auth, migration, public API or data shape" "$QA" 'money[^.]{0,40}auth[^.]{0,40}migration[^.]{0,60}(public )?API'
-qchk "AC1.3 stop (b): the diff exceeds the Quick limits" "$QA" 'exceeds? the Quick limits'
-qchk "AC1.3 ask the user ONCE" "$QA" 'ask(s)? the user (ONCE|once)'
-qchk "AC1.3 never auto-upgrade" "$QA" 'never auto-?upgrade'
-qchk "AC1.3 headless: do not block, do Quick" "$QA" 'headless[^.]{0,160}(do not block|never block|not block)[^.]{0,120}Quick|headless[^.]{0,200}do Quick'
-qchk "AC1.3 headless label: over the limit, user chose Quick" "$QA" 'over the limit, user chose Quick'
-qchk "R3 the skip-tests rule still applies inside Quick" "$QA" 'skip-tests rule|ask once[^.]{0,80}untested'
-qchk "AC1.4 Quick never means no tests" "$QA" 'Quick never means no tests'
-qchk "AC1.4 agent-chosen Quick that exceeds the limits escalates to Lite" "$QA" 'agent-chosen[^.]{0,200}escalat[^.]{0,40}Lite'
-qchk "R4 Quick makes no checkpoint commits" "$QA" 'no checkpoint commits'
-qchk "R4 role-gate.sh size --quick runs against HEAD after the change" "$QA" 'role-gate\.sh size --quick[^.]{0,80}HEAD|HEAD[^.]{0,80}role-gate\.sh size --quick'
-qchk "R4 on escalation the test files alone are committed as test(red)" "$QA" 'test files alone[^.]{0,80}test\(red\)|test\(red\)[^.]{0,80}test files alone'
-qchk "R4 that sha is RED" "$QA" '(sha|commit)[^.]{0,30}is RED|RED sha|as `?RED`?'
-qchk "R4 continue at Lite from step 3" "$QA" 'Lite[^.]{0,40}step 3|step 3[^.]{0,60}Lite'
-qchk "R4 write the Lite spec then" "$QA" 'Lite spec[^.]{0,40}then|then[^.]{0,40}Lite spec|write the Lite spec'
-qchk "D6 agent-chosen Quick in documented-critical code: message-only or purely additive" "$QA" '(message[- ]only|message text)[^.]{0,120}(purely )?additive|purely additive[^.]{0,120}(message[- ]only|message text)'
-
-echo "v0.24.0 AC1.7/R2 AGENTS.global.md: one Quick line"
-QLINES="$(grep -c '\*\*Quick\*\*' "$AGLOBAL")"
-assert_eq "AC1.7 exactly one line names **Quick**" "1" "$QLINES"
-QLINE="$(grep '\*\*Quick\*\*' "$AGLOBAL" | head -n 1)"
-QBYTES="$(printf '%s\n' "$QLINE" | LC_ALL=C wc -c | tr -d ' ')"
-QB1=$((QBYTES - 1))
-if [ "$QLINES" = 1 ] && [ "$QB1" -le 200 ]; then t_ok "R2 / v24.2 AC6.1 the Quick line is at most 200 bytes ($QB1)"; else t_bad "R2 / v24.2 AC6.1 the Quick line is at most 200 bytes" "$QB1 bytes: $QLINE"; fi
-# v0.24.2 AC6.1/AC6.3: the always-on Quick line states the limits and the gate (real eval E21 chose Quick from this line alone)
-qchk "AC6.1 the Quick line names the 1 production file limit" "$QLINE" '1 production file'
-qchk "AC6.1 the Quick line names the 20 line limit" "$QLINE" '(≤|<=) ?20 lines'
-qchk "AC6.1 the Quick line says nothing from the Full column" "$QLINE" 'nothing from the Full column'
-qchk "AC6.1 the Quick line names changed public API, money, auth and migrations" "$QLINE" 'changed public API[^;]{0,40}money[^;]{0,40}auth[^;]{0,40}migrations?'
-qchk "AC6.1 the Quick line says to load playbook-tdd first" "$QLINE" 'load `?playbook-tdd`? first'
-qchk "AC6.1 the Quick line still says the user can ask by saying quick" "$QLINE" 'say(ing)? "quick"'
-qchk "AC1.7 the line says Quick is for tiny changes" "$QLINE" 'tiny|small'
-qchk "AC1.7 the line says the user can ask for it by saying quick" "$QLINE" 'user[^.]{0,40}(ask|say)[^.]{0,60}"quick"|say(ing)? "quick"'
+echo "v0.24.10 AC1 AGENTS.global.md: no Quick weight line"
+assert_eq "v24.10 AC1 AGENTS.global.md has no **Quick** line" "0" "$(grep -c '\*\*Quick\*\*' "$AGLOBAL")"
+assert_eq "v24.10 AC1 AGENTS.global.md never names a Quick weight (capital Q)" "0" "$(grep -c 'Quick' "$AGLOBAL")"
 AGL="$(wc -l < "$AGLOBAL" | tr -d ' ')"; AGB="$(wc -c < "$AGLOBAL" | tr -d ' ')"
 if [ "$AGL" -le 60 ]; then t_ok "AC1.7 AGENTS.global.md stays within 60 lines ($AGL)"; else t_bad "AC1.7 AGENTS.global.md stays within 60 lines" "$AGL lines"; fi
 if [ "$AGB" -le 5000 ]; then t_ok "AC1.7 AGENTS.global.md stays within 5000 bytes ($AGB)"; else t_bad "AC1.7 AGENTS.global.md stays within 5000 bytes" "$AGB bytes"; fi
 if [ "$AGB" -le 4400 ]; then t_ok "AC6.1 AGENTS.global.md stays within 4400 bytes ($AGB)"; else t_bad "AC6.1 AGENTS.global.md stays within 4400 bytes" "$AGB bytes"; fi
-# v0.24.2 AC6.2/AC6.3: quick.md says that removing or renaming an exported symbol is a public API change, never Quick
-qchk "AC6.2 quick.md: removing or renaming an exported symbol is a public API change" "$(qall "$QUICK")" '(remov|renam)[^.]{0,60}exported symbol[^.]{0,80}public API'
-qchk "AC6.2 quick.md: such a change is the Full column, never Quick" "$(qall "$QUICK")" 'exported symbol[^.]{0,200}Full column[^.]{0,80}never Quick|never Quick[^.]{0,200}exported symbol'
-qchk "AC6.2 quick.md: the always-on line is not enough, load playbook-tdd first" "$(qall "$QUICK")" 'load[^.]{0,40}playbook-tdd[^.]{0,40}first|before[^.]{0,60}(choos|pick)[^.]{0,40}Quick'
 
 TDDSEC="$(awk '/^### TDD with separated roles/ { f = 1; next } f && /^### / { exit } f { print }' "$AGLOBAL")"
-qchk "AC1.7 the Quick line sits in the TDD section" "$TDDSEC" '\*\*Quick\*\*'
 qchk "AC1.7 regression: the TDD section still names Full and Lite" "$TDDSEC" '\*\*Full\*\*[^*]{0,200}\*\*Lite\*\*'
 SECS="$(grep -c '^### ' "$AGLOBAL")"; WHYS="$(grep -c '^Why: ' "$AGLOBAL")"
 assert_eq "AC1.7 regression: every always-on section keeps its Why: line" "$SECS" "$WHYS"
@@ -1263,11 +1200,11 @@ SETUP_T="$(cat "$PB_ROOT/skills/playbook-setup/SKILL.md" "$PB_ROOT/skills/playbo
 qchk "AC2.4 setup documents confirm_models" "$SETUP_T" 'confirm_models'
 
 echo "v0.24.0 AC1.8 / R12 scenarios E22-E25 in evals/scenarios.md"
-exact_heading "AC1.8 scenarios has the E22 heading" "$SCEN" '## E22 A user-requested Quick change runs at Quick weight'
-exact_heading "AC1.8 scenarios has the E23 heading" "$SCEN" '## E23 A user-requested Quick change that hits the Full column is labelled, not upgraded'
+qchk "v24.10 AC5 the E22 heading: a user-requested quick change runs at Lite" "$(grep '^## E22 ' "$SCEN")" 'quick.*Lite'
+if [ -n "$(line_of "$SCEN" '^## E23 ')" ]; then t_ok "v24.10 AC5 scenarios has an E23 heading"; else t_bad "v24.10 AC5 scenarios has an E23 heading" "no ## E23 heading"; fi
 exact_heading "AC1.8 scenarios has the E24 heading" "$SCEN" '## E24 A configured model is binding'
-exact_heading "R12 scenarios has the E25 heading" "$SCEN" '## E25 A change over the Quick limit runs at Lite'
-for e in E22 E23 E24 E25; do
+qchk "v24.10 AC5 the E25 heading says it was retired in v0.24.10" "$(grep '^## E25 ' "$SCEN")" 'retired in v0\.24\.10'
+for e in E22 E23 E24; do
   re="^## $e "
   check_sec "AC1.8 $e has a Prompt line" "$SCEN" "$re" '^\*\*Prompt:\*\*'
   check_sec "AC1.8 $e has a Pass if line" "$SCEN" "$re" '^\*\*Pass if:\*\*'
@@ -1280,52 +1217,54 @@ else t_bad "AC1.8 E22..E25 follow E21 in order" "E21=[$l21] E22=[$l22] E23=[$l23
 for p in \
   '**Prompt:** "Quick one: fix the typo '"'"'nubmers'"'"' in the TypeError message of `add`, and make sure a test covers the message."' \
   '**Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."' \
-  '**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."' \
-  '**Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Add an exported constant VERSION = '"'"'1.0.0'"'"' to src/calc.js, src/cart.js and src/report.js."'; do
+  '**Prompt:** "Change `total()` in src/cart.js to return cents as an integer instead of a float, and update every caller. Prices are dollars as floats; round to the nearest cent (half up); nothing outside this repo calls total(). Use separate tester, implementer and reviewer sub-agents."'; do
   if grep -qF -- "$p" "$SCEN"; then t_ok "AC1.8 verbatim prompt present: ${p:0:60}..."; else t_bad "AC1.8 verbatim prompt present: ${p:0:60}..." "not found in $SCEN"; fi
 done
 E22S="$(awk -v h='## E22 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
 E23S="$(awk -v h='## E23 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
 E24S="$(awk -v h='## E24 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
-E25S="$(awk -v h='## E25 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
-qchk "AC1.8 E22 passes on Weight: Quick (user-requested)" "$E22S" 'Weight: Quick \(user-requested\)'
+E22F="$(printf '%s' "$E22S" | sed 's/.*\*\*Fail if:\*\*//')"
+E23F="$(printf '%s' "$E23S" | sed 's/.*\*\*Fail if:\*\*//')"
+qchk "v24.10 AC5 E22 passes on Weight: Lite (user said quick)" "$E22S" 'Weight: Lite \(user said quick\)'
 qchk "AC1.8 E22 asks no question" "$E22S" 'no question|asks? nothing|without (a )?question'
 qchk "AC1.8 E22 cost recorded" "$E22S" 'cost'
+qchk "v24.10 AC5 E22 needs a test seen failing first" "$E22S" 'seen failing|fail(s|ed|ing)? first|test\(red\)|RED'
+qchk "v24.10 AC5 E22 needs the typo fixed" "$E22S" 'typo'
+qchk "v24.10 AC5 E22 fails on a question" "$E22F" 'question'
+qchk "v24.10 AC5 E22 fails on Full" "$E22F" 'Full'
+qchk "v24.10 AC5 E22 fails on a skipped test" "$E22F" 'skip|no test|without a test|untested'
 qchk "AC1.8 E23 is headless" "$E23S" 'headless'
-qchk "AC1.8 E23 the label: over the limit, user chose Quick" "$E23S" 'over the limit, user chose Quick'
+qchk "v24.10 AC5 E23 the label: Weight: Lite (user override; Full criteria" "$E23S" 'Weight: Lite \(user override; Full criteria'
+qchk "v24.10 AC5 E23 the label names money or billing" "$E23S" 'Full criteria:?[^)]{0,80}(money|billing)'
 qchk "AC1.8 E23 never upgrades silently" "$E23S" 'never upgrade|silently'
 qchk "R12 E23 edits src/cart.js total" "$E23S" 'src/cart\.js'
+qchk "v24.10 AC5 E23 asks no question" "$E23S" 'no question|asks? nothing|without (a )?question|does not ask|never ask'
+qchk "v24.10 AC5 E23 needs a test seen failing first" "$E23S" 'seen failing|fail(s|ed|ing)? first|test\(red\)|RED'
+qchk "v24.10 AC5 E23 fails on a missing label" "$E23F" 'label'
 qchk "AC2.6 E24 reads every Agent/Task model parameter" "$E24S" 'Agent[^.]{0,40}Task|Task[^.]{0,40}Agent'
 qchk "AC2.6 E24 the models of the conf: sonnet and opus" "$E24S" 'sonnet[^.]{0,200}opus|opus[^.]{0,200}sonnet'
 qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
-qchk "R12 E25 escalates from Quick to Lite" "$E25S" 'escalat[^.]{0,80}Lite|Lite[^.]{0,80}escalat'
-qchk "R12 E25 names size --quick" "$E25S" 'size --quick'
-qchk "v24.2 AC5.2 E25 is a purely additive change (no Full item)" "$E25S" 'additive'
-qchk "v24.2 AC5.2 E25 checks that each file exports VERSION" "$E25S" 'each file exports VERSION|exports? VERSION'
-qchk "v24.2 AC5.2 E25 fails on a Full jump without a Full-column reason" "$E25S" 'Full[^.]{0,80}(without|no)[^.]{0,40}(Full[- ]column )?reason'
-qchk "R12 E25 is headless" "$E25S" 'headless'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
-for e in E22 E23 E24 E25; do
+for e in E22 E23 E24; do
   qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
 done
+if printf '%s' "$AUTOLINE" | grep -qE '[" ]E25[" ]'; then t_bad "v24.10 AC5 E25 is not in the AUTO list of run-evals.sh" "$AUTOLINE"; else t_ok "v24.10 AC5 E25 is not in the AUTO list of run-evals.sh"; fi
 MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
-for e in E22 E23 E24 E25; do
+for e in E22 E23 E24; do
   qchk "AC1.8 $e is in the scenario-map line of skills/playbook-tdd/*" "$MAPLINE" "(^| )$e( |$)"
 done
+assert_eq "v24.10 AC5 E25 is not in the scenario-map at all" "0" "$(grep -c 'E25' "$PB_ROOT/evals/scenario-map")"
 AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
 qchk "R2 the AGENTS.global.md map line keeps E1 E3 E5 E8 E10 E21" "$AGMAP" 'E1 E3 E5 E8 E10 E21'
 
 
-echo "v0.24.0 review round 2 F6: the size --quick check applies to both paths (user-requested stop b, agent-chosen escalation)"
-QOUTSIDE="$(awk '/^## When Quick must escalate/ { skip = 1; next } skip && /^## / { skip = 0 } !skip { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
-qchk "F6 quick.md names role-gate.sh size --quick outside the escalation section" "$QOUTSIDE" 'role-gate\.sh size --quick'
-QUSER="$(awk '/^## When the user asks for Quick/ { f = 1; next } f && /^## / { exit } f { print }' "$QUICK" 2>/dev/null | tr '\n' ' ')"
-qchk "F6 the user-requested section uses the size --quick check for stop (b)" "$QUSER" 'size --quick'
-echo "v0.24.6: the playbook-tdd front-matter description names the Quick weight (the description is what makes an agent load the skill)"
+echo "v0.24.10: the playbook-tdd front-matter description names Lite or Full by risk and keeps the user's word quick (the description is what makes an agent load the skill)"
 TDDDESC="$(sed -n '2,10{s/^description: *//p;}' "$SKILL" | head -n 1)"
-if printf '%s' "$TDDDESC" | grep -q 'Quick'; then t_ok "v24.6 the playbook-tdd description names the Quick weight"; else t_bad "v24.6 the playbook-tdd description names the Quick weight" "no 'Quick' in: $TDDDESC"; fi
+if ! printf '%s' "$TDDDESC" | grep -q 'Quick'; then t_ok "v24.10 the playbook-tdd description no longer names a Quick weight"; else t_bad "v24.10 the playbook-tdd description no longer names a Quick weight" "'Quick' in: $TDDDESC"; fi
+if printf '%s' "$TDDDESC" | grep -q 'Lite or Full weight'; then t_ok "v24.10 the playbook-tdd description says Lite or Full weight"; else t_bad "v24.10 the playbook-tdd description says Lite or Full weight" "$TDDDESC"; fi
+if printf '%s' "$TDDDESC" | grep -qi 'quick'; then t_ok "v24.10 the playbook-tdd description keeps the word quick (runs Lite)"; else t_bad "v24.10 the playbook-tdd description keeps the word quick (runs Lite)" "$TDDDESC"; fi
 if printf '%s' "$TDDDESC" | grep -qiE 'user says "?quick'; then t_ok "v24.6 the playbook-tdd description says it also applies when the user says quick"; else t_bad "v24.6 the playbook-tdd description says it also applies when the user says quick" "no 'user says quick' in: $TDDDESC"; fi
 if printf '%s' "$TDDDESC" | grep -q 'Lite' && printf '%s' "$TDDDESC" | grep -q 'Full'; then t_ok "v24.6 the playbook-tdd description still names Lite and Full"; else t_bad "v24.6 the playbook-tdd description still names Lite and Full" "$TDDDESC"; fi
 if [ "${#TDDDESC}" -ge 1 ] && [ "${#TDDDESC}" -le 450 ]; then t_ok "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks (${#TDDDESC})"; else t_bad "v24.6 the playbook-tdd description stays within the 450-char cap of run-checks" "${#TDDDESC} chars"; fi

@@ -34,7 +34,7 @@ dropped_visible() { git diff --raw --no-renames HEAD 2>/dev/null | grep -q '^:10
 # fm_true_ok: core.fileMode=true and the fresh fixture still shows no mode change, i.e. this file system keeps
 # executable bits (Git Bash on NTFS does not: every 100755 file would look dropped)
 fm_true_ok() { git config core.fileMode true; [ -z "$(git diff --raw 2>/dev/null)" ]; }
-# v0.24.7: helpers of the AC1.5 size --quick and AC1.2 note sections, used by both halves of the old test-role-gate.sh
+# v0.24.7: helpers of the plain size (v0.24.10: no size --quick any more) and AC1.2 note sections, used by both halves of the old test-role-gate.sh
 GLOBAL_CONF="$PLAYBOOK_HOME/.agents/playbook.conf"; mkdir -p "$PLAYBOOK_HOME/.agents"
 qreset() { rm -f "$GLOBAL_CONF"; }
 qrepo() { R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; qreset; }

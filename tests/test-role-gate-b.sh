@@ -309,22 +309,21 @@ gchk implementer; assert_rc "MINOR-5 a deleted 100755 path plus a 100644 path wi
 assert_not_contains "MINOR-5 ... no mode violation" "$OUT" "(mode)"
 
 
-echo "v0.24.0 review round 2 F7: an empty quick_max_files= or quick_max_lines= falls back to the default"
+echo "v0.24.10 AC3 (was v0.24.0 review round 2 F7): empty quick_max_files= / quick_max_lines= keys do not change plain size"
 qrepo
 qconf quick_max_files= quick_max_lines=
 seq 1 20 > src/a.js
-run bash "$GATE" size --quick;                  assert_rc "F7 both quick keys empty: exits 0, not 2" 0
-assert_contains "F7 both quick keys empty: the defaults 1 / 20 apply" "$OUT" "files: 1/1 lines: 20/20"
+run bash "$GATE" size;                          assert_rc "v24.10 AC3 both quick keys empty: plain size exits 0" 0
+assert_contains "v24.10 AC3 both quick keys empty: the Lite limits 3 / 100 apply" "$OUT" "files: 1/3 lines: 20/100"
+run bash "$GATE" size --quick;                  assert_rc "v24.10 AC3 both quick keys empty: size --quick exits 2, not 0" 2
 qrepo
 qconf quick_max_files=
-seq 1 20 > src/a.js
-run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_files only: exits 0" 0
-assert_contains "F7 empty quick_max_files only: default files 1" "$OUT" "files: 1/1 lines: 20/20"
+seq 1 21 > src/a.js
+run bash "$GATE" size;                          assert_rc "v24.10 AC3 empty quick_max_files only: 21 lines under plain size exits 0" 0
+assert_contains "v24.10 AC3 empty quick_max_files only: the Lite limits apply" "$OUT" "files: 1/3 lines: 21/100"
 qrepo
 qconf quick_max_lines=
-seq 1 20 > src/a.js
-run bash "$GATE" size --quick;                  assert_rc "F7 empty quick_max_lines only: exits 0" 0
-assert_contains "F7 empty quick_max_lines only: default lines 20" "$OUT" "files: 1/1 lines: 20/20"
-printf 'x\n' >> src/a.js
-run bash "$GATE" size --quick;                  assert_rc "F7 an empty key keeps the default limit: 21 lines exits 1" 1
+seq 1 21 > src/a.js
+run bash "$GATE" size;                          assert_rc "v24.10 AC3 empty quick_max_lines only: 21 lines under plain size exits 0" 0
+assert_contains "v24.10 AC3 empty quick_max_lines only: the Lite limits apply" "$OUT" "files: 1/3 lines: 21/100"
 t_summary

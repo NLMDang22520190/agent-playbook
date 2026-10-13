@@ -15,5 +15,16 @@ mo_of() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/nul
 mo_lines() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | grep -c '^models='; }
 AG() { tu Agent "{\"description\":\"d\",\"subagent_type\":\"general-purpose\",\"model\":\"$1\",\"prompt\":\"x\"}"; }
 AGN() { tu Agent '{"description":"d","subagent_type":"general-purpose","prompt":"x"}'; }
-E23_FIX='printf "function total(items) { return items.filter((i) => i.qty > 0).reduce((s, i) => s + i.price * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js'
-K23A='Full stop'; K23B='keeps the Quick'
+# v0.24.10: E22 and E23 grade a RED commit (a commit that changes only tests/), so their fake adapters commit the test first, then fix src/
+GC='git -c user.email=x@example.invalid -c user.name=x -c commit.gpgsign=false'
+E23_SRC='printf "function total(items) { return items.filter((i) => i.qty > 0).reduce((s, i) => s + i.price * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js'
+E23_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { total } = require(\"../src/cart\");\ntest(\"ignores non-positive qty\", () => { assert.strictEqual(total([{ price: 5, qty: 2 }, { price: 7, qty: 0 }, { price: 9, qty: -1 }]), 10); });\n" > tests/cart-qty.test.js'
+E23_RED="$E23_TEST
+$GC add tests/cart-qty.test.js
+$GC commit -qm 'test(red): cart qty'"
+E23_FIX="$E23_RED
+$E23_SRC"            # the RED commit (tests only), then the fix
+E23_NORED="$E23_TEST
+$E23_SRC"          # test and fix both uncommitted: no RED commit
+# check keys (e_state): E23 'ignores items', 'node --test', K23A = the override label check, K23B = the weight is Lite check, 'RED commit'
+K23A='user override'; K23B='weight is Lite'
