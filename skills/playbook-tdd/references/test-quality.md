@@ -5,14 +5,16 @@ Mutation testing does: change the code slightly (a "mutant") and check that some
 
 ## Mutation script (reviewer, automatic)
 `scripts/mutate.sh --base <sha> --test "<focused test command>"` flips operators (`==`, `-eq`, `&&`, `true`, `return 0`, and
-`<` `>` outside shell files) on the lines the diff added, one mutant per line and operator, in a throwaway worktree
-(your tree is never written), and prints `survived:` for every mutant the tests did not catch. Use it first; the manual
-spot-check below covers what its small operator list cannot.
+`===` `!==`, and outside shell files `<` `>`) on the lines the diff added, one mutant per line and
+operator, in a throwaway worktree in the system temp dir (`${TMPDIR:-/tmp}`; your tree is never written), and prints `survived:` for every mutant the tests did not catch. Use it first; the manual
+spot-check below covers what its small operator list cannot. For mutation use `scripts/mutate.sh`; a hand-made worktree goes in `mktemp -d "${TMPDIR:-/tmp}/pbwork.XXXXXX"` with a trap that removes it.
 
 ## Mutation spot-check (manual, reviewer, about 10 minutes)
-Do it in a throwaway worktree so the main tree stays untouched (the reviewer gate checks this):
+Do it in a throwaway worktree in the system temp dir, never inside the repo, so the main tree stays untouched (the
+reviewer gate checks this; `mutate.sh` does the same):
 ```bash
-WT="$(git rev-parse --show-toplevel)/.agents/handoff/mutants-wt"
+D="$(mktemp -d "${TMPDIR:-/tmp}/pbwork.XXXXXX")"; WT="$D/wt"
+trap 'git worktree remove --force "$WT" 2>/dev/null; rm -rf "$D"' EXIT
 git worktree add --detach "$WT" HEAD
 cd "$WT"
 # mutant 1: flip a comparison in the new logic (> to >=), save, run the slice's tests
@@ -20,7 +22,7 @@ cd "$WT"
 # mutant 3: off-by-one in a loop bound, or swap two arguments
 bash ~/.agents/playbook/scripts/proof-run.sh --label mutant-1 -- <slice test command>
 git checkout -- .     # reset between mutants
-cd - && git worktree remove --force "$WT"
+cd - && git worktree remove --force "$WT" && rmdir "$D"
 ```
 Expected: each mutant makes at least one test fail (a non-zero exit). A surviving mutant points to a
 missing or too-weak assertion, which is a `major` finding when it is on core logic.

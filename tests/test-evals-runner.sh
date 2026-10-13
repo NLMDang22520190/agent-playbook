@@ -1054,4 +1054,135 @@ echo "v0.24.3 F6 --help tells a custom --cmd to use an absolute path"
 run bash "$RUNNER" --help
 if printf '%s' "$OUT" | tr '\n' ' ' | grep -qiE '(--cmd|adapter|COMMAND).{0,200}absolute path|absolute path.{0,200}(--cmd|adapter|COMMAND)'; then t_ok "F6 the usage text says a custom --cmd should use an absolute path"; else t_bad "F6 the usage text says a custom --cmd should use an absolute path" "no 'absolute path' near --cmd/adapter in: $OUT"; fi
 
+# ---- v0.24.7 (lane T): every scenario gets its own TMPDIR; the agent's leftovers in it are reported and removed ----
+# tt_run ADAPTER [runner option]... -> runs E1 with a private outer TMPDIR ($RF_TD) and a stand-in real home; sets OD, W, OUT, RC
+tt_run() {
+  local ad="$1"; shift
+  OD="$(mk_tmp)"; W="$(mk_tmp)"; IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+  run env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/$ad.sh" "$@" --scenarios E1 --workroot "$W" --out "$OD/results.md"
+}
+
+echo "v0.24.7 T1 the adapter gets a fresh TMPDIR (pb-evtmp.*) inside the runner's TMPDIR"
+mk_adapter t1 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t1.tmpdir"
+if [ -d "$TMPDIR" ]; then echo yes > "'"$REC"'/t1.exists"; fi
+true'
+rm -f "$REC/t1.tmpdir" "$REC/t1.exists"
+tt_run t1
+T1D="$(cat "$REC/t1.tmpdir" 2>/dev/null)"
+if [ -n "$T1D" ] && [ "$T1D" != "$RF_TD" ]; then t_ok "T1 the adapter's TMPDIR differs from the runner's"; else t_bad "T1 the adapter's TMPDIR differs from the runner's" "adapter [$T1D] runner [$RF_TD]"; fi
+assert_eq "T1 it lies directly under the runner's TMPDIR" "$RF_TD" "$(dirname "$T1D")"
+case "$(basename "$T1D")" in pb-evtmp.*) t_ok "T1 it is named pb-evtmp.*" ;; *) t_bad "T1 it is named pb-evtmp.*" "name [$(basename "$T1D")]" ;; esac
+assert_eq "T1 it existed while the adapter ran" "yes" "$(cat "$REC/t1.exists" 2>/dev/null)"
+assert_no_path "T1 it is gone after the run" "$T1D"
+assert_eq "T1 an adapter that leaves nothing gets no NOTE line" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE ')"
+
+# the fake adapters spell out $TMPDIR/tmp.XXXXXXXXXX, which is what GNU mktemp -d does with no template:
+# macOS mktemp -d ignores TMPDIR there (seen on the v0.24.7 PR macOS job), so a bare call would land outside the scenario dir
+echo "v0.24.7 T2 an adapter that runs mktemp -d twice and leaves the dirs: reported, removed, outer TMPDIR clean"
+mk_adapter t2 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t2.tmpdir"
+mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null
+mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null
+true'
+rm -f "$REC/t2.tmpdir"
+tt_run t2
+T2D="$(cat "$REC/t2.tmpdir" 2>/dev/null)"
+assert_eq "T2 the outer TMPDIR has no new tmp.* entry" "0" "$(find "$RF_TD" -maxdepth 1 -name 'tmp.*' | wc -l | tr -d ' ')"
+assert_eq "T2 the outer TMPDIR has no pb-evtmp.* left" "0" "$(find "$RF_TD" -maxdepth 1 -name 'pb-evtmp.*' | wc -l | tr -d ' ')"
+if [ -n "$T2D" ]; then assert_no_path "T2 the scenario TMPDIR is gone" "$T2D"; else t_bad "T2 the scenario TMPDIR is gone" "no TMPDIR recorded"; fi
+if printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -q '2 entries'; then t_ok "T2 a NOTE line names the 2 leftovers"; else t_bad "T2 a NOTE line names the 2 leftovers" "output: $OUT"; fi
+if printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -q 'tmp\.'; then t_ok "T2 the NOTE line names the leftover entries"; else t_bad "T2 the NOTE line names the leftover entries" "output: $OUT"; fi
+assert_eq "T2 the leftovers are no FAIL line" "0" "$(printf '%s\n' "$OUT" | grep '^E1 FAIL ' | grep -c 'NOTE\|TMPDIR')"
+assert_contains "T2 the results file carries the NOTE" "$(cat "$OD/results.md" 2>/dev/null)" "2 entries"
+
+echo "v0.24.7 T3 a link left in the scenario TMPDIR is removed, its target is not touched"
+if [ -L "$F1D/l" ]; then
+SEC="$(mk_tmp)"; printf 'OUTSIDE-SECRET-T3\n' > "$SEC/secret.txt"
+mk_adapter t3 'ln -s "'"$SEC"'" "$TMPDIR/lnk"; mkdir "$TMPDIR/d"; ln -s "'"$SEC"'" "$TMPDIR/d/inner"; true'
+tt_run t3
+assert_eq "T3 the link target is untouched" "OUTSIDE-SECRET-T3" "$(cat "$SEC/secret.txt" 2>/dev/null)"
+assert_eq "T3 nothing of the scenario TMPDIR is left" "0" "$(find "$RF_TD" -maxdepth 1 -name 'pb-evtmp.*' | wc -l | tr -d ' ')"
+else t_skip 2 "v0.24.7 T3 link case (ln -s makes a copy on this file system)"; fi
+
+echo "v0.24.7 T4 a runner killed with SIGTERM while the adapter sleeps leaves no scenario TMPDIR"
+mk_adapter t4 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t4.tmpdir"; mktemp -d "$TMPDIR/tmp.XXXXXXXXXX" >/dev/null; printf "%s\n" "$$" > "'"$REC"'/t4.mark.tmp"; mv "'"$REC"'/t4.mark.tmp" "'"$REC"'/t4.mark"; exec sleep 30'
+OD="$(mk_tmp)"; W="$(mk_tmp)"; rm -f "$REC/t4.mark" "$REC/t4.mark.tmp" "$REC/t4.tmpdir"
+IH="$(mk_ih)"; RF_TD="$(mk_tmp)"
+env -u PLAYBOOK_HOME HOME="$IH" TMPDIR="$RF_TD" bash "$RUNNER" --cmd "bash $A/t4.sh" --scenarios E1 --workroot "$W" --out "$OD/results.md" >/dev/null 2>&1 &
+RP=$!
+for _ in $(seq 1 100); do [ -f "$REC/t4.mark" ] && break; sleep 0.1; done
+if [ -f "$REC/t4.mark" ]; then
+  t_ok "T4 the adapter started"
+  kill -TERM "$RP" 2>/dev/null
+  for _ in $(seq 1 50); do alive "$RP" || break; sleep 0.1; done
+  kill "$(sed -n 1p "$REC/t4.mark")" 2>/dev/null
+  for _ in $(seq 1 30); do alive "$RP" || break; sleep 0.1; done
+  kill -KILL "$RP" 2>/dev/null; wait "$RP" 2>/dev/null
+  T4D="$(cat "$REC/t4.tmpdir" 2>/dev/null)"
+  if [ "$T4D" != "$RF_TD" ] && [ -n "$T4D" ]; then assert_no_path "T4 the scenario TMPDIR is gone after SIGTERM" "$T4D"; else t_bad "T4 the scenario TMPDIR is gone after SIGTERM" "adapter TMPDIR [$T4D] is the runner's [$RF_TD] or empty"; fi
+  assert_eq "T4 no pb-evtmp.* and no tmp.* is left in the outer TMPDIR" "0" "$(find "$RF_TD" -maxdepth 1 \( -name 'pb-evtmp.*' -o -name 'tmp.*' \) | wc -l | tr -d ' ')"
+else
+  t_bad "T4 the adapter started" "no marker after 10 s"
+  kill -KILL "$RP" 2>/dev/null; wait "$RP" 2>/dev/null
+fi
+
+echo "v0.24.7 T5 --real-home keeps the caller's TMPDIR (no isolation, as documented)"
+rm -f "$REC/t1.tmpdir"
+tt_run t1 --real-home
+assert_eq "T5 --real-home: the adapter sees the caller's TMPDIR" "$RF_TD" "$(cat "$REC/t1.tmpdir" 2>/dev/null)"
+
+echo "v0.24.7 T6 odd leftover names: control characters never reach the output, the count is by entry, names sit in backticks"
+ESC="$(printf '\033')"; CR="$(printf '\r')"
+PROBE="$(mk_tmp)"
+if touch "$PROBE/$(printf 'a\nb')" "$PROBE/$(printf 'c\033d')" 2>/dev/null && [ "$(find "$PROBE" -mindepth 1 | wc -l | tr -d ' ')" -ge 3 ]; then
+mk_adapter t6 'cd "$TMPDIR" || exit 1
+touch "$(printf "esc\033[31mRED")"
+touch "$(printf "cr\rE1 PASS forged")"
+touch "<img src=x onerror=alert(1)>"
+touch "$(printf "nl\nline2")"
+touch "a\`b"
+true'
+tt_run t6
+T6R="$(cat "$OD/results.md" 2>/dev/null)"
+case "$OUT" in *"$ESC"*) t_bad "T6 no raw ESC on stdout" "found ESC" ;; *) t_ok "T6 no raw ESC on stdout" ;; esac
+case "$T6R" in *"$ESC"*) t_bad "T6 no raw ESC in the results file" "found ESC" ;; *) t_ok "T6 no raw ESC in the results file" ;; esac
+case "$OUT" in *"$CR"*) t_bad "T6 no raw CR on stdout" "found CR" ;; *) t_ok "T6 no raw CR on stdout" ;; esac
+case "$T6R" in *"$CR"*) t_bad "T6 no raw CR in the results file" "found CR" ;; *) t_ok "T6 no raw CR in the results file" ;; esac
+assert_eq "T6 a name that tries to forge a result line starts no line on stdout" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 PASS forged')"
+assert_eq "T6 the forged text starts no line in the results file" "0" "$(printf '%s\n' "$T6R" | grep -c '^E1 PASS forged')"
+assert_eq "T6 the NOTE counts 5 entries (a name with a newline is one entry)" "1" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE the agent left 5 entries ')"
+assert_eq "T6 the NOTE is one line on stdout" "1" "$(printf '%s\n' "$OUT" | grep -c '^E1 NOTE ')"
+assert_contains "T6 a markup name is shown in backticks" "$T6R" '`<img src=x onerror=alert(1)>`'
+assert_contains "T6 a backtick inside a name is replaced" "$T6R" "\`a'b\`"
+assert_contains "T6 the results file counts 5 entries" "$T6R" "5 entries"
+else t_skip 11 "v0.24.7 T6 odd names (this file system cannot hold names with a newline or ESC)"; fi
+
+echo "v0.24.7 T7 a leftover chmod 000 dir does not stop the removal of the scenario TMPDIR"
+mk_adapter t7 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t7.tmpdir"
+mkdir "$TMPDIR/locked" && : > "$TMPDIR/locked/f" && chmod 000 "$TMPDIR/locked"
+true'
+rm -f "$REC/t7.tmpdir"
+tt_run t7
+T7D="$(cat "$REC/t7.tmpdir" 2>/dev/null)"
+T7LEFT="$(find "$RF_TD" -maxdepth 1 -name 'pb-evtmp.*' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$T7LEFT" = 0 ] || printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T7D"; then t_ok "T7 no pb-evtmp.* left, or a NOTE names it"; else t_bad "T7 no pb-evtmp.* left, or a NOTE names it" "left $T7LEFT, dir [$T7D], output: $OUT"; fi
+assert_eq "T7 the chmod 000 dir is removed (no pb-evtmp.* in the outer TMPDIR)" "0" "$T7LEFT"
+assert_eq "T7 a leftover dir is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
+find "$RF_TD" -maxdepth 2 -type d -exec chmod u+rwx {} + 2>/dev/null
+
+echo "v0.24.7 T8 a scenario TMPDIR that cannot be removed at all: a NOTE names the path, the scenario does not fail"
+T8PROBE="$(mktemp -d "${TMPDIR:-/tmp}/t8probe.XXXXXX")"; mkdir "$T8PROBE/child"; chmod 555 "$T8PROBE"; rm -rf "$T8PROBE/child" 2>/dev/null; chmod 755 "$T8PROBE"
+T8BLOCKS=1; [ -d "$T8PROBE/child" ] || T8BLOCKS=0   # 0: chmod does not block removal here (root, NTFS)
+rm -rf "$T8PROBE"
+if [ "$(id -u)" != 0 ] && [ "$T8BLOCKS" = 1 ]; then
+mk_adapter t8 'printf "%s\n" "$TMPDIR" > "'"$REC"'/t8.tmpdir"
+chmod 555 "$(dirname "$TMPDIR")"
+true'
+rm -f "$REC/t8.tmpdir"
+tt_run t8
+chmod 755 "$RF_TD" 2>/dev/null
+T8D="$(cat "$REC/t8.tmpdir" 2>/dev/null)"
+if [ -n "$T8D" ] && printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T8D"; then t_ok "T8 a NOTE names the path that could not be removed"; else t_bad "T8 a NOTE names the path that could not be removed" "dir [$T8D], output: $OUT"; fi
+assert_eq "T8 it is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
+else t_skip 2 "v0.24.7 T8 (chmod 555 on a parent does not stop the removal here: root or NTFS)"; fi
+
 t_summary

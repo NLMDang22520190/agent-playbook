@@ -22,7 +22,14 @@
 # In this default mode the adapter starts in the scenario's workdir, so a custom --cmd should use an absolute path
 # (or --real-home, which keeps the caller's cwd).
 # --real-home: no isolation (today's behaviour before v0.24.3): the adapter runs with the caller's HOME and PLAYBOOK_HOME,
-# so what the agent writes (feedback, learnings) lands in the real home, and no evidence folder is made.
+# so what the agent writes (feedback, learnings) lands in the real home, and no evidence folder is made. It also keeps the
+# caller's TMPDIR (no per-scenario TMPDIR, see below).
+# TMPDIR (default): the adapter also gets its own TMPDIR, a fresh pb-evtmp.XXXXXX dir in the runner's TMPDIR, so the argument-less
+# `mktemp -d` calls of an agent do not pile up there. After the scenario the runner prints "<E> NOTE the agent left N entries in
+# its own TMPDIR (removed): <first names>" (never a FAIL; N counts directory entries, the first 5 names are shown in backticks
+# with control characters removed and backticks replaced), then removes it (never following a link), also on INT, TERM or exit.
+# A dir the agent made unreadable (chmod 000) is made accessible again (chmod -R u+rwx on that dir only) and removed; if it
+# still exists the runner prints "<E> NOTE could not remove the scenario TMPDIR `<path>`; remove it by hand" (never a FAIL).
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
@@ -48,12 +55,34 @@ usage() {
 }
 
 # temp home of the running scenario and the pid of its adapter, for the exit trap
-CUR_HOME=""; ADPID=""
+CUR_HOME=""; CUR_TMP=""; ADPID=""
 cleanup_home() { if [ -n "$CUR_HOME" ]; then rm -rf "$CUR_HOME"; CUR_HOME=""; fi; }
+# rm -rf unlinks a symbolic link and never follows it; only a pb-evtmp.* dir made by this runner is ever removed.
+# A dir the agent made unreadable (chmod 000) is first made accessible again (chmod -R never follows links; never on a
+# link itself) and removed again; if it still exists, STUCK_TMP holds its path and a NOTE goes to stderr (unless "quiet").
+STUCK_TMP=""
+cleanup_tmp() { # [quiet]
+  local d="$CUR_TMP"
+  CUR_TMP=""
+  case "$d" in */pb-evtmp.*) ;; *) return 0 ;; esac
+  rm -rf "$d" 2>/dev/null
+  if [ -e "$d" ] && [ ! -L "$d" ]; then
+    chmod -R u+rwx "$d" 2>/dev/null
+    rm -rf "$d" 2>/dev/null
+  fi
+  if [ -e "$d" ] || [ -L "$d" ]; then
+    STUCK_TMP="$d"
+    [ "${1:-}" = quiet ] || printf 'NOTE could not remove the scenario TMPDIR `%s`; remove it by hand\n' "$(clean_name "$d")" >&2
+  fi
+  return 0
+}
+# clean_name NAME -> NAME without control characters (ESC, CR, newline, every byte below 0x20 and 0x7f) and with
+# backticks replaced, so it fits in one line of output and inside backticks
+clean_name() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C tr '`' "'"; }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
-trap 'cleanup_home' EXIT
-trap 'stop_adapter; cleanup_home; trap - EXIT; exit 130' INT
-trap 'stop_adapter; cleanup_home; trap - EXIT; exit 143' TERM
+trap 'cleanup_home; cleanup_tmp' EXIT
+trap 'stop_adapter; cleanup_home; cleanup_tmp; trap - EXIT; exit 130' INT
+trap 'stop_adapter; cleanup_home; cleanup_tmp; trap - EXIT; exit 143' TERM
 # keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
 keep_tree() {
   local src="$1" dest="$2" rel
@@ -640,6 +669,12 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     CUR_HOME="$SC_HOME"
     mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME/.agents" 3
   fi
+  # v0.24.7: and its own TMPDIR, so the agent's `mktemp -d` leftovers do not land in the runner's TMPDIR (--real-home: no)
+  SC_TMP=""; TMPNOTE=""
+  if [ "$REAL_HOME" = 0 ]; then
+    SC_TMP="$(mktemp -d "${TMPDIR:-/tmp}/pb-evtmp.XXXXXX")" || pb_die "cannot create a temp dir for the adapter" 3
+    CUR_TMP="$SC_TMP"
+  fi
   if [ -n "$SC_HOME" ]; then
     # without feedback_repo: a submit during the eval cannot reach the user's real feedback repository
     [ -f "$SRC_CONF" ] &&
@@ -650,6 +685,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   BEFORE="$(ls -A "$WORKROOT" | LC_ALL=C sort)"
   printf '== %s: running the adapter in %s\n' "$E" "$WD" >&2
   (
+    if [ -n "$SC_TMP" ]; then TMPDIR="$SC_TMP"; export TMPDIR; fi
     if [ -n "$SC_HOME" ]; then
       PLAYBOOK_HOME="$SC_HOME"; export PLAYBOOK_HOME
       # project-level writes (the cost log) then land in the workdir, where they are collected as evidence
@@ -667,6 +703,30 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   # anything new in the workroot besides this scenario's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
     grep -vxF -e "$E" -e "$E.log" -e "$E.prompt" -e "$( [ "$E" = E20 ] && echo E20.home || echo "$E" )" | tr '\n' ' ')"
+  # what the agent left in its own TMPDIR is reported (not a failure), then the dir is removed. Entries are counted by
+  # a glob loop (a name with a newline is one entry), names are cleaned and shown in backticks, at most 5.
+  if [ -n "$SC_TMP" ]; then
+    NLEFT=0; LEFTN=""
+    for lp in "$SC_TMP"/* "$SC_TMP"/.[!.]* "$SC_TMP"/..?*; do
+      { [ -e "$lp" ] || [ -L "$lp" ]; } || continue
+      NLEFT=$((NLEFT + 1))
+      if [ "$NLEFT" -le 5 ]; then LEFTN="$LEFTN \`$(clean_name "${lp##*/}")\`"; fi
+    done
+    STUCK_TMP=""
+    cleanup_tmp quiet
+    if [ "$NLEFT" -gt 0 ]; then
+      TMPNOTE="NOTE the agent left $NLEFT $( [ "$NLEFT" = 1 ] && echo entry || echo entries ) in its own TMPDIR$( [ -z "$STUCK_TMP" ] && echo ' (removed)'):$LEFTN$( [ "$NLEFT" -gt 5 ] && echo ' ...')"
+      printf '%s %s\n' "$E" "$TMPNOTE"
+    fi
+    if [ -n "$STUCK_TMP" ]; then
+      STUCKNOTE="NOTE could not remove the scenario TMPDIR \`$(clean_name "$STUCK_TMP")\`; remove it by hand"
+      printf '%s %s\n' "$E" "$STUCKNOTE"
+      TMPNOTE="${TMPNOTE:+$TMPNOTE
+
+}$STUCKNOTE"
+      STUCK_TMP=""
+    fi
+  fi
   # evidence: what the agent's scripts wrote (feedback items, cost log) is kept next to the results file, per scenario
   if [ -n "$SC_HOME" ] && [ "$E" != E20 ]; then
     EV="${OUT%.md}.$E.evidence"; rm -rf "$EV"
@@ -698,7 +758,9 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
 ## $E
 
 ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
-"
+${TMPNOTE:+
+$TMPNOTE
+}"
     continue
   fi
   "grade_$E"
@@ -715,7 +777,9 @@ ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
 ## $E
 
 Transcript: \`$E.log\`, prompt: \`$E.prompt\`
-
+${TMPNOTE:+
+$TMPNOTE
+}
 | Check | Result |
 |---|---|
 $S_ROWS

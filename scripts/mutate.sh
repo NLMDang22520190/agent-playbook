@@ -8,8 +8,10 @@
 # --exclude glob (repeatable, e.g. '*_test.go') are left out, and so are comment lines (first non-blank character
 # is # or //).
 # One mutant per (line, operator), on the first whole-token occurrence on the line, in this order:
-#   == != | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
+#   == != | === !== | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
 #   and, only in non-shell files (shell uses < and > for redirection): < >= | > <=
+#   (=== and !== are swapped as whole tokens; == and != never match inside them. There are no arithmetic mutants:
+#   they are withdrawn (decision D-U3), as telling code from strings, comments and heredocs needs a tokenizer.)
 # At most --max mutants (default 20).
 #
 # Safety: your work tree is never written. Only HEAD is mutated, in a throwaway `git worktree` under
@@ -166,6 +168,8 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     function ok(kind, pre, post) {
       if (kind == "eq") return !inset(pre, "=!<>") && post != "="
       if (kind == "ne") return post != "="
+      if (kind == "seq") return !inset(pre, "=!<>") && post != "="
+      if (kind == "sne") return post != "="
       if (kind == "word") return !iswordh(pre) && !iswordh(post)
       if (kind == "and") return pre != "&" && post != "&"
       if (kind == "or") return pre != "|" && post != "|"
@@ -205,6 +209,7 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     BEGIN {
       SEP = "\034"
       add("==", "!=", "eq", 0);      add("!=", "==", "ne", 0)
+      add("===", "!==", "seq", 0);   add("!==", "===", "sne", 0)
       add("-eq", "-ne", "word", 0);  add("-ne", "-eq", "word", 0)
       add("-lt", "-ge", "word", 0);  add("-ge", "-lt", "word", 0)
       add("-gt", "-le", "word", 0);  add("-le", "-gt", "word", 0)

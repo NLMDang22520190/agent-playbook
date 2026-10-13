@@ -127,13 +127,13 @@ has_line "AC1.5 the total drops to four" "mutants: 4, killed: 0, survived: 4"
 echo "AC1.2 whole tokens only; nothing mutable gives mutants: 0"
 R="$W/tok"; mkfx "$R"; set_base "$R"
 ( cd "$R" && mkdir -p src &&
-  printf 'const s = a === b;\nconst s2 = a !== b;\nconst untrue = is_true(x);\nreturn 10;\n' > src/t.js &&
+  printf 'const untrue = is_true(x);\nreturn 10;\n' > src/t.js &&
   printf 'cat in > out\nread a < in\necho hi >> log\nexec 2>&1\n' > src/t.sh ) || exit 3
 commit_all "$R" change
 mrun "$R" --base base --test true
 assert_rc "AC1.5 nothing mutable: exit 0" 0
 has_line "AC1.5 nothing mutable: mutants: 0, killed: 0, survived: 0" "mutants: 0, killed: 0, survived: 0"
-assert_eq "AC1.2 === !== untrue is_true 'return 10' and shell redirections give no mutant" "" "$(surv)"
+assert_eq "AC1.2 untrue is_true 'return 10' and shell redirections give no mutant" "" "$(surv)"
 
 # =====================================================================================================
 echo "AC1.2 operators, order, --max"
@@ -678,5 +678,76 @@ else
   assert_rc "AC15.1 25 h old, no owner file: the run itself exits 0" 0
   assert_eq "AC15.1 a run dir without an owner file that is 25 h old IS reaped" "1" "$REAPED"
 fi
+
+# =====================================================================================================
+echo "v0.24.7 U1 JS strict equality: === and !== are swapped, == and != are never double-mutated into !==="
+R="$W/seq"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' 'const s = a === b;' 'const s2 = a !== b;' 'const s3 = a == b;' 'const s4 = a != b;' 'const s5 = a ==== b;' > src/s.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "U1 run exits 0" 0
+assert_eq "U1 one mutant per strict/loose equality line; === gives !==, !== gives ===, no !=== or ===== anywhere" \
+  "$(printf '%s\n' \
+    'survived: src/s.js:1: const s = a === b; -> const s = a !== b;' \
+    'survived: src/s.js:2: const s2 = a !== b; -> const s2 = a === b;' \
+    'survived: src/s.js:3: const s3 = a == b; -> const s3 = a != b;' \
+    'survived: src/s.js:4: const s4 = a != b; -> const s4 = a == b;')" "$(surv)"
+has_line "U1 total line" "mutants: 4, killed: 0, survived: 4"
+
+# =====================================================================================================
+echo "v0.24.7 U2 a rename with edits: its changed lines are mutated (regression pin)"
+R="$W/ren"; mkfx "$R"
+( cd "$R" && mkdir -p src &&
+  printf 'l1\nl2\nl3\nif (a === b) x();\nl5\nl6\nl7\nl8\nl9\nl10\n' > src/old.js ) || exit 3
+set_base "$R"
+( cd "$R" && mkdir -p "my lib" && git mv src/old.js "my lib/new name.js" &&
+  printf 'l1\nl2\nl3\nif (a === b) x();\nl5\nl6\nif (p !== q) y();\nl8\nl9\nl10\n' > "my lib/new name.js" ) || exit 3
+commit_all "$R" rename
+( cd "$R" && git diff -M --diff-filter=R --name-status base...HEAD ) > "$W/ren.status"
+case "$(cat "$W/ren.status")" in R*) t_ok "U2 fixture: git sees a rename" ;; *) t_bad "U2 fixture: git sees a rename" "$(cat "$W/ren.status")" ;; esac
+mrun "$R" --base base --test true
+assert_rc "U2 run exits 0" 0
+assert_eq "U2 only the edited line of the renamed file is mutated (the unchanged === line is not)" \
+  'survived: my lib/new name.js:7: if (p !== q) y(); -> if (p === q) y();' "$(surv)"
+
+# =====================================================================================================
+echo "v0.24.7 U3 (decision D-U3: arithmetic mutants + - * / are withdrawn from this release): no arithmetic mutant anywhere"
+R="$W/ari"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' \
+    'x = """' \
+    'chmod -R go-w build * extra' \
+    '"""' \
+    'os.system("chmod -R go-w build * extra")' \
+    'y = f(a)  # a + b' > src/probe.py &&
+  printf '%s\n' '`chmod -R go-w build * extra`' > src/q.rb &&
+  printf '%s\n' \
+    'function add(a, b) {' \
+    '  return a + b;' \
+    '}' \
+    'const y = a * b;' \
+    'const z = a - b / c;' \
+    'i++; x += 1; k = a-b; /* a * b */ // c + d' > src/r.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "U3 run exits 0" 0
+assert_eq "U3 the review probes (py docstring and os.system with *, py # comment, rb backticks) and plain js + - * / lines make no mutant" "" "$(surv)"
+has_line "U3 total line" "mutants: 0, killed: 0, survived: 0"
+
+# =====================================================================================================
+echo "v0.24.7 U3b regression vs base a753c5c: a line whose first non-blank character is * keeps its == mutant"
+R="$W/star"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' '*p = a == b;' > src/star.c &&
+  printf '%s\n' '*rest, last = a == b' > src/star.py ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "U3b run exits 0" 0
+assert_eq "U3b *p = a == b; (.c) and *rest, last = a == b (.py) still give their == mutant" \
+  "$(printf '%s\n' \
+    'survived: src/star.c:1: *p = a == b; -> *p = a != b;' \
+    'survived: src/star.py:1: *rest, last = a == b -> *rest, last = a != b')" "$(surv)"
+has_line "U3b total line" "mutants: 2, killed: 0, survived: 2"
 
 t_summary

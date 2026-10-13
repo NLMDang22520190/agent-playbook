@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.24.7 - 2026-10-13
+- **`mutate.sh` swaps `===` and `!==`.** Strict equality in JS and TS used to get no mutant, because `==` and `!=` were
+  rejected when followed by `=`. A line with `a === b` now gets one mutant `a !== b` (and the reverse), and `==` and `!=`
+  lines still get exactly one mutant and never `!===`. The report that a rename gives no mutants could not be reproduced:
+  renames with edits (plain, into a new directory, spaces, non-ASCII, exec-bit change, CRLF) already produced mutants, so
+  a regression test pins the behaviour and the rename code is unchanged. The likely cause in the eval was the missing
+  `===` mutant.
+- **Arithmetic mutants stay out (decision D-U3).** `+ - * /` mutants were built, then withdrawn. Review round 2 found
+  that `*` to `/` inside strings or backticks of `.py` and `.rb` files can turn `chmod -R x * y` into `chmod -R x / y`,
+  and that `#` comments and docstrings give false survivors. Doing it safely needs a tokenizer, so it is queued as a
+  design item. **The eval's "guarded arithmetic" gap therefore stays open**: a line such as `return a + b;` still gets
+  no mutant, only its guard comparison does.
+- **Docs match the code**: `test-quality.md` now says the mutation worktree goes in the system temp dir, made with
+  `mktemp -d "${TMPDIR:-/tmp}/pbwork.XXXXXX"` and removed by a trap, as `scripts/mutate.sh` does. The skill text says
+  mutation runs use `scripts/mutate.sh`.
+- **Real evals: each scenario gets its own `TMPDIR`.** The empty `tmp.*` directories seen after E24 were the evaluated
+  agent's own `mktemp -d` leftovers in the runner's `TMPDIR`; they were not in `playbook-feedback/sent`, and `feedback.sh`
+  was never the cause. The runner now gives each scenario a fresh `pb-evtmp.*` directory. Leftovers are reported in a
+  NOTE line (the count by entry and the first names, stripped of control bytes and shown in backticks), which never
+  fails the scenario, and are then removed on every exit (EXIT, INT, TERM) without following links. A `chmod 000`
+  leftover is made writable again and removed; if it still cannot be removed the NOTE names the path. `--real-home`
+  keeps the caller's `TMPDIR`, as it keeps the caller's `HOME`.
+- **CI: the three largest suites are split.** `test-ship` into `test-ship` and `test-ship-b`, `test-evals-grade6` into
+  `grade6` and `grade6-b`, and `test-role-gate` into `role-gate` and `role-gate-b`; the shared setup moved to
+  `*-fixture.sh` files. The union of assertion names is identical (re-derived by a reviewer). The largest suite's
+  Windows weight drops from about 555 to about 285. The shard weights come from the v0.24.6 run 38362314285, split by
+  Linux time share.
+- **Real evals**: E21 3/3 runs at 6/6 on v0.24.6 (5.52 USD), after the skill description change.
+- **Review**: three Opus reviews. The round-2 BLOCKER is resolved by withdrawing the arithmetic mutants.
+
 ## 0.24.6 - 2026-10-13
 - **The `playbook-tdd` description names Quick** and the user's word "quick". The description decides whether the skill
   loads, and it used to say only "Full or Lite". `test-content.sh` checks it.
