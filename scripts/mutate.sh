@@ -5,13 +5,17 @@
 # Changed lines = the added lines of `git diff -U0 -M --diff-filter=AMR REF...HEAD` (merge base; deleted and
 # binary files ignored; a rename counts only its changed lines). Only regular files count: symlinks and submodules
 # are skipped. tests/*, markdown (*.md: prose gives false survivors; --include-docs brings it back) and every
-# --exclude glob (repeatable, e.g. '*_test.go') are left out, and so are comment lines (first non-blank character
-# is # or //).
+# --exclude glob (repeatable, e.g. '*_test.go') are left out, and so are comment lines (first non-blank text is
+# #, //, * or /*).
 # One mutant per (line, operator), on the first whole-token occurrence on the line, in this order:
 #   == != | === !== | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
-#   and, only in non-shell files (shell uses < and > for redirection and * for globs): < >= | > <= | + - | * /
-#   (+ - * / only as a binary operator with a blank and an operand on both sides, so ++ += -> a-b /* and a YAML
-#   "- item" are left alone). === and !== are swapped as whole tokens; == and != never match inside them.
+#   and, only in non-shell files (shell uses < and > for redirection and * for globs): < >= | > <=
+#   and, only in files with a code extension (js ts jsx tsx mjs cjs py go rs c h cc cpp hpp java kt rb php cs
+#   swift scala; so not shell, YAML, Makefile, Dockerfile or extension-less scripts): + - | * /
+#   (+ - * / only as a binary operator with a blank (space or tab) and an operand on both sides, so ++ += -> a-b
+#   /* and a YAML "- item" are left alone; not inside a trailing " //" comment or a /* ... */ comment; and not a
+#   * after import or export, as in import * as x, import d, * as x, export * from). === and !== are swapped
+#   as whole tokens; == and != never match inside them.
 # At most --max mutants (default 20).
 #
 # Safety: your work tree is never written. Only HEAD is mutated, in a throwaway `git worktree` under
@@ -163,6 +167,7 @@ git -C "$root" -c core.quotepath=off diff --no-ext-diff --no-color -U0 -M --diff
 if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
   awk '
     function inset(c, set) { return c != "" && index(set, c) > 0 }
+    function isblank(c) { return c == " " || c == "\t" }
     function isword(c) { return c != "" && c ~ /[A-Za-z0-9_]/ }
     function iswordh(c) { return c != "" && c ~ /[A-Za-z0-9_-]/ }
     function ok(kind, pre, post, pp, pn) {
@@ -170,7 +175,7 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       if (kind == "ne") return post != "="
       if (kind == "seq") return !inset(pre, "=!<>") && post != "="
       if (kind == "sne") return post != "="
-      if (kind == "arith") return pre == " " && post == " " && pp != "" && pp != " " && pp != "\t" && pn != "" && pn != " " && pn != "\t"
+      if (kind == "arith") return isblank(pre) && isblank(post) && pp != "" && pp != " " && pp != "\t" && pn != "" && pn != " " && pn != "\t"
       if (kind == "word") return !iswordh(pre) && !iswordh(post)
       if (kind == "and") return pre != "&" && post != "&"
       if (kind == "or") return pre != "|" && post != "|"
@@ -182,6 +187,23 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       if (kind == "le") return !inset(pre, "<") && !inset(post, "=>")
       return 0
     }
+    function isimport(pfx) {
+      return pfx ~ /(^|[^A-Za-z0-9_$])(import|export)[ \t]*$/ || pfx ~ /(^|[^A-Za-z0-9_$])import[ \t]+[A-Za-z0-9_$]+[ \t]*,[ \t]*$/
+    }
+    function nocomment(s,   i, n, c, j, e, out) {
+      n = length(s); out = ""; i = 1
+      while (i <= n) {
+        c = substr(s, i, 2)
+        if (c == "/*") {
+          j = index(substr(s, i + 2), "*/")
+          e = (j > 0) ? i + j + 2 : n
+          while (i <= e) { out = out "_"; i++ }
+        } else if (c == "//" && (i == 1 || substr(s, i - 1, 1) ~ /[ \t]/)) {
+          while (i <= n) { out = out "_"; i++ }
+        } else { out = out substr(s, i, 1); i++ }
+      }
+      return out
+    }
     function find(s, tok, kind,   off, p, pre, post, pp, pn) {
       off = 0
       while ((p = index(substr(s, off + 1), tok)) > 0) {
@@ -190,7 +212,7 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
         post = substr(s, p + length(tok), 1)
         pp = (p > 2) ? substr(s, p - 2, 1) : ""
         pn = substr(s, p + length(tok) + 1, 1)
-        if (ok(kind, pre, post, pp, pn)) return p
+        if (ok(kind, pre, post, pp, pn) && !(kind == "arith" && tok == "*" && isimport(substr(s, 1, p - 1)))) return p
         off = p
       }
       return 0
@@ -198,14 +220,17 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     function add(tok, repl, kind, nonshell) {
       nops++; otok[nops] = tok; orepl[nops] = repl; okind[nops] = kind; onon[nops] = nonshell
     }
-    function process(n, line,   t, i, p, isshell) {
+    function process(n, line,   t, i, p, isshell, iscode, code) {
       t = line
       sub(/^[ \t]+/, "", t)
-      if (t == "" || substr(t, 1, 1) == "#" || substr(t, 1, 2) == "//") return
+      if (t == "" || substr(t, 1, 1) == "#" || substr(t, 1, 2) == "//" || substr(t, 1, 1) == "*" || substr(t, 1, 2) == "/*") return
       isshell = (file ~ /\.(sh|bash|zsh|ksh)$/)
+      iscode = (file ~ /\.(js|ts|jsx|tsx|mjs|cjs|py|go|rs|c|h|cc|cpp|hpp|java|kt|rb|php|cs|swift|scala)$/)
+      code = nocomment(line)
       for (i = 1; i <= nops; i++) {
         if (onon[i] && isshell) continue
-        p = find(line, otok[i], okind[i])
+        if (onon[i] == 2 && !iscode) continue
+        p = find((onon[i] == 2) ? code : line, otok[i], okind[i])
         if (p > 0) print file SEP n SEP line SEP (substr(line, 1, p - 1) orepl[i] substr(line, p + length(otok[i])))
       }
     }
@@ -221,8 +246,8 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
       add("return 0", "return 1", "ret", 0); add("return 1", "return 0", "ret", 0)
       add("<", ">=", "lt", 1);       add(">=", "<", "ge", 1)
       add(">", "<=", "gt", 1);       add("<=", ">", "le", 1)
-      add("+", "-", "arith", 1);     add("-", "+", "arith", 1)
-      add("*", "/", "arith", 1);     add("/", "*", "arith", 1)
+      add("+", "-", "arith", 2);     add("-", "+", "arith", 2)
+      add("*", "/", "arith", 2);     add("/", "*", "arith", 2)
     }
     FNR == NR { allowed[$0] = 1; next }
     /^diff --git / { inhunk = 0; file = ""; next }
