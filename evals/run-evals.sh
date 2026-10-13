@@ -15,9 +15,12 @@
 # (without feedback_repo, so a submit cannot reach the real feedback repository); HOME stays the real one, so the CLI keeps
 # its login and no credential file is copied. A PLAYBOOK_HOME the caller set is replaced (the copy is read from it, or from HOME).
 # The adapter then starts in the scenario's workdir, so a project-level write such as the cost log lands there.
-# After the scenario the evidence is copied to <dirname of --out>/<E>.evidence/: the temp home's .agents/playbook-feedback/
-# tree and the workdir's .agents/handoff/cost.tsv (each only if it exists); the temp home is removed. E20 keeps its own
-# home, <workroot>/E20.home, which stays.
+# After the scenario the evidence is copied to ${OUT%.md}.<E>.evidence/ (so --out D/run-A.md gives D/run-A.E1.evidence, one
+# folder per run): the temp home's .agents/playbook-feedback/ tree and the workdir's .agents/handoff/cost.tsv (each only if it
+# exists). Only regular files are copied; a symbolic link (or anything behind one) is never followed or kept. The temp home is
+# removed on every exit, also on INT or TERM. E20 keeps its own home, <workroot>/E20.home, which stays, and makes no evidence.
+# In this default mode the adapter starts in the scenario's workdir, so a custom --cmd should use an absolute path
+# (or --real-home, which keeps the caller's cwd).
 # --real-home: no isolation (today's behaviour before v0.24.3): the adapter runs with the caller's HOME and PLAYBOOK_HOME,
 # so what the agent writes (feedback, learnings) lands in the real home, and no evidence folder is made.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
@@ -42,6 +45,23 @@ usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
   sed -n '2,$p' "$0" | sed '/^# Every graded/,$d' | sed 's/^# \{0,1\}//' >&2
   exit 2
+}
+
+# temp home of the running scenario and the pid of its adapter, for the exit trap
+CUR_HOME=""; ADPID=""
+cleanup_home() { if [ -n "$CUR_HOME" ]; then rm -rf "$CUR_HOME"; CUR_HOME=""; fi; }
+stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
+trap 'cleanup_home' EXIT
+trap 'stop_adapter; cleanup_home; trap - EXIT; exit 130' INT
+trap 'stop_adapter; cleanup_home; trap - EXIT; exit 143' TERM
+# keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
+keep_tree() {
+  local src="$1" dest="$2" rel
+  mkdir -p "$dest" || return 1
+  ( cd "$src" && find . -type f ) | while IFS= read -r rel; do
+    rel="${rel#./}"
+    mkdir -p "$dest/$(dirname "$rel")" && cp "$src/$rel" "$dest/$rel" || exit 1
+  done
 }
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
@@ -578,6 +598,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   if [ "$E" = E20 ]; then SC_HOME="$WORKROOT/E20.home"; rm -rf "$SC_HOME"; mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME" 3
   elif [ "$REAL_HOME" = 0 ]; then
     SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/pb-evhome.XXXXXX")" || pb_die "cannot create a temp playbook home" 3
+    CUR_HOME="$SC_HOME"
     mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME/.agents" 3
   fi
   if [ -n "$SC_HOME" ]; then
@@ -596,25 +617,29 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       if [ "$E" != E20 ]; then cd "$WD" || exit 1; fi
     fi
     if [ "$USE_TIMEOUT" = 1 ]; then
-      timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+      exec timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
     else
-      bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+      exec bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
     fi
-  )
-  rc=$?
+  ) &
+  ADPID=$!
+  wait "$ADPID"
+  rc=$?; ADPID=""
   # anything new in the workroot besides this scenario's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
     grep -vxF -e "$E" -e "$E.log" -e "$E.prompt" -e "$( [ "$E" = E20 ] && echo E20.home || echo "$E" )" | tr '\n' ' ')"
   # evidence: what the agent's scripts wrote (feedback items, cost log) is kept next to the results file, per scenario
-  if [ -n "$SC_HOME" ]; then
-    EV="$(dirname "$OUT")/$E.evidence"; rm -rf "$EV"
-    if [ -d "$SC_HOME/.agents/playbook-feedback" ]; then
-      mkdir -p "$EV" && cp -R "$SC_HOME/.agents/playbook-feedback" "$EV/playbook-feedback" || pb_die "cannot keep the feedback evidence in $EV" 3
+  if [ -n "$SC_HOME" ] && [ "$E" != E20 ]; then
+    EV="${OUT%.md}.$E.evidence"; rm -rf "$EV"
+    FBD="$SC_HOME/.agents/playbook-feedback"
+    if [ -d "$FBD" ] && [ ! -L "$FBD" ] && [ ! -L "$SC_HOME/.agents" ]; then
+      keep_tree "$FBD" "$EV/playbook-feedback" || pb_die "cannot keep the feedback evidence in $EV" 3
     fi
-    if [ -f "$WD/.agents/handoff/cost.tsv" ]; then
-      mkdir -p "$EV" && cp "$WD/.agents/handoff/cost.tsv" "$EV/cost.tsv" || pb_die "cannot keep the cost evidence in $EV" 3
+    CT="$WD/.agents/handoff/cost.tsv"
+    if [ -f "$CT" ] && [ ! -L "$CT" ] && [ ! -L "$WD/.agents" ] && [ ! -L "$WD/.agents/handoff" ]; then
+      mkdir -p "$EV" && cp "$CT" "$EV/cost.tsv" || pb_die "cannot keep the cost evidence in $EV" 3
     fi
-    [ "$E" = E20 ] || rm -rf "$SC_HOME"
+    cleanup_home
   fi
   load_transcript
   herr=""
