@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.24.8 - 2026-10-13
+- **Windows CI speed, measured first.** On Windows, `test-run-checks` spent 47% of its time in `--only files` runs, and
+  89% of each of those runs was 89 `bash -n` spawns at about 68 ms each; another 32% went to `--only skills` runs. The
+  CRLF, exec-bit and syntax fixture cases now run on a minimal tree, and the description cases on a one-skill copy. The
+  runs on the real tree are kept. Windows Git Bash time for the suite went from 257 s to 87 s.
+- **A user can override Full to Lite** (the user approved this change). The agent asks once, names the Full trigger and
+  says what is lost; in a headless run it follows the user. The weight is recorded as
+  `Weight: Lite (user override; Full criteria: <x>)`, and tests are never skipped. The override covers only the named
+  criteria: a new Full criterion, passing the size limit, or a test that looks wrong still escalates. The E26 scenario
+  is defined but not auto-graded yet; a content test keeps it out of AUTO until a grader exists.
+- **Word budgets.** `evals/word-budgets` holds one budget per `AGENTS.global.md` and `SKILL.md`, checked by
+  `run-checks.sh`. Each budget is the file's count at this release rounded up to the next 50. Raising a budget needs a
+  CHANGELOG line with the reason; a new skill must declare a budget; a stale entry fails. **`playbook-tdd` is now at
+  4044 of 4050 words and 294 of 300 lines, so the v0.24.10 clean-up release must make room.**
+- **Coverage**: the `run-checks.sh` 450-character description limit now has a failing test. Before this, loosening the
+  limit was caught by nothing.
+- **Review**: one Opus round. The BLOCKER was that the minimal test tree lacked the budget table, so the negative cases
+  passed for the wrong reason; the MAJOR was that the override conflicted with the escalation rule. Both are fixed and
+  the suites were re-run.
+
 ## 0.24.7 - 2026-10-13
 - **`mutate.sh` swaps `===` and `!==`.** Strict equality in JS and TS used to get no mutant, because `==` and `!=` were
   rejected when followed by `=`. A line with `a === b` now gets one mutant `a !== b` (and the reverse), and `==` and `!=`

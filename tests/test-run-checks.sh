@@ -7,46 +7,76 @@
 # test-run-checks-gnu9.sh, the dupmax, sed, --only, soh and empty-glob cases in test-run-checks-sections.sh. Shared setup: run-checks-fixture.sh.)
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
-mk_gmaster   # the CRLF cases below copy a committed git repo of the tree
+# (the CRLF cases copy a committed git repo of a minimal tree, FMING below; no full-tree mk_gmaster here)
+
+# Minimal trees (v0.24.8). A full-tree copy makes `run-checks --only files` spawn `bash -n` for every script (89 spawns,
+# ~68 ms each on Git Bash) and `--only skills` walk every skill; the cases below only need what their group reads.
+# files group reads: install.sh, scripts|tests|evals|tools/*.sh (globs must match), the six scripts whose exec bit it checks,
+# and git's view of the tree for the CRLF check. skills group reads skills/*/ (one skill is enough for a mutated-line case;
+# the real tree is still run once by the AC5 "current skills pass" and AC4 "real tree" cases).
+FMIN="$(mk_tmp)"
+mkdir -p "$FMIN/evals" "$FMIN/scripts" "$FMIN/tests" "$FMIN/tools" "$FMIN/docs" "$FMIN/skills"
+cp "$MASTER/evals/run-checks.sh" "$FMIN/evals/run-checks.sh"
+for stub in tests/stub.sh tools/stub.sh install.sh scripts/conf.sh scripts/role-gate.sh scripts/proof-run.sh scripts/learn.sh scripts/feedback.sh; do
+  printf '#!/usr/bin/env bash\n# stub: keeps its glob non-empty, holds no finding\n' > "$FMIN/$stub"
+  chmod +x "$FMIN/$stub"
+done
+cp "$MASTER/README.md" "$MASTER/.gitattributes" "$FMIN/"
+printf 'plain note\n' > "$FMIN/docs/note.md"
+cp -a "$MASTER/skills/playbook-proof" "$FMIN/skills/playbook-proof"
+# word budgets for exactly the files FMIN holds (its one skill; it has no AGENTS.global.md): the skills group fails closed without a
+# table, so a case that expects another rule's FAIL would otherwise pass for the wrong reason. Slack 200 leaves room for the cases that lengthen a line.
+{ printf '# fixture budgets\n'
+  printf 'skills/playbook-proof/SKILL.md %s\n' "$(( $(wc -w < "$FMIN/skills/playbook-proof/SKILL.md" | tr -d ' ') + 200 ))"
+} > "$FMIN/evals/word-budgets"
+# mk_fmin_copy -> temp dir, not a git repo; mk_fmin_git_copy -> the same, committed into a fresh repo with LF in the index
+mk_fmin_copy() { local d; d="$(mk_tmp)"; cp -a "$FMIN/." "$d/"; printf '%s\n' "$d"; }
+FMING="$(mk_tmp)"
+cp -a "$FMIN/." "$FMING/"
+( cd "$FMING" && git init -q && git config core.autocrlf false && git config user.email t@example.invalid &&
+  git config user.name tester && git config commit.gpgsign false && git add -A && git commit -q -m copy ) >/dev/null 2>&1
+mk_fmin_git_copy() { local d; d="$(mk_tmp)"; cp -a "$FMING/." "$d/"; printf '%s\n' "$d"; }
 
 echo "frontmatter checks (AC5)"
 C="$(mk_copy)"
 checks "$C" skills
 assert_rc "AC5 current skills pass run-checks (exit 0)" 0
 
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
 checks "$C" skills
 assert_rc "AC5 unquoted description containing ': ' fails (exit 1)" 1
 assert_contains "AC5 failure names the SKILL.md" "$OUT" "$SKILL"
+assert_not_contains "AC5 the unquoted-colon failure is its own rule, not the word budget" "$OUT" "word budget"
 
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description 'description: "Use when stating results. Note: keep it short."'
 checks "$C" skills
 assert_rc "AC5 double-quoted description containing ': ' passes" 0
 
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description "description: 'Use when stating results. Note: keep it short.'"
 checks "$C" skills
 assert_rc "AC5 single-quoted description containing ': ' passes" 0
 
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description 'description: Use when stating results at a 1:2 ratio or more.'
 checks "$C" skills
 assert_rc "AC5 unquoted description with ':' not followed by a space passes" 0
 
 if python3 -c 'import yaml' >/dev/null 2>&1; then
-  C="$(mk_copy)"
+  C="$(mk_fmin_copy)"
   add_line "$C" 'metadata: [unclosed'
   checks "$C" skills
   assert_rc "AC5 frontmatter that PyYAML cannot parse fails (exit 1)" 1
   assert_contains "AC5 parse failure names the SKILL.md" "$OUT" "$SKILL"
+  assert_not_contains "AC5 the parse failure is its own rule, not the word budget" "$OUT" "word budget"
 else
   t_skip 2 "AC5 PyYAML parse test: python3 -c 'import yaml' failed"
 fi
 
 # Without PyYAML the parse check is skipped with a printed note, the rest still runs.
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 add_line "$C" 'metadata: [unclosed'
 FAKE="$(mk_tmp)"
 printf '#!/bin/sh\nexit 1\n' > "$FAKE/python3"; chmod +x "$FAKE/python3"
@@ -56,38 +86,52 @@ SKIPLINE="$(printf '%s\n' "$OUT" | grep -i 'skip' | grep -i 'yaml')"
 assert_contains "AC5 without PyYAML a skip note mentioning yaml is printed" "$(printf '%s' "$SKIPLINE" | tr 'A-Z' 'a-z')" "yaml"
 
 # Without PyYAML the explicit unquoted ': ' check alone must still catch the bad description.
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
 OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" --only skills 2>&1)"; RC=$?; only_problems
 assert_rc "AC5 without PyYAML an unquoted description containing ': ' still fails (exit 1)" 1
 assert_contains "AC5 without PyYAML the failure says unquoted" "$OUT" "unquoted"
 assert_contains "AC5 without PyYAML the failure names the SKILL.md" "$OUT" "$SKILL"
+assert_not_contains "AC5 without PyYAML the failure is its own rule, not the word budget" "$OUT" "word budget"
+
+echo "description length limit (450 characters)"
+C="$(mk_fmin_copy)"
+set_line "$C" description "description: $(awk 'BEGIN { for (i = 0; i < 451; i++) printf "a" }')"
+checks "$C" skills
+assert_rc "a 451-character description fails (exit 1)" 1
+assert_contains "the 451-character failure names the 450 limit" "$OUT" "450"
+assert_contains "the 451-character failure names its length" "$OUT" "description length 451"
+assert_not_contains "the 451-character failure is its own rule, not the word budget" "$OUT" "word budget"
+C="$(mk_fmin_copy)"
+set_line "$C" description "description: $(awk 'BEGIN { for (i = 0; i < 450; i++) printf "a" }')"
+checks "$C" skills
+assert_rc "a 450-character description passes (exit 0)" 0
 
 echo "CRLF check judges what git stores (Windows checkouts convert to CRLF)"
-C="$(mk_git_copy)"
+C="$(mk_fmin_git_copy)"
 to_crlf "$C/README.md"; to_crlf "$C/.gitattributes"
 checks "$C" files
 assert_not_contains "CRLF only in the working tree of a tracked LF file is not a failure" "$OUT" "CRLF found"
 # "* text=auto eol=lf" would normalise CRLF to LF on add, so override it for this file
 # (-text) to really store CRLF in the index.
-C="$(mk_git_copy)"
+C="$(mk_fmin_git_copy)"
 printf 'docs/crlf-note.md -text\n' >> "$C/.gitattributes"
 printf 'line one\r\nline two\r\n' > "$C/docs/crlf-note.md"
 ( cd "$C" && git add .gitattributes docs/crlf-note.md && git commit -q -m crlf ) >/dev/null 2>&1
 checks "$C" files
 assert_rc "CRLF stored in the git index fails" 1
 assert_contains "the failure names the CRLF file" "$OUT" "docs/crlf-note.md"
-C="$(mk_git_copy)"
+C="$(mk_fmin_git_copy)"
 printf 'untracked\r\n' > "$C/docs/untracked-crlf.md"
 checks "$C" files
 assert_contains "an untracked CRLF file still fails" "$OUT" "docs/untracked-crlf.md"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 printf 'no git here\r\n' > "$C/docs/plain-crlf.md"
 checks "$C" files
 assert_contains "outside git, working-tree CRLF still fails" "$OUT" "docs/plain-crlf.md"
 
 # when `cat` fails, the one-pass CR scan must fall back to the per-file check, not report "no CR"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 printf 'no git here\r\n' > "$C/docs/catfail-crlf.md"
 FB="$(mk_tmp)"; printf '#!/bin/sh\nexit 1\n' > "$FB/cat"; chmod +x "$FB/cat"
 run env PATH="$FB:$PATH" bash "$C/evals/run-checks.sh" --only files
@@ -95,7 +139,7 @@ assert_contains "CRLF file still reported when cat fails" "$(printf '%s\n' "$OUT
 
 
 echo "#12b quoted name matches its directory"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" name 'name: "playbook-proof"'
 checks "$C" skills
 assert_rc "AC12b.2 quoted name passes run-checks" 0
@@ -117,26 +161,26 @@ for other in "always-on block" "v0.3 rules" "v0.4 weights" "contains the verbati
 done
 
 echo "v0.24.6 AC4 the files checks still fail under --only files"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 printf 'plain file, crlf\r\n' > "$C/docs/files-only-crlf.md"
 run bash "$C/evals/run-checks.sh" --only files
 assert_rc "AC4 a CRLF fixture fails under --only files (exit 1)" 1
 assert_contains "AC4 the CRLF failure under --only files says CRLF found" "$OUT" "CRLF found in:"
 assert_contains "AC4 the CRLF failure under --only files names the file" "$OUT" "docs/files-only-crlf.md"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 chmod -x "$C/scripts/conf.sh"
 if [ -x "$C/scripts/conf.sh" ]; then t_skip 2 "AC4 exec-bit failure under --only files (chmod -x has no effect on this file system)"; else
 run bash "$C/evals/run-checks.sh" --only files
 assert_rc "AC4 a script without its exec bit fails under --only files (exit 1)" 1
 assert_contains "AC4 the exec-bit failure under --only files names the script" "$OUT" "not executable: scripts/conf.sh"
 fi
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 printf 'if then\n' >> "$C/scripts/conf.sh"
 run bash "$C/evals/run-checks.sh" --only files
 assert_rc "AC4 a script with a syntax error fails under --only files (exit 1)" 1
 assert_contains "AC4 the syntax failure under --only files names the script" "$OUT" "bash -n failed: scripts/conf.sh"
 echo "v0.24.6 AC4 --only files runs only the files group: another group's problem is not reported"
-C="$(mk_copy)"
+C="$(mk_fmin_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
 run bash "$C/evals/run-checks.sh" --only files
 assert_rc "AC4 --only files ignores a skills problem (a bad description): exit 0" 0
