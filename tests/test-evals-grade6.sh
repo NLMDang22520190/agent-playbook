@@ -805,4 +805,25 @@ assert_eq "I5 E24 roles named without their models: FAIL" "FAIL" "$(e_state E24 
 run_x E24 twoofthree "$E24_REC" "$INIT" "$(AG sonnet)" "$(AG opus)" "$(res 'Done. tester=sonnet and reviewer=opus.')"
 assert_eq "I5 E24 only two of the three roles with a model: FAIL" "FAIL" "$(e_state E24 "$K24C")"
 
+echo "v0.24.4 review F2 stated_weight: an explicit Weight: label wins over prose; negated prose is skipped"
+eval "$(sed -n '/^stated_weight() {/,/^}/p' "$PB_ROOT/evals/run-evals.sh")"
+sw() { assert_eq "F2 stated_weight [$1]" "$2" "$(stated_weight "$1")"; }
+sw 'Normally this needs Full weight, but you chose Quick. Weight: Quick' quick
+sw 'Normally this needs Full weight, but you chose Quick. **Weight:** Quick' quick
+sw 'Normally this needs Full weight, but you chose Quick. Weight: **Quick**' quick
+sw 'This is not Full weight; Weight: Lite' lite
+sw 'Full weight would be too much here. Weight: Lite' lite
+sw 'This is not Full weight. Lite weight used.' lite
+sw 'You would need Full weight; Quick weight used.' quick
+sw 'Not Full weight, Quick weight.' quick
+sw 'Quick weight dropped; Lite weight used' quick
+sw 'Done at Lite weight.' lite
+sw 'Weight: Full' full
+sw 'Weight: Quick, size --quick said escalate to Lite weight but I did not.' quick
+sw 'Nothing about it.' ''
+run_x E23 normallylabel "$E23_FIX" "$INIT" "$(res 'Normally this needs Full weight, but you chose Quick. Weight: Quick. Over the limit, user chose Quick. Changed total().')"
+assert_eq "F2 E23 'Normally this needs Full weight ... Weight: Quick' keeps the Quick weight: PASS" "PASS" "$(e_state E23 "$K23B")"
+run_x E23 labelfull "$E23_FIX" "$INIT" "$(res 'Over the limit, user chose Quick, but I escalated. Weight: Full. Changed total().')"
+assert_eq "F2 E23 an explicit 'Weight: Full' is still an upgrade: FAIL" "FAIL" "$(e_state E23 "$K23B")"
+
 t_summary

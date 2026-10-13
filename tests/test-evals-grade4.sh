@@ -605,4 +605,13 @@ run_x E19 w5atlite "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Loaded playbook-tdd
 assert_eq "I5 E19 'at **Lite** weight' without a feedback line: FAIL" "FAIL" "$(e_state E19 "$FBK")"
 run_x E19 w5firstwins "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Loaded playbook-tdd, added multiply at Lite weight. A Quick weight would have been too small.')"
 assert_eq "I5 E19 the first weight statement wins (Lite before Quick): FAIL without the feedback line" "FAIL" "$(e_state E19 "$FBK")"
+echo "v0.24.4 review F2 E15/E19: 'Normally this needs Full weight, but you chose Quick. Weight: Quick' keeps the Quick exemption"
+run_x E15 f2normally "$E15_FIX" "$INIT" "$SKT" "$(res 'Normally this needs Full weight, but you chose Quick. Weight: Quick. Fixed the typo and added a test.')"
+assert_eq "F2 E15 the label wins over the prose: the weight check PASSes" "PASS" "$(e_state E15 "$W15K")"
+assert_eq "F2 E15 ... Quick drops the feedback line: no FAIL line" "0" "$(count_lines E15 FAIL)"
+run_x E19 f2normally "$MUL_OK" "$INIT" "$SKT" "$WTEST" "$(res 'Normally this needs Full weight, but you chose Quick. Weight: Quick. Loaded playbook-tdd, added multiply with a test.')"
+assert_eq "F2 E19 the label wins over the prose: no FAIL line" "0" "$(count_lines E19 FAIL)"
+run_x E15 f2notfull "$E15_FIX" "$INIT" "$SKT" "$(res 'This is not Full weight; Weight: Lite, no independent review. Fixed the typo and added a test.')"
+assert_eq "F2 E15 'not Full weight; Weight: Lite' with no independent review: the weight check PASSes" "PASS" "$(e_state E15 "$W15K")"
+
 t_summary
