@@ -32,6 +32,13 @@ nofiles() {
   done
 }
 
+# scan_missing: sets SMISS to the files named (not globbed) in the scan lists that are missing (" install.sh"), "" when all exist.
+# grep and awk skip an unreadable file and the section then reads "no findings"; a section that scans install.sh fails closed on it
+# instead (scan_miss_fail), and also on a grep or awk exit status that says the scan did not finish.
+scan_missing() { SMISS=""; [ -f install.sh ] || SMISS=" install.sh"; }
+# scan_miss_fail WHAT -> prints the FAIL line and returns 0 when a scanned file is missing; returns 1 when all are present
+scan_miss_fail() { scan_missing; [ -z "$SMISS" ] && return 1; bad "missing file$SMISS (the $1 scan needs it)"; return 0; }
+
 # AWKSTRIP: awk code shared by the gnu and soh checks. strip(s) returns the code part of a line and leaves the comment text
 # (from its #) in CMT. A # starts a comment only at the start of a line, after a blank or right after ; & | ( ), and only outside single and double
 # quotes (a backslash escapes the next character outside single quotes). Quote state is per line: that is a limit. An apostrophe
@@ -215,11 +222,15 @@ fi
 if want dupmax; then
 nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # BSD regex (macOS) rejects repeat bounds above RE_DUP_MAX (255): such a pattern never matches there
-big="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null |
-  awk -F: '{ line = $0; sub(/^[^:]*:[^:]*:/, "", line)
+gl="$(grep -nE '\{([0-9]+(,[0-9]*)?|,[0-9]+)\}' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+grc=$?   # grep: 0 matches, 1 none, 2 an error (an unreadable file); only 2 is a scan that did not finish
+big="$(printf '%s\n' "$gl" | awk -F: 'NF >= 3 { line = $0; sub(/^[^:]*:[^:]*:/, "", line)
              while (match(line, /\{([0-9]+(,[0-9]*)?|,[0-9]+)\}/)) { b = substr(line, RSTART + 1, RLENGTH - 2); line = substr(line, RSTART + RLENGTH)
                n = split(b, a, ","); for (i = 1; i <= n; i++) if (a[i] + 0 > 255) { print $1 ":" $2; break } } }' | sort -u | tr '\n' ' ')"
-[ -z "$big" ] && ok "regex repeat bounds <= 255 (BSD RE_DUP_MAX)" || bad "regex repeat bound above 255 (BSD/macOS never matches) at: $big"
+if scan_miss_fail "repeat-bound"; then :
+elif [ "$grc" -gt 1 ]; then bad "repeat-bound scan failed (grep exit $grc; an unreadable file in the scanned list?)"
+elif [ -z "$big" ]; then ok "regex repeat bounds <= 255 (BSD RE_DUP_MAX)"
+else bad "regex repeat bound above 255 (BSD/macOS never matches) at: $big"; fi
 fi
 
 if want sed; then
@@ -228,13 +239,20 @@ nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # an attached suffix (sed -i.bak) works on both. Comments (from a # at the start, after a blank or right after ; & | ( )) are ignored; a # inside quotes is not one (strip()).
 gsed="$(awk "$AWKSTRIP"'{ line = strip($0)
              if (line ~ /(^|[^[:alnum:]_])sed([[:space:]]+-[[:alnum:]]+)*[[:space:]]+(-[[:alpha:]]*i([[:space:]"'"'"']|$)|--in-place([[:space:]=]|$))/) print FILENAME ":" FNR }' \
-  tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | sort -u | tr '\n' ' ')"
+  tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+grc=$?   # the exit status of the awk scan: a scan that did not finish is never an ok
+gsed="$(printf '%s\n' "$gsed" | sort -u | tr '\n' ' ')"
 si=-i   # spelled through a variable so this file does not trip its own check
-[ -z "$gsed" ] && ok "sed $si has a suffix (BSD sed)" || bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"
+if scan_miss_fail "sed"; then :
+elif [ "$grc" -ne 0 ]; then bad "sed scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${gsed// /}" ]; then ok "sed $si has a suffix (BSD sed)"
+else bad "sed $si without an attached suffix (BSD/macOS sed edits nothing; use sed -i.bak or node) at: $gsed"; fi
 fi
 
 if want gnu; then
 nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
+# A file named in the scanned list (not a glob) that is missing makes awk abort on it and print nothing, which used to read as "no findings".
+scan_miss_fail "GNU-only"; gmiss="$SMISS"
 # GNU-only options: macOS (BSD tools) lacks them, so a script using them fails there and passes on Ubuntu.
 # Each file is read once, line by line, with the quote state carried across lines. A line is cut into words (single-quoted
 # text, ANSI-C quoted text $'...' and double-quoted text are skipped, except a $( ) or backtick command inside double quotes;
@@ -398,8 +416,12 @@ ggnu="$(awk '
       }
     }
   }
-  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
-[ -z "${ggnu// /}" ] && ok "GNU-only options absent (BSD/macOS)" || bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+grc=$?   # the exit status of the awk scan: a scan that did not finish is never an ok
+ggnu="$(printf '%s' "$ggnu" | tr -s ' ')"
+if [ "$grc" -ne 0 ]; then bad "GNU-only scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${ggnu// /}" ]; then [ -z "$gmiss" ] && ok "GNU-only options absent (BSD/macOS)"
+else bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"; fi
 fi
 
 if want soh; then
@@ -422,8 +444,13 @@ gsoh="$(awk "$AWKSTRIP"'
       i = j
     }
   }
-  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null | tr -s ' ')"
-[ -z "${gsoh// /}" ] && ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)" || bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+grc=$?   # the exit status of the awk scan: a scan that did not finish is never an ok
+gsoh="$(printf '%s' "$gsoh" | tr -s ' ')"
+if scan_miss_fail "SOH"; then :
+elif [ "$grc" -ne 0 ]; then bad "SOH scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${gsoh// /}" ]; then ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)"
+else bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"; fi
 fi
 
 if want modes; then

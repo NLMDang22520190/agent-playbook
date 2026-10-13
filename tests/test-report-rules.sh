@@ -70,4 +70,18 @@ if [ -n "$LM" ] && [ -n "$LC" ] && [ "$LM" -gt "$LC" ]; then t_ok "R8 the Models
 assert_eq "R8 regression: the last non-empty line is still the Playbook feedback line" "$LINE" "$(grep -v '^[[:space:]]*$' "$FINAL" 2>/dev/null | tail -n 1)"
 assert_eq "R8 regression: nothing non-empty follows the Playbook feedback line" "0" "$(awk -v l="$LINE" '$0 == l { seen = 1; next } seen && NF { n++ } END { print n + 0 }' "$FINAL")"
 
+# ---- v0.24.4 item 5: the Models used line is a fixed report line, like the Playbook feedback line ----
+echo "v0.24.4 item 5 SKILL.md Phase 4 tells the report to carry the Models used line verbatim when sub-agents ran"
+MLINE_T="$(grep -F '**Models used:**' "$FINAL" 2>/dev/null | head -n 1)"
+assert_contains "I5 Phase 4 gives the exact Models used line of the template" "$FULL4" "$MLINE_T"
+MITEM="$(printf '%s\n' "$FULL4" | awk -v l="$MLINE_T" '
+  function flush() { if (cur != "" && index(cur, l) > 0) print cur; cur = "" }
+  /^([0-9]+\.|-) / || NF == 0 { flush() }
+  NF { cur = (cur == "" ? $0 : cur " " $0) }
+  END { flush() }')"
+if printf '%s\n' "$MITEM" | grep -qi 'verbatim'; then t_ok "I5 the Phase 4 item says the Models used line is copied verbatim"; else t_bad "I5 the Phase 4 item says the Models used line is copied verbatim" "[$MITEM]"; fi
+if printf '%s\n' "$MITEM" | grep -qiE 'sub-?agents? (ran|were (started|used))|when (any )?sub-?agents'; then t_ok "I5 the Phase 4 item says when: sub-agents ran"; else t_bad "I5 the Phase 4 item says when: sub-agents ran" "[$MITEM]"; fi
+if printf '%s\n' "$MITEM" | grep -qE 'Playbook feedback|Learnings proposed'; then t_ok "I5 the Phase 4 item says where the line sits (before the learnings / feedback line)"; else t_bad "I5 the Phase 4 item says where the line sits (before the learnings / feedback line)" "[$MITEM]"; fi
+assert_eq "I5 SKILL.md has at most 296 lines" "ok" "$([ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ] && echo ok || echo "too long")"
+
 t_summary

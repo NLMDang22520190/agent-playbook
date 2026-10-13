@@ -627,7 +627,7 @@ assert_not_contains "AC1.2 stderr has no note on a failing check" "$SE" "note:"
 
 # ---- v0.11.0 AC8.1: control characters in a config value are shown as '?' in the note ----
 echo "v0.11.0 AC8.1 control characters in note values"
-ESC="$(printf '\033')"; CR="$(printf '\r')"; TAB9="$(printf '\t')"; DEL="$(printf '\177')"
+ESC="$(printf '\033')"; CR="$(printf '\r')"
 R="$(conf_repo 'test_path_regex=^chec\033ks/\n')"; cd "$R" || exit 3
 run bash "$GATE" check implementer
 assert_rc "AC8.1 ESC inside a still-valid regex: the gate still runs (exit 0)" 0

@@ -166,7 +166,9 @@ done
 
 # outside git: nothing to exclude, no error
 N="$(mk_tmp)"
-ERR="$(cd "$N" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"; RC=$?; OUT="$ERR"
+ERR="$(cd "$N" && bash "$CONF" set language fr --project 2>&1 >/dev/null)"
+# shellcheck disable=SC2034  # RC is read by assert_rc (tests/lib.sh)
+RC=$?; OUT="$ERR"
 assert_rc "AC1.1 outside git: set --project exits 0" 0
 assert_eq "AC1.1 outside git: no stderr output at all" "" "$ERR"
 assert_file "AC1.1 outside git: the conf is still written" "$N/.agents/playbook.conf"
