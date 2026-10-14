@@ -190,7 +190,7 @@ chk "R13 harnesses.md: OpenCode per-role agent in opencode.json" "$HARN" 'per-ro
 chk "R13 harnesses.md: Codex manual mode with codex exec -m" "$HARN" 'codex exec -m <model>'
 chk "R13 harnesses.md: manual runs each role as a separate headless process" "$HARN" '\*\*manual\*\*[^.]{0,80}separate headless process'
 chk "R13 harnesses.md: manual examples claude -p, codex exec, opencode run" "$HARN" 'claude -p[^.]{0,40}codex exec[^.]{0,40}opencode run'
-chk "R13 harnesses.md: none (degraded) and its report line" "$HARN" '\*\*none\*\* \(degraded\).{0,400}degraded mode: roles shared one context'
+chk "R13 harnesses.md: none (degraded) and its report line" "$HARN" '\*\*none\*\* \(degraded\).{0,250}degraded mode: roles shared one context'
 chk "R13 harnesses.md: the fixed prompt prefix can be cached" "$HARN" 'fixed prefix can be cached'
 chk "R13 harnesses.md: the honest limit on shared blind spots" "$HARN" 'same model in fresh contexts still shares blind spots'
 for p in 'opencode.json' 'codex exec -m' 'model_reasoning_effort' 'degraded mode: roles shared one context' 'claude -p' 'shares blind spots'; do
