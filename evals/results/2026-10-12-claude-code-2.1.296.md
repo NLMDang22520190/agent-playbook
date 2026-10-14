@@ -138,7 +138,7 @@ After, on the installed v0.24.10 (2026-10-13/14, two runner calls: 2.81 + 2.99 U
 
 | Scenario | Auto passed / total | Cost (USD) | Note |
 |---|---|---|---|
-| E22 | 6/6 (+1 manual) | 0.42 | quick runs at Lite |
+| E22 | 7/7 (+1 manual) | 0.42 | quick runs at Lite |
 | E23 | 6/6 (+1 manual) | 0.37 | user override label |
 | E15 | 8/8 (+1 manual) | 0.39 | |
 | E1 | 6/6 (+1 manual) | 0.51 | |
