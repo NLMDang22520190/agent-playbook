@@ -191,7 +191,7 @@ PLAIN=( "tests/a.test.js" "ci/run.sh" "tests/helpers/h.js" "src/__snapshots__/x.
 CORP="$(mk_tmp)"; mk_repo "$CORP"
 (
   cd "$CORP" || exit 3
-  printf 'r\n' > tests/restore.sh; printf 'b\n' > tests/gone.test.js; printf 'B\000\001' > src/blob.bin; printf 'x\n' > src/size.js
+  printf 'r\n' > tests/restore.sh; printf 'b\n' > tests/gone.test.js; printf 'B\000\003' > src/blob.bin; printf 'x\n' > src/size.js
   git add -A
   idx_add "${PLAIN[@]}"
   if [ "$ODD_OK" = 1 ]; then idx_add "${ODD[@]}"; fi
