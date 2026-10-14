@@ -119,3 +119,39 @@ the v0.24.6 change to the `playbook-tdd` description (it now names Quick and the
 Total 5.52 USD. Every run passed all six checks: every call site renamed, node tests pass, the spec has an
 Understanding section, the spec names report.js, the spec is written before the first src/ edit, and nothing was written
 outside the workdir. No regression from the description change.
+
+## Run 10: v0.24.10 - baseline on v0.24.9, then the after-run on the installed v0.24.10 (2026-10-13/14, cap 6 USD)
+
+Baseline on v0.24.9 (2026-10-13):
+
+| Scenario | Auto passed / total | Cost (USD) |
+|---|---|---|
+| E1 | 6/6 | 0.56 |
+| E10 | 3/3 | 0.34 |
+| E15 | 7/7 | 0.33 |
+| E16 | 5/5 | 3.29 |
+| E21, E22, E23, E25 | skipped | - |
+
+Total 4.52 USD; E21, E22, E23 and E25 were skipped by the 6 USD cost cap.
+
+After, on the installed v0.24.10 (2026-10-13/14, two runner calls: 2.81 + 2.99 USD):
+
+| Scenario | Auto passed / total | Cost (USD) | Note |
+|---|---|---|---|
+| E22 | 6/6 (+1 manual) | 0.42 | quick runs at Lite |
+| E23 | 6/6 (+1 manual) | 0.37 | user override label |
+| E15 | 8/8 (+1 manual) | 0.39 | |
+| E1 | 6/6 (+1 manual) | 0.51 | |
+| E10 | 3/3 | 0.41 | |
+| E5 | 4/4 | 0.24 | |
+| E3 | 4/4 (+1 manual) | 0.21 | |
+| E21 | 3/6 | 0.26 | FAILED: the spec has an Understanding section; the spec names report.js; the spec is written before the first src/ edit |
+| E16 | 5/5 (+1 manual) | 2.99 | |
+
+Total 5.80 USD. Every redefined Lite scenario passes, but E21 regressed from 6/6 (Runs 8 and 9) to 3/6. The agent
+renamed every call site and the tests pass, but it never loaded playbook-tdd and wrote no spec, saying a pure rename
+changes no behaviour, so the TDD rule does not apply. Cause: v0.24.10 deleted the Quick weight, and two general rules
+lived only in the Quick text: "removing or renaming an exported symbol is a public API change: Full" (the Quick row of
+playbook-tdd and quick.md) and the always-on "load `playbook-tdd` first". The v0.24.2 guards for E21's first
+regression (AC6.1, AC6.2) were removed with them. v0.24.11 restores both rules outside Quick (the always-on TDD
+paragraph and playbook-tdd's "Decide consistently") and re-adds the guards; E21 is re-run on the installed v0.24.11.
