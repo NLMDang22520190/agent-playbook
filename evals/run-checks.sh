@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
-# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files) and prints only its lines plus the summary;
-# a missing or unknown SECTION exits 2. Without --only everything runs; the always-on checks only then.
+# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets) and prints only its lines plus the summary;
+# budgets is the word-budget checks alone (AGENTS.global.md, every skills/*/SKILL.md, stale table entries): the skills group still runs its own,
+# so --only skills keeps them; a full run runs each once. A missing or unknown SECTION exits 2. Without --only everything runs; the always-on checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
 P=0
@@ -10,10 +11,10 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
 ONLY=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files]" >&2; exit 2; }
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets]" >&2; exit 2; }
   case "$2" in
-    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes | files) ONLY="$2" ;;
-    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files)" >&2; exit 2 ;;
+    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes | files | budgets) ONLY="$2" ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets)" >&2; exit 2 ;;
   esac
 fi
 # want NAME: this group runs (always without --only)
@@ -83,7 +84,25 @@ wbcheck() {
   else bad "$f: $w words, over its budget of $b (a new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason)"; fi
 }
 
+# wbstale: a table entry for a file that does not exist is stale
+wbstale() {
+  local p
+  if [ -f "$WB" ]; then
+    for p in $(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { print $1 }' "$WB"); do
+      [ -f "$p" ] || bad "$p: in $WB but missing"
+    done
+  fi
+}
+
 SENTENCE='Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.'
+
+# --only budgets: the word-budget checks alone (a full run gets them from the always-on block and the skills group, once each)
+if [ "$ONLY" = budgets ]; then
+echo "word budgets"
+wbcheck AGENTS.global.md
+for f in skills/*/SKILL.md; do [ -f "$f" ] && wbcheck "$f"; done
+wbstale
+fi
 
 if want skills; then
 echo "skills"
@@ -124,12 +143,7 @@ for d in skills/*/; do
     [ -f "$s/$ref" ] || bad "$n: referenced file missing: $ref"
   done
 done
-# a table entry for a file that does not exist is stale
-if [ -f "$WB" ]; then
-  for p in $(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { print $1 }' "$WB"); do
-    [ -f "$p" ] || bad "$p: in $WB but missing"
-  done
-fi
+wbstale
 [ "$desc_total" -le 2000 ] && ok "all descriptions together: $desc_total chars (<=2000, keeps the skill list cheap)" || bad "descriptions total $desc_total chars (>2000)"
 fi
 

@@ -202,11 +202,15 @@ assert_rc "AC8.1 --only skills on the real tree: exit 0" 0
 assert_contains "AC8.1 --only skills: the skills lines are there" "$OUT" "name matches directory"
 assert_not_contains "AC8.1 --only skills: no gnu line" "$OUT" "GNU-only options"
 assert_not_contains "AC8.1 --only skills: no scenarios line" "$OUT" "scenarios each have"
+SKILLS_ONLY_OUT="$OUT"
 C="$(mk_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
+# the same tree also carries a stale word-budgets entry: the skills group's own wbstale call must name it (no extra run)
+printf 'skills/gone/SKILL.md 100\n' >> "$C/evals/word-budgets"
 only_run "$C" skills
 assert_rc "AC8.1 --only skills on a bad description: exit 1" 1
 assert_contains "AC8.1 --only skills on a bad description: names the SKILL.md" "$OUT" "$SKILL"
+assert_contains "R1 --only skills: a stale word-budgets entry is named (skills group runs wbstale)" "$OUT" "skills/gone/SKILL.md: in evals/word-budgets but missing"
 C="$(mk_copy)"
 only_run "$C" scenarios
 assert_rc "AC8.1 --only scenarios on the real tree: exit 0" 0
@@ -221,12 +225,26 @@ assert_not_contains "AC8.1 --only shellcheck: no gnu line" "$OUT" "GNU-only opti
 assert_not_contains "AC8.1 --only shellcheck: no skills line" "$OUT" "name matches directory"
 
 echo "AC8.1 without --only every group runs"
-C="$(mk_copy)"; fixture_gnu "$C"
-run bash "$C/evals/run-checks.sh"
-assert_rc "AC8.1 no --only: a gnu-flagged file fails the full run" 1
-for want in "name matches directory" "always-on block" "regex repeat bounds <= 255" "has a suffix (BSD sed)" "GNU-only options (BSD/macOS lacks them" "scenarios each have Prompt:" "syntax:"; do
+# every group's lines come from the real-tree full run of AC2.1 (FULL_OUT); only the flagged-file exit code needs its own run, on the
+# minimal tree (its run-checks fails anyway for what the minimal tree lacks, so the flagged file's own finding is asserted too)
+OUT="$FULL_OUT"
+for want in "name matches directory" "always-on block" "regex repeat bounds <= 255" "has a suffix (BSD sed)" "scenarios each have Prompt:" "syntax:"; do
   assert_contains "AC8.1 no --only: the full output has [$want]" "$OUT" "$want"
 done
+C="$(mk_min_copy)"
+run bash "$C/evals/run-checks.sh"
+n0="$(printf '%s\n' "$OUT" | sed -n 's/^run-checks: \([0-9][0-9]*\) problem.*/\1/p')"
+C="$(mk_min_copy)"; fixture_gnu "$C"
+run bash "$C/evals/run-checks.sh"
+n1="$(printf '%s\n' "$OUT" | sed -n 's/^run-checks: \([0-9][0-9]*\) problem.*/\1/p')"
+assert_eq "AC8.1 no --only: a gnu-flagged file adds exactly one problem to the same min-tree full run" "$((n0 + 1))" "$n1"
+assert_contains "AC8.1 no --only: the full output has [GNU-only options (BSD/macOS lacks them]" "$OUT" "GNU-only options (BSD/macOS lacks them"
+assert_contains "AC8.1 no --only: the flagged file:line is named" "$OUT" "tests/zz-only.sh:3"
+# the word budgets run exactly once in a full run (always-on block for AGENTS.global.md, skills group for the skills): no line doubled, none lost
+OUT="$FULL_OUT"
+assert_eq "AC8.1 no --only: AGENTS.global.md's budget is checked once" "1" "$(printf '%s\n' "$OUT" | grep -c '^  ok   AGENTS.global.md: .* words (budget [0-9]*)$')"
+assert_eq "AC8.1 no --only: each skill's budget is checked once" "$(ls "$PB_ROOT"/skills/*/SKILL.md | wc -l | tr -d ' ')" "$(printf '%s\n' "$OUT" | grep -c '^  ok   skills/.*/SKILL.md: .* words (budget [0-9]*)$')"
+assert_contains "AC8.1 --only skills still includes the skills budget lines" "$SKILLS_ONLY_OUT" "  ok   $SKILL: "
 
 # ---- v0.23.0 AC4.3: the control byte SOH (octal 1) in scripts is refused in every spelling (bash 3.2 on macOS) ----
 # New check group: `evals/run-checks.sh --only soh`. Every construct is built from pieces (B = one backslash, Q = a single
@@ -358,14 +376,14 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
   t_skip 4 "AC16.1 [shellcheck] needs shellcheck installed"
 fi
-# the full run: the files group loops over the same globs
+# the files group (the one the full run takes these messages from) loops over the same globs
 # one run renames both directories and feeds both groups of assertions
 C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"; mv "$C/scripts" "$C/scripts-renamed"
-run bash "$C/evals/run-checks.sh"
-assert_rc "AC16.1 [full run] tools/ renamed: exit 1" 1
-assert_contains "AC16.1 [full run] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
-assert_rc "AC16.1 [full run] scripts/ renamed: exit 1" 1
-assert_contains "AC16.1 [full run] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
+run bash "$C/evals/run-checks.sh" --only files
+assert_rc "AC16.1 [--only files] tools/ renamed: exit 1" 1
+assert_contains "AC16.1 [--only files] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
+assert_rc "AC16.1 [--only files] scripts/ renamed: exit 1" 1
+assert_contains "AC16.1 [--only files] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
 
 
 # ---- v0.23.3 AC7.3: a # right after ; & | ( ) starts a comment in the sed check too ----
@@ -448,6 +466,16 @@ echo "v0.24.8 word budgets: evals/word-budgets holds one budget per skills/*/SKI
 # wc output is space-padded on BSD, so every count goes through tr -d ' '. The cases write their own budget table into the copy (file + slack), so they
 # do not depend on today's sizes; the real table is checked as itself in the last cases.
 WB_SLACK=10
+# The budget cases run `--only budgets` (v0.24.12), which reads only AGENTS.global.md, skills/*/SKILL.md, evals/word-budgets and the script itself:
+# WBMASTER holds exactly those (each case then rewrites the table and one file), so a case costs a fraction of a second instead of a tree copy plus a group run.
+WBMASTER="$(mk_tmp)"
+mkdir -p "$WBMASTER/evals"
+cp "$MASTER/evals/run-checks.sh" "$MASTER/evals/word-budgets" "$WBMASTER/evals/"
+cp "$MASTER/AGENTS.global.md" "$WBMASTER/"
+for f in "$MASTER"/skills/*/SKILL.md; do
+  d="$WBMASTER/skills/$(basename "$(dirname "$f")")"; mkdir -p "$d"; cp -a "$f" "$d/"
+done
+mk_wb_copy() { local d; d="$(mk_tmp)"; cp -a "$WBMASTER/." "$d/"; printf '%s\n' "$d"; }
 wcw() { wc -w < "$1" | tr -d ' '; }
 # wb_table DIR -> evals/word-budgets in DIR: AGENTS.global.md and every skills/*/SKILL.md at its current words + WB_SLACK
 wb_table() {
@@ -470,17 +498,41 @@ for f in AGENTS.global.md "$PB_ROOT"/skills/*/SKILL.md; do
 done
 if grep -qi 'raising a budget needs a CHANGELOG line' "$PB_ROOT/evals/word-budgets" 2>/dev/null; then t_ok "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; else t_bad "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; fi
 
+
+# --only budgets prints only budget lines (v0.24.12): the heading, one ok line per budgeted file, the summary
+C="$(mk_wb_copy)"
+run bash "$C/evals/run-checks.sh" --only budgets
+nskills="$(ls "$C"/skills/*/SKILL.md | wc -l | tr -d ' ')"
+assert_rc "AC2 --only budgets on the real table: exit 0" 0
+assert_contains "AC2 --only budgets: run-checks: all ok" "$OUT" "run-checks: all ok"
+assert_contains "AC2 --only budgets: the AGENTS.global.md budget line" "$OUT" "  ok   AGENTS.global.md: "
+assert_contains "AC2 --only budgets: a skill budget line" "$OUT" "  ok   $SKILL: "
+assert_eq "AC2 --only budgets: one ok line per budgeted file" "$((nskills + 1))" "$(printf '%s\n' "$OUT" | grep -c '^  ok   ')"
+assert_eq "AC2 --only budgets: every ok line is a budget line" "$((nskills + 1))" "$(printf '%s\n' "$OUT" | grep -c '^  ok   .* words (budget [0-9]*)$')"
+assert_not_contains "AC2 --only budgets: no skills line (name matches directory)" "$OUT" "name matches directory"
+assert_not_contains "AC2 --only budgets: no always-on block heading" "$OUT" "always-on block"
+assert_not_contains "AC2 --only budgets: no clarify-sentence line" "$OUT" "clarify sentence"
+assert_not_contains "AC2 --only budgets: no gnu line" "$OUT" "GNU-only options"
+assert_not_contains "AC2 --only budgets: no scenarios line" "$OUT" "scenarios each have"
+assert_not_contains "AC2 --only budgets: no syntax line" "$OUT" "  ok   syntax:"
+assert_not_contains "AC2 --only budgets: no description-length line" "$OUT" "description "
+# the usage and unknown-section messages name it
+run bash "$C/evals/run-checks.sh" --only bogus
+assert_rc "AC2 --only bogus: exit 2" 2
+assert_contains "AC2 the unknown-section message names budgets" "$OUT" "budgets"
+run bash "$C/evals/run-checks.sh" --only
+assert_contains "AC2 the usage message names budgets" "$OUT" "budgets"
 # the real tree passes the skills group
-C="$(mk_copy)"
-checks "$C" skills
-assert_rc "AC2 the real tree passes the word budgets (skills group)" 0
+C="$(mk_wb_copy)"
+checks "$C" budgets
+assert_rc "AC2 the real tree passes the word budgets (--only budgets)" 0
 assert_not_contains "AC2 the real tree: no budget failure" "$OUT" "over its budget"
 
 # a skill 1 word over its budget fails and the output names file, count and budget
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 b="$(( $(wcw "$C/$SKILL") + WB_SLACK ))"
 wb_pad "$C" "$SKILL" $((WB_SLACK + 1))
-checks "$C" skills
+checks "$C" budgets
 assert_rc "AC3 a SKILL.md 1 word over its budget: exit 1" 1
 assert_contains "AC3 names the file" "$OUT" "$SKILL"
 assert_contains "AC3 says over its budget" "$OUT" "over its budget"
@@ -488,78 +540,78 @@ assert_contains "AC3 names its count" "$OUT" "$((b + 1)) words"
 assert_contains "AC3 names its budget" "$OUT" "budget of $b"
 
 # exactly at its budget passes
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 wb_pad "$C" "$SKILL" "$WB_SLACK"
-checks "$C" skills
+checks "$C" budgets
 assert_rc "AC4 a SKILL.md exactly at its budget: exit 0" 0
 assert_not_contains "AC4 no budget failure" "$OUT" "over its budget"
 
 # every skill is checked, not only one: the largest skill over its budget by 1 fails
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 big=skills/playbook-tdd/SKILL.md
 wb_pad "$C" "$big" $((WB_SLACK + 1))
-checks "$C" skills
+checks "$C" budgets
 assert_rc "AC3 playbook-tdd 1 over: exit 1" 1
 assert_contains "AC3 playbook-tdd 1 over: names it" "$OUT" "$big"
 
 # a skill with no budget entry fails with a clear message
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 grep -v "^$SKILL " "$C/evals/word-budgets" > "$C/evals/word-budgets.new" && mv "$C/evals/word-budgets.new" "$C/evals/word-budgets"
-checks "$C" skills
+checks "$C" budgets
 assert_rc "AC5 a skill without a budget entry: exit 1" 1
 assert_contains "AC5 names the skill file" "$OUT" "$SKILL"
 assert_contains "AC5 says it has no word budget" "$OUT" "no word budget"
 
 # a missing table fails closed
-C="$(mk_copy)"; rm -f "$C/evals/word-budgets"
-checks "$C" skills
+C="$(mk_wb_copy)"; rm -f "$C/evals/word-budgets"
+checks "$C" budgets
 assert_rc "AC5 evals/word-budgets missing: exit 1" 1
 assert_contains "AC5 evals/word-budgets missing: names the file" "$OUT" "word-budgets"
 
-# AGENTS.global.md has its own budget (always-on group: a full run)
-C="$(mk_copy)"; wb_table "$C"
+# AGENTS.global.md has its own budget (checked through --only budgets)
+C="$(mk_wb_copy)"; wb_table "$C"
 b="$(( $(wcw "$C/AGENTS.global.md") + WB_SLACK ))"
 wb_pad "$C" AGENTS.global.md $((WB_SLACK + 1))
-checks "$C"
+checks "$C" budgets
 assert_rc "AC3 AGENTS.global.md 1 word over its budget: exit 1" 1
 assert_contains "AC3 AGENTS.global.md: names the file and the overrun" "$OUT" "AGENTS.global.md: $((b + 1)) words, over its budget of $b"
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 wb_pad "$C" AGENTS.global.md "$WB_SLACK"
-checks "$C"
+checks "$C" budgets
 assert_not_contains "AC4 AGENTS.global.md exactly at its budget: no budget failure" "$OUT" "over its budget"
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 grep -v '^AGENTS.global.md ' "$C/evals/word-budgets" > "$C/evals/word-budgets.new" && mv "$C/evals/word-budgets.new" "$C/evals/word-budgets"
-checks "$C"
+checks "$C" budgets
 assert_contains "AC5 AGENTS.global.md without a budget entry: says no word budget" "$OUT" "no word budget"
 
 # review 1 (v0.24.8): CRLF table without comments, a missing file, a stale table entry
 # a CRLF table whose lines carry no trailing comment still parses (the \r is not part of the number)
-C="$(mk_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
-checks "$C" skills
+C="$(mk_wb_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
+checks "$C" budgets
 assert_rc "R1 a CRLF budget table without comments, counts within budget: exit 0" 0
 assert_not_contains "R1 a CRLF table without comments: no 'no word budget' failure" "$OUT" "no word budget"
-C="$(mk_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
+C="$(mk_wb_copy)"; wb_table "$C"; to_crlf "$C/evals/word-budgets"
 b="$(( $(wcw "$C/$SKILL") + WB_SLACK ))"
 wb_pad "$C" "$SKILL" $((WB_SLACK + 1))
-checks "$C" skills
+checks "$C" budgets
 assert_rc "R1 a CRLF budget table, 1 word over: exit 1" 1
 assert_contains "R1 a CRLF budget table, 1 word over: says over its budget with the budget" "$OUT" "over its budget of $b"
 
 # a missing file is "missing, no word count", never "over its budget"
-C="$(mk_copy)"; wb_table "$C"; rm -f "$C/AGENTS.global.md"
-checks "$C"
+C="$(mk_wb_copy)"; wb_table "$C"; rm -f "$C/AGENTS.global.md"
+checks "$C" budgets
 assert_rc "R1 AGENTS.global.md deleted: exit 1" 1
 assert_contains "R1 a missing file says missing, no word count" "$OUT" "AGENTS.global.md: missing, no word count"
 assert_not_contains "R1 a missing file is not reported as over its budget" "$OUT" "over its budget"
 
 # a table entry for a file that does not exist is a failure
-C="$(mk_copy)"; wb_table "$C"
+C="$(mk_wb_copy)"; wb_table "$C"
 printf 'skills/gone/SKILL.md 100\n' >> "$C/evals/word-budgets"
-checks "$C" skills
+checks "$C" budgets
 assert_rc "R1 a stale table entry: exit 1" 1
 assert_contains "R1 a stale entry names the path and says in evals/word-budgets but missing" "$OUT" "skills/gone/SKILL.md: in evals/word-budgets but missing"
-C="$(mk_copy)"; wb_table "$C"
-checks "$C" skills
+C="$(mk_wb_copy)"; wb_table "$C"
+checks "$C" budgets
 assert_not_contains "R1 no stale entry in a table of existing files" "$OUT" "in evals/word-budgets but missing"
 
 t_summary

@@ -493,6 +493,46 @@ if holds_secret "$PUB"; then t_bad "CH1: pub did not receive the secret commit" 
 assert_contains "CH1: the note says origin pushes to a place that no configured remote fully owns (its push places differ)" "$OUT" "origin pushes to a place that no configured remote fully owns (its push places differ); scanning the full range"
 assert_not_contains "CH1: the note does not say 'no configured remote owns' (fork is configured)" "$OUT" "no configured remote owns"
 
+# ---- v0.24.12: the note wording in leak-check.sh (v0.24.9 review round 2 mutants L3-L5): each case asserts the exact wording, the exit code and the finding ----
+# the two wordings of the note when origin's push goes to another place
+LC_PLAIN="origin pushes to a place no configured remote owns; scanning the full range"
+LC_CHAIN="origin pushes to a place that no configured remote fully owns (its push places differ); scanning the full range"
+
+echo "v0.24.12 L3 origin's pushurl is remote fork's url, and url.<pub>.pushInsteadOf rewrites that url: git pushes to pub, the note keeps the plain wording"
+# push_rewritten must veto the chain wording: fork is a configured remote with that url, but the push does not go there.
+pfix fork
+git -C "$R" config remote.origin.pushurl "$FORK"
+git -C "$R" config "url.$PUB.pushInsteadOf" "$FORK"
+lc_streams --unpushed "$PSEC" --remote origin
+assert_eq "L3: the secret is on fork only and the push goes to pub: scanned, exit 1" "1" "$RC"
+assert_contains "L3: the finding is named" "$STD" "s.txt:1: github-token"
+assert_contains "L3: the note says origin pushes to a place no configured remote owns" "$ERR" "$LC_PLAIN"
+assert_not_contains "L3: the note does not use the chain wording" "$ERR" "fully owns"
+
+echo "v0.24.12 L4 origin has urls priv and pub and pushurl pub (its own second url): no other remote owns pub, the note keeps the plain wording"
+# place_known must skip the remote being asked about: origin's own url list holds pub, which is no other remote's place.
+pfix origin
+git -C "$R" config --add remote.origin.url "$PUB"
+git -C "$R" config remote.origin.pushurl "$PUB"
+lc_streams --unpushed "$PSEC" --remote origin
+assert_eq "L4: the secret is on origin/main, the push goes to pub: scanned, exit 1" "1" "$RC"
+assert_contains "L4: the finding is named" "$STD" "s.txt:1: github-token"
+assert_contains "L4: the note says origin pushes to a place no configured remote owns" "$ERR" "$LC_PLAIN"
+assert_not_contains "L4: the note does not use the chain wording (origin is not its own owner)" "$ERR" "fully owns"
+
+echo "v0.24.12 L5 pushurl chain where fork's url is spelled through url.<base>.insteadOf: fork still owns the place, the note uses the chain wording"
+# place_known must compare the insteadOf-expanded urls too: fork's raw url is 'short:fork.git', only `git remote get-url` expands it.
+pfix fork
+git -C "$R" config "url.${FORK%/*}/.insteadOf" "short:"
+git -C "$R" config remote.fork.url "short:fork.git"
+git -C "$R" config remote.fork.pushurl "$PUB"
+git -C "$R" config remote.origin.pushurl "$FORK"
+lc_streams --unpushed "$PSEC" --remote origin
+assert_eq "L5: the secret is on fork only, origin pushes to fork's expanded url, fork pushes to pub: scanned, exit 1" "1" "$RC"
+assert_contains "L5: the finding is named" "$STD" "s.txt:1: github-token"
+assert_contains "L5: the note says origin pushes to a place that no configured remote fully owns (its push places differ)" "$ERR" "$LC_CHAIN"
+assert_not_contains "L5: the note does not say 'no configured remote owns' (fork is configured)" "$ERR" "no configured remote owns"
+
 echo "v0.23.3 lane A review round 4 F3 control: origin's pushurl is remote fork's url, fork holds the secret (still allowed)"
 pfix fork
 git -C "$R" config remote.origin.pushurl "$FORK"
