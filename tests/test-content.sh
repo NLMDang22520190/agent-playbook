@@ -1219,6 +1219,16 @@ check_sec "v24.13 S1 E25 has an Auto checks: line" "$SCEN" '^## E25 ' 'Auto chec
 E25PL='**Prompt:** "Add an exported constant VERSION = '"'"'1.0.0'"'"' to src/calc.js, src/cart.js and src/report.js."'
 if grep -qF -- "$E25PL" "$SCEN"; then t_ok "v24.13 S1 E25 verbatim prompt present (characterization: the prompt text was kept when E25 was retired)"; else t_bad "v24.13 S1 E25 verbatim prompt present" "not found in $SCEN"; fi
 if grep -F -- "$E25PL" "$SCEN" | grep -qi 'retired'; then t_bad "v24.13 S1 E25 the Prompt line no longer says it is retired" "$(grep -F -- "$E25PL" "$SCEN")"; else t_ok "v24.13 S1 E25 the Prompt line no longer says it is retired"; fi
+# v0.24.13 review R1 finding 1: the E25 Pass if quotes the playbook-tdd rule (SKILL.md:49), not a paraphrase of the retired v0.24.11 rule
+E25S="$(awk -v h='## E25 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E25R1='removing or renaming an exported symbol is a public API change: Full'
+E25R2='changes no existing public API'
+if printf '%s' "$E25S" | grep -qF -- "$E25R1"; then t_ok "v24.13 R1 F1 E25 quotes the rule: removing or renaming an exported symbol is a public API change: Full"; else t_bad "v24.13 R1 F1 E25 quotes the rule: removing or renaming an exported symbol is a public API change: Full" "[$E25R1] not in the E25 section"; fi
+qchk "v24.13 R1 F1 E25 quotes the rule: changes no existing public API" "$E25S" 'changes no existing public API'
+qchk "v24.13 R1 F1 E25 cites SKILL.md:49 (or SKILL.md:48-49)" "$E25S" 'SKILL\.md:4[89]'
+if printf '%s' "$E25S" | grep -qiF -- 'a change to a name that other files use'; then t_bad "v24.13 R1 F1 E25 no longer paraphrases 'a change to a name that other files use'" "paraphrase still in the E25 section"; else t_ok "v24.13 R1 F1 E25 no longer paraphrases 'a change to a name that other files use'"; fi
+if grep -qF -- "$E25R1" "$SKILL"; then t_ok "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (1)"; else t_bad "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (1)" "[$E25R1] not in $SKILL"; fi
+if grep -qF -- "$E25R2" "$SKILL"; then t_ok "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (2)"; else t_bad "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (2)" "[$E25R2] not in $SKILL"; fi
 l21="$(line_of "$SCEN" '^## E21 ')"; l22="$(line_of "$SCEN" '^## E22 ')"; l23="$(line_of "$SCEN" '^## E23 ')"; l24="$(line_of "$SCEN" '^## E24 ')"; l25="$(line_of "$SCEN" '^## E25 ')"
 if [ -n "$l21" ] && [ -n "$l22" ] && [ -n "$l23" ] && [ -n "$l24" ] && [ -n "$l25" ] && [ "$l21" -lt "$l22" ] && [ "$l22" -lt "$l23" ] && [ "$l23" -lt "$l24" ] && [ "$l24" -lt "$l25" ]; then t_ok "AC1.8 E22..E25 follow E21 in order"
 else t_bad "AC1.8 E22..E25 follow E21 in order" "E21=[$l21] E22=[$l22] E23=[$l23] E24=[$l24] E25=[$l25]"; fi

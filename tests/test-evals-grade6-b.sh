@@ -283,6 +283,19 @@ assert_eq "AC2.10 E26 one call: the isAdmin check still PASSes" "PASS" "$(e_stat
 assert_eq "AC2.10 E26 one call: the label check still PASSes" "PASS" "$(e_state E26 "$K26L")"
 run_x E26 asked2 "$E26_FIX" "$INIT" "$(AQ)" "$(tu Bash '{"command":"ls"}')" "$(AQ)" "$(res "$L26")"
 assert_eq "AC2.10 E26 headless, two AskUserQuestion calls: the check FAILs" "FAIL" "$(e_state E26 "$K26Q")"
+# v0.24.13 review R1 finding 2: with --interactive the single AskUserQuestion call is MANUAL, not FAIL, and the prompt has no non-interactive note (kills the mutant that drops the INTERACTIVE branch of grade_E26)
+jl "xE26int" "$(AQ)" "$(res "$L26")"
+mk_adapter "E26int" "$E26_FIX
+cat $J/xE26int.json"
+XW="$(mk_tmp)"
+run bash "$RUNNER" --interactive --cmd "bash $A/E26int.sh" --scenarios E26 --workroot "$XW" --out "$XW/results.md"
+assert_eq "R1 F2 E26 --interactive, one AskUserQuestion call: the AskUserQuestion line is MANUAL (not FAIL)" "MANUAL" "$(e_state E26 "$K26Q")"
+assert_eq "R1 F2 E26 --interactive, one call: no FAIL line names AskUserQuestion" "0" "$(printf '%s\n' "$OUT" | grep '^E26 FAIL' | grep -c 'AskUserQuestion')"
+assert_eq "R1 F2 E26 --interactive, one call: graded, no FAIL line at all" "0/graded" "$(fail_graded E26)"
+assert_rc "R1 F2 E26 --interactive, one call: exit 0" 0
+PROMPT26I="$(cat "$REC/E26.prompt" 2>/dev/null)"
+assert_contains "R1 F2 E26 --interactive: the recorded prompt is this run's (asks for owner)" "$PROMPT26I" "owner"
+assert_not_contains "R1 F2 E26 --interactive: the recorded prompt has no '(Non-interactive run' note" "$PROMPT26I" "(Non-interactive run"
 run_x E26 plain "$E26_FIX
 echo 'Weight: Lite (user override; Full criteria: auth check)'"
 assert_eq "AC2.8 E26 plain-text transcript: the AskUserQuestion check is MANUAL" "MANUAL" "$(e_state E26 "$K26Q")"
