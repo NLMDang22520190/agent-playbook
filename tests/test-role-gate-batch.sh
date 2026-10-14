@@ -211,13 +211,25 @@ corp_combo AC1 "$CORP" 1 C 1
 corp_combo AC1 "$CORP" 2 C 0
 corp_combo AC1 "$CORP" 3 C 0
 corp_combo AC1 "$CORP" 8 C 0
+# Platform tier (v0.24.15), decided by two probes above, not by uname: ODD_OK=0 (the odd names cannot be indexed) and
+# MODE_OK=0 (the file system does not keep the executable bit). Both hold on Git Bash over NTFS, where one gate run costs
+# about 4 s (a corpus combo about 22 s, measured); macOS has ODD_OK=0 but MODE_OK=1 and Linux has both, so they run it all.
+# Without the odd names the corpus holds no invalid UTF-8 byte: its only non-ASCII names are the valid UTF-8 cafe paths, and
+# of the confs only 8 (caf./) reads them differently per locale. So there the UTF-8 pass runs conf 8 alone; the C pass above
+# still covers every class rule (default regex, infra first, a custom test ERE), every corpus path kind and both callers
+# (check, size). The total of passed + skipped stays the same on every platform.
 if [ -n "$UTF8" ]; then
   echo "  ($UTF8 locale)"
-  ci=1
-  while [ "$ci" -le 11 ]; do
-    if [ "$ci" = 1 ]; then corp_combo AC1 "$CORP" "$ci" "$UTF8" 1; else corp_combo AC1 "$CORP" "$ci" "$UTF8" 0; fi
-    ci=$((ci + 1))
-  done
+  if [ "$ODD_OK" = 1 ] || [ "$MODE_OK" = 1 ]; then
+    ci=1
+    while [ "$ci" -le 11 ]; do
+      if [ "$ci" = 1 ]; then corp_combo AC1 "$CORP" "$ci" "$UTF8" 1; else corp_combo AC1 "$CORP" "$ci" "$UTF8" 0; fi
+      ci=$((ci + 1))
+    done
+  else
+    corp_combo AC1 "$CORP" 8 "$UTF8" 0
+    t_skip 51 "this platform keeps neither the odd names (\\377, CR, tab) nor the executable bit (NTFS): corpus in a UTF-8 locale for conf 8 only (the locale-sensitive one); confs 1-7 and 9-11 run on Linux and macOS"
+  fi
 else
   t_skip 56 "no UTF-8 locale installed: corpus in a UTF-8 locale"
 fi
