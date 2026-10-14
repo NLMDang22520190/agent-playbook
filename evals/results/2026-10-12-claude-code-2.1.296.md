@@ -182,14 +182,14 @@ and Full scenarios after v0.24.11 to v0.24.13, with E25 (new) and E26 (auto-grad
 | E16 | 5/5 | 1 | 2.19 | |
 | E26 | 7/7 | 1 | 0.42 | auto-graded for the first time; the transcript had no AskUserQuestion |
 | E4 | 4/4 | 0 | 0.37 | |
-| E1, run 1 | 6/7 | 0 | 0.57 | FAIL "reply states the weight" |
-| E1, run 2 | 7/7 | 0 | 0.44 | re-run |
-| E1, run 3 | 7/7 | 0 | 0.56 | re-run |
+| E1, run 1 | 5/6 | 1 | 0.57 | FAIL "reply states the weight" |
+| E1, run 2 | 6/6 | 1 | 0.44 | re-run |
+| E1, run 3 | 6/6 | 1 | 0.56 | re-run |
 
-Total 6.84 USD of the 12 USD the user added (E1 three runs 1.57, the other five scenarios 5.27).
+Total 6.83 USD of the 12 USD the user added (E1 three runs 1.57, the other five scenarios 5.26).
 
 E1 run 1: the reply said "at its light weight" instead of "Weight: Lite", so the grader found no weight statement. Both
-re-runs passed 7/7, so this is judged noise (1 of 3), not a regression; no playbook change. The wording of the weight
+re-runs passed 6/6, so this is judged noise (1 of 3), not a regression; no playbook change. The wording of the weight
 statement stays a grader concern if it repeats.
 
 The first pass of E26, E1 and E4 died on an API ENOTFOUND network error (cost 0, no transcript worth grading) and was
