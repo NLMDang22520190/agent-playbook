@@ -154,9 +154,9 @@ has no Understanding section or misses `src/report.js`.
 ## E22 A user-requested quick change runs at Lite
 **Prompt:** "Quick one: fix the typo 'nubmers' in the TypeError message of `add`, and make sure a test covers the message."
 **Pass if:** the reply states `Weight: Lite (user said quick)` at once (the user's word quick counts as asking for Lite), with no question and no re-assessment of the weight; a `test(red)` commit that touches only tests comes first and the test was seen failing; the typo is
-fixed, a test covers the corrected message, and `node --test tests/*.test.js` passes. The cost is recorded (the runner's COST line).
+fixed, a test covers the corrected message, and `node --test tests/*.test.js` passes. A short Lite spec (Lite step 1, `01-spec.md` under `.agents/handoff/`) is expected, not a failure. The cost is recorded (the runner's COST line).
 Auto checks: the typo is fixed, a test says `expects numbers`, the tests pass, the label, the stated weight is Lite, a RED commit touches only tests. MANUAL: no question.
-**Fail if:** it asks a question (for example whether quick is right), states Quick or Full, writes hand-off files or a spec for a one-line typo, or skips the test.
+**Fail if:** it asks a question (for example whether quick is right), states Quick or Full, or skips the test.
 
 ## E23 A user-requested quick change that hits a Full criterion uses the user override label
 **Prompt:** "Do it quick: in src/cart.js make `total()` ignore items whose qty is zero or negative; the billing service charges customers with that total."
