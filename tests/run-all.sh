@@ -12,7 +12,9 @@
 # classified: "rerun: test-x.sh passed alone (flaky or load)" or "... failed again (real)"; when the hint fired
 # (environment problem) nothing is re-run. The exit code always reflects the first run.
 # With tests/shard-weights ("test-x.sh SECONDS" lines, # comments; unknown suites weigh 10) the suites are
-# assigned greedily instead: heaviest first (ties by name), each to the lightest shard so far (ties: lowest).
+# assigned greedily instead: heaviest first (ties by name), each to the lightest shard so far (ties: lowest). Inside a shard
+# the job pool then also starts the suites heaviest first (ties by name), so the longest suite is never the last one started;
+# the logs are still printed in name order. Without weights or without PB_SHARD the start order is the name order.
 cd "$(dirname "$0")/.." || exit 3
 SHARD="${PB_SHARD:-}"; SK=1; SN=1
 if [ -n "$SHARD" ]; then
@@ -40,21 +42,23 @@ trap 'rm -rf "$OUTD"' EXIT
 PIDS=""
 live_jobs() { LIVE=0; local p keep=""; for p in $PIDS; do kill -0 "$p" 2>/dev/null && { LIVE=$((LIVE + 1)); keep="$keep $p"; }; done; PIDS="$keep"; }
 set -- tests/test-*.sh
+ORDER="$*"   # the start order: name order, unless the weights decide it below
 if [ -n "$SHARD" ] && [ -f tests/shard-weights ]; then
   tab="$(printf '\t')"
   sel="$(for t in "$@"; do printf '%s\n' "$t"; done |
     awk 'FILENAME != "-" { if ($0 ~ /^[ \t]*(#|$)/) next; w[$1] = $2; next }
          { b = $0; sub(/^.*\//, "", b); printf "%s\t%s\t%s\n", ((b in w) ? w[b] + 0 : 10), b, $0 }' tests/shard-weights - |
     LC_ALL=C sort -t "$tab" -k1,1nr -k2,2 |
-    awk -F '\t' -v k="$SK" -v n="$SN" '{ m = 1; for (i = 2; i <= n; i++) if (tot[i] < tot[m]) m = i; tot[m] += $1; if (m == k) print $3 }' |
-    LC_ALL=C sort)"
-  set -- $sel   # tests/test-*.sh paths have no spaces
+    awk -F '\t' -v k="$SK" -v n="$SN" '{ m = 1; for (i = 2; i <= n; i++) if (tot[i] < tot[m]) m = i; tot[m] += $1; if (m == k) print $3 }')"
+  ORDER="$sel"   # heaviest first (ties by name): the order the job pool starts them in
+  set -- $(printf '%s\n' $sel | LC_ALL=C sort)   # the logs are still printed in name order
 elif [ -n "$SHARD" ]; then
   i=0; sel=""
   for t in "$@"; do i=$((i + 1)); [ $(( (i - 1) % SN )) -eq $((SK - 1)) ] && sel="$sel $t"; done
   set -- $sel   # tests/test-*.sh paths have no spaces
+  ORDER="$sel"
 fi
-for t in "$@"; do
+for t in $ORDER; do
   live_jobs
   while [ "$LIVE" -ge "$JOBS" ]; do sleep 0.1; live_jobs; done
   n="$(basename "$t" .sh)"
