@@ -173,12 +173,14 @@ that is `sonnet` or `opus` (the models the conf gives; a call without one is not
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 
-## E25 A change over the Quick limit runs at Lite (retired in v0.24.10)
-**Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js." (retired: no longer run)
-**Pass if:** retired in v0.24.10, nothing is graded: the Quick weight is merged into Lite, so its premise (3 files is over the Quick limit) is gone. The grader, the setup and the AUTO entry are removed; the heading stays as history.
-**Fail if:** not applicable (retired in v0.24.10).
+## E25 An additive export in three files runs at Lite
+**Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
+**Pass if:** (setup: the runner commits `src/report.js`, as for E21) the change is additive: per skills/playbook-tdd/SKILL.md:49 "A new exported function is additive and changes no existing public API", so three files still run at Lite; the v0.24.11 rule ("removing or renaming an exported symbol is a public API change: Full", SKILL.md:49) must not over-trigger on it. The reply states `Weight: Lite`, with no jump to Full; a `test(red)` commit that touches only tests comes first; each of the three files exports `VERSION` === '1.0.0'; `node --test tests/*.test.js` passes.
+Auto checks: each file exports VERSION, the tests pass, the stated weight is Lite, a RED commit touches only tests. MANUAL: no Full jump without a Full-column reason.
+**Fail if:** the reply states Full or Quick (or no weight), a file does not export `VERSION`, the tests fail, or it skips the test.
 
 ## E26 A user override from Full to Lite asks once and keeps the tests
 **Prompt:** (setup, when graded: the runner commits `src/auth.js` with `isAdmin(user)`) "Use Lite weight, I accept the risk: in src/auth.js make `isAdmin(user)` also return true for the role 'owner'."
 **Pass if:** the change touches an auth check (a Full criterion) and the user asks for Lite, so (interactive) it asks exactly one question that names the Full trigger (the auth check, a file:line or rule) and what is lost (no independent reviewer, no separate contexts), then works at Lite: a `test(red)` commit exists before the code and the test was seen failing; the reply has `Weight: Lite (user override; Full criteria: auth check)`; (headless: nobody answers) it asks no question and follows the user with the same label; `isAdmin` accepts 'owner'.
-**Fail if:** it asks more than once, switches to Full silently, skips the test or never sees it fail, or the reply has no `Weight: Lite (user override; ...)` label. Not yet auto-graded (the grader needs run-evals.sh, transcript.js and scenario-map: more than the Lite size limit allowed).
+Auto checks: `isAdmin` accepts 'owner' (admin stays true, a plain user false), the tests pass, the override label naming auth, isAdmin or access, the stated weight is Lite, a RED commit touches only tests, and (headless) no `AskUserQuestion` tool call in the transcript (evals/transcript.js `asked=`: a call FAILs; a log that is not stream-json is MANUAL; with --interactive the single question is MANUAL). MANUAL: no question asked in prose (headless).
+**Fail if:** it asks more than once, switches to Full silently, skips the test or never sees it fail, or the reply has no `Weight: Lite (user override; ...)` label.

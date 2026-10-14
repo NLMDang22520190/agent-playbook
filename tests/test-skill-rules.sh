@@ -109,6 +109,9 @@ if [ "$MAXLEN" -le 540 ]; then t_ok "R9 no line of SKILL.md is longer than the c
 
 echo "v0.24.0 AC2.5/R7/R9 SKILL.md: a configured model is binding, the plan line, ask once, headless, effort"
 ROLES="$(flat "$SKILL" '^## Starting roles per harness' 2)"
+# v0.24.13: the harness and model plumbing (spawn mechanics, effort passing) moved to references/harnesses.md
+HARNMD="$PB_ROOT/skills/playbook-tdd/references/harnesses.md"
+HARN="$(tr '\n' ' ' < "$HARNMD" 2>/dev/null)"
 if [ -n "$ROLES" ]; then t_ok "the Starting roles per harness section exists"; else t_bad "the Starting roles per harness section exists" "not found"; fi
 chk "AC2.5 a configured model is binding" "$ROLES" 'configured model[^.]{0,60}binding|binding[^.]{0,60}(configured )?model'
 chk "AC2.5 the agent never upgrades or downgrades it on its own judgement" "$ROLES" 'never (upgrade|downgrade)[^.]{0,80}(own|its) (judg|decision)|never upgrades? or downgrades?'
@@ -121,10 +124,10 @@ chk "AC2.5 ask when a role resolves to session on a Full task" "$ROLES" 'resolve
 chk "AC2.5 ask when confirm_models=always" "$ROLES" 'confirm_models=always|confirm_models is always'
 chk "AC2.5 never ask when confirm_models=never" "$ROLES" 'confirm_models=never[^.]{0,80}never ask|never ask[^.]{0,80}confirm_models=never|(never|not) asks?[^.]{0,60}confirm_models=never'
 chk "AC2.5 headless: use the conf, never upgrade" "$ROLES" 'headless[^.]{0,120}(use the conf|conf)[^.]{0,80}never upgrade|headless[^.]{0,160}never upgrade'
-chk "R7 the effort is passed where the harness supports it" "$ROLES" 'effort[^.]{0,160}(Agent|codex exec|OpenCode)|(Agent|codex exec|OpenCode)[^.]{0,160}effort'
-chk "R7 the Claude Code Agent effort parameter" "$ROLES" 'Agent[^.]{0,60}`?effort`? parameter|`effort` parameter'
-chk "R7 codex exec -c model_reasoning_effort" "$ROLES" 'model_reasoning_effort'
-chk "R7 otherwise the effort is only printed" "$ROLES" '(else|otherwise)[^.]{0,60}print[^.]{0,40}(only|it)|print(ed)? (it )?only'
+chk "R7 the effort is passed where the harness supports it" "$HARN" 'effort[^.]{0,160}(Agent|codex exec|OpenCode)|(Agent|codex exec|OpenCode)[^.]{0,160}effort'
+chk "R7 the Claude Code Agent effort parameter" "$HARN" 'Agent[^.]{0,60}`?effort`? parameter|`effort` parameter'
+chk "R7 codex exec -c model_reasoning_effort" "$HARN" 'model_reasoning_effort'
+chk "R7 otherwise the effort is only printed" "$HARN" '(else|otherwise)[^.]{0,60}print[^.]{0,40}(only|it)|print(ed)? (it )?only'
 chk "R7 an unknown confirm_models value is treated as on-change" "$ROLES" 'unknown[^.]{0,80}on-change|on-change[^.]{0,80}unknown'
 chk "AC2.5 on-change is the default" "$ROLES" 'on-change[^.]{0,60}default|default[^.]{0,60}on-change'
 chk "AC2.5 regression: the resolve-each-role-model rule stays" "$ROLES" 'role-model\.sh <role> --harness <h>'
@@ -164,7 +167,7 @@ chk "AC3.2 reviewer.md: regression, no evidence no finding stays" "$RV" 'No evid
 
 
 echo "v0.24.0 review round 2 F4: the effort command carries --harness"
-chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$ROLES" 'role-model\.sh <role> --harness <h> --effort'
+chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$HARN" 'role-model\.sh <role> --harness <h> --effort'
 
 echo "v0.24.2 AC2.1 SKILL.md resolves the reviewer model with role-model.sh, not the generic conf key"
 SKTEXT="$(tr '\n' ' ' < "$SKILL" 2>/dev/null)"
@@ -174,4 +177,45 @@ if printf '%s' "$SKTEXT" | grep -qF 'conf.sh get model_reviewer'; then
 else
   t_ok "AC2.1 SKILL.md no longer says conf.sh get model_reviewer"
 fi
+
+echo "v0.24.13 lane R: the harness and model plumbing moves to references/harnesses.md; the binding rules stay in SKILL.md"
+assert_file "R13 references/harnesses.md exists" "$HARNMD"
+POINTER='How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.'
+if grep -qxF -- "$POINTER" "$SKILL"; then t_ok "R13 SKILL.md has the pointer line to references/harnesses.md"; else t_bad "R13 SKILL.md has the pointer line to references/harnesses.md" "no line exactly [$POINTER]"; fi
+chk "R13 the pointer sits in the Starting roles section" "$ROLES" 'references/harnesses\.md'
+chk "R13 harnesses.md: native spawns a sub-agent per role with a fresh context" "$HARN" '\*\*native\*\*[^.]{0,80}sub-agent per role[^.]{0,40}fresh context'
+chk "R13 harnesses.md: native passes the role file and input paths, not the conversation" "$HARN" 'full text of the role file[^.]{0,80}not your conversation'
+chk "R13 harnesses.md: Claude Code Agent/Task tool with the model parameter" "$HARN" 'Agent`/`Task` tool[^.]{0,40}`model` parameter'
+chk "R13 harnesses.md: OpenCode per-role agent in opencode.json" "$HARN" 'per-role agent in `opencode\.json`'
+chk "R13 harnesses.md: Codex manual mode with codex exec -m" "$HARN" 'codex exec -m <model>'
+chk "R13 harnesses.md: manual runs each role as a separate headless process" "$HARN" '\*\*manual\*\*[^.]{0,80}separate headless process'
+chk "R13 harnesses.md: manual examples claude -p, codex exec, opencode run" "$HARN" 'claude -p[^.]{0,40}codex exec[^.]{0,40}opencode run'
+chk "R13 harnesses.md: none (degraded) and its report line" "$HARN" '\*\*none\*\* \(degraded\).{0,250}degraded mode: roles shared one context'
+chk "R13 harnesses.md: the fixed prompt prefix can be cached" "$HARN" 'fixed prefix can be cached'
+chk "R13 harnesses.md: the honest limit on shared blind spots" "$HARN" 'same model in fresh contexts still shares blind spots'
+for p in 'opencode.json' 'codex exec -m' 'model_reasoning_effort' 'claude -p' 'shares blind spots' 'Agent`/`Task` tool' 'never your earlier reasoning'; do
+  if grep -qF -- "$p" "$SKILL"; then t_bad "R13 moved, not copied: SKILL.md no longer says [$p]" "still in $SKILL"; else t_ok "R13 moved, not copied: SKILL.md no longer says [$p]"; fi
+done
+chk "R13 stays in SKILL.md: the mechanical model routing" "$ROLES" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
+chk "R13 stays in SKILL.md: reviewer_light for tests, docs or skill text" "$ROLES" '`reviewer_light` for a review of a diff that only touches tests, docs or skill text'
+chk "R13 stays in SKILL.md: build role prompts from templates/role-prompt.md" "$ROLES" 'Build every sub-agent prompt from `templates/role-prompt\.md`'
+echo "v0.24.13 review round 1: the binding none-mode rule and the native isolation clause stay in SKILL.md (the mechanics stay moved)"
+chk "R13 stays in SKILL.md: native roles get the role file and input paths, never your conversation" "$ROLES" 'Native roles[^.]{0,80}full role file[^.]{0,80}input paths[^.]{0,40}never your conversation'
+chk "R13 stays in SKILL.md: none mode plays the roles one after another" "$ROLES" '`none` mode[^.]{0,40}play[s]? the roles one after another'
+chk "R13 stays in SKILL.md: none mode commits between roles and re-reads only the hand-off files" "$ROLES" '`none` mode[^.]{0,120}commit between roles[^.]{0,80}re-read only the hand-off files'
+chk "R13 stays in SKILL.md: none mode still runs the gates" "$ROLES" '`none` mode[^.]{0,200}still run the gates'
+chk "R13 stays in SKILL.md: none mode reports the degraded line" "$ROLES" '`none` mode[^.]{0,250}degraded mode: roles shared one context'
+# the "except in `none` mode (see below)" of the opening paragraph must have a target below it
+SEEBELOW="$(awk 'f { print } index($0, "except in `none` mode (see below)") { f = 1 }' "$SKILL" 2>/dev/null | tr '\n' ' ')"
+if grep -qF 'except in `none` mode (see below)' "$SKILL"; then t_ok "R13 SKILL.md still has the 'except in none mode (see below)' pointer"; else t_bad "R13 SKILL.md still has the 'except in none mode (see below)' pointer" "line not found in $SKILL"; fi
+chk "R13 the 'see below' target: none mode is defined below the pointer" "$SEEBELOW" 'In `none` mode[^.]{0,40}play[s]? the roles one after another'
+# the Why line of the section reads on its own: no orphan prompt-prefix reason (the prefix caching moved to harnesses.md)
+WHY="$(printf '%s' "$ROLES" | grep -oE '\*\*Why:\*\*.*' )"
+if [ -n "$WHY" ]; then t_ok "R13 the Starting roles section has a Why line"; else t_bad "R13 the Starting roles section has a Why line" "no **Why:** in the section"; fi
+if printf '%s' "$WHY" | grep -qiE 'prompt prefix|cheaper to reuse'; then t_bad "R13 the Why line no longer gives the moved prompt-prefix reason" "$WHY"; else t_ok "R13 the Why line no longer gives the moved prompt-prefix reason"; fi
+TW="$(wc -w < "$SKILL" | tr -d ' ')"
+if [ "$TW" -le 3577 ]; then t_ok "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored): $TW"; else t_bad "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored)" "$TW words"; fi
+TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
+WANT=$(( (TW + 49) / 50 * 50 ))
+assert_eq "R13 the playbook-tdd budget is the new count rounded up to the next 50" "$WANT" "$TB"
 t_summary

@@ -7,23 +7,64 @@
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/run-checks-fixture.sh"
 
+# ---- v0.24.13: the min-tree cases of the dupmax, sed and soh families are batched (a case cost ~1.1 s on Windows: a cp -a, a run-checks, the rest) ----
+# bound_case / sed_case / soh_case NAME FILE BODY-LINE EXPECT(fail|pass) only queue a case; bq_flush FAMILY then writes every fixture of the family
+# as its own file (zz-FAMILY-NNN.sh, one per case, so a finding names exactly one case) into ONE min tree per expectation, runs the section once on
+# the "fail" tree and once on the "pass" tree, and asserts per case on the shared output: a fail case has its own FILE:LINE named, a pass case has its
+# FILE not named (the fixed-width NNN keeps one file name from being a prefix of another). Several cases on install.sh (the one fixed name) share that file
+# on different lines (3, 4, ...). The rc is one assertion per tree: the fail tree exits 1 and the all-pass tree exits 0.
+BQ_FAM=(); BQ_NAME=(); BQ_REL=(); BQ_LINE=(); BQ_EXP=()
+bq_add() { # FAMILY NAME FILE BODY-LINE EXPECT
+  local n="${#BQ_FAM[@]}"
+  BQ_FAM[$n]="$1"; BQ_NAME[$n]="$2"; BQ_REL[$n]="$3"; BQ_LINE[$n]="$4"; BQ_EXP[$n]="$5"
+}
+# bq_flush FAMILY ACID SECTION
+bq_flush() {
+  local fam="$1" ac="$2" sec="$3" exp i n d f ln rc_fail=1 rc_pass=0 out_fail="" out_pass="" ninst
+  local BQ_FILE=() BQ_FLN=()
+  for exp in fail pass; do
+    C="$(mk_min_copy)"; ninst=0; n=0
+    for ((i = 0; i < ${#BQ_FAM[@]}; i++)); do
+      [ "${BQ_FAM[$i]}" = "$fam" ] && [ "${BQ_EXP[$i]}" = "$exp" ] || continue
+      n=$((n + 1))
+      if [ "${BQ_REL[$i]}" = install.sh ]; then
+        f=install.sh; ln=$((3 + ninst))
+        if [ "$ninst" = 0 ]; then printf '#!/usr/bin/env bash\n# fixture\n%s\n' "${BQ_LINE[$i]}" > "$C/$f"
+        else printf '%s\n' "${BQ_LINE[$i]}" >> "$C/$f"; fi || t_bad "$ac ${BQ_NAME[$i]}: fixture written" "could not write $C/$f"
+        ninst=$((ninst + 1))
+      else
+        d="$(dirname "${BQ_REL[$i]}")"; f="$d/zz-$fam-$(printf '%03d' "$i").sh"; ln=3
+        mkdir -p "$C/$d" && printf '#!/usr/bin/env bash\n# fixture\n%s\n' "${BQ_LINE[$i]}" > "$C/$f" ||
+          t_bad "$ac ${BQ_NAME[$i]}: fixture written" "could not write $C/$f"
+      fi
+      # a case whose line is not in its fixture would pass vacuously (its file is never named)
+      grep -qxF -- "${BQ_LINE[$i]}" "$C/$f" 2>/dev/null || t_bad "$ac ${BQ_NAME[$i]}: fixture holds its line" "line not found in $C/$f"
+      BQ_FILE[$i]="$f"; BQ_FLN[$i]="$ln"
+    done
+    [ "$n" -gt 0 ] || continue
+    checks "$C" "$sec"
+    if [ "$exp" = fail ]; then out_fail="$OUT"; rc_fail="$RC"; else out_pass="$OUT"; rc_pass="$RC"; fi
+  done
+  OUT="$out_fail"; RC="$rc_fail"; assert_rc "$ac batched: the fixtures that must fail exit 1" 1
+  OUT="$out_pass"; RC="$rc_pass"; assert_rc "$ac batched: the all-pass fixtures exit 0" 0
+  for ((i = 0; i < ${#BQ_FAM[@]}; i++)); do
+    [ "${BQ_FAM[$i]}" = "$fam" ] || continue
+    if [ "${BQ_EXP[$i]}" = fail ]; then
+      # exit 1 for this case: the tree exited 1 AND this case's own file:line is among the findings
+      case "$out_fail" in *"${BQ_FILE[$i]}:${BQ_FLN[$i]}"*) [ "$rc_fail" = 1 ] && t_ok "$ac ${BQ_NAME[$i]}: exit 1" || t_bad "$ac ${BQ_NAME[$i]}: exit 1" "tree exit $rc_fail" ;;
+        *) t_bad "$ac ${BQ_NAME[$i]}: exit 1" "no finding for ${BQ_FILE[$i]}:${BQ_FLN[$i]} (tree exit $rc_fail)" ;; esac
+      assert_contains "$ac ${BQ_NAME[$i]}: names file:line" "$out_fail" "${BQ_FILE[$i]}:${BQ_FLN[$i]}"
+    else
+      if [ "$rc_pass" = 0 ]; then t_ok "$ac ${BQ_NAME[$i]}: exit 0"; else t_bad "$ac ${BQ_NAME[$i]}: exit 0" "all-pass tree exit $rc_pass; output: $out_pass"; fi
+      assert_not_contains "$ac ${BQ_NAME[$i]}: the file is not named" "$out_pass" "${BQ_FILE[$i]}"
+    fi
+  done
+}
+
 echo "v0.13.0 AC6.1 regex repeat bounds above 255 (BSD/macOS RE_DUP_MAX) are refused"
 # The bound is built at run time: a literal one in this file would fail the real run-checks.
-# bound_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
-bound_case() {
-  local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_min_copy)"
-  mkdir -p "$C/$(dirname "$rel")"
-  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
-  checks "$C" dupmax
-  if [ "$expect" = fail ]; then
-    assert_rc "AC6.1 $name: exit 1" 1
-    assert_contains "AC6.1 $name: names file:line" "$OUT" "$rel:3"
-  else
-    assert_rc "AC6.1 $name: exit 0" 0
-    assert_not_contains "AC6.1 $name: the file is not named" "$OUT" "$rel"
-  fi
-}
+# bound_case NAME FILE BODY-LINE EXPECT(fail|pass): queued, run by bq_flush bound (batched, v0.24.13)
+bound_case() { bq_add bound "$@"; }
 BIG=$((255 + 45)); EDGE=$((255 + 1)); TOP=255
 bound_case "tests/ file, upper bound over the limit" tests/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
 bound_case "evals/ file, upper bound over the limit" evals/zz-bound.sh "grep -E 'a{0,${BIG}}' f" fail
@@ -52,6 +93,8 @@ bound_case "scripts/ file, exactly 255 passes" scripts/zz-bound.sh "grep -E 'a{0
 bound_case "tools/ file, small bounds pass" tools/zz-bound.sh "grep -E 'a{1,100}b{3}' f" pass
 bound_case "install.sh, exactly 255 passes" install.sh "grep -E 'a{0,${TOP}}' f" pass
 bound_case "a bash brace list in scripts/ is not a bound" scripts/zz-bound.sh "echo {1,2,3} {a,b}" pass
+echo "v0.13.0/v0.14.0 AC6.1 AC7.1 the bound cases above, one run per expectation"
+bq_flush bound AC6.1 dupmax
 # the message tells what is wrong, not only where
 C="$(mk_min_copy)"; printf '#!/usr/bin/env bash\n# fixture\ngrep -E %s f\n' "'a{,${BIG}}'" > "$C/tools/zz-bound.sh"
 checks "$C" dupmax
@@ -61,21 +104,8 @@ assert_contains "AC7.1 the failure mentions the repeat bound" "$(printf '%s' "$O
 echo "v0.21.0 AC2.1 GNU-only in-place sed (no attached suffix) is refused; BSD sed needs one"
 # The commands are built at run time: a literal one in this file would fail the real run-checks.
 SD=sed; FI=-i
-# sed_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
-sed_case() {
-  local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_min_copy)"
-  mkdir -p "$C/$(dirname "$rel")"
-  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
-  checks "$C" sed
-  if [ "$expect" = fail ]; then
-    assert_rc "AC2.1 $name: exit 1" 1
-    assert_contains "AC2.1 $name: names file:line" "$OUT" "$rel:3"
-  else
-    assert_rc "AC2.1 $name: exit 0" 0
-    assert_not_contains "AC2.1 $name: the file is not named" "$OUT" "$rel"
-  fi
-}
+# sed_case NAME FILE BODY-LINE EXPECT(fail|pass): queued, run by bq_flush sed (batched, v0.24.13)
+sed_case() { bq_add sed "$@"; }
 sed_case "double-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI \"s/a/b/\" f" fail
 sed_case "single-quoted script, no suffix"        tests/zz-sed.sh "$SD $FI 's/a/b/' f" fail
 sed_case "-E before -i"                           tests/zz-sed.sh "$SD -E $FI 's/a/b/' f" fail
@@ -251,21 +281,8 @@ assert_contains "AC8.1 --only skills still includes the skills budget lines" "$S
 # quote), so this file does not trip its own check. The message names file:line.
 echo "v0.23.0 AC4.3 the SOH byte in any spelling (section soh)"
 B='\'; Q="'"
-# soh_case NAME FILE BODY-LINE EXPECT(fail|pass) -> FILE (under the copy) gets BODY-LINE as its line 3
-soh_case() {
-  local name="$1" rel="$2" line="$3" expect="$4"
-  C="$(mk_min_copy)"
-  mkdir -p "$C/$(dirname "$rel")"
-  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$line" > "$C/$rel"
-  checks "$C" soh
-  if [ "$expect" = fail ]; then
-    assert_rc "AC4.3 $name: exit 1" 1
-    assert_contains "AC4.3 $name: names file:line" "$OUT" "$rel:3"
-  else
-    assert_rc "AC4.3 $name: exit 0" 0
-    assert_not_contains "AC4.3 $name: the file is not named" "$OUT" "$rel"
-  fi
-}
+# soh_case NAME FILE BODY-LINE EXPECT(fail|pass): queued, run by bq_flush soh (batched, v0.24.13)
+soh_case() { bq_add soh "$@"; }
 # every spelling is flagged
 soh_case "printf with the octal escape"          tests/zz-soh.sh "printf ${Q}${B}001${Q}" fail
 soh_case "ANSI-C quote with the octal escape"    tests/zz-soh.sh "x=\$${Q}${B}001${Q}" fail
@@ -398,6 +415,9 @@ sed_case "control: code after ';' is still flagged" tests/zz-sed.sh "true;$SD $F
 sed_case "control: code before a comment after ';' is still flagged" tests/zz-sed.sh "$SD $FI x f;# done" fail
 sed_case "control: a # inside a word is not a comment" tests/zz-sed.sh "echo a#b; $SD $FI x f" fail
 
+echo "v0.21.0/v0.23.3 AC2.1 AC7.3 the in-place sed cases above, one run per expectation"
+bq_flush sed AC2.1 sed
+
 # ---- v0.23.3 AC7.3: strip() starts a comment after ; & | ( ) as scan() does ----
 echo "v0.23.3 AC7.3 the soh check strips a comment that starts right after an operator"
 soh_case "a comment right after ';' mentioning the escape" tests/zz-soh.sh "true;# ${B}001" pass
@@ -409,6 +429,9 @@ soh_case "control: the escape in code after ';' is still flagged" tests/zz-soh.s
 soh_case "control: the escape in code before a comment after ';' is still flagged" tests/zz-soh.sh "printf ${Q}${B}001${Q};# done" fail
 soh_case "control: a # inside a word is not a comment" tests/zz-soh.sh "echo a#b; printf ${Q}${B}001${Q}" fail
 soh_case "control: a # inside quotes after ';' is not a comment" tests/zz-soh.sh "true; echo ${Q}a#${B}001${Q}" fail
+
+echo "v0.23.0/v0.23.3 AC4.3 the SOH cases above, one run per expectation"
+bq_flush soh AC4.3 soh
 
 
 echo "v0.24.10 AC4 run-checks: references/quick.md is no longer required and its section has no word cap"

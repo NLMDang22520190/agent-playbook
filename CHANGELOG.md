@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.24.13 - 2026-10-14
+- **E25 re-pointed:** an additive export (a new `VERSION` export used in three files) runs at Lite. It guards the
+  v0.24.11 rule that a new exported function is additive and changes no existing public API, and the scenario quotes
+  the playbook-tdd rule (SKILL.md:49) instead of a paraphrase. E25 is auto-graded again.
+- **E26 auto-graded:** a user override from Full to Lite asks once and keeps the tests. `transcript.js` prints a new
+  `asked=` key (the count of AskUserQuestion calls), which the E26 grader reads; plain-text asking stays MANUAL.
+- **mktemp probe and macOS note:** a test probes a bare `mktemp -d` with TMPDIR set (Linux asserts it lands in TMPDIR;
+  other hosts print what they see, with the same count). The `run-evals.sh` header says that on macOS a bare
+  `mktemp -d` may ignore TMPDIR and the per-scenario cleanup may not catch those leftovers.
+- **Harness plumbing moved to `references/harnesses.md`:** the native, manual and none spawn mechanics, effort
+  passing, the prompt-prefix caching note and the honest limit. SKILL.md keeps the binding rules (role-model.sh, a
+  configured model is binding, the plan line, confirm_models, mechanical and reviewer_light routing, role-prompt.md)
+  and a pointer line. playbook-tdd SKILL.md went from 3792 to 3577 words.
+- **Sections batching:** test-run-checks-sections queues its 124 soh, sed and dupmax min-tree cases and runs each
+  family once per expectation; every case still asserts its own file:line. Windows time went from 238 s to 155 s.
+- **Shard weights:** the per-suite mean of the Windows CI runs 38408205118 (v0.24.9) and 38499424198 (v0.24.12)
+  (L-0003); test-run-checks takes the v0.24.12 run only, and test-run-checks-sections takes it scaled by 155/238.
+- **Review fixes (round 1):**
+  - MAJOR: SKILL.md says "except in `none` mode (see below)", but lane R had moved the only definition of that mode
+    out. One binding line is back next to the harnesses.md pointer: native roles get the full role file plus the
+    allowed input paths, never your conversation; in `none` mode the roles run one after another, with a commit
+    between roles, only the hand-off files re-read, the gates still run and the report line "degraded mode: roles
+    shared one context". The mechanics stay in harnesses.md. Tests: the R13 loop now requires that line in SKILL.md
+    (the spawn mechanics stay moved), the "see below" target and the native clause are checked.
+  - The Why line of "Starting roles per harness" no longer gives the moved prompt-prefix reason and reads on its own.
+  - `bq_flush` creates each fixture's directory and checks that the fixture holds its line, so a case cannot pass
+    vacuously.
+  - Lane E review: E25 quotes the SKILL.md:49 rule; the `--interactive` MANUAL branch of grade_E26 is pinned.
+- **Word budget raised:** playbook-tdd 3550 to 3600 words (3577), to restore the binding none-mode rule moved out in
+  lane R.
+- **Real evals:** E25, E26, E1, E4, E16 and E21 run right after ship, within the user's added 12 USD.
+
 ## 0.24.12 - 2026-10-14
 - **`run-checks --only budgets`.** A new single section that runs only the word-budget checks: AGENTS.global.md, each
   SKILL.md, and stale entries. The full-run output and every existing `--only` output are byte-identical to before

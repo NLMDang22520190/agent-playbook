@@ -238,34 +238,15 @@ and pass it when starting the role. `session` means do not override the session 
 A configured model is binding: the agent never upgrades or downgrades it on its own judgement (a hard task or Full weight is not a reason). Before starting roles, print `role-model.sh plan --harness <h>`.
 Ask the user once, with the reason and the cost difference, only when you want a different model, when a role resolves to session on a Full task, or when confirm_models=always.
 confirm_models=on-change is the default (an unknown value counts as on-change); never ask when confirm_models=never. Headless: use the conf, never upgrade, never block.
-Pass the effort (`role-model.sh <role> --harness <h> --effort`) where the harness supports it: Agent `effort` parameter, `codex exec -c model_reasoning_effort=<e>`, OpenCode per-agent config; otherwise print it only.
 Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
-sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so
-the fixed prefix can be cached. For the mechanical RED or GREEN step
+sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREEN step
 (gate, then the test command as evidence, optional checkpoint commit) use
 `bash ~/.agents/playbook/scripts/tdd-step.sh red|green`.
+How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.
+Native roles get the full role file plus the allowed input paths, never your conversation or opinions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
 
-**Why:** the reviewer should be a different, stronger model, and an unchanged prompt prefix is
-cheaper to reuse.
-
-- **native**: spawn a sub-agent per role, each with a fresh context. Pass the full text of the role
-  file plus paths of the allowed inputs, not your conversation or opinions about the solution.
-  - Claude Code: the `Agent`/`Task` tool; pass the resolved model in its `model` parameter (general-purpose for tester and implementer). For the
-    reviewer a read-only agent type is fine: it returns the report text and you save it.
-  - OpenCode: the `task` tool (a general sub-agent; an explore/read-only one for the reviewer). A model per role needs a
-    per-role agent in `opencode.json`, each with its own `model`.
-  - Codex: native only with the multi-agent feature enabled. Otherwise use manual mode (`codex exec -m <model>` per role).
-- **manual**: run each role as a separate headless process or a new session, with the prompt
-  built from the role file and the handoff paths. For example `claude -p "<prompt>"`,
-  `codex exec "<prompt>"`, `opencode run "<prompt>"`. Flags differ by version: check `--help`.
-  You run the gates between processes.
-- **none** (degraded): you play the roles one after another. Between roles, commit, then re-read
-  only the handoff files, never your earlier reasoning. Gates still run. Say "degraded mode: roles
-  shared one context" in the final report, because the independence guarantee is weaker.
-
-Honest limit: the same model in fresh contexts still shares blind spots. A different reviewer
-model, the mutation spot-check, and the user's own review of the AC table reduce this but do not
-remove it.
+**Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
+never saw your reasoning cannot inherit its mistakes.
 
 ## Stop and ask the user when
 - an ambiguity changes assertions and is hard to reverse (reversible ones: log a default instead);

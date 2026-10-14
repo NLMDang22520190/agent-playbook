@@ -474,7 +474,7 @@ hd "timeout --signal KILL 5 bash proof-run.sh --label x is a run" 1 "timeout --s
 hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KILL 5 head proof-run.sh"
 
 
-# ---- v0.24.0: transcript.js `models=` and the graders of E22-E25 ----
+# ---- v0.24.0: transcript.js `models=` and the graders of E22-E24 (E25 is graded again since v0.24.13, see test-evals-grade6-b.sh) ----
 # transcript.js prints a new last key models=<comma list of the `model` parameter of each Agent/Task tool_use, in order, '-' when
 # a call has none>; no call -> `models=` (empty). Only Agent and Task tool_use blocks count.
 # Check texts the implementer must use (found by a keyword, e_state):
@@ -487,7 +487,8 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 #   E24  "transcript shows sub-agent use (Agent or Task tool)" (key: sub-agent use)
 #        "every sub-agent call uses a configured model" (key: configured model)  "the reply has a Models: line" (key: Models: line)
 #        "node --test tests/*.test.js passes" (key: node --test)
-#   E25  retired in v0.24.10 (see test-evals-grade6-b.sh)
+#   E25  re-pointed in v0.24.13: an additive VERSION export in three files runs at Lite (tests in test-evals-grade6-b.sh)
+#   E26  graded in v0.24.13 (tests in test-evals-grade6-b.sh); transcript.js prints asked=<N> before models= (tests below)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
 # model_reviewer_claude=opus (tracked, clean tree).
 tq_flush
@@ -506,7 +507,26 @@ assert_eq "R5 models: two Agent blocks in one assistant message" "sonnet,opus" "
 assert_eq "R5 models: the result line does not add a call" "sonnet" "$(mo_of "$INIT" "$(AG sonnet)" "$(res 'Models: tester=sonnet')")"
 # models= is the last key and the others are kept
 KEYS="$(printf '%s\n' "$INIT" "$(AG sonnet)" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
-assert_eq "R5 models: keys in order, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first models " "$KEYS"
+assert_eq "R5 models: keys in order, asked just before models, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first asked models " "$KEYS"
+
+# v0.24.13 (E26): transcript.js prints asked=<N>, the number of tool_use blocks named AskUserQuestion (several in one message all count);
+# asked=na when the log has no stream-json line; the key sits just before models= (models stays last).
+echo "v0.24.13 S2 AC2.7 transcript.js asked="
+ak_of() { printf '%s\n' "$@" > "$TR/a.json"; node "$TSX" "$TR/a.json" 2>/dev/null | sed -n 's/^asked=//p'; }
+ak_lines() { printf '%s\n' "$@" > "$TR/a.json"; node "$TSX" "$TR/a.json" 2>/dev/null | grep -c '^asked='; }
+assert_eq "AC2.7 asked: the key is printed once" "1" "$(ak_lines "$INIT" "$(AQ)")"
+assert_eq "AC2.7 asked: the key is printed when there is no question" "1" "$(ak_lines "$INIT" "$(tu Bash '{"command":"ls"}')")"
+assert_eq "AC2.7 asked: no AskUserQuestion call: 0" "0" "$(ak_of "$INIT" "$(tu Bash '{"command":"ls"}')")"
+assert_eq "AC2.7 asked: one AskUserQuestion call: 1" "1" "$(ak_of "$INIT" "$(AQ)")"
+assert_eq "AC2.7 asked: two calls in two messages: 2" "2" "$(ak_of "$INIT" "$(AQ)" "$(tu Bash '{"command":"ls"}')" "$(AQ)")"
+assert_eq "AC2.7 asked: two AskUserQuestion blocks in one assistant message: 2" "2" "$(ak_of "$INIT" '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":[]}},{"type":"tool_use","id":"q2","name":"AskUserQuestion","input":{"questions":[]}}]}}')"
+assert_eq "AC2.7 asked: another tool name is not counted" "0" "$(ak_of "$INIT" "$(tu AskUser '{"questions":[]}')" "$(tu Agent '{"description":"AskUserQuestion","prompt":"AskUserQuestion"}')")"
+assert_eq "AC2.7 asked: the word in a text block or a result line is not a call" "0" "$(ak_of "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"I will use AskUserQuestion now"}]}}' "$(res 'I did not use AskUserQuestion')")"
+assert_eq "AC2.7 asked: a question next to an Agent call counts once" "1" "$(ak_of "$INIT" "$(AG sonnet)" "$(AQ)")"
+printf '%s\n' 'AskUserQuestion: which one?' 'second plain line' > "$TR/ap.json"
+assert_eq "AC2.7 asked: a plain-text log is na" "na" "$(node "$TSX" "$TR/ap.json" 2>/dev/null | sed -n 's/^asked=//p')"
+ASKEYS="$(printf '%s\n' "$INIT" "$(AQ)" > "$TR/a.json"; node "$TSX" "$TR/a.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
+case "$ASKEYS" in *"spec_first asked models ") t_ok "AC2.7 asked: printed just before models, models last" ;; *) t_bad "AC2.7 asked: printed just before models, models last" "keys: $ASKEYS" ;; esac
 
 echo "v0.24.10 E22: a user-requested quick change runs at Lite (Weight: Lite (user said quick))"
 E22_SRC='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"'
