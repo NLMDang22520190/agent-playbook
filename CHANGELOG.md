@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.24.12 - 2026-10-14
+- **`run-checks --only budgets`.** A new single section that runs only the word-budget checks: AGENTS.global.md, each
+  SKILL.md, and stale entries. The full-run output and every existing `--only` output are byte-identical to before
+  (60 pairs compared with `cmp`).
+- **Tests:** test-run-checks-sections runs its 15 budget cases on a minimal tree; AC8.1 reuses the real full run and
+  AC16.1 runs `--only files`. Linux time went from 118 s to 47 s. A review found the stale-entry check on the
+  skills/full path had lost coverage (mutant W2 survived); a cheap case restores it. The AC8.1 gnu rc=1 check was
+  vacuous and is now a problem-count delta, and stale test names match the code path again.
+- **leak-check note wording.** Cases L3, L4 and L5 now cover `pushInsteadOf`, the self exclusion and `insteadOf`
+  chains. Each case is the only test that kills its mutant (from the v0.24.9 review).
+
 ## 0.24.11 - 2026-10-14
 - **Restored: a rename or removal of an export is a public API change, so Full.** The always-on TDD paragraph says it
   again, with "load `playbook-tdd` first, even when the change looks like no behaviour change". `playbook-tdd`'s
