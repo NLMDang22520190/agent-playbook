@@ -169,3 +169,33 @@ Total 4.00 USD. E21 is back at 6/6 in both runs, from 3/6 on v0.24.10 (Run 10). 
 the Quick text (a rename or removal of an exported symbol is a public API change: Full, and load `playbook-tdd` first)
 undid the regression. Cumulative eval spend for the v0.24.10/v0.24.11 cycle: 14.32 USD (Run 10 4.52 + 5.80, Run 11
 4.00), against the raised cap of about 16 USD.
+
+## Run 12: v0.24.13 installed - E21, E25, E16, E26, E4, E1 (2026-10-14, 12 USD added by the user)
+
+Run on the installed v0.24.13 from Windows Git Bash with the Claude Code harness and `--clean-env`. Purpose: a full pass over the Lite
+and Full scenarios after v0.24.11 to v0.24.13, with E25 (new) and E26 (auto-graded for the first time).
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E21 | 6/6 | 0 | 1.72 | |
+| E25 | 5/5 | 1 | 0.57 | new scenario: an additive export in 3 files runs at Lite |
+| E16 | 5/5 | 1 | 2.19 | |
+| E26 | 7/7 | 1 | 0.42 | auto-graded for the first time; the transcript had no AskUserQuestion |
+| E4 | 4/4 | 0 | 0.37 | |
+| E1, run 1 | 6/7 | 0 | 0.57 | FAIL "reply states the weight" |
+| E1, run 2 | 7/7 | 0 | 0.44 | re-run |
+| E1, run 3 | 7/7 | 0 | 0.56 | re-run |
+
+Total 6.84 USD of the 12 USD the user added (E1 three runs 1.57, the other five scenarios 5.27).
+
+E1 run 1: the reply said "at its light weight" instead of "Weight: Lite", so the grader found no weight statement. Both
+re-runs passed 7/7, so this is judged noise (1 of 3), not a regression; no playbook change. The wording of the weight
+statement stays a grader concern if it repeats.
+
+The first pass of E26, E1 and E4 died on an API ENOTFOUND network error (cost 0, no transcript worth grading) and was
+re-run; the rows above are the re-runs.
+
+The macOS CI probe (run 38515369561) confirmed that a bare `mktemp -d` lands outside TMPDIR, in `/var/folders/.../T`: a
+test that needs its temp files under TMPDIR must pass the template (`mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX"`).
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
