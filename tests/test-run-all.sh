@@ -324,6 +324,37 @@ guarded 60 env -u PB_SHARD PB_JOBS=2 bash "$D/tests/run-all.sh"
 assert_eq "AC1.2 no PB_SHARD with a weights file: all suites run" "a b c d e " "$(ran_suites)"
 
 
+echo "v0.24.14 inside a shard the suites start heaviest first (ties by name); the assignment and the printed order do not change"
+# start_order -> the suites in the order they started (the log is written in start order; PB_JOBS=1 makes that the run order)
+start_order() { grep '^start ' "$D/log" 2>/dev/null | sed 's/^start //' | tr '\n' ' '; }
+# a=10 b=20 c=50 d=40 e=30 f=20. Greedy, 2 shards: c->1(50) d->2(40) e->2(70) b->1(70) f->1(90, tie 70/70 goes to the lowest) a->2(80)
+# shard 1/2 = b c f (sorted); heaviest first it starts c(50) b(20) f(20: tie with b, by name); shard 2/2 = a d e, it starts d(40) e(30) a(10)
+W7='test-a.sh 10\ntest-b.sh 20\ntest-c.sh 50\ntest-d.sh 40\ntest-e.sh 30\ntest-f.sh 20\n'
+hshard_run() {
+  local sh="$1"
+  D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"
+  printf '#!/usr/bin/env bash\necho x > "%s/rc-ran"\necho "run-checks: all ok"\n' "$D" > "$D/evals/run-checks.sh"
+  printf '%b' "$W7" > "$D/tests/shard-weights"
+  guarded 60 env PB_JOBS=1 PB_SHARD="$sh" bash "$D/tests/run-all.sh"
+}
+hshard_run "1/2"
+assert_rc "v24.14 weighted shard 1/2 exits 0" 0
+assert_eq "v24.14 shard 1/2 keeps its suite set b c f" "b c f " "$(ran_suites)"
+assert_eq "v24.14 shard 1/2 starts heaviest first, the tie (b and f, 20 each) by name: c b f" "c b f " "$(start_order)"
+assert_eq "v24.14 shard 1/2 still prints the suites in name order" "b c f " "$(headings)"
+hshard_run "2/2"
+assert_eq "v24.14 shard 2/2 keeps its suite set a d e" "a d e " "$(ran_suites)"
+assert_eq "v24.14 shard 2/2 starts heaviest first: d e a" "d e a " "$(start_order)"
+assert_eq "v24.14 shard 2/2 still prints the suites in name order" "a d e " "$(headings)"
+# without PB_SHARD nothing is assigned: every suite starts in name order
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"; printf '%b' "$W7" > "$D/tests/shard-weights"
+guarded 60 env -u PB_SHARD PB_JOBS=1 bash "$D/tests/run-all.sh"
+assert_eq "v24.14 no PB_SHARD with a weights file: all suites start in name order" "a b c d e f " "$(start_order)"
+# without a weights file the modulo assignment stays, and so does the name order
+D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"
+guarded 60 env PB_JOBS=1 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
+assert_eq "v24.14 no weights file, shard 1/2: the modulo set a c e starts in name order" "a c e " "$(start_order)"
+
 echo "v0.23.3 four Windows shards: PB_SHARD=k/4 with the repo's tests/shard-weights partitions every suite exactly once"
 # stub suites carry the real suite names (hyphens become underscores: the stubs use the name in variable names)
 # and the repo's weights file (same renaming) decides the split

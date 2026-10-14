@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.24.14 - 2026-10-14
+- **role-gate classifies in one pass (lane G):** `check` and `size` build the changed-path list once and classify it with
+  one `grep -E` per configured pattern instead of one per file (a 200-file change: 201 grep calls down to 2). A batch
+  grep that fails falls back to the per-file classify, and `classify` is unchanged. A read record that swallowed a
+  newline (a truncated UTF-8 lead byte under bash 5) is classified per file, and the passes stay linear (8000 files:
+  32.8 s down to 2.0 s on Linux). New suite test-role-gate-batch: an equivalence corpus (the batch result matches the
+  per-file one), the grep count and the batch-failure fallback. Reviewed at Full weight, round 2 APPROVE.
+- **run-all starts a shard heaviest first:** with PB_SHARD and tests/shard-weights, the job pool starts the suites of a
+  shard by descending weight (ties by name), so the longest suite is never the last one started. The shard assignment
+  and the printed log order (name order) are unchanged; without weights or without PB_SHARD the start order stays the
+  name order. run-all.sh classifies as a test path, so the change went through the tester gate, with no separate
+  implementer.
+- **test-evals-grade4 split** into test-evals-grade4 and test-evals-grade4-b, with the shared setup in
+  evals-grade4-fixture.sh: at 493 s on the Windows CI runner it set the floor of a shard. The 266 assertions are
+  unchanged (196 + 70, same names in the same order).
+- **Shard weights:** taken from Windows CI run 38515369561 (v0.24.13) alone, as suites changed after the mean runs
+  (a deliberate exception to L-0003 until two runs of the current suites exist). The grade4 halves split its 493 s by
+  their Linux time share (224 s and 269 s). test-role-gate-batch is estimated at 330 s: its Linux time (27.7 s) times
+  the Windows/Linux ratio of the other role-gate suites (11.9).
+- **Learning L-0008 (user-approved):** a heuristic tokenizer cannot make mutation inside literals safe.
+- **Real evals (Run 12, on the installed v0.24.13):** E21 6/6, E25 5/5, E16 5/5, E26 7/7, E4 4/4; E1 5/6, then 6/6
+  in two re-runs (one weight-wording miss, judged noise). 6.83 USD of the 12 USD the user added. Review fix: the E1 rows
+  had counted the manual item as an automatic check and the totals summed rounded costs; both now match the evidence.
+- **Tried and not merged:**
+  - **Lane M, arithmetic mutants in mutate.sh** (`+ - * /`, gated by a per-language awk tokenizer): review round 2
+    BLOCK. The fuzz found 15 new kinds of input where the tokenizer loses track of strings (round 1 had found 17),
+    among them a Ruby symbol written as a colon and a backtick, followed by a backtick command, which still turned
+    `chmod -R x * y` into `chmod -R x / y`. Decision D-U3 (no arithmetic mutants) stays, and L-0008 records the
+    lesson. Branch feat/v0.24.14-m stays unmerged.
+  - **Lane N, ci-tree-tested starts one node per run:** output equivalent and review APPROVE, but its Windows suites
+    ran net slower (305 s and 285 s, against 241 s and 256 s without it), and it adds a FIFO pair and a `cat` relay.
+    Branch feat/v0.24.14-n stays unmerged.
+
 ## 0.24.13 - 2026-10-14
 - **E25 re-pointed:** an additive export (a new `VERSION` export used in three files) runs at Lite. It guards the
   v0.24.11 rule that a new exported function is additive and changes no existing public API, and the scenario quotes

@@ -67,6 +67,80 @@ classify() {
   if printf '%s\n' "$1" | grep -Eq -- "$TEST_RE"; then echo test; else echo code; fi
 }
 
+# classify_list: classify many newline-separated, non-empty paths with one grep -E per configured regex
+# (infra when set, then test) instead of one grep per path. Sets KINDS to one kind per input record, in order.
+# The batch grep runs in the caller's locale, with -a (no "binary file matches" line) and -n: the line number
+# before the FIRST colon maps a hit back to its path, so a path with a colon, tab, CR or leading dash is safe.
+# A path matching both regexes is infra (infra first), exactly as classify. If a batch grep exits above 1
+# (it failed), every path of the batch is classified with the per-file classify.
+# Hits are mapped by PHYSICAL line number, walked with a cursor (hit numbers ascend), so the work is linear.
+# A path ending in a truncated multibyte lead byte makes bash 5 `read -r` swallow the next newline: such a record
+# spans several physical lines. It is classified with classify (the merged text, as v0.24.13 did) and the
+# physical counter advances past all of its lines. Uses fds 3 and 4 and closes them before it returns.
+classify_list() {
+  local list="$1" ihits="" thits="" p k rc fb=0 ph=1 t nl ih=2147483647 th=2147483647
+  KINDS=""
+  [ -n "$list" ] || return 0
+  if [ -n "$INFRA_RE" ]; then
+    ihits="$(printf '%s\n' "$list" | grep -Ean -- "$INFRA_RE")"; rc=$?
+    [ "$rc" -le 1 ] || fb=1
+  fi
+  if [ "$fb" -eq 0 ]; then
+    thits="$(printf '%s\n' "$list" | grep -Ean -- "$TEST_RE")"; rc=$?
+    [ "$rc" -le 1 ] || fb=1
+  fi
+  if [ "$fb" -eq 0 ]; then
+    # keep only the line numbers: a hit line is read again by `read`, which can swallow a newline
+    if [ -n "$ihits" ]; then ihits="$(printf '%s\n' "$ihits" | LC_ALL=C cut -d: -f1)"; fi
+    if [ -n "$thits" ]; then thits="$(printf '%s\n' "$thits" | LC_ALL=C cut -d: -f1)"; fi
+    exec 3<<EOF
+$ihits
+EOF
+    exec 4<<EOF
+$thits
+EOF
+    IFS= read -r ih <&3 || ih=2147483647
+    [ -n "$ih" ] || ih=2147483647
+    IFS= read -r th <&4 || th=2147483647
+    [ -n "$th" ] || th=2147483647
+  fi
+  while IFS= read -r p; do
+    if [ "$fb" -eq 1 ]; then
+      k="$(classify "$p")"
+    else
+      case "$p" in
+        *$'\n'*)
+          k="$(classify "$p")"
+          nl=0; t="$p"
+          while :; do
+            case "$t" in *$'\n'*) t="${t#*$'\n'}"; nl=$((nl + 1)) ;; *) break ;; esac
+          done
+          ph=$((ph + nl))
+          ;;
+        *)
+          while [ "$ih" -lt "$ph" ]; do
+            IFS= read -r ih <&3 || ih=2147483647
+            [ -n "$ih" ] || ih=2147483647
+          done
+          while [ "$th" -lt "$ph" ]; do
+            IFS= read -r th <&4 || th=2147483647
+            [ -n "$th" ] || th=2147483647
+          done
+          if [ "$ih" -eq "$ph" ]; then k="infra"
+          elif [ "$th" -eq "$ph" ]; then k="test"
+          else k="code"
+          fi
+          ;;
+      esac
+      ph=$((ph + 1))
+    fi
+    KINDS+="$k"$'\n'
+  done <<EOF
+$list
+EOF
+  exec 3<&- 4<&-
+}
+
 cmd="${1:-}"
 case "$cmd" in
   classify | check | size)
@@ -128,11 +202,24 @@ case "$cmd" in
     }
     violations=0
     checked=0
+    plist=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$f" in .agents/handoff/*) continue ;; esac
+      plist+="$f"$'\n'
+    done <<EOF
+$changed
+EOF
+    plist="${plist%$'\n'}"
+    classify_list "$plist"
+    exec 3<<EOF
+$KINDS
+EOF
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
       checked=$((checked + 1))
-      kind="$(classify "$f")"
+      IFS= read -r kind <&3
       if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
         printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$(shown "$f")"
         continue
@@ -151,6 +238,7 @@ case "$cmd" in
     done <<EOF
 $changed
 EOF
+    exec 3<&-
     # a lost executable bit (100755 -> 100644) is a violation for every role, work tree and staged index together.
     # The escape is PB_ALLOW_MODE_CHANGE: colon-separated exact repo-relative paths (a case pattern: no glob, no split).
     # The work-tree list and the staged list (git diff --cached) are merged, duplicates removed: a drop that is only staged
@@ -220,10 +308,25 @@ usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base R
 
     files=0
     lines=0
+    plist=""
+    metas=""
     while IFS=$'\t' read -r added deleted f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
-      [ "$(classify "$f")" != "test" ] || continue   # code and infra count
+      plist+="$f"$'\n'
+      metas+="$added $deleted"$'\n'
+    done <<EOF
+$stats
+EOF
+    plist="${plist%$'\n'}"
+    classify_list "$plist"
+    exec 3<<EOF
+$KINDS
+EOF
+    while IFS=' ' read -r added deleted; do
+      [ -n "$added" ] || continue
+      IFS= read -r kind <&3
+      [ "$kind" != "test" ] || continue   # code and infra count
       files=$((files + 1))
       if [ "$added" = "-" ]; then
         lines=$((lines + 1))
@@ -231,8 +334,9 @@ usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base R
         lines=$((lines + added + deleted))
       fi
     done <<EOF
-$stats
+$metas
 EOF
+    exec 3<&-
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
       printf 'over the Lite size limit: escalate to Full\n'
