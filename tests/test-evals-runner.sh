@@ -1186,4 +1186,30 @@ if [ -n "$T8D" ] && printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T8D"; t
 assert_eq "T8 it is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
 else t_skip 2 "v0.24.7 T8 (chmod 555 on a parent does not stop the removal here: root or NTFS)"; fi
 
+# ---- v0.24.13 S3: what a bare `mktemp -d` does with TMPDIR (macOS may ignore it), and the run-evals.sh header says so ----
+# The header must carry this sentence (checked on the comment block before `set -u`, backticks removed, lines joined):
+#   "On macOS a bare `mktemp -d` may ignore TMPDIR, so the per-scenario TMPDIR cleanup may not catch those leftovers."
+# Keys: "macOS ... bare mktemp -d may ignore TMPDIR" and "cleanup may not catch".
+echo "v0.24.13 S3 AC3.1 a bare mktemp -d with TMPDIR set: Linux asserts it lands in TMPDIR, other hosts only print what they see"
+MT_BASE="$(mk_tmp)"
+MT_D="$(TMPDIR="$MT_BASE" mktemp -d)"
+MT_P="$(dirname "$MT_D")"
+if [ -n "$MT_D" ] && [ "$(physdir "$MT_P")" = "$(physdir "$MT_BASE")" ]; then MT_IN=1; else MT_IN=0; fi
+case "$(uname -s)" in
+  Linux)
+    # characterization: GNU mktemp honours TMPDIR, so this passes at once (the header assertion below is the RED of S3)
+    if [ "$MT_IN" = 1 ]; then t_ok "AC3.1 Linux: a bare mktemp -d lands directly inside TMPDIR (characterization, passes before the change)"; else t_bad "AC3.1 Linux: a bare mktemp -d lands directly inside TMPDIR" "TMPDIR=[$MT_BASE] made [$MT_D]"; fi ;;
+  *)
+    if [ "$MT_IN" = 1 ]; then t_ok "AC3.1 $(uname -s): a bare mktemp -d is in TMPDIR (observation only, never a failure)"; else t_ok "AC3.1 $(uname -s): a bare mktemp -d is outside TMPDIR: $MT_P (observation only, never a failure)"; fi ;;
+esac
+# remove only the empty dir this probe made (rmdir refuses a non-empty dir, a link or a path that is not the dir)
+if [ -n "$MT_D" ] && [ -d "$MT_D" ]; then rmdir "$MT_D" 2>/dev/null || true; fi
+assert_no_path "AC3.1 the probe dir is removed" "$MT_D"
+
+echo "v0.24.13 S3 AC3.2 the run-evals.sh header documents the macOS mktemp limit"
+RHDR="$(sed -n '1,/^set -u/p' "$RUNNER" | sed '$d' | sed 's/^# \{0,1\}//' | tr -d '`' | tr '\n' ' ' | tr -s ' ')"
+case "$RHDR" in *"set -u"*) t_bad "AC3.2 the header extract stops before set -u" "extract: ${RHDR:0:80}" ;; *) t_ok "AC3.2 the header extract stops before set -u" ;; esac
+if printf '%s' "$RHDR" | grep -qE 'macOS[^.]{0,80}bare mktemp -d may ignore (the )?TMPDIR'; then t_ok "AC3.2 the header says that on macOS a bare mktemp -d may ignore TMPDIR"; else t_bad "AC3.2 the header says that on macOS a bare mktemp -d may ignore TMPDIR" "no such sentence in the header"; fi
+if printf '%s' "$RHDR" | grep -qE 'cleanup may not catch'; then t_ok "AC3.2 the header says the per-scenario TMPDIR cleanup may not catch those leftovers"; else t_bad "AC3.2 the header says the per-scenario TMPDIR cleanup may not catch those leftovers" "no 'cleanup may not catch' in the header"; fi
+
 t_summary
