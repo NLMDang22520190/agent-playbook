@@ -324,8 +324,8 @@ TABFILE_OK=0
 mkdir -p "$UQ/tests"
 if printf 'u\n' > "$UQ/src/a"$'\t'"b.js" 2>/dev/null && printf 'u\n' > "$UQ/tests/a"$'\t'"b.test.js" 2>/dev/null &&
    [ "$(cd "$UQ" && git ls-files --others | wc -l | tr -d ' ')" = 2 ] &&
-   [ "$(cd "$UQ" && git ls-files --others | grep -c '^"')" = 2 ]; then TABFILE_OK=1; fi
-# Git Bash on NTFS stores the tab as a substitute character, so git prints the names unquoted and this case
+   [ "$(cd "$UQ" && git ls-files --others | grep -c '^".*\\t')" = 2 ]; then TABFILE_OK=1; fi
+# Git Bash on NTFS stores the tab as a substitute character (git prints \357\200\211, not \t), so this case
 # does not apply there (found on Windows in the v0.24.14 release run; the v0.24.13 gate gives the same result)
 if [ "$TABFILE_OK" = 1 ]; then
   OUT="$(cd "$UQ" && env PLAYBOOK_HOME="$PH0" LC_ALL=C bash "$GATE" size 2>/dev/null </dev/null)"; RC=$?
