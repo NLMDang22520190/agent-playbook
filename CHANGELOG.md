@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.24.15 - 2026-10-14
+- **Measured cause of the slow Windows shard:** in CI run 38577969449 (v0.24.14) shard 1 took 632 s while the others took
+  416-451 s. Its run-all step lasted 612 s, and test-role-gate-batch alone took 610 s there (its weight was an estimate of
+  400): the job pool starts it first, so the shard could not end before it did. Shard 1's suites also ran 1.6 times their
+  weights, against 1.2-1.3 times on the other shards.
+- **test-role-gate-batch, platform tier:** on a local Git Bash a corpus combo costs about 22 s (five gate runs of about
+  4 s each), and the UTF-8 pass of the equivalence corpus ran 11 combos (238 of 686 s). Where two probes of the suite
+  both fail, the odd names (\377, CR, tab) cannot be indexed and the file system does not keep the executable bit (Git
+  Bash over NTFS; decided by the probes, not by uname), the UTF-8 pass runs conf 8 alone, the only conf that reads the
+  remaining non-ASCII names (valid UTF-8) differently per locale, and skips 51 assertions with a reason. The C pass still
+  covers every class rule, every corpus path kind and both callers (check, size). Linux and macOS run every combo
+  (macOS cannot index the odd names but keeps the executable bit). Passed + skipped stays 210 on every platform: Linux
+  210 + 0 (28 s, unchanged), bash 3.2 with BSD awk 208 + 2, local Git Bash 196 + 14 in 686 s before and 145 + 65 in
+  443 s after, 0 failed.
+- **Shard weights** from Windows CI run 38577969449 alone (the first run of the current suites; a median of 2-3 runs per
+  L-0003 once more exist). test-role-gate-batch is scaled by its measured Git Bash ratio: 610 * 443 / 686 = 394. A replay
+  of that run (PB_JOBS=6, heaviest first) predicts shards of 529, 438, 431 and 427 s, against 610, 438, 427 and 400 s
+  with the v0.24.14 weights; the longest shard is now set by the single suite test-leak-check-push (529 s).
+
 ## 0.24.14 - 2026-10-14
 - **role-gate classifies in one pass (lane G):** `check` and `size` build the changed-path list once and classify it with
   one `grep -E` per configured pattern instead of one per file (a 200-file change: 201 grep calls down to 2). A batch
