@@ -1256,11 +1256,11 @@ qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
-for e in E22 E23 E24 E25; do
+for e in E22 E23 E24 E25 E26; do
   qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
 done
 MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
-for e in E22 E23 E24 E25; do
+for e in E22 E23 E24 E25 E26; do
   qchk "AC1.8 $e is in the scenario-map line of skills/playbook-tdd/*" "$MAPLINE" "(^| )$e( |$)"
 done
 AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
@@ -1290,7 +1290,7 @@ qchk "v24.8 the override still runs test first, seen failing, role gates and evi
 qchk "v24.8 a headless run follows the user with no question" "$PICKW" 'headless[^.]{0,120}(no question|without (a )?question)'
 qchk "v24.8 the skip-tests rule is unchanged" "$PICKW" 'skip-tests rule is unchanged'
 qchk "v24.8 the final-report template shows the user override weight line" "$(tr '\n' ' ' < "$FINAL")" 'Lite \(user override; Full criteria: <x>\)'
-echo "v0.24.8 E26 scenario definition (not yet auto-graded)"
+echo "v0.24.8 E26 scenario definition (auto-graded since v0.24.13)"
 exact_heading "v24.8 scenarios has the E26 heading" "$SCEN" '## E26 A user override from Full to Lite asks once and keeps the tests'
 check_sec "v24.8 E26 has a Prompt line" "$SCEN" '^## E26 ' '^\*\*Prompt:\*\*'
 check_sec "v24.8 E26 has a Pass if line" "$SCEN" '^## E26 ' '^\*\*Pass if:\*\*'
@@ -1304,6 +1304,9 @@ qchk "v24.8 E26 expects the Weight: Lite (user override; ...) line" "$E26S" 'Wei
 qchk "v24.8 E26 expects the test seen failing (a test(red) commit)" "$E26S" 'test\(red\)'
 qchk "v24.8 E26 covers the headless case" "$E26S" 'headless'
 qchk "v24.8 E26 fails on a silent switch or a skipped test" "$E26S" 'Fail if:[^.]{0,250}(skip|without a test)'
+qchk "v24.13 S2 AC2.11 E26 has an Auto checks: line" "$E26S" 'Auto checks:'
+if printf '%s' "$E26S" | grep -qi 'not yet auto-graded'; then t_bad "v24.13 S2 AC2.11 E26 is no longer marked Not yet auto-graded" "still says it"; else t_ok "v24.13 S2 AC2.11 E26 is no longer marked Not yet auto-graded"; fi
+qchk "v24.13 S2 AC2.8 E26 names the AskUserQuestion check" "$E26S" 'AskUserQuestion'
 
 echo "v0.24.8 review 1: the override clause, and the AUTO list stays gradable"
 qchk "v24.8 r1 the override covers only the Full criteria named in the question" "$PICKW" 'override covers only the Full criteria named in the question'
