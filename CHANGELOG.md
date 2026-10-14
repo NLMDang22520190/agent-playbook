@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.24.13 - 2026-10-14
+- **Word budget raised:** playbook-tdd 3550 to 3600 words, to restore the binding none-mode rule moved out in lane R.
+
 ## 0.24.12 - 2026-10-14
 - **`run-checks --only budgets`.** A new single section that runs only the word-budget checks: AGENTS.global.md, each
   SKILL.md, and stale entries. The full-run output and every existing `--only` output are byte-identical to before

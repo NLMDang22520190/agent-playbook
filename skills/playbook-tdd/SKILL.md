@@ -243,9 +243,10 @@ sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREE
 (gate, then the test command as evidence, optional checkpoint commit) use
 `bash ~/.agents/playbook/scripts/tdd-step.sh red|green`.
 How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.
+Native roles get the full role file plus the allowed input paths, never your conversation or opinions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
 
-**Why:** the reviewer should be a different, stronger model, and an unchanged prompt prefix is
-cheaper to reuse.
+**Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
+never saw your reasoning cannot inherit its mistakes.
 
 ## Stop and ask the user when
 - an ambiguity changes assertions and is hard to reverse (reversible ones: log a default instead);
