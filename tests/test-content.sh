@@ -1203,13 +1203,22 @@ echo "v0.24.0 AC1.8 / R12 scenarios E22-E25 in evals/scenarios.md"
 qchk "v24.10 AC5 the E22 heading: a user-requested quick change runs at Lite" "$(grep '^## E22 ' "$SCEN")" 'quick.*Lite'
 if [ -n "$(line_of "$SCEN" '^## E23 ')" ]; then t_ok "v24.10 AC5 scenarios has an E23 heading"; else t_bad "v24.10 AC5 scenarios has an E23 heading" "no ## E23 heading"; fi
 exact_heading "AC1.8 scenarios has the E24 heading" "$SCEN" '## E24 A configured model is binding'
-qchk "v24.10 AC5 the E25 heading says it was retired in v0.24.10" "$(grep '^## E25 ' "$SCEN")" 'retired in v0\.24\.10'
+E25H="$(grep '^## E25 ' "$SCEN")"
+if printf '%s' "$E25H" | grep -qi 'retired'; then t_bad "v24.13 S1 the E25 heading no longer says retired (E25 is re-pointed)" "$E25H"; else t_ok "v24.13 S1 the E25 heading no longer says retired (E25 is re-pointed)"; fi
+qchk "v24.13 S1 the E25 heading names Lite" "$E25H" 'Lite'
 for e in E22 E23 E24; do
   re="^## $e "
   check_sec "AC1.8 $e has a Prompt line" "$SCEN" "$re" '^\*\*Prompt:\*\*'
   check_sec "AC1.8 $e has a Pass if line" "$SCEN" "$re" '^\*\*Pass if:\*\*'
   check_sec "AC1.8 $e has a Fail if line" "$SCEN" "$re" '^\*\*Fail if:\*\*'
 done
+check_sec "v24.13 S1 E25 has a Prompt line" "$SCEN" '^## E25 ' '^\*\*Prompt:\*\*'
+check_sec "v24.13 S1 E25 has a Pass if line" "$SCEN" '^## E25 ' '^\*\*Pass if:\*\*'
+check_sec "v24.13 S1 E25 has a Fail if line" "$SCEN" '^## E25 ' '^\*\*Fail if:\*\*'
+check_sec "v24.13 S1 E25 has an Auto checks: line" "$SCEN" '^## E25 ' 'Auto checks:'
+E25PL='**Prompt:** "Add an exported constant VERSION = '"'"'1.0.0'"'"' to src/calc.js, src/cart.js and src/report.js."'
+if grep -qF -- "$E25PL" "$SCEN"; then t_ok "v24.13 S1 E25 verbatim prompt present (characterization: the prompt text was kept when E25 was retired)"; else t_bad "v24.13 S1 E25 verbatim prompt present" "not found in $SCEN"; fi
+if grep -F -- "$E25PL" "$SCEN" | grep -qi 'retired'; then t_bad "v24.13 S1 E25 the Prompt line no longer says it is retired" "$(grep -F -- "$E25PL" "$SCEN")"; else t_ok "v24.13 S1 E25 the Prompt line no longer says it is retired"; fi
 l21="$(line_of "$SCEN" '^## E21 ')"; l22="$(line_of "$SCEN" '^## E22 ')"; l23="$(line_of "$SCEN" '^## E23 ')"; l24="$(line_of "$SCEN" '^## E24 ')"; l25="$(line_of "$SCEN" '^## E25 ')"
 if [ -n "$l21" ] && [ -n "$l22" ] && [ -n "$l23" ] && [ -n "$l24" ] && [ -n "$l25" ] && [ "$l21" -lt "$l22" ] && [ "$l22" -lt "$l23" ] && [ "$l23" -lt "$l24" ] && [ "$l24" -lt "$l25" ]; then t_ok "AC1.8 E22..E25 follow E21 in order"
 else t_bad "AC1.8 E22..E25 follow E21 in order" "E21=[$l21] E22=[$l22] E23=[$l23] E24=[$l24] E25=[$l25]"; fi
@@ -1247,17 +1256,16 @@ qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
-for e in E22 E23 E24; do
+for e in E22 E23 E24 E25; do
   qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
 done
-if printf '%s' "$AUTOLINE" | grep -qE '[" ]E25[" ]'; then t_bad "v24.10 AC5 E25 is not in the AUTO list of run-evals.sh" "$AUTOLINE"; else t_ok "v24.10 AC5 E25 is not in the AUTO list of run-evals.sh"; fi
 MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
-for e in E22 E23 E24; do
+for e in E22 E23 E24 E25; do
   qchk "AC1.8 $e is in the scenario-map line of skills/playbook-tdd/*" "$MAPLINE" "(^| )$e( |$)"
 done
-assert_eq "v24.10 AC5 E25 is not in the scenario-map at all" "0" "$(grep -c 'E25' "$PB_ROOT/evals/scenario-map")"
 AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
 qchk "R2 the AGENTS.global.md map line keeps E1 E3 E5 E8 E10 E21" "$AGMAP" 'E1 E3 E5 E8 E10 E21'
+qchk "v24.13 S1 AC1.8 E25 is in the scenario-map line of AGENTS.global.md" "$AGMAP" '(^| )E25( |$)'
 
 
 echo "v0.24.10: the playbook-tdd front-matter description names Lite or Full by risk and keeps the user's word quick (the description is what makes an agent load the skill)"

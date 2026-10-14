@@ -87,7 +87,7 @@ assert_eq "F2 E24 only a helper call: no listed model, configured model FAIL" "F
 assert_contains "F2 the transcript.js header documents the helper rule" "$(sed -n 1,12p "$TSX" | tr '\n' ' ')" "Explore"
 assert_contains "F2 the E24 scenario text documents the helper rule" "$(grep -A12 '^## E24' "$PB_ROOT/evals/scenarios.md" | tr '\n' ' ')" "Explore"
 
-echo "v0.24.10 AUTO list: E22-E24 are auto-gradable, E25 is retired, and the default scenarios stay E1,E3,E8,E15"
+echo "v0.24.13 AUTO list: E22-E25 are auto-gradable (E25 is re-pointed), and the default scenarios stay E1,E3,E8,E15"
 for e in E22 E23 E24; do
   W="$(mk_tmp)"
   run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios "$e" --workroot "$W" --out "$W/results.md"
@@ -101,9 +101,9 @@ for e in E22 E23 E24; do
 done
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E25 --workroot "$W" --out "$W/results.md"
-assert_rc "v24.10 AC5 --scenarios E25 is refused (retired: exit 2)" 2
-assert_contains "v24.10 AC5 E25 is refused as not auto-gradable" "$OUT" "not auto-gradable"
-assert_not_contains "v24.10 AC5 the refusal no longer lists E25 as auto-gradable" "$OUT" "E24,E25"
+assert_not_contains "AC1.1 E25 is accepted (not a usage error)" "$OUT" "not auto-gradable"
+assert_eq "AC1.1 E25: the idle adapter is graded (a check line for E25)" "graded" "$([ "$(printf '%s\n' "$OUT" | grep -cE '^E25 (PASS|FAIL|MANUAL) ')" -gt 0 ] && echo graded || echo not-graded)"
+assert_rc "AC1.1 E25: the idle adapter fails a check (exit 1, not 2)" 1
 
 
 echo "v0.24.10 (was v0.24.4 item 5) E23: the weight is read from 'at X weight' and 'X weight' too; Quick and Full FAIL, Lite passes"
@@ -168,5 +168,71 @@ sw 'This does not need Full weight; Quick weight.' quick
 sw 'This would normally get Full weight; Quick weight here.' quick
 run_x E23 needsfull "$E23_FIX" "$INIT" "$(res 'Over the limit; this needs Full weight. Changed total().')"
 assert_eq "N1 E23 a reply without a Weight: label that says 'this needs Full weight' FAILs" "FAIL" "$(e_state E23 "$K23B")"
+
+# v0.24.13: fail_graded E -> "<FAIL lines>/graded": a run with no FAIL line counts only when the scenario was graded (some PASS line), so a refused scenario cannot pass it
+fail_graded() { printf '%s/%s' "$(count_lines "$1" FAIL)" "$([ "$(count_lines "$1" PASS)" -gt 0 ] && echo graded || echo ungraded)"; }
+# ---- v0.24.13 S1: E25 is re-pointed (an additive export in three files still runs at Lite) ----
+# Check texts the implementer must use (found by a keyword, e_state):
+#   E25  "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" (key: exports VERSION)
+#        "node --test tests/*.test.js passes" (key: node --test)
+#        "the reply's weight is Lite (a stated Quick or Full fails)" (key: weight is Lite)
+#        "a RED commit touches only tests" (key: RED commit)
+#        MANUAL "no Full jump without a Full-column reason" (key: Full-column reason)
+#        and the generic "nothing written outside the workdir" (key: outside the workdir)
+# Fixture: the runner commits src/report.js (as for E21) before the agent starts.
+echo "v0.24.13 S1 E25: VERSION exported from three files, stated weight Lite, a RED commit first"
+E25_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\ntest(\"VERSION\", () => { for (const f of [\"calc\", \"cart\", \"report\"]) assert.strictEqual(require(\"../src/\" + f).VERSION, \"1.0.0\"); });\n" > tests/version.test.js'
+E25_RED="$E25_TEST
+$GC add tests/version.test.js
+$GC commit -qm 'test(red): VERSION'"
+E25_SRC='for f in calc cart report; do printf "\nmodule.exports.VERSION = \"1.0.0\";\n" >> src/$f.js; done'
+E25_FIX="$E25_RED
+$E25_SRC"
+E25_NORED="$E25_TEST
+$E25_SRC"
+E25_REC='echo "tracked=$(git ls-files src/report.js)" > "$REC/E25.fix"'
+K25X='exports VERSION'; K25W='weight is Lite'; K25R='RED commit'; K25M='Full-column reason'
+E25_OK='Weight: Lite. Added VERSION to the three files. Tests pass.'
+run_x E25 good "$E25_REC
+$E25_FIX" "$INIT" "$(res "$E25_OK")"
+assert_rc "AC1.2 E25 good run: exit 0" 0
+assert_eq "AC1.2 E25 good run: each file exports VERSION: PASS" "PASS" "$(e_state E25 "$K25X")"
+assert_eq "AC1.3 E25 good run: node --test passes: PASS" "PASS" "$(e_state E25 'node --test')"
+assert_eq "AC1.4 E25 good run: the reply's weight is Lite: PASS" "PASS" "$(e_state E25 "$K25W")"
+assert_eq "AC1.5 E25 good run: a RED commit touches only tests: PASS" "PASS" "$(e_state E25 "$K25R")"
+assert_eq "AC1.6 E25 good run: nothing written outside the workdir: PASS" "PASS" "$(e_state E25 'outside the workdir')"
+assert_eq "AC1.7 E25 records the MANUAL line about a Full jump without a Full-column reason" "MANUAL" "$(e_state E25 "$K25M")"
+assert_eq "AC1.2 E25 good run: graded, no FAIL line" "0/graded" "$(fail_graded E25)"
+assert_contains "AC1.2 E25 fixture: the runner commits src/report.js" "$(cat "$REC/E25.fix" 2>/dev/null)" "tracked=src/report.js"
+E25P="$(cat "$REC/E25.prompt" 2>/dev/null)"
+assert_contains "AC1.9 E25 the prompt asks for VERSION" "$E25P" "VERSION"
+assert_contains "AC1.9 E25 the prompt names src/report.js" "$E25P" "src/report.js"
+if [ -n "$E25P" ] && ! printf '%s' "$E25P" | grep -qi quick; then t_ok "AC1.9 E25 the prompt does not say quick (the user never asks for it)"; else t_bad "AC1.9 E25 the prompt does not say quick (the user never asks for it)" "prompt: [$E25P]"; fi
+run_x E25 noreport "$E25_RED
+for f in calc cart; do printf '\nmodule.exports.VERSION = \"1.0.0\";\n' >> src/\$f.js; done" "$INIT" "$(res "$E25_OK")"
+assert_eq "AC1.2 E25 src/report.js without VERSION: the exports check FAILs" "FAIL" "$(e_state E25 "$K25X")"
+assert_rc "AC1.2 E25 one file without VERSION: exit 1" 1
+assert_eq "AC1.2 E25 one file without VERSION: the weight check still PASSes" "PASS" "$(e_state E25 "$K25W")"
+run_x E25 wrongval "$E25_RED
+for f in calc report; do printf '\nmodule.exports.VERSION = \"1.0.0\";\n' >> src/\$f.js; done
+printf '\nmodule.exports.VERSION = \"2.0.0\";\n' >> src/cart.js" "$INIT" "$(res "$E25_OK")"
+assert_eq "AC1.2 E25 a VERSION that is not 1.0.0 in src/cart.js: the exports check FAILs" "FAIL" "$(e_state E25 "$K25X")"
+run_x E25 full "$E25_FIX" "$INIT" "$(res 'Weight: Full. Added VERSION to the three files.')"
+assert_eq "AC1.4 E25 'Weight: Full' (a jump to Full): the weight is Lite check FAILs" "FAIL" "$(e_state E25 "$K25W")"
+assert_eq "AC1.4 E25 'Weight: Full': the exports check still PASSes" "PASS" "$(e_state E25 "$K25X")"
+assert_rc "AC1.4 E25 a stated Full: exit 1" 1
+run_x E25 quick "$E25_FIX" "$INIT" "$(res 'Weight: Quick. Added VERSION to the three files.')"
+assert_eq "AC1.4 E25 'Weight: Quick': the weight is Lite check FAILs" "FAIL" "$(e_state E25 "$K25W")"
+run_x E25 noweight "$E25_FIX" "$INIT" "$(res 'Added VERSION to the three files. Tests pass.')"
+assert_eq "AC1.4 E25 no weight statement: the weight is Lite check FAILs" "FAIL" "$(e_state E25 "$K25W")"
+run_x E25 nored "$E25_NORED" "$INIT" "$(res "$E25_OK")"
+assert_eq "AC1.5 E25 test and change never committed (no RED commit): a RED commit touches only tests FAILs" "FAIL" "$(e_state E25 "$K25R")"
+assert_eq "AC1.5 E25 no RED commit: the exports check still PASSes" "PASS" "$(e_state E25 "$K25X")"
+run_x E25 plain "$E25_FIX
+echo 'Weight: Lite'"
+assert_eq "AC1.4 E25 plain-text transcript: the weight check is MANUAL" "MANUAL" "$(e_state E25 "$K25W")"
+assert_eq "AC1.5 E25 plain-text transcript: the RED commit is still graded (PASS)" "PASS" "$(e_state E25 "$K25R")"
+assert_eq "AC1.2 E25 plain-text transcript: the exports check PASSes" "PASS" "$(e_state E25 "$K25X")"
+assert_eq "AC1.4 E25 plain-text transcript: graded, no FAIL line" "0/graded" "$(fail_graded E25)"
 
 t_summary

@@ -474,7 +474,7 @@ hd "timeout --signal KILL 5 bash proof-run.sh --label x is a run" 1 "timeout --s
 hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KILL 5 head proof-run.sh"
 
 
-# ---- v0.24.0: transcript.js `models=` and the graders of E22-E25 ----
+# ---- v0.24.0: transcript.js `models=` and the graders of E22-E24 (E25 is graded again since v0.24.13, see test-evals-grade6-b.sh) ----
 # transcript.js prints a new last key models=<comma list of the `model` parameter of each Agent/Task tool_use, in order, '-' when
 # a call has none>; no call -> `models=` (empty). Only Agent and Task tool_use blocks count.
 # Check texts the implementer must use (found by a keyword, e_state):
@@ -487,7 +487,7 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 #   E24  "transcript shows sub-agent use (Agent or Task tool)" (key: sub-agent use)
 #        "every sub-agent call uses a configured model" (key: configured model)  "the reply has a Models: line" (key: Models: line)
 #        "node --test tests/*.test.js passes" (key: node --test)
-#   E25  retired in v0.24.10 (see test-evals-grade6-b.sh)
+#   E25  re-pointed in v0.24.13: an additive VERSION export in three files runs at Lite (tests in test-evals-grade6-b.sh)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
 # model_reviewer_claude=opus (tracked, clean tree).
 tq_flush
