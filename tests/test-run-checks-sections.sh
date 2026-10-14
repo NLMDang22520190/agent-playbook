@@ -205,9 +205,12 @@ assert_not_contains "AC8.1 --only skills: no scenarios line" "$OUT" "scenarios e
 SKILLS_ONLY_OUT="$OUT"
 C="$(mk_copy)"
 set_line "$C" description 'description: Use when stating results. Note: keep it short.'
+# the same tree also carries a stale word-budgets entry: the skills group's own wbstale call must name it (no extra run)
+printf 'skills/gone/SKILL.md 100\n' >> "$C/evals/word-budgets"
 only_run "$C" skills
 assert_rc "AC8.1 --only skills on a bad description: exit 1" 1
 assert_contains "AC8.1 --only skills on a bad description: names the SKILL.md" "$OUT" "$SKILL"
+assert_contains "R1 --only skills: a stale word-budgets entry is named (skills group runs wbstale)" "$OUT" "skills/gone/SKILL.md: in evals/word-budgets but missing"
 C="$(mk_copy)"
 only_run "$C" scenarios
 assert_rc "AC8.1 --only scenarios on the real tree: exit 0" 0
@@ -228,9 +231,13 @@ OUT="$FULL_OUT"
 for want in "name matches directory" "always-on block" "regex repeat bounds <= 255" "has a suffix (BSD sed)" "scenarios each have Prompt:" "syntax:"; do
   assert_contains "AC8.1 no --only: the full output has [$want]" "$OUT" "$want"
 done
+C="$(mk_min_copy)"
+run bash "$C/evals/run-checks.sh"
+n0="$(printf '%s\n' "$OUT" | sed -n 's/^run-checks: \([0-9][0-9]*\) problem.*/\1/p')"
 C="$(mk_min_copy)"; fixture_gnu "$C"
 run bash "$C/evals/run-checks.sh"
-assert_rc "AC8.1 no --only: a gnu-flagged file fails the full run" 1
+n1="$(printf '%s\n' "$OUT" | sed -n 's/^run-checks: \([0-9][0-9]*\) problem.*/\1/p')"
+assert_eq "AC8.1 no --only: a gnu-flagged file adds exactly one problem to the same min-tree full run" "$((n0 + 1))" "$n1"
 assert_contains "AC8.1 no --only: the full output has [GNU-only options (BSD/macOS lacks them]" "$OUT" "GNU-only options (BSD/macOS lacks them"
 assert_contains "AC8.1 no --only: the flagged file:line is named" "$OUT" "tests/zz-only.sh:3"
 # the word budgets run exactly once in a full run (always-on block for AGENTS.global.md, skills group for the skills): no line doubled, none lost
@@ -373,10 +380,10 @@ fi
 # one run renames both directories and feeds both groups of assertions
 C="$(mk_copy)"; mv "$C/tools" "$C/tools-renamed"; mv "$C/scripts" "$C/scripts-renamed"
 run bash "$C/evals/run-checks.sh" --only files
-assert_rc "AC16.1 [full run] tools/ renamed: exit 1" 1
-assert_contains "AC16.1 [full run] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
-assert_rc "AC16.1 [full run] scripts/ renamed: exit 1" 1
-assert_contains "AC16.1 [full run] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
+assert_rc "AC16.1 [--only files] tools/ renamed: exit 1" 1
+assert_contains "AC16.1 [--only files] tools/ renamed: reports no files match tools/*.sh" "$OUT" "no files match tools/*.sh"
+assert_rc "AC16.1 [--only files] scripts/ renamed: exit 1" 1
+assert_contains "AC16.1 [--only files] scripts/ renamed: reports no files match scripts/*.sh" "$OUT" "no files match scripts/*.sh"
 
 
 # ---- v0.23.3 AC7.3: a # right after ; & | ( ) starts a comment in the sed check too ----
@@ -518,7 +525,7 @@ assert_contains "AC2 the usage message names budgets" "$OUT" "budgets"
 # the real tree passes the skills group
 C="$(mk_wb_copy)"
 checks "$C" budgets
-assert_rc "AC2 the real tree passes the word budgets (skills group)" 0
+assert_rc "AC2 the real tree passes the word budgets (--only budgets)" 0
 assert_not_contains "AC2 the real tree: no budget failure" "$OUT" "over its budget"
 
 # a skill 1 word over its budget fails and the output names file, count and budget
@@ -561,7 +568,7 @@ checks "$C" budgets
 assert_rc "AC5 evals/word-budgets missing: exit 1" 1
 assert_contains "AC5 evals/word-budgets missing: names the file" "$OUT" "word-budgets"
 
-# AGENTS.global.md has its own budget (always-on group: a full run)
+# AGENTS.global.md has its own budget (checked through --only budgets)
 C="$(mk_wb_copy)"; wb_table "$C"
 b="$(( $(wcw "$C/AGENTS.global.md") + WB_SLACK ))"
 wb_pad "$C" AGENTS.global.md $((WB_SLACK + 1))
