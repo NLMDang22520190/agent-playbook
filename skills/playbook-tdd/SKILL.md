@@ -46,7 +46,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 **Decide consistently.** Code is critical when the repo's documentation or notes say it serves billing, payments, auth or personal data.
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
 A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
-A new exported function counts as additive: it changes no existing public API.
+A new exported function is additive and changes no existing public API; removing or renaming an exported symbol is a public API change: Full.
 A change limited to user-visible message or comment text (a typo, a wording fix), with no control flow and no data shape touched, is Lite even in a sensitive module, provided the string is not parsed, matched or sent as data (an error code, a key, a log format or a message another system matches on is data, so Full applies). State the sensitivity as a risk line in the spec and the report (for example "risk: billing module, message text only"), not as the reason for Full.
 The weight line quotes the file:line or rule that decided it.
 
@@ -64,8 +64,8 @@ The tests are never skipped: the test comes first and is seen failing, role gate
 If the work meets a Full criterion, the user override above applies, with its label. If quick work grows past the Lite size limit
 with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
 
-**Why:** three fresh contexts cost minutes and tokens per slice; for a small
-reversible fix that buys little; for hard-to-reverse changes it is the cheapest insurance.
+**Why:** three fresh contexts cost minutes and tokens per slice: little gain for a small
+reversible fix, the cheapest insurance for hard-to-reverse changes.
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
@@ -75,7 +75,7 @@ reversible fix that buys little; for hard-to-reverse changes it is the cheapest 
 2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
-   must pass (proof you did not bend the test). `role-gate.sh size --base $RED` checks the Lite limits;
+   must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
    logic is recommended. A user-visible change (UI, HTTP API, CLI output, file format) also needs one
