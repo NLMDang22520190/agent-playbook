@@ -7,7 +7,7 @@ test-evals-grade.sh 374
 test-evals-grade2.sh 340
 test-evals-grade6.sh 335
 test-leak-check.sh 334
-test-role-gate-batch.sh 330
+test-role-gate-batch.sh 400
 test-ci-tree-tested-steps.sh 316
 test-evals-grade3.sh 316
 test-leak-check-push.sh 293
