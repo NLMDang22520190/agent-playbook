@@ -1,6 +1,6 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), taken from run 38515369561 (v0.24.13) alone, not a mean: the suites changed after the earlier runs (test-run-checks-sections.sh batched, test-evals-* split, PB_JOBS now 6), so the mean of 38408205118 and 38499424198 left shards at 283/507/538/324 s. Deviates from L-0003 (median of 2-3 runs) on purpose until two runs of the current suites exist.
+# test-evals-grade4.sh (493 s in that run) is split in v0.24.14 into two suites at 224 s and 269 s: the 493 s split by the Linux time share of the halves (25 s and 30 s).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (mean of 2-3 runs, see L-0003).
-test-evals-grade4.sh 493
 test-evals-grade.sh 374
 test-evals-grade2.sh 340
 test-evals-grade6.sh 335
@@ -9,10 +9,12 @@ test-ci-tree-tested-steps.sh 316
 test-evals-grade3.sh 316
 test-leak-check-push.sh 293
 test-evals-grade2-e20-capture.sh 286
+test-evals-grade4-b.sh 269
 test-evals-runner.sh 266
 test-evals-grade6-b.sh 260
 test-mutate.sh 246
 test-ship.sh 244
+test-evals-grade4.sh 224
 test-evals-grade5.sh 222
 test-ship-b.sh 215
 test-ci-tree-tested.sh 189
