@@ -30,12 +30,15 @@ bq_flush() {
       if [ "${BQ_REL[$i]}" = install.sh ]; then
         f=install.sh; ln=$((3 + ninst))
         if [ "$ninst" = 0 ]; then printf '#!/usr/bin/env bash\n# fixture\n%s\n' "${BQ_LINE[$i]}" > "$C/$f"
-        else printf '%s\n' "${BQ_LINE[$i]}" >> "$C/$f"; fi
+        else printf '%s\n' "${BQ_LINE[$i]}" >> "$C/$f"; fi || t_bad "$ac ${BQ_NAME[$i]}: fixture written" "could not write $C/$f"
         ninst=$((ninst + 1))
       else
         d="$(dirname "${BQ_REL[$i]}")"; f="$d/zz-$fam-$(printf '%03d' "$i").sh"; ln=3
-        printf '#!/usr/bin/env bash\n# fixture\n%s\n' "${BQ_LINE[$i]}" > "$C/$f"
+        mkdir -p "$C/$d" && printf '#!/usr/bin/env bash\n# fixture\n%s\n' "${BQ_LINE[$i]}" > "$C/$f" ||
+          t_bad "$ac ${BQ_NAME[$i]}: fixture written" "could not write $C/$f"
       fi
+      # a case whose line is not in its fixture would pass vacuously (its file is never named)
+      grep -qxF -- "${BQ_LINE[$i]}" "$C/$f" 2>/dev/null || t_bad "$ac ${BQ_NAME[$i]}: fixture holds its line" "line not found in $C/$f"
       BQ_FILE[$i]="$f"; BQ_FLN[$i]="$ln"
     done
     [ "$n" -gt 0 ] || continue

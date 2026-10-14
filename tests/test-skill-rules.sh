@@ -193,14 +193,28 @@ chk "R13 harnesses.md: manual examples claude -p, codex exec, opencode run" "$HA
 chk "R13 harnesses.md: none (degraded) and its report line" "$HARN" '\*\*none\*\* \(degraded\).{0,250}degraded mode: roles shared one context'
 chk "R13 harnesses.md: the fixed prompt prefix can be cached" "$HARN" 'fixed prefix can be cached'
 chk "R13 harnesses.md: the honest limit on shared blind spots" "$HARN" 'same model in fresh contexts still shares blind spots'
-for p in 'opencode.json' 'codex exec -m' 'model_reasoning_effort' 'degraded mode: roles shared one context' 'claude -p' 'shares blind spots'; do
+for p in 'opencode.json' 'codex exec -m' 'model_reasoning_effort' 'claude -p' 'shares blind spots' 'Agent`/`Task` tool' 'never your earlier reasoning'; do
   if grep -qF -- "$p" "$SKILL"; then t_bad "R13 moved, not copied: SKILL.md no longer says [$p]" "still in $SKILL"; else t_ok "R13 moved, not copied: SKILL.md no longer says [$p]"; fi
 done
 chk "R13 stays in SKILL.md: the mechanical model routing" "$ROLES" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
 chk "R13 stays in SKILL.md: reviewer_light for tests, docs or skill text" "$ROLES" '`reviewer_light` for a review of a diff that only touches tests, docs or skill text'
 chk "R13 stays in SKILL.md: build role prompts from templates/role-prompt.md" "$ROLES" 'Build every sub-agent prompt from `templates/role-prompt\.md`'
+echo "v0.24.13 review round 1: the binding none-mode rule and the native isolation clause stay in SKILL.md (the mechanics stay moved)"
+chk "R13 stays in SKILL.md: native roles get the role file and input paths, never your conversation" "$ROLES" 'Native roles[^.]{0,80}full role file[^.]{0,80}input paths[^.]{0,40}never your conversation'
+chk "R13 stays in SKILL.md: none mode plays the roles one after another" "$ROLES" '`none` mode[^.]{0,40}play[s]? the roles one after another'
+chk "R13 stays in SKILL.md: none mode commits between roles and re-reads only the hand-off files" "$ROLES" '`none` mode[^.]{0,120}commit between roles[^.]{0,80}re-read only the hand-off files'
+chk "R13 stays in SKILL.md: none mode still runs the gates" "$ROLES" '`none` mode[^.]{0,200}still run the gates'
+chk "R13 stays in SKILL.md: none mode reports the degraded line" "$ROLES" '`none` mode[^.]{0,250}degraded mode: roles shared one context'
+# the "except in `none` mode (see below)" of the opening paragraph must have a target below it
+SEEBELOW="$(awk 'f { print } index($0, "except in `none` mode (see below)") { f = 1 }' "$SKILL" 2>/dev/null | tr '\n' ' ')"
+if grep -qF 'except in `none` mode (see below)' "$SKILL"; then t_ok "R13 SKILL.md still has the 'except in none mode (see below)' pointer"; else t_bad "R13 SKILL.md still has the 'except in none mode (see below)' pointer" "line not found in $SKILL"; fi
+chk "R13 the 'see below' target: none mode is defined below the pointer" "$SEEBELOW" 'In `none` mode[^.]{0,40}play[s]? the roles one after another'
+# the Why line of the section reads on its own: no orphan prompt-prefix reason (the prefix caching moved to harnesses.md)
+WHY="$(printf '%s' "$ROLES" | grep -oE '\*\*Why:\*\*.*' )"
+if [ -n "$WHY" ]; then t_ok "R13 the Starting roles section has a Why line"; else t_bad "R13 the Starting roles section has a Why line" "no **Why:** in the section"; fi
+if printf '%s' "$WHY" | grep -qiE 'prompt prefix|cheaper to reuse'; then t_bad "R13 the Why line no longer gives the moved prompt-prefix reason" "$WHY"; else t_ok "R13 the Why line no longer gives the moved prompt-prefix reason"; fi
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
-if [ "$TW" -le 3542 ]; then t_ok "R13 SKILL.md is at least 250 words shorter than at v0.24.12 (3792): $TW"; else t_bad "R13 SKILL.md is at least 250 words shorter than at v0.24.12 (3792)" "$TW words"; fi
+if [ "$TW" -le 3577 ]; then t_ok "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored): $TW"; else t_bad "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored)" "$TW words"; fi
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
 WANT=$(( (TW + 49) / 50 * 50 ))
 assert_eq "R13 the playbook-tdd budget is the new count rounded up to the next 50" "$WANT" "$TB"
