@@ -67,6 +67,54 @@ classify() {
   if printf '%s\n' "$1" | grep -Eq -- "$TEST_RE"; then echo test; else echo code; fi
 }
 
+# classify_list: classify many newline-separated, non-empty paths with one grep -E per configured regex
+# (infra when set, then test) instead of one grep per path. Sets KINDS to one kind per input line, in order.
+# The batch grep runs in the caller's locale, with -a (no "binary file matches" line) and -n: the line number
+# before the FIRST colon maps a hit back to its path, so a path with a colon, tab, CR or leading dash is safe.
+# A path matching both regexes is infra (infra first), exactly as classify. If a batch grep exits above 1
+# (it failed), every path of the batch is classified with the per-file classify.
+classify_list() {
+  local list="$1" ihits="" thits="" iset=" " tset=" " line p k i=0 rc fb=0
+  KINDS=""
+  [ -n "$list" ] || return 0
+  if [ -n "$INFRA_RE" ]; then
+    ihits="$(printf '%s\n' "$list" | grep -Ean -- "$INFRA_RE")"; rc=$?
+    [ "$rc" -le 1 ] || fb=1
+  fi
+  if [ "$fb" -eq 0 ]; then
+    thits="$(printf '%s\n' "$list" | grep -Ean -- "$TEST_RE")"; rc=$?
+    [ "$rc" -le 1 ] || fb=1
+  fi
+  if [ "$fb" -eq 0 ]; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      iset="$iset${line%%:*} "
+    done <<EOF
+$ihits
+EOF
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      tset="$tset${line%%:*} "
+    done <<EOF
+$thits
+EOF
+  fi
+  while IFS= read -r p; do
+    i=$((i + 1))
+    if [ "$fb" -eq 1 ]; then
+      k="$(classify "$p")"
+    else
+      case "$iset" in
+        *" $i "*) k="infra" ;;
+        *) case "$tset" in *" $i "*) k="test" ;; *) k="code" ;; esac ;;
+      esac
+    fi
+    KINDS="$KINDS$k"$'\n'
+  done <<EOF
+$list
+EOF
+}
+
 cmd="${1:-}"
 case "$cmd" in
   classify | check | size)
@@ -128,11 +176,22 @@ case "$cmd" in
     }
     violations=0
     checked=0
+    plist=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$f" in .agents/handoff/*) continue ;; esac
+      plist="$plist$f"$'\n'
+    done <<EOF
+$changed
+EOF
+    plist="${plist%$'\n'}"
+    classify_list "$plist"
+    kinds_rest="$KINDS"
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
       checked=$((checked + 1))
-      kind="$(classify "$f")"
+      kind="${kinds_rest%%$'\n'*}"; kinds_rest="${kinds_rest#*$'\n'}"
       if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
         printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$(shown "$f")"
         continue
@@ -220,10 +279,23 @@ usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base R
 
     files=0
     lines=0
-    while IFS=$'\t' read -r added deleted f; do
+    plist=""
+    metas=""
+    while IFS=$'	' read -r added deleted f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
-      [ "$(classify "$f")" != "test" ] || continue   # code and infra count
+      plist="$plist$f"$'\n'
+      metas="$metas$added $deleted"$'\n'
+    done <<EOF
+$stats
+EOF
+    plist="${plist%$'\n'}"
+    classify_list "$plist"
+    kinds_rest="$KINDS"
+    while IFS=' ' read -r added deleted; do
+      [ -n "$added" ] || continue
+      kind="${kinds_rest%%$'\n'*}"; kinds_rest="${kinds_rest#*$'\n'}"
+      [ "$kind" != "test" ] || continue   # code and infra count
       files=$((files + 1))
       if [ "$added" = "-" ]; then
         lines=$((lines + 1))
@@ -231,7 +303,7 @@ usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base R
         lines=$((lines + added + deleted))
       fi
     done <<EOF
-$stats
+$metas
 EOF
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
