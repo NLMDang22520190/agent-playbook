@@ -470,7 +470,7 @@ assert_contains "AC3.x the idle run graded E19" "$OUT" "E19 "
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E6 --workroot "$W" --out "$W/results.md"
 assert_rc "AC3.x E6 (not auto-gradable) is still refused (exit 2)" 2
-assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21,E22,E23,E24)"
+assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21,E22,E23,E24,E25,E26)"
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
@@ -610,7 +610,7 @@ run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" -
 assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
 
 # ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
-# node evals/transcript.js LOG prints these eleven KEY=VALUE lines (one each, nothing else; exit 0; models= since v0.24.0, last):
+# node evals/transcript.js LOG prints these twelve KEY=VALUE lines (one each, nothing else; exit 0; asked= since v0.24.13, models= since v0.24.0, last):
 #   json=1|0               LOG has stream-json lines (a line that parses as an object with a "type")
 #   result_ok=1|0          the last "result" line is not an error (is_error false, or subtype success), as run-evals.sh result_ok
 #   cost=<number>|         total_cost_usd of the last result line that has one, as JSON prints it; empty after "=" when none
@@ -621,6 +621,7 @@ assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(prin
 #   untested_label=1|0|na  the result text labels the change untested; na without a result line
 #   ran_tests=1|0|na       (v0.21.0) a Bash tool_use that runs node --test, npm test, npm run test or proof-run.sh; na when json=0
 #   spec_first=1|0|na     (v0.22.0) a Write/Edit of a path ending .agents/handoff/01-spec.md comes before the first Write/Edit under src/ (1), after it or never (0); na when json=0
+#   asked=<N>|na          (v0.24.13) the number of tool_use blocks named AskUserQuestion; na when json=0
 # It also writes the result text to LOG.result (no trailing newline added); with no result line it removes a stale LOG.result.
 echo "v0.18.0 AC4.1 evals/transcript.js"
 TS="$PB_ROOT/evals/transcript.js"
@@ -644,8 +645,8 @@ kv() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
 nkeys() { printf '%s\n' "$OUT" | grep -c '^[a-z_]*='; }
 run node "$TS" "$TJ/pos.log"
 assert_rc "AC4.1 transcript.js on a stream-json log exits 0" 0
-assert_eq "AC4.1 output is exactly eleven KEY=VALUE lines (v0.24.0 adds models=)" "11" "$(nkeys)"
-assert_eq "AC4.1 and nothing else (no extra lines)" "11" "$(printf '%s\n' "$OUT" | grep -c .)"
+assert_eq "AC4.1 output is exactly twelve KEY=VALUE lines (v0.24.0 adds models=, v0.24.13 adds asked=)" "12" "$(nkeys)"
+assert_eq "AC4.1 and nothing else (no extra lines)" "12" "$(printf '%s\n' "$OUT" | grep -c .)"
 assert_eq "AC4.1 pos: json=1" "1" "$(kv json)"
 assert_eq "AC4.1 pos: result_ok=1" "1" "$(kv result_ok)"
 assert_eq "AC4.1 pos: cost=0.1234" "0.1234" "$(kv cost)"
@@ -672,7 +673,7 @@ assert_eq "AC4.1 neg: <log>.result holds the result text" "Weight: Lite, not Ful
 echo stale > "$TJ/plain.log.result"
 run node "$TS" "$TJ/plain.log"
 assert_rc "AC4.1 transcript.js on a plain-text log exits 0" 0
-assert_eq "AC4.1 plain: eleven keys" "11" "$(nkeys)"
+assert_eq "AC4.1 plain: twelve keys" "12" "$(nkeys)"
 assert_eq "AC4.1 plain: json=0" "0" "$(kv json)"
 assert_eq "AC4.1 plain: result_ok=0" "0" "$(kv result_ok)"
 assert_eq "AC4.1 plain: cost empty" "" "$(kv cost)"
@@ -1184,5 +1185,31 @@ T8D="$(cat "$REC/t8.tmpdir" 2>/dev/null)"
 if [ -n "$T8D" ] && printf '%s\n' "$OUT" | grep '^E1 NOTE ' | grep -qF "$T8D"; then t_ok "T8 a NOTE names the path that could not be removed"; else t_bad "T8 a NOTE names the path that could not be removed" "dir [$T8D], output: $OUT"; fi
 assert_eq "T8 it is no ERROR" "0" "$(printf '%s\n' "$OUT" | grep -c '^E1 ERROR')"
 else t_skip 2 "v0.24.7 T8 (chmod 555 on a parent does not stop the removal here: root or NTFS)"; fi
+
+# ---- v0.24.13 S3: what a bare `mktemp -d` does with TMPDIR (macOS may ignore it), and the run-evals.sh header says so ----
+# The header must carry this sentence (checked on the comment block before `set -u`, backticks removed, lines joined):
+#   "On macOS a bare `mktemp -d` may ignore TMPDIR, so the per-scenario TMPDIR cleanup may not catch those leftovers."
+# Keys: "macOS ... bare mktemp -d may ignore TMPDIR" and "cleanup may not catch".
+echo "v0.24.13 S3 AC3.1 a bare mktemp -d with TMPDIR set: Linux asserts it lands in TMPDIR, other hosts only print what they see"
+MT_BASE="$(mk_tmp)"
+MT_D="$(TMPDIR="$MT_BASE" mktemp -d)"
+MT_P="$(dirname "$MT_D")"
+if [ -n "$MT_D" ] && [ "$(physdir "$MT_P")" = "$(physdir "$MT_BASE")" ]; then MT_IN=1; else MT_IN=0; fi
+case "$(uname -s)" in
+  Linux)
+    # characterization: GNU mktemp honours TMPDIR, so this passes at once (the header assertion below is the RED of S3)
+    if [ "$MT_IN" = 1 ]; then t_ok "AC3.1 Linux: a bare mktemp -d lands directly inside TMPDIR (characterization, passes before the change)"; else t_bad "AC3.1 Linux: a bare mktemp -d lands directly inside TMPDIR" "TMPDIR=[$MT_BASE] made [$MT_D]"; fi ;;
+  *)
+    if [ "$MT_IN" = 1 ]; then t_ok "AC3.1 $(uname -s): a bare mktemp -d is in TMPDIR (observation only, never a failure)"; else t_ok "AC3.1 $(uname -s): a bare mktemp -d is outside TMPDIR: $MT_P (observation only, never a failure)"; fi ;;
+esac
+# remove only the empty dir this probe made (rmdir refuses a non-empty dir, a link or a path that is not the dir)
+if [ -n "$MT_D" ] && [ -d "$MT_D" ]; then rmdir "$MT_D" 2>/dev/null || true; fi
+assert_no_path "AC3.1 the probe dir is removed" "$MT_D"
+
+echo "v0.24.13 S3 AC3.2 the run-evals.sh header documents the macOS mktemp limit"
+RHDR="$(sed -n '1,/^set -u/p' "$RUNNER" | sed '$d' | sed 's/^# \{0,1\}//' | tr -d '`' | tr '\n' ' ' | tr -s ' ')"
+case "$RHDR" in *"set -u"*) t_bad "AC3.2 the header extract stops before set -u" "extract: ${RHDR:0:80}" ;; *) t_ok "AC3.2 the header extract stops before set -u" ;; esac
+if printf '%s' "$RHDR" | grep -qE 'macOS[^.]{0,80}bare mktemp -d may ignore (the )?TMPDIR'; then t_ok "AC3.2 the header says that on macOS a bare mktemp -d may ignore TMPDIR"; else t_bad "AC3.2 the header says that on macOS a bare mktemp -d may ignore TMPDIR" "no such sentence in the header"; fi
+if printf '%s' "$RHDR" | grep -qE 'cleanup may not catch'; then t_ok "AC3.2 the header says the per-scenario TMPDIR cleanup may not catch those leftovers"; else t_bad "AC3.2 the header says the per-scenario TMPDIR cleanup may not catch those leftovers" "no 'cleanup may not catch' in the header"; fi
 
 t_summary

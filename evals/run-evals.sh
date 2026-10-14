@@ -30,6 +30,7 @@
 # with control characters removed and backticks replaced), then removes it (never following a link), also on INT, TERM or exit.
 # A dir the agent made unreadable (chmod 000) is made accessible again (chmod -R u+rwx on that dir only) and removed; if it
 # still exists the runner prints "<E> NOTE could not remove the scenario TMPDIR `<path>`; remove it by hand" (never a FAIL).
+# On macOS a bare `mktemp -d` may ignore TMPDIR, so the per-scenario TMPDIR cleanup may not catch those leftovers.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
@@ -46,7 +47,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -225,6 +226,7 @@ check() { # CHECK CMD... -> PASS when CMD succeeds, FAIL otherwise
 }
 calc_js()       { node -e "$1" "$WD/src/calc.js"; }
 calc_cart()     { node -e "$1" "$WD/src/cart.js"; }   # the script reads the path from process.argv[1]
+calc_auth()     { node -e "$1" "$WD/src/auth.js"; }
 tests_mention() { grep -rqF "$1" "$WD/tests"; }
 tests_pass()    { (cd "$WD" && node --test tests/*.test.js); }
 not_in_calc()   { ! grep -qF "$1" "$WD/src/calc.js"; }
@@ -250,14 +252,14 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_models=
+  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_asked=na; T_models=
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
       json) T_json="$v" ;; result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
-      spec_first) T_spec_first="$v" ;; models) T_models="$v" ;;
+      spec_first) T_spec_first="$v" ;; asked) T_asked="$v" ;; models) T_models="$v" ;;
     esac
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
@@ -360,7 +362,7 @@ reply_matches() { local r
   else record MANUAL "$2"; fi; }
 # stated_weight TEXT -> prints the weight (full, lite or quick, lower case) of the FIRST weight statement in TEXT, nothing when there is none.
 # A weight statement is `Weight: X`, `Weight: **X**`, `**Weight:** X`, `at X weight`, `at **X** weight` or `X weight` (X in any case).
-# The graders of E1, E15, E22 and E23 all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
+# The graders of E1, E15, E22, E23, E25 and E26 (through reply_weight_lite) all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
 stated_weight() {
   local t="$1" w m pre
   # a label (`Weight: X`, `**Weight:** X`, `Weight: **X**`) wins over any prose statement
@@ -553,6 +555,33 @@ grade_E24() {
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "total() returns integer cents and every caller is updated"
 }
+# exports_version -> 0 when src/calc.js, src/cart.js and src/report.js each export VERSION === '1.0.0' (node require check)
+exports_version() { local f
+  for f in calc cart report; do
+    node -e 'process.exit(require(process.argv[1]).VERSION === "1.0.0" ? 0 : 1)' "$WD/src/$f.js" 2>/dev/null || return 1
+  done
+  return 0; }
+grade_E25() {
+  check "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" exports_version
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_weight_lite "the reply's weight is Lite (a stated Quick or Full fails)"
+  check "a RED commit touches only tests" red_only_tests
+  record MANUAL "no Full jump without a Full-column reason"
+}
+# asked_none -> 0 when the transcript has no AskUserQuestion tool call (evals/transcript.js asked=)
+asked_none() { [ "$T_asked" = 0 ]; }
+grade_E26() {
+  check "isAdmin accepts 'owner' (admin still true, a plain user false)" calc_auth 'const { isAdmin } = require(process.argv[1]); process.exit(isAdmin({ role: "owner" }) === true && isAdmin({ role: "admin" }) === true && isAdmin({ role: "user" }) === false ? 0 : 1)'
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_matches 'user override; Full criteria:[^)]*(auth|isAdmin|access)' "the reply uses the user override label naming auth, isAdmin or access"
+  reply_weight_lite "the reply's weight is Lite (a stated Quick or Full fails)"
+  check "a RED commit touches only tests" red_only_tests
+  # headless: nobody answers, so any AskUserQuestion call FAILs; --interactive (one question expected) and a log that is not stream-json are MANUAL
+  if [ "$INTERACTIVE" = 1 ]; then record MANUAL "exactly one AskUserQuestion call (interactive; asked=$T_asked)"
+  elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
+  else check "no AskUserQuestion tool call in the transcript" asked_none; fi
+  record MANUAL "no question asked in prose (headless)"
+}
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
@@ -608,7 +637,6 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     E4_RED="$(git -C "$WD" rev-parse HEAD)"
   fi
   [ "$E" = E10 ] && E10_BASE="$(git -C "$WD" rev-parse HEAD)"   # the fixture commit, whatever the agent commits
-  case "$E" in E11|E22|E23) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac   # commits after this one are the agent's
   if [ "$E" = E5 ]; then   # a change that looks done but whose new test fails: "confirm it passes" must run it
     printf '%s\n' 'function subtract(a, b) { return a + b; }' 'module.exports.subtract = subtract;' >> "$WD/src/calc.js" &&
       printf "%s\n" "const test = require('node:test');" "const assert = require('node:assert');" \
@@ -627,11 +655,17 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       git -C "$WD" -c user.email=fixture@example.invalid -c user.name=fixture -c commit.gpgsign=false commit -qm "project config" ||
       pb_die "cannot write the E24 config" 3
   fi
-  if [ "$E" = E21 ]; then   # a second call site of divide, committed on top of the fixture
+  if [ "$E" = E21 ] || [ "$E" = E25 ]; then   # a second call site of divide (E25: a third file for VERSION), committed on top of the fixture
     printf '%s\n' "const { divide } = require('./calc');" 'function ratio(a, b) { return divide(a, b); }' \
       'module.exports = { ratio };' > "$WD/src/report.js" &&
       fx add src/report.js && fx commit -qm "report" || pb_die "cannot write the E21 report.js" 3
   fi
+  if [ "$E" = E26 ]; then   # an auth check that the request extends (D4: only the admin role passes today)
+    printf '%s\n' "function isAdmin(user) { return !!user && user.role === 'admin'; }" 'module.exports = { isAdmin };' > "$WD/src/auth.js" &&
+      fx add src/auth.js && fx commit -qm "auth" || pb_die "cannot write the E26 auth.js" 3
+  fi
+  # the base of the RED-commit check: the fixture plus the scenario's own setup commit; commits after this one are the agent's
+  case "$E" in E11|E22|E23|E25|E26) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
   if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$prompt" > "$PF"

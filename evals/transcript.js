@@ -2,6 +2,7 @@
 // Reads one eval transcript once and prints what the graders need, as KEY=VALUE lines:
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
+//   asked=<N>|na (the number of tool_use blocks named AskUserQuestion; na when the log is not stream-json)
 //   models=<the `model` parameter of each Agent/Task tool_use, in order, comma separated; '-' for a call without one;
 //   empty when there is no call>   (always the last key). Only calls whose subagent_type is absent or general-purpose are
 //   listed: a helper sub-agent such as Explore or Plan is not a role and may run without a model.
@@ -26,7 +27,7 @@ let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
 
 const models = [];
-let json = false, result = null, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
+let json = false, result = null, asked = 0, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
 // a real `feedback.sh capture` call: quoted text (echo "...", -m '...') is removed before matching
 const unquote = s => s.replace(/"(?:[^"\\]|\\[\s\S])*"|'[^']*'/g, "");
 // heredoc bodies are data: drop every line after a line with <<WORD, <<'WORD', <<"WORD" or <<-WORD up to and including the
@@ -306,6 +307,7 @@ for (const line of text.split(/\r?\n/)) {
   for (const b of blocks) {
     if (!b || b.type !== "tool_use") continue;
     i++;
+    if (b.name === "AskUserQuestion") asked++;
     const inp = b.input || {};
     const fp = String(inp.file_path || "");
     if (b.name === "Agent" || b.name === "Task") {
@@ -364,5 +366,6 @@ process.stdout.write([
   "untested_label=" + (reply === null ? "na" : b(untested(reply))),
   "ran_tests=" + (!json ? "na" : b(ran)),
   "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
+  "asked=" + (!json ? "na" : String(asked)),
   "models=" + models.join(","),
 ].join("\n") + "\n");

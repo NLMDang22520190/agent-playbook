@@ -15,6 +15,8 @@ mo_of() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/nul
 mo_lines() { printf '%s\n' "$@" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | grep -c '^models='; }
 AG() { tu Agent "{\"description\":\"d\",\"subagent_type\":\"general-purpose\",\"model\":\"$1\",\"prompt\":\"x\"}"; }
 AGN() { tu Agent '{"description":"d","subagent_type":"general-purpose","prompt":"x"}'; }
+# v0.24.13: an AskUserQuestion tool call (what E26 must not make in a headless run)
+AQ() { tu AskUserQuestion '{"questions":[{"question":"Which one?","header":"h","options":[{"label":"a","description":"d"},{"label":"b","description":"e"}],"multiSelect":false}]}'; }
 # v0.24.10: E22 and E23 grade a RED commit (a commit that changes only tests/), so their fake adapters commit the test first, then fix src/
 GC='git -c user.email=x@example.invalid -c user.name=x -c commit.gpgsign=false'
 E23_SRC='printf "function total(items) { return items.filter((i) => i.qty > 0).reduce((s, i) => s + i.price * i.qty, 0); }\nmodule.exports = { total };\n" > src/cart.js'
