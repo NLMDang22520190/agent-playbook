@@ -9,6 +9,7 @@ IMPL="$TDD/roles/implementer.md"
 REVIEWER="$TDD/roles/reviewer.md"
 FINAL="$TDD/templates/final-report.md"
 RPROMPT="$TDD/templates/role-prompt.md"
+HARNESSES="$TDD/references/harnesses.md"   # v0.24.13: harness and model plumbing moved here
 SETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 QUESTIONS="$PB_ROOT/skills/playbook-setup/references/questions.md"
 
@@ -87,9 +88,9 @@ check 'AC8 SKILL ties it to prompt caching / prefix' "$SKILL" 'prefix[^.]{0,80}(
 # --- AC9: starting roles
 check_sec 'AC9 Starting roles section uses role-model.sh' "$SKILL" '^## Starting roles' 'role-model\.sh'
 check_sec 'AC9 Starting roles names harness values claude, codex, opencode' "$SKILL" '^## Starting roles' '`?claude`?[^.]{0,40}`?codex`?[^.]{0,40}`?opencode`?'
-check 'AC9 Claude Code Agent/Task model parameter' "$SKILL" '`model` parameter|model parameter'
-check 'AC9 OpenCode per-role agent in opencode.json' "$SKILL" 'opencode\.json'
-check 'AC9 Codex exec -m' "$SKILL" 'codex exec -m'
+check 'AC9 Claude Code Agent/Task model parameter' "$HARNESSES" '`model` parameter|model parameter'
+check 'AC9 OpenCode per-role agent in opencode.json' "$HARNESSES" 'opencode\.json'
+check 'AC9 Codex exec -m' "$HARNESSES" 'codex exec -m'
 check 'AC9 session means no override' "$SKILL" 'session[^.]{0,80}(no override|not override|do not override|dont override|without override)|(no override|not override|do not override)[^.]{0,80}session'
 
 # --- AC10: cost in final report and close-out
