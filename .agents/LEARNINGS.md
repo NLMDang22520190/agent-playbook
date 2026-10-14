@@ -72,3 +72,12 @@ Managed with `learn.sh` (installed at ~/.agents/playbook/scripts/learn.sh). Rule
 - Source: failure
 - Scope: project-wide
 - Role: all
+
+### L-0008 · 2026-10-14 · Heuristic tokenizers cannot make in-literal mutation safe
+- Status: active
+- Rule: Do not ship operators that can change shell text inside literals (* and / in mutate.sh) on a line-oriented heuristic tokenizer; use a real parser per language or keep such operators out.
+- Why: Each fuzz round found new ways the awk tokenizer lost track of strings (17, then 15); Ruby :` plus a backtick command still turned chmod -R x * y into chmod -R x / y.
+- Evidence: v0.24.14 lane M, review rounds 1 and 2 BLOCK, branch feat/v0.24.14-m 103ec05 (not merged), user decision 2026-10-14
+- Source: review
+- Scope: scripts/mutate.sh
+- Role: all
