@@ -1356,4 +1356,16 @@ CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILL" | tr '\n' ' ')"
 qchk "v24.10 r1 the first-slice checkpoint covers more than one slice (2 slices included)" "$CHKP" 'more than one slice[^.]{0,20}repeats? a pattern'
 if printf '%s' "$CHKP" | grep -qi 'several slices'; then t_bad "v24.10 r1 the checkpoint does not say several slices" "found 'several slices'"; else t_ok "v24.10 r1 the checkpoint does not say several slices"; fi
 
+echo "v0.24.11: rules lost with the Quick weight in v0.24.10 are restored (real eval E21 fell from 6/6 to 3/6 on a rename)"
+DECIDE="$(awk '/^\*\*Decide consistently/ { f = 1 } f && /^$/ { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+qchk "v24.11 L1 playbook-tdd: removing or renaming an exported symbol is a public API change: Full" "$DECIDE" 'removing or renaming an exported symbol is a public API change: Full'
+qchk "v24.11 L1 playbook-tdd: a new exported function is still additive" "$DECIDE" 'new exported function is additive'
+qchk "v24.11 L2 AGENTS.global.md TDD: a rename or removal of an export is a public API change: Full" "$TDDSEC" '(renam|remov)[^.;]{0,40}(renam|remov)[^.;]{0,40}export[^.;]{0,40}public API change[^.;]{0,20}Full'
+qchk "v24.11 L2 AGENTS.global.md TDD: a rename counts even when it looks like no behaviour change" "$TDDSEC" 'renam[^.]{0,200}even when[^.;]{0,60}no behaviou?r change'
+qchk "v24.11 L3 AGENTS.global.md TDD: load playbook-tdd first" "$TDDSEC" 'load `playbook-tdd` first'
+echo "v0.24.11: E22 runs at Lite, so its Fail if no longer fails on the Lite spec"
+if printf '%s' "$E22F" | grep -qiE 'spec|hand-off'; then t_bad "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)" "$E22F"; else t_ok "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)"; fi
+qchk "v24.11 E22 Pass if says the short Lite spec is expected" "$E22S" 'Lite spec[^.]{0,80}01-spec\.md'
+if awk '/^grade_E22\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "$PB_ROOT/evals/run-evals.sh" | grep -qiE 'spec|handoff'; then t_bad "v24.11 grade_E22 has no check on a spec" "spec or handoff in grade_E22"; else t_ok "v24.11 grade_E22 has no check on a spec"; fi
+
 t_summary
