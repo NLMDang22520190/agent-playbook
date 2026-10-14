@@ -10,6 +10,7 @@
   vacuous and is now a problem-count delta, and stale test names match the code path again.
 - **leak-check note wording.** Cases L3, L4 and L5 now cover `pushInsteadOf`, the self exclusion and `insteadOf`
   chains. Each case is the only test that kills its mutant (from the v0.24.9 review).
+- **Real evals:** E21 2/2 runs at 6/6 on v0.24.11 (4.00 USD), confirming the v0.24.11 fix.
 
 ## 0.24.11 - 2026-10-14
 - **Restored: a rename or removal of an export is a public API change, so Full.** The always-on TDD paragraph says it

@@ -155,3 +155,17 @@ lived only in the Quick text: "removing or renaming an exported symbol is a publ
 playbook-tdd and quick.md) and the always-on "load `playbook-tdd` first". The v0.24.2 guards for E21's first
 regression (AC6.1, AC6.2) were removed with them. v0.24.11 restores both rules outside Quick (the always-on TDD
 paragraph and playbook-tdd's "Decide consistently") and re-adds the guards; E21 is re-run on the installed v0.24.11.
+
+## Run 11: v0.24.11 installed - E21 x2 after the restored rename rule (2026-10-14, cap 2.8 USD per run)
+
+Two runs of E21 on the installed v0.24.11, from Windows Git Bash with `--clean-env` and `--max-cost 2.8` per run:
+
+| Run | Auto passed / total | Cost (USD) |
+|---|---|---|
+| 1 | 6/6 | 1.75 |
+| 2 | 6/6 | 2.25 |
+
+Total 4.00 USD. E21 is back at 6/6 in both runs, from 3/6 on v0.24.10 (Run 10). Restoring the two lost rules outside
+the Quick text (a rename or removal of an exported symbol is a public API change: Full, and load `playbook-tdd` first)
+undid the regression. Cumulative eval spend for the v0.24.10/v0.24.11 cycle: 14.32 USD (Run 10 4.52 + 5.80, Run 11
+4.00), against the raised cap of about 16 USD.
