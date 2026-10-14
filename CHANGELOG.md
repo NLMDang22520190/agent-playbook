@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.11 - 2026-10-14
+- **Restored: a rename or removal of an export is a public API change, so Full.** The always-on TDD paragraph says it
+  again, with "load `playbook-tdd` first, even when the change looks like no behaviour change". `playbook-tdd`'s
+  "Decide consistently" says "removing or renaming an exported symbol is a public API change: Full" next to the
+  additive rule for a new exported function. Both rules lived only in the Quick text and were deleted with it in
+  v0.24.10. Real eval E21 (a function rename) then fell from 6/6 to 3/6: the agent called it "a pure rename" that the
+  TDD rule did not cover, never loaded playbook-tdd and wrote no spec.
+- **Tests:** the v0.24.2 regression guards for E21 (AC6.1 load playbook-tdd first, AC6.2 exported symbol) are back as
+  content checks on AGENTS.global.md and playbook-tdd. To fit the restored words, two rationale phrases in playbook-tdd
+  were shortened; no rule or pinned phrase is lost (3792 words, cap 3793, budget 3800). AGENTS.global.md: 39 lines,
+  4383 bytes (cap 4400), 664 words (budget 700).
+- **evals:** E22's "Fail if" no longer fails on hand-off files or a spec. E22 runs at Lite, and Lite step 1 writes a
+  short spec. The E22 grader never checked for a spec, and a test now keeps it that way.
+- **Real evals for v0.24.10** (Run 10 in `evals/results/2026-10-12-claude-code-2.1.296.md`):
+  - Baseline on v0.24.9: E1 6/6, E10 3/3, E15 7/7, E16 5/5, for 4.52 USD (E21, E22, E23 and E25 skipped by the cap).
+  - After, on the installed v0.24.10: E22, E23, E15, E1, E10, E5, E3 and E16 pass all auto checks, for 5.80 USD in
+    total.
+  - E21 scored 3/6, the regression fixed here.
+- **Process lesson:** when a feature is removed, any general rule stored in its text must be moved, not deleted. The
+  guards for that rule must stay too, because they protect the rule, not the feature.
+
 ## 0.24.10 - 2026-10-13
 - **Quick is merged into Lite.** When the user says "quick", the agent runs Lite and labels it
   `Weight: Lite (user said quick)`; the test still comes first and is seen failing. If the work meets a Full criterion,
