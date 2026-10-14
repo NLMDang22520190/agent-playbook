@@ -30,6 +30,7 @@
 # with control characters removed and backticks replaced), then removes it (never following a link), also on INT, TERM or exit.
 # A dir the agent made unreadable (chmod 000) is made accessible again (chmod -R u+rwx on that dir only) and removed; if it
 # still exists the runner prints "<E> NOTE could not remove the scenario TMPDIR `<path>`; remove it by hand" (never a FAIL).
+# On macOS a bare `mktemp -d` may ignore TMPDIR, so the per-scenario TMPDIR cleanup may not catch those leftovers.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
