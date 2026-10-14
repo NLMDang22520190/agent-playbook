@@ -1,10 +1,13 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), taken from run 38515369561 (v0.24.13) alone, not a mean: the suites changed after the earlier runs (test-run-checks-sections.sh batched, test-evals-* split, PB_JOBS now 6), so the mean of 38408205118 and 38499424198 left shards at 283/507/538/324 s. Deviates from L-0003 (median of 2-3 runs) on purpose until two runs of the current suites exist.
 # test-evals-grade4.sh (493 s in that run) is split in v0.24.14 into two suites at 224 s and 269 s: the 493 s split by the Linux time share of the halves (25 s and 30 s).
+# test-role-gate-batch.sh (new in v0.24.14, not in that run) is an estimate: its Linux time (27.7 s) times the Windows/Linux ratio of the other
+# role-gate suites, (153 + 150 + 46 s) / (8.9 + 9.7 + 10.7 s Linux) = 11.9 (per suite 17.2, 15.5 and 4.3), so about 330 s. Replace it with a CI time.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (mean of 2-3 runs, see L-0003).
 test-evals-grade.sh 374
 test-evals-grade2.sh 340
 test-evals-grade6.sh 335
 test-leak-check.sh 334
+test-role-gate-batch.sh 330
 test-ci-tree-tested-steps.sh 316
 test-evals-grade3.sh 316
 test-leak-check-push.sh 293
