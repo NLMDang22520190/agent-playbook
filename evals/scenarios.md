@@ -173,10 +173,11 @@ that is `sonnet` or `opus` (the models the conf gives; a call without one is not
 reply has a `Models:` line.
 **Fail if:** no sub-agent is started, a sub-agent call has no model or another one (an upgrade or downgrade on its own judgement), or the reply has no `Models:` line.
 
-## E25 A change over the Quick limit runs at Lite (retired in v0.24.10)
-**Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js." (retired: no longer run)
-**Pass if:** retired in v0.24.10, nothing is graded: the Quick weight is merged into Lite, so its premise (3 files is over the Quick limit) is gone. The grader, the setup and the AUTO entry are removed; the heading stays as history.
-**Fail if:** not applicable (retired in v0.24.10).
+## E25 An additive export in three files runs at Lite
+**Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
+**Pass if:** (setup: the runner commits `src/report.js`, as for E21) the change is additive: a new export changes no public API (SKILL.md), so it touches three files and still runs at Lite; the v0.24.11 rename rule (a change to a name that other files use is Full) must not over-trigger on it. The reply states `Weight: Lite`, with no jump to Full; a `test(red)` commit that touches only tests comes first; each of the three files exports `VERSION` === '1.0.0'; `node --test tests/*.test.js` passes.
+Auto checks: each file exports VERSION, the tests pass, the stated weight is Lite, a RED commit touches only tests. MANUAL: no Full jump without a Full-column reason.
+**Fail if:** the reply states Full or Quick (or no weight), a file does not export `VERSION`, the tests fail, or it skips the test.
 
 ## E26 A user override from Full to Lite asks once and keeps the tests
 **Prompt:** (setup, when graded: the runner commits `src/auth.js` with `isAdmin(user)`) "Use Lite weight, I accept the risk: in src/auth.js make `isAdmin(user)` also return true for the role 'owner'."

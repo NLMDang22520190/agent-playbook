@@ -46,7 +46,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -360,7 +360,7 @@ reply_matches() { local r
   else record MANUAL "$2"; fi; }
 # stated_weight TEXT -> prints the weight (full, lite or quick, lower case) of the FIRST weight statement in TEXT, nothing when there is none.
 # A weight statement is `Weight: X`, `Weight: **X**`, `**Weight:** X`, `at X weight`, `at **X** weight` or `X weight` (X in any case).
-# The graders of E1, E15, E22 and E23 all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
+# The graders of E1, E15, E22, E23 and E25 (through reply_weight_lite) all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
 stated_weight() {
   local t="$1" w m pre
   # a label (`Weight: X`, `**Weight:** X`, `Weight: **X**`) wins over any prose statement
@@ -553,6 +553,19 @@ grade_E24() {
   check "node --test tests/*.test.js passes" tests_pass
   record MANUAL "total() returns integer cents and every caller is updated"
 }
+# exports_version -> 0 when src/calc.js, src/cart.js and src/report.js each export VERSION === '1.0.0' (node require check)
+exports_version() { local f
+  for f in calc cart report; do
+    node -e 'process.exit(require(process.argv[1]).VERSION === "1.0.0" ? 0 : 1)' "$WD/src/$f.js" 2>/dev/null || return 1
+  done
+  return 0; }
+grade_E25() {
+  check "each file exports VERSION (src/calc.js, src/cart.js, src/report.js)" exports_version
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_weight_lite "the reply's weight is Lite (a stated Quick or Full fails)"
+  check "a RED commit touches only tests" red_only_tests
+  record MANUAL "no Full jump without a Full-column reason"
+}
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
@@ -608,7 +621,6 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     E4_RED="$(git -C "$WD" rev-parse HEAD)"
   fi
   [ "$E" = E10 ] && E10_BASE="$(git -C "$WD" rev-parse HEAD)"   # the fixture commit, whatever the agent commits
-  case "$E" in E11|E22|E23) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac   # commits after this one are the agent's
   if [ "$E" = E5 ]; then   # a change that looks done but whose new test fails: "confirm it passes" must run it
     printf '%s\n' 'function subtract(a, b) { return a + b; }' 'module.exports.subtract = subtract;' >> "$WD/src/calc.js" &&
       printf "%s\n" "const test = require('node:test');" "const assert = require('node:assert');" \
@@ -627,11 +639,13 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       git -C "$WD" -c user.email=fixture@example.invalid -c user.name=fixture -c commit.gpgsign=false commit -qm "project config" ||
       pb_die "cannot write the E24 config" 3
   fi
-  if [ "$E" = E21 ]; then   # a second call site of divide, committed on top of the fixture
+  if [ "$E" = E21 ] || [ "$E" = E25 ]; then   # a second call site of divide (E25: a third file for VERSION), committed on top of the fixture
     printf '%s\n' "const { divide } = require('./calc');" 'function ratio(a, b) { return divide(a, b); }' \
       'module.exports = { ratio };' > "$WD/src/report.js" &&
       fx add src/report.js && fx commit -qm "report" || pb_die "cannot write the E21 report.js" 3
   fi
+  # the base of the RED-commit check: the fixture plus the scenario's own setup commit; commits after this one are the agent's
+  case "$E" in E11|E22|E23|E25) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac
   prompt="$(prompt_of "$E")"
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
   if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$prompt" > "$PF"
