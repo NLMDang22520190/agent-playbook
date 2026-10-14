@@ -7,6 +7,7 @@
 #   AC4  a batch grep that exits 2 reads like today's per-file result (grep shim exits 2 on a multi-line stdin)
 #   AC5  a test path whose only change is a mode restore is still a note, in its sorted place
 #   AC6  the match stays grep -E with the user's ERE
+#   R2   (review round 1) truncated UTF-8 lead byte merges two records in bash 5 (F1), ':' in a path (F2), only the infra batch fails (F3)
 # The expected values are today's behaviour: REFERENCE below is the v0.24.13 per-file logic (one grep -Eq per path), copied here.
 # Changed paths enter the diff without a work-tree file (git update-index --index-info + commit, then the file is missing:
 # a deleted path is still listed), so the odd file names (tab, CR, \377) need no support from the file system.
@@ -139,9 +140,10 @@ EOF
 no_awk_warn() { printf '%s\n' "$1" | LC_ALL=C "$REAL_GREP" -a -v '^awk: ' || true; }
 # corp_combo LABEL DIR CONF_INDEX LOCALE DEFAULT_LIMITS(0|1) -> check x 4 roles + size (+ size with the default limits)
 corp_combo() {
-  local label="$1" d="$2" ci="$3" loc="$4" defl="$5" role ph
+  local label="$1" d="$2" ci="$3" loc="$4" defl="$5" role ph prev_lc="${LC_ALL-__unset__}"
   ph="$(mk_tmp)"; write_conf "$ph" "${CT[$ci]}" "${CI[$ci]}"
   cd "$d" || exit 3
+  LC_ALL="$loc"   # this shell reads the reference records in the gate's locale (bash 5 merges records only in a UTF-8 locale)
   build_ref "$ci" "$loc"
   for role in tester implementer reviewer infra; do
     gate_run "$d" "$ph" "$loc" check "$role"; ref_check "$role"
@@ -153,6 +155,7 @@ corp_combo() {
     gate_run "$d" "$ph" "$loc" size; ref_size 3 100
     chk "$label size (default limits), conf $ci, locale $loc: over the limit as per-file grep" "$EXP"$'\n'"rc=$EXP_RC" "$OUT"$'\n'"rc=$RC"
   fi
+  if [ "$prev_lc" = __unset__ ]; then unset LC_ALL; else LC_ALL="$prev_lc"; fi
 }
 
 # ---------------------------------------------------------------- AC2 classify, ASCII class rules (locale independent)
@@ -183,7 +186,8 @@ PLAIN=( "tests/a.test.js" "ci/run.sh" "tests/helpers/h.js" "src/__snapshots__/x.
   "docs/café/x.md" "spec/x.rb" "specs/x.rb" "e2e/x.ts" "src/__mocks__/m.js" "fixtures/f.json" "testdata/t.txt"
   "test/x.js" "__tests__/y.js" "src/a.spec.ts" "lib/a_spec.rb" "karma.conf.js" ".mocharc.yml" ".mocharc" "pytest.ini"
   "phpunit.xml" "phpunit.xml.dist" "src/FooTest.java" "src/FooTests.kt" "src/FooTest.swift" "vitest.config.ts"
-  "playwright.config.ts" "cypress.config.js" "src/contest.js" "src/latest/x.js" ".agents/handoff/n.md" )
+  "playwright.config.ts" "cypress.config.js" "src/contest.js" "src/latest/x.js" ".agents/handoff/n.md"
+  "tests/a:b.test.js" "1:2" "src/x:1:y.js" "ci/r:1.sh" "tests/helpers/h:2.js" )
 CORP="$(mk_tmp)"; mk_repo "$CORP"
 (
   cd "$CORP" || exit 3
@@ -233,6 +237,46 @@ assert_contains "AC1 infra conf: tests/helpers/h.js is infra, not test" "$OUT" "
 gate_run "$CORP" "$INFRA_PH" C check infra
 assert_contains "AC1 infra role: a test path is a violation" "$OUT" "VIOLATION (infra): tests/a.test.js [test]"
 assert_not_contains "AC1 infra role: ci/run.sh is allowed" "$OUT" "VIOLATION (infra): ci/run.sh"
+
+# ---------------------------------------------------------------- F1 (review round 1): truncated UTF-8 lead byte
+# Under bash 5 and a UTF-8 locale, `read` takes the newline after a path that ends in a truncated multibyte lead byte as part of
+# the character: two lines become one record. v0.24.13 classified that merged text per file; the batch must give the same
+# output (the reference above reads records with the same `while IFS= read -r` in this same bash).
+echo "F1 a path ending in a truncated UTF-8 lead byte (record merge of bash 5)"
+TRUNC=( $'src/caf\351' $'src/d.test.js' $'lib/x\303' 'lib/y.js' 'tests/a.test.js' 'src/z.js' 'ci/x.sh' 'tests/zz.test.js' )
+F1_OK=0
+F1R="$(mk_tmp)"; mk_repo "$F1R"
+if ( cd "$F1R" && idx_add "${TRUNC[@]}" 2>/dev/null && git commit -q -m trunc 2>/dev/null &&
+     [ "$(git diff --name-only -z HEAD -- | tr -cd '\000' | wc -c | tr -d ' ')" = "${#TRUNC[@]}" ] ); then F1_OK=1; fi
+MERGE=0
+if [ -n "$UTF8" ] && [ "$(LC_ALL=$UTF8 bash -c 'L="$(printf "a\351\nb")"; n=0
+while IFS= read -r p; do n=$((n+1)); done <<X
+$L
+X
+echo $n' 2>/dev/null)" = 1 ]; then MERGE=1; fi
+if [ "$F1_OK" = 1 ]; then
+  F1P="$(mk_tmp)"; write_conf "$F1P" "" ""
+  F1I="$(mk_tmp)"; write_conf "$F1I" "" '^ci/'
+  if [ -n "$UTF8" ]; then
+    corp_combo F1 "$F1R" 1 "$UTF8" 1
+    corp_combo F1 "$F1R" 2 "$UTF8" 0
+    gate_run "$F1R" "$F1P" "$UTF8" check implementer
+    if [ "$MERGE" = 1 ]; then
+      case "$OUT" in
+        *"VIOLATION (implementer): src/caf"$'\351'$'\n'"src/d.test.js [test]"*"role gate FAILED for implementer"*) t_ok "F1 implementer: the merged record is one [test] violation, as v0.24.13 (FAILED)" ;;
+        *) t_bad "F1 implementer: the merged record is one [test] violation, as v0.24.13 (FAILED)" "$(printf '%s' "$OUT" | cat -v | head -8)" ;;
+      esac
+      chk "F1 implementer: exit code 1 (fail closed)" 1 "$RC"
+    else
+      t_skip 2 "this bash does not merge the records (no multibyte read merge): v0.24.13 and the batch agree anyway"
+    fi
+  else
+    t_skip 13 "no UTF-8 locale installed: truncated lead byte in a UTF-8 locale"
+  fi
+  corp_combo F1 "$F1R" 1 C 0
+else
+  t_skip 18 "this platform cannot pass or index a truncated UTF-8 byte in a path name"
+fi
 
 # ---------------------------------------------------------------- AC2 classify, odd names
 echo "AC2 classify: invalid UTF-8, CR, UTF-8 and tab names"
@@ -394,6 +438,30 @@ AR4="$(mk_tmp)"; mk_repo "$AR4"
 GPATH="$SHIM2:$PATH"
 corp_combo AC4 "$AR4" 1 C 0
 corp_combo AC4 "$AR4" 2 C 0
+GPATH=""
+
+# ---------------------------------------------------------------- F3 (review round 1): only the infra batch grep fails
+echo "F3 only the infra batch grep exits 2 (the test batch succeeds): per-file result for every path"
+SHIM3="$(mk_tmp)"
+cat > "$SHIM3/grep" <<'EOF'
+#!/bin/sh
+# exits 2 only when the infra ERE ($SHIM_INFRA) is an argument AND stdin holds more than one line, else the real grep
+f="$(mktemp "${TMPDIR:-/tmp}/gshim.XXXXXX")" || exit 3
+cat > "$f"
+n="$(LC_ALL=C "$REAL_GREP" -c '' "$f")"
+hit=0
+for a in "$@"; do if [ -n "$SHIM_INFRA" ] && [ "$a" = "$SHIM_INFRA" ]; then hit=1; fi; done
+if [ "$hit" = 1 ] && [ "$n" -gt 1 ]; then rm -f "$f"; exit 2; fi
+"$REAL_GREP" "$@" < "$f"; rc=$?
+rm -f "$f"; exit $rc
+EOF
+chmod +x "$SHIM3/grep"
+GPATH="$SHIM3:$PATH"
+SHIM_INFRA="${CI[2]}"; export SHIM_INFRA
+corp_combo F3 "$AR4" 2 C 0
+SHIM_INFRA="${CI[9]}"; export SHIM_INFRA
+corp_combo F3 "$AR4" 9 C 0
+SHIM_INFRA=""; export SHIM_INFRA
 GPATH=""
 
 t_summary
