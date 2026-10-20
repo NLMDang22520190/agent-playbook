@@ -7,6 +7,7 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
+# test-role-gate-committed.sh (60) is an ESTIMATE, not CI-measured: measure it on Windows before the release (L-0009).
 test-evals-grade6-b.sh 409
 test-role-gate-batch.sh 359
 test-evals-grade.sh 350
@@ -49,6 +50,7 @@ test-update.sh 91
 test-docs-only.sh 85
 test-run-checks.sh 71
 test-tdd-step.sh 69
+test-role-gate-committed.sh 60
 test-cost.sh 59
 test-install.sh 58
 test-feedback.sh 53
