@@ -219,4 +219,19 @@ else
   blk_check "AC8 genuine restore block" 3 $((T_PASS + T_FAIL - B0))
 fi
 
+echo "AC5 a committed code path with a newline (gone from index and work tree) fails closed on the BASE..HEAD list"
+new_repo; BASE="$(git rev-parse HEAD)"
+NLC="src/a
+b.js"
+nl_stores() { local lf; lf="$(mk_tmp)/lsout"; git ls-files --others -z > "$lf" 2>/dev/null || return 1; printf '%s\0' "$1" | cmp -s - "$lf"; }
+if printf 'x\n' > "$NLC" 2>/dev/null && [ -f "$NLC" ] && nl_stores "$NLC"; then
+  B0=$((T_PASS + T_FAIL))
+  git add -A; git commit -qm "newline path"
+  git rm -q --cached -- "$NLC"; rm -f -- "$NLC"
+  gchk implementer --base "$BASE"
+  assert_rc "AC5 a newline path only in BASE..HEAD: implementer exit 1 (fail closed)" 1
+  assert_contains "AC5 ... the mode check reports it is incomplete" "$OUT" "VIOLATION (mode): a path contains a newline or a \\002 byte; the mode check is incomplete"
+  blk_check "AC5 newline BASE..HEAD block" 2 $((T_PASS + T_FAIL - B0))
+else rm -f -- "$NLC" 2>/dev/null; t_skip 2 "AC5 newline path in BASE..HEAD (this file system cannot store a newline in a name, or git does not list it back unchanged)"; fi
+
 t_summary
