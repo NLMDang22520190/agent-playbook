@@ -595,6 +595,44 @@ assert_contains "AC2 ... and named" "$OUT" "VIOLATION (reviewer): src/later.js [
 sb
 assert_contains "AC6 ... and counted by size --baseline" "$OUT" "files: 1/3 lines: 1/100 (base=HEAD)"
 
+# ================= state definition: raw bytes (git hash-object --no-filters) =================
+echo "AC2 a work-tree state is the hash of the raw bytes: a CRLF- or filter-hidden edit is a different state"
+# raw_fixture ATTR-LINE: a repo whose .gitattributes holds ATTR-LINE, src/a.js committed as "one"
+raw_fixture() {
+  R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3
+  printf '%s\n' "$1" > .gitattributes; printf 'one\n' > src/a.js
+  git add -A && git commit -q -m attrs || exit 3
+}
+# raw_snap: src/a.js is dirty ("two") and a baseline is taken (sets MF)
+raw_snap() { printf 'two\n' > src/a.js; MF="$(mk_tmp)/m"; gate snapshot --out "$MF"; }
+# Case A: eol=lf normalizes CRLF away, so only the raw bytes tell "two\n" from "two\r\n"
+raw_fixture "*.js text eol=lf"; raw_snap
+assert_rc "RAW A snapshot of the pre-dirty src/a.js: exit 0" 0
+cb reviewer
+assert_rc "RAW A control: nothing changed after the snapshot, the raw-byte hash is stable: exit 0" 0
+assert_contains "RAW A control: src/a.js is unchanged since the baseline" "$OUT" "note: unchanged since the baseline: src/a.js"
+assert_not_contains "RAW A control: src/a.js is not a violation" "$OUT" "VIOLATION (reviewer): src/a.js"
+printf 'two\r\n' > src/a.js
+cb reviewer
+assert_rc "RAW A a CRLF rewrite (same normalized content) after the snapshot is judged: exit 1" 1
+assert_contains "RAW A ... src/a.js is named" "$OUT" "VIOLATION (reviewer): src/a.js [code]"
+assert_not_contains "RAW A ... and not reported as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/a.js"
+# Case B: a clean filter upper-cases, so "TWO\n" and "two\n" hash alike through the filter, not raw
+raw_fixture "*.js filter=up"
+git config filter.up.clean "tr a-z A-Z"
+FP="$(printf 'two\n' | git hash-object --stdin --path=src/a.js 2>/dev/null)"; FQ="$(printf 'TWO\n' | git hash-object --stdin 2>/dev/null)"
+if [ -n "$FP" ] && [ "$FP" = "$FQ" ]; then
+  raw_snap
+  cb reviewer
+  assert_rc "RAW B control: nothing changed after the snapshot: exit 0" 0
+  assert_contains "RAW B control: src/a.js is unchanged since the baseline" "$OUT" "note: unchanged since the baseline: src/a.js"
+  printf 'TWO\n' > src/a.js
+  cb reviewer
+  assert_rc "RAW B a filter-equivalent rewrite (TWO) after the snapshot is judged: exit 1" 1
+  assert_contains "RAW B ... src/a.js is named" "$OUT" "VIOLATION (reviewer): src/a.js [code]"
+  assert_not_contains "RAW B ... and not reported as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/a.js"
+else t_skip 5 "RAW B clean-filter case (a git clean filter is not applied by hash-object on this platform)"; fi
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"
