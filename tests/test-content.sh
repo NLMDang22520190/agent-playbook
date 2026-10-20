@@ -323,13 +323,27 @@ assert_eq "v14 AC8.2 exactly one job has the name: exactly 'test (windows-latest
 if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD ($SHARD)"; else t_bad "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD" "aggregator [$AGG]; jobs: $(wf_jobs | tr '\n' ' ')"; fi
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
-assert_contains "v0.23.3 the shard matrix is exactly 1/4, 2/4, 3/4, 4/4" "$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')" "shard: ['1/4', '2/4', '3/4', '4/4']"
-assert_contains "v0.23.3 the shard matrix has 1/4" "$SB" "1/4"
-assert_contains "v0.23.3 the shard matrix has 2/4" "$SB" "2/4"
-assert_contains "v0.23.3 the shard matrix has 3/4" "$SB" "3/4"
-assert_contains "v0.23.3 the shard matrix has 4/4" "$SB" "4/4"
-assert_not_contains "v0.23.3 the shard matrix has no 3/3 left" "$SB" "3/3"
-assert_not_contains "v0.23.3 no matrix entry ending in /3' is left" "$SB" "/3'"
+MATRIX_LINE="$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')"
+assert_contains "v0.24.19 AC1 the shard matrix is exactly 1/6, 2/6, 3/6, 4/6, 5/6, 6/6" "$MATRIX_LINE" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']"
+assert_eq "v0.24.19 AC1 the matrix line is nothing but the six-entry list" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
+for k in 1 2 3 4 5 6; do
+  assert_contains "v0.24.19 AC4 the shard matrix has $k/6" "$SB" "$k/6"
+done
+assert_not_contains "v0.24.19 AC1 no matrix entry ending in /4' is left" "$SB" "/4'"
+assert_not_contains "v0.24.19 AC1 no matrix entry ending in /3' is left" "$SB" "/3'"
+assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is six: 'split in six'" "$SB" "split in six"
+assert_not_contains "v0.24.19 AC1 the windows-shard comment no longer says 'split in four'" "$SB" "split in four"
+assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'six parallel shards'" "$(cat "$WF")" "six parallel shards"
+assert_not_contains "v0.24.19 AC1 the workflow no longer says 'four parallel shards'" "$(cat "$WF")" "four parallel shards"
+# AC7: the quoted "windows shard k/n" names of tools/ci-tree-tested.sh (the header comment has them unquoted) are exactly the matrix entries
+CIT="$PB_ROOT/tools/ci-tree-tested.sh"
+NEED_SET="$(grep -oE '"windows shard [0-9]+/[0-9]+"' "$CIT" | sed 's/^"windows shard //; s/"$//' | sort | tr '\n' ' ')"
+MATRIX_SET="$(printf '%s\n' "$MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | sort | tr '\n' ' ')"
+assert_eq "v0.24.19 AC7 ci-tree-tested.sh checks exactly the windows-shard matrix entries (same set and count)" "$MATRIX_SET" "$NEED_SET"
+if [ -n "$NEED_SET" ] && [ -n "$MATRIX_SET" ]; then t_ok "v0.24.19 AC7 both sides are non-empty"; else t_bad "v0.24.19 AC7 both sides are non-empty" "need [$NEED_SET] matrix [$MATRIX_SET]"; fi
+CIT_HEAD="$(sed -n '1,25p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
+assert_contains "v0.24.19 AC2 the ci-tree-tested.sh header counts 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
+assert_contains "v0.24.19 AC2 the ci-tree-tested.sh header counts 'nine green jobs'" "$CIT_HEAD" "nine green jobs"
 if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
 assert_contains "v14 AC8.2 the shard job still runs tests/run-all.sh" "$SB" "tests/run-all.sh"
 assert_contains "v14 AC8.2 a failing shard does not cancel the others (fail-fast: false)" "$SB" "fail-fast: false"

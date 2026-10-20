@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for tools/ship.sh (v0.11.0 AC6.1): the second half of test-ship.sh (split in v0.24.7 so that it is not the floor of a CI shard), from "AC4.1 missing or broken
+# Tests for tools/ship.sh (v0.11.0 AC6.1): the last part of test-ship.sh (split in v0.24.7, and again in v0.24.19 into test-ship.sh, test-ship-c.sh and this file, so that it is not the floor of a CI shard), from "AC4.1 missing or broken
 # data prints nothing" to the end (shard report and weight refresh, prompts on a terminal, the PR run as the data source, the eval guard hint).
 # Everything is stubbed as in test-ship.sh; shared setup: ship-fixture.sh.
 . "$(dirname "$0")/lib.sh"
@@ -86,6 +86,23 @@ assert_rc "AC3.1 no timings in the logs: ship still exits 0" 0
 assert_eq "AC3.1 no timings (shard-weights.sh exit 1): 'shard weights not refreshed (shard-weights.sh exit 1)'" "1" \
   "$(printf '%s\n' "$OUT" | grep -cF 'shard weights not refreshed (shard-weights.sh exit 1)')"
 assert_eq "AC3.1 no timings: no 'refreshed: copy' line" "0" "$(refreshed)"
+
+echo "v0.24.19 AC5 six Windows shard jobs: the unbalanced hint is computed over all six"
+fx
+export FAKE_SHARDS="300,250,200,150,120,80"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC5 six shards: exit 0" 0
+assert_eq "AC5 six shards: one 'shards unbalanced' hint" "1" "$(unb)"
+assert_contains "AC5 six shards: the hint spans the shortest (6th) and the longest (1st) of the six" "$OUT" "shards unbalanced (80 s .. 300 s)"
+fx
+export FAKE_SHARDS="100,100,100,100,100,200"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC5 six shards, only the sixth is slow: the hint is there (the first five alone are balanced)" "1" "$(unb)"
+assert_contains "AC5 six shards, only the sixth is slow: the hint names 100 s .. 200 s" "$OUT" "shards unbalanced (100 s .. 200 s)"
+fx
+export FAKE_SHARDS="100,110,120,130,140,150"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC5 six balanced shards (150 s is not above 1.5 x 100 s): no hint" "0" "$(unb)"
 
 echo "v0.22.2 AC3 balanced shards: no refresh"
 fx

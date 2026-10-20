@@ -7,9 +7,9 @@
 #   1. repos/R/commits/SHA/pulls: at most 5 PRs, each with its head sha H; a PR whose head repo is not R, or whose base.ref is not main, is skipped
 #   2. repos/R/actions/workflows/test.yml/runs?event=pull_request&head_sha=H&status=success&per_page=10 (newest first);
 #   3. repos/R/actions/runs/ID/jobs?filter=latest&per_page=100: test (ubuntu-latest), test (macos-latest),
-#      test (windows-latest) and windows shard 1/4, 2/4, 3/4, 4/4 all concluded success (none skipped or missing); and in each
-#      of the six suite jobs (not the aggregator) the step "Tests and static checks" (shards: "Tests and static checks
-#      (shard)") completed with conclusion success, from the jobs API `steps`: a docs-only PR run reports the same seven green
+#      test (windows-latest) and windows shard 1/6, 2/6, 3/6, 4/6, 5/6, 6/6 all concluded success (none skipped or missing); and in each
+#      of the eight suite jobs (not the aggregator) the step "Tests and static checks" (shards: "Tests and static checks
+#      (shard)") completed with conclusion success, from the jobs API `steps`: a docs-only PR run reports the same nine green
 #      jobs but its full step is skipped (a "Docs-only checks" step ran instead), and such a run is never reused
 #   4. tree(SHA) equals tree(H) (repos/R/git/commits/X, .tree.sha)
 #   5. the first parent P of SHA is an ancestor of H: repos/R/compare/P...H is "ahead" or "identical", behind_by 0
@@ -72,7 +72,7 @@ if (mode === "pulls") {
 } else if (mode === "jobs") {
   if (!d || !Array.isArray(d.jobs)) process.exit(1);
   const need = ["test (ubuntu-latest)", "test (macos-latest)", "test (windows-latest)",
-    "windows shard 1/4", "windows shard 2/4", "windows shard 3/4", "windows shard 4/4"];
+    "windows shard 1/6", "windows shard 2/6", "windows shard 3/6", "windows shard 4/6", "windows shard 5/6", "windows shard 6/6"];
   for (const n of need) {
     const js = d.jobs.filter((j) => j && j.name === n);
     if (js.length === 0 || !js.every((j) => j.status === "completed" && j.conclusion === "success")) process.exit(1);

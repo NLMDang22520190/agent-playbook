@@ -355,20 +355,20 @@ D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"
 guarded 60 env PB_JOBS=1 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
 assert_eq "v24.14 no weights file, shard 1/2: the modulo set a c e starts in name order" "a c e " "$(start_order)"
 
-echo "v0.23.3 four Windows shards: PB_SHARD=k/4 with the repo's tests/shard-weights partitions every suite exactly once"
+echo "v0.24.19 six Windows shards: PB_SHARD=k/6 with the repo's tests/shard-weights partitions every suite exactly once"
 # stub suites carry the real suite names (hyphens become underscores: the stubs use the name in variable names)
 # and the repo's weights file (same renaming) decides the split
 REAL="$(ls "$PB_ROOT"/tests/test-*.sh | sed 's#^.*/test-##; s#\.sh$##; s/-/_/g' | tr '\n' ' ' | sed 's/ $//')"
 RW="$(grep -v '^#' "$PB_ROOT/tests/shard-weights" | sed 's/-/_/g; s/^test_/test-/' | awk '{ printf "%s\n", $0 }')"
 ALL=""
-for k in 1 2 3 4; do
-  wshard_run "$k/4" "$REAL" "$RW"
-  assert_rc "v0.23.3 real weights, shard $k/4 exits 0" 0
+for k in 1 2 3 4 5 6; do
+  wshard_run "$k/6" "$REAL" "$RW"
+  assert_rc "v0.23.3 real weights, shard $k/6 exits 0" 0
   r="$(ran_suites)"
-  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/4 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/4 runs at least one suite" "ran nothing"; fi
+  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/6 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/6 runs at least one suite" "ran nothing"; fi
   ALL="$ALL$r"
 done
-assert_eq "v0.23.3 real weights: the 4 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+assert_eq "v0.23.3 real weights: the 6 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
 
 echo "v0.21.0 AC8.1 run-all names a likely environment failure when most FAIL assertions got nothing"
 # mk_fake_suite FILE EMPTY OTHER -> a suite that prints EMPTY assertions failing with an empty actual value and

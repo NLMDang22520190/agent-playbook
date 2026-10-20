@@ -6,11 +6,9 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-test-role-model.sh 473
-test-leak-check-push.sh 468
-test-evals-runner.sh 440
+# v0.24.19: the eight split halves and the two ci-tree suites (which gained cases) are measured on a local Git Bash, one
+# suite at a time (local and CI times matched within ~10% for test-release and test-role-gate-baseline). Replace them with CI times.
 test-evals-grade6-b.sh 431
-test-ship.sh 427
 test-role-gate-batch.sh 385
 test-ship-b.sh 366
 test-evals-grade.sh 360
@@ -18,19 +16,27 @@ test-evals-grade6.sh 351
 test-evals-grade4.sh 349
 test-leak-check.sh 349
 test-evals-grade2.sh 343
+test-ci-tree-tested-steps.sh 325
 test-run-all.sh 317
-test-ci-tree-tested-steps.sh 311
+test-leak-check-push.sh 312
 test-evals-grade4-b.sh 303
+test-ci-tree-tested.sh 286
 test-role-gate-b.sh 284
 test-role-gate.sh 284
 test-evals-grade3.sh 280
-test-ci-tree-tested.sh 270
 test-evals-grade2-e20-capture.sh 266
+test-evals-runner.sh 265
 test-role-gate-baseline.sh 262
+test-leak-check-push-b.sh 256
 test-evals-grade2-e20.sh 254
 test-evals-budget.sh 250
+test-evals-runner-b.sh 249
+test-ship.sh 223
+test-role-model.sh 203
 test-leak-check-mode.sh 200
+test-ship-c.sh 196
 test-evals-grade5.sh 191
+test-role-model-b.sh 177
 test-mutate.sh 155
 test-run-checks-sections.sh 150
 test-release-tool.sh 148

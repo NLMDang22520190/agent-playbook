@@ -71,7 +71,7 @@ jobs:
       fail-fast: false
       matrix:
         # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable.
-        # Windows (Git Bash) is slow to start processes: it runs as four parallel shards below.
+        # Windows (Git Bash) is slow to start processes: it runs as six parallel shards below.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -115,14 +115,14 @@ jobs:
         run: bash tools/readme-count.sh --check "$RUNNER_TEMP/run-all.log"
 
   windows-shard:
-    # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in four.
+    # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in six.
     name: windows shard ${{ matrix.shard }}
     needs: [reuse, changes]
     if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
       matrix:
-        shard: ['1/4', '2/4', '3/4', '4/4']
+        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
