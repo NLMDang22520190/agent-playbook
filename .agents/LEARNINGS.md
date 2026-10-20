@@ -81,3 +81,12 @@ Managed with `learn.sh` (installed at ~/.agents/playbook/scripts/learn.sh). Rule
 - Source: review
 - Scope: scripts/mutate.sh
 - Role: all
+
+### L-0009 · 2026-10-20 · A new heavy suite needs a measured Windows weight
+- Status: active
+- Rule: Before releasing a new or split test suite, measure its Windows time (local Git Bash, then the first CI run) for tests/shard-weights, and say in the release PR which weights are measured and which are estimated.
+- Why: test-role-gate-batch shipped in v0.24.14 with a 400 s estimate; it took 610 s on CI, so one shard ran 632 s and the wall time grew to about 10:32.
+- Evidence: CI run 38577969449 (v0.24.14): shards 632/451/440/416 s; fixed in v0.24.15; user approval 2026-10-20
+- Source: failure
+- Scope: tests/shard-weights, tests/test-*.sh
+- Role: all
