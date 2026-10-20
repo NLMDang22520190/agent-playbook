@@ -3,6 +3,8 @@
 # test-role-gate-batch.sh: 610 s in that run, scaled by its measured Git Bash before/after ratio in v0.24.15 (686 s -> 443 s on a
 # local Git Bash, the UTF-8 corpus cut to conf 8 where the NTFS probes hold): 610 * 443 / 686 = 394. Replace it with a CI time.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
+# Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
+# estimated weight in this header and in the release PR (L-0009).
 test-leak-check-push.sh 529
 test-evals-runner.sh 438
 test-evals-grade6-b.sh 431
