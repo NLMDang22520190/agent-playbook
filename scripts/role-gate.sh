@@ -394,8 +394,7 @@ case "$cmd" in
           BL_UNCH+="${ML_P[i]}"$'\n'
           np="${ML_P[i]}"
           # a CR or ESC could hide or rewrite the note: show control characters as ?, except TAB (it rewrites nothing)
-          case "$np" in *[[:cntrl:]]*) np="$(printf '%s' "$np" | LC_ALL=C tr ' -
--' '?')" ;; esac
+          case "$np" in *[[:cntrl:]]*) np="$(printf '%s' "$np" | LC_ALL=C tr '\000-\010\012-\037\177' '?')" ;; esac
           bnotes+="note: unchanged since the baseline: $np"$'\n'
         fi
         i=$((i + 1))
