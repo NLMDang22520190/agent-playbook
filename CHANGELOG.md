@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.18 - 2026-10-20
+- **E21 grader false negative (Lite):** Run 13 (v0.24.17) renamed the definition and every call site but kept
+  `const divide = safeDivide` exported as a deprecated alias (a logged DECISION, non-interactive run), and the
+  auto-check failed any word `divide` left in src/*.js. The check now allows only an alias line (`divide = safeDivide`,
+  or an exports line naming safeDivide); a call, a definition, a comment or an import of `divide`, and any `divide` in
+  src/report.js, still fail. The Run 13 workdir passes the new check and failed the old one. scenarios.md E21 names the
+  allowed alias.
+- **role-gate per-file fallback hash is tested:** an unreadable file makes the batch `hash-object` fail, and the
+  fallback hashes each file; a new case (an unreadable file next to a CRLF-only edit) kills the mutant that drops
+  `--no-filters` from the fallback (the v0.24.17 review round 3 minor). Skips as root or where chmod 000 does not block
+  reads.
+- **Shard weights:** the median of three Windows CI runs (38577969449, 39358585593, 39368684579, L-0003); suites changed
+  after a run use only the later runs. All weights are now CI-measured. The v0.24.17 run had shards of 475/291/459/497 s.
+- **Run 13** (v0.24.17 installed: E1 6/6, E4 4/4, E21 5/6 with the grader false negative above, 2.77 USD) is recorded in
+  evals/results.
+
 ## 0.24.17 - 2026-10-20
 - **Role gates with a dirty start (Full, fb-20261017-001):** a read-only reviewer got 49 violations from files that were
   dirty or untracked before the role started. New `role-gate.sh snapshot [--out FILE]` records every path that differs
