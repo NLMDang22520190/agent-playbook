@@ -155,6 +155,42 @@ else
 fi
 
 
+echo "PR release check in CI (AC6, static)"
+if python3 -c 'import yaml' >/dev/null 2>&1; then
+  run python3 - "$WF" <<'EOF'
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1]))
+CMD = 'bash tools/release-pr-check.sh "$BASE_SHA"'
+hits = []
+for jn, job in (wf.get("jobs") or {}).items():
+    for i, s in enumerate(job.get("steps") or []):
+        if CMD in str(s.get("run", "")):
+            hits.append((jn, i, s))
+print("pr-check steps total: %d" % len(hits))
+for jn, i, s in hits:
+    cond = str(s.get("if", ""))
+    print("pr-check job: %s" % jn)
+    print("pr-check env BASE_SHA: %s" % (s.get("env") or {}).get("BASE_SHA"))
+    print("pr-check if: %s" % cond)
+    print("pr-check if mentions docs_only: %s" % ("docs_only" in cond))
+steps = ((wf.get("jobs") or {}).get("test") or {}).get("steps") or []
+idx = [i for i, s in enumerate(steps) if CMD in str(s.get("run", ""))]
+tix = [i for i, s in enumerate(steps) if s.get("name") == "Tests and static checks"]
+print("tests step found: %s" % bool(tix))
+print("pr-check before tests step: %s" % (bool(idx) and bool(tix) and idx[0] < tix[0]))
+EOF
+  assert_contains "AC6 exactly one workflow step runs tools/release-pr-check.sh" "$OUT" "pr-check steps total: 1"
+  assert_contains "AC6 that step is in the test job (not windows-shard)" "$OUT" "pr-check job: test"
+  assert_contains "AC6 step passes BASE_SHA from the PR base sha" "$OUT" 'pr-check env BASE_SHA: ${{ github.event.pull_request.base.sha }}'
+  PRIF="$(printf '%s\n' "$OUT" | grep '^pr-check if: ')"
+  assert_contains "AC6 step only runs for pull_request events" "$PRIF" "github.event_name == 'pull_request'"
+  assert_contains "AC6 step only runs on ubuntu-latest" "$PRIF" "matrix.os == 'ubuntu-latest'"
+  assert_contains "AC6 step is not skipped for docs-only PRs" "$OUT" "pr-check if mentions docs_only: False"
+  assert_contains "AC6 step runs before Tests and static checks" "$OUT" "pr-check before tests step: True"
+else
+  t_skip 7 "AC6 static check of .github/workflows/test.yml: PyYAML not available"
+fi
+
 echo "#12a a tag with a newline is a usage error"
 run bash "$D/tools/check-release.sh" "$(printf 'v1.2.3\nx')"
 assert_rc "AC12a.1 check-release: tag with a newline exits 2" 2
