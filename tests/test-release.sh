@@ -389,4 +389,183 @@ D="$(mk_metrics 20 80 "$(row 21 1601)")"
 run bash "$D/tools/check-release.sh" --notes v1.2.3
 assert_rc "AC5.1 --notes also refuses a stale metrics row: exit 1" 1
 
+echo "release PR check (v0.24.16 AC1-AC5, AC7)"
+RPC="$PB_ROOT/tools/release-pr-check.sh"
+RPC_CL3="$CL"
+RPC_CL4='# Changelog
+
+## 1.2.4 - 2026-10-20
+- new release
+
+## 1.2.3 - 2026-10-09
+- first line
+'
+# rpc_mk VERSION CHANGELOG -> git repo with tools/, VERSION, CHANGELOG.md committed (this commit is BASE)
+rpc_mk() {
+  local d; d="$(mk_tmp)"
+  mkdir -p "$d/tools"
+  cp -p "$PB_ROOT/tools/check-release.sh" "$d/tools/check-release.sh"
+  [ -f "$RPC" ] && cp -p "$RPC" "$d/tools/release-pr-check.sh"
+  [ -n "$1" ] && printf '%s\n' "$1" > "$d/VERSION"
+  printf '%s' "$2" > "$d/CHANGELOG.md"
+  ( cd "$d" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+    git config commit.gpgsign false && git add -A && git commit -q -m base )
+  printf '%s\n' "$d"
+}
+rpc_commit() { ( cd "$1" && git add -A && git commit -q --allow-empty -m "${2:-head}" ); }
+rpc_sha() { ( cd "$1" && git rev-parse HEAD ); }
+# rpc DIR BASE -> runs the tool inside DIR
+rpc() { run_in "$1" bash tools/release-pr-check.sh "$2"; }
+
+assert_file "AC7 tools/release-pr-check.sh exists" "$RPC"
+if [ -x "$RPC" ]; then t_ok "AC7 tools/release-pr-check.sh is executable"; else t_bad "AC7 tools/release-pr-check.sh is executable" "not executable or missing: $RPC"; fi
+
+# AC1: a bumped VERSION with a valid release passes
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC1 VERSION 1.2.3 -> 1.2.4 with a CHANGELOG entry: exit 0" 0
+assert_contains "AC1 success prints the pinned line" "$OUT" "release PR check passed"
+assert_not_contains "AC1 success does not print the failure line" "$OUT" "release PR check failed"
+
+# AC1: check-release exit 1 (missing CHANGELOG entry) maps to 1 and its message is passed through
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC1 VERSION bumped, no '## 1.2.4 ' entry: exit 1" 1
+assert_contains "AC1 check-release's CHANGELOG message is passed through" "$OUT" "CHANGELOG"
+assert_contains "AC1 failure prints the pinned line" "$OUT" "release PR check failed"
+assert_not_contains "AC1 a failure never prints the success line" "$OUT" "release PR check passed"
+
+# AC1: check-release exit 3 (CHANGELOG.md unreadable) also maps to 1, not 3
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; rm -f "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC1 check-release exit 3 (no CHANGELOG.md) maps to exit 1" 1
+assert_contains "AC1 exit-3 case prints the pinned failure line" "$OUT" "release PR check failed"
+
+# AC1: the check runs on several commits between BASE and HEAD (HEAD is what counts)
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; rpc_commit "$D" one
+printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"; rpc_commit "$D" two
+rpc "$D" "$B"
+assert_rc "AC1 VERSION and CHANGELOG fixed in different commits: judged at HEAD, exit 0" 0
+
+# AC1: whitespace / CRLF only edits of VERSION are not a release PR (same trim as check-release.sh)
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.3\r\n' > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC1 CRLF-only VERSION edit: not a release PR, exit 0" 0
+assert_contains "AC1 CRLF-only VERSION edit prints VERSION unchanged" "$OUT" "VERSION unchanged"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '  1.2.3 \t\n\n' > "$D/VERSION"; rm -f "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC1 spaces/tabs/blank-line VERSION edit (CHANGELOG gone): exit 0" 0
+assert_contains "AC1 whitespace-only VERSION edit prints VERSION unchanged" "$OUT" "VERSION unchanged"
+assert_not_contains "AC1 whitespace-only edit does not run check-release" "$OUT" "CHANGELOG"
+
+# AC2: VERSION identical at BASE and HEAD: not a release PR, check-release is not run
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf 'other\n' > "$D/notes.txt"; printf 'changed\n' >> "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC2 other files changed, VERSION same: exit 0" 0
+assert_contains "AC2 prints VERSION unchanged" "$OUT" "VERSION unchanged"
+assert_not_contains "AC2 no failure line" "$OUT" "release PR check failed"
+assert_not_contains "AC2 no success line (check-release was not run)" "$OUT" "release PR check passed"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+rpc "$D" "$B"
+assert_rc "AC2 BASE equals HEAD (no changes at all): exit 0" 0
+assert_contains "AC2 BASE equals HEAD prints VERSION unchanged" "$OUT" "VERSION unchanged"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf 'garbage\n' > "$D/CHANGELOG.md"; printf '![v](https://img.shields.io/badge/version-9.9.9)\n' > "$D/README.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC2 broken CHANGELOG and stale README but VERSION same: still exit 0" 0
+
+# AC3: VERSION at HEAD that is not X.Y.Z digits, on a changed VERSION
+for bad in 0.25 v0.25.0 0.25.0.1 0.25.0-rc1 abc; do
+  D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+  printf '%s\n' "$bad" > "$D/VERSION"; rpc_commit "$D"
+  rpc "$D" "$B"
+  assert_rc "AC3 VERSION '$bad' at HEAD: exit 1 (not 0, not usage 2)" 1
+  assert_contains "AC3 VERSION '$bad' is named in the message" "$OUT" "$bad"
+done
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+: > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 empty VERSION at HEAD: exit 1" 1
+assert_contains "AC3 empty VERSION message names VERSION" "$OUT" "VERSION"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '   \r\n' > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 whitespace-only VERSION at HEAD (empty once trimmed): exit 1" 1
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+rm -f "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 VERSION deleted at HEAD, present at BASE: exit 1" 1
+assert_contains "AC3 deleted VERSION message names VERSION" "$OUT" "VERSION"
+D="$(rpc_mk '' "$RPC_CL3")"; B="$(rpc_sha "$D")"
+assert_no_path "fixture: BASE has no VERSION" "$D/VERSION"
+printf '1.2.4\n' > "$D/VERSION"; printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 VERSION absent at BASE, valid at HEAD with CHANGELOG entry: counts as changed, exit 0" 0
+assert_contains "AC3 added VERSION is checked (success line)" "$OUT" "release PR check passed"
+D="$(rpc_mk '' "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 VERSION absent at BASE, added without a CHANGELOG entry: check-release runs, exit 1" 1
+assert_contains "AC3 added VERSION without entry names CHANGELOG" "$OUT" "CHANGELOG"
+D="$(rpc_mk '' "$RPC_CL3")"; B="$(rpc_sha "$D")"
+printf 'v1\n' > "$D/VERSION"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC3 VERSION absent at BASE, added with a bad value: exit 1" 1
+assert_contains "AC3 added bad VERSION value is named" "$OUT" "v1"
+
+# AC4: usage and environment errors
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"; B="$(rpc_sha "$D")"
+run_in "$D" bash tools/release-pr-check.sh
+assert_rc "AC4 no argument: exit 2" 2
+assert_contains "AC4 no argument prints a usage line" "$OUT" "usage"
+run_in "$D" bash tools/release-pr-check.sh "$B" "$B"
+assert_rc "AC4 two arguments: exit 2" 2
+assert_contains "AC4 two arguments print a usage line" "$OUT" "usage"
+rpc "$D" 0123456789abcdef0123456789abcdef01234567
+assert_rc "AC4 BASE is a sha that does not exist: exit 3" 3
+rpc "$D" no-such-branch
+assert_rc "AC4 BASE is an unknown ref name: exit 3" 3
+TREE="$(cd "$D" && git rev-parse 'HEAD^{tree}')"
+rpc "$D" "$TREE"
+assert_rc "AC4 BASE is a tree, not a commit: exit 3" 3
+D2="$(mk_tmp)"; mkdir -p "$D2/tools"
+cp -p "$PB_ROOT/tools/check-release.sh" "$D2/tools/check-release.sh"
+[ -f "$RPC" ] && cp -p "$RPC" "$D2/tools/release-pr-check.sh"
+printf '1.2.3\n' > "$D2/VERSION"
+run_in "$D2" env GIT_CEILING_DIRECTORIES="$PB_TMPBASE" bash tools/release-pr-check.sh "$B"
+assert_rc "AC4 not inside a git repository: exit 3" 3
+
+# AC5 regression (v0.24.10): VERSION bumped, CHANGELOG entry present, README always-on row stale
+rpc_agents() { awk -v n="$2" 'BEGIN { for (i = 1; i <= n; i++) printf "%-79s\n", "rule " i }' > "$1/AGENTS.global.md"; }
+RPC_BADGE() { printf '![version](https://img.shields.io/badge/version-%s-4F5BD5)\n| Always-on block | %s / 60 lines · %s / 5,000 bytes | `wc -l -c AGENTS.global.md` |\n' "$1" "$2" "$3"; }
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"
+rpc_agents "$D" 20; RPC_BADGE 1.2.3 20 1,600 > "$D/README.md"; rpc_commit "$D" base2; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"
+rpc_agents "$D" 40; RPC_BADGE 1.2.4 20 1,600 > "$D/README.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC5 stale README always-on row after a VERSION bump: exit 1" 1
+assert_contains "AC5 the output names README.md" "$OUT" "README.md"
+assert_contains "AC5 the output names the Always-on block row" "$OUT" "Always-on block"
+assert_contains "AC5 failure prints the pinned line" "$OUT" "release PR check failed"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"
+rpc_agents "$D" 20; RPC_BADGE 1.2.3 20 1,600 > "$D/README.md"; rpc_commit "$D" base2; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"
+rpc_agents "$D" 40; RPC_BADGE 1.2.4 40 3,200 > "$D/README.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC5 control: same bump with the README row updated: exit 0" 0
+assert_contains "AC5 control prints the success line" "$OUT" "release PR check passed"
+D="$(rpc_mk 1.2.3 "$RPC_CL3")"
+printf '![version](https://img.shields.io/badge/version-1.2.3-4F5BD5)\n' > "$D/README.md"; rpc_commit "$D" base2; B="$(rpc_sha "$D")"
+printf '1.2.4\n' > "$D/VERSION"; printf '%s' "$RPC_CL4" > "$D/CHANGELOG.md"; rpc_commit "$D"
+rpc "$D" "$B"
+assert_rc "AC5 README version badge left at 1.2.3 after the bump: exit 1" 1
+assert_contains "AC5 stale badge output names README.md" "$OUT" "README.md"
+
 t_summary
