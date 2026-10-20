@@ -518,4 +518,38 @@ corpus_case "$EV232" E15.log "json=1 result_ok=1 cost=0.4213710000000001 subagen
 corpus_case "$EV232" E19.log "json=1 result_ok=1 cost=0.5172622 subagent=0 tdd_order=ok feedback_captured=0 full_named=0 untested_label=0 ran_tests=1 spec_first=1 asked=0 models= "
 corpus_case "$EV232" E21.log "json=1 result_ok=1 cost=1.6847831 subagent=1 tdd_order=ok feedback_captured=0 full_named=1 untested_label=0 ran_tests=1 spec_first=1 asked=0 models=sonnet,sonnet,opus "
 
+echo "v0.24.18 G1 E21: a deprecated alias of the old name is not a missed call site (Run 13, v0.24.17)"
+# Run 13 renamed the definition and every call site, then kept `const divide = safeDivide` and exported both names
+# (a logged DECISION for outside callers); scenarios.md E21 fails only a run that "renames only the definition (or only
+# some call sites)". The check now fails on a call or a definition of divide, or on any divide left in report.js.
+ALIAS='printf "%s\n" "const divide = safeDivide; // DECISION[D1]: deprecated alias, kept for outside callers" >> src/calc.js
+node -e "const fs=require(\"fs\");const f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(/module\.exports = \{ add, safeDivide \};/,\"\").trimEnd()+\"\nmodule.exports = { add, safeDivide, divide };\n\")"'
+run_x E21 alias "$SPEC_OK
+$REN_ALL
+$ALIAS
+grep -c divide src/calc.js > \"\$REC/E21.alias\"" "$INIT" "$WSPEC" "$ECALC" "$EREP" "$RES21"
+assert_eq "G1 alias run: every call site is renamed PASS" "PASS" "$(e_state E21 "$K_SITES")"
+assert_eq "G1 alias run: node --test passes (the alias is the same function)" "PASS" "$(e_state E21 "$K_NODE")"
+if [ "$(cat "$REC/E21.alias" 2>/dev/null)" -ge 2 ] 2>/dev/null; then t_ok "G1 alias run: calc.js really keeps the word divide (alias + export)"; else t_bad "G1 alias run: calc.js really keeps the word divide (alias + export)" "count: $(cat "$REC/E21.alias" 2>/dev/null)"; fi
+
+run_x E21 aliasrep "$SPEC_OK
+$REN_CALC
+$ALIAS" "$INIT" "$WSPEC" "$ECALC" "$RES21"
+assert_eq "G1 alias kept but report.js still calls divide: every call site is renamed FAIL" "FAIL" "$(e_state E21 "$K_SITES")"
+
+run_x E21 olddef "$SPEC_OK
+$REN_REP
+printf \"%s\n\" \"function safeDivide(a,b){return divide(a,b)}\" \"module.exports.safeDivide = safeDivide;\" >> src/calc.js" "$INIT" "$WSPEC" "$EREP" "$RES21"
+assert_eq "G1 the old definition function divide( is kept (only a wrapper added): FAIL" "FAIL" "$(e_state E21 "$K_SITES")"
+
+run_x E21 callleft "$SPEC_OK
+$REN_ALL
+printf \"%s\n\" \"const divide = safeDivide;\" \"function half(x) { return divide (x, 2); }\" >> src/calc.js" "$INIT" "$WSPEC" "$ECALC" "$EREP" "$RES21"
+assert_eq "G1 a call divide (x, 2) left in calc.js next to the alias: FAIL" "FAIL" "$(e_state E21 "$K_SITES")"
+
+run_x E21 reprename "$SPEC_OK
+$REN_CALC
+node -e \"const fs=require('fs');const f='src/report.js';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace('return divide(','return safeDivide('))\"" "$INIT" "$WSPEC" "$ECALC" "$EREP" "$RES21"
+assert_eq "G1 report.js still imports the word divide (only the call renamed): FAIL" "FAIL" "$(e_state E21 "$K_SITES")"
+
 t_summary
