@@ -24,6 +24,8 @@
 # A mutant where CMD exits 0 survived; a failing or timed-out run killed it.
 # Output: "survived: file:line: <original line> -> <mutant line>", "killed (timeout): file:line", then
 # "mutants: N, killed: K, survived: S". --fail-under PCT: exit 1 when K*100/N (integer division) < PCT.
+# When files with changed lines are left after the exclusions but no mutant was made (and --max is not 0), a line
+# "warning: 0 mutants on the changed lines of F file(s): ..." follows the total: 0 of 0 is not a pass. The exit is unchanged.
 # A mutant that cannot be written into the worktree prints "error: file:line: ..." and counts as neither killed nor
 # survived; the exit is then 5 (when --fail-under is not also missed).
 # Exit: 0 ok | 1 below --fail-under | 2 usage | 3 not a git repository or no worktree | 4 baseline fails
@@ -304,6 +306,10 @@ if [ -s "$run/mutants" ]; then
 fi
 
 printf 'mutants: %d, killed: %d, survived: %d\n' "$total" "$killed" "$survived"
+if [ "$total" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
+  nf="$(wc -l < "$run/files" | tr -d ' ')"
+  printf "warning: 0 mutants on the changed lines of %s file(s): no operator in mutate.sh's list matched; this is not a pass, check those lines by hand\n" "$nf"
+fi
 if [ -n "$failunder" ] && [ "$total" -gt 0 ] && [ $((killed * 100 / total)) -lt "$failunder" ]; then
   exit 1
 fi

@@ -213,6 +213,17 @@ chk "R13 the 'see below' target: none mode is defined below the pointer" "$SEEBE
 WHY="$(printf '%s' "$ROLES" | grep -oE '\*\*Why:\*\*.*' )"
 if [ -n "$WHY" ]; then t_ok "R13 the Starting roles section has a Why line"; else t_bad "R13 the Starting roles section has a Why line" "no **Why:** in the section"; fi
 if printf '%s' "$WHY" | grep -qiE 'prompt prefix|cheaper to reuse'; then t_bad "R13 the Why line no longer gives the moved prompt-prefix reason" "$WHY"; else t_ok "R13 the Why line no longer gives the moved prompt-prefix reason"; fi
+echo "AC9 (v0.24.17) Preconditions: a dirty start uses role-gate.sh snapshot and --baseline, and not tdd-step.sh"
+PRE="$(flat "$SKILL" '^## Preconditions' 3)"
+if [ -n "$PRE" ]; then t_ok "AC9 the Preconditions section exists"; else t_bad "AC9 the Preconditions section exists" "no heading matched in $SKILL"; fi
+chk "AC9 the clean-tree bullet still mentions a clean tree" "$PRE" 'clean tree'
+chk "AC9 names the snapshot command: role-gate.sh snapshot" "$PRE" 'role-gate\.sh`? snapshot'
+chk "AC9 says to run the snapshot before the first role" "$PRE" 'snapshot[^.]{0,80}before the first role|before the first role[^.]{0,80}snapshot'
+chk "AC9 names the --baseline option" "$PRE" '\-\-baseline'
+chk "AC9 says --baseline goes to every gate" "$PRE" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
+chk "AC9 ties it to a dirty tree" "$PRE" 'dirty|pre-existing|already (changed|modified)'
+chk "AC9 tells not to use tdd-step.sh with a dirty tree" "$PRE" "(do not|don.t|never|not) use[^.]{0,30}tdd-step\.sh|tdd-step\.sh[^.]{0,60}(not|never)"
+chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$TW" -le 3577 ]; then t_ok "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored): $TW"; else t_bad "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored)" "$TW words"; fi
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
