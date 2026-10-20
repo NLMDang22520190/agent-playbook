@@ -87,6 +87,23 @@ assert_eq "AC3.1 no timings (shard-weights.sh exit 1): 'shard weights not refres
   "$(printf '%s\n' "$OUT" | grep -cF 'shard weights not refreshed (shard-weights.sh exit 1)')"
 assert_eq "AC3.1 no timings: no 'refreshed: copy' line" "0" "$(refreshed)"
 
+echo "v0.24.19 AC5 six Windows shard jobs: the unbalanced hint is computed over all six"
+fx
+export FAKE_SHARDS="300,250,200,150,120,80"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC5 six shards: exit 0" 0
+assert_eq "AC5 six shards: one 'shards unbalanced' hint" "1" "$(unb)"
+assert_contains "AC5 six shards: the hint spans the shortest (6th) and the longest (1st) of the six" "$OUT" "shards unbalanced (80 s .. 300 s)"
+fx
+export FAKE_SHARDS="100,100,100,100,100,200"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC5 six shards, only the sixth is slow: the hint is there (the first five alone are balanced)" "1" "$(unb)"
+assert_contains "AC5 six shards, only the sixth is slow: the hint names 100 s .. 200 s" "$OUT" "shards unbalanced (100 s .. 200 s)"
+fx
+export FAKE_SHARDS="100,110,120,130,140,150"
+sh_run 12 v1.2.3 --yes
+assert_eq "AC5 six balanced shards (150 s is not above 1.5 x 100 s): no hint" "0" "$(unb)"
+
 echo "v0.22.2 AC3 balanced shards: no refresh"
 fx
 export FAKE_SHARDS="100,110,120"

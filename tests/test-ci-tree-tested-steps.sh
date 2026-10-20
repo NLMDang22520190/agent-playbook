@@ -12,7 +12,7 @@ runsworld() { # PASSING-RUN-ID -> twelve candidate runs 2001..2012; only that on
   for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
     rl="$rl$sep$(run_json $((2000 + i)) "$HEAD")"; sep=","
     if [ "$((2000 + i))" = "$1" ]; then put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json ok)"
-    else put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json skipped 'windows shard 1/4')"; fi
+    else put "repos/$R/actions/runs/$((2000 + i))/jobs" "$(jobs_json skipped 'windows shard 1/6')"; fi
   done
   put_runs "$HEAD" "$(runs_json 12 "$rl")"
 }
@@ -76,13 +76,13 @@ tool "$SHA" --repo "$R"
 assert_eq "AC6.1 a row with another head_sha is ignored, the next row is used" "2002" "$OUT"
 assert_eq "AC6.1 the ignored row's jobs were never read" "0" "$(logged "runs/2001/jobs")"
 
-echo "AC5.3 the full test step must have succeeded in each of the six suite jobs"
+echo "AC5.3 the full test step must have succeeded in each of the eight suite jobs"
 world
 tool "$SHA" --repo "$R"
 assert_eq "AC5.3 the fixtures carry steps: a full run is still reused" "111" "$OUT"
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (full step of the ubuntu job)" "$(jobs_json ok)" '"name":"Tests and static checks"'
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (shard step)" "$(jobs_json ok)" '"name":"Tests and static checks (shard)"'
-SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/4" "windows shard 2/4" "windows shard 3/4" "windows shard 4/4")
+SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
 for n in "${SUITES[@]}"; do
   for kind in docsonly both fullskipped fullfailed fullcancelled fullnotdone fullmissing nosteps; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps "$n" "$kind")"
@@ -101,11 +101,11 @@ assert_contains "AC5.3 the docs-only fixture really has Docs-only steps" "$dj" '
 assert_not_contains "AC5.3 the docs-only fixture has no full step left" "$dj" '"name":"Tests and static checks'
 put "repos/$R/actions/runs/111/jobs" "$dj"
 tool "$SHA" --repo "$R"
-nothing "a docs-only run (all six suite jobs reduced)"
+nothing "a docs-only run (all eight suite jobs reduced)"
 echo "AC5.3 one shard reduced, the rest full -> nothing"
-world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/4' docsonly)"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/6' docsonly)"
 tool "$SHA" --repo "$R"
-nothing "only shard 2/4 reduced"
+nothing "only shard 2/6 reduced"
 echo "AC5.3 the aggregator (test (windows-latest)) needs only a success conclusion"
 world
 put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok)"
