@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.24.16 - 2026-10-20
+- **The release PR runs check-release (Full):** new `tools/release-pr-check.sh BASE` compares the trimmed VERSION at
+  BASE and HEAD. When it changed, the new value must be X.Y.Z and `tools/check-release.sh vX.Y.Z` must pass (any failure
+  of check-release, exit 1 or 3, is exit 1); an unchanged VERSION is not a release PR and passes without running it.
+  The `test` job runs it on pull requests on ubuntu (the required check `test (ubuntu-latest)`), before the suites and
+  also for docs-only PRs. The v0.24.10 case, a VERSION bump merged with a stale README always-on row and refused only
+  at the tag, now fails the PR. Spec review OK; review round 1 CHANGES (the workflow test accepted `||` and
+  `continue-on-error`), fixed test-first; round 2 APPROVE, mutate.sh 13 of 14 killed (the survivor is equivalent).
+- **Every suite has a shard weight:** `tools/shard-weights.sh --check [FILE]` prints `no weight`, `stale weight` and
+  `duplicate weight` lines (a suite without a line weighs 10 in run-all, which hid the v0.24.14 miss), and
+  test-shard-weights.sh runs it on the real tests/shard-weights. The weights header names each estimated weight.
+  test-release.sh is weighted 129, estimated from local Git Bash (65 s -> 126-132 s; the old suite took 65 s both there
+  and on CI).
+- **Lesson L-0009** (user-approved): a new or split suite needs a measured Windows time before release, and the release
+  PR says which weights are measured and which are estimated.
+- **Feedback triage:** of the 7 pending items, 5 were closed (spec_reviewer support in role-model.sh and cost.sh, the
+  mutation worktree location, and the arithmetic mutants declined by D-U3). Two stay open with the same gap: mutate.sh
+  prints `mutants: 0` and exits 0 when changed lines gave no mutant.
+
 ## 0.24.15 - 2026-10-14
 - **Measured cause of the slow Windows shard:** in CI run 38577969449 (v0.24.14) shard 1 took 632 s while the others took
   416-451 s. Its run-all step lasted 612 s, and test-role-gate-batch alone took 610 s there (its weight was an estimate of
