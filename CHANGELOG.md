@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.19 - 2026-10-20
+- **Measured cause of the uneven Windows shards:** in CI runs 39374352324 (v0.24.18) and 39368684579 (v0.24.17) the
+  weights split the work evenly (2493 and 2553 weight-seconds per shard), but the runners ran at 0.56-1.19 and
+  0.59-1.09 times the weights, and a shard lasts about its summed suite time / 5.4 (PB_JOBS=6). The split itself was
+  not the problem; less work per shard shrinks what a slow runner costs.
+- **Six Windows shards (Full):** the windows-shard matrix is 1/6..6/6, and tools/ci-tree-tested.sh reuses a PR run only
+  when shards 1/6..6/6 (eight suite jobs, nine green jobs) all passed their full step; a run with the old four shards,
+  a missing or failed shard, or a shard that ran the docs-only step is never reused. test-content checks that the
+  ci-tree-tested shard list equals the matrix, so a later matrix change cannot let reuse skip a shard. Spec review 2
+  rounds; review APPROVE in round 1 (6 of 6 mutants killed, fail-open probes all refused).
+- **Heavy suites split** so no single suite sets a shard's floor: test-leak-check-push, test-role-model and
+  test-evals-runner in two (with shared fixtures), test-ship in three (test-ship-c). The assertion names are unchanged
+  (1580 names before and after, apart from the random ids inside the "F1 base [...]" names).
+- **Shard weights:** the split halves and the two ci-tree suites are measured on a local Git Bash (to be replaced with CI
+  times, L-0009); the rest stay the median of three CI runs.
+
 ## 0.24.18 - 2026-10-20
 - **E21 grader false negative (Lite):** Run 13 (v0.24.17) renamed the definition and every call site but kept
   `const divide = safeDivide` exported as a deprecated alias (a logged DECISION, non-interactive run), and the
