@@ -7,6 +7,7 @@
 # estimated weight in this header and in the release PR (L-0009).
 # test-release.sh 129 (v0.24.16): estimated from local Git Bash, 65 s -> 126-132 s with the release PR check cases
 # (the old suite took 65 s there and 65 s on CI). Replace it with a CI time.
+# test-role-gate-baseline.sh 60 (v0.24.17): a new suite, an ESTIMATE to be measured on Windows Git Bash before release (L-0009). Replace it with a CI time.
 test-leak-check-push.sh 529
 test-evals-runner.sh 438
 test-evals-grade6-b.sh 431
@@ -46,6 +47,7 @@ test-run-checks.sh 74
 test-tdd-step.sh 73
 test-feedback.sh 70
 test-cost.sh 61
+test-role-gate-baseline.sh 60
 test-conf.sh 41
 test-install.sh 40
 test-role-gate-mode.sh 32
