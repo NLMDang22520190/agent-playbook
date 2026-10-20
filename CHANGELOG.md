@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.24.17 - 2026-10-20
+- **Role gates with a dirty start (Full, fb-20261017-001):** a read-only reviewer got 49 violations from files that were
+  dirty or untracked before the role started. New `role-gate.sh snapshot [--out FILE]` records every path that differs
+  from HEAD with its work-tree state (mode and raw-byte blob, `git hash-object --no-filters`; a symlink by its link
+  text; `absent`; `unhashable` for gitlinks and unreadable paths) and its index state, in a manifest kept in the git
+  dir by default, and prints its digest. `check` and `size` take `--baseline FILE`: a path is skipped only when both
+  states are unchanged, and each skip is printed; a baseline path the role reverts, deletes, re-stages or re-modes is
+  judged by role. A missing, malformed or duplicated manifest exits 3. Without `--baseline` the gate is byte-identical
+  (compared against 30f0444). SKILL.md Preconditions: with a dirty tree, snapshot before the first role, pass
+  `--baseline` to every gate, and do not use tdd-step.sh (it commits everything); the sentence was paid for by trimming
+  other wording, SKILL.md stays at 3577 words. Spec review 2 rounds (round 1 found six fail-open gaps, all fixed in
+  the spec); code review round 1 and 2 found test gaps only (mode flips, owner execute bit, clean tree, raw bytes),
+  fixed test-first; round 3 APPROVE.
+- **mutate.sh warns on 0 mutants (Lite, fb-20261012-003/006):** when files with changed lines remain after the
+  exclusions but no mutant was made, a `warning: 0 mutants on the changed lines of N file(s): ...` line follows the
+  total; 0 of 0 is not a pass. The exit is unchanged.
+- **Shard weights** from two Windows CI runs (38577969449 and 39358585593; per L-0003; suites changed after the first
+  run use the second alone). test-role-gate-baseline.sh 284, measured on a local Git Bash (L-0009).
+
 ## 0.24.16 - 2026-10-20
 - **The release PR runs check-release (Full):** new `tools/release-pr-check.sh BASE` compares the trimmed VERSION at
   BASE and HEAD. When it changed, the new value must be X.Y.Z and `tools/check-release.sh vX.Y.Z` must pass (any failure
