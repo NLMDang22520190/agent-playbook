@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/role-gate.sh baselines (v0.24.17 item 1, slice S1): `snapshot` and `check ROLE --baseline FILE`
-# (AC1-AC5, AC7, AC8, AC10 of .agents/handoff/01-spec.md; size --baseline and SKILL.md are slice S2). A baseline records the
+# (AC1-AC5, AC7, AC8, AC10 of .agents/handoff/01-spec.md) and, slice S2, `size --baseline FILE` (AC6). A baseline records the
 # work-tree and index state of every changed path before a role starts; the gate then skips only the paths whose state is
 # unchanged. Shared setup: role-gate-fixture.sh. Platform probes (symlinks, exec bit, odd names) skip with exact counts.
 . "$(dirname "$0")/lib.sh"
@@ -379,6 +379,106 @@ else
     blk_check "AC5 staged block" 5 $((T_PASS + T_FAIL - B0))
   fi
 fi
+
+# ================= AC6 size --baseline =================
+# size_dirty: a modified tracked production file (120 added lines, 1 deleted), an untracked production file (10 lines), a
+# modified tracked test file, then a snapshot (sets MF). Plain size counts 2 files and 131 lines there.
+size_dirty() {
+  base_repo
+  i=0; : > src/mod.js; while [ "$i" -lt 120 ]; do i=$((i + 1)); printf 'line %s\n' "$i" >> src/mod.js; done
+  i=0; : > src/new.js; while [ "$i" -lt 10 ]; do i=$((i + 1)); printf 'n %s\n' "$i" >> src/new.js; done
+  printf 'tt2\n' > tests/t.test.js
+  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+}
+sb() { gate size "$@" --baseline "$MF"; }
+
+echo "AC6 size --baseline leaves out the paths unchanged since the baseline (pre-existing dirty and untracked production files)"
+size_dirty
+gate size
+assert_rc "AC6 control: plain size counts the pre-existing changes and is over the limit: exit 1" 1
+assert_contains "AC6 control: plain size reports 2 files and 131 lines (unchanged behaviour)" "$OUT" "files: 2/3 lines: 131/100 (base=HEAD)"
+assert_contains "AC6 control: plain size still says escalate to Full" "$OUT" "over the Lite size limit: escalate to Full"
+sb
+assert_rc "AC6 nothing changed after the snapshot: size --baseline exits 0" 0
+assert_contains "AC6 ... the counts exclude the baseline paths, output format kept" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
+assert_not_contains "AC6 ... no escalate line" "$OUT" "escalate"
+sb --base HEAD --max-files 0 --max-lines 0
+assert_rc "AC6 with explicit --base and limits of 0: still exit 0 (nothing counted)" 0
+assert_contains "AC6 ... the limits are echoed" "$OUT" "files: 0/0 lines: 0/0 (base=HEAD)"
+
+echo "AC6 a baseline path edited after the snapshot counts again; a new file counts as today"
+size_dirty
+printf 'more\n' >> src/mod.js
+sb --max-lines 1000
+assert_rc "AC6 one baseline file edited: exit 0 under a high line limit" 0
+assert_contains "AC6 ... it counts again as 1 file and its full numstat lines (121 added + 1 deleted); the other baseline file stays out" "$OUT" "files: 1/3 lines: 122/1000 (base=HEAD)"
+sb
+assert_rc "AC6 the same edit under the default 100-line limit: exit 1" 1
+assert_contains "AC6 ... escalate to Full" "$OUT" "over the Lite size limit: escalate to Full"
+size_dirty
+printf 'e\n' > src/extra.js
+sb
+assert_rc "AC6 a new file after the snapshot: exit 0 (1 file, 1 line)" 0
+assert_contains "AC6 ... only the new file counts" "$OUT" "files: 1/3 lines: 1/100 (base=HEAD)"
+size_dirty
+printf 'x\n' > tests/other.test.js
+sb
+assert_contains "AC6 a new test file after the snapshot is not counted" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
+
+echo "AC6 a staged change (same bytes) is a state change: the baseline path counts again"
+size_dirty
+git add src/mod.js
+sb --max-lines 1000
+assert_contains "AC6 a pre-dirty file staged after the snapshot counts (121 lines)" "$OUT" "files: 1/3 lines: 121/1000 (base=HEAD)"
+
+echo "AC6 a baseline path reverted to HEAD or deleted is no longer in the numstat list: it counts as 1 file and 1 line when production, 0 for a test path"
+size_dirty
+git checkout -q -- src/mod.js
+sb
+assert_rc "AC6 a pre-dirty production file reverted to HEAD: exit 0" 0
+assert_contains "AC6 ... counts as 1 file and 1 line" "$OUT" "files: 1/3 lines: 1/100 (base=HEAD)"
+size_dirty
+rm -f src/new.js
+sb
+assert_contains "AC6 a pre-existing untracked production file deleted: 1 file, 1 line" "$OUT" "files: 1/3 lines: 1/100 (base=HEAD)"
+size_dirty
+git checkout -q -- src/mod.js; rm -f src/new.js
+sb
+assert_contains "AC6 both production baseline paths reverted or deleted: 2 files, 2 lines" "$OUT" "files: 2/3 lines: 2/100 (base=HEAD)"
+size_dirty
+git checkout -q -- tests/t.test.js
+sb
+assert_rc "AC6 a pre-dirty test file reverted to HEAD: exit 0" 0
+assert_contains "AC6 ... a test path counts 0 files and 0 lines" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
+size_dirty
+git checkout -q -- src/mod.js
+sb --max-files 0 --max-lines 0
+assert_rc "AC6 a reverted production baseline path is judged against the limits too (0/0): exit 1" 1
+assert_contains "AC6 ... the over-limit line is printed" "$OUT" "over the Lite size limit: escalate to Full"
+
+echo "AC6 size --baseline: bad manifest, missing value, relative path"
+size_dirty
+BD="$(mk_tmp)"
+printf '# role-gate baseline v2\nabsent\tnone\tsrc/x\n' > "$BD/v2"
+gate size --baseline "$BD/v2"
+assert_rc "AC6 a manifest with a wrong header: exit 3" 3
+assert_not_contains "AC6 ... no files: line before the error" "$OUT" "files:"
+gate size --baseline "$BD/does-not-exist"
+assert_rc "AC6 a missing manifest: exit 3" 3
+printf '%s\ngarbage\n' "# role-gate baseline v1" > "$BD/bad"
+gate size --baseline "$BD/bad"
+assert_rc "AC6 a malformed manifest line: exit 3" 3
+assert_not_contains "AC6 ... never reports counts (no fail-open)" "$OUT" "files:"
+gate size --baseline
+assert_rc "AC6 size --baseline without a value: exit 2" 2
+gate size --base HEAD --baseline
+assert_rc "AC6 size --baseline as the last option without a value: exit 2" 2
+cd "$R/src" || exit 3
+gate snapshot --out ../.git/rel-m
+gate size --baseline ../.git/rel-m
+assert_rc "AC6 a relative --baseline from a subdirectory resolves against the caller's cwd: exit 0" 0
+assert_contains "AC6 ... the baseline paths stay out of the counts" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
+cd "$R" || exit 3
 
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
