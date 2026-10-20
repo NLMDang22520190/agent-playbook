@@ -20,7 +20,7 @@ production code, except in `none` mode (see below); **Lite** runs in one context
 | Spec reviewer (Full) | the spec review report only | any file in the repo | `roles/spec-reviewer.md` |
 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
-Prompt rules alone are not enough. The gate runs after every role hand-back.
+Prompt rules alone are not enough; the gate runs after every hand-back.
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
 `test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
@@ -58,7 +58,7 @@ continue with separate roles from there.
 **User override (Full to Lite).** When the work meets a Full criterion and the user asks for Lite, ask once, naming the Full
 trigger (a file:line or rule) and what is lost: no independent reviewer, no separate contexts; in a headless or non-interactive
 run follow the user with no question. Record `Weight: Lite (user override; Full criteria: <x>)` in decisions.md and the final report.
-The tests are never skipped: the test comes first and is seen failing, role gates and evidence all still run; the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
+The tests are never skipped: the test comes first and is seen failing, role gates and evidence still run; the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
 
 **The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
 If the work meets a Full criterion, the user override above applies, with its label. If quick work grows past the Lite size limit
@@ -78,7 +78,7 @@ reversible fix, the cheapest insurance for hard-to-reverse changes.
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended. A user-visible change (UI, HTTP API, CLI output, file format) also needs one
+   logic is recommended. A user-visible change (UI, HTTP API, CLI output, file format) needs one
    real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
    command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
@@ -106,7 +106,7 @@ CLI flag and a file format, or two endpoints).
 without hiding which behaviour broke.
 
 ## Preconditions
-- git repo with a clean tree or a known baseline (`git status`).
+- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate, and do not use `tdd-step.sh` (it commits everything): commit only the role's paths by hand.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
   then confirm with the user (or run `playbook-setup`).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
@@ -180,8 +180,7 @@ A merge conflict means the slices were not disjoint after all, so those slices g
 share a file stay serial from the start. After the merge, one review covers the merged feature (Phase 3), never
 one per parallel slice. Remove the slice worktrees once their branches are merged.
 
-**Why:** disjoint slices cannot break each other, so serial work only costs time; a conflict cheaply signals
-that they were not disjoint.
+**Why:** disjoint slices cannot break each other; a conflict cheaply signals they were not disjoint.
 
 ### Phase 3: Review (reviewer, read-only)
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
@@ -212,7 +211,7 @@ Release speed rules (review-round cap, introduced vs pre-existing findings, per-
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
-  review majors and rework rounds the tasks had; it is advice only and changes no setting.
+  review majors and rework rounds the tasks had; advice only, it changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked.
@@ -228,8 +227,7 @@ Do not defend the result and do not patch at once.
    propose a regression eval scenario in the item. If the cause is specific to this project, propose a
    lesson with `playbook-learn` instead.
 
-**Why:** a patch without a named cause fixes one symptom and repeats the miss; the named cause shows
-which step of the playbook let it through.
+**Why:** a patch without a named cause fixes one symptom and repeats the miss.
 
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
@@ -254,7 +252,7 @@ never saw your reasoning cannot inherit its mistakes.
 - making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
 - baseline failures make the RED/GREEN signal unreadable.
 
-In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report: a half-done task with a question helps nobody.
+In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report.
 
 ## Resuming
 The orchestrator keeps `.agents/handoff/state.md` (from `templates/state.md`) up to date: it updates the file

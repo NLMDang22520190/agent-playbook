@@ -3,7 +3,7 @@
 #   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE]
 #   role-gate.sh snapshot [--out FILE]  records the work-tree and index state of every changed path (a baseline)
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
-#   role-gate.sh size [--base REF] [--max-files N] [--max-lines M]
+#   role-gate.sh size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]
 #                                       Lite size check (defaults 3 files, 100 lines)
 #
 # Test paths include test configuration and snapshots (jest/vitest/playwright/cypress
@@ -50,7 +50,9 @@
 # "note: unchanged since the baseline: PATH"; the note "baseline FILE (N path(s), digest D): K path(s) unchanged, not checked"
 # shows the digest of the manifest (compare it with the one snapshot printed). A mode drop on a path unchanged since the
 # baseline is not reported. A relative FILE is resolved against the caller's directory. A missing or malformed manifest
-# exits 3. Without --baseline nothing changes. size --baseline: not yet.
+# exits 3. Without --baseline nothing changes.
+# size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
+# but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest)
 set -u
@@ -554,14 +556,15 @@ EOF
     printf 'baseline: %d path(s) recorded in %s (digest %s)\n' "$n" "$out" "$(git hash-object -- "$out")"
     ;;
   size)
-    base="HEAD"; max_files=""; max_lines=""
+    base="HEAD"; max_files=""; max_lines=""; bl=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --base)      [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
+        --baseline)  { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--baseline needs a file" 2; bl="$2"; shift ;;
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
       esac
       shift
     done
@@ -572,8 +575,33 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     done
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
+    # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
+    if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
+
+    # --baseline: BL_UNCH holds the manifest paths whose work-tree and index state equal the recorded ones (left out below);
+    # BL_EXTRA the changed ones, counted even when no longer in the numstat list (a reverted or deleted path)
+    BL_UNCH="$NL"; BL_EXTRA=""
+    if [ -n "$bl" ]; then
+      bl_read "$bl"
+      ml=""; i=0
+      while [ "$i" -lt "$ML_N" ]; do ml+="${ML_P[i]}"$'\n'; i=$((i + 1)); done
+      ml="${ml%$'\n'}"
+      bl_states "$ml" || pb_die "cannot read the work-tree or index state for the baseline (git failed, or a path holds a newline)" 3
+      i=0
+      while [ "$i" -lt "$ML_N" ]; do
+        case "${ML_P[i]}" in .agents/handoff/*) ;; *)
+          if [ "${BL_WT[i]}" = "${ML_WT[i]}" ] && [ "${BL_IX[i]}" = "${ML_IX[i]}" ] &&
+             [ "${BL_WT[i]}" != unhashable ] && [ "${BL_IX[i]}" != unhashable ]; then
+            BL_UNCH+="${ML_P[i]}"$'\n'
+          else
+            BL_EXTRA+="${ML_P[i]}"$'\n'
+          fi ;;
+        esac
+        i=$((i + 1))
+      done
+    fi
 
     # one "added<TAB>deleted<TAB>path" line per file; untracked files diffed against /dev/null
     stats="$( git -c core.quotepath=off diff --numstat --no-renames "$base" --
@@ -589,13 +617,24 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     lines=0
     plist=""
     metas=""
+    seen=""
     while IFS=$'\t' read -r added deleted f; do
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
+      case "$BL_UNCH" in *"$NL$f$NL"*) continue ;; esac
       plist+="$f"$'\n'
       metas+="$added $deleted"$'\n'
+      seen+="$f"$'\n'
     done <<EOF
 $stats
+EOF
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$NL$seen" in *"$NL$f$NL"*) continue ;; esac
+      plist+="$f"$'\n'
+      metas+="1 0"$'\n'
+    done <<EOF
+$BL_EXTRA
 EOF
     plist="${plist%$'\n'}"
     classify_list "$plist"
@@ -623,6 +662,6 @@ EOF
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
     ;;
 esac
