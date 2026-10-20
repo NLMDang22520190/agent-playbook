@@ -220,4 +220,40 @@ runt bash "$TOOL" 7771 --repo acme/pb --out "$OUTF3"
 assert_rc "API fallback failing for one job -> exit 3" 3
 assert_eq "API fallback failing: file untouched" "old" "$(cat "$OUTF3")"
 
+# ---- v0.24.16 AC1-AC4: --check, every suite in the weights file's directory has exactly one weight line ----
+echo "--check: suite coverage"
+CK="$(mk_tmp)"
+: > "$CK/test-a.sh"; : > "$CK/test-b.sh"; : > "$CK/test-c.sh"; : > "$CK/helper.sh"
+printf '# header\n\ntest-a.sh 100\ntest-b.sh 50\ntest-c.sh 7\n' > "$CK/shard-weights"
+run bash "$TOOL" --check "$CK/shard-weights"
+assert_rc "AC1 all suites weighted: exit 0" 0
+assert_contains "AC1 all suites weighted: says so with the count" "$OUT" "shard weights: 3 suites, all weighted"
+printf 'test-a.sh 100\ntest-c.sh 7\n' > "$CK/shard-weights"
+run bash "$TOOL" --check "$CK/shard-weights"
+assert_rc "AC1 a suite without a weight line: exit 1" 1
+assert_contains "AC1 names the suite without a weight" "$OUT" "no weight: test-b.sh"
+assert_not_contains "AC1 a non-suite file (helper.sh) is not a suite" "$OUT" "helper.sh"
+printf 'test-a.sh 100\ntest-b.sh 50\ntest-c.sh 7\ntest-gone.sh 300\n' > "$CK/shard-weights"
+run bash "$TOOL" --check "$CK/shard-weights"
+assert_rc "AC1 a line for a missing suite: exit 1" 1
+assert_contains "AC1 names the stale weight" "$OUT" "stale weight: test-gone.sh"
+printf 'test-a.sh 100\ntest-b.sh 50\ntest-c.sh 7\ntest-b.sh 60\n' > "$CK/shard-weights"
+run bash "$TOOL" --check "$CK/shard-weights"
+assert_rc "AC1 a suite listed twice: exit 1" 1
+assert_contains "AC1 names the duplicate" "$OUT" "duplicate weight: test-b.sh"
+printf '# c\r\ntest-a.sh 100\r\n\r\ntest-b.sh 50\r\ntest-c.sh 7\r\n' > "$CK/shard-weights"
+run bash "$TOOL" --check "$CK/shard-weights"
+assert_rc "AC2 CRLF lines, comments and blank lines: exit 0" 0
+assert_not_contains "AC2 CRLF: no suite reported" "$OUT" "weight: "
+run bash "$TOOL" --check "$CK/no-such-file"
+assert_rc "AC3 unreadable weights file: exit 3" 3
+run bash "$TOOL" --check 123
+assert_rc "AC3 --check with a run id: exit 2 (usage)" 2
+run bash "$TOOL" --check "$CK/shard-weights" --out "$CK/x"
+assert_rc "AC3 --check with --out: exit 2 (usage)" 2
+assert_no_path "AC3 --check never writes --out" "$CK/x"
+run bash "$TOOL" --check
+assert_rc "AC4 the real tests/shard-weights weights every suite exactly once" 0
+[ "$RC" -eq 0 ] || printf '%s\n' "$OUT" | sed 's/^/       /'
+
 t_summary
