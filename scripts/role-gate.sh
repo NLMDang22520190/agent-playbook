@@ -50,7 +50,7 @@
 # "note: unchanged since the baseline: PATH"; the note "baseline FILE (N path(s), digest D): K path(s) unchanged, not checked"
 # shows the digest of the manifest (compare it with the one snapshot printed). A mode drop on a path unchanged since the
 # baseline is not reported. A relative FILE is resolved against the caller's directory. A missing or malformed manifest
-# exits 3. Without --baseline nothing changes.
+# (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
 #
@@ -307,7 +307,9 @@ bl_read() {
       ix = substr(r, 1, j - 1); p = substr(r, j + 1)
       if (p == "") { print "line " NR ": empty path"; bad = 1; exit }
       if (!stok(wt, "wt")) { print "line " NR ": bad work-tree state"; bad = 1; exit }
-      if (!stok(ix, "ix")) { print "line " NR ": bad index state"; bad = 1; exit } }
+      if (!stok(ix, "ix")) { print "line " NR ": bad index state"; bad = 1; exit }
+      if (p in seen) { print "line " NR ": duplicate path (also line " seen[p] ")"; bad = 1; exit }
+      seen[p] = NR }
     END { if (bad) exit 1; if (NR == 0) { print "empty file, no header"; exit 1 } }' "$f")" ||
     pb_die "malformed baseline manifest $f: $verr" 3
   body="$(awk 'NR > 1' "$f")"
