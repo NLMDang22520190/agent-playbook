@@ -11,7 +11,8 @@
 #        "the spec names report.js" (key: names report.js)
 #        "the spec is written before the first src/ edit" (key: written before the first src)
 # Meaning of the checks:
-#   every call site: no word `divide` is left in src/*.js (safeDivide does not count) and src/report.js calls safeDivide.
+#   every call site: src/report.js has no word `divide` and calls safeDivide; in src/*.js a `divide` is allowed only as a
+#   deprecated alias (`divide = safeDivide`, or an exports line naming safeDivide); a call, comment or import is a leftover.
 #   the spec checks read .agents/handoff/01-spec.md of the workdir: it contains "## Understanding" / it mentions report.js.
 #   spec first: transcript.js prints a new key spec_first=1|0|na: 1 when a Write or Edit of a path ending
 #   .agents/handoff/01-spec.md comes before the first Write or Edit of a path under src/, 0 when it comes after or
