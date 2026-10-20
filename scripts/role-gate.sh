@@ -26,6 +26,12 @@
 # Test infrastructure (runners, shared test helpers) is opt-in: project key test_infra_regex (ERE on
 # repo-relative paths, empty = off). Matching paths classify as "infra" (before the test regex); the
 # tester and the implementer may not change them, and size counts them like production files.
+# check judges three views against REF: REF..work tree (plus untracked), REF..index (a staged change ships with a plain
+# git commit even when the work tree was restored) and REF..HEAD (v0.24.20: a path a role committed and then restored in
+# the work tree and index is still judged, HEAD carries the change). The changed list is the union, each path once; the
+# mode check reads REF..HEAD as a list of its own. A normal flow (the work tree carries every committed and staged
+# change) judges the same paths as before. Consequence for `--base HEAD~N`: an uncommitted revert of a committed edit is
+# judged (HEAD still carries the edit): commit the revert, or use a later base.
 # Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index, also a drop
 # that is only staged, also a rename with unchanged content that drops the bit: the new path is named) is a
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
@@ -35,7 +41,8 @@
 # "VIOLATION (mode): a path contains a newline or a \002 byte; the mode check is incomplete" and has no escape (rename the file).
 # Gaining the bit or deleting a file is fine.
 # implementer: a test path whose only change since REF is a mode restore (100644 -> 100755, same content) is not a violation:
-# "note: <path> mode restore only (...)" (v0.24.9). A drop, a content change or a delete of a test stays a violation.
+# "note: <path> mode restore only (...)" (v0.24.9), and only when the work tree, the index AND HEAD each show nothing but that
+# restore against REF (or equal REF); a content change or another mode in any of the three is judged. A drop, a content change or a delete of a test stays a violation.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
 # Baseline (v0.24.17, a repo that is already dirty when a role starts): snapshot writes a manifest, by default
@@ -369,14 +376,19 @@ case "$cmd" in
     [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$(shown "$INFRA_SHADOW")"
 
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
+    # union: REF..work tree, untracked, REF..index, REF..HEAD (a committed change a role restored in the tree still ships)
     changed="$( { git -c core.quotepath=off diff --name-only -z --no-renames "$base" --
-                  git -c core.quotepath=off ls-files -z --others --exclude-standard; } | tr '\000' '\n' | sort -u )"
+                  git -c core.quotepath=off ls-files -z --others --exclude-standard
+                  git -c core.quotepath=off diff --cached --name-only -z --no-renames "$base" --
+                  git -c core.quotepath=off diff --name-only -z --no-renames "$base" HEAD --; } | tr '\000' '\n' | sort -u )"
 
     # --baseline: judge only what changed since the snapshot. A manifest path whose work-tree AND index state both equal the
     # recorded ones is skipped (and named); a manifest path whose state differs is judged even when it is no longer in the
     # changed list (reverted or deleted). `changed` becomes the paths to judge; BL_UNCH keeps the skipped ones for the mode check.
     BL_UNCH="$NL"
     if [ -n "$bl" ]; then
+      # a path in REF..HEAD was changed by a commit since REF: never "unchanged since the baseline"
+      cmt="$(git -c core.quotepath=off diff --name-only -z --no-renames "$base" HEAD -- | tr '\000' '\n')"
       bl_read "$bl"
       ml=""; i=0
       while [ "$i" -lt "$ML_N" ]; do ml+="${ML_P[i]}"$'\n'; i=$((i + 1)); done
@@ -388,7 +400,8 @@ case "$cmd" in
         ML_U[i]=0
         case "${ML_P[i]}" in .agents/handoff/*) i=$((i + 1)); continue ;; esac
         if [ "${BL_WT[i]}" = "${ML_WT[i]}" ] && [ "${BL_IX[i]}" = "${ML_IX[i]}" ] &&
-           [ "${BL_WT[i]}" != unhashable ] && [ "${BL_IX[i]}" != unhashable ]; then
+           [ "${BL_WT[i]}" != unhashable ] && [ "${BL_IX[i]}" != unhashable ] &&
+           case "$NL$cmt$NL" in *"$NL${ML_P[i]}$NL"*) false ;; *) true ;; esac; then
           ML_U[i]=1
           nunch=$((nunch + 1))
           BL_UNCH+="${ML_P[i]}"$'\n'
@@ -423,6 +436,17 @@ EOF
     # v0.24.9: a test path whose only change from base to the work tree is a mode RESTORE (base 100644, now 100755, same
     # content) is not an implementer violation (a RED commit dropped the bit, a later commit gave it back): note it instead.
     # Anything else (a drop, a content change, a delete) is not matched here and stays a violation.
+    # restore_or_equal RAW: true when RAW (git diff --raw output for one path) is empty or one M line 100644 -> 100755 whose
+    # new blob equals the old one
+    restore_or_equal() {
+      local raw="$1" meta
+      [ -n "$raw" ] || return 0
+      [ "$(printf '%s\n' "$raw" | wc -l | tr -d ' ')" = 1 ] || return 1
+      meta="${raw%%$'\t'*}"
+      set -- $meta
+      [ $# -ge 5 ] || return 1
+      [ "${1#:}" = 100644 ] && [ "$2" = 100755 ] && [ "$5" = M ] && [ "$3" = "$4" ]
+    }
     mode_restore_only() {
       local raw meta st oldm newm ent rp="$1"
       raw="$(git -c core.quotepath=off diff --raw --no-abbrev --no-renames "$base" -- ":(literal)$rp" 2>/dev/null)" || return 1
@@ -434,7 +458,10 @@ EOF
       oldm="${1#:}"; newm="$2"; st="$5"
       [ "$oldm" = 100644 ] && [ "$newm" = 100755 ] && [ "$st" = M ] || return 1
       ent="$(git hash-object -- "$rp" 2>/dev/null)" || return 1
-      [ "$ent" = "$3" ]
+      [ "$ent" = "$3" ] || return 1
+      # the index and HEAD: equal to REF at the path, or the same restore (REF's blob, 100644 -> 100755)
+      restore_or_equal "$(git -c core.quotepath=off diff --raw --cached --no-abbrev --no-renames "$base" -- ":(literal)$rp" 2>/dev/null)" || return 1
+      restore_or_equal "$(git -c core.quotepath=off diff --raw --no-abbrev --no-renames "$base" HEAD -- ":(literal)$rp" 2>/dev/null)"
     }
     violations=0
     checked=0
@@ -486,11 +513,18 @@ EOF
     case "$rc" in 0) ;; 4) nlbad=1; modes_wt="" ;; *) pb_die "git diff failed" 3 ;; esac
     modes_ix="$(pb_raw_lines --cached "$base" --)"; rc=$?
     case "$rc" in 0) ;; 4) nlbad=1; modes_ix="" ;; *) pb_die "git diff failed" 3 ;; esac
+    modes_hd="$(pb_raw_lines "$base" HEAD --)"; rc=$?
+    case "$rc" in 0) ;; 4) nlbad=1; modes_hd="" ;; *) pb_die "git diff failed" 3 ;; esac
     if [ "$nlbad" = 1 ]; then
       printf 'VIOLATION (mode): a path contains a newline or a \\002 byte; the mode check is incomplete\n'
       violations=$((violations + 1))
     fi
     lost="$( { printf '%s\n' "$modes_wt"; printf '%s\n' "$modes_ix"; } | pb_lost_exec_paths )"
+    # REF..HEAD is paired on its own (a delete in one list and an add in another are never paired); results merged, no duplicates
+    if [ -n "$modes_hd" ]; then
+      lost_hd="$(printf '%s\n' "$modes_hd" | pb_lost_exec_paths)"
+      [ -z "$lost_hd" ] || lost="$(printf '%s\n%s\n' "$lost" "$lost_hd" | sort -u)"
+    fi
     while IFS= read -r mpath; do
       [ -n "$mpath" ] || continue
       mkind="${mpath%"${mpath#?}"}"; mpath="${mpath#?}"
