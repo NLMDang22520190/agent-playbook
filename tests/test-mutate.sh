@@ -750,4 +750,44 @@ assert_eq "U3b *p = a == b; (.c) and *rest, last = a == b (.py) still give their
     'survived: src/star.py:1: *rest, last = a == b -> *rest, last = a != b')" "$(surv)"
 has_line "U3b total line" "mutants: 2, killed: 0, survived: 2"
 
+# =====================================================================================================
+echo "v0.24.17 W1 (fb-20261012-003/006): 0 mutants on changed production lines is a warning, not a silent pass"
+W0="warning: 0 mutants on the changed lines of"
+R="$W/zw"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src && printf 'const untrue = is_true(x);\nreturn 10;\n' > src/t.js &&
+  printf 'cat in > out\n' > src/t.sh ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "W1 changed files with nothing mutable: exit stays 0" 0
+has_line "W1 the total line is unchanged" "mutants: 0, killed: 0, survived: 0"
+has_line "W1 a warning names the 2 changed files and says it is not a pass" \
+  "warning: 0 mutants on the changed lines of 2 file(s): no operator in mutate.sh's list matched; this is not a pass, check those lines by hand"
+assert_eq "W1 the warning comes after the total line" "mutants: 0, killed: 0, survived: 0" \
+  "$(printf '%s\n' "$OUT" | grep -B1 -F "$W0" | head -n 1)"
+
+mrun "$R" --base HEAD --test true
+assert_rc "W1 no changed line at all: exit 0" 0
+no_text "W1 no changed line at all: no warning" "$W0"
+
+R="$W/zw2"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p tests && printf 'a == b\n' > tests/t.sh && printf 'x == y\n' >> README.md ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "W1 only tests/ and *.md changed: exit 0" 0
+no_text "W1 only tests/ and *.md changed (left out by design): no warning" "$W0"
+
+R="$W/zw3"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src && printf 'if (a == b) {}\n' > src/m.js && printf 'return 10;\n' > src/n.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+has_line "W1 some mutants made: the total line" "mutants: 1, killed: 0, survived: 1"
+no_text "W1 at least one mutant: no warning" "$W0"
+
+R="$W/zw4"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src && printf 'if (a == b) {}\n' > src/m.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true --max 0
+assert_rc "W1 --max 0: exit 0" 0
+no_text "W1 --max 0 asked for no mutants: no warning" "$W0"
+
 t_summary
