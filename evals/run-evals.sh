@@ -473,8 +473,22 @@ grade_E15() {
   record MANUAL "test seen failing before the fix"
   reply_matches 'Playbook feedback' "the reply has a Playbook feedback line"
 }
-# no_divide_left -> 0 when no word `divide` is left in src/*.js (safeDivide is a different word) and src/report.js calls safeDivide
-no_divide_left() { ! grep -qw divide "$WD"/src/*.js && grep -q safeDivide "$WD/src/report.js"; }
+# no_divide_left -> 0 when every call site is renamed: src/report.js has no word `divide` and calls safeDivide, src/calc.js
+# has safeDivide, and every line of src/*.js with the word `divide` is a deprecated alias of the new name, never a call:
+# `divide = safeDivide` or an exports line that also names safeDivide (v0.24.18, Run 13 kept such an alias as a logged
+# DECISION). Any other `divide` (a call or definition `divide(`, a comment, an import) is a leftover.
+no_divide_left() {
+  ! grep -qw divide "$WD/src/report.js" && grep -q safeDivide "$WD/src/report.js" && grep -q safeDivide "$WD/src/calc.js" &&
+    awk '
+      { w = $0; gsub(/safeDivide/, "", w) }
+      w ~ /(^|[^A-Za-z0-9_$])divide([^A-Za-z0-9_$]|$)/ {
+        if (w ~ /(^|[^A-Za-z0-9_$])divide[ \t]*\(/) { bad = 1; next }
+        if ($0 ~ /(^|[^A-Za-z0-9_$])divide[ \t]*=[ \t]*safeDivide([^A-Za-z0-9_$]|$)/) next
+        if ($0 ~ /(module\.)?exports/ && $0 ~ /safeDivide/) next
+        bad = 1
+      }
+      END { exit bad }' "$WD"/src/*.js
+}
 spec_has()      { grep -qE "$1" "$WD/.agents/handoff/01-spec.md"; }
 grade_E21() {
   check "every call site is renamed" no_divide_left
