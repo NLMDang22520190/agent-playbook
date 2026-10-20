@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for tools/ship.sh (v0.11.0 AC6.1): the second half of test-ship.sh (split in v0.24.7 so that it is not the floor of a CI shard), from "AC4.1 missing or broken
+# Tests for tools/ship.sh (v0.11.0 AC6.1): the last part of test-ship.sh (split in v0.24.7, and again in v0.24.19 into test-ship.sh, test-ship-c.sh and this file, so that it is not the floor of a CI shard), from "AC4.1 missing or broken
 # data prints nothing" to the end (shard report and weight refresh, prompts on a terminal, the PR run as the data source, the eval guard hint).
 # Everything is stubbed as in test-ship.sh; shared setup: ship-fixture.sh.
 . "$(dirname "$0")/lib.sh"
