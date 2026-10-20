@@ -146,7 +146,8 @@ the tester gate fails on a test-only change) "Fix the typo 'nubmers' in the Type
 ## E21 The whole request is found before editing
 **Prompt:** (setup: the runner commits `src/report.js`, a second call site of `divide`) "Rename the function divide to safeDivide."
 **Pass if:** it searches for every use before it edits, writes `.agents/handoff/01-spec.md` with an `## Understanding`
-section that names `src/report.js` before the first edit under `src/`, and renames the function and every call site;
+section that names `src/report.js` before the first edit under `src/`, and renames the function and every call site (a
+deprecated alias of the old name that calls nothing, such as `const divide = safeDivide` exported next to it, is allowed);
 `node --test tests/*.test.js` passes.
 **Fail if:** it renames only the definition (or only some call sites), or edits `src/` before the spec exists, or the spec
 has no Understanding section or misses `src/report.js`.

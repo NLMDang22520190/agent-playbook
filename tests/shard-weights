@@ -1,63 +1,63 @@
-# Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.17: the mean (= median of two) of runs 38577969449
-# (v0.24.14) and 39358585593 (v0.24.16), per L-0003; suites changed after the first run take the second run alone
-# (test-role-gate-batch, test-release, test-shard-weights).
-# test-role-gate-baseline.sh 284 (new in v0.24.17): measured on a local Git Bash (51 of its 249 assertions skip there:
-# symlinks, exec bit, TAB/newline names); local and CI times matched for test-release in v0.24.16. Replace it with a CI time.
+# Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.18: the median of runs 38577969449 (v0.24.14),
+# 39358585593 (v0.24.16) and 39368684579 (v0.24.17), per L-0003. Suites changed after a run use only the later runs:
+# test-role-gate-batch, test-release, test-shard-weights (the last two runs); test-role-gate-baseline, test-mutate,
+# test-skill-rules (the last run). All weights are CI-measured; test-evals-grade5 and test-role-gate-baseline gain a
+# few cases in v0.24.18 (a few seconds, not re-measured).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-test-leak-check-push.sh 499
-test-ship.sh 455
-test-role-model.sh 445
-test-evals-runner.sh 439
-test-role-gate-batch.sh 411
-test-evals-grade6-b.sh 409
-test-evals-grade.sh 367
-test-ship-b.sh 367
-test-evals-grade6.sh 358
-test-evals-grade4.sh 352
-test-leak-check.sh 344
+test-role-model.sh 473
+test-leak-check-push.sh 468
+test-evals-runner.sh 440
+test-evals-grade6-b.sh 431
+test-ship.sh 427
+test-role-gate-batch.sh 385
+test-ship-b.sh 366
+test-evals-grade.sh 360
+test-evals-grade6.sh 351
+test-evals-grade4.sh 349
+test-leak-check.sh 349
 test-evals-grade2.sh 343
-test-run-all.sh 336
-test-ci-tree-tested-steps.sh 301
-test-evals-grade3.sh 290
-test-role-gate-b.sh 286
-test-role-gate-baseline.sh 284
-test-role-gate.sh 279
-test-evals-grade4-b.sh 278
-test-ci-tree-tested.sh 271
-test-evals-grade2-e20-capture.sh 267
-test-evals-budget.sh 255
-test-evals-grade2-e20.sh 248
-test-mutate.sh 227
-test-leak-check-mode.sh 222
-test-evals-grade5.sh 184
-test-release.sh 165
-test-run-checks-sections.sh 155
-test-release-tool.sh 150
-test-content.sh 111
-test-run-checks-gnu9.sh 109
-test-learn.sh 108
-test-leak-check-uname.sh 95
-test-run-checks-gnu.sh 95
-test-update.sh 95
-test-docs-only.sh 83
-test-run-checks.sh 78
-test-tdd-step.sh 69
-test-cost.sh 61
-test-conf.sh 56
-test-feedback.sh 56
-test-install.sh 54
+test-run-all.sh 317
+test-ci-tree-tested-steps.sh 311
+test-evals-grade4-b.sh 303
+test-role-gate-b.sh 284
+test-role-gate.sh 284
+test-evals-grade3.sh 280
+test-ci-tree-tested.sh 270
+test-evals-grade2-e20-capture.sh 266
+test-role-gate-baseline.sh 262
+test-evals-grade2-e20.sh 254
+test-evals-budget.sh 250
+test-leak-check-mode.sh 200
+test-evals-grade5.sh 191
+test-mutate.sh 155
+test-run-checks-sections.sh 150
+test-release-tool.sh 148
+test-release.sh 145
+test-run-checks-gnu9.sh 119
+test-content.sh 108
+test-run-checks-gnu.sh 100
+test-learn.sh 97
+test-leak-check-uname.sh 90
+test-docs-only.sh 84
+test-update.sh 81
+test-run-checks.sh 74
+test-tdd-step.sh 73
+test-cost.sh 60
+test-install.sh 52
+test-feedback.sh 42
+test-conf.sh 41
 test-role-gate-mode.sh 34
-test-readme-count.sh 30
-test-shard-weights.sh 27
-test-eval-guard.sh 17
-test-skill-rules.sh 14
-test-proof-run.sh 11
-test-pr-body.sh 10
+test-readme-count.sh 25
+test-shard-weights.sh 25
+test-eval-guard.sh 16
+test-skill-rules.sh 11
+test-proof-run.sh 10
+test-pr-body.sh 7
 test-lib.sh 5
 test-report-rules.sh 3
 test-docs-rules.sh 2
 test-bsd-check.sh 1
-test-get-bash32.sh 1
 test-lib-tmp.sh 1
+test-get-bash32.sh 0

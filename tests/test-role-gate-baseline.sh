@@ -633,6 +633,28 @@ if [ -n "$FP" ] && [ "$FP" = "$FQ" ]; then
   assert_not_contains "RAW B ... and not reported as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/a.js"
 else t_skip 5 "RAW B clean-filter case (a git clean filter is not applied by hash-object on this platform)"; fi
 
+# v0.24.18 (review round 3 MINOR): an unreadable file makes the batch hash fail, so every regular file is hashed one by one;
+# that per-file fallback must hash raw bytes too (--no-filters), or a CRLF-only edit next to the unreadable file is skipped.
+# Probe: chmod 000 must really block reads (not as root, not on NTFS where Git Bash ignores it); else skip.
+raw_fixture "*.js text eol=lf"
+printf 'two\n' > src/a.js
+printf 'secret\n' > src/secret.txt
+chmod 000 src/secret.txt 2>/dev/null
+if [ -e src/secret.txt ] && ! cat src/secret.txt >/dev/null 2>&1 &&
+   ! printf 'src/secret.txt\n' | git hash-object --no-filters --stdin-paths >/dev/null 2>&1; then
+  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+  assert_rc "FALLBACK snapshot with an unreadable file next to the pre-dirty src/a.js: exit 0" 0
+  assert_contains "FALLBACK the unreadable file is recorded as unhashable" "$(cat "$MF" 2>/dev/null)" "unhashable"
+  assert_mline "FALLBACK src/a.js is still recorded with its raw-byte hash (per-file fallback)" "$MF" \
+    "100644 $(hsh src/a.js)	$(idx src/a.js)	src/a.js"
+  printf 'two\r\n' > src/a.js
+  cb reviewer
+  assert_rc "FALLBACK a CRLF rewrite of src/a.js (same normalized content) is judged: exit 1" 1
+  assert_contains "FALLBACK ... src/a.js is named" "$OUT" "VIOLATION (reviewer): src/a.js [code]"
+  assert_not_contains "FALLBACK ... and not reported as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/a.js"
+else t_skip 6 "FALLBACK per-file hash case (chmod 000 does not block reads here: root, or a file system without POSIX modes)"; fi
+chmod 600 src/secret.txt 2>/dev/null
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"
