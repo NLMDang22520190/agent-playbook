@@ -19,25 +19,45 @@ assert_mline() {
 # blk_check NAME DECLARED DELTA: a skipped block declares how many assertions it holds; a drift is a failure here
 blk_check() { if [ "$2" != "$3" ]; then t_bad "$1: the declared skip count ($2) matches the assertions run ($3)" ""; fi; }
 
+# stores_name NAME: 0 when the cwd (a fresh repo plus this one file) lists exactly NAME as its only untracked entry, byte for
+# byte (git ls-files --others -z). A file system that maps a TAB or a newline to a substitute character (NTFS) fails this.
+stores_name() {
+  local lf; lf="$(mk_tmp)/lsout"
+  git ls-files --others -z > "$lf" 2>/dev/null || return 1
+  printf '%s\0' "$1" | cmp -s - "$lf"
+}
+# Fixture repos are built once, on the first call, and copied (cp -a) for every case: a case starts from the same bytes without
+# running git add/commit (base_repo), the snapshot gate (dirty_*, size_dirty) or the 120-line loop (size_dirty) again.
+BASE_TPL=""; DR_TPL=""; DI_TPL=""; SD_TPL=""
 # base_repo: cd into a repo with src/mod.js, src/gone.js, src/staged.js, tests/t.test.js and a .gitignore committed (sets R)
 base_repo() {
-  R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3
-  printf 'one\n' > src/mod.js; printf 'gone\n' > src/gone.js; printf 'st\n' > src/staged.js
-  printf 'tt\n' > tests/t.test.js; printf 'ignored.log\n' > .gitignore
-  git add -A; git commit -q -m base
+  if [ -z "$BASE_TPL" ]; then
+    BASE_TPL="$(mk_tmp)"; mk_repo "$BASE_TPL"
+    ( cd "$BASE_TPL" && printf 'one\n' > src/mod.js && printf 'gone\n' > src/gone.js && printf 'st\n' > src/staged.js &&
+      printf 'tt\n' > tests/t.test.js && printf 'ignored.log\n' > .gitignore && git add -A && git commit -q -m base ) || exit 3
+  fi
+  R="$(mk_tmp)"; cp -a "$BASE_TPL/." "$R/"; cd "$R" || exit 3
 }
 # dirty_reviewer: a modified tracked file, an untracked production file and an untracked notes file, then a snapshot (sets MF, D)
 dirty_reviewer() {
-  base_repo
-  printf 'two\n' > src/mod.js; printf 'n\n' > src/new.js; mkdir -p notes; printf 'x\n' > notes/NOTES.md
-  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"; D="$(dig "$MF")"
+  if [ -z "$DR_TPL" ]; then
+    base_repo
+    printf 'two\n' > src/mod.js; printf 'n\n' > src/new.js; mkdir -p notes; printf 'x\n' > notes/NOTES.md
+    DR_MF="$(mk_tmp)/m"; gate snapshot --out "$DR_MF"; DR_D="$(dig "$DR_MF")"; DR_TPL="$R"
+  fi
+  R="$(mk_tmp)"; cp -a "$DR_TPL/." "$R/"; cd "$R" || exit 3
+  MF="$(mk_tmp)/m"; cp "$DR_MF" "$MF"; D="$DR_D"
   NOTE="note: baseline $MF (3 path(s), digest $D): 3 path(s) unchanged, not checked"
 }
 # dirty_impl: a modified tracked production file and a modified tracked test file, then a snapshot (sets MF, D)
 dirty_impl() {
-  base_repo
-  printf 'two\n' > src/mod.js; printf 'tt2\n' > tests/t.test.js
-  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"; D="$(dig "$MF")"
+  if [ -z "$DI_TPL" ]; then
+    base_repo
+    printf 'two\n' > src/mod.js; printf 'tt2\n' > tests/t.test.js
+    DI_MF="$(mk_tmp)/m"; gate snapshot --out "$DI_MF"; DI_D="$(dig "$DI_MF")"; DI_TPL="$R"
+  fi
+  R="$(mk_tmp)"; cp -a "$DI_TPL/." "$R/"; cd "$R" || exit 3
+  MF="$(mk_tmp)/m"; cp "$DI_MF" "$MF"; D="$DI_D"
 }
 cb() { gate check "$@" --baseline "$MF"; }
 
@@ -120,7 +140,7 @@ assert_contains "AC1/AC2 ... and names the gitlink" "$OUT" "VIOLATION (reviewer)
 echo "AC1 snapshot: a path with a TAB parses (the path is everything after the second TAB)"
 R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3
 TABP="src/ta${T}b.js"
-if printf 'x\n' > "$TABP" 2>/dev/null && [ -f "$TABP" ]; then
+if printf 'x\n' > "$TABP" 2>/dev/null && [ -f "$TABP" ] && stores_name "$TABP"; then
   B0=$((T_PASS + T_FAIL))
   MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
   assert_rc "AC1 a TAB path: snapshot exits 0" 0
@@ -133,20 +153,20 @@ if printf 'x\n' > "$TABP" 2>/dev/null && [ -f "$TABP" ]; then
   assert_rc "AC1 a TAB path edited after the snapshot: the reviewer fails" 1
   assert_contains "AC1 ... and the full path is named" "$OUT" "VIOLATION (reviewer): $TABP [code]"
   blk_check "AC1 TAB block" 6 $((T_PASS + T_FAIL - B0))
-else rm -f -- "$TABP" 2>/dev/null; t_skip 6 "AC1 TAB path (this file system refuses the name)"; fi
+else rm -f -- "$TABP" 2>/dev/null; t_skip 6 "AC1 TAB path (this file system cannot store a TAB in a name, or git does not list it back unchanged)"; fi
 
 echo "AC1 snapshot: a path with a newline cannot be recorded: exit 3 and no manifest"
 R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3
 NLP="src/new
 line.js"
-if printf 'x\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ]; then
+if printf 'x\n' > "$NLP" 2>/dev/null && [ -f "$NLP" ] && stores_name "$NLP"; then
   B0=$((T_PASS + T_FAIL))
   MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
   assert_rc "AC1 a newline path: snapshot exits 3" 3
   assert_no_path "AC1 ... and writes no manifest" "$MF"
   assert_not_contains "AC1 ... and prints no baseline: line" "$OUT" "baseline:"
   blk_check "AC1 newline block" 3 $((T_PASS + T_FAIL - B0))
-else rm -f -- "$NLP" 2>/dev/null; t_skip 3 "AC1 newline path (this file system refuses the name)"; fi
+else rm -f -- "$NLP" 2>/dev/null; t_skip 3 "AC1 newline path (this file system cannot store a newline in a name, or git does not list it back unchanged)"; fi
 
 echo "AC1 snapshot: errors"
 N="$(mk_tmp)"; cd "$N" || exit 3
@@ -291,6 +311,12 @@ printf '%s\ngarbage\n' "$HDR1" > "$BD/notab"; bad_case "a line without TABs" "$B
 printf '%s\n100666 %s\tnone\tsrc/x\n' "$HDR1" "$S40" > "$BD/badmode"; bad_case "a work-tree mode that is not allowed (100666)" "$BD/badmode"
 printf '%s\n100644 abc\tbogus\tsrc/x\n' "$HDR1" > "$BD/badidx"; bad_case "an index state that is not a state" "$BD/badidx"
 printf '%s\n100644\tnone\tsrc/x\n' "$HDR1" > "$BD/nosha"; bad_case "a work-tree state with a mode but no hash" "$BD/nosha"
+printf '%s\nabsent\tnone\tsrc/x\n100644 %s\tnone\tsrc/x\n' "$HDR1" "$S40" > "$BD/dupstale"; bad_case "two lines for the same path (a stale one and a current one)" "$BD/dupstale"
+printf '%s\nabsent\tnone\tsrc/x\nabsent\tnone\tsrc/x\n' "$HDR1" > "$BD/dupsame"; bad_case "the same line twice" "$BD/dupsame"
+printf '%s\n100644 %s\t100644 %s\tsrc/mod.js\n100644 %s\tnone\tsrc/mod.js\n' "$HDR1" "$S40" "$S40" "$S40" > "$BD/dupreal"; bad_case "two lines for a path that is really dirty" "$BD/dupreal"
+gate size --baseline "$BD/dupstale"
+assert_rc "AC4 size --baseline: a manifest with two lines for the same path: exit 3" 3
+assert_not_contains "AC4 ... size prints no files: line (no fail-open)" "$OUT" "files:"
 printf '%s\nabsent\tnone\tsrc/x\n' "$HDR1" > "$BD/valid"
 gate check reviewer --baseline "$BD/valid"
 assert_rc "AC4 control: a well-formed manifest is accepted (the dirty files are then judged: exit 1, not 3)" 1
@@ -380,15 +406,83 @@ else
   fi
 fi
 
+# ================= AC2/AC5 a mode change after the snapshot on a path that was already dirty =================
+echo "AC2/AC5 a tracked path dirty at the snapshot whose mode flips afterwards is judged (100755 -> 100644 and 100644 -> 100755)"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3
+PRB=probe-x; : > "$PRB"; chmod 755 "$PRB" 2>/dev/null
+if fm_true_ok && [ -x "$PRB" ] && chmod 644 "$PRB" 2>/dev/null && [ ! -x "$PRB" ]; then
+  rm -f "$PRB"
+  B0=$((T_PASS + T_FAIL))
+  printf '# edit\n' >> src/run.sh; printf 'edit\n' >> src/plain.js
+  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+  assert_mline "AC2 a dirty tracked 100755 file: both states 100755" "$MF" "100755 $(hsh src/run.sh)${T}$(idx src/run.sh)${T}src/run.sh"
+  assert_mline "AC2 a dirty tracked 100644 file: both states 100644" "$MF" "100644 $(hsh src/plain.js)${T}$(idx src/plain.js)${T}src/plain.js"
+  cb implementer
+  assert_rc "AC2 control: nothing changed since the snapshot: exit 0" 0
+  assert_contains "AC2 control: the dirty 100755 file is named as unchanged" "$OUT" "note: unchanged since the baseline: src/run.sh"
+  chmod -x src/run.sh
+  cb implementer
+  assert_rc "AC5 a dirty 100755 file loses its exec bit after the snapshot (same bytes): exit 1" 1
+  assert_contains "AC5 ... the mode violation is reported" "$OUT" "VIOLATION (mode): src/run.sh lost its executable bit (100755 -> 100644)"
+  assert_not_contains "AC5 ... and the path is not listed as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/run.sh"
+  cb reviewer
+  assert_rc "AC2 the same drop for a reviewer: exit 1" 1
+  assert_contains "AC2 ... the path is judged and named" "$OUT" "VIOLATION (reviewer): src/run.sh [code]"
+  chmod +x src/run.sh
+  cb implementer
+  assert_rc "AC2 the exec bit restored to the snapshot state: unchanged again, exit 0" 0
+  chmod +x src/plain.js
+  cb reviewer
+  assert_rc "AC2 a dirty 100644 file gains an exec bit after the snapshot (same bytes): exit 1" 1
+  assert_contains "AC2 ... the path is judged and named" "$OUT" "VIOLATION (reviewer): src/plain.js [code]"
+  assert_not_contains "AC2 ... and is not listed as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/plain.js"
+  blk_check "AC2/AC5 tracked mode flip block" 13 $((T_PASS + T_FAIL - B0))
+else rm -f "$PRB"; t_skip 13 "AC2/AC5 tracked mode flip (this file system does not keep executable bits)"; fi
+
+echo "AC2 an untracked file: the OWNER execute bit decides 100755 (a group-only x bit is 100644); a chmod after the snapshot is judged"
+R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3
+PRB=probe-x; : > "$PRB"; chmod 755 "$PRB" 2>/dev/null
+if fm_true_ok && [ -x "$PRB" ] && chmod 644 "$PRB" 2>/dev/null && [ ! -x "$PRB" ]; then
+  rm -f "$PRB"
+  B0=$((T_PASS + T_FAIL))
+  printf 'a\n' > src/u755.js; chmod 755 src/u755.js
+  printf 'b\n' > src/g654.js; chmod 654 src/g654.js
+  printf 'c\n' > src/g614.js; chmod 614 src/g614.js
+  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+  assert_mline "AC2 an untracked 0755 file is recorded as 100755" "$MF" "100755 $(hsh src/u755.js)${T}none${T}src/u755.js"
+  assert_mline "AC2 an untracked 0654 file (group x, no owner x) is recorded as 100644" "$MF" "100644 $(hsh src/g654.js)${T}none${T}src/g654.js"
+  assert_mline "AC2 an untracked 0614 file (group x, no owner x) is recorded as 100644" "$MF" "100644 $(hsh src/g614.js)${T}none${T}src/g614.js"
+  chmod 600 src/g614.js
+  cb reviewer
+  assert_rc "AC2 control: only a group bit changed (still no owner x): unchanged, exit 0" 0
+  assert_contains "AC2 ... the 0614 file stays unchanged" "$OUT" "note: unchanged since the baseline: src/g614.js"
+  assert_contains "AC2 ... the 0654 file stays unchanged" "$OUT" "note: unchanged since the baseline: src/g654.js"
+  assert_contains "AC2 ... the 0755 file stays unchanged" "$OUT" "note: unchanged since the baseline: src/u755.js"
+  chmod 644 src/u755.js
+  cb reviewer
+  assert_rc "AC2 a pre-existing untracked 0755 file chmod 644 after the snapshot (same bytes): exit 1" 1
+  assert_contains "AC2 ... the path is judged and named" "$OUT" "VIOLATION (reviewer): src/u755.js [code]"
+  assert_not_contains "AC2 ... and is not listed as unchanged since the baseline" "$OUT" "unchanged since the baseline: src/u755.js"
+  chmod 744 src/g654.js
+  cb reviewer
+  assert_rc "AC2 a 0654 file that gains the owner x bit (same bytes): exit 1" 1
+  assert_contains "AC2 ... the path is judged and named" "$OUT" "VIOLATION (reviewer): src/g654.js [code]"
+  blk_check "AC2 untracked owner exec bit block" 12 $((T_PASS + T_FAIL - B0))
+else rm -f "$PRB"; t_skip 12 "AC2 untracked owner exec bit (this file system does not keep executable bits)"; fi
+
 # ================= AC6 size --baseline =================
 # size_dirty: a modified tracked production file (120 added lines, 1 deleted), an untracked production file (10 lines), a
 # modified tracked test file, then a snapshot (sets MF). Plain size counts 2 files and 131 lines there.
 size_dirty() {
-  base_repo
-  i=0; : > src/mod.js; while [ "$i" -lt 120 ]; do i=$((i + 1)); printf 'line %s\n' "$i" >> src/mod.js; done
-  i=0; : > src/new.js; while [ "$i" -lt 10 ]; do i=$((i + 1)); printf 'n %s\n' "$i" >> src/new.js; done
-  printf 'tt2\n' > tests/t.test.js
-  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+  if [ -z "$SD_TPL" ]; then
+    base_repo
+    i=0; : > src/mod.js; while [ "$i" -lt 120 ]; do i=$((i + 1)); printf 'line %s\n' "$i" >> src/mod.js; done
+    i=0; : > src/new.js; while [ "$i" -lt 10 ]; do i=$((i + 1)); printf 'n %s\n' "$i" >> src/new.js; done
+    printf 'tt2\n' > tests/t.test.js
+    SD_MF="$(mk_tmp)/m"; gate snapshot --out "$SD_MF"; SD_TPL="$R"
+  fi
+  R="$(mk_tmp)"; cp -a "$SD_TPL/." "$R/"; cd "$R" || exit 3
+  MF="$(mk_tmp)/m"; cp "$SD_MF" "$MF"
 }
 sb() { gate size "$@" --baseline "$MF"; }
 
@@ -480,10 +574,35 @@ assert_rc "AC6 a relative --baseline from a subdirectory resolves against the ca
 assert_contains "AC6 ... the baseline paths stay out of the counts" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
 cd "$R" || exit 3
 
+# ================= AC1/AC6 a clean tree =================
+echo "AC1/AC6 a snapshot of a clean tree records 0 paths and the gates accept it"
+base_repo
+MF="$(mk_tmp)/m"; gate snapshot --out "$MF"; D="$(dig "$MF")"
+assert_rc "AC1 snapshot of a clean tree: exit 0" 0
+assert_eq "AC1 the printed line says 0 path(s) with the digest" "baseline: 0 path(s) recorded in $MF (digest $D)" "$OUT"
+assert_eq "AC1 the manifest is exactly the header line" "# role-gate baseline v1" "$(cat "$MF" 2>/dev/null)"
+assert_eq "AC1 the manifest has one line" "1" "$(wc -l < "$MF" 2>/dev/null | tr -d ' ')"
+cb reviewer
+assert_rc "AC2 check reviewer --baseline with an empty manifest on a clean tree: exit 0" 0
+assert_contains "AC2 ... the OK line" "$OUT" "OK: role gate passed for reviewer (0 file(s) checked, base=HEAD)"
+sb
+assert_rc "AC6 size --baseline with an empty manifest on a clean tree: exit 0" 0
+assert_contains "AC6 ... counts 0 files and 0 lines" "$OUT" "files: 0/3 lines: 0/100 (base=HEAD)"
+printf 'later\n' > src/later.js
+cb reviewer
+assert_rc "AC2 a file created after an empty baseline is judged: exit 1" 1
+assert_contains "AC2 ... and named" "$OUT" "VIOLATION (reviewer): src/later.js [code]"
+sb
+assert_contains "AC6 ... and counted by size --baseline" "$OUT" "files: 1/3 lines: 1/100 (base=HEAD)"
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"
-if ( cd "$PB_ROOT" && git archive HEAD scripts | tar -x -C "$OLD" ) 2>/dev/null && [ -f "$OLD/scripts/role-gate.sh" ]; then
+# the reference is the commit before this feature (30f0444), not HEAD: HEAD holds the new gate, which would compare to itself
+PRE=30f0444
+if git -C "$PB_ROOT" cat-file -e "$PRE^{commit}" 2>/dev/null &&
+   ( cd "$PB_ROOT" && git archive "$PRE" scripts | tar -x -C "$OLD" ) 2>/dev/null && [ -f "$OLD/scripts/role-gate.sh" ] &&
+   ! grep -q 'role-gate baseline' "$OLD/scripts/role-gate.sh"; then
   dirty_reviewer
   gate snapshot >/dev/null 2>&1
   printf 'edit\n' >> src/mod.js
@@ -503,5 +622,5 @@ if ( cd "$PB_ROOT" && git archive HEAD scripts | tar -x -C "$OLD" ) 2>/dev/null 
   gate check reviewer; NEWV="$RC|$OUT"
   assert_eq "AC8 a clean repo: same OK line and exit code" "$OLDV" "$NEWV"
   assert_not_contains "AC8 a clean repo prints no baseline note without --baseline" "$NEWV" "baseline"
-else t_skip 8 "AC8 byte comparison (git archive of HEAD is not available here)"; fi
+else t_skip 8 "AC8 byte comparison (the pre-change commit $PRE is not in this repository, e.g. a shallow clone, or git archive is not available)"; fi
 t_summary
