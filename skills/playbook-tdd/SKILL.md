@@ -5,7 +5,7 @@ description: Use when adding or changing behaviour or fixing a bug in code - tes
 
 # TDD with separated roles
 
-If a generic TDD or sub-agent skill also applies (for example Superpowers `test-driven-development`
+If a generic TDD or sub-agent skill applies (for example Superpowers `test-driven-development`
 or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
 reviewer's re-run, not their "implementer writes and runs its own tests" model.
 
@@ -106,7 +106,7 @@ CLI flag and a file format, or two endpoints).
 without hiding which behaviour broke.
 
 ## Preconditions
-- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate, and do not use `tdd-step.sh` (it commits everything): commit only the role's paths by hand.
+- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate (check the digest matches), and do not use `tdd-step.sh` (it commits everything): commit only the role's paths by hand.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
   then confirm with the user (or run `playbook-setup`).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
@@ -173,7 +173,7 @@ interactive run show the first finished slice to the user and wait for an OK bef
 **Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
 
 **Parallel slices.** Slices whose files are disjoint (per the spec's Impact section)
-may run in parallel: each slice gets its own git worktree on its own branch, where its tester and then its
+may run in parallel: each slice gets its own git worktree on its own branch, where its tester then its
 implementer work, with its own red and green commits and role gates (`role-gate.sh check ... --base` the
 slice's own RED sha, run inside that worktree). The orchestrator merges the slice branches into the feature branch.
 A merge conflict means the slices were not disjoint after all, so those slices go back to serial work. Slices that
@@ -202,14 +202,14 @@ Release speed rules (review-round cap, introduced vs pre-existing findings, per-
   rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` into the
   final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- For a user-visible change the gates also include one real observation of the behaviour in this session
+- For a user-visible change the gates include one real observation of the behaviour in this session
   (screenshot or browser read, curl, the CLI command), as `playbook-proof` describes; unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md`: the request coverage (each sentence of the raw request, verbatim: done where, read as, or not done), AC to tests to evidence with a confidence for each AC, review verdict, assumptions, the
   logged defaults from `decisions.md` (for one batched review), found-not-fixed, and the
   [UNVERIFIED] list. Also fill `## Not checked` (what was not exercised) and `## Pre-mortem` (three ways
   the result could still be wrong, each with the command run to check it and its outcome).
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
-- When sub-agents ran, the report also has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
+- When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
 - Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
   review majors and rework rounds the tasks had; advice only, it changes no setting.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.

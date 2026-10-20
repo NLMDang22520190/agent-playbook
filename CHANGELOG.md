@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.24.20 - 2026-10-20
+- **Role gates judge committed and staged changes (Full):** `check` judged only BASE..work tree, so a role that committed a
+  change and then restored the work tree and index (or staged a change behind a restored work tree) passed every gate
+  while HEAD or the index carried the change (found in the v0.24.17 review). The judged paths are now the union of
+  BASE..work tree, BASE..index and BASE..HEAD; the mode check also reads BASE..HEAD (paired on its own); a BASE..HEAD path
+  is never skipped by `--baseline`; and the v0.24.9 "mode restore only" note needs the work tree, the index and HEAD to
+  show nothing but a 100644 -> 100755 restore (probes P7/P8: a weakened test behind a work-tree mode restore passed).
+  Normal RED/GREEN/REFACTOR flows give the same output byte for byte. Not closed yet (queued P1): the tester and reviewer
+  gates run with the default `--base HEAD`, so a role that commits still passes them. Spec review 2 rounds plus the
+  user's decision; review round 1 CHANGES (a missing newline-path test), fixed test-first; round 2 APPROVE.
+- **role-gate snapshot notes (Lite):** a manifest written inside the work tree prints a note that the next check will
+  judge it (git decides, so Git Bash path spellings work); "unchanged since the baseline" notes show control characters
+  other than TAB as `?`.
+- **SKILL.md:** with a dirty tree, check that the baseline digest matches the one snapshot printed (word count unchanged,
+  four filler words removed).
+- **Shard weights:** the median of four Windows CI runs, the first six-shard run included; test-role-gate-committed.sh 128,
+  measured on a local Git Bash (L-0009).
+
 ## 0.24.19 - 2026-10-20
 - **Measured cause of the uneven Windows shards:** in CI runs 39374352324 (v0.24.18) and 39368684579 (v0.24.17) the
   weights split the work evenly (2493 and 2553 weight-seconds per shard), but the runners ran at 0.56-1.19 and

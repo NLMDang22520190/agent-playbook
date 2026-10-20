@@ -655,6 +655,38 @@ if [ -e src/secret.txt ] && ! cat src/secret.txt >/dev/null 2>&1 &&
 else t_skip 6 "FALLBACK per-file hash case (chmod 000 does not block reads here: root, or a file system without POSIX modes)"; fi
 chmod 600 src/secret.txt 2>/dev/null
 
+# ================= v0.24.20 N1: a manifest written inside the work tree is warned about =================
+echo "v0.24.20 N1 snapshot --out inside the work tree warns that the gate will judge the manifest as a change"
+W_IN="the manifest is inside the work tree"
+base_repo; printf 'two\n' > src/mod.js
+gate snapshot --out "$R/base.txt"
+assert_rc "N1 --out inside the work tree: snapshot still exits 0" 0
+assert_contains "N1 --out inside the work tree: a note warns" "$OUT" "note: $W_IN"
+gate snapshot
+assert_rc "N1 default --out (the git dir): exit 0" 0
+assert_not_contains "N1 default --out (the git dir): no warning" "$OUT" "$W_IN"
+gate snapshot --out "$(mk_tmp)/m"
+assert_not_contains "N1 --out outside the repository: no warning" "$OUT" "$W_IN"
+mkdir -p .agents/handoff
+gate snapshot --out "$R/.agents/handoff/m"
+assert_not_contains "N1 --out under .agents/handoff/ (never judged): no warning" "$OUT" "$W_IN"
+gate snapshot --out "$R/ignored.log"
+assert_not_contains "N1 --out at an ignored path (never judged): no warning" "$OUT" "$W_IN"
+
+# ================= v0.24.20 N2: baseline notes show control characters as ? =================
+echo "v0.24.20 N2 a path with a CR is shown with ? in the 'unchanged since the baseline' note"
+base_repo
+CRN="src/c$(printf '\r').js"
+printf 'x\n' > "$CRN" 2>/dev/null
+LSF="$(mk_tmp)/ls"; git ls-files --others -z > "$LSF" 2>/dev/null
+if printf '%s\0' "$CRN" | cmp -s - "$LSF"; then
+  MF="$(mk_tmp)/m"; gate snapshot --out "$MF"
+  cb reviewer
+  assert_rc "N2 the CR path is unchanged since the baseline: exit 0" 0
+  assert_contains "N2 the note shows the CR as ?" "$OUT" "note: unchanged since the baseline: src/c?.js"
+  if printf '%s' "$OUT" | grep -q "$(printf '\r')"; then t_bad "N2 the output holds no raw CR" "$(printf '%s' "$OUT" | od -c | head -3)"; else t_ok "N2 the output holds no raw CR"; fi
+else t_skip 3 "N2 CR path (this file system cannot store a CR in a name, or git does not list it back unchanged)"; fi
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"

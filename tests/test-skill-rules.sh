@@ -224,6 +224,7 @@ chk "AC9 says --baseline goes to every gate" "$PRE" '(every|each) gate|gates?[^.
 chk "AC9 ties it to a dirty tree" "$PRE" 'dirty|pre-existing|already (changed|modified)'
 chk "AC9 tells not to use tdd-step.sh with a dirty tree" "$PRE" "(do not|don.t|never|not) use[^.]{0,30}tdd-step\.sh|tdd-step\.sh[^.]{0,60}(not|never)"
 chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
+chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$TW" -le 3577 ]; then t_ok "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored): $TW"; else t_bad "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored)" "$TW words"; fi
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
