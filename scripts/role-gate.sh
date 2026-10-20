@@ -47,7 +47,7 @@
 # check --baseline FILE skips a changed path ONLY when its current work-tree state and index state both equal the recorded
 # ones (exact strings; unhashable never matches); every other path, and every manifest path whose state changed (a
 # pre-dirty file reverted, a pre-existing untracked file deleted), is judged as today. Each skipped path prints
-# "note: unchanged since the baseline: PATH"; the note "baseline FILE (N path(s), digest D): K path(s) unchanged, not checked"
+# "note: unchanged since the baseline: PATH" (control characters but TAB shown as ?); the note "baseline FILE (N path(s), digest D): K path(s) unchanged, not checked"
 # shows the digest of the manifest (compare it with the one snapshot printed). A mode drop on a path unchanged since the
 # baseline is not reported. A relative FILE is resolved against the caller's directory. A missing or malformed manifest
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
@@ -392,7 +392,11 @@ case "$cmd" in
           ML_U[i]=1
           nunch=$((nunch + 1))
           BL_UNCH+="${ML_P[i]}"$'\n'
-          bnotes+="note: unchanged since the baseline: ${ML_P[i]}"$'\n'
+          np="${ML_P[i]}"
+          # a CR or ESC could hide or rewrite the note: show control characters as ?, except TAB (it rewrites nothing)
+          case "$np" in *[[:cntrl:]]*) np="$(printf '%s' "$np" | LC_ALL=C tr ' -
+-' '?')" ;; esac
+          bnotes+="note: unchanged since the baseline: $np"$'\n'
         fi
         i=$((i + 1))
       done
@@ -556,6 +560,13 @@ $plist
 EOF
     printf '%s\n' "$content" > "$out" 2>/dev/null || pb_die "cannot write the baseline manifest: $out" 3
     printf 'baseline: %d path(s) recorded in %s (digest %s)\n' "$n" "$out" "$(git hash-object -- "$out")"
+    # a manifest inside the work tree (untracked, not ignored, not under .agents/handoff/) is itself a change the next check
+    # judges; say so (v0.24.20). git decides, so a C:/ versus /c/ spelling of the same path on Git Bash does not matter.
+    inwt="$(git -c core.quotepath=off ls-files --others --exclude-standard -- "$out" 2>/dev/null)" || inwt=""
+    case "$inwt" in
+      '' | .agents/handoff/*) ;;
+      *) printf 'note: the manifest is inside the work tree: the next role-gate check judges it as a change; keep it in the git dir (the default) or outside the repository\n' ;;
+    esac
     ;;
   size)
     base="HEAD"; max_files=""; max_lines=""; bl=""
