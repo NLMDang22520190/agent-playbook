@@ -84,6 +84,12 @@ jobs:
           fetch-depth: 0
       - name: Versions
         run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
+      - name: Release PR check (VERSION changed -> tools/check-release.sh)
+        # A PR that changes VERSION must pass tools/check-release.sh vX.Y.Z before merge (v0.24.10 merged with a stale README).
+        if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash tools/release-pr-check.sh "$BASE_SHA"
       - name: Docs-only checks
         # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
         # found by grep, plus the content and update checks and the static checks. The full step below is skipped then.

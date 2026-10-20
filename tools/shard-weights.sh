@@ -1,25 +1,52 @@
 #!/usr/bin/env bash
 # Refresh tests/shard-weights from the suite timings of a CI run.
 #   tools/shard-weights.sh RUN_ID [--repo OWNER/NAME] [--out FILE]
+#   tools/shard-weights.sh --check [FILE]
 # Reads the logs of the run's "windows shard K/N" jobs, takes every "== tests/test-x.sh (N s)" heading that
 # tests/run-all.sh prints, and writes "test-x.sh N" lines sorted by seconds (largest first; a suite seen twice
 # keeps the larger number) under a "#" header naming the run. Default output: tests/shard-weights in this repo.
-# Exit: 0 written, 1 no timings found (file untouched), 2 usage, 3 gh failed (file untouched).
+# --check reads FILE (default tests/shard-weights) and the test-*.sh suites in its directory, writes nothing, and prints
+# "no weight: S" (a suite run-all.sh would weigh 10), "stale weight: S" (no such suite) and "duplicate weight: S".
+# Exit: 0 written (--check: every suite weighted once), 1 no timings found (file untouched; --check: a line above),
+#       2 usage, 3 gh failed (file untouched; --check: FILE unreadable).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)" || exit 3
 
-usage() { echo "usage: tools/shard-weights.sh RUN_ID [--repo OWNER/NAME] [--out FILE]" >&2; exit 2; }
+usage() { echo "usage: tools/shard-weights.sh RUN_ID [--repo OWNER/NAME] [--out FILE] | --check [FILE]" >&2; exit 2; }
 
-run=""; repo=""; out=""
+run=""; repo=""; out=""; check=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) [ $# -ge 2 ] && [ -n "$2" ] || usage; repo="$2"; shift ;;
     --out)  [ $# -ge 2 ] && [ -n "$2" ] || usage; out="$2"; shift ;;
+    --check) check=1 ;;
     -*) usage ;;
     *) [ -z "$run" ] || usage; run="$1" ;;
   esac
   shift
 done
+if [ "$check" = 1 ]; then
+  [ -z "$repo" ] && [ -z "$out" ] || usage
+  wf="${run:-$ROOT/tests/shard-weights}"
+  case "$wf" in *[!0123456789]*) ;; *) usage ;; esac   # a run id is not a weights file
+  [ -f "$wf" ] && [ -r "$wf" ] || { echo "cannot read $wf" >&2; exit 3; }
+  list="$(cd "$(dirname "$wf")" && for f in test-*.sh; do [ -f "$f" ] && printf '%s ' "$f"; done)"
+  # output follows the suite order, then the order of the weights file
+  awk -v list="$list" '
+    BEGIN { ns = split(list, order, " "); for (i = 1; i <= ns; i++) have[order[i]] = 1 }
+    { sub(/\r$/, "") }
+    /^[ \t]*#/ || NF == 0 { next }
+    { n[$1]++; if (n[$1] == 2) dup[++nd] = $1; if (!($1 in have) && n[$1] == 1) stale[++nt] = $1 }
+    END {
+      bad = 0
+      for (i = 1; i <= ns; i++) if (!(order[i] in n)) { print "no weight: " order[i]; bad = 1 }
+      for (i = 1; i <= nt; i++) { print "stale weight: " stale[i]; bad = 1 }
+      for (i = 1; i <= nd; i++) { print "duplicate weight: " dup[i]; bad = 1 }
+      if (!bad) print "shard weights: " ns " suites, all weighted"
+      exit bad
+    }' "$wf"
+  exit $?
+fi
 case "$run" in '' | *[!0123456789]*) usage ;; esac
 [ -n "$out" ] || out="$ROOT/tests/shard-weights"
 R=""; [ -n "$repo" ] && R="--repo $repo"

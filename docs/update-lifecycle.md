@@ -30,7 +30,9 @@ Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E1
 ## Releasing a new version (on the development machine)
 1. On the feature branch: edit `VERSION`, add the `## X.Y.Z - date` entry to `CHANGELOG.md`, then run
    `bash tools/check-release.sh vX.Y.Z` (VERSION and CHANGELOG agree) and `bash tests/run-all.sh` (must be green).
-2. Open a PR. CI must pass on all three OS before `main` accepts the merge.
+2. Open a PR. CI must pass on all three OS before `main` accepts the merge. When the PR changes `VERSION`, the
+   ubuntu job runs `tools/release-pr-check.sh` (that is, `check-release.sh vX.Y.Z` on the merged tree), so a stale
+   README or a missing CHANGELOG entry fails the PR instead of the tag.
 3. After the merge, on an up-to-date `main`:
    ```bash
    bash tools/release.sh vX.Y.Z --dry-run    # checks + full suite, prints what it would tag and push
