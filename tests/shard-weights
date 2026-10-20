@@ -2,12 +2,13 @@
 # 39358585593 (v0.24.16), 39368684579 (v0.24.17) and 39386773144 (v0.24.19, six shards), per L-0003. A suite changed after
 # a run uses only the later runs: the v0.24.19 splits and the suites changed in v0.24.18/19 (evals-grade5, ci-tree-tested,
 # ci-tree-tested-steps, content, run-all, ship-b) the last run; role-gate-baseline, mutate, skill-rules the last two;
-# role-gate-batch, release, shard-weights the last three. All weights are CI-measured. Runner speed varies about 2x
+# role-gate-batch, release, shard-weights the last three. All weights but one are CI-measured. Runner speed varies about 2x
 # between jobs, so one run per suite is noisy: refresh again once two six-shard runs exist.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-# test-role-gate-committed.sh (60) is an ESTIMATE, not CI-measured: measure it on Windows before the release (L-0009).
+# test-role-gate-committed.sh 128 (new in v0.24.20): measured on a local Git Bash (12 of its 68 assertions skip there); replace it
+# with a CI time (L-0009).
 test-evals-grade6-b.sh 409
 test-role-gate-batch.sh 359
 test-evals-grade.sh 350
@@ -40,6 +41,7 @@ test-role-model-b.sh 173
 test-run-checks-sections.sh 155
 test-evals-grade5.sh 147
 test-release-tool.sh 143
+test-role-gate-committed.sh 128
 test-release.sh 124
 test-run-checks-gnu9.sh 118
 test-content.sh 110
@@ -50,7 +52,6 @@ test-update.sh 91
 test-docs-only.sh 85
 test-run-checks.sh 71
 test-tdd-step.sh 69
-test-role-gate-committed.sh 60
 test-cost.sh 59
 test-install.sh 58
 test-feedback.sh 53
