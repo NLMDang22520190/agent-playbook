@@ -173,9 +173,12 @@ for jn, i, s in hits:
     print("pr-check env BASE_SHA: %s" % (s.get("env") or {}).get("BASE_SHA"))
     print("pr-check if: %s" % cond)
     print("pr-check if mentions docs_only: %s" % ("docs_only" in cond))
+    print("pr-check if exact: %s" % (cond.strip() == "${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' }}"))
+    print("pr-check step continue-on-error: %s" % ("present" if "continue-on-error" in s else "absent"))
 steps = ((wf.get("jobs") or {}).get("test") or {}).get("steps") or []
 idx = [i for i, s in enumerate(steps) if CMD in str(s.get("run", ""))]
 tix = [i for i, s in enumerate(steps) if s.get("name") == "Tests and static checks"]
+print("test job continue-on-error: %s" % ("present" if "continue-on-error" in ((wf.get("jobs") or {}).get("test") or {}) else "absent"))
 print("tests step found: %s" % bool(tix))
 print("pr-check before tests step: %s" % (bool(idx) and bool(tix) and idx[0] < tix[0]))
 EOF
@@ -187,8 +190,11 @@ EOF
   assert_contains "AC6 step only runs on ubuntu-latest" "$PRIF" "matrix.os == 'ubuntu-latest'"
   assert_contains "AC6 step is not skipped for docs-only PRs" "$OUT" "pr-check if mentions docs_only: False"
   assert_contains "AC6 step runs before Tests and static checks" "$OUT" "pr-check before tests step: True"
+  assert_contains "AC6 step if is exactly pull_request AND ubuntu-latest" "$OUT" "pr-check if exact: True"
+  assert_contains "AC6 step cannot be made non-blocking (no continue-on-error on the step)" "$OUT" "pr-check step continue-on-error: absent"
+  assert_contains "AC6 test job has no job-level continue-on-error" "$OUT" "test job continue-on-error: absent"
 else
-  t_skip 7 "AC6 static check of .github/workflows/test.yml: PyYAML not available"
+  t_skip 10 "AC6 static check of .github/workflows/test.yml: PyYAML not available"
 fi
 
 echo "#12a a tag with a newline is a usage error"
