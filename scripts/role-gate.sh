@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Mechanical enforcement of role separation in the TDD workflow.
-#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF]
+#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE]
+#   role-gate.sh snapshot [--out FILE]  records the work-tree and index state of every changed path (a baseline)
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
 #   role-gate.sh size [--base REF] [--max-files N] [--max-lines M]
 #                                       Lite size check (defaults 3 files, 100 lines)
@@ -37,7 +38,21 @@
 # "note: <path> mode restore only (...)" (v0.24.9). A drop, a content change or a delete of a test stays a violation.
 # Files under .agents/handoff/ are always allowed (role hand-off notes, evidence logs).
 #
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref)
+# Baseline (v0.24.17, a repo that is already dirty when a role starts): snapshot writes a manifest, by default
+# `git rev-parse --git-path pb-gate-baseline` (in the git dir, never in the work tree): the header line
+# "# role-gate baseline v1", then one line per path that differs from HEAD (work tree, index, untracked; not
+# .agents/handoff/): <work-tree state> TAB <index state> TAB <path>. A work-tree state is absent, unhashable or
+# "<mode> <sha>" (raw bytes, --no-filters; a symlink is 120000 plus the hash of its link text); an index state is
+# none, unhashable or "<mode> <sha>" (stage 0). It prints "baseline: N path(s) recorded in FILE (digest D)".
+# check --baseline FILE skips a changed path ONLY when its current work-tree state and index state both equal the recorded
+# ones (exact strings; unhashable never matches); every other path, and every manifest path whose state changed (a
+# pre-dirty file reverted, a pre-existing untracked file deleted), is judged as today. Each skipped path prints
+# "note: unchanged since the baseline: PATH"; the note "baseline FILE (N path(s), digest D): K path(s) unchanged, not checked"
+# shows the digest of the manifest (compare it with the one snapshot printed). A mode drop on a path unchanged since the
+# baseline is not reported. A relative FILE is resolved against the caller's directory. A missing or malformed manifest
+# exits 3. Without --baseline nothing changes. size --baseline: not yet.
+#
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest)
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -141,6 +156,172 @@ EOF
   exec 3<&- 4<&-
 }
 
+# ---- baselines (v0.24.17) ----
+NL='
+'
+BL_HDR="# role-gate baseline v1"
+BL_TMPW=""
+bl_cleanup() { if [ -n "$BL_TMPW" ]; then rm -f "$BL_TMPW"; fi; }
+
+# bl_states LIST: LIST holds newline-separated repo-relative paths (none empty, none with a newline); run it at the top of
+# the work tree. Sets BL_WT[i] and BL_IX[i], in the order of LIST: the work-tree state and the index state of each path
+# (spec "State definitions"). One git ls-files, one git diff, one batch git hash-object --no-filters --stdin-paths for all
+# regular files (a symlink is hashed apart: hash-object would follow it); an untracked file costs one ls -ld only when its
+# owner execute bit cannot be ruled out with builtins. Returns 3 when git fails or a path holds a newline.
+bl_states() {
+  local list="$1" lsout raw ixl nml p q i n rc fm="" fmset=0 ixs nmv mode perm reglist="" nreg=0 hout h line r
+  local KIND=() NM=() HS=()
+  BL_WT=(); BL_IX=()
+  [ -n "$list" ] || return 0
+  if [ -z "$BL_TMPW" ]; then
+    BL_TMPW="$(mktemp "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || return 3
+    trap 'exit 1' INT TERM
+    trap bl_cleanup EXIT
+  fi
+  printf '%s\n' "$list" > "$BL_TMPW" || return 3
+  lsout="$(git ls-files -s -z | tr '\n\000' '\002\n'; exit "${PIPESTATUS[0]}")" || return 3
+  ixl="$(printf '%s\n' "$lsout" | awk '
+    FNR == NR { n++; order[n] = $0; want[$0] = 1; next }
+    { i = index($0, "\t"); if (i == 0) next
+      meta = substr($0, 1, i - 1); path = substr($0, i + 1)
+      if (!(path in want)) next
+      split(meta, a, " ")
+      if (a[3] + 0 != 0) conf[path] = 1; else ix[path] = a[1] " " a[2] }
+    END { for (k = 1; k <= n; k++) { p = order[k]
+            if (p in conf) print "unhashable"; else if (p in ix) print ix[p]; else print "none" } }' "$BL_TMPW" -)" || return 3
+  raw="$(pb_raw_lines --)"; rc=$?
+  [ "$rc" -eq 0 ] || return 3
+  nml="$(printf '%s\n' "$raw" | awk '
+    FNR == NR { n++; order[n] = $0; want[$0] = 1; next }
+    { i = index($0, "\t"); if (i == 0) next
+      meta = substr($0, 1, i - 1); path = substr($0, i + 1)
+      if (path in want) { split(meta, a, " "); nm[path] = a[2] } }
+    END { for (k = 1; k <= n; k++) { p = order[k]; if (p in nm) print nm[p]; else print "-" } }' "$BL_TMPW" -)" || return 3
+  i=0
+  while IFS= read -r line; do BL_IX[i]="$line"; i=$((i + 1)); done <<EOF
+$ixl
+EOF
+  [ "$i" -eq "$(printf '%s\n' "$list" | wc -l | tr -d ' ')" ] || return 3
+  i=0
+  while IFS= read -r line; do NM[i]="$line"; i=$((i + 1)); done <<EOF
+$nml
+EOF
+  i=0
+  while IFS= read -r p; do
+    q="./$p"
+    if [ -L "$q" ]; then
+      KIND[i]="link"
+      if r="$(readlink "$q")" && h="$(printf '%s' "$r" | git hash-object --stdin 2>/dev/null)" && [ -n "$h" ]; then
+        BL_WT[i]="120000 $h"
+      else BL_WT[i]=unhashable; fi
+    elif [ -d "$q" ]; then KIND[i]="other"; BL_WT[i]=unhashable
+    elif [ -f "$q" ]; then KIND[i]="reg"; BL_WT[i]=unhashable; reglist+="$q"$'\n'; nreg=$((nreg + 1))
+    elif [ -e "$q" ]; then KIND[i]="other"; BL_WT[i]=unhashable
+    else KIND[i]="other"; BL_WT[i]=absent
+    fi
+    i=$((i + 1))
+  done <<EOF
+$list
+EOF
+  [ "$nreg" -gt 0 ] || return 0
+  # one batch for every regular file (./ keeps a leading quote or dash from being read as syntax); a failed or short batch
+  # falls back to one hash per file, a file that cannot be hashed stays unhashable
+  hout="$(printf '%s' "$reglist" | git hash-object --no-filters --stdin-paths 2>/dev/null)" || hout=""
+  n=0
+  while IFS= read -r line; do HS[n]="$line"; n=$((n + 1)); done <<EOF
+$hout
+EOF
+  if [ "$n" -ne "$nreg" ]; then
+    n=0
+    while IFS= read -r q; do
+      [ -n "$q" ] || continue
+      HS[n]="$(git hash-object --no-filters -- "$q" 2>/dev/null)" || HS[n]=""
+      n=$((n + 1))
+    done <<EOF
+$reglist
+EOF
+  fi
+  i=0; n=0
+  while IFS= read -r p; do
+    if [ "${KIND[i]}" = reg ]; then
+      q="./$p"; h="${HS[n]}"; n=$((n + 1)); ixs="${BL_IX[i]}"; nmv="${NM[i]}"
+      mode=""
+      case "$ixs" in
+        none | unhashable)
+          if [ "$fmset" -eq 0 ]; then
+            fm="$(git config --bool core.filemode 2>/dev/null)" || fm=""
+            [ -n "$fm" ] || fm=true
+            fmset=1
+          fi
+          mode=100644
+          if [ "$fm" = true ]; then
+            # the OWNER execute bit, read from ls -ld (4th character); [ -x ] is true for root on any x bit, so it only
+            # settles the "owned and not executable" case
+            if [ -O "$q" ] && [ ! -x "$q" ]; then mode=100644
+            else
+              perm="$(ls -ld "$q" 2>/dev/null)"; perm="${perm%% *}"
+              case "${perm:3:1}" in x | s) mode=100755 ;; esac
+            fi
+          fi
+          ;;
+        *)
+          if [ "$nmv" != "-" ] && [ "$nmv" != 000000 ]; then mode="$nmv"; else mode="${ixs%% *}"; fi
+          ;;
+      esac
+      case "$mode" in
+        100644 | 100755 | 120000) if [ -n "$h" ]; then BL_WT[i]="$mode $h"; else BL_WT[i]=unhashable; fi ;;
+        *) BL_WT[i]=unhashable ;;
+      esac
+    fi
+    i=$((i + 1))
+  done <<EOF
+$list
+EOF
+  return 0
+}
+
+# bl_read FILE: validate a baseline manifest (exit 3 on any problem, before a verdict) and set ML_N, ML_P[i], ML_WT[i],
+# ML_IX[i]. The path is everything after the second TAB.
+bl_read() {
+  local f="$1" verr body line rest i=0
+  ML_N=0; ML_P=(); ML_WT=(); ML_IX=()
+  if [ ! -f "$f" ] || [ ! -r "$f" ]; then pb_die "baseline manifest not readable: $f" 3; fi
+  verr="$(awk -v HDR="$BL_HDR" '
+    function hexok(s) { return (s ~ /^[0-9a-f]+$/ && (length(s) == 40 || length(s) == 64)) }
+    function stok(s, kind,    a, n) {
+      if (s == "unhashable") return 1
+      if (kind == "wt" && s == "absent") return 1
+      if (kind == "ix" && s == "none") return 1
+      n = split(s, a, " ")
+      if (n != 2 || a[1] " " a[2] != s || !hexok(a[2])) return 0
+      if (kind == "wt") return (a[1] == "100644" || a[1] == "100755" || a[1] == "120000")
+      return (a[1] == "100644" || a[1] == "100755" || a[1] == "120000" || a[1] == "160000")
+    }
+    NR == 1 { if ($0 != HDR) { print "line 1 is not the header: " HDR; bad = 1; exit } next }
+    { i = index($0, "\t")
+      if (!i) { print "line " NR ": no TAB"; bad = 1; exit }
+      wt = substr($0, 1, i - 1); r = substr($0, i + 1); j = index(r, "\t")
+      if (!j) { print "line " NR ": only one TAB"; bad = 1; exit }
+      ix = substr(r, 1, j - 1); p = substr(r, j + 1)
+      if (p == "") { print "line " NR ": empty path"; bad = 1; exit }
+      if (!stok(wt, "wt")) { print "line " NR ": bad work-tree state"; bad = 1; exit }
+      if (!stok(ix, "ix")) { print "line " NR ": bad index state"; bad = 1; exit } }
+    END { if (bad) exit 1; if (NR == 0) { print "empty file, no header"; exit 1 } }' "$f")" ||
+    pb_die "malformed baseline manifest $f: $verr" 3
+  body="$(awk 'NR > 1' "$f")"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ML_WT[i]="${line%%$'\t'*}"
+    rest="${line#*$'\t'}"
+    ML_IX[i]="${rest%%$'\t'*}"
+    ML_P[i]="${rest#*$'\t'}"
+    i=$((i + 1))
+  done <<EOF
+$body
+EOF
+  ML_N="$i"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   classify | check | size)
@@ -161,16 +342,19 @@ case "$cmd" in
     role="${1:-}"
     [ $# -gt 0 ] && shift
     case "$role" in tester|implementer|reviewer|infra) ;; *) pb_die "role must be tester|implementer|reviewer|infra" 2 ;; esac
-    base="HEAD"
+    base="HEAD"; bl=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --base) [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
+        --baseline) { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--baseline needs a file" 2; bl="$2"; shift ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift
     done
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
+    # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
+    if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     # a config file can move the gate: show where the regexes come from, before the verdict
@@ -183,6 +367,51 @@ case "$cmd" in
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
     changed="$( { git -c core.quotepath=off diff --name-only -z --no-renames "$base" --
                   git -c core.quotepath=off ls-files -z --others --exclude-standard; } | tr '\000' '\n' | sort -u )"
+
+    # --baseline: judge only what changed since the snapshot. A manifest path whose work-tree AND index state both equal the
+    # recorded ones is skipped (and named); a manifest path whose state differs is judged even when it is no longer in the
+    # changed list (reverted or deleted). `changed` becomes the paths to judge; BL_UNCH keeps the skipped ones for the mode check.
+    BL_UNCH="$NL"
+    if [ -n "$bl" ]; then
+      bl_read "$bl"
+      ml=""; i=0
+      while [ "$i" -lt "$ML_N" ]; do ml+="${ML_P[i]}"$'\n'; i=$((i + 1)); done
+      ml="${ml%$'\n'}"
+      bl_states "$ml" || pb_die "cannot read the work-tree or index state for the baseline (git failed, or a path holds a newline)" 3
+      bl_digest="$(git hash-object -- "$bl" 2>/dev/null)" || pb_die "cannot hash the baseline manifest: $bl" 3
+      nunch=0; bnotes=""; newch=""; ML_U=(); i=0
+      while [ "$i" -lt "$ML_N" ]; do
+        ML_U[i]=0
+        case "${ML_P[i]}" in .agents/handoff/*) i=$((i + 1)); continue ;; esac
+        if [ "${BL_WT[i]}" = "${ML_WT[i]}" ] && [ "${BL_IX[i]}" = "${ML_IX[i]}" ] &&
+           [ "${BL_WT[i]}" != unhashable ] && [ "${BL_IX[i]}" != unhashable ]; then
+          ML_U[i]=1
+          nunch=$((nunch + 1))
+          BL_UNCH+="${ML_P[i]}"$'\n'
+          bnotes+="note: unchanged since the baseline: ${ML_P[i]}"$'\n'
+        fi
+        i=$((i + 1))
+      done
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        case "$BL_UNCH" in *"$NL$f$NL"*) continue ;; esac
+        newch+="$f"$'\n'
+      done <<EOF
+$changed
+EOF
+      i=0
+      while [ "$i" -lt "$ML_N" ]; do
+        if [ "${ML_U[i]}" -eq 0 ]; then
+          case "${ML_P[i]}" in .agents/handoff/*) ;; *)
+            case "$NL$changed$NL" in *"$NL${ML_P[i]}$NL"*) ;; *) newch+="${ML_P[i]}"$'\n' ;; esac ;;
+          esac
+        fi
+        i=$((i + 1))
+      done
+      changed="$(printf '%s' "$newch" | sort -u)"
+      printf 'note: baseline %s (%d path(s), digest %s): %d path(s) unchanged, not checked\n' "$bl" "$ML_N" "$bl_digest" "$nunch"
+      printf '%s' "$bnotes"
+    fi
 
     # v0.24.9: a test path whose only change from base to the work tree is a mode RESTORE (base 100644, now 100755, same
     # content) is not an implementer violation (a RED commit dropped the bit, a later commit gave it back): note it instead.
@@ -259,6 +488,7 @@ EOF
       [ -n "$mpath" ] || continue
       mkind="${mpath%"${mpath#?}"}"; mpath="${mpath#?}"
       case ":${PB_ALLOW_MODE_CHANGE:-}:" in *":$mpath:"*) continue ;; esac
+      case "$BL_UNCH" in *"$NL$mpath$NL"*) continue ;; esac   # --baseline: the drop was already there (state unchanged)
       if [ "$mkind" = U ]; then
         printf 'VIOLATION (mode): cannot hash %s; the mode check is incomplete\n' "$mpath"
       else
@@ -274,6 +504,55 @@ EOF
     fi
     printf 'OK: role gate passed for %s (%d file(s) checked, base=%s)\n' "$role" "$checked" "$base"
     ;;
+  snapshot)
+    out=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --out) { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--out needs a file" 2; out="$2"; shift ;;
+        *) pb_die "unknown option: $1
+usage: role-gate.sh snapshot [--out FILE]" 2 ;;
+      esac
+      shift
+    done
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
+    git rev-parse --verify -q "HEAD^{commit}" >/dev/null 2>&1 || pb_die "no HEAD commit to snapshot against" 3
+    if [ -n "$out" ]; then case "$out" in /* | [A-Za-z]:[/\\]*) ;; *) out="$PWD/$out" ;; esac; fi
+    top="$(git rev-parse --show-toplevel)"
+    cd "$top" || pb_die "cannot enter $top" 3
+    if [ -z "$out" ]; then
+      out="$(git rev-parse --git-path pb-gate-baseline)"
+      case "$out" in /* | [A-Za-z]:[/\\]*) ;; *) out="$top/$out" ;; esac
+    fi
+    # a path with a newline cannot be one manifest line: LF is mapped to \002 while the NULs become line ends
+    raw="$( { git -c core.quotepath=off diff --name-only -z --no-renames HEAD --
+              git -c core.quotepath=off diff --cached --name-only -z --no-renames HEAD --
+              git -c core.quotepath=off ls-files -z --others --exclude-standard; } | tr '\n\000' '\002\n' )"
+    case "$raw" in *$'\002'*) pb_die "a path contains a newline or a \\002 byte; it cannot be recorded in a baseline" 3 ;; esac
+    raw="$(printf '%s\n' "$raw" | LC_ALL=C sort -u)"
+    plist=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      case "$f" in .agents/handoff/*) continue ;; esac
+      plist+="$f"$'\n'
+    done <<EOF
+$raw
+EOF
+    plist="${plist%$'\n'}"
+    bl_states "$plist" || pb_die "cannot read the work-tree or index state (git failed, or a path holds a newline)" 3
+    content="$BL_HDR"; n=0; i=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if [ "${BL_WT[i]}" = unhashable ] || [ "${BL_IX[i]}" = unhashable ]; then
+        printf 'note: %s cannot be hashed (gitlink, directory, unreadable file or conflict); recorded as unhashable, it never counts as unchanged\n' "$f"
+      fi
+      content+="$NL${BL_WT[i]}"$'\t'"${BL_IX[i]}"$'\t'"$f"
+      n=$((n + 1)); i=$((i + 1))
+    done <<EOF
+$plist
+EOF
+    printf '%s\n' "$content" > "$out" 2>/dev/null || pb_die "cannot write the baseline manifest: $out" 3
+    printf 'baseline: %d path(s) recorded in %s (digest %s)\n' "$n" "$out" "$(git hash-object -- "$out")"
+    ;;
   size)
     base="HEAD"; max_files=""; max_lines=""
     while [ $# -gt 0 ]; do
@@ -282,7 +561,7 @@ EOF
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2 ;;
       esac
       shift
     done
@@ -344,6 +623,6 @@ EOF
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M]" 2
     ;;
 esac
