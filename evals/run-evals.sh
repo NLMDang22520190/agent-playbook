@@ -252,14 +252,14 @@ names_full()    { [ "$T_full_named" = 1 ]; }   # of the final reply (evals/trans
 untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/transcript.js)
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
-  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_asked=na; T_models=
+  T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_asked=na; T_prose_q=na; T_models=
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
       json) T_json="$v" ;; result_ok) T_result_ok="$v" ;; cost) T_cost="$v" ;; subagent) T_subagent="$v" ;;
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
-      spec_first) T_spec_first="$v" ;; asked) T_asked="$v" ;; models) T_models="$v" ;;
+      spec_first) T_spec_first="$v" ;; asked) T_asked="$v" ;; prose_q) T_prose_q="$v" ;; models) T_models="$v" ;;
     esac
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
@@ -594,7 +594,12 @@ grade_E26() {
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "exactly one AskUserQuestion call (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
   else check "no AskUserQuestion tool call in the transcript" asked_none; fi
-  record MANUAL "no question asked in prose (headless)"
+  # v0.24.21: questions in the final reply (evals/transcript.js prose_q=: a "?" at a sentence end outside fenced code, inline code
+  # and quoted > lines); headless 0 PASSes and >= 1 FAILs; --interactive (a question is expected) and no result text are MANUAL
+  if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no question asked in prose (headless; interactive run, prose_q=$T_prose_q)"
+  elif [ "$T_prose_q" = na ]; then record MANUAL "no question asked in prose (headless; no stream-json result text)"
+  elif [ "$T_prose_q" = 0 ]; then record PASS "no question asked in prose (headless)"
+  else record FAIL "no question asked in prose (headless; prose_q=$T_prose_q)"; fi
 }
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted

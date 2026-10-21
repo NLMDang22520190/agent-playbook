@@ -58,7 +58,7 @@ target has deleted real data.
 - RED evidence: paste the `~/.agents/playbook/scripts/proof-run.sh --label red-<SLICE> -- <cmd>` block.
 - Stubs needed (if any), and open questions.
 
-The orchestrator then runs `role-gate.sh check tester`. Any production-code change fails your hand-back.
+The orchestrator then runs `role-gate.sh check tester --base <sha before the role>`. Any production-code change fails your hand-back.
 
 ## Keep the executable bit
 After you edit or write a file, check that `git diff --raw` shows no mode change you did not mean. An editor or write

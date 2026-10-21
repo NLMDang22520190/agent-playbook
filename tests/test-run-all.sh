@@ -370,6 +370,19 @@ for k in 1 2 3 4 5 6; do
 done
 assert_eq "v0.23.3 real weights: the 6 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
 
+echo "v0.24.21 two macOS shards: PB_SHARD=k/2 with the repo tests/shard-weights partitions every suite exactly once (both non-empty)"
+# characterization: run-all already partitions by any n; this pins the macOS split the workflow now uses (same REAL names and RW weights as above)
+ALL2=""
+for k in 1 2; do
+  wshard_run "$k/2" "$REAL" "$RW"
+  assert_rc "v0.24.21 real weights, shard $k/2 exits 0" 0
+  r="$(ran_suites)"
+  if [ -n "$r" ]; then t_ok "v0.24.21 real weights, shard $k/2 runs at least one suite"; else t_bad "v0.24.21 real weights, shard $k/2 runs at least one suite" "ran nothing"; fi
+  ALL2="$ALL2$r"
+done
+assert_eq "v0.24.21 real weights: the 2 shards together ran every suite exactly once" "$(printf "%s" "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf "%s" "$ALL2" | tr ' ' '\n' | grep -v "^$" | sort | tr '\n' ' ')"
+assert_eq "v0.24.21 real weights: no suite ran in both shards" "" "$(printf "%s" "$ALL2" | tr ' ' '\n' | grep -v "^$" | sort | uniq -d | tr '\n' ' ')"
+
 echo "v0.21.0 AC8.1 run-all names a likely environment failure when most FAIL assertions got nothing"
 # mk_fake_suite FILE EMPTY OTHER -> a suite that prints EMPTY assertions failing with an empty actual value and
 # OTHER failing with a real one, in the format of lib.sh t_bad, then exits 1

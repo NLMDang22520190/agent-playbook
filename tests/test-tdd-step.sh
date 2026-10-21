@@ -1,19 +1,8 @@
 #!/usr/bin/env bash
-# Tests for scripts/tdd-step.sh (AC3): RED/GREEN steps that drive role-gate.sh and proof-run.sh.
+# Tests for scripts/tdd-step.sh (AC3): RED/GREEN steps that drive role-gate.sh and proof-run.sh. Part 1 of 3 (split in v0.24.21 so that it is not the floor of a CI shard):
+# from "red: passing" to "AC4 --baseline green: the implementer's paths only"; the rest is in test-tdd-step-b.sh and test-tdd-step-c.sh. Shared setup: tdd-step-fixture.sh.
 . "$(dirname "$0")/lib.sh"
-STEP="$PB_ROOT/scripts/tdd-step.sh"
-export PLAYBOOK_HOME="$(mk_tmp)"
-
-head_of()  { git -C "$1" rev-parse HEAD; }
-count_of() { git -C "$1" rev-list --count HEAD; }
-subject()  { git -C "$1" log -1 --format=%s; }
-fresh()    { local d; d="$(mk_tmp)"; mk_repo "$d"; printf '%s\n' "$d"; }
-lower()    { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
-# assert_untouched NAME REPO HEAD COUNT -> nothing was committed
-assert_untouched() {
-  assert_eq "$1: HEAD unchanged" "$3" "$(head_of "$2")"
-  assert_eq "$1: commit count unchanged" "$4" "$(count_of "$2")"
-}
+. "$(dirname "$0")/tdd-step-fixture.sh"
 
 echo "red: passing"
 R="$(fresh)"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
@@ -164,5 +153,71 @@ run_in "$D" bash "$STEP" red --message m -- sh -c 'exit 1'
 assert_rc "AC3 red outside a git repo -> exit 3" 3
 run_in "$D" bash "$STEP" green --base HEAD --message m -- true
 assert_rc "AC3 green outside a git repo -> exit 3" 3
+
+# ---------------------------------------------------------------------------------------------------------------
+# v0.24.21 lane G: tdd-step.sh --base (red) and --baseline (red, green)
+# ---------------------------------------------------------------------------------------------------------------
+
+echo "AC3 red --base: the tester's own commit is judged"
+R="$(fresh)"; B0="$(head_of "$R")"
+printf 'module.exports = 2;\n' > "$R/src/app.js"
+git -C "$R" commit -q -am "tester sneaks in a production change"
+H1="$(head_of "$R")"; N1="$(count_of "$R")"
+printf 'test("new", () => {});\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$GATE" check tester --base "$B0"
+assert_rc "AC6 probe: the gate with --base <sha before> fails a tester that committed production code" 1
+run_in "$R" bash "$STEP" red --message "add new" --commit --base "$B0" -- sh -c 'exit 1'
+assert_rc "AC3 red --base <sha before>: tester committed a production change -> exit 1" 1
+assert_contains "AC3 red --base: the failure names the production file" "$OUT" "src/app.js"
+assert_untouched "AC6 red --base (tester committed production code): nothing committed" "$R" "$H1" "$N1"
+assert_not_contains "AC6 red --base refused: no RED= line" "$OUT" "RED="
+assert_file "AC6 red --base refused: the new test file is left in the work tree" "$R/tests/new.test.js"
+assert_contains "AC6 red --base refused: the new test file is still untracked" "$(git -C "$R" status --porcelain)" "?? tests/new.test.js"
+
+echo "AC3 red --base: a clean tester passes; the note appears only without --base"
+R="$(fresh)"; B0="$(head_of "$R")"; N0="$(count_of "$R")"
+printf 'test("new", () => {});\n' > "$R/tests/new.test.js"
+NOTE='note: no --base: a tester that commits is not judged; pass the sha from before the role'
+ERR="$(cd "$R" && bash "$STEP" red --message "add new" --base "$B0" -- sh -c 'exit 1' 2>&1 >/dev/null)"
+assert_not_contains "AC3 red --base: no 'no --base' note" "$ERR" "no --base"
+run_in "$R" bash "$STEP" red --message "add new" --base "$B0" --commit -- sh -c 'exit 1'
+assert_rc "AC3 red --base <HEAD> with a clean tester -> exit 0" 0
+assert_eq "AC3 red --base: one test commit" "$((N0 + 1))" "$(count_of "$R")"
+R="$(fresh)"
+printf 'test("new", () => {});\n' > "$R/tests/new.test.js"
+ERR="$(cd "$R" && bash "$STEP" red --message "add new" -- sh -c 'echo boom; exit 1' 2>&1 >/dev/null)"
+assert_contains "AC3 red without --base: stderr carries the note" "$ERR" "$NOTE"
+SOUT="$(cd "$R" && bash "$STEP" red --message "add new" -- sh -c 'echo boom; exit 1' 2>/dev/null)"
+assert_not_contains "AC3 red without --base: the note is on stderr, not stdout" "$SOUT" "no --base"
+run_in "$R" bash "$STEP" red --message "add new" -- sh -c 'exit 1'
+assert_rc "AC3 red without --base: exit code unchanged (0)" 0
+
+echo "AC4 --baseline: baseline paths keep their state, only the role's paths are committed"
+R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"
+printf 'test("new", () => { throw new Error("x"); });\n' > "$R/tests/new.test.js"
+printf 'test("x", () => { /* edited */ });\n' > "$R/tests/app.test.js"
+BS0="$(bstate "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c 'exit 1'
+assert_rc "AC4 red --baseline --commit -> exit 0" 0
+assert_eq "AC4 red --baseline --commit: one new commit" "$((N0 + 1))" "$(count_of "$R")"
+assert_eq "AC4 red --baseline --commit: subject" "test(red): m" "$(subject "$R")"
+assert_eq "AC4 red --baseline --commit: exactly the role's paths are committed" "tests/app.test.js
+tests/new.test.js" "$(committed "$R")"
+assert_eq "AC4 baseline paths: index and work tree untouched byte for byte" "$BS0" "$(bstate "$R")"
+assert_contains "AC4 baseline paths: README.md still staged and edited (MM)" "$(git -C "$R" status --porcelain)" "MM README.md"
+assert_contains "AC4 baseline paths: src/app.js still an unstaged edit" "$(git -C "$R" status --porcelain)" " M src/app.js"
+run_in "$R" bash "$GATE" check tester --baseline "$BL"
+assert_contains "AC4 the next gate with the same manifest reports src/app.js unchanged" "$OUT" "note: unchanged since the baseline: src/app.js"
+assert_contains "AC4 the next gate with the same manifest reports README.md unchanged" "$OUT" "note: unchanged since the baseline: README.md"
+
+echo "AC4 --baseline green: the implementer's paths only"
+R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; BASE="$(head_of "$R")"
+printf 'module.exports = 3;\n' > "$R/src/impl.js"
+BS0="$(bstate "$R")"
+run_in "$R" bash "$STEP" green --base "$BASE" --message "impl" --commit --baseline "$BL" -- true
+assert_rc "AC4 green --baseline --commit -> exit 0" 0
+assert_eq "AC4 green --baseline --commit: subject" "feat(green): impl" "$(subject "$R")"
+assert_eq "AC4 green --baseline --commit: only the new production file" "src/impl.js" "$(committed "$R")"
+assert_eq "AC4 green baseline paths untouched byte for byte" "$BS0" "$(bstate "$R")"
 
 t_summary

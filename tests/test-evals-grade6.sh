@@ -488,7 +488,7 @@ hd "timeout --signal KILL 5 head proof-run.sh is a read" 0 "timeout --signal KIL
 #        "every sub-agent call uses a configured model" (key: configured model)  "the reply has a Models: line" (key: Models: line)
 #        "node --test tests/*.test.js passes" (key: node --test)
 #   E25  re-pointed in v0.24.13: an additive VERSION export in three files runs at Lite (tests in test-evals-grade6-b.sh)
-#   E26  graded in v0.24.13 (tests in test-evals-grade6-b.sh); transcript.js prints asked=<N> before models= (tests below)
+#   E26  graded in v0.24.13 (tests in test-evals-grade6-b.sh); transcript.js prints asked=<N> before models= (tests below); v0.24.21 adds prose_q=<N>|na after asked= (tests below)
 # Fixtures (runner): E24 commits a project .agents/playbook.conf with model_tester_claude=sonnet, model_implementer_claude=sonnet,
 # model_reviewer_claude=opus (tracked, clean tree).
 tq_flush
@@ -507,7 +507,7 @@ assert_eq "R5 models: two Agent blocks in one assistant message" "sonnet,opus" "
 assert_eq "R5 models: the result line does not add a call" "sonnet" "$(mo_of "$INIT" "$(AG sonnet)" "$(res 'Models: tester=sonnet')")"
 # models= is the last key and the others are kept
 KEYS="$(printf '%s\n' "$INIT" "$(AG sonnet)" > "$TR/m.json"; node "$TSX" "$TR/m.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
-assert_eq "R5 models: keys in order, asked just before models, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first asked models " "$KEYS"
+assert_eq "R5 models: keys in order, asked then prose_q just before models, models last" "json result_ok cost subagent tdd_order feedback_captured full_named untested_label ran_tests spec_first asked prose_q models " "$KEYS"
 
 # v0.24.13 (E26): transcript.js prints asked=<N>, the number of tool_use blocks named AskUserQuestion (several in one message all count);
 # asked=na when the log has no stream-json line; the key sits just before models= (models stays last).
@@ -526,7 +526,31 @@ assert_eq "AC2.7 asked: a question next to an Agent call counts once" "1" "$(ak_
 printf '%s\n' 'AskUserQuestion: which one?' 'second plain line' > "$TR/ap.json"
 assert_eq "AC2.7 asked: a plain-text log is na" "na" "$(node "$TSX" "$TR/ap.json" 2>/dev/null | sed -n 's/^asked=//p')"
 ASKEYS="$(printf '%s\n' "$INIT" "$(AQ)" > "$TR/a.json"; node "$TSX" "$TR/a.json" 2>/dev/null | sed 's/=.*//' | tr '\n' ' ')"
-case "$ASKEYS" in *"spec_first asked models ") t_ok "AC2.7 asked: printed just before models, models last" ;; *) t_bad "AC2.7 asked: printed just before models, models last" "keys: $ASKEYS" ;; esac
+case "$ASKEYS" in *"spec_first asked prose_q models ") t_ok "AC2.7 asked: printed after spec_first (then prose_q), models last" ;; *) t_bad "AC2.7 asked: printed after spec_first (then prose_q), models last" "keys: $ASKEYS" ;; esac
+
+# v0.24.21 (E26): transcript.js prints prose_q=<N>|na, the number of questions in the final reply (the stream-json result text):
+# a run of "?" followed (after optional ) ] " ' * _) by whitespace or the end, outside fenced code blocks, inline code and lines
+# starting with ">"; na when there is no result text. The key sits after asked= and before models= (models stays last).
+echo "v0.24.21 E26 transcript.js prose_q="
+pq_of() { printf '%s\n' "$@" > "$TR/p.json"; node "$TSX" "$TR/p.json" 2>/dev/null | sed -n 's/^prose_q=//p'; }
+pq_lines() { printf '%s\n' "$@" > "$TR/p.json"; node "$TSX" "$TR/p.json" 2>/dev/null | grep -c '^prose_q='; }
+assert_eq "PQ prose_q: the key is printed once" "1" "$(pq_lines "$INIT" "$(res 'Done.')")"
+assert_eq "PQ prose_q: a reply with no question: 0" "0" "$(pq_of "$INIT" "$(res 'Weight: Lite (user override; Full criteria: auth check). Changed isAdmin.')")"
+assert_eq "PQ prose_q: 'Should I proceed?' at the end: 1" "1" "$(pq_of "$INIT" "$(res 'Changed isAdmin. Should I proceed?')")"
+assert_eq "PQ prose_q: a question inside a sentence run: 1" "1" "$(pq_of "$INIT" "$(res 'Should I proceed? I will wait for you.')")"
+assert_eq "PQ prose_q: two questions on two lines: 2" "2" "$(pq_of "$INIT" "$(res 'Is this ok?\nShall I commit?')")"
+assert_eq "PQ prose_q: ?? counts once" "1" "$(pq_of "$INIT" "$(res 'Really??')")"
+assert_eq "PQ prose_q: a question in double quotes still counts" "1" "$(pq_of "$INIT" "$(res 'I would ask \"Is this ok?\" next.')")"
+assert_eq "PQ prose_q: ? only inside a fenced block: 0" "0" "$(pq_of "$INIT" "$(res 'Done.\n```\nif (a?) b; is it ok?\n```\nAll good.')")"
+assert_eq "PQ prose_q: a question after the fence closes counts: 1" "1" "$(pq_of "$INIT" "$(res '```\nx ? y : z\n```\nShould I go on?')")"
+assert_eq "PQ prose_q: ? only inside inline code: 0" "0" "$(pq_of "$INIT" "$(res 'I ran `test -f x?` and `a ? b : c` passes.')")"
+assert_eq "PQ prose_q: a quoted line '> Is this ok?': 0" "0" "$(pq_of "$INIT" "$(res 'The prompt said:\n> Is this ok?\nI followed it.')")"
+assert_eq "PQ prose_q: an indented quoted line: 0" "0" "$(pq_of "$INIT" "$(res '  > Is this ok?\nDone.')")"
+assert_eq "PQ prose_q: a URL query string is not a question: 0" "0" "$(pq_of "$INIT" "$(res 'See http://x.test/a?b=1 for details.')")"
+assert_eq "PQ prose_q: a question in an assistant text block (not the final reply): 0" "0" "$(pq_of "$INIT" '{"type":"assistant","message":{"content":[{"type":"text","text":"Should I proceed?"}]}}' "$(res 'Done.')")"
+assert_eq "PQ prose_q: a stream-json log without a result line is na" "na" "$(pq_of "$INIT" "$(tu Bash '{"command":"ls"}')")"
+printf '%s\n' 'Should I proceed?' 'second plain line' > "$TR/pp.json"
+assert_eq "PQ prose_q: a plain-text log is na" "na" "$(node "$TSX" "$TR/pp.json" 2>/dev/null | sed -n 's/^prose_q=//p')"
 
 echo "v0.24.10 E22: a user-requested quick change runs at Lite (Weight: Lite (user said quick))"
 E22_SRC='node -e "const fs=require(\"fs\"),f=\"src/calc.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"nubmers\",\"numbers\"))"'

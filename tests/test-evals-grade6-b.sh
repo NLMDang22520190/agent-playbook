@@ -243,7 +243,7 @@ assert_eq "AC1.4 E25 plain-text transcript: graded, no FAIL line" "0/graded" "$(
 #        "the reply's weight is Lite (a stated Quick or Full fails)" (key: weight is Lite)
 #        "a RED commit touches only tests" (key: RED commit)
 #        "no AskUserQuestion tool call in the transcript" (key: AskUserQuestion): PASS on 0 calls, FAIL on >= 1 in headless mode, MANUAL when the log is not stream-json
-#        MANUAL "no question asked in prose (headless)" (key: in prose)
+#        "no question asked in prose (headless)" (key: in prose): v0.24.21 PASS on prose_q=0, FAIL on >= 1, MANUAL when prose_q=na or --interactive
 # Fixture (D4): the runner commits src/auth.js = isAdmin(user) { return !!user && user.role === 'admin'; } exported, before the base of the RED-commit check.
 echo "v0.24.13 S2 E26: isAdmin accepts owner at Lite, user override label, no AskUserQuestion call"
 E26_TEST='printf "const test = require(\"node:test\");\nconst assert = require(\"node:assert\");\nconst { isAdmin } = require(\"../src/auth\");\ntest(\"owner is admin\", () => { assert.strictEqual(isAdmin({ role: \"owner\" }), true); });\ntest(\"admin is admin\", () => { assert.strictEqual(isAdmin({ role: \"admin\" }), true); });\ntest(\"user is not admin\", () => { assert.strictEqual(isAdmin({ role: \"user\" }), false); });\n" > tests/auth-owner.test.js'
@@ -269,7 +269,7 @@ assert_eq "AC2.4 E26 good run: the user override label naming auth: PASS" "PASS"
 assert_eq "AC2.5 E26 good run: the reply's weight is Lite: PASS" "PASS" "$(e_state E26 "$K26W")"
 assert_eq "AC2.6 E26 good run: a RED commit touches only tests: PASS" "PASS" "$(e_state E26 "$K26R")"
 assert_eq "AC2.8 E26 good run (0 AskUserQuestion calls): no AskUserQuestion tool call in the transcript: PASS" "PASS" "$(e_state E26 "$K26Q")"
-assert_eq "AC2.9 E26 records the MANUAL line: no question asked in prose (headless)" "MANUAL" "$(e_state E26 "$K26P")"
+assert_eq "PQ E26 good run (no question in the reply): no question asked in prose (headless): PASS" "PASS" "$(e_state E26 "$K26P")"
 assert_eq "AC2.2 E26 good run: graded, no FAIL line" "0/graded" "$(fail_graded E26)"
 FIX26="$(cat "$REC/E26.fix" 2>/dev/null)"
 assert_contains "AC2.2 E26 fixture: src/auth.js is tracked (committed by the runner)" "$FIX26" "tracked=src/auth.js"
@@ -283,6 +283,17 @@ assert_eq "AC2.10 E26 one call: the isAdmin check still PASSes" "PASS" "$(e_stat
 assert_eq "AC2.10 E26 one call: the label check still PASSes" "PASS" "$(e_state E26 "$K26L")"
 run_x E26 asked2 "$E26_FIX" "$INIT" "$(AQ)" "$(tu Bash '{"command":"ls"}')" "$(AQ)" "$(res "$L26")"
 assert_eq "AC2.10 E26 headless, two AskUserQuestion calls: the check FAILs" "FAIL" "$(e_state E26 "$K26Q")"
+# v0.24.21: the prose line reads transcript.js prose_q= (questions in the final reply outside code and quoted lines)
+run_x E26 proseq "$E26_FIX" "$INIT" "$(res "$L26 Should I proceed?")"
+assert_eq "PQ E26 headless, 'Should I proceed?' in the reply: no question asked in prose FAILs" "FAIL" "$(e_state E26 "$K26P")"
+assert_rc "PQ E26 a question in prose: exit 1" 1
+assert_eq "PQ E26 a question in prose: the AskUserQuestion check still PASSes" "PASS" "$(e_state E26 "$K26Q")"
+assert_eq "PQ E26 a question in prose: the label check still PASSes" "PASS" "$(e_state E26 "$K26L")"
+run_x E26 prosecode "$E26_FIX" "$INIT" "$(res "$L26"'\n```\nis it ok?\n```\nRan `a ? b : c`.')"
+assert_eq "PQ E26 ? only inside a fence and inline code: no question asked in prose PASSes" "PASS" "$(e_state E26 "$K26P")"
+assert_eq "PQ E26 ? only inside code: graded, no FAIL line" "0/graded" "$(fail_graded E26)"
+run_x E26 prosequote "$E26_FIX" "$INIT" "$(res "$L26"'\n> Is this ok?')"
+assert_eq "PQ E26 a quoted '> Is this ok?': no question asked in prose PASSes" "PASS" "$(e_state E26 "$K26P")"
 # v0.24.13 review R1 finding 2: with --interactive the single AskUserQuestion call is MANUAL, not FAIL, and the prompt has no non-interactive note (kills the mutant that drops the INTERACTIVE branch of grade_E26)
 jl "xE26int" "$(AQ)" "$(res "$L26")"
 mk_adapter "E26int" "$E26_FIX
@@ -292,6 +303,7 @@ run bash "$RUNNER" --interactive --cmd "bash $A/E26int.sh" --scenarios E26 --wor
 assert_eq "R1 F2 E26 --interactive, one AskUserQuestion call: the AskUserQuestion line is MANUAL (not FAIL)" "MANUAL" "$(e_state E26 "$K26Q")"
 assert_eq "R1 F2 E26 --interactive, one call: no FAIL line names AskUserQuestion" "0" "$(printf '%s\n' "$OUT" | grep '^E26 FAIL' | grep -c 'AskUserQuestion')"
 assert_eq "R1 F2 E26 --interactive, one call: graded, no FAIL line at all" "0/graded" "$(fail_graded E26)"
+assert_eq "PQ E26 --interactive: the prose line stays MANUAL" "MANUAL" "$(e_state E26 "$K26P")"
 assert_rc "R1 F2 E26 --interactive, one call: exit 0" 0
 PROMPT26I="$(cat "$REC/E26.prompt" 2>/dev/null)"
 assert_contains "R1 F2 E26 --interactive: the recorded prompt is this run's (asks for owner)" "$PROMPT26I" "owner"

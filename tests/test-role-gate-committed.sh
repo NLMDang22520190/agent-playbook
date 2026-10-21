@@ -219,6 +219,21 @@ else
   blk_check "AC8 genuine restore block" 3 $((T_PASS + T_FAIL - B0))
 fi
 
+echo "v0.24.21 C1 a 100644 -> 100755 restore carried only in HEAD (work tree and index back at 100644) stays a violation (characterization: fail closed, passes before and after)"
+new_mode_repo
+if ! fs_exec_ok; then t_skip 3 "C1 HEAD-only restore (this file system does not keep executable bits)"
+else
+  B0=$((T_PASS + T_FAIL))
+  chmod -x tests/run.sh; git update-index --chmod=-x -- tests/run.sh; git commit -qm RED; RED="$(git rev-parse HEAD)"
+  chmod +x tests/run.sh; git update-index --chmod=+x -- tests/run.sh; git commit -qm "restore in HEAD"
+  chmod -x tests/run.sh; git update-index --chmod=-x -- tests/run.sh
+  gchk implementer --base "$RED"
+  assert_rc "C1 a restore in HEAD only (work tree and index equal RED again): exit 1" 1
+  assert_contains "C1 ... the test path is judged by role" "$OUT" "VIOLATION (implementer): tests/run.sh [test]"
+  assert_not_contains "C1 ... no mode restore note (the work tree shows no restore)" "$OUT" "note: tests/run.sh mode restore only"
+  blk_check "C1 block" 3 $((T_PASS + T_FAIL - B0))
+fi
+
 echo "AC5 a committed code path with a newline (gone from index and work tree) fails closed on the BASE..HEAD list"
 new_repo; BASE="$(git rev-parse HEAD)"
 NLC="src/a
