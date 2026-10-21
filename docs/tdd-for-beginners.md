@@ -52,10 +52,10 @@ touches a test file, the gate turns red at once; nobody has to take anyone's wor
 ## 5. What a full round looks like
 ```
 01-spec.md (AC1..AC3, slices S1..S3)
-S1: tester -> gate tester ✓ -> RED evidence -> commit test(red)
+S1: tester -> gate tester --base <sha> ✓ -> RED evidence -> commit test(red)
     implementer -> gate implementer --base RED ✓ -> GREEN evidence -> commit feat(green)
 S2: ...
-reviewer (read-only, a different model) -> gate reviewer ✓ -> 05-review.md (APPROVE/CHANGES)
+reviewer (read-only, a different model) -> gate reviewer --base <sha> ✓ -> 05-review.md (APPROVE/CHANGES)
 close-out: re-run test/lint/typecheck -> 06-final-report.md (AC -> test -> evidence table)
 ```
 

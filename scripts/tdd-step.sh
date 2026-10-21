@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # One RED or GREEN step of the TDD workflow: role gate, then the test command as evidence.
-#   tdd-step.sh red   --message M [--commit] -- CMD [ARGS...]
-#   tdd-step.sh green --base REF --message M [--commit] -- CMD [ARGS...]
-# red:   role-gate.sh check tester, then proof-run.sh --label red -- CMD. Passes only if the gate
-#        passes AND CMD fails (a test that does not fail is not RED). --commit commits all changes
-#        as "test(red): M" and prints RED=<sha>.
+#   tdd-step.sh red   --message M [--base REF] [--baseline FILE] [--commit] -- CMD [ARGS...]
+#   tdd-step.sh green --base REF --message M [--baseline FILE] [--commit] -- CMD [ARGS...]
+# red:   role-gate.sh check tester [--base REF], then proof-run.sh --label red -- CMD. Passes only if the
+#        gate passes AND CMD fails (a test that does not fail is not RED). --commit commits all changes
+#        as "test(red): M" and prints RED=<sha>. Pass --base <sha recorded before the tester started>
+#        so a tester that commits is judged; without it the step prints a note (stderr) and the gate
+#        compares with HEAD.
 # green: role-gate.sh check implementer --base REF, then proof-run.sh --label green -- CMD. Passes
 #        only if the gate passes AND CMD exits 0. --commit commits all changes as "feat(green): M".
+# --baseline FILE (red and green): passed to the gate (a manifest from role-gate.sh snapshot, for a repo
+#        that was already dirty when the role started). Then --commit commits ONLY the role's paths:
+#        git status (-z, all untracked files, both sides of a rename) minus the paths the gate reported
+#        as unchanged since the baseline minus .agents/handoff/; a path with a control character other
+#        than TAB is refused (commit by hand); an empty list commits nothing; the work tree is
+#        snapshotted before and after CMD and the gate runs again after it: a changed manifest, a moved
+#        HEAD or other unchanged-notes refuse the commit. Role paths are committed with literal
+#        pathspecs (GIT_LITERAL_PATHSPECS=1) and the baseline paths keep their index and work-tree
+#        state. Without --commit the exact commands are printed, every path shell-quoted.
 # --commit adds .agents/handoff/ to .git/info/exclude when not ignored (prints a notice).
 # Without --commit nothing is committed; the commit command is printed instead (ask-before-commit).
 # Runs in the current project (git top-level). Gate and evidence output pass through.
@@ -17,20 +28,21 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
-  echo "usage: tdd-step.sh red --message M [--commit] -- CMD..." >&2
-  echo "       tdd-step.sh green --base REF --message M [--commit] -- CMD..." >&2
+  echo "usage: tdd-step.sh red [--base REF] [--baseline FILE] --message M [--commit] -- CMD..." >&2
+  echo "       tdd-step.sh green --base REF [--baseline FILE] --message M [--commit] -- CMD..." >&2
   exit 2
 }
 
 step="${1:-}"
 case "$step" in red|green) shift ;; *) usage ;; esac
 
-msg=""; base=""; commit=0
+msg=""; base=""; baseline=""; commit=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --message) [ $# -ge 2 ] || usage; msg="$2"; shift 2 ;;
-    --base)    [ $# -ge 2 ] || usage; base="$2"; shift 2 ;;
-    --commit)  commit=1; shift ;;
+    --message)  [ $# -ge 2 ] || usage; msg="$2"; shift 2 ;;
+    --base)     [ $# -ge 2 ] || usage; base="$2"; shift 2 ;;
+    --baseline) [ $# -ge 2 ] && [ -n "$2" ] || usage; baseline="$2"; shift 2 ;;
+    --commit)   commit=1; shift ;;
     --) shift; break ;;
     *) usage ;;
   esac
@@ -38,16 +50,51 @@ done
 [ -n "$msg" ] || usage
 [ $# -ge 1 ] || usage
 if [ "$step" = "green" ]; then [ -n "$base" ] || usage; fi
+# a relative manifest path is the caller's, not the project root's
+if [ -n "$baseline" ]; then
+  case "$baseline" in /* | [A-Za-z]:[/\\]*) ;; *) baseline="$PWD/$baseline" ;; esac
+fi
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree" 3
 cd "$(pb_root_dir)" || pb_die "cannot enter the project root" 3
 
+NL=$'\n'
+NOTEP="note: unchanged since the baseline: "
+gate_args=()
 if [ "$step" = "red" ]; then
-  bash "$here/role-gate.sh" check tester || exit 1
+  role=tester
+  if [ -n "$base" ]; then
+    gate_args=(--base "$base")
+  else
+    echo "note: no --base: a tester that commits is not judged; pass the sha from before the role" >&2
+  fi
   subject="test(red): $msg"
 else
-  bash "$here/role-gate.sh" check implementer --base "$base" || exit 1
+  role=implementer
+  gate_args=(--base "$base")
   subject="feat($step): $msg"
+fi
+if [ -n "$baseline" ]; then gate_args+=(--baseline "$baseline"); fi
+
+run_gate() { bash "$here/role-gate.sh" check "$role" ${gate_args[@]+"${gate_args[@]}"}; }
+refuse() { echo "error: $1 - nothing committed" >&2; exit 1; }
+# the "unchanged since the baseline" note lines of a gate output
+notes_of() { printf '%s\n' "$1" | grep -F "$NOTEP" || true; }
+
+tmpd=""
+if [ -z "$baseline" ]; then
+  run_gate || exit 1
+else
+  tmpd="$(mktemp -d "${TMPDIR:-/tmp}/tdd-step.XXXXXX")" || pb_die "cannot create a temp dir" 3
+  trap 'rm -rf "$tmpd"' EXIT
+  gout="$(run_gate)"; grc=$?
+  [ -z "$gout" ] || printf '%s\n' "$gout"
+  [ "$grc" -eq 0 ] || exit 1
+  notes1="$(notes_of "$gout")"
+  if [ "$commit" -eq 1 ]; then
+    bash "$here/role-gate.sh" snapshot --out "$tmpd/before" >/dev/null || pb_die "cannot snapshot the work tree" 3
+    head_before="$(git rev-parse HEAD)" || pb_die "cannot read HEAD" 3
+  fi
 fi
 
 bash "$here/proof-run.sh" --label "$step" -- "$@"
@@ -62,6 +109,49 @@ elif [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
+# --baseline: the role's paths, from git status after the test command
+paths=(); untr=()
+if [ -n "$baseline" ]; then
+  notes="$notes1"
+  if [ "$commit" -eq 1 ]; then
+    bash "$here/role-gate.sh" snapshot --out "$tmpd/after" >/dev/null || refuse "cannot snapshot the work tree after the test command"
+    cmp -s "$tmpd/before" "$tmpd/after" || refuse "the test command changed the work tree (a file was written, edited or committed)"
+    [ "$(git rev-parse HEAD)" = "$head_before" ] || refuse "HEAD moved while the test command ran"
+    gout2="$(run_gate)"; grc2=$?
+    [ "$grc2" -eq 0 ] || { printf '%s\n' "$gout2"; refuse "the role gate fails after the test command"; }
+    notes="$(notes_of "$gout2")"
+    [ "$notes" = "$notes1" ] || refuse "the paths unchanged since the baseline differ after the test command"
+  fi
+  exempt="$NL"
+  while IFS= read -r nl; do
+    [ -n "$nl" ] || continue
+    exempt+="${nl#"$NOTEP"}$NL"
+  done <<EOF
+$notes
+EOF
+  git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status" || pb_die "git status failed" 3
+  nxt=0; ctl=0
+  while IFS= read -r -d '' ent; do
+    if [ "$nxt" -eq 1 ]; then p="$ent"; nxt=0; xy="  "; else
+      xy="${ent:0:2}"; p="${ent:3}"
+      case "$xy" in R? | C? | ?R | ?C) nxt=1 ;; esac
+    fi
+    case "$p" in .agents/handoff/*) continue ;; esac
+    case "${p//$'\t'/}" in *[[:cntrl:]]*) ctl=1 ;; esac
+    case "$exempt" in *"$NL$p$NL"*) continue ;; esac
+    paths+=("$p")
+    [ "$xy" != "??" ] || untr+=("$p")
+  done < "$tmpd/status"
+  if [ "$ctl" -eq 1 ]; then
+    echo "error: a changed path contains a control character: commit the role's paths by hand - nothing committed" >&2
+    exit 1
+  fi
+  if [ ${#paths[@]} -eq 0 ]; then
+    echo "error: nothing of the role's to commit (every change is a baseline path or under .agents/handoff/)" >&2
+    exit 1
+  fi
+fi
+
 if [ "$commit" -eq 1 ]; then
   # evidence logs live under .agents/handoff/: never commit them, and keep them
   # out of 'git status' via the local exclude file (not the project's .gitignore)
@@ -72,10 +162,27 @@ if [ "$commit" -eq 1 ]; then
         && echo "notice: added .agents/handoff/ to $excl (local exclude, not .gitignore)"
     fi
   fi
-  git add -A || pb_die "git add failed" 3
-  git reset -q -- .agents/handoff 2>/dev/null || true
-  git commit -q -m "$subject" || pb_die "git commit failed" 3
+  if [ -n "$baseline" ]; then
+    if [ ${#untr[@]} -gt 0 ]; then
+      GIT_LITERAL_PATHSPECS=1 git add -- "${untr[@]}" || pb_die "git add failed" 3
+    fi
+    GIT_LITERAL_PATHSPECS=1 git commit -q -m "$subject" -- "${paths[@]}" || pb_die "git commit failed" 3
+  else
+    git add -A || pb_die "git add failed" 3
+    git reset -q -- .agents/handoff 2>/dev/null || true
+    git commit -q -m "$subject" || pb_die "git commit failed" 3
+  fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi
+elif [ -n "$baseline" ]; then
+  echo "not committing (no --commit). To commit only the role's paths:"
+  if [ ${#untr[@]} -gt 0 ]; then
+    printf 'GIT_LITERAL_PATHSPECS=1 git add --'
+    for p in "${untr[@]}"; do printf ' %q' "$p"; done
+    printf '\n'
+  fi
+  printf 'GIT_LITERAL_PATHSPECS=1 git commit -m %q --' "$subject"
+  for p in "${paths[@]}"; do printf ' %q' "$p"; done
+  printf '\n'
 else
   echo "not committing (no --commit). To commit: git add -A && git commit -m \"$subject\""
 fi

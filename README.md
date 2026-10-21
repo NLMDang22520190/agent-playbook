@@ -63,13 +63,13 @@ sequenceDiagram
   O->>O: 01-spec.md (verbatim AC + anchors), decisions.md
   O->>T: slice S + spec (no implementation hints)
   T-->>O: failing tests + RED evidence
-  Note over O: role-gate check tester ✓ → commit test(red)
+  Note over O: role-gate check tester --base <sha> ✓ → commit test(red)
   O->>I: slice S + RED sha
   I-->>O: code + GREEN evidence, or a Dispute
   Note over O: role-gate check implementer --base RED ✓ → commit feat(green)
   O->>R: spec + diff + evidence logs
   R-->>O: verdict, own re-run, mutants, UI screenshots
-  Note over O: role-gate check reviewer ✓ → final report
+  Note over O: role-gate check reviewer --base <sha> ✓ → final report
 ```
 
 | Role | May change | The gate fails when |
