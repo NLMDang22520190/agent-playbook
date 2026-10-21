@@ -574,6 +574,20 @@ usage: role-gate.sh snapshot [--out FILE]" 2 ;;
     if [ -n "$out_arg" ] && [ ! -d "$out" ]; then
       tracked="$(git --literal-pathspecs ls-files -- "$out" 2>/dev/null)" || tracked=""
       [ -z "$tracked" ] || pb_die "the manifest path is a tracked file of this repository: $out_arg" 3
+      # v0.24.22: a symlink (or a symlinked directory in the path) that leads into a tracked file would write through into it;
+      # follow the links by hand (readlink without -f: portable) and ask git about the real path
+      res="$out"; hops=0
+      while [ -L "$res" ] && [ "$hops" -lt 40 ]; do
+        lt="$(readlink "$res")" || break
+        case "$lt" in /* | [A-Za-z]:[/\\]*) res="$lt" ;; *) res="${res%/*}/$lt" ;; esac
+        hops=$((hops + 1))
+      done
+      rd="${res%/*}"; [ -n "$rd" ] || rd=/
+      if pd="$(cd -P "$rd" 2>/dev/null && pwd -P)"; then res="${pd%/}/${res##*/}"; fi
+      if [ "$res" != "$out" ]; then
+        tracked="$(git --literal-pathspecs ls-files -- "$res" 2>/dev/null)" || tracked=""
+        [ -z "$tracked" ] || pb_die "the manifest path is a symlink into a tracked file of this repository: $out_arg" 3
+      fi
     fi
     # a path with a newline cannot be one manifest line: LF is mapped to \002 while the NULs become line ends
     raw="$( { git -c core.quotepath=off diff --name-only -z --no-renames HEAD --
