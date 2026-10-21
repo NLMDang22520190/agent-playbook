@@ -592,5 +592,34 @@ else
   t_skip 26 "AC4 r2 hook cases (the file system cannot make a hook executable)"
 fi
 
+echo "AC4 (fix r3) a hook that puts a same-tree commit on top is caught by the parent check, not by the path check"
+# pre-commit adds src/evil.js to the commit; post-commit stacks an empty-diff commit (same tree) on top, so the top commit lists no path
+HPT="$(mk_tmp)/hook-pre-evil.sh"
+printf "%s\n" "#!/bin/sh" "mkdir -p src" "echo evil > src/evil.js" "git add src/evil.js" > "$HPT"
+HST="$(mk_tmp)/hook-sametree.sh"
+printf "%s\n" "#!/bin/sh" "touch .git/st-done" "t=\$(git rev-parse HEAD^{tree})" "c=\$(git commit-tree \"\$t\" -p HEAD -m sametree)" "git update-ref HEAD \"\$c\"" > "$HST"
+INSTALL_ST="cp \"$HPT\" .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit && cp \"$HST\" .git/hooks/post-commit && chmod +x .git/hooks/post-commit; exit 1"
+if can_exec; then
+  for MODE in default baseline; do
+    R="$(fresh)"; BL=""
+    [ "$MODE" = default ] || { dirty "$R"; BL="$(snap "$R")"; }
+    printf "test(\"n\", () => {});\n" > "$R/tests/n.test.js"
+    H0="$(head_of "$R")"
+    if [ "$MODE" = default ]; then
+      run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "$INSTALL_ST"
+    else
+      run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_ST"
+    fi
+    assert_rc "AC4 r3 $MODE, same-tree commit on top (empty diff): exit 1" 1
+    assert_contains "AC4 r3 $MODE, same-tree commit on top: the run reached git commit (the post-commit hook ran)" "$(ls "$R/.git")" "st-done"
+    assert_eq "AC4 r3 $MODE, same-tree commit on top: HEAD is the HEAD from before tdd-step" "$H0" "$(head_of "$R")"
+    assert_eq "AC4 r3 $MODE, same-tree commit on top: src/evil.js is not in HEAD tree" "" "$(noeol_ls "$R" | grep -x "src/evil.js")"
+    assert_eq "AC4 r3 $MODE, same-tree commit on top: no test(red) commit is left in the log" "" "$(git -C "$R" log --format=%s | grep -F "test(red)")"
+    assert_eq "AC4 r3 $MODE, same-tree commit on top: no sametree commit is left in the log" "" "$(git -C "$R" log --format=%s | grep -F "sametree")"
+  done
+else
+  t_skip 12 "AC4 r3 same-tree hook cases (the file system cannot make a hook executable)"
+fi
+
 
 t_summary
