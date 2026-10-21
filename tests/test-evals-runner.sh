@@ -473,7 +473,7 @@ assert_contains "AC3.x the idle run graded E19" "$OUT" "E19 "
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E6 --workroot "$W" --out "$W/results.md"
 assert_rc "AC3.x E6 (not auto-gradable) is still refused (exit 2)" 2
-assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21,E22,E23,E24,E25,E26)"
+assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21,E22,E23,E24,E25,E26,E27,E28)"
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
