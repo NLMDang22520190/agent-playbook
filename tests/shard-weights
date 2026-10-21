@@ -10,7 +10,7 @@
 # test-role-gate-committed.sh 128 (new in v0.24.20): measured on a local Git Bash (12 of its 68 assertions skip there); replace it
 # with a CI time (L-0009).
 # test-tdd-step.sh 245, test-tdd-step-b.sh 319, test-tdd-step-c.sh 319 (the v0.24.21 split of test-tdd-step.sh): estimates, the 883 s measured on a local Git Bash split by each part's Linux time share (10, 13, 13 s); replace them with CI times (L-0009).
-# test-tdd-step-d.sh 250 (new in v0.24.22, the commit-gap suite split from the tdd-step fix rounds): an estimate, not measured (about 49 tdd-step runs, 281 assertions); measure it on a local Git Bash and then in the first CI run and replace it (L-0009).
+# test-tdd-step-d.sh 250 (new in v0.24.22, the commit-gap suite split from the tdd-step fix rounds): an estimate, not measured (about 65 tdd-step runs, 342 assertions); measure it on a local Git Bash and then in the first CI run and replace it (L-0009).
 test-evals-grade6-b.sh 409
 test-role-gate-batch.sh 359
 test-evals-grade.sh 350

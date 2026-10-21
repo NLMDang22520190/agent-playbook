@@ -4,7 +4,8 @@
 #   AC1  the committed entry of every judged path equals the entry that was judged (hook rewrites content, mode, a deletion, a gitlink)
 #   AC2  default path (no --baseline): the test command may not write, edit or commit anything; the role gate runs again
 #   AC3  print mode (no --commit): the same checks run before the commands are printed
-#   AC4  the refusal for a moved HEAD names the unexpected paths (same-tree case) or says that HEAD was moved
+#   AC4  the refusal for a moved HEAD names the unexpected paths (same-tree case) or says that HEAD was moved (also a merge commit on the pre-run HEAD)
+#   fix round 1: a judged list over the argument limit, a merge commit by a hook, core.autocrlf stderr, the second gate alone, HEAD moved with an unchanged manifest
 # Cases that already pass on v0.24.21 are characterizations (no false positive, unchanged output); they are named "control" or "unchanged".
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/tdd-step-fixture.sh"
@@ -195,8 +196,35 @@ if git -C "$PB_ROOT" cat-file -e f1d6bce 2>/dev/null && git -C "$PB_ROOT" archiv
   same_as_old "AC2 unchanged RED --commit (--baseline)" red baseline --commit
   same_as_old "AC3 unchanged RED, print mode (default path)" red default ""
   same_as_old "AC3 unchanged RED, print mode (--baseline)" red baseline ""
+  # crlf_same_as_old LABEL KIND -> 5 assertions: with core.autocrlf=true and a tracked file edited with LF, stderr is the old script's byte for byte
+  crlf_same_as_old() {
+    local label="$1" kind="$2" a b r base ea eb ra rb sa sb
+    export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
+    a="$(fresh)"; b="$(fresh)"
+    for r in "$a" "$b"; do
+      ( cd "$r" && git config core.autocrlf true )
+      if [ "$kind" = red ]; then printf 'test("e", () => {});\n' >> "$r/tests/app.test.js"; else printf 'module.exports = 2;\n' > "$r/src/app.js"; fi
+    done
+    base="$(head_of "$a")"; ea="$(mk_tmp)/err"; eb="$(mk_tmp)/err"
+    if [ "$kind" = red ]; then
+      ( cd "$a" && bash "$OLDD/scripts/tdd-step.sh" red --message "m" --commit -- sh -c "exit 1" 2> "$ea" >/dev/null ); ra=$?
+      ( cd "$b" && bash "$STEP" red --message "m" --commit -- sh -c "exit 1" 2> "$eb" >/dev/null ); rb=$?
+    else
+      ( cd "$a" && bash "$OLDD/scripts/tdd-step.sh" green --base "$base" --message "m" --commit -- sh -c "exit 0" 2> "$ea" >/dev/null ); ra=$?
+      ( cd "$b" && bash "$STEP" green --base "$base" --message "m" --commit -- sh -c "exit 0" 2> "$eb" >/dev/null ); rb=$?
+    fi
+    unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
+    sa="$(cat "$ea")"; sb="$(cat "$eb")"; sa="${sa//$a/<R>}"; sb="${sb//$b/<R>}"
+    assert_eq "$label: the old script passes (exit 0)" "0" "$ra"
+    assert_contains "$label: the old script warns about the line endings (the fixture works)" "$sa" "LF will be replaced by CRLF"
+    assert_eq "$label: same exit code" "$ra" "$rb"
+    assert_eq "$label: byte-identical stderr" "$(norm "$sa")" "$(norm "$sb")"
+    assert_eq "$label: same commit (sha)" "$(head_of "$a")" "$(head_of "$b")"
+  }
+  crlf_same_as_old "AC2 core.autocrlf=true: RED --commit (default path)" red
+  crlf_same_as_old "AC2 core.autocrlf=true: GREEN --commit (default path)" green
 else
-  t_skip 20 "AC2/AC3 comparison with the v0.24.21 scripts (commit f1d6bce is not in this clone)"
+  t_skip 30 "AC2/AC3 comparison with the v0.24.21 scripts (commit f1d6bce is not in this clone)"
 fi
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -291,5 +319,75 @@ if can_exec; then
 else
   t_skip 28 "AC4 hook cases (the file system cannot make a hook executable)"
 fi
+
+# ---------------------------------------------------------------------------------------------------------------
+echo "AC1 fix round 1: a judged path list longer than the argument limit does not make the content check fail open"
+# mkmany REPO -> 3000 untracked test files with 90-character names (about 300 KB of arguments, over the 128 KB floor of ARG_MAX on Linux)
+mkmany() {
+  local i n pad; pad="$(printf '%080d' 0)"
+  mkdir -p "$1/tests/many"
+  for ((i = 0; i < 3000; i++)); do printf -v n 'f%04d' "$i"; printf 'x\n' > "$1/tests/many/${n}_${pad}.test.js"; done
+}
+# a small stack limit means a small argument limit on Linux (Git Bash on Windows has a small one anyway)
+SMALLSTACK='ulimit -s 160 2>/dev/null; exec "$@"'
+if can_exec; then
+  prep default; mkmany "$R"
+  # the precondition: the platform really refuses this many arguments (else no fix is needed and the case cannot fail)
+  if ! ( cd "$R" && ulimit -s 160 2>/dev/null; git ls-files -- tests/many/* >/dev/null 2>&1 ); then
+    run_in "$R" bash -c "$SMALLSTACK" x bash "$STEP" red --message "m" --commit -- sh -c "$(hookcmd "$HK_CONTENT")"
+    assert_rc "AC1 many judged paths (default): a hook rewrites a judged file: exit 1" 1
+    assert_contains "AC1 many judged paths (default): says nothing committed" "$(lower "$OUT")" "nothing committed"
+    assert_untouched "AC1 many judged paths (default): the commit is undone" "$R" "$H0" "$N0"
+    assert_eq "AC1 many judged paths (default): no test(red) commit in the log" "" "$(no_red_commit)"
+    assert_eq "AC1 many judged paths (default): the rewritten file is not in any commit" "" "$(git -C "$R" log --all --format=%H -- tests/n.test.js)"
+    prep baseline; mkmany "$R"
+    run_in "$R" bash -c "$SMALLSTACK" x bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$(hookcmd "$HK_CONTENT")"
+    RCOK="no ($RC)"; if [ "$RC" = 1 ] || [ "$RC" = 3 ]; then RCOK=yes; fi
+    assert_eq "AC1 many judged paths (--baseline): refused (exit 1 or 3), not committed" "yes" "$RCOK"
+    assert_untouched "AC1 many judged paths (--baseline): nothing committed" "$R" "$H0" "$N0"
+    assert_eq "AC1 many judged paths (--baseline): no test(red) commit in the log" "" "$(no_red_commit)"
+    assert_eq "AC1 many judged paths (--baseline): the rewritten file is not in any commit" "" "$(git -C "$R" log --all --format=%H -- tests/n.test.js)"
+  else
+    t_skip 9 "AC1 many judged paths (this platform does not refuse 3000 long arguments under a small stack limit)"
+  fi
+else
+  t_skip 9 "AC1 many judged paths (the file system cannot make a hook executable)"
+fi
+
+# ---------------------------------------------------------------------------------------------------------------
+echo "AC4 fix round 1: a post-commit hook replaces HEAD by a merge commit (first parent = the pre-run HEAD) that adds src/evil.js"
+HK_MERGE="$(mkhook merge 'touch .git/mg-done' 'pre=$(git rev-parse HEAD^)' 'cur=$(git rev-parse HEAD)' 'blob=$(echo evil | git hash-object -w --stdin)' \
+  'GIT_INDEX_FILE=.git/mg.idx git read-tree HEAD' 'GIT_INDEX_FILE=.git/mg.idx git update-index --add --cacheinfo "100644,$blob,src/evil.js"' \
+  't=$(GIT_INDEX_FILE=.git/mg.idx git write-tree)' 'c=$(git commit-tree "$t" -p "$pre" -p "$cur" -m merged)' 'git update-ref HEAD "$c"')"
+if can_exec; then
+  for MODE in default baseline; do
+    prep "$MODE"
+    run_red --commit sh -c "$(hookcmd "$HK_MERGE" post-commit)"
+    assert_contains "AC4 merge commit on the pre-run HEAD ($MODE): the run reached git commit (the post-commit hook ran)" "$(ls "$R/.git")" "mg-done"
+    assert_rc "AC4 merge commit on the pre-run HEAD ($MODE): exit 1" 1
+    assert_contains "AC4 merge commit on the pre-run HEAD ($MODE): says nothing committed" "$(lower "$OUT")" "nothing committed"
+    assert_eq "AC4 merge commit on the pre-run HEAD ($MODE): HEAD is the HEAD from before tdd-step" "$H0" "$(head_of "$R")"
+    assert_eq "AC4 merge commit on the pre-run HEAD ($MODE): commit count unchanged" "$N0" "$(count_of "$R")"
+    assert_eq "AC4 merge commit on the pre-run HEAD ($MODE): src/evil.js is not in HEAD" "" "$(noeol_ls "$R" | grep -x 'src/evil.js')"
+    assert_contains "AC4 merge commit on the pre-run HEAD ($MODE): the refusal names src/evil.js" "$OUT" "src/evil.js"
+  done
+else
+  t_skip 14 "AC4 merge commit by a post-commit hook (the file system cannot make a hook executable)"
+fi
+
+# ---------------------------------------------------------------------------------------------------------------
+echo "AC2/AC3 fix round 1: the second gate fails alone, or HEAD moves with an unchanged manifest (default path, both commit modes)"
+# second_gate_case FLAG -> 6 assertions: the test command changes the global conf test_path_regex (outside the work tree: the snapshot is unchanged) so that the role gate fails
+second_gate_case() {
+  local flag="$1" conf="$PLAYBOOK_HOME/.agents/playbook.conf"
+  prep default
+  run_red "$flag" sh -c "mkdir -p \"\$(dirname \"$conf\")\"; printf '%s\n' 'test_path_regex=^never-matches/' > \"$conf\"; exit 1"
+  rm -f "$conf"
+  refusal_checks "AC2/3 the second gate fails while the snapshot is unchanged (default, ${flag:-print})" "$flag" "init" "$N0"
+}
+for FLAG in --commit ""; do
+  second_gate_case "$FLAG"
+  refuse_moved "AC2/3 the test command makes an empty commit (manifest unchanged)" default "$FLAG" "git commit -q --allow-empty -m x; exit 1"
+done
 
 t_summary
