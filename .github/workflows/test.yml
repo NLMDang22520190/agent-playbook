@@ -70,9 +70,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable.
-        # Windows (Git Bash) is slow to start processes: it runs as six parallel shards below.
-        os: [ubuntu-latest, macos-latest]
+        # Windows (Git Bash) is slow to start processes: it runs as six parallel shards below; macOS runs as two.
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
@@ -113,6 +112,62 @@ jobs:
         # A PR that adds tests updates the README count with tools/readme-count.sh; a stale count fails here.
         if: ${{ matrix.os == 'ubuntu-latest' && !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
         run: bash tools/readme-count.sh --check "$RUNNER_TEMP/run-all.log"
+
+  macos-shard:
+    # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable. It runs the same suite split in two.
+    name: macos shard ${{ matrix.shard }}
+    needs: [reuse, changes]
+    if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/2', '2/2']
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PB_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Versions
+        run: bash --version | head -n 1; git --version; (shellcheck --version || true) | head -n 2
+      - name: Docs-only checks
+        # Reduced run for a docs-only PR (see the changes job): the suites that read the README or the CHANGELOG,
+        # found by grep, plus the content and update checks and the static checks. The full step below is skipped then.
+        if: ${{ needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true' }}
+        run: |
+          fail=0
+          suites="$( (grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh; echo tests/test-update.sh) | sort -u)"
+          for t in $suites; do
+            echo "== $t"
+            bash "$t" || fail=1
+          done
+          echo "== evals/run-checks.sh"
+          bash evals/run-checks.sh || fail=1
+          exit "$fail"
+      - name: Tests and static checks (shard)
+        if: ${{ !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
+        run: bash tests/run-all.sh
+
+  macos:
+    # The name branch protection requires; green only when every shard is green.
+    name: test (macos-latest)
+    needs: [macos-shard, reuse]
+    if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All macOS shards passed, or the tree was already tested
+        # Skipped shards count only when reuse succeeded and named the PR run; anything else is red.
+        run: |
+          echo "macos shards: ${{ needs.macos-shard.result }}, reuse: ${{ needs.reuse.result }}"
+          [ "${{ needs.macos-shard.result }}" = success ] && exit 0
+          [ "${{ needs.macos-shard.result }}" = skipped ] && [ "${{ needs.reuse.result }}" = success ] && [ -n "${{ needs.reuse.outputs.run }}" ] && exit 0
+          exit 1
 
   windows-shard:
     # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in six.
