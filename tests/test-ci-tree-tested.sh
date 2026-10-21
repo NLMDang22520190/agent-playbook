@@ -62,7 +62,7 @@ world; put_runs "$HEAD" "$(runs_json 0 "")"
 tool "$SHA" --repo "$R"
 nothing "no candidate runs"
 
-echo "AC6.1 each of the nine required jobs: skipped, missing or failed -> nothing"
+echo "AC6.1 each of the eleven required jobs: skipped, missing or failed -> nothing"
 for n in "${NAMES[@]}"; do
   for mode in skipped missing failure cancelled; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json "$mode" "$n")"
@@ -96,6 +96,35 @@ nothing "shard 6/6 ran only the docs-only step"
 world
 tool "$SHA" --repo "$R"
 assert_eq "AC2 all six shards green: the run is reused" "111" "$OUT"
+
+echo "v0.24.21 AC2 the two macOS shards: failed, skipped or missing -> nothing; the old single macOS job (no shards) is never reused"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json failure 'macos shard 2/2')"
+tool "$SHA" --repo "$R"
+nothing "macOS shard 2/2 failed"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json failure 'macos shard 1/2')"
+tool "$SHA" --repo "$R"
+nothing "macOS shard 1/2 failed"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json skipped 'macos shard 2/2')"
+tool "$SHA" --repo "$R"
+nothing "macOS shard 2/2 skipped"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json missing 'macos shard 1/2')"
+tool "$SHA" --repo "$R"
+nothing "macOS shard 1/2 missing"
+world
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/"macos shard 1\/2"/"macos shard 1\/3"/' -e 's/"macos shard 2\/2"/"macos shard 2\/3"/')"
+assert_contains "v0.24.21 AC2 the wrong-macOS-shard fixture carries the renamed shards" "$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")" '"macos shard 2/3"'
+tool "$SHA" --repo "$R"
+nothing "only macOS shards named 1/3 and 2/3 (not the 1/2 and 2/2 the workflow runs)"
+OLDMAC_JOBS="$(jobs_json_oldmac)"
+assert_not_contains "v0.24.21 AC3b the old-shape fixture has no macOS shard job" "$OLDMAC_JOBS" '"macos shard'
+assert_contains "v0.24.21 AC3b the old-shape fixture has the full step in the test (macos-latest) job" "$OLDMAC_JOBS" '{"name":"test (macos-latest)","status":"completed","conclusion":"success","steps":['
+assert_contains "v0.24.21 AC3b the old-shape fixture still has the six Windows shards" "$OLDMAC_JOBS" '"windows shard 6/6"'
+world; put "repos/$R/actions/runs/111/jobs" "$OLDMAC_JOBS"
+tool "$SHA" --repo "$R"
+nothing "a suite-style test (macos-latest) with a full step and no macOS shards (a PR run of the pre-v0.24.21 workflow)"
+world
+tool "$SHA" --repo "$R"
+assert_eq "v0.24.21 AC2 all eleven jobs green (two macOS shards, aggregators without steps): the run is reused" "111" "$OUT"
 
 echo "AC6.1 the trees must be equal"
 world; put "repos/$R/git/commits/$HEAD" "$(commit_json "$HEAD" "$(h40 99)" "$PAR")"

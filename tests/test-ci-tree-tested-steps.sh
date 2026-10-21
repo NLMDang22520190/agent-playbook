@@ -76,13 +76,13 @@ tool "$SHA" --repo "$R"
 assert_eq "AC6.1 a row with another head_sha is ignored, the next row is used" "2002" "$OUT"
 assert_eq "AC6.1 the ignored row's jobs were never read" "0" "$(logged "runs/2001/jobs")"
 
-echo "AC5.3 the full test step must have succeeded in each of the eight suite jobs"
+echo "AC5.3 the full test step must have succeeded in each of the nine suite jobs"
 world
 tool "$SHA" --repo "$R"
 assert_eq "AC5.3 the fixtures carry steps: a full run is still reused" "111" "$OUT"
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (full step of the ubuntu job)" "$(jobs_json ok)" '"name":"Tests and static checks"'
 assert_contains "AC5.3 the fixture steps are in the jobs JSON (shard step)" "$(jobs_json ok)" '"name":"Tests and static checks (shard)"'
-SUITES=("test (ubuntu-latest)" "test (macos-latest)" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
+SUITES=("test (ubuntu-latest)" "macos shard 1/2" "macos shard 2/2" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
 for n in "${SUITES[@]}"; do
   for kind in docsonly both fullskipped fullfailed fullcancelled fullnotdone fullmissing nosteps; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps "$n" "$kind")"
@@ -94,28 +94,40 @@ echo "AC5.3 a docs-only run: every suite job reduced -> nothing"
 world
 dj="$(jobs_json ok)"
 for n in "${SUITES[@]}"; do
-  case "$n" in "windows shard "*) f='Tests and static checks (shard)' ;; *) f='Tests and static checks' ;; esac
+  case "$n" in "windows shard "* | "macos shard "*) f='Tests and static checks (shard)' ;; *) f='Tests and static checks' ;; esac
   dj="$(printf '%s' "$dj" | sed "s#\"name\":\"$f\",\"status\":\"completed\",\"conclusion\":\"success\"#\"name\":\"Docs-only checks\",\"status\":\"completed\",\"conclusion\":\"success\"#")"
 done
 assert_contains "AC5.3 the docs-only fixture really has Docs-only steps" "$dj" '"name":"Docs-only checks"'
 assert_not_contains "AC5.3 the docs-only fixture has no full step left" "$dj" '"name":"Tests and static checks'
 put "repos/$R/actions/runs/111/jobs" "$dj"
 tool "$SHA" --repo "$R"
-nothing "a docs-only run (all eight suite jobs reduced)"
+nothing "a docs-only run (all nine suite jobs reduced)"
 echo "AC5.3 one shard reduced, the rest full -> nothing"
 world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 2/6' docsonly)"
 tool "$SHA" --repo "$R"
 nothing "only shard 2/6 reduced"
-echo "AC5.3 the aggregator (test (windows-latest)) needs only a success conclusion"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'macos shard 2/2' docsonly)"
+tool "$SHA" --repo "$R"
+nothing "only macOS shard 2/2 reduced (docs-only step instead of the full step)"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'macos shard 1/2' fullskipped)"
+tool "$SHA" --repo "$R"
+nothing "only macOS shard 1/2 with its full step skipped"
+echo "AC5.3 the aggregators (test (windows-latest), test (macos-latest)) need only a success conclusion"
 world
 put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok)"
 assert_contains "AC5.3 the aggregator fixture has no steps (its object ends right after the conclusion)" "$(jobs_json ok)" '"name":"test (windows-latest)","status":"completed","conclusion":"success"}'
+assert_contains "v0.24.21 AC3b the macOS aggregator fixture has no steps either (it is no suite job any more)" "$(jobs_json ok)" '"name":"test (macos-latest)","status":"completed","conclusion":"success"}'
 tool "$SHA" --repo "$R"
-assert_eq "AC5.3 the aggregator without steps does not block a reuse" "111" "$OUT"
+assert_eq "AC5.3 the aggregators without steps do not block a reuse" "111" "$OUT"
+assert_contains "v0.24.21 AC3b the fixture has the shard step in a macOS shard job" "$(jobs_json ok)" '"name":"macos shard 1/2","status":"completed","conclusion":"success","steps":['
+echo "v0.24.21 AC3b regression: a suite-style test (macos-latest) with a full step and no macOS shards is never reused"
+world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json_oldmac)"
+tool "$SHA" --repo "$R"
+nothing "test (macos-latest) as a suite job with the full step, no macOS shard jobs"
 echo "AC5.3 a successful full step in the right job, an older run with a reduced one: the first full run wins"
 world
 put_runs "$HEAD" "$(runs_json 2 "$(run_json 2001 "$HEAD"),$(run_json 2002 "$HEAD")")"
-put "repos/$R/actions/runs/2001/jobs" "$(jobs_json steps 'test (macos-latest)' docsonly)"
+put "repos/$R/actions/runs/2001/jobs" "$(jobs_json steps 'macos shard 1/2' docsonly)"
 put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
 tool "$SHA" --repo "$R"
 assert_eq "AC5.3 a docs-only run is skipped, the next full run is printed" "2002" "$OUT"

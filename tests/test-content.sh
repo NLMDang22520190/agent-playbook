@@ -309,17 +309,22 @@ wf_block() { awk -v id="$1" '/^jobs:/ { j = 1; next } j && /^[^ #]/ { j = 0 } j 
 wf_name() { wf_block "$1" | grep -m1 '^    name:' | sed 's/^    name:[[:space:]]*//; s/[[:space:]]*$//; s/^"\(.*\)"$/\1/; s/^'"'"'\(.*\)'"'"'$/\1/'; }
 # wf_needs ID -> the text of the job's needs: key (inline or list), one line
 wf_needs() { wf_block "$1" | awk '/^    needs:/ { f = 1; print; next } f && /^    [A-Za-z]/ { exit } f { print }' | tr '\n' ' '; }
-AGG=""; SHARD=""; MAIN=""
+AGG=""; SHARD=""; MAIN=""; MACAGG=""; MACSHARD=""
 for id in $(wf_jobs); do
   [ "$(wf_name "$id")" = "test (windows-latest)" ] && AGG="$id"
+  [ "$(wf_name "$id")" = "test (macos-latest)" ] && MACAGG="$id"
 done
+# v0.24.21: the shard jobs are found by their runs-on line; the main (ubuntu) test job is the one that runs on the os matrix
 for id in $(wf_jobs); do
   b="$(wf_block "$id")"
-  case "$b" in *PB_SHARD*) case "$b" in *windows-latest*) [ "$id" != "$AGG" ] && SHARD="$id" ;; esac ;; esac
-  case "$b" in *macos-latest*) MAIN="$id" ;; esac
+  case "$b" in *PB_SHARD*) if printf '%s\n' "$b" | grep -q '^    runs-on:.*windows-latest'; then [ "$id" != "$AGG" ] && SHARD="$id"; fi ;; esac
+  case "$b" in *PB_SHARD*) if printf '%s\n' "$b" | grep -q '^    runs-on:.*macos-latest'; then [ "$id" != "$MACAGG" ] && MACSHARD="$id"; fi ;; esac
+  case "$b" in *matrix.os*) MAIN="$id" ;; esac
 done
 NAMED="$(for id in $(wf_jobs); do wf_name "$id"; done | grep -cxF 'test (windows-latest)')"
 assert_eq "v14 AC8.2 exactly one job has the name: exactly 'test (windows-latest)' (what branch protection requires)" "1" "$NAMED"
+NAMEDMAC="$(for id in $(wf_jobs); do wf_name "$id"; done | grep -cxF 'test (macos-latest)')"
+assert_eq "v0.24.21 AC1 exactly one job has the name: exactly 'test (macos-latest)' (what branch protection requires)" "1" "$NAMEDMAC"
 if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD ($SHARD)"; else t_bad "v14 AC8.2 a separate shard job on windows-latest sets PB_SHARD" "aggregator [$AGG]; jobs: $(wf_jobs | tr '\n' ' ')"; fi
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
@@ -341,9 +346,31 @@ NEED_SET="$(grep -oE '"windows shard [0-9]+/[0-9]+"' "$CIT" | sed 's/^"windows s
 MATRIX_SET="$(printf '%s\n' "$MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | sort | tr '\n' ' ')"
 assert_eq "v0.24.19 AC7 ci-tree-tested.sh checks exactly the windows-shard matrix entries (same set and count)" "$MATRIX_SET" "$NEED_SET"
 if [ -n "$NEED_SET" ] && [ -n "$MATRIX_SET" ]; then t_ok "v0.24.19 AC7 both sides are non-empty"; else t_bad "v0.24.19 AC7 both sides are non-empty" "need [$NEED_SET] matrix [$MATRIX_SET]"; fi
-CIT_HEAD="$(sed -n '1,25p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
-assert_contains "v0.24.19 AC2 the ci-tree-tested.sh header counts 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
-assert_contains "v0.24.19 AC2 the ci-tree-tested.sh header counts 'nine green jobs'" "$CIT_HEAD" "nine green jobs"
+# v0.24.21 AC1/AC3: the macOS suite is the macos-shard job (two shards), found by its runs-on line
+echo "v0.24.21 AC1 workflow: the macos-shard job"
+if [ "$MACSHARD" = "macos-shard" ]; then t_ok "v0.24.21 AC1 a job macos-shard on macos-latest sets PB_SHARD"; else t_bad "v0.24.21 AC1 a job macos-shard on macos-latest sets PB_SHARD" "found [$MACSHARD]; jobs: $(wf_jobs | tr '\n' ' ')"; fi
+MACB="$(wf_block "${MACSHARD:-__none__}")"
+assert_eq "v0.24.21 AC1 the macos-shard name is exactly: macos shard \${{ matrix.shard }}" 'macos shard ${{ matrix.shard }}' "$(wf_name "${MACSHARD:-__none__}")"
+assert_contains "v0.24.21 AC1 the macos-shard job runs on macos-latest" "$(printf '%s\n' "$MACB" | grep '^    runs-on:')" "macos-latest"
+MAC_MATRIX_LINE="$(printf '%s\n' "$MACB" | grep -E '^ *shard: *\[')"
+assert_eq "v0.24.21 AC1 the macOS matrix line is nothing but shard: ['1/2', '2/2']" "shard: ['1/2', '2/2']" "$(printf '%s' "$MAC_MATRIX_LINE" | sed 's/^ *//')"
+if printf '%s\n' "$MACB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v0.24.21 AC1 PB_SHARD of the macos-shard job is taken from the matrix"; else t_bad "v0.24.21 AC1 PB_SHARD of the macos-shard job is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$MACB" | grep PB_SHARD)"; fi
+assert_contains "v0.24.21 AC1 the macos-shard job runs tests/run-all.sh" "$MACB" "tests/run-all.sh"
+assert_contains "v0.24.21 AC1 a failing macOS shard does not cancel the other (fail-fast: false)" "$MACB" "fail-fast: false"
+MACB_CODE="$(printf '%s\n' "$MACB" | grep -v '^[[:space:]]*#')"
+assert_not_contains "v0.24.21 AC1 the macos-shard job sets no PB_JOBS (macOS keeps its default)" "$MACB_CODE" "PB_JOBS"
+assert_not_contains "v0.24.21 AC1 the macos-shard job sets no PB_RERUN (macOS keeps the default re-run)" "$MACB_CODE" "PB_RERUN"
+assert_not_contains "v0.24.21 AC1 the macos-shard job does not run the README count check" "$MACB" "readme-count"
+# AC3 (extends AC7): the quoted "macos shard k/n" names of tools/ci-tree-tested.sh are exactly the macOS matrix entries
+NEED_MAC_SET="$(grep -oE '"macos shard [0-9]+/[0-9]+"' "$CIT" | sed 's/^"macos shard //; s/"$//' | sort | tr '\n' ' ')"
+MAC_MATRIX_SET="$(printf '%s\n' "$MAC_MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | sort | tr '\n' ' ')"
+assert_eq "v0.24.21 AC3 ci-tree-tested.sh checks exactly the macos-shard matrix entries (same set and count)" "$MAC_MATRIX_SET" "$NEED_MAC_SET"
+if [ -n "$NEED_MAC_SET" ] && [ -n "$MAC_MATRIX_SET" ]; then t_ok "v0.24.21 AC3 both macOS sides are non-empty"; else t_bad "v0.24.21 AC3 both macOS sides are non-empty" "need [$NEED_MAC_SET] matrix [$MAC_MATRIX_SET]"; fi
+CIT_HEAD="$(sed -n '1,30p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
+assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
+assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
+assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
+assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'nine green jobs'" "$CIT_HEAD" "nine green jobs"
 if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
 assert_contains "v14 AC8.2 the shard job still runs tests/run-all.sh" "$SB" "tests/run-all.sh"
 assert_contains "v14 AC8.2 a failing shard does not cancel the others (fail-fast: false)" "$SB" "fail-fast: false"
@@ -355,12 +382,27 @@ if printf '%s\n' "$AB" | grep -Eq "needs\.${SHARD:-__none__}\.result"; then t_ok
 if printf '%s\n' "$AB" | grep -Eq 'exit 1'; then t_ok "v14 AC8.2 the aggregator can fail (exit 1)"; else t_bad "v14 AC8.2 the aggregator can fail (exit 1)" "block: $AB"; fi
 assert_not_contains "v14 AC8.2 the aggregator does not run the suites itself" "$AB" "tests/run-all.sh"
 assert_contains "v14 AC8.2 the aggregator runs on a cheap runner, not windows" "$(printf '%s\n' "$AB" | grep 'runs-on')" "ubuntu"
+# v0.24.21 AC1/AC3: the macOS aggregator is the twin of the Windows one (the checks above and below, for test (macos-latest))
+MAB="$(wf_block "${MACAGG:-__none__}")"
+NEEDS_MACAGG="$(wf_needs "${MACAGG:-__none__}")"
+assert_contains "v0.24.21 AC3 the macOS aggregator needs the macOS shard job" "$NEEDS_MACAGG" "${MACSHARD:-__none__}"
+if printf '%s\n' "$MAB" | grep -Eq '^    if:.*always\(\)'; then t_ok "v0.24.21 AC3 the macOS aggregator has if: always() (it fails instead of being skipped)"; else t_bad "v0.24.21 AC3 the macOS aggregator has if: always()" "block: $MAB"; fi
+if printf '%s\n' "$MAB" | grep -Eq "needs\.${MACSHARD:-__none__}\.result"; then t_ok "v0.24.21 AC3 the macOS aggregator reads the shard result (needs.$MACSHARD.result)"; else t_bad "v0.24.21 AC3 the macOS aggregator reads the shard result (needs.$MACSHARD.result)" "block: $MAB"; fi
+if printf '%s\n' "$MAB" | grep -Eq 'exit 1'; then t_ok "v0.24.21 AC3 the macOS aggregator can fail (exit 1)"; else t_bad "v0.24.21 AC3 the macOS aggregator can fail (exit 1)" "block: $MAB"; fi
+assert_not_contains "v0.24.21 AC3 the macOS aggregator does not run the suites itself" "$MAB" "tests/run-all.sh"
+assert_not_contains "v0.24.21 AC3 the macOS aggregator does not run the count check" "$MAB" "readme-count"
+assert_contains "v0.24.21 AC3 the macOS aggregator runs on a cheap runner" "$(printf '%s\n' "$MAB" | grep '^    runs-on:')" "ubuntu-latest"
+assert_not_contains "v0.24.21 AC3 the macOS aggregator does not run on macos (its runs-on line)" "$(printf '%s\n' "$MAB" | grep '^    runs-on:')" "macos"
 MB="$(wf_block "${MAIN:-__none__}")"
 assert_contains "v14 AC8.2 the main test matrix keeps ubuntu-latest" "$MB" "ubuntu-latest"
-assert_contains "v14 AC8.2 the main test matrix keeps macos-latest" "$MB" "macos-latest"
+assert_eq "v0.24.21 AC3a the test job matrix line is exactly os: [ubuntu-latest]" "os: [ubuntu-latest]" "$(printf '%s' "$(printf '%s\n' "$MB" | grep -E '^ *os: *\[')" | sed 's/^ *//')"
+assert_contains "v0.24.21 AC3a the test job still runs on the matrix (runs-on: matrix.os), so its name stays test (ubuntu-latest)" "$(printf '%s\n' "$MB" | grep '^    runs-on:')" 'matrix.os'
 assert_not_contains "v14 AC8.2 the main test matrix no longer has windows-latest" "$MB" "windows-latest"
 assert_contains "v14 AC8.2 the main test job still runs tests/run-all.sh" "$MB" "tests/run-all.sh"
 if [ -n "$MAIN" ] && [ "$MAIN" != "$SHARD" ] && [ "$MAIN" != "$AGG" ]; then t_ok "v14 AC8.2 the main test job ($MAIN) is separate from the shards and the aggregator"; else t_bad "v14 AC8.2 the main test job is separate from the shards and the aggregator" "main [$MAIN] shard [$SHARD] agg [$AGG]"; fi
+if [ -n "$MACSHARD" ] && [ -n "$MACAGG" ] && [ "$MACSHARD" != "$MACAGG" ] && [ "$MACSHARD" != "$MAIN" ] && [ "$MACAGG" != "$MAIN" ] && [ "$MACSHARD" != "$SHARD" ] && [ "$MACAGG" != "$AGG" ] && [ "$MACSHARD" != "$AGG" ] && [ "$MACAGG" != "$SHARD" ]; then t_ok "v0.24.21 AC1 the macOS shard ($MACSHARD) and aggregator ($MACAGG) are separate from the test job and the Windows jobs"; else t_bad "v0.24.21 AC1 the macOS shard and aggregator are separate from the test job and the Windows jobs" "main [$MAIN] macshard [$MACSHARD] macagg [$MACAGG] shard [$SHARD] agg [$AGG]"; fi
+assert_contains "v0.24.21 AC3 the macos-shard comment keeps the bash 3.2 reason (it moved with the macOS job): 'macOS ships bash 3.2'" "$MACB" "macOS ships bash 3.2"
+assert_not_contains "v0.24.21 AC3 the ubuntu test job no longer carries the bash 3.2 comment" "$MB" "bash 3.2"
 NEEDS_REL="$(wf_needs release)"
 assert_contains "v14 AC8.2 the release job needs the aggregator" "$NEEDS_REL" "${AGG:-__none__}"
 assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEEDS_REL" "${MAIN:-__none__}"
@@ -370,13 +412,16 @@ assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEED
 wf_if() { wf_block "$1" | grep -m1 '^    if:'; }
 # not_tag LINE -> 0 when the condition excludes tag refs: !startsWith(github.ref, 'refs/tags/..') or ref_type != 'tag'
 not_tag() { printf '%s\n' "$1" | grep -Eq "![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"; }
-for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}"; do
+for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}" "macos-shard:${MACSHARD:-__none__}" "test (macos-latest) aggregator:${MACAGG:-__none__}"; do
   label="${pair%:*}"; id="${pair##*:}"
   IFL="$(wf_if "$id")"
   if [ -n "$IFL" ] && not_tag "$IFL"; then t_ok "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes"; else t_bad "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes" "if line: [$IFL]"; fi
 done
 AGGIF="$(wf_if "${AGG:-__none__}")"
 case "$AGGIF" in *always\(\)*) t_ok "v15 AC5.1 the aggregator keeps always() next to the tag exclusion (still fails instead of skipping on PRs)" ;; *) t_bad "v15 AC5.1 the aggregator keeps always() next to the tag exclusion" "if line: [$AGGIF]" ;; esac
+MACAGGIF="$(wf_if "${MACAGG:-__none__}")"
+case "$MACAGGIF" in *always\(\)*) t_ok "v0.24.21 AC1 the macOS aggregator keeps always() next to the tag exclusion" ;; *) t_bad "v0.24.21 AC1 the macOS aggregator keeps always() next to the tag exclusion" "if line: [$MACAGGIF]" ;; esac
+assert_contains "v0.24.21 AC1 the macOS aggregator if: is always() && !startsWith(github.ref, 'refs/tags/')" "$MACAGGIF" "!startsWith(github.ref, 'refs/tags/')"
 case "$(wf_if "${MAIN:-__none__}")" in *github.event_name*|*refs/tags*) t_ok "v15 AC5.1 the test job's if: is about the ref (PRs and main pushes still match it)" ;; *) t_bad "v15 AC5.1 the test job's if: is about the ref" "if line: [$(wf_if "${MAIN:-__none__}")]" ;; esac
 if wf_jobs | grep -qxF main-ci; then t_ok "v15 AC5.1 a job main-ci exists"; else t_bad "v15 AC5.1 a job main-ci exists" "jobs: $(wf_jobs | tr '\n' ' ')"; fi
 CB="$(wf_block main-ci)"
@@ -723,15 +768,18 @@ for id in $(wf_jobs); do
   tv="$(wf_timeout "$id")"
   case "$tv" in '' | *[!0123456789]*) t_bad "v22.2 AC2.2 job $id has a numeric timeout-minutes" "value: [$tv]" ;; *) t_ok "v22.2 AC2.2 job $id has a numeric timeout-minutes ($tv)" ;; esac
 done
-assert_eq 'v22.2 AC2.2 the test job (ubuntu/macos) has timeout-minutes 20' "20" "$(wf_timeout "${MAIN:-__none__}")"
+assert_eq 'v22.2 AC2.2 the test job (ubuntu) has timeout-minutes 20' "20" "$(wf_timeout "${MAIN:-__none__}")"
 assert_eq 'v22.2 AC2.2 windows-shard has timeout-minutes 20' "20" "$(wf_timeout "${SHARD:-__none__}")"
 assert_eq 'v22.2 AC2.2 the aggregator (test (windows-latest)) has timeout-minutes 5' "5" "$(wf_timeout "${AGG:-__none__}")"
+assert_eq 'v0.24.21 AC1 macos-shard has timeout-minutes 20 (the old macOS job limit)' "20" "$(wf_timeout "${MACSHARD:-__none__}")"
+assert_eq 'v0.24.21 AC1 the aggregator (test (macos-latest)) has timeout-minutes 5' "5" "$(wf_timeout "${MACAGG:-__none__}")"
 assert_eq 'v22.2 AC2.2 main-ci has timeout-minutes 30' "30" "$(wf_timeout main-ci)"
 assert_eq 'v22.2 AC2.2 release has timeout-minutes 10' "10" "$(wf_timeout release)"
 
 # AC8.3: the Windows shards turn the run-all re-run off (the full failure logs are already printed; re-runs could near the timeout)
 assert_contains "v22.2 AC8.3 the windows-shard job sets PB_RERUN: '0'" "$(wf_block "${SHARD:-__none__}")" "PB_RERUN: '0'"
-assert_not_contains "v22.2 AC8.3 the ubuntu/macos test job keeps the default re-run (no PB_RERUN)" "$(wf_block "${MAIN:-__none__}")" "PB_RERUN"
+assert_not_contains "v22.2 AC8.3 the ubuntu test job keeps the default re-run (no PB_RERUN)" "$(wf_block "${MAIN:-__none__}")" "PB_RERUN"
+assert_not_contains "v0.24.21 AC1 the macos-shard job keeps the default re-run (no PB_RERUN)" "$(wf_block "${MACSHARD:-__none__}" | grep -v '^[[:space:]]*#')" "PB_RERUN"
 
 # --- v0.22.2 AC6: resume state file
 STATE_T="$TDD/templates/state.md"
@@ -794,10 +842,11 @@ assert_contains 'v22.3 AC6.2 reuse passes GH_TOKEN to gh' "$RB" 'GH_TOKEN'
 assert_not_contains 'v22.3 AC6.2 reuse does not run the suites' "$RB" 'tests/run-all.sh'
 assert_eq 'v22.3 AC6.2 MAIN detection still finds the test job (not reuse)' "test" "$MAIN"
 assert_eq 'v22.3 AC6.2 SHARD detection still finds windows-shard (not reuse)' "windows-shard" "$SHARD"
+assert_eq 'v0.24.21 AC1 macOS shard detection finds macos-shard (not reuse)' "macos-shard" "$MACSHARD"
 
 echo "v22.3 AC6.2 workflow: test and windows-shard wait for reuse and run unless the tree was tested"
 NOREUSE_IF="if: \${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}"
-for id in test windows-shard; do
+for id in test windows-shard macos-shard; do
   assert_contains "v22.3 AC6.2 job $id has needs: reuse" "$(wf_needs "$id")" "reuse"
   assert_eq "v22.3 AC6.2 job $id has the exact one-line if: of the spec" "    $NOREUSE_IF" "$(wf_if "$id")"
 done
@@ -820,8 +869,21 @@ case "$PASSLOGIC" in *needs.windows-shard.result*success*) t_ok 'v22.3 AC6.2 the
 case "$PASSLOGIC" in *skipped*needs.reuse.result*success*|*needs.reuse.result*success*skipped*|*skipped*success*) t_ok 'v22.3 AC6.2 the aggregator accepts skipped shards only next to a successful reuse' ;; *) t_bad 'v22.3 AC6.2 the aggregator accepts skipped shards only next to a successful reuse' "logic: $PASSLOGIC" ;; esac
 if printf '%s\n' "$AB" | grep -E 'needs\.reuse\.outputs\.run' | grep -Eq -- '-n|-z|!=|=='; then t_ok 'v22.3 AC6.2 the aggregator tests the reuse output for emptiness'; else t_bad 'v22.3 AC6.2 the aggregator tests the reuse output for emptiness' "block: $AB"; fi
 
+echo "v0.24.21 AC3 workflow: the macOS aggregator (twin of the Windows one)"
+case "$NEEDS_MACAGG" in *"[macos-shard, reuse]"*) t_ok 'v0.24.21 AC3 the macOS aggregator has needs: [macos-shard, reuse]' ;; *) t_bad 'v0.24.21 AC3 the macOS aggregator has needs: [macos-shard, reuse]' "needs text: [$NEEDS_MACAGG]" ;; esac
+assert_not_contains 'v0.24.21 AC3 the macOS aggregator does not need changes' "$NEEDS_MACAGG" 'changes'
+for tok in 'needs.macos-shard.result' 'needs.reuse.result' 'needs.reuse.outputs.run'; do
+  assert_contains "v0.24.21 AC3 the macOS aggregator reads $tok" "$MAB" "$tok"
+done
+assert_contains 'v0.24.21 AC3 the macOS aggregator knows the skipped state of the shards' "$MAB" 'skipped'
+assert_eq 'v0.24.21 AC3 the macOS aggregator has timeout-minutes 5' "5" "$(wf_timeout "${MACAGG:-__none__}")"
+# the pass rule is the Windows aggregator's: success passes; skipped passes only on one line that also needs a successful reuse and a non-empty run
+if printf '%s\n' "$MAB" | grep 'needs\.macos-shard\.result' | grep -F 'success' | grep -q 'exit 0'; then t_ok 'v0.24.21 AC3 the macOS aggregator passes on a successful shard result'; else t_bad 'v0.24.21 AC3 the macOS aggregator passes on a successful shard result' "block: $MAB"; fi
+if printf '%s\n' "$MAB" | grep 'needs\.macos-shard\.result' | grep 'skipped' | grep 'needs\.reuse\.result' | grep 'success' | grep 'needs\.reuse\.outputs\.run' | grep -q -- '-n'; then t_ok 'v0.24.21 AC3 the macOS aggregator accepts skipped shards only next to a successful reuse and a non-empty run'; else t_bad 'v0.24.21 AC3 the macOS aggregator accepts skipped shards only next to a successful reuse and a non-empty run' "block: $MAB"; fi
+
 echo "v22.3 AC6.2 workflow: release and main-ci are unchanged"
 assert_contains 'v22.3 AC6.2 release keeps needs: [test, windows, main-ci]' "$(wf_needs release)" "[test, windows, main-ci]"
+assert_not_contains 'v0.24.21 AC3c release does not need the macOS jobs (D1: tags skip the suites, main-ci gates the release)' "$(wf_needs release)" "mac"
 assert_eq 'v22.3 AC6.2 the release if: is unchanged' "    if: \${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.main-ci.result == 'success' }}" "$(wf_if release)"
 assert_eq 'v22.3 AC6.2 main-ci still runs on v* tags only (unchanged if:)' "    if: startsWith(github.ref, 'refs/tags/v')" "$(wf_if main-ci)"
 assert_not_contains 'v22.3 AC6.2 main-ci does not depend on reuse' "$(wf_needs main-ci)" "reuse"
@@ -951,17 +1013,20 @@ assert_contains 'v23.0 AC5.1 docs-only.sh lists the changed paths with git diff 
 assert_contains 'v23.0 AC5.1 docs-only.sh turns rename detection off (--no-renames)' "$DOTXT" '--no-renames'
 assert_eq 'v23.0 AC5.1 MAIN detection still finds the test job (not changes)' "test" "$MAIN"
 assert_eq 'v23.0 AC5.1 SHARD detection still finds windows-shard (not changes)' "windows-shard" "$SHARD"
+assert_eq 'v0.24.21 AC1 macOS shard detection finds macos-shard (not changes)' "macos-shard" "$MACSHARD"
 
 # --- v0.23.0 AC5.2: the required jobs are never skipped; the run step has a reduced path
 echo "v23.0 AC5.2 workflow: needs changes, same if:, reduced step"
-for id in test windows-shard; do
+for id in test windows-shard macos-shard; do
   assert_contains "v23.0 AC5.2 job $id needs reuse (still)" "$(wf_needs "$id")" "reuse"
   assert_contains "v23.0 AC5.2 job $id needs changes" "$(wf_needs "$id")" "changes"
   assert_eq "v23.0 AC5.2 job $id keeps the exact one-line if:" "    $NOREUSE_IF" "$(wf_if "$id")"
 done
 assert_not_contains 'v23.0 AC5.2 the aggregator does not need changes (it only reads the shard result)' "$(wf_needs "$AGG")" 'changes'
 case "$(wf_needs "$AGG")" in *"[windows-shard, reuse]"*) t_ok 'v23.0 AC5.2 the aggregator keeps needs: [windows-shard, reuse]' ;; *) t_bad 'v23.0 AC5.2 the aggregator keeps needs: [windows-shard, reuse]' "needs: $(wf_needs "$AGG")" ;; esac
-for id in test windows-shard; do
+assert_not_contains 'v0.24.21 AC3 the macOS aggregator does not need changes (it only reads the shard result)' "$(wf_needs "${MACAGG:-__none__}")" 'changes'
+case "$(wf_needs "${MACAGG:-__none__}")" in *"[macos-shard, reuse]"*) t_ok 'v0.24.21 AC3 the macOS aggregator keeps needs: [macos-shard, reuse]' ;; *) t_bad 'v0.24.21 AC3 the macOS aggregator keeps needs: [macos-shard, reuse]' "needs: $(wf_needs "${MACAGG:-__none__}")" ;; esac
+for id in test windows-shard macos-shard; do
   if [ "$id" = test ]; then FULLN='Tests and static checks'; else FULLN='Tests and static checks (shard)'; fi
   FS="$(wf_step "$id" "$FULLN")"
   DS="$(wf_step "$id" 'Docs-only checks')"
@@ -978,6 +1043,20 @@ for id in test windows-shard; do
   assert_contains "v23.0 AC5.2 job $id: the reduced set adds evals/run-checks.sh" "$DS" 'run-checks.sh'
 done
 assert_not_contains 'v23.0 AC5.2 the Windows reduced step does not skip suites by shard (every shard runs the whole set)' "$(wf_step windows-shard 'Docs-only checks')" 'PB_SHARD'
+assert_not_contains 'v0.24.21 AC1 the macOS reduced step does not skip suites by shard (both shards run the whole reduced set, duplicated)' "$(wf_step macos-shard 'Docs-only checks')" 'PB_SHARD'
+
+echo "v0.24.21 AC1 workflow: Versions step on the macOS shards and the ubuntu-only steps of the test job"
+for id in "${MAIN:-__none__}" "${MACSHARD:-__none__}"; do
+  VST="$(wf_step "$id" 'Versions')"
+  if [ -n "$VST" ]; then t_ok "v0.24.21 AC1 job $id has a step named [Versions]"; else t_bad "v0.24.21 AC1 job $id has a step named [Versions]" "block: $(wf_block "$id")"; fi
+  assert_contains "v0.24.21 AC1 job $id: the Versions step prints the bash version" "$VST" 'bash --version'
+done
+RPSTEP="$(wf_step "${MAIN:-__none__}" 'Release PR check (VERSION changed -> tools/check-release.sh)')"
+if [ -n "$RPSTEP" ]; then t_ok "v0.24.21 AC3a the test job keeps the Release PR check step"; else t_bad "v0.24.21 AC3a the test job keeps the Release PR check step" "block: $MB"; fi
+assert_contains "v0.24.21 AC3a the Release PR check step keeps the exact matrix.os == 'ubuntu-latest' condition" "$(step_if "$RPSTEP")" "matrix.os == 'ubuntu-latest'"
+RCSTEP="$(wf_step "${MAIN:-__none__}" 'README test count (Linux only)')"
+if [ -n "$RCSTEP" ]; then t_ok "v0.24.21 AC3a the test job keeps the README test count step"; else t_bad "v0.24.21 AC3a the test job keeps the README test count step" "block: $MB"; fi
+assert_contains "v0.24.21 AC3a the README test count step keeps the matrix.os == 'ubuntu-latest' condition" "$(step_if "$RCSTEP")" "matrix.os == 'ubuntu-latest'"
 
 # --- v0.23.0 review: the shas reach the changes job through env:, never interpolated into the script text
 echo "v23.0 review: changes passes the shas through env:"
@@ -1007,7 +1086,7 @@ echo "v23.2 AC8.1 workflow: the reduced docs-only set is pinned"
 EXPECT_SET="$( cd "$PB_ROOT" && { grep -l 'PB_ROOT/README.md' tests/test-*.sh; grep -l 'PB_ROOT/CHANGELOG.md' tests/test-*.sh; echo tests/test-content.sh; echo tests/test-update.sh; } | sort -u )"
 # the workflow's own computation: the text of the run block before its `for t in` loop is evaluated in the repo root
 # (contract: it assigns the list of suites to the shell variable suites)
-for id in test windows-shard; do
+for id in test windows-shard macos-shard; do
   DS23="$(wf_step "$id" 'Docs-only checks')"
   assert_contains "v23.2 AC8.1 job $id: the Docs-only step names tests/test-update.sh" "$DS23" 'test-update.sh'
   SETCODE="$(printf '%s\n' "$DS23" | awk '/^        run:/ { f = 1; next } f && /for t in/ { exit } f { print }')"

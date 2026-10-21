@@ -34,7 +34,7 @@ chmod +x "$BIN/gh"
 R="own/repo"
 h40() { printf '%040d' "$1"; }          # 40 digits are a valid hex sha
 SHA="$(h40 1)"; PAR="$(h40 2)"; HEAD="$(h40 3)"; TREE="$(h40 4)"
-NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
+NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "macos shard 1/2" "macos shard 2/2" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
 
 # put KEYPATH JSON -> the response of `gh api <KEYPATH>` (query string left out; runs also by head sha: use put_runs)
 put() { local v="$2"; printf '%s\n' "${v//$'\r'/}" > "$DATA/${1//\//_}"; }
@@ -51,7 +51,7 @@ run_json() { # ID HEADSHA [CONCLUSION] [LISTED-BASEREF]  (pull_requests[] is emp
   printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":%s}' "$1" "$2" "${3:-success}" "$prs"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
-jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all nine success) | skipped|failure|cancelled NAME | missing NAME
+jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all eleven success) | skipped|failure|cancelled NAME | missing NAME
   # | steps NAME STEPKIND: the jobs are all success; NAME's step list is changed (v0.23.0 AC5.3):
   #   docsonly (only a Docs-only checks step), both (full step skipped + Docs-only success), fullskipped (full step skipped, no other),
   #   fullfailed (full step failure), fullmissing (setup steps only), nosteps (no steps field), fullcancelled, fullnotdone
@@ -69,14 +69,26 @@ jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all nine success) | skipped|failu
   done
   # jobs that are not required checks never matter (the PR run skips reuse and main-ci)
   out="$out$sep{\"name\":\"reuse\",\"status\":\"completed\",\"conclusion\":\"skipped\"},{\"name\":\"main-ci\",\"status\":\"completed\",\"conclusion\":\"skipped\"}"
-  printf '{"total_count":11,"jobs":[%s]}' "$out"
+  printf '{"total_count":13,"jobs":[%s]}' "$out"
+}
+# jobs_json_oldmac -> the pre-v0.24.21 shape (v0.24.21 AC3b): test (macos-latest) is a suite job with the full step, there are no macOS shard jobs;
+# every job concluded success (a regression case: such a run is never reused)
+jobs_json_oldmac() {
+  (
+    keep=(); for n in "${NAMES[@]}"; do case "$n" in "macos shard "*) ;; *) keep[${#keep[@]}]="$n" ;; esac; done
+    NAMES=("${keep[@]}"); OLDMAC=1; jobs_json ok
+  )
 }
 # step_one NAME CONCLUSION NUMBER [STATUS]
 step_one() { printf '{"name":"%s","status":"%s","conclusion":"%s","number":%s}' "$1" "${4:-completed}" "$2" "$3"; }
-# steps_json JOBNAME KIND -> ,"steps":[...] for the eight suite jobs (the aggregator has none), "" for others
+# steps_json JOBNAME KIND -> ,"steps":[...] for the nine suite jobs (the two aggregators have none, except the OLDMAC shape), "" for others
 steps_json() {
   local n="$1" kind="$2" full='Tests and static checks' pre
-  case "$n" in "test (windows-latest)") return 0 ;; "windows shard "*) full='Tests and static checks (shard)' ;; esac
+  case "$n" in
+    "test (windows-latest)") return 0 ;;
+    "test (macos-latest)") [ "${OLDMAC:-0}" = 1 ] || return 0 ;;
+    "windows shard "* | "macos shard "*) full='Tests and static checks (shard)' ;;
+  esac
   pre="$(step_one 'Set up job' success 1),$(step_one 'Run actions/checkout@v5' success 2)"
   case "$kind" in
     full)        printf ',"steps":[%s,%s]' "$pre" "$(step_one "$full" success 3)" ;;
