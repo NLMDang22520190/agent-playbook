@@ -491,19 +491,23 @@ INSTALL_TRUE="cp '$HT' .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit; 
 if can_exec; then
   R="$(fresh)"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
   printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  IDX0="$(git -C "$R" ls-files -s; git -C "$R" status --porcelain)"
   run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "$INSTALL_EVIL"
   assert_rc "AC4 fix5 default path, hook adds src/evil.js: exit 1" 1
   assert_contains "AC4 fix5 default path: the message names the unexpected committed path" "$OUT" "src/evil.js"
   assert_untouched "AC4 fix5 default path: the commit is undone (HEAD unchanged)" "$R" "$H0" "$N0"
+  assert_eq "AC4 r2 fix5 default path: the index equals the pre-run index after the undo" "$IDX0" "$(git -C "$R" ls-files -s; git -C "$R" status --porcelain)"
   assert_eq "AC4 fix5 default path: src/evil.js is in no commit" "" "$(noeol_ls "$R" | grep -x 'src/evil.js')"
   assert_eq "AC4 fix5 default path: the role's work tree content is kept" 'test("n", () => {});' "$(cat "$R/tests/new.test.js")"
 
   R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
   printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  IDX0="$(git -C "$R" ls-files -s; git -C "$R" status --porcelain)"
   run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_EVIL"
   assert_rc "AC4 fix5 --baseline, hook adds src/evil.js: exit 1" 1
   assert_contains "AC4 fix5 --baseline: the message names the unexpected committed path" "$OUT" "src/evil.js"
   assert_untouched "AC4 fix5 --baseline: the commit is undone (HEAD unchanged)" "$R" "$H0" "$N0"
+  assert_eq "AC4 r2 fix5 --baseline: the index equals the pre-run index after the undo" "$IDX0" "$(git -C "$R" ls-files -s; git -C "$R" status --porcelain)"
   assert_eq "AC4 fix5 --baseline: src/evil.js is in no commit" "" "$(noeol_ls "$R" | grep -x 'src/evil.js')"
   assert_eq "AC4 fix5 --baseline: the role's work tree content is kept" 'test("n", () => {});' "$(cat "$R/tests/new.test.js")"
   assert_eq "AC4 fix5 --baseline: the baseline work tree file is kept" "module.exports = 9;" "$(cat "$R/src/app.js")"
@@ -522,7 +526,59 @@ if can_exec; then
   assert_eq "AC4 fix5 control (--baseline): one new commit" "$((N0 + 1))" "$(count_of "$R")"
   assert_eq "AC4 fix5 control (--baseline): only the role's file is committed" "tests/new.test.js" "$(committed "$R")"
 else
-  t_skip 19 "AC4 fix5 git hooks (the file system cannot make a hook executable)"
+  t_skip 21 "AC4 fix5 git hooks (the file system cannot make a hook executable)"
+fi
+
+
+echo "AC4 (fix r2) the undo restores the index exactly; a hook that makes a second commit is fully undone"
+# idx REPO -> the whole index (mode, blob, stage, path), plus the porcelain status
+idx() { git -C "$1" ls-files -s; git -C "$1" status --porcelain; }
+HADD="$(mk_tmp)/hook-addreadme.sh"
+printf "%s\n" "#!/bin/sh" "git add README.md" > "$HADD"
+HPC="$(mk_tmp)/hook-postcommit.sh"
+printf "%s\n" "#!/bin/sh" "[ -e .git/pc-done ] && exit 0" "touch .git/pc-done" "mkdir -p src" "echo evil > src/evil.js" "git add src/evil.js" "git commit -q -m evil-second" > "$HPC"
+INSTALL_ADD="cp \"$HADD\" .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit; exit 1"
+INSTALL_PC="cp \"$HPC\" .git/hooks/post-commit && chmod +x .git/hooks/post-commit; exit 1"
+if can_exec; then
+  R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"
+  printf "test(\"n\", () => {});\n" > "$R/tests/n.test.js"
+  H0="$(head_of "$R")"; N0="$(count_of "$R")"; IDX0="$(idx "$R")"; BS0="$(bstate "$R")"
+  run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_ADD"
+  assert_rc "AC4 r2 --baseline, a pre-commit hook stages README.md: exit 1" 1
+  assert_untouched "AC4 r2 --baseline, hook stages README.md: the commit is undone" "$R" "$H0" "$N0"
+  assert_eq "AC4 r2 --baseline, hook stages README.md: the whole index equals the pre-run index" "$IDX0" "$(idx "$R")"
+  assert_contains "AC4 r2 --baseline, hook stages README.md: README.md is staged and edited again (MM)" "$(git -C "$R" status --porcelain)" "MM README.md"
+  assert_eq "AC4 r2 --baseline, hook stages README.md: baseline paths untouched (staged blob, diffs, content)" "$BS0" "$(bstate "$R")"
+  assert_eq "AC4 r2 --baseline, hook stages README.md: the role file is kept" "test(\"n\", () => {});" "$(cat "$R/tests/n.test.js")"
+
+  R="$(fresh)"; dirty "$R"
+  printf "test(\"n\", () => {});\n" > "$R/tests/new.test.js"
+  H0="$(head_of "$R")"; N0="$(count_of "$R")"; IDX0="$(idx "$R")"
+  run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "cp \"$HS\" .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit; exit 1"
+  assert_rc "AC4 r2 default path, a hook adds an extra file: exit 1" 1
+  assert_untouched "AC4 r2 default path, extra file: the commit is undone" "$R" "$H0" "$N0"
+  assert_eq "AC4 r2 default path, extra file: the whole index equals the pre-run index" "$IDX0" "$(idx "$R")"
+  assert_eq "AC4 r2 default path, extra file: the role file is kept" "test(\"n\", () => {});" "$(cat "$R/tests/new.test.js")"
+
+  for MODE in default baseline; do
+    R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"
+    printf "test(\"n\", () => {});\n" > "$R/tests/n.test.js"
+    H0="$(head_of "$R")"; N0="$(count_of "$R")"; IDX0="$(idx "$R")"
+    if [ "$MODE" = default ]; then
+      run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "$INSTALL_PC"
+    else
+      run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_PC"
+    fi
+    assert_rc "AC4 r2 $MODE, a post-commit hook makes a second commit: exit 1" 1
+    assert_eq "AC4 r2 $MODE, post-commit second commit: HEAD is the HEAD from before tdd-step" "$H0" "$(head_of "$R")"
+    assert_eq "AC4 r2 $MODE, post-commit second commit: commit count is the pre-run count" "$N0" "$(count_of "$R")"
+    assert_eq "AC4 r2 $MODE, post-commit second commit: no test(red) commit is left in the log" "" "$(git -C "$R" log --format=%s | grep -F "test(red)")"
+    assert_eq "AC4 r2 $MODE, post-commit second commit: no evil-second commit is left in the log" "" "$(git -C "$R" log --format=%s | grep -F "evil-second")"
+    assert_eq "AC4 r2 $MODE, post-commit second commit: the index equals the pre-run index" "$IDX0" "$(idx "$R")"
+    assert_eq "AC4 r2 $MODE, post-commit second commit: the role content is kept" "test(\"n\", () => {});" "$(cat "$R/tests/n.test.js")"
+  done
+else
+  t_skip 26 "AC4 r2 hook cases (the file system cannot make a hook executable)"
 fi
 
 
