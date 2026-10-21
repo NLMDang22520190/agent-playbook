@@ -25,6 +25,8 @@
 #   leak-check.sh uninstall-hooks [--repo DIR]   remove the hooks that carry the marker, and only those
 # Patterns: github-token, anthropic-key, aws-key, private-key (built in), plus the conf keys
 #   leak_patterns  (ERE, alternatives separated by |)         reported as user-pattern
+#                  a key-prefix pattern should carry a token-start boundary, e.g. (^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{12,}
+#                  (without it, "task-..." matches the sk- prefix)
 #   leak_literals  (comma-separated FIXED strings, case-insensitive)   reported as user-literal
 #                  (a UTF-8 locale is probed so non-ASCII letters fold case too; none found: ASCII-only, noted on stderr)
 # read from the global conf (PLAYBOOK_HOME or HOME) and the project conf.

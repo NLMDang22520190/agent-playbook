@@ -731,6 +731,43 @@ if command -v cygpath >/dev/null 2>&1 && WIN="$(cygpath -m "$R/src/gone.js" 2>/d
   same_as "T1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
 else t_skip 2 "T1 C:/ spelling (no cygpath: not Git Bash)"; fi
 
+# ================= v0.24.22 S1: snapshot --out refuses an untracked symlink into a tracked file =================
+echo "v0.24.22 S1 snapshot --out LINK, a symlink into a tracked file of the repository: exit 3, nothing written through the link"
+W_SL="the manifest path is a symlink into a tracked file of this repository"
+base_repo
+SLB="$(mk_tmp)"; : > "$SLB/outside.txt"; mkdir -p "$SLB/dir"
+if ln -s src/gone.js lnk-rel 2>/dev/null && [ -L lnk-rel ]; then
+  B0=$((T_PASS + T_FAIL))
+  KEEP="$(mk_tmp)"; cp src/gone.js "$KEEP/gone"
+  ln -s "$R/src/gone.js" lnk-abs; ln -s lnk-rel lnk-chain; mkdir -p sub; ln -s ../src/gone.js sub/lnk-up; ln -s src dirlink
+  gate snapshot --out lnk-rel
+  assert_rc "S1 a relative link to a tracked file: exit 3" 3
+  assert_contains "S1 ... the refusal names the link as given" "$OUT" "$W_SL: lnk-rel"
+  assert_not_contains "S1 ... no manifest is reported" "$OUT" "baseline:"
+  same_as "S1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+  if [ -L lnk-rel ] && [ "$(readlink lnk-rel)" = src/gone.js ]; then t_ok "S1 ... the link is untouched"; else t_bad "S1 ... the link is untouched" "$(readlink lnk-rel)"; fi
+  gate snapshot --out lnk-abs
+  assert_rc "S1 an absolute link to a tracked file: exit 3" 3
+  same_as "S1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+  gate snapshot --out lnk-chain
+  assert_rc "S1 a link to a link to a tracked file: exit 3" 3
+  same_as "S1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+  gate snapshot --out sub/lnk-up
+  assert_rc "S1 a link in a subdirectory (../src/gone.js): exit 3" 3
+  same_as "S1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+  gate snapshot --out "$R/dirlink/gone.js"
+  assert_rc "S1 a path through a symlinked directory into a tracked file: exit 3" 3
+  same_as "S1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+  ln -s "$SLB/outside.txt" lnk-out
+  gate snapshot --out lnk-out
+  assert_rc "S1 a link to a file outside the repository stays allowed: exit 0" 0
+  assert_contains "S1 ... the manifest went through the link" "$(head -1 "$SLB/outside.txt" 2>/dev/null)" "# role-gate baseline v1"
+  ln -s src/never-tracked.txt lnk-dead
+  gate snapshot --out lnk-dead
+  assert_rc "S1 a dangling link whose target is not tracked: exit 0" 0
+  blk_check "S1 symlink block" 16 $((T_PASS + T_FAIL - B0))
+else rm -f lnk-rel; t_skip 16 "S1 symlink into a tracked file (this file system or git setup cannot create symlinks)"; fi
+
 # ================= v0.24.21 T2: an interrupt in bl_states exits 130 (INT) or 143 (TERM), never 1 or 0 =================
 echo "v0.24.21 T2 INT / TERM while bl_states waits on git: exit 130 / 143 and the temp file is removed"
 SIGD="$(mk_tmp)"; mkdir -p "$SIGD/fake" "$SIGD/tmp"

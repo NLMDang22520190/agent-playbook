@@ -1,74 +1,72 @@
-# Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.20: the median of runs 38577969449 (v0.24.14),
-# 39358585593 (v0.24.16), 39368684579 (v0.24.17) and 39386773144 (v0.24.19, six shards), per L-0003. A suite changed after
-# a run uses only the later runs: the v0.24.19 splits and the suites changed in v0.24.18/19 (evals-grade5, ci-tree-tested,
-# ci-tree-tested-steps, content, run-all, ship-b) the last run; role-gate-baseline, mutate, skill-rules the last two;
-# role-gate-batch, release, shard-weights the last three. All weights but one are CI-measured. Runner speed varies about 2x
-# between jobs, so one run per suite is noisy: refresh again once two six-shard runs exist.
+# Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.22: suites changed in v0.24.21 take run 39542226497
+# (v0.24.21) alone; the others the mean (= median of two) of 39386773144 (v0.24.19) and 39542226497, per L-0003.
+# All weights are CI-measured except the three named below.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-# test-role-gate-committed.sh 128 (new in v0.24.20): measured on a local Git Bash (12 of its 68 assertions skip there); replace it
-# with a CI time (L-0009).
-# test-tdd-step.sh 245, test-tdd-step-b.sh 319, test-tdd-step-c.sh 319 (the v0.24.21 split of test-tdd-step.sh): estimates, the 883 s measured on a local Git Bash split by each part's Linux time share (10, 13, 13 s); replace them with CI times (L-0009).
-test-evals-grade6-b.sh 409
-test-role-gate-batch.sh 359
-test-evals-grade.sh 350
-test-ci-tree-tested-steps.sh 348
-test-evals-grade6.sh 347
-test-leak-check.sh 344
-test-evals-grade2.sh 339
-test-ship-b.sh 338
-test-evals-grade4.sh 334
-test-ci-tree-tested.sh 323
-test-tdd-step-b.sh 319
-test-tdd-step-c.sh 319
-test-run-all.sh 317
-test-evals-runner-b.sh 310
-test-evals-runner.sh 299
-test-evals-grade4-b.sh 298
-test-role-gate.sh 297
-test-role-gate-b.sh 282
-test-evals-grade3.sh 276
-test-leak-check-push-b.sh 269
-test-role-model.sh 264
-test-evals-grade2-e20-capture.sh 260
-test-ship.sh 257
-test-evals-grade2-e20.sh 255
-test-tdd-step.sh 245
-test-evals-budget.sh 240
-test-leak-check-push.sh 228
-test-mutate.sh 223
-test-leak-check-mode.sh 222
-test-role-gate-baseline.sh 220
-test-ship-c.sh 218
-test-role-model-b.sh 173
-test-run-checks-sections.sh 155
-test-evals-grade5.sh 147
-test-release-tool.sh 143
-test-role-gate-committed.sh 128
-test-release.sh 124
-test-run-checks-gnu9.sh 118
-test-content.sh 110
-test-learn.sh 104
-test-run-checks-gnu.sh 102
-test-leak-check-uname.sh 96
-test-update.sh 91
-test-docs-only.sh 85
-test-run-checks.sh 71
-test-cost.sh 59
-test-install.sh 58
-test-feedback.sh 53
-test-conf.sh 49
-test-role-gate-mode.sh 35
+# test-tdd-step-d.sh 398, test-tdd-step-e.sh 201, test-tdd-step-f.sh 352 (new in v0.24.22, the commit-gap suite in three parts): estimates, not CI times: 0.87 x the times on a local Git Bash (457, 231 and 405 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). Measure them in the first CI run and replace them (L-0009).
+test-evals-grade6-b.sh 445
+test-role-gate-baseline.sh 425
+test-tdd-step-d.sh 398
+test-evals-grade2.sh 353
+test-tdd-step-f.sh 352
+test-ci-tree-tested-steps.sh 340
+test-role-gate-batch.sh 340
+test-ship-b.sh 339
+test-tdd-step-c.sh 332
+test-evals-runner.sh 328
+test-evals-grade6.sh 323
+test-role-gate-b.sh 322
+test-evals-grade4-b.sh 318
+test-role-gate.sh 309
+test-mutate.sh 302
+test-leak-check-push-b.sh 298
+test-leak-check-mode.sh 297
+test-evals-grade4.sh 291
+test-evals-runner-b.sh 284
+test-evals-grade3.sh 283
+test-evals-grade.sh 280
+test-leak-check.sh 276
+test-evals-grade2-e20.sh 269
+test-leak-check-push.sh 263
+test-role-model.sh 261
+test-evals-grade5.sh 260
+test-tdd-step-b.sh 248
+test-ci-tree-tested.sh 234
+test-run-all.sh 232
+test-ship-c.sh 231
+test-evals-grade2-e20-capture.sh 208
+test-tdd-step-e.sh 201
+test-ship.sh 200
+test-role-model-b.sh 196
+test-evals-budget.sh 190
+test-tdd-step.sh 184
+test-run-checks-sections.sh 183
+test-content.sh 149
+test-role-gate-committed.sh 145
+test-release-tool.sh 128
+test-leak-check-uname.sh 117
+test-release.sh 113
+test-docs-only.sh 111
+test-update.sh 107
+test-run-checks-gnu.sh 99
+test-run-checks-gnu9.sh 89
+test-learn.sh 88
+test-run-checks.sh 77
+test-install.sh 64
+test-feedback.sh 63
+test-conf.sh 41
+test-cost.sh 40
+test-role-gate-mode.sh 39
+test-shard-weights.sh 29
 test-readme-count.sh 22
-test-shard-weights.sh 22
-test-eval-guard.sh 14
-test-skill-rules.sh 12
-test-proof-run.sh 11
-test-pr-body.sh 10
-test-lib.sh 5
+test-skill-rules.sh 15
+test-eval-guard.sh 12
+test-proof-run.sh 12
+test-pr-body.sh 9
+test-lib.sh 6
+test-docs-rules.sh 3
 test-report-rules.sh 3
-test-docs-rules.sh 2
 test-bsd-check.sh 1
-test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-lib-tmp.sh 0

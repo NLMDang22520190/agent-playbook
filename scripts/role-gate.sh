@@ -32,6 +32,10 @@
 # mode check reads REF..HEAD as a list of its own. A normal flow (the work tree carries every committed and staged
 # change) judges the same paths as before. Consequence for `--base HEAD~N`: an uncommitted revert of a committed edit is
 # judged (HEAD still carries the edit): commit the revert, or use a later base.
+# v0.24.22: check --base REF where REF is not an ancestor of HEAD (for example a commit-tree of a dirty work tree) prints one note
+# to stderr, "note: --base REF is not an ancestor of HEAD; to exempt a dirty tree use role-gate.sh snapshot and --baseline (see
+# SKILL.md Preconditions)". A note only: the verdict and exit code are those of any other base (no special case, it would reopen
+# the BASE..index and BASE..HEAD paths). An ancestor base and the default HEAD print nothing.
 # Every role: a path that goes from mode 100755 to 100644 (git diff --raw against REF, work tree and index, also a drop
 # that is only staged, also a rename with unchanged content that drops the bit: the new path is named) is a
 # violation "VIOLATION (mode): <path> lost its executable bit (100755 -> 100644)", unless the path is listed in
@@ -368,6 +372,10 @@ case "$cmd" in
     done
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
+    # v0.24.22: a base that is not an ancestor of HEAD (typically a commit-tree of a dirty work tree) is judged like any other; say so
+    if ! git merge-base --is-ancestor "$base" HEAD >/dev/null 2>&1; then
+      printf 'note: --base %s is not an ancestor of HEAD; to exempt a dirty tree use role-gate.sh snapshot and --baseline (see SKILL.md Preconditions)\n' "$base" >&2
+    fi
     # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
     if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
@@ -574,6 +582,20 @@ usage: role-gate.sh snapshot [--out FILE]" 2 ;;
     if [ -n "$out_arg" ] && [ ! -d "$out" ]; then
       tracked="$(git --literal-pathspecs ls-files -- "$out" 2>/dev/null)" || tracked=""
       [ -z "$tracked" ] || pb_die "the manifest path is a tracked file of this repository: $out_arg" 3
+      # v0.24.22: a symlink (or a symlinked directory in the path) that leads into a tracked file would write through into it;
+      # follow the links by hand (readlink without -f: portable) and ask git about the real path
+      res="$out"; hops=0
+      while [ -L "$res" ] && [ "$hops" -lt 40 ]; do
+        lt="$(readlink "$res")" || break
+        case "$lt" in /* | [A-Za-z]:[/\\]*) res="$lt" ;; *) res="${res%/*}/$lt" ;; esac
+        hops=$((hops + 1))
+      done
+      rd="${res%/*}"; [ -n "$rd" ] || rd=/
+      if pd="$(cd -P "$rd" 2>/dev/null && pwd -P)"; then res="${pd%/}/${res##*/}"; fi
+      if [ "$res" != "$out" ]; then
+        tracked="$(git --literal-pathspecs ls-files -- "$res" 2>/dev/null)" || tracked=""
+        [ -z "$tracked" ] || pb_die "the manifest path is a symlink into a tracked file of this repository: $out_arg" 3
+      fi
     fi
     # a path with a newline cannot be one manifest line: LF is mapped to \002 while the NULs become line ends
     raw="$( { git -c core.quotepath=off diff --name-only -z --no-renames HEAD --

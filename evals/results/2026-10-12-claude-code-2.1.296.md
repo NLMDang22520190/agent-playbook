@@ -238,3 +238,19 @@ Total 2.93 USD of the 3 USD cap. E21 kept no deprecated alias this time, so the 
 exercised by a real run (it is covered by the grader tests and by regrading the Run 13 workdir).
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 15: v0.24.21 installed - E1, E4, E21 (2026-10-21, approved by the user, 3 USD cap)
+
+Run on the installed v0.24.21 from Windows Git Bash with the Claude Code harness and `--clean-env`. Purpose: the eval
+guard after v0.24.21 changed skills/playbook-tdd/SKILL.md (every role gate gets the sha from before the role; tdd-step.sh
+--baseline).
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E1 | 6/6 | 1 | 0.44 | |
+| E4 | 4/4 | 0 | 0.36 | |
+| E21 | 6/6 | 0 | 2.12 | every use renamed, no alias kept |
+
+Total 2.92 USD of the 3 USD cap. The E21 alias rule (v0.24.18) is still not exercised by a real run.
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
