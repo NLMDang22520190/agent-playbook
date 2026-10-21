@@ -1,12 +1,15 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.22: suites changed in v0.24.21 take run 39542226497
 # (v0.24.21) alone; the others the mean (= median of two) of 39386773144 (v0.24.19) and 39542226497, per L-0003.
-# All weights are CI-measured.
+# All weights are CI-measured except the three named below.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
+# test-tdd-step-d.sh 398, test-tdd-step-e.sh 201, test-tdd-step-f.sh 352 (new in v0.24.22, the commit-gap suite in three parts): estimates, not CI times: 0.87 x the times on a local Git Bash (457, 231 and 405 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). Measure them in the first CI run and replace them (L-0009).
 test-evals-grade6-b.sh 445
 test-role-gate-baseline.sh 425
+test-tdd-step-d.sh 398
 test-evals-grade2.sh 353
+test-tdd-step-f.sh 352
 test-ci-tree-tested-steps.sh 340
 test-role-gate-batch.sh 340
 test-ship-b.sh 339
@@ -33,6 +36,7 @@ test-ci-tree-tested.sh 234
 test-run-all.sh 232
 test-ship-c.sh 231
 test-evals-grade2-e20-capture.sh 208
+test-tdd-step-e.sh 201
 test-ship.sh 200
 test-role-model-b.sh 196
 test-evals-budget.sh 190
