@@ -453,6 +453,46 @@ ggnu="$(printf '%s' "$ggnu" | tr -s ' ')"
 if [ "$grc" -ne 0 ]; then bad "GNU-only scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
 elif [ -z "${ggnu// /}" ]; then [ -z "$gmiss" ] && ok "GNU-only options absent (BSD/macOS)"
 else bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"; fi
+# Git for Windows ships grep 3.0, which aborts (core dump, exit 134) on a grep call that has both ignore-case and fixed-strings
+# (-i with -F, or --ignore-case, --fixed-strings, in any mix). Lowercase both sides with tr and use -F, or keep -i and drop -F.
+# Per line: whole-line comments are skipped; the line is cut at | ; & ( ) and backtick into commands; in each command that has the
+# word grep (or a path ending in /grep) the words after it are read as options up to the -- marker; in a short cluster the letters
+# up to the first option that takes an argument (e f m A B C d D) count, and the next word is skipped when that letter ends the cluster.
+# Not covered: a call spelled through a variable, text inside single quotes (read as code, a conservative false positive).
+gif="$(awk '
+  /^[[:space:]]*#/ { next }
+  {
+    nseg = split($0, seg, /[|;&()`]/)
+    for (k = 1; k <= nseg; k++) {
+      nw = split(seg[k], w, /[[:space:]]+/)
+      for (j = 1; j <= nw; j++) {
+        if (w[j] != "grep" && w[j] !~ /\/grep$/) continue
+        gi = 0; gf = 0
+        for (q = j + 1; q <= nw; q++) {
+          t = w[q]
+          if (t == "--") break
+          if (t ~ /^--/) {
+            if (t == "--ignore-case") gi = 1
+            else if (t == "--fixed-strings") gf = 1
+          } else if (t ~ /^-[[:alnum:]]/) {
+            for (c = 2; c <= length(t); c++) {
+              ch = substr(t, c, 1)
+              if (index("efmABCdD", ch) > 0) { if (c == length(t)) q++; break }
+              if (ch == "i") gi = 1
+              else if (ch == "F") gf = 1
+            }
+          }
+        }
+        if (gi && gf) { out = out FILENAME ":" FNR " "; break }
+      }
+    }
+  }
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+gfrc=$?
+gif="$(printf '%s' "$gif" | tr -s ' ')"
+if [ "$gfrc" -ne 0 ]; then bad "grep ignore-case/fixed-strings scan failed (awk exit $gfrc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${gif// /}" ]; then [ -z "$gmiss" ] && ok "no grep call pairs ignore-case with fixed-strings"
+else bad "grep with both ignore-case (-i) and fixed-strings (-F): Git for Windows grep 3.0 aborts; lowercase both sides with tr and use -F, or drop -F, at: $gif (ignore-case+fixed-strings)"; fi
 fi
 
 if want soh; then
