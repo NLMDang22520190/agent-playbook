@@ -5,7 +5,7 @@
 # suite BODY -> runs a script that sources lib.sh, runs BODY, then t_summary; sets OUT and RC
 suite() {
   local f; f="$(mk_tmp)/test-demo.sh"
-  printf '. "%s/tests/lib.sh"\n%s\nt_summary\n' "$PB_ROOT" "$1" > "$f"
+  printf 'PB_LIB_ALLOW_ANYWHERE=1\n. "%s/tests/lib.sh"\n%s\nt_summary\n' "$PB_ROOT" "$1" > "$f"
   run bash "$f"
 }
 
@@ -63,4 +63,27 @@ if printf '%s\n' "$LIBCMT" | grep -Eq '(10|ten)[- ]process'; then t_ok "R3 m3 th
 if printf '%s\n' "$LIBCMT" | grep -Fq 'unreadable'; then t_ok "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')"; else t_bad "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')" "no 'unreadable' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Fq 'clean filter'; then t_ok "R3 m3 the comment names a failing clean filter"; else t_bad "R3 m3 the comment names a failing clean filter" "no 'clean filter' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Eq 'bisect'; then t_ok "R3 m3 the comment says a readable file that fails bisects"; else t_bad "R3 m3 the comment says a readable file that fails bisects" "no word bisect in the comment"; fi
+# ---- v0.24.22: a suite run from outside tests/ refuses to start (v0.24.21: a copy under .agents/handoff sourced the real lib.sh,
+#      PB_ROOT pointed into the real repo and the helpers committed there) ----
+echo "v0.24.22 tests/lib.sh refuses a suite that does not live in PB_ROOT/tests"
+GD="$(mk_tmp)"; mkdir -p "$GD/repo/tests" "$GD/repo/.agents/handoff" "$GD/tmpbase" "$GD/other"
+cp "$PB_ROOT/tests/lib.sh" "$GD/repo/tests/lib.sh"
+printf '. "$(dirname "$0")/lib.sh"\ntouch "$PB_ROOT/WROTE"\nt_ok in_place\nt_summary\n' > "$GD/repo/tests/test-x.sh"
+printf '. "%s/tests/lib.sh"\ntouch "$PB_ROOT/WROTE"\nt_ok stray\nt_summary\n' "$GD/repo" > "$GD/repo/.agents/handoff/test-x.sh"
+printf '. "%s/tests/lib.sh"\ntouch "%s/WROTE"\nt_ok stray\nt_summary\n' "$PB_ROOT" "$GD/other" > "$GD/other/test-x.sh"
+run env -u PB_LIB_ALLOW_ANYWHERE TMPDIR="$GD/tmpbase" bash "$GD/repo/.agents/handoff/test-x.sh"
+assert_rc "v24.22 a copy under the repo (.agents/handoff) exits 2" 2
+assert_contains "v24.22 ... and says why" "$OUT" "refusing to run"
+assert_not_contains "v24.22 ... no suite output" "$OUT" "passed"
+assert_no_path "v24.22 ... nothing written into the repo" "$GD/repo/WROTE"
+assert_eq "v24.22 ... no temp file made before the refusal" "" "$(ls -A "$GD/tmpbase")"
+run env -u PB_LIB_ALLOW_ANYWHERE TMPDIR="$GD/tmpbase" bash "$GD/other/test-x.sh"
+assert_rc "v24.22 a copy in a temp dir that sources the real lib.sh exits 2" 2
+assert_contains "v24.22 ... and says why" "$OUT" "refusing to run"
+assert_no_path "v24.22 ... nothing written" "$GD/other/WROTE"
+assert_no_path "v24.22 ... nothing written into the real repo" "$PB_ROOT/WROTE"
+run env -u PB_LIB_ALLOW_ANYWHERE TMPDIR="$GD/tmpbase" bash "$GD/repo/tests/test-x.sh"
+assert_rc "v24.22 the canonical run (suite in PB_ROOT/tests) works" 0
+assert_contains "v24.22 ... and runs the helpers" "$OUT" "test-x.sh: 1 passed, 0 failed"
+assert_file "v24.22 ... and the suite body ran" "$GD/repo/WROTE"
 t_summary

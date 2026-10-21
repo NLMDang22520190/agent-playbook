@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Minimal test helpers. Bash 3.2 compatible (macOS default). Source this file.
 PB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# Canonical layout only: the suite that sources this file must live in "$PB_ROOT/tests" (both resolved with pwd -P). A copy
+# run from anywhere else (v0.24.21: .agents/handoff/test-x.sh inside the real repo) would point PB_ROOT at a real tree and
+# its helpers could commit or edit there, so it stops here with exit 2 before any helper runs. PB_LIB_ALLOW_ANYWHERE=1 is
+# for the throwaway stub suites that tests/test-lib*.sh generate in temp dirs; never set it for a real suite.
+PB_CALLER="${BASH_SOURCE[1]:-}"
+PB_CALLER_DIR=""
+if [ -n "$PB_CALLER" ]; then PB_CALLER_DIR="$(cd "$(dirname "$PB_CALLER")" 2>/dev/null && pwd -P)"; fi
+if [ "${PB_LIB_ALLOW_ANYWHERE:-}" != 1 ] && [ "$PB_CALLER_DIR" != "$PB_ROOT/tests" ]; then
+  printf 'tests/lib.sh: refusing to run: %s is not in %s/tests (a copy of a suite could change the repo it points at)\n' "${PB_CALLER:-<no sourcing script>}" "$PB_ROOT" >&2
+  exit 2
+fi
 T_PASS=0
 T_FAIL=0
 T_SKIP=0
