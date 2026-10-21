@@ -20,7 +20,7 @@ production code, except in `none` mode (see below); **Lite** runs in one context
 | Spec reviewer (Full) | the spec review report only | any file in the repo | `roles/spec-reviewer.md` |
 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
-Record `git rev-parse HEAD` before each role and pass it as that role's `--base`, so a role that commits is judged. The gate runs after every hand-back.
+Record `git rev-parse HEAD` before each role and every pass and pass it as its `--base`, so a role that commits is judged. The gate runs after every hand-back.
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
 `test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the

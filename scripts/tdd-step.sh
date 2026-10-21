@@ -81,34 +81,47 @@ refuse() { echo "error: $1 - nothing committed" >&2; exit 1; }
 # the "unchanged since the baseline" note lines of a gate output
 notes_of() { printf '%s\n' "$1" | grep -F "$NOTEP" || true; }
 
-# After git commit: a hook may have added a path that was never judged. Args: the judged paths.
-# Any extra path in HEAD undoes the commit (HEAD back, work tree kept), names the paths, exits 1.
+# Before tdd-step stages anything: remember HEAD and the index file (a copy outside the work tree).
+save_state() {
+  pre_head="$(git rev-parse HEAD)" || pb_die "cannot read HEAD" 3
+  idx="$(git rev-parse --git-path index)" || pb_die "cannot find the index" 3
+  idx_had=0
+  if [ -f "$idx" ]; then cp -p "$idx" "$tmpd/index.save" || pb_die "cannot save the index" 3; idx_had=1; fi
+}
+
+# After git commit. Args: the judged paths. The commit must sit directly on the pre-run HEAD and hold
+# exactly the judged paths (a git hook may add a path or commit on top). Otherwise: HEAD back to the
+# pre-run HEAD, the saved index file restored byte for byte, the reason and the extra paths named, exit 1.
 check_commit() {
-  local -a extra=(); local g e hit
+  local -a extra=(); local g e hit why=""
   while IFS= read -r -d '' g; do
     hit=0
     for e in "$@"; do if [ "$e" = "$g" ]; then hit=1; break; fi; done
     [ "$hit" -eq 1 ] || extra+=("$g")
   done < <(git diff-tree --root --no-commit-id --name-only -r -z --no-renames HEAD)
-  [ ${#extra[@]} -gt 0 ] || return 0
-  if git rev-parse -q --verify HEAD~1 >/dev/null 2>&1; then
-    git reset -q --soft HEAD~1 || pb_die "cannot undo the commit" 3
-  else
-    git update-ref -d HEAD || pb_die "cannot undo the first commit" 3
+  if [ "$(git rev-parse -q --verify 'HEAD^' 2>/dev/null)" != "$pre_head" ]; then
+    why="HEAD is not a single commit on the pre-run HEAD (a git hook committed on top)"
   fi
-  GIT_LITERAL_PATHSPECS=1 git reset -q -- "${extra[@]}" 2>/dev/null || true
-  if [ ${#untr[@]} -gt 0 ]; then GIT_LITERAL_PATHSPECS=1 git reset -q -- "${untr[@]}" 2>/dev/null || true; fi
-  echo "error: the commit held paths that were not judged (a git hook added them); the commit is undone, the work tree is kept - nothing committed:" >&2
-  for g in "${extra[@]}"; do printf '  %s\n' "$g" >&2; done
+  if [ ${#extra[@]} -gt 0 ]; then
+    why="${why:+$why; }the commit held paths that were not judged (a git hook added them)"
+  fi
+  [ -n "$why" ] || return 0
+  git reset -q --soft "$pre_head" || pb_die "cannot undo the commit" 3
+  if [ "$idx_had" -eq 1 ]; then
+    cp -p "$tmpd/index.save" "$idx" || pb_die "cannot restore the index" 3
+  else
+    rm -f "$idx"
+  fi
+  echo "error: $why; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
+  for g in ${extra[@]+"${extra[@]}"}; do printf '  %s\n' "$g" >&2; done
   exit 1
 }
 
-tmpd=""
+tmpd="$(mktemp -d "${TMPDIR:-/tmp}/tdd-step.XXXXXX")" || pb_die "cannot create a temp dir" 3
+trap 'rm -rf "$tmpd"' EXIT
 if [ -z "$baseline" ]; then
   run_gate || exit 1
 else
-  tmpd="$(mktemp -d "${TMPDIR:-/tmp}/tdd-step.XXXXXX")" || pb_die "cannot create a temp dir" 3
-  trap 'rm -rf "$tmpd"' EXIT
   gout="$(run_gate)"; grc=$?
   [ -z "$gout" ] || printf '%s\n' "$gout"
   [ "$grc" -eq 0 ] || exit 1
@@ -190,6 +203,7 @@ if [ "$commit" -eq 1 ]; then
         && echo "notice: added .agents/handoff/ to $excl (local exclude, not .gitignore)"
     fi
   fi
+  save_state
   if [ -n "$baseline" ]; then
     if [ ${#untr[@]} -gt 0 ]; then
       GIT_LITERAL_PATHSPECS=1 git add -- "${untr[@]}" || pb_die "git add failed" 3
