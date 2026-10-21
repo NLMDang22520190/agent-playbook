@@ -101,7 +101,7 @@ run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" -
 assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
 
 # ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
-# node evals/transcript.js LOG prints these twelve KEY=VALUE lines (one each, nothing else; exit 0; asked= since v0.24.13, models= since v0.24.0, last):
+# node evals/transcript.js LOG prints these thirteen KEY=VALUE lines (one each, nothing else; exit 0; asked= since v0.24.13, prose_q= since v0.24.21, models= since v0.24.0, last):
 #   json=1|0               LOG has stream-json lines (a line that parses as an object with a "type")
 #   result_ok=1|0          the last "result" line is not an error (is_error false, or subtype success), as run-evals.sh result_ok
 #   cost=<number>|         total_cost_usd of the last result line that has one, as JSON prints it; empty after "=" when none
@@ -113,6 +113,7 @@ assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(prin
 #   ran_tests=1|0|na       (v0.21.0) a Bash tool_use that runs node --test, npm test, npm run test or proof-run.sh; na when json=0
 #   spec_first=1|0|na     (v0.22.0) a Write/Edit of a path ending .agents/handoff/01-spec.md comes before the first Write/Edit under src/ (1), after it or never (0); na when json=0
 #   asked=<N>|na          (v0.24.13) the number of tool_use blocks named AskUserQuestion; na when json=0
+#   prose_q=<N>|na        (v0.24.21) the number of questions (? at a sentence end) in the result text outside code and > lines; na without a result line
 # It also writes the result text to LOG.result (no trailing newline added); with no result line it removes a stale LOG.result.
 echo "v0.18.0 AC4.1 evals/transcript.js"
 TS="$PB_ROOT/evals/transcript.js"
@@ -136,8 +137,8 @@ kv() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
 nkeys() { printf '%s\n' "$OUT" | grep -c '^[a-z_]*='; }
 run node "$TS" "$TJ/pos.log"
 assert_rc "AC4.1 transcript.js on a stream-json log exits 0" 0
-assert_eq "AC4.1 output is exactly twelve KEY=VALUE lines (v0.24.0 adds models=, v0.24.13 adds asked=)" "12" "$(nkeys)"
-assert_eq "AC4.1 and nothing else (no extra lines)" "12" "$(printf '%s\n' "$OUT" | grep -c .)"
+assert_eq "AC4.1 output is exactly thirteen KEY=VALUE lines (v0.24.0 adds models=, v0.24.13 adds asked=, v0.24.21 adds prose_q=)" "13" "$(nkeys)"
+assert_eq "AC4.1 and nothing else (no extra lines)" "13" "$(printf '%s\n' "$OUT" | grep -c .)"
 assert_eq "AC4.1 pos: json=1" "1" "$(kv json)"
 assert_eq "AC4.1 pos: result_ok=1" "1" "$(kv result_ok)"
 assert_eq "AC4.1 pos: cost=0.1234" "0.1234" "$(kv cost)"
@@ -160,11 +161,12 @@ assert_eq "AC4.1 neg: tdd_order=bad (tests/ written before the skill)" "bad" "$(
 assert_eq "AC4.1 neg: feedback_captured=0 (the words only inside an echo)" "0" "$(kv feedback_captured)"
 assert_eq "AC4.1 neg: full_named=0 (not Full)" "0" "$(kv full_named)"
 assert_eq "AC4.1 neg: untested_label=0 (All tests pass.)" "0" "$(kv untested_label)"
+assert_eq "AC4.1 neg: prose_q=0 (no question in the reply)" "0" "$(kv prose_q)"
 assert_eq "AC4.1 neg: <log>.result holds the result text" "Weight: Lite, not Full. All tests pass." "$(cat "$TJ/neg.log.result" 2>/dev/null)"
 echo stale > "$TJ/plain.log.result"
 run node "$TS" "$TJ/plain.log"
 assert_rc "AC4.1 transcript.js on a plain-text log exits 0" 0
-assert_eq "AC4.1 plain: twelve keys" "12" "$(nkeys)"
+assert_eq "AC4.1 plain: thirteen keys" "13" "$(nkeys)"
 assert_eq "AC4.1 plain: json=0" "0" "$(kv json)"
 assert_eq "AC4.1 plain: result_ok=0" "0" "$(kv result_ok)"
 assert_eq "AC4.1 plain: cost empty" "" "$(kv cost)"
@@ -173,6 +175,7 @@ assert_eq "AC4.1 plain: tdd_order=na" "na" "$(kv tdd_order)"
 assert_eq "AC4.1 plain: feedback_captured=na" "na" "$(kv feedback_captured)"
 assert_eq "AC4.1 plain: full_named=na (no result line)" "na" "$(kv full_named)"
 assert_eq "AC4.1 plain: untested_label=na (no result line)" "na" "$(kv untested_label)"
+assert_eq "AC4.1 plain: prose_q=na (no result line)" "na" "$(kv prose_q)"
 assert_no_path "AC4.1 plain: no <log>.result (a stale one is removed)" "$TJ/plain.log.result"
 echo stale > "$TJ/skillonly.log.result"
 run node "$TS" "$TJ/skillonly.log"
