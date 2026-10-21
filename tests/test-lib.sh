@@ -63,4 +63,20 @@ if printf '%s\n' "$LIBCMT" | grep -Eq '(10|ten)[- ]process'; then t_ok "R3 m3 th
 if printf '%s\n' "$LIBCMT" | grep -Fq 'unreadable'; then t_ok "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')"; else t_bad "R3 m3 the comment says the bound holds for unreadable files (the word 'unreadable')" "no 'unreadable' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Fq 'clean filter'; then t_ok "R3 m3 the comment names a failing clean filter"; else t_bad "R3 m3 the comment names a failing clean filter" "no 'clean filter' in the comment"; fi
 if printf '%s\n' "$LIBCMT" | grep -Eq 'bisect'; then t_ok "R3 m3 the comment says a readable file that fails bisects"; else t_bad "R3 m3 the comment says a readable file that fails bisects" "no word bisect in the comment"; fi
+
+
+# ---- feedback #5: pb_redact key-prefix rules need a token-start boundary ----
+echo "feedback #5 scripts/lib.sh pb_redact: a key prefix inside an ordinary word is not redacted"
+redact() { ( . "$SLIB"; printf '%s\n' "$1" | pb_redact ); }
+assert_eq "fb5 task-documentation-... unchanged" "task-documentation-abcdefghijkl" "$(redact 'task-documentation-abcdefghijkl')"
+assert_eq "fb5 a mask-... unchanged" "a mask-documentation-abcdefghijkl" "$(redact 'a mask-documentation-abcdefghijkl')"
+assert_eq "fb5 ask-... after a space unchanged" "an ask-abcdefghijklmnop here" "$(redact 'an ask-abcdefghijklmnop here')"
+assert_eq "fb5 sk- token at line start" "[REDACTED]" "$(redact 'sk-abcdefghijklmnop')"
+assert_eq "fb5 sk- token after a space" "key [REDACTED] end" "$(redact 'key sk-abcdefghijklmnop end')"
+assert_eq "fb5 ghp_ token after =" "X=[REDACTED]" "$(redact 'X=ghp_abcdefghijklmnop')"
+assert_eq "fb5 AKIA token after a double quote" '"[REDACTED]"' "$(redact '"AK''IAABCDEFGHIJKLMNOP"')"
+assert_eq "fb5 JSON key value" '{"k": "[REDACTED]"}' "$(redact '{"k": "sk-abcdefghijklmnop"}')"
+assert_eq "fb5 sk- token after a colon" "v:[REDACTED]" "$(redact 'v:sk-abcdefghijklmnop')"
+assert_eq "fb5 token inside a URL" "https://h/p?x=[REDACTED]" "$(redact 'https://h/p?x=gho_abcdefghijklmnop')"
+assert_eq "fb5 xoxb token after a slash" "/[REDACTED]" "$(redact '/xoxb-abcdefghijklmnop')"
 t_summary
