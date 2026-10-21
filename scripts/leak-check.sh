@@ -74,7 +74,7 @@ conf_values() {
 utf8_locale() {
   local c
   for c in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
-    if printf '\304\220' | LC_ALL="$c" grep -qiF "$(printf '\304\221')" 2>/dev/null; then printf '%s' "$c"; return 0; fi
+    if printf '\304\220' | LC_ALL="$c" grep -qi "$(printf '\304\221')" 2>/dev/null; then printf '%s' "$c"; return 0; fi
   done
   return 0
 }
