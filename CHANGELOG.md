@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.24.22 - 2026-10-21
+- **tdd-step.sh checks what it commits on the default path too (Full):** after every commit each judged path's
+  committed entry must equal what was judged (the real index on the default path, a `--only`-style scratch index on
+  `--baseline`), so a pre-commit hook that edits, re-adds or changes the mode of a judged path is undone; HEAD must be
+  a single-parent commit on the pre-run HEAD (a merge commit made by a hook is undone). The default path now takes a
+  snapshot and HEAD before and after the test command and runs the gate again (its output printed only on failure),
+  as `--baseline` did; print mode runs the same checks. A moved HEAD is reported as the tree diff from the pre-run
+  HEAD. Paths with a newline or a \002 byte are refused up front. Behaviour change: a test command that writes a
+  non-ignored file (for example `__pycache__/`) is now refused on the default path; ignore it or clean it up. Normal
+  RED/GREEN output is byte for byte unchanged, apart from git's LF/CRLF warnings under core.autocrlf=true, which the
+  snapshot and second gate on `--baseline` no longer echo (printed only on failure). Spec review 2 rounds (D1); code review 2 rounds (round 1: the content
+  check failed open past the argument limit, and the user chose to fix the merge-commit hook gap now).
+- **Test suites refuse to run outside tests/ (Lite):** a copy of a suite run from elsewhere in the repo could commit
+  into it; tests/lib.sh now exits 2 there.
+- **role-gate (Lite):** `check` prints a note when `--base` is not an ancestor of HEAD; `snapshot --out` refuses a
+  symlink into a tracked file.
+- **mutate.sh skips `<` `>` `<=` `>=` mutants in .jsx/.tsx** (they break JSX syntax instead of testing logic) (Lite).
+- **Redaction:** key prefixes need a token-start boundary, so words that merely contain a prefix stay readable (Lite).
+- **The Windows aggregator run block, the tag guard and the docs-only fail lines are tested by behaviour.**
+- **Docs:** a clearer `--base` rule, the tdd-step flags in the usage line, and one worktree per concurrent task
+  (harnesses.md, "Several tasks, one repository").
+- **Shard weights** from the v0.24.21 CI run (the tdd-step parts are now CI-measured); the new commit-gap suites
+  test-tdd-step-d.sh, -e.sh and -f.sh carry estimated weights (398/201/352: 0.87 x their local Git Bash times, to be replaced by CI times).
+- **Run 15** recorded (v0.24.21: E1 6/6, E4 4/4, E21 6/6, 2.92 USD).
+
 ## 0.24.21 - 2026-10-21
 - **Every role gate gets the sha from before the role (Full):** SKILL.md tells the orchestrator to record
   `git rev-parse HEAD` before each role and every pass and pass it as that role's `--base` (the tester, reviewer and
