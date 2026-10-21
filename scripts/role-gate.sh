@@ -62,7 +62,8 @@
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
 #
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest)
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest) | 130 / 143 interrupted
+# (INT / TERM)
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -185,7 +186,9 @@ bl_states() {
   [ -n "$list" ] || return 0
   if [ -z "$BL_TMPW" ]; then
     BL_TMPW="$(mktemp "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || return 3
-    trap 'exit 1' INT TERM
+    # an interrupt exits 128 + the signal number (v0.24.21), never 1 (a violation) or 0; the EXIT trap removes the temp file
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     trap bl_cleanup EXIT
   fi
   printf '%s\n' "$list" > "$BL_TMPW" || return 3
