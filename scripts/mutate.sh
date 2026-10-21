@@ -22,6 +22,7 @@
 # of dead owners or reused pids (a stale one left by a kill -9); a live run's worktree is never touched. A temp dir without an
 # owner file is removed only when it is older than 24 hours.
 # Before the first mutant CMD runs once unmutated; when it does not pass, exit 4.
+# A CMD that is only an interpreter name (bash, sh, node, python3, ...) is refused with exit 2: it runs nothing.
 # Every CMD run is limited by --timeout S (default 120): a portable background watchdog, no GNU timeout.
 # A mutant where CMD exits 0 survived; a failing or timed-out run killed it.
 # Output: "survived: file:line: <original line> -> <mutant line>", "killed (timeout): file:line", then
@@ -60,6 +61,12 @@ while [ $# -gt 0 ]; do
   shift 2
 done
 [ -n "$base" ] && [ -n "$cmd" ] || usage
+# A command that is only an interpreter name runs nothing (stdin is /dev/null): it passes unmutated and every mutant
+# survives. It is what is left of --test "bash x.sh" when the calling shell drops the quotes (wsl.exe from PowerShell does).
+case "$cmd" in
+  bash | sh | dash | zsh | ksh | env | node | perl | ruby | python | python3)
+    die "--test '$cmd' is only an interpreter name and runs nothing: the quotes around the test command were probably lost in the calling shell (wsl.exe from PowerShell drops inner double quotes; put the command in a script file)" 2 ;;
+esac
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not a git repository" 3
 [ -n "$root" ] || die "not a git repository" 3
