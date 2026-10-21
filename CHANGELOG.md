@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.24.23 - 2026-10-21
+- **tdd-step.sh: a branch switch is refused, and every undo is safe (Full):**
+  - The branch is read with `git symbolic-ref -q HEAD` before and after the test command. A test command that switches, detaches or attaches HEAD is refused, and nothing is committed. An unreadable branch gives exit 3.
+  - With `--commit`, the branch list (refs/heads) is recorded and compared after every commit. A hook that moves, creates or deletes any branch is caught.
+  - The undo moves only the pre-run branch, by compare-and-swap. It never moves, creates or deletes another ref. The old `git reset --soft` could move an unrelated branch back.
+  - Exit 1 ("nothing committed") is used only when the undo is complete. Every other case gives exit 3, naming each ref as "REF: was OLD, now NEW" and the current HEAD.
+  - A failed `git commit` after a hook switched the branch gets the same undo.
+  - When a hook took the role's work out of the work tree (switched to another branch, detached elsewhere, or reset --hard), the step exits 3. It names the commit and its parent and prints the recovery line `git checkout C -- .` (decision D3).
+  - Spec review: 2 rounds, plus the user's decisions ("Exit 3, keep newb", "Always compare"). Code review: 3 rounds.
+- **tdd-step.sh --baseline: a staged exec bit is no longer dropped silently (Full):**
+  - `git commit --only` cannot carry a staged +x or -x under core.filemode=false, or a +x with a 644 file on disk. Such a path is now refused before the commit, the index is restored, and the message names the path.
+  - Print mode prints a warning for it instead.
+  - Print mode stays byte-identical to v0.24.22 and writes no object.
+- **The tdd-step checks the v0.24.22 review left untested** (the single-parent check and each pipe_ok) are now pinned by mutant-killing tests.
+- **Limits are documented in the tdd-step.sh header:**
+  - a commit inside an untracked nested repository is not seen;
+  - only a mode staged in the index is checked;
+  - another worktree committing during the step causes exit 3.
+- **mutate.sh refuses a bare interpreter name as the test command (Lite).** `--test bash` and similar exit 2. A command whose quotes were lost on the way in (for example PowerShell to `wsl -e`) used to pass every mutant without running the tests.
+- **Tests:**
+  - The new tdd-step suites g to q are split so that each takes at most about 420 s on a local Git Bash.
+  - `grep -i -F` was replaced, because it aborts in Git for Windows grep 3.0.
+  - The exec-bit rows probe a .js file before relying on chmod.
+- **Shard weights** now come from three CI runs. The new suites carry estimated weights: 0.87 x their local Git Bash time, or Linux time x 35 when not yet measured.
+- **Run 16** recorded (v0.24.22: E1 6/6, E4 4/4, E21 6/6, 2.32 USD).
+
 ## 0.24.22 - 2026-10-21
 - **tdd-step.sh checks what it commits on the default path too (Full):** after every commit each judged path's
   committed entry must equal what was judged (the real index on the default path, a `--only`-style scratch index on

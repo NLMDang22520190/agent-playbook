@@ -254,3 +254,18 @@ guard after v0.24.21 changed skills/playbook-tdd/SKILL.md (every role gate gets 
 Total 2.92 USD of the 3 USD cap. The E21 alias rule (v0.24.18) is still not exercised by a real run.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 16: v0.24.22 installed - E1, E4, E21 (2026-10-21, approved by the user, 3 USD cap)
+
+Run on the installed v0.24.22 from Windows Git Bash with the Claude Code harness and `--clean-env`. Purpose: the eval
+guard after v0.24.22 changed skills/playbook-tdd/SKILL.md (a clearer --base rule, the tdd-step flags in the usage line).
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E1 | 6/6 | 1 | 0.49 | |
+| E4 | 4/4 | 0 | 0.31 | |
+| E21 | 6/6 | 0 | 1.52 | every call site renamed |
+
+Total 2.32 USD of the 3 USD cap.
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
