@@ -180,8 +180,8 @@ dirty() {
 }
 # snap REPO -> prints the path of a baseline manifest recorded now (outside the work tree)
 snap() { local f; f="$(mk_tmp)/baseline.txt"; ( cd "$1" && bash "$GATE" snapshot --out "$f" >/dev/null 2>&1 ); printf '%s\n' "$f"; }
-# can_name NAME -> 0 when the file system accepts a file with that exact name (NTFS refuses TAB, control, : and *)
-can_name() { local d; d="$(mk_tmp)"; { : > "$d/$1"; } 2>/dev/null && [ -f "$d/$1" ] && [ "$(ls "$d" | wc -l | tr -d ' ')" = "1" ]; }
+# can_name NAME -> 0 when the file system stores a file with that exact name AND git lists it back byte for byte (NTFS drops or maps TAB, control, newline, : and *)
+can_name() { local d lf; d="$(mk_tmp)"; lf="$(mk_tmp)/lsout"; git -C "$d" init -q 2>/dev/null || return 1; { : > "$d/$1"; } 2>/dev/null || return 1; git -C "$d" ls-files --others -z > "$lf" 2>/dev/null && printf '%s\0' "$1" | cmp -s - "$lf"; }
 noeol_ls() { git -C "$1" -c core.quotepath=off ls-tree -r --name-only -z HEAD | tr '\0' '\n'; }
 
 echo "AC3 red --base: the tester's own commit is judged"
@@ -411,8 +411,8 @@ assert_not_contains "AC5 default green: no note about --base" "$OUT" "no --base"
 # ---------------------------------------------------------------------------------------------------------------
 # v0.24.21 lane G, fix round 1 (review findings)
 # ---------------------------------------------------------------------------------------------------------------
-# can_nl -> 0 when the file system stores a file name holding a newline (probed by globbing: ls would print two lines)
-can_nl() { local d; d="$(mk_tmp)"; { : > "$d/a"$'\n'"b"; } 2>/dev/null || return 1; set -- "$d"/*; [ $# -eq 1 ] && [ -f "$1" ]; }
+# can_nl -> 0 when a file name holding a newline is stored and listed back unchanged
+can_nl() { can_name "a"$'\n'"b"; }
 # can_exec -> 0 when a file made executable here really runs (NTFS mounts refuse the mode)
 can_exec() { local d f; d="$(mk_tmp)"; f="$d/h.sh"; printf '#!/bin/sh\nexit 0\n' > "$f"; chmod +x "$f" 2>/dev/null; [ -x "$f" ] && "$f" 2>/dev/null; }
 
