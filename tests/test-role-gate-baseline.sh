@@ -687,6 +687,50 @@ if printf '%s\0' "$CRN" | cmp -s - "$LSF"; then
   if printf '%s' "$OUT" | grep -q "$(printf '\r')"; then t_bad "N2 the output holds no raw CR" "$(printf '%s' "$OUT" | od -c | head -3)"; else t_ok "N2 the output holds no raw CR"; fi
 else t_skip 3 "N2 CR path (this file system cannot store a CR in a name, or git does not list it back unchanged)"; fi
 
+# ================= v0.24.21 T1: snapshot --out refuses a tracked file of the repository =================
+echo "v0.24.21 T1 snapshot --out FILE refuses a tracked file of the repository (exit 3) and leaves it untouched"
+W_TR="the manifest path is a tracked file of this repository"
+# same_as NAME FILE COPY: FILE still has the bytes of COPY
+same_as() { if cmp -s "$2" "$3"; then t_ok "$1"; else t_bad "$1" "$(head -2 "$2" 2>/dev/null | tr '\t' '>')"; fi; }
+base_repo; printf 'two\n' > src/mod.js
+KEEP="$(mk_tmp)"; cp src/gone.js "$KEEP/gone"; cp src/mod.js "$KEEP/mod"
+gate snapshot --out src/gone.js
+assert_rc "T1 a relative tracked --out: exit 3" 3
+assert_contains "T1 ... the refusal names the path as given" "$OUT" "$W_TR: src/gone.js"
+assert_not_contains "T1 ... no manifest is reported" "$OUT" "baseline:"
+same_as "T1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+gate snapshot --out "$R/src/gone.js"
+assert_rc "T1 an absolute tracked --out: exit 3" 3
+assert_contains "T1 ... the refusal names the absolute path" "$OUT" "$W_TR: $R/src/gone.js"
+same_as "T1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+cd src || exit 3
+gate snapshot --out mod.js
+cd "$R" || exit 3
+assert_rc "T1 --out a tracked (modified) file relative to a subdirectory: exit 3" 3
+assert_contains "T1 ... named as given" "$OUT" "$W_TR: mod.js"
+same_as "T1 ... the modified tracked file keeps its work-tree bytes" src/mod.js "$KEEP/mod"
+rm -f src/gone.js
+gate snapshot --out src/gone.js
+assert_rc "T1 --out a tracked file deleted from the work tree (still in the index): exit 3" 3
+if [ -e src/gone.js ]; then t_bad "T1 ... the deleted tracked file is not recreated" "src/gone.js exists"; else t_ok "T1 ... the deleted tracked file is not recreated"; fi
+git checkout -q -- src/gone.js
+printf 'new\n' > src/added.js; git add src/added.js; cp src/added.js "$KEEP/added"
+gate snapshot --out src/added.js
+assert_rc "T1 --out a staged new file (tracked in the index): exit 3" 3
+same_as "T1 ... the staged file is untouched" src/added.js "$KEEP/added"
+gate snapshot --out 'src/[g]one.js'
+assert_rc "T1 an untracked --out whose name, read as a glob, would match a tracked file: exit 0 (literal path)" 0
+same_as "T1 ... the tracked file the glob would match is untouched" src/gone.js "$KEEP/gone"
+gate snapshot --out "$R/src/free.txt"
+assert_rc "T1 an untracked --out inside the work tree still works: exit 0" 0
+assert_contains "T1 ... the manifest is written" "$(head -1 src/free.txt 2>/dev/null)" "# role-gate baseline v1"
+# Git Bash: the same tracked file spelled C:/... (cygpath -m) is refused too; git decides, not a string compare
+if command -v cygpath >/dev/null 2>&1 && WIN="$(cygpath -m "$R/src/gone.js" 2>/dev/null)" && [ -n "$WIN" ] && [ "$WIN" != "$R/src/gone.js" ]; then
+  gate snapshot --out "$WIN"
+  assert_rc "T1 the C:/ spelling of a tracked file: exit 3" 3
+  same_as "T1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
+else t_skip 2 "T1 C:/ spelling (no cygpath: not Git Bash)"; fi
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"
