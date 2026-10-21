@@ -7,12 +7,14 @@
 # test-tdd-step-d.sh 398, test-tdd-step-e.sh 201, test-tdd-step-f.sh 352 (new in v0.24.22, the commit-gap suite in three parts): estimates, not CI times: 0.87 x the times on a local Git Bash (457, 231 and 405 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). Measure them in the first CI run and replace them (L-0009).
 # v0.24.23 lane A: test-tdd-step-g.sh 270, -h.sh 332, -i.sh 284, -j.sh 257, -k.sh 239, -l.sh 364 and -m.sh 193 are estimates, not CI times: 0.87 x the seconds of one run on a local Windows Git Bash (310, 382, 326, 295, 275, 418 and 222 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). The old g/i/j were split at section boundaries (k from g, l from i, m from j) so that none is over about 450 s locally (L-0009). Measure them in the first CI run and replace them.
 # v0.24.23 lane A review fix round 1: test-tdd-step-n.sh 315, -o.sh 280 and -p.sh 315 are estimates, not CI times: 35 x the seconds of one run on Linux (9, 8 and 9 s; 35 = the Windows to Linux slowdown seen with the g to m suites). Measure them in the first CI run and replace them (L-0009).
+# v0.24.23 lane A review fix round 2: test-tdd-step-q.sh 350 is an estimate, not a CI time: 35 x the seconds of one run on Linux (10 s; 35 = the Windows to Linux slowdown seen with the g to m suites). Measure it in the first CI run and replace it (L-0009).
 test-evals-grade6-b.sh 445
 test-role-gate-baseline.sh 425
 test-tdd-step-d.sh 398
 test-tdd-step-l.sh 364
 test-evals-grade2.sh 353
 test-tdd-step-f.sh 352
+test-tdd-step-q.sh 350
 test-ci-tree-tested-steps.sh 340
 test-role-gate-batch.sh 340
 test-ship-b.sh 339

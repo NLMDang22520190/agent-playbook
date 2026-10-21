@@ -33,3 +33,20 @@ XBSORT_STUB='#!/bin/sh
 last=""; for x in "$@"; do last="$x"; done
 case "$last" in */xb.raw) : > "@CNT@"; exit 9 ;; esac
 exit $rc'
+
+# review fix round 2 (suite test-tdd-step-q.sh): post-commit hooks that take the role file out of the work tree without attaching HEAD to another branch.
+# Each records C (the commit it runs for) in .git/csha first, as HK_EXISTC does.
+HK_DETE="$(mkhook q1 'git rev-parse HEAD > .git/csha' 'git checkout -q --detach existing')"
+HK_RESET="$(mkhook q2 'git rev-parse HEAD > .git/csha' 'git reset -q --hard HEAD~1')"
+# the HEAD reflog is emptied after the switch: C can no longer be read from it (only the tip of the pre-run branch still shows it)
+HK_EXPIRE="$(mkhook q3 'git rev-parse HEAD > .git/csha' 'git checkout -q existing' 'git reflog expire --expire=now --all')"
+# a2_end TAG -> the end state of the undo after a lost-C run: the pre-run branch is back at the pre-run HEAD, HEAD is attached to it, the index file is restored, no other branch moved
+a2_end() {
+  assert_eq "$1: $MAIN is back at the pre-run HEAD" "$H0" "$(tip "$MAIN")"
+  assert_eq "$1: HEAD is attached to $MAIN" "refs/heads/$MAIN" "$(headref)"
+  assert_eq "$1: HEAD is at the pre-run HEAD" "$H0" "$(head_of "$R")"
+  assert_eq "$1: every branch tip is as before" "$REFS0" "$(refs "$R")"
+  assert_eq "$1: the index file is restored byte for byte" "same" "$(same_idx)"
+  assert_eq "$1: no test(red) commit reachable from any ref" "" "$(red_any)"
+  assert_not_contains "$1: no RED= line" "$OUT" "RED="
+}
