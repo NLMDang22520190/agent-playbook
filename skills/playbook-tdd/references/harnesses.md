@@ -19,6 +19,18 @@ Pass the effort (`role-model.sh <role> --harness <h> --effort`) where the harnes
 
 Build every sub-agent prompt from `templates/role-prompt.md` (fixed part first, then spec, then the slice), so the fixed prefix can be cached.
 
+## Several tasks, one repository
+
+Give each concurrent task its own worktree (`git worktree add`) and never share one work tree between tasks: the gate judges every change in the tree, so another task's edits or a moved HEAD would land in your gate. Within one task, changes that already existed before the first role are recorded with a snapshot and passed to every gate.
+
+```bash
+git worktree add ../myrepo-task-a -b task-a
+bash ~/.agents/playbook/scripts/role-gate.sh snapshot --out baseline.txt
+bash ~/.agents/playbook/scripts/role-gate.sh check <role> --base <sha> --baseline baseline.txt
+```
+
+The gate has no option to ignore changes outside a role's scope, on purpose: a role could edit outside its scope unseen. A separate worktree gives the same isolation without that blind spot.
+
 ## Honest limit
 
 The same model in fresh contexts still shares blind spots. A different reviewer model, the mutation spot-check, and the user's own review of the AC table reduce this but do not remove it.

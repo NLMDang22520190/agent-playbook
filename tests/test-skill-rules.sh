@@ -236,8 +236,8 @@ chk "v0.24.21 r2 the rule near Mechanical enforcement says every pass as well as
 echo "v0.24.22 the tdd-step line names --base and --baseline; shared checkouts"
 chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKILL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
 HARN="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
-chk "v0.24.22 harnesses.md: concurrent tasks each get their own git worktree add" "$HARN" 'git worktree add.{0,400}(never|not)[^.]{0,60}(share|same)|(never|not)[^.]{0,60}(share|same)[^.]{0,200}git worktree add'
-chk "v0.24.22 harnesses.md: pre-existing changes use role-gate.sh snapshot and --baseline" "$HARN" 'role-gate\.sh snapshot.{0,300}--baseline|--baseline.{0,300}role-gate\.sh snapshot'
+chk "v0.24.22 harnesses.md: concurrent tasks each get their own git worktree add" "$HARN" 'git worktree add.{0,250}(never|not)[^.]{0,60}(share|same)|(never|not)[^.]{0,60}(share|same)[^.]{0,200}git worktree add'
+chk "v0.24.22 harnesses.md: pre-existing changes use role-gate.sh snapshot and --baseline" "$HARN" 'role-gate\.sh snapshot.{0,250}--baseline|--baseline.{0,250}role-gate\.sh snapshot'
 chk "v0.24.22 harnesses.md: says why no path-scope for out-of-scope changes" "$HARN" '(outside|out-of)[- ]?(its )?scope.{0,200}(unseen|not seen|unnoticed)|(unseen|not seen|unnoticed).{0,200}(outside|out-of)[- ]?(its )?scope'
 NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
 NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"

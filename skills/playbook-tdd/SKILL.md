@@ -20,7 +20,7 @@ production code, except in `none` mode (see below); **Lite** runs in one context
 | Spec reviewer (Full) | the spec review report only | any file in the repo | `roles/spec-reviewer.md` |
 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
-Record `git rev-parse HEAD` before each role and every pass and pass it as its `--base`, so a role that commits is judged. The gate runs after every hand-back.
+Before each role and every pass, record `git rev-parse HEAD` as the role's `--base` (a committing role is judged). The gate runs after every hand-back.
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
 `test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
@@ -238,7 +238,7 @@ confirm_models=on-change is the default (an unknown value counts as on-change); 
 Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
 sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREEN step
 (gate, then the test command as evidence, optional checkpoint commit) use
-`bash ~/.agents/playbook/scripts/tdd-step.sh red|green`.
+`bash ~/.agents/playbook/scripts/tdd-step.sh red|green` (`--base` red, `--baseline` both).
 How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.
 Native roles get the full role file plus the allowed input paths, never your conversation or opinions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
 
