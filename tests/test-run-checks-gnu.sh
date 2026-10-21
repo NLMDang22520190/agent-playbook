@@ -68,7 +68,7 @@ gnu_case "the word in another tool: a prefixed grep" tests/zz-gnu.sh "my$G $PF '
 gnu_case "the word in another tool: a --date option" tests/zz-gnu.sh "foo --$DT $DD x" pass
 gnu_case "the word in another tool: a prefixed readlink" scripts/zz-gnu.sh "my$RL $FF x" pass
 # ---- v0.24.24: grep with both ignore-case and fixed-strings aborts in Git for Windows grep 3.0 (core dump, rc 134) ----
-echo "v0.24.24 grep -i with -F is refused (Git for Windows grep 3.0 aborts)"
+echo "v0.24.24 a grep with ignore-case and fixed-strings is refused (Git for Windows grep 3.0 aborts)"
 # spelled through variables, so this file does not trip its own check
 CK="ignore-case+fixed-strings"; QIF="-qiF"; I1="-i"; F1="-F"; FI="-Fi"; LI="--ignore-case"; LF="--fixed-strings"
 gnu_case "ignore-case and fixed-strings in one cluster"        tests/zz-gnu.sh   "$G $QIF x f" fail "$CK"
