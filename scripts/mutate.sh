@@ -10,6 +10,8 @@
 # One mutant per (line, operator), on the first whole-token occurrence on the line, in this order:
 #   == != | === !== | -eq -ne | -lt -ge | -gt -le | && || | true false | return 0 return 1
 #   and, only in non-shell files (shell uses < and > for redirection): < >= | > <=
+#   (no < > <= >= mutant in .jsx and .tsx either: a JSX tag <Foo, </ or > becomes a comparison, the file no longer
+#   compiles, and that would count as a killed mutant; every other operator still applies there)
 #   (=== and !== are swapped as whole tokens; == and != never match inside them. There are no arithmetic mutants:
 #   they are withdrawn (decision D-U3), as telling code from strings, comments and heredocs needs a tokenizer.)
 # At most --max mutants (default 20).
@@ -197,13 +199,15 @@ if [ "$max" -gt 0 ] && [ -s "$run/files" ]; then
     function add(tok, repl, kind, nonshell) {
       nops++; otok[nops] = tok; orepl[nops] = repl; okind[nops] = kind; onon[nops] = nonshell
     }
-    function process(n, line,   t, i, p, isshell) {
+    function process(n, line,   t, i, p, isshell, isjsx) {
       t = line
       sub(/^[ \t]+/, "", t)
       if (t == "" || substr(t, 1, 1) == "#" || substr(t, 1, 2) == "//") return
       isshell = (file ~ /\.(sh|bash|zsh|ksh)$/)
+      isjsx = (file ~ /\.(jsx|tsx)$/)
       for (i = 1; i <= nops; i++) {
         if (onon[i] && isshell) continue
+        if (onon[i] && isjsx) continue
         p = find(line, otok[i], okind[i])
         if (p > 0) print file SEP n SEP line SEP (substr(line, 1, p - 1) orepl[i] substr(line, p + length(otok[i])))
       }
