@@ -299,8 +299,9 @@ else
 fi
 
 echo "AC4 --baseline: a control character in a path commits nothing"
-CTLN="tests/c"$'\001'"d.test.js"
-if can_name "c"$'\001'"d"; then
+CTLB="$(printf '\033')"   # ESC: a control byte other than TAB
+CTLN="tests/c${CTLB}d.test.js"
+if can_name "c${CTLB}d"; then
   R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
   printf 'test("n", () => {});\n' > "$R/tests/ok.test.js"
   printf 'test("n", () => {});\n' > "$R/$CTLN"

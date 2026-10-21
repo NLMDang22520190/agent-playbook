@@ -229,9 +229,9 @@ chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0
 chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
 echo "v0.24.21 AC1: every role's gate gets the sha recorded before the role"
 chk "v0.24.21 AC1 SKILL.md tells to record git rev-parse HEAD" "$SKILL_ONE" 'git rev-parse HEAD'
-chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforcement)" "$SKILL_ONE" 'Mechanical enforcement.{0,600}rev-parse HEAD|rev-parse HEAD.{0,600}Mechanical enforcement'
+chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforcement)" "$SKILL_ONE" 'Mechanical enforcement.{0,250}rev-parse HEAD|rev-parse HEAD.{0,250}Mechanical enforcement'
 chk "v0.24.21 AC1 the rule: record before each role, pass it as --base to that role's gate" "$SKILL_ONE" 'before (each|every|any) role.{0,200}--base|rev-parse HEAD.{0,250}--base'
-chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,300}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
+chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,250}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
 NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
 NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
