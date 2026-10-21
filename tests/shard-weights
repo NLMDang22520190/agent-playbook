@@ -10,7 +10,7 @@
 # test-role-gate-committed.sh 128 (new in v0.24.20): measured on a local Git Bash (12 of its 68 assertions skip there); replace it
 # with a CI time (L-0009).
 # test-tdd-step.sh 245, test-tdd-step-b.sh 319, test-tdd-step-c.sh 319 (the v0.24.21 split of test-tdd-step.sh): estimates, the 883 s measured on a local Git Bash split by each part's Linux time share (10, 13, 13 s); replace them with CI times (L-0009).
-# test-tdd-step-d.sh 250 (new in v0.24.22, the commit-gap suite split from the tdd-step fix rounds): an estimate, not measured (about 65 tdd-step runs, 342 assertions); measure it on a local Git Bash and then in the first CI run and replace it (L-0009).
+# test-tdd-step-d.sh 151, test-tdd-step-e.sh 164 (new in v0.24.22, the commit-gap suite split from the tdd-step fix rounds, then halved into d and e): estimates, not measured. Linux times 21.5 s and 23.4 s (the suite as one: about 45 s) times 7, the ratio of test-tdd-step-c.sh (12 s on Linux, 332 s on CI); measure them on a local Git Bash and then in the first CI run and replace them (L-0009).
 test-evals-grade6-b.sh 409
 test-role-gate-batch.sh 359
 test-evals-grade.sh 350
@@ -35,7 +35,6 @@ test-role-model.sh 264
 test-evals-grade2-e20-capture.sh 260
 test-ship.sh 257
 test-evals-grade2-e20.sh 255
-test-tdd-step-d.sh 250
 test-tdd-step.sh 245
 test-evals-budget.sh 240
 test-leak-check-push.sh 228
@@ -44,7 +43,9 @@ test-leak-check-mode.sh 222
 test-role-gate-baseline.sh 220
 test-ship-c.sh 218
 test-role-model-b.sh 173
+test-tdd-step-e.sh 164
 test-run-checks-sections.sh 155
+test-tdd-step-d.sh 151
 test-evals-grade5.sh 147
 test-release-tool.sh 143
 test-role-gate-committed.sh 128
