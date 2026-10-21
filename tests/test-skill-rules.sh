@@ -222,9 +222,36 @@ chk "AC9 says to run the snapshot before the first role" "$PRE" 'snapshot[^.]{0,
 chk "AC9 names the --baseline option" "$PRE" '\-\-baseline'
 chk "AC9 says --baseline goes to every gate" "$PRE" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
 chk "AC9 ties it to a dirty tree" "$PRE" 'dirty|pre-existing|already (changed|modified)'
-chk "AC9 tells not to use tdd-step.sh with a dirty tree" "$PRE" "(do not|don.t|never|not) use[^.]{0,30}tdd-step\.sh|tdd-step\.sh[^.]{0,60}(not|never)"
+# v0.24.21: tdd-step.sh learns --baseline, so the dirty-tree clause changes from "do not use tdd-step.sh" to "pass --baseline to it too"
+chk "v0.24.21 AC1 (was AC9 v0.24.17) says to pass --baseline to tdd-step.sh as well" "$PRE" '(pass|give)[^.]{0,30}--baseline[^.]{0,40}tdd-step\.sh|tdd-step\.sh[^.]{0,40}--baseline'
+if printf '%s' "$PRE" | grep -qiE -- "(do not|don.t|never) use[^.]{0,30}tdd-step\.sh"; then t_bad "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone" "still in the Preconditions section"; else t_ok "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone"; fi
 chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
 chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
+echo "v0.24.21 AC1: every role's gate gets the sha recorded before the role"
+chk "v0.24.21 AC1 SKILL.md tells to record git rev-parse HEAD" "$SKILL_ONE" 'git rev-parse HEAD'
+chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforcement)" "$SKILL_ONE" 'Mechanical enforcement.{0,600}rev-parse HEAD|rev-parse HEAD.{0,600}Mechanical enforcement'
+chk "v0.24.21 AC1 the rule: record before each role, pass it as --base to that role's gate" "$SKILL_ONE" 'before (each|every|any) role.{0,200}--base|rev-parse HEAD.{0,250}--base'
+chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,300}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
+NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
+NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
+assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
+if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
+chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
+chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
+
+echo "v0.24.21 AC2: role files, README and the beginners doc show the gates with --base"
+TESTERMD="$PB_ROOT/skills/playbook-tdd/roles/tester.md"
+SPECREVMD="$PB_ROOT/skills/playbook-tdd/roles/spec-reviewer.md"
+chk "v0.24.21 AC2 roles/tester.md: the tester gate is shown with --base" "$(tr '\n' ' ' < "$TESTERMD")" 'role-gate\.sh`? check tester --base'
+chk "v0.24.21 AC2 roles/spec-reviewer.md: the reviewer gate is shown with --base" "$(tr '\n' ' ' < "$SPECREVMD")" 'role-gate\.sh`? check reviewer --base'
+for f in README.md docs/tdd-for-beginners.md; do
+  case "$f" in README.md) pat='role-gate check (tester|reviewer)' ;; *) pat='gate (tester|reviewer)' ;; esac
+  NA="$(grep -cE -- "$pat" "$PB_ROOT/$f")"
+  NB="$(grep -E -- "$pat" "$PB_ROOT/$f" | grep -c -- '--base')"
+  if [ "$NA" -ge 2 ]; then t_ok "v0.24.21 AC2 $f has the tester and reviewer gate lines: $NA"; else t_bad "v0.24.21 AC2 $f has the tester and reviewer gate lines" "found $NA"; fi
+  assert_eq "v0.24.21 AC2 $f: every tester/reviewer gate line shows --base" "$NA" "$NB"
+done
+
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$TW" -le 3577 ]; then t_ok "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored): $TW"; else t_bad "R13 SKILL.md is at most 3577 words (3792 at v0.24.12; the none-mode rule restored)" "$TW words"; fi
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
