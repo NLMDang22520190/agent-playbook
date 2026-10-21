@@ -9,7 +9,7 @@ If a generic TDD or sub-agent skill applies (for example Superpowers `test-drive
 or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
 reviewer's re-run, not their "implementer writes and runs its own tests" model.
 
-At **Full** weight the **orchestrator** (you, in the main session) coordinates and writes no tests or
+At **Full** weight the **orchestrator** (you) coordinates and writes no tests or
 production code, except in `none` mode (see below); **Lite** runs in one context (see "Pick the weight").
 
 | Role | Writes | Must not | Prompt |
@@ -20,12 +20,12 @@ production code, except in `none` mode (see below); **Lite** runs in one context
 | Spec reviewer (Full) | the spec review report only | any file in the repo | `roles/spec-reviewer.md` |
 
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
-Prompt rules alone are not enough; the gate runs after every hand-back.
+Record `git rev-parse HEAD` before each role and every pass and pass it as its `--base`, so a role that commits is judged. The gate runs after every hand-back.
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
 `test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
 implementer may change. Order: the tester first writes tests that exercise the infra change and sees
-them fail (`check tester`, commit RED); then a different context makes the change and passes
+them fail (`check tester --base <sha before the role>`, commit RED); then a different context makes the change and passes
 `role-gate.sh check infra --base $RED`. Without the key, infra files count as tests.
 
 **Why:** an agent that writes both code and tests writes tests that agree with its own mistakes,
@@ -65,7 +65,7 @@ If the work meets a Full criterion, the user override above applies, with its la
 with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
 
 **Why:** three fresh contexts cost minutes and tokens per slice: little gain for a small
-reversible fix, the cheapest insurance for hard-to-reverse changes.
+reversible fix.
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
@@ -102,11 +102,10 @@ A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test 
 that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
 CLI flag and a file format, or two endpoints).
 
-**Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low
-without hiding which behaviour broke.
+**Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low.
 
 ## Preconditions
-- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate (check the digest matches), and do not use `tdd-step.sh` (it commits everything): commit only the role's paths by hand.
+- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
   then confirm with the user (or run `playbook-setup`).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
@@ -134,7 +133,7 @@ touches before you fix the scope.
 **Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
 context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
 sentence with the ACs. Its report is its only output: the orchestrator saves it to `.agents/handoff/01b-spec-review.md` and
-runs `role-gate.sh check reviewer`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
+runs `role-gate.sh check reviewer --base <sha before the role>`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
 rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
 
 Gaps, by reversibility: a reading that is ambiguous and hard to reverse is asked before any
@@ -148,7 +147,7 @@ the request was ambiguous. Re-read the AC table before each commit.
 For slice S:
 1. **RED (tester).** Start a fresh tester with `roles/tester.md` and the inputs it lists. When it
    returns:
-   - `role-gate.sh check tester`, which must pass;
+   - `role-gate.sh check tester --base <sha before the role>`, which must pass;
    - run the tests yourself with `proof-run.sh --label red-S`: they must fail **for the right reason**
      (see `references/tdd-guide.md#right-reason`);
    - if the tester listed "Stubs needed" (compiled languages): run a short implementer pass limited
@@ -170,24 +169,24 @@ interactive run show the first finished slice to the user and wait for an OK bef
 `autonomy=full`, show it in the report and do not wait. In a non-interactive run, continue without waiting and log in
 `decisions.md` that the checkpoint was skipped.
 
-**Why:** a wrong pattern copied into five slices costs five fixes; one look at the first slice costs one.
+**Why:** a wrong pattern copied into five slices costs five fixes.
 
 **Parallel slices.** Slices whose files are disjoint (per the spec's Impact section)
 may run in parallel: each slice gets its own git worktree on its own branch, where its tester then its
 implementer work, with its own red and green commits and role gates (`role-gate.sh check ... --base` the
 slice's own RED sha, run inside that worktree). The orchestrator merges the slice branches into the feature branch.
-A merge conflict means the slices were not disjoint after all, so those slices go back to serial work. Slices that
+A merge conflict means the slices were not disjoint, so those slices go back to serial work. Slices that
 share a file stay serial from the start. After the merge, one review covers the merged feature (Phase 3), never
 one per parallel slice. Remove the slice worktrees once their branches are merged.
 
-**Why:** disjoint slices cannot break each other; a conflict cheaply signals they were not disjoint.
+**Why:** disjoint slices cannot break each other.
 
 ### Phase 3: Review (reviewer, read-only)
 **One reviewer per feature, not per slice:** after the last slice, start one fresh reviewer with
 `roles/reviewer.md` for the whole diff. Review a single slice early only when that slice alone is
 hard to reverse (a migration, a public API change) and later slices build on it.
 Prefer a different model (resolve it with `role-model.sh reviewer --harness <h>`). Give it the spec, the base sha from before
-slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer` (nothing in the repo changed).
+slice 1, all slice reports, and the evidence logs. Then run `role-gate.sh check reviewer --base <sha before the role>` (nothing in the repo changed).
 Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the listed findings
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
 Release speed rules (review-round cap, introduced vs pre-existing findings, per-item weight, slow runs once) are in `references/release.md`.

@@ -30,6 +30,6 @@ Findings:
 - [REVISE] src/export.js:4 calls parse_date but the spec's Impact lists no caller there. Evidence: ...
 ```
 Verdict OK means the first tester may start; REVISE sends the findings back to the spec.
-The orchestrator then runs `role-gate.sh check reviewer` (nothing in the repo changed).
+The orchestrator then runs `role-gate.sh check reviewer --base <sha before the role>` (nothing in the repo changed).
 
 Write only inside the repository you were given, besides the playbook's ~/.agents files, never next to the repository; scratch files go under .agents/handoff/ (or the system temp dir).
