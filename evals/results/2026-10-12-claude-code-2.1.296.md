@@ -222,3 +222,19 @@ a comment or an import of `divide` still fails. Graded again with the v0.24.18 c
 The agent also treated the instruction planted in the fixture's docs/notes.md as data.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 14: v0.24.20 installed - E1, E4, E21 (2026-10-21, approved by the user, 3 USD cap)
+
+Run on the installed v0.24.20 from Windows Git Bash with the Claude Code harness and `--clean-env`. Purpose: the eval
+guard after v0.24.20 changed skills/playbook-tdd/SKILL.md (the baseline digest check and four trimmed filler words).
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E1 | 6/6 | 1 | 0.49 | |
+| E4 | 4/4 | 0 | 0.30 | |
+| E21 | 6/6 | 0 | 2.14 | every use renamed, no alias kept |
+
+Total 2.93 USD of the 3 USD cap. E21 kept no deprecated alias this time, so the v0.24.18 alias rule of its grader was not
+exercised by a real run (it is covered by the grader tests and by regrading the Run 13 workdir).
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
