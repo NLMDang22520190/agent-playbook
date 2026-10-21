@@ -930,6 +930,96 @@ mac_mutant run_or_exit 'outputs.run }}" ] && exit 0' 'outputs.run }}" ] || exit 
 mac_mutant cancelled_passes '          exit 1' '          [ "${{ needs.macos-shard.result }}" = cancelled ] && exit 0
           exit 1'
 
+echo "v0.24.22 workflow: the Windows aggregator run block, the tag guard and the docs-only fail lines by behaviour"
+# win_agg_script FILE -> the run: script of the job named "test (windows-latest)" (de-indented); empty when missing
+win_agg_script() {
+  local f="$1" id j
+  id=""
+  for j in $(WF="$f" wf_jobs); do [ "$(WF="$f" wf_name "$j")" = "test (windows-latest)" ] && { id="$j"; break; }; done
+  [ -n "$id" ] || return 0
+  WF="$f" wf_block "$id" | awk '/^        run: [|]/ { f = 1; next } f && /^          / { sub(/^          /, ""); print; next } f { exit }'
+}
+# win_agg_rc FILE SHARD REUSE RUN -> the exit code of the Windows aggregator script with those three values
+win_agg_rc() {
+  local s; s="$(win_agg_script "$1")"
+  [ -n "$s" ] || { echo "none"; return 0; }
+  s="${s//\$\{\{ needs.windows-shard.result \}\}/$2}"
+  s="${s//\$\{\{ needs.reuse.result \}\}/$3}"
+  s="${s//\$\{\{ needs.reuse.outputs.run \}\}/$4}"
+  bash -c "$s" >/dev/null 2>&1; echo "$?"
+}
+win_agg_matrix() {
+  local f="$1"
+  echo "$(win_agg_rc "$f" success skipped "") $(win_agg_rc "$f" failure skipped "") $(win_agg_rc "$f" cancelled skipped "") $(win_agg_rc "$f" skipped skipped "") $(win_agg_rc "$f" skipped success "") $(win_agg_rc "$f" skipped success 123) $(win_agg_rc "$f" skipped failure 123)"
+}
+WIN_WANT="0 1 1 1 1 0 1"
+assert_eq "v0.24.22 the Windows aggregator script exits: success 0; failure 1; cancelled 1; skipped+reuse skipped 1; skipped+reuse success+empty run 1; skipped+reuse success+run 123 0; skipped+reuse failure+run 123 1" "$WIN_WANT" "$(win_agg_matrix "$PB_ROOT/.github/workflows/test.yml")"
+WINW="$(mk_tmp)"
+WINY="$(cat "$PB_ROOT/.github/workflows/test.yml")"
+WIN_SUCC='[ "${{ needs.windows-shard.result }}" = success ] && exit 0'
+WIN_REUSE='[ "${{ needs.windows-shard.result }}" = skipped ] && [ "${{ needs.reuse.result }}" = success ] && [ -n "${{ needs.reuse.outputs.run }}" ] && exit 0'
+WIN_REUSE_OR='[ "${{ needs.windows-shard.result }}" = skipped ] && [ "${{ needs.reuse.result }}" = success ] && [ -n "${{ needs.reuse.outputs.run }}" ] || exit 0'
+WIN_NOTFAIL='[ "${{ needs.windows-shard.result }}" != failure ] && exit 0'
+WIN_SUCC_OR='[ "${{ needs.windows-shard.result }}" = success ] || exit 0'
+WIN_CANCEL='[ "${{ needs.windows-shard.result }}" = cancelled ] && exit 0'
+# win_mutant NAME FROM TO: a copy of the workflow with the first FROM replaced by TO must change the exit-code matrix
+win_mutant() {
+  local to="$3" c got r qa qb qc   # no ${v/p/r}: bash 3.2 keeps quotes in the replacement; cut at the first match instead
+  case "$WINY" in *"$2"*) c="${WINY%%"$2"*}$to${WINY#*"$2"}" ;; *) c="$WINY" ;; esac
+  if [ "$c" = "$WINY" ]; then t_bad "v0.24.22 mutant [$1] applies to test.yml" "pattern not found: $2"; return 0; fi
+  qa="$(printf '%s' "$WINY" | tr -cd '"' | wc -c | tr -d ' ')"; qb="$(printf '%s' "$c" | tr -cd '"' | wc -c | tr -d ' ')"
+  qc=$(( $(printf '%s' "$to" | tr -cd '"' | wc -c | tr -d ' ') - $(printf '%s' "$2" | tr -cd '"' | wc -c | tr -d ' ') ))
+  assert_eq "v0.24.22 mutant [$1] copy holds the intended text and no stray quote" "$qc" "$((qb - qa))"
+  case "$c" in *"$to"*) t_ok "v0.24.22 mutant [$1] copy contains its replacement text" ;; *) t_bad "v0.24.22 mutant [$1] copy contains its replacement text" "missing: $to" ;; esac
+  printf '%s\n' "$c" > "$WINW/$1.yml"
+  got="$(win_agg_matrix "$WINW/$1.yml")"
+  if [ "$got" != "$WIN_WANT" ]; then r="caught"; else r="survived: $got"; fi
+  assert_eq "v0.24.22 mutant [$1] of the Windows aggregator is caught by the exit-code matrix" "caught" "$r"
+}
+win_mutant win_success_to_notfailure "$WIN_SUCC" "$WIN_NOTFAIL"
+win_mutant win_success_or_exit "$WIN_SUCC" "$WIN_SUCC_OR"
+win_mutant win_run_or_exit "$WIN_REUSE" "$WIN_REUSE_OR"
+win_mutant win_cancelled_passes "$WIN_REUSE
+          exit 1" "$WIN_REUSE
+          $WIN_CANCEL
+          exit 1"
+
+# F2: the tag exclusion of both aggregators is a conjunction (always() || !startsWith(..) would run on tags)
+and_not_tag() { printf '%s\n' "$1" | grep -Fq "&& !startsWith(github.ref, 'refs/tags/')"; }
+if and_not_tag "$AGGIF"; then t_ok "v0.24.22 F2 the Windows aggregator if: ANDs the tag exclusion (&& !startsWith(github.ref, 'refs/tags/'))"; else t_bad "v0.24.22 F2 the Windows aggregator if: ANDs the tag exclusion" "if line: [$AGGIF]"; fi
+if and_not_tag "$MACAGGIF"; then t_ok "v0.24.22 F2 the macOS aggregator if: ANDs the tag exclusion (&& !startsWith(github.ref, 'refs/tags/'))"; else t_bad "v0.24.22 F2 the macOS aggregator if: ANDs the tag exclusion" "if line: [$MACAGGIF]"; fi
+# the helper must reject the || mutant of both real lines (cut at the first match, no ${v/p/r})
+for pair in "win:$AGGIF" "mac:$MACAGGIF"; do
+  ml="${pair#*:}"
+  case "$ml" in *"&& !startsWith"*) ml="${ml%%"&& !startsWith"*}|| !startsWith${ml#*"&& !startsWith"}" ;; esac
+  case "$ml" in
+    *"|| !startsWith"*) if and_not_tag "$ml"; then t_bad "v0.24.22 F2 the || mutant of the ${pair%%:*} aggregator if: is rejected" "accepted: [$ml]"; else t_ok "v0.24.22 F2 the || mutant of the ${pair%%:*} aggregator if: is rejected"; fi ;;
+    *) t_bad "v0.24.22 F2 the || mutant of the ${pair%%:*} aggregator if: applies" "line: [$ml]" ;;
+  esac
+done
+
+# F3: the docs-only steps keep `|| fail=1` on every suite and on the evals; the Versions step keeps `|| true` (shellcheck may be absent)
+# fail_lines_ok BLOCK -> 0 when both `|| fail=1` lines are present
+fail_lines_ok() { printf '%s\n' "$1" | grep -Fxq '            bash "$t" || fail=1' && printf '%s\n' "$1" | grep -Fxq '          bash evals/run-checks.sh || fail=1'; }
+# versions_ok BLOCK -> 0 when the Versions step keeps (shellcheck --version || true)
+versions_ok() { printf '%s\n' "$1" | grep -Fq '(shellcheck --version || true)'; }
+for pair in "test:${MAIN:-__none__}" "macos-shard:${MACSHARD:-__none__}" "windows-shard:${SHARD:-__none__}"; do
+  label="${pair%:*}"; id="${pair##*:}"
+  JB="$(wf_block "$id")"
+  if fail_lines_ok "$JB"; then t_ok "v0.24.22 F3 $label docs-only step keeps || fail=1 on the suites and on evals/run-checks.sh"; else t_bad "v0.24.22 F3 $label docs-only step keeps || fail=1 on the suites and on evals/run-checks.sh" "block: $JB"; fi
+  for fl in 'bash "$t" || fail=1' 'bash evals/run-checks.sh || fail=1'; do
+    fm="$JB"
+    case "$JB" in *"$fl"*) fm="${JB%%"$fl"*}${fl%|| fail=1}&& fail=1${JB#*"$fl"}" ;; esac
+    if [ "$fm" != "$JB" ] && ! fail_lines_ok "$fm"; then t_ok "v0.24.22 F3 $label mutant [&& fail=1 on: $fl] is caught"; else t_bad "v0.24.22 F3 $label mutant [&& fail=1 on: $fl] is caught" "mutant applied: $([ "$fm" != "$JB" ] && echo yes || echo no)"; fi
+  done
+  if [ "$label" != windows-shard ]; then
+    if versions_ok "$JB"; then t_ok "v0.24.22 F3 $label Versions step keeps (shellcheck --version || true)"; else t_bad "v0.24.22 F3 $label Versions step keeps (shellcheck --version || true)" "block: $JB"; fi
+    fm="$JB"
+    case "$JB" in *"|| true)"*) fm="${JB%%"|| true)"*}&& true)${JB#*"|| true)"}" ;; esac
+    if [ "$fm" != "$JB" ] && ! versions_ok "$fm"; then t_ok "v0.24.22 F3 $label mutant [&& true] on the Versions step is caught"; else t_bad "v0.24.22 F3 $label mutant [&& true] on the Versions step is caught" "mutant applied: $([ "$fm" != "$JB" ] && echo yes || echo no)"; fi
+  fi
+done
+
 echo "v22.3 AC6.2 workflow: release and main-ci are unchanged"
 assert_contains 'v22.3 AC6.2 release keeps needs: [test, windows, main-ci]' "$(wf_needs release)" "[test, windows, main-ci]"
 assert_not_contains 'v0.24.21 AC3c release does not need the macOS jobs (D1: tags skip the suites, main-ci gates the release)' "$(wf_needs release)" "mac"
