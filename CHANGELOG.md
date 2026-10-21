@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.24.21 - 2026-10-21
+- **Every role gate gets the sha from before the role (Full):** SKILL.md tells the orchestrator to record
+  `git rev-parse HEAD` before each role and every pass and pass it as that role's `--base` (the tester, reviewer and
+  spec-reviewer calls in SKILL.md, the role files, README and the beginners doc show `--base <sha before the role>`), so a
+  role that commits is judged (the v0.24.20 non-goal N4). `tdd-step.sh red --base REF` passes it to the tester gate and
+  prints a note without it.
+- **tdd-step.sh --baseline (Full):** with a dirty tree, red and green pass `--baseline FILE` to the gate and, with
+  `--commit`, commit only the role's paths: status `-z --untracked-files=all` (both rename sides) minus the gate's
+  "unchanged since the baseline" notes and `.agents/handoff/`; literal pathspecs; a snapshot before and after the test
+  command plus an unchanged HEAD, and a second gate run with the same notes, or nothing is committed; control characters
+  (newline included) are refused; an empty list commits nothing. After every commit (both paths) the committed paths
+  must equal the judged ones and HEAD must be one commit on the pre-run HEAD, else the commit is undone and the pre-run
+  index is restored byte for byte (a hook that adds a file or commits on top is caught). Spec review 2 rounds plus the
+  user's decision; code review 3 rounds (round 1: the re-gate untested and the user chose to fix the pre-existing hook
+  gap; round 2: the undo lost staged baseline state; round 3: the parent check untested), each fixed test-first.
+- **Two macOS shards (Full):** the suites common to two runs took 1.68 times longer on the slower macOS runner (677 s
+  against 425 s), so macOS runs as `macos shard 1/2` and `2/2` with a `test (macos-latest)` aggregator (the required
+  check), like Windows; the ubuntu `test` job keeps `os: [ubuntu-latest]`; tools/ci-tree-tested.sh needs both macOS
+  shards (nine suite jobs, eleven green jobs). The aggregator's run block is tested by behaviour (seven result cases,
+  four mutants), under bash 3.2 and 5. Spec review 2 rounds plus the user's decision; review 2 rounds.
+- **role-gate (Lite):** `snapshot --out` refuses a tracked file (exit 3, untouched); an interrupt exits 130/143; a
+  characterization test pins that a mode restore carried only in HEAD stays a violation. Profile: check 27 execve,
+  check --baseline 90, size --baseline 190 (200 paths); symlink/+x batching skipped (no portable exact-bytes batch).
+- **E26 prose questions are graded automatically (Lite):** transcript.js prints `prose_q=` (questions ending in ? in
+  the final reply, outside code and quotes); PASS at 0, FAIL above, MANUAL for plain-text logs.
+- **test-tdd-step split in three** (883 s on a local Git Bash would set a CI shard's floor, L-0009); its name probe
+  now needs git to list the exact name (NTFS drops TAB, ESC, newline, : and *). Weights 245/319/319, estimated.
+- **Run 14** recorded (v0.24.20: E1 6/6, E4 4/4, E21 6/6, 2.93 USD). Feedback triage: 6 issues closed, 7 queued.
+
 ## 0.24.20 - 2026-10-20
 - **Role gates judge committed and staged changes (Full):** `check` judged only BASE..work tree, so a role that committed a
   change and then restored the work tree and index (or staged a change behind a restored work tree) passed every gate
