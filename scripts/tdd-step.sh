@@ -339,7 +339,17 @@ check_commit() {
   elif ! { refs_now && refs_changed "$skip"; }; then bwhy="the branches could not be compared after the commit"; f3=3
   elif [ -s "$tmpd/chg" ]; then bwhy="a git hook moved, created or deleted a branch"
   fi
-  if [ -n "$LOST_C" ] || [ -z "$why" ]; then why="$bwhy"; fi
+  # HEAD moved off the single commit (attached run): when the judged entries are no longer in the work tree
+  # (a hook ran checkout --detach or reset --hard), the work is lost from it too (D3)
+  if [ -z "$LOST_C" ] && [ "$R" != detached ] && [ -s "$tmpd/judged" ] && { [ "$parent_ok" -eq 0 ] || [ "$BR" != "$R" ]; }; then
+    lc="$(find_c)"
+    if [ -n "$lc" ] && [ "$lc" != "$headsha" ]; then
+      local -a jp=()
+      while IFS= read -r line; do jp+=("$line"); done < "$tmpd/judged"
+      git --literal-pathspecs diff --quiet "$lc" -- "${jp[@]}" >/dev/null 2>&1 || LOST_C="$lc"
+    fi
+  fi
+  if [ -n "$bwhy" ] && { [ -n "$LOST_C" ] || [ -z "$why" ]; }; then why="$bwhy"; fi
   [ -n "$why" ] || return 0
   undo_exit "$why" "$f3"
 }
