@@ -51,6 +51,7 @@
 # .agents/handoff/): <work-tree state> TAB <index state> TAB <path>. A work-tree state is absent, unhashable or
 # "<mode> <sha>" (raw bytes, --no-filters; a symlink is 120000 plus the hash of its link text); an index state is
 # none, unhashable or "<mode> <sha>" (stage 0). It prints "baseline: N path(s) recorded in FILE (digest D)".
+# An --out FILE that is a tracked file of the repository is refused, exit 3, and left untouched (v0.24.21).
 # check --baseline FILE skips a changed path ONLY when its current work-tree state and index state both equal the recorded
 # ones (exact strings; unhashable never matches); every other path, and every manifest path whose state changed (a
 # pre-dirty file reverted, a pre-existing untracked file deleted), is judged as today. Each skipped path prints
@@ -557,12 +558,19 @@ usage: role-gate.sh snapshot [--out FILE]" 2 ;;
     done
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "HEAD^{commit}" >/dev/null 2>&1 || pb_die "no HEAD commit to snapshot against" 3
+    out_arg="$out"
     if [ -n "$out" ]; then case "$out" in /* | [A-Za-z]:[/\\]*) ;; *) out="$PWD/$out" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     if [ -z "$out" ]; then
       out="$(git rev-parse --git-path pb-gate-baseline)"
       case "$out" in /* | [A-Za-z]:[/\\]*) ;; *) out="$top/$out" ;; esac
+    fi
+    # never overwrite a tracked file (v0.24.21): git decides (literal pathspec, so a C:/ or /c/ spelling and glob characters
+    # do not matter); a path outside the repository makes ls-files fail and is not tracked
+    if [ -n "$out_arg" ] && [ ! -d "$out" ]; then
+      tracked="$(git --literal-pathspecs ls-files -- "$out" 2>/dev/null)" || tracked=""
+      [ -z "$tracked" ] || pb_die "the manifest path is a tracked file of this repository: $out_arg" 3
     fi
     # a path with a newline cannot be one manifest line: LF is mapped to \002 while the NULs become line ends
     raw="$( { git -c core.quotepath=off diff --name-only -z --no-renames HEAD --
