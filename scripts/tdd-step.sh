@@ -110,46 +110,64 @@ tree_lines() {
   done
 }
 
-# After git commit. Args: the judged paths; $tmpd/expected holds their judged entries (index_lines, sorted). The
-# commit must sit directly on the pre-run HEAD, hold exactly the judged paths and hold exactly the judged entries
-# of them (a git hook may add or change a path, or commit on top). Otherwise: HEAD back to the pre-run HEAD, the
-# saved index file restored byte for byte, the reason and the paths named, exit 1.
-check_commit() {
-  local -a extra=() differ=(); local g e hit why="" parent_ok=0 line
-  if [ "$(git rev-parse -q --verify 'HEAD^' 2>/dev/null)" = "$pre_head" ]; then parent_ok=1; fi
-  if [ "$parent_ok" -eq 1 ]; then
-    git diff-tree --root --no-commit-id --name-only -r -z --no-renames HEAD > "$tmpd/touched" || pb_die "git diff-tree failed" 3
-  elif git merge-base --is-ancestor "$pre_head" HEAD 2>/dev/null; then
-    git diff --name-only --no-renames -z "$pre_head" HEAD > "$tmpd/touched" || pb_die "git diff failed" 3
-  else
-    : > "$tmpd/touched"
-  fi
-  while IFS= read -r -d '' g; do
-    hit=0
-    for e in "$@"; do if [ "$e" = "$g" ]; then hit=1; break; fi; done
-    [ "$hit" -eq 1 ] || extra+=("$g")
-  done < "$tmpd/touched"
-  if [ "$parent_ok" -eq 0 ]; then
-    if [ ${#extra[@]} -gt 0 ]; then
-      why="HEAD is not a single commit on the pre-run HEAD (a git hook committed on top)"
-    else
-      why="HEAD was moved to $(git rev-parse HEAD) (not one commit on $pre_head)"
-    fi
-  elif [ ${#extra[@]} -gt 0 ]; then
-    why="the commit held paths that were not judged (a git hook added them)"
-  elif [ $# -gt 0 ]; then
-    GIT_LITERAL_PATHSPECS=1 git ls-tree -r -z HEAD -- "$@" | tree_lines | LC_ALL=C sort > "$tmpd/got" || pb_die "git ls-tree failed" 3
-    cat "$tmpd/expected" "$tmpd/got" | LC_ALL=C sort | uniq -u | while IFS= read -r line; do printf '%s\n' "${line#*$'\t'}"; done | LC_ALL=C sort -u > "$tmpd/diffl"
-    while IFS= read -r line; do differ+=("$line"); done < "$tmpd/diffl"
-    if [ ${#differ[@]} -gt 0 ]; then why="the commit differs from what was judged (a git hook changed it)"; fi
-  fi
-  [ -n "$why" ] || return 0
-  git reset -q --soft "$pre_head" || pb_die "cannot undo the commit" 3
+# Lines (stdin, "mode sha<TAB>path") whose path is listed in the file $1 (one path per line)
+filter_judged() { awk 'FILENAME == ARGV[1] { j[$0] = 1; next } { p = substr($0, index($0, "\t") + 1); if (p in j) print }' "$1" -; }
+# true when every given pipeline status is 0
+pipe_ok() { local s; for s in "$@"; do [ "$s" -eq 0 ] || return 1; done; }
+restore_index() {
   if [ "$idx_had" -eq 1 ]; then
     cp -p "$tmpd/index.save" "$idx" || pb_die "cannot restore the index" 3
   else
     rm -f "$idx"
   fi
+}
+# a refusal after tdd-step staged something: the saved index file comes back first
+refuse_staged() { restore_index; refuse "$1"; }
+
+# After git commit. $tmpd/judged holds the judged paths (one per line), $tmpd/expected their judged entries
+# (index_lines, sorted). The commit must be exactly one commit on the pre-run HEAD, hold exactly the judged paths
+# and hold exactly the judged entries of them (a git hook may add or change a path, or commit or merge on top).
+# Any git failure while checking counts as a failed check. Otherwise: HEAD back to the pre-run HEAD, the saved
+# index file restored byte for byte, the reason and the paths named, exit 1.
+check_commit() {
+  local -a extra=() differ=(); local g why="" parent_ok=0 line headsha plist
+  headsha="$(git rev-parse HEAD)" || headsha=""
+  plist="$(git rev-list --parents -n 1 HEAD)" || plist=""
+  if [ -n "$headsha" ] && [ "$plist" = "$headsha $pre_head" ]; then parent_ok=1; fi
+  : > "$tmpd/extra"
+  if [ "$parent_ok" -eq 1 ] || git merge-base --is-ancestor "$pre_head" HEAD 2>/dev/null; then
+    if git diff --name-only --no-renames -z "$pre_head" HEAD > "$tmpd/touched" \
+      && tr '\0' '\n' < "$tmpd/touched" > "$tmpd/touched.nl" \
+      && awk 'FILENAME == ARGV[1] { j[$0] = 1; next } !($0 in j)' "$tmpd/judged" "$tmpd/touched.nl" > "$tmpd/extra"; then
+      while IFS= read -r g; do extra+=("$g"); done < "$tmpd/extra"
+    else
+      why="the paths of the commit could not be listed"
+    fi
+  fi
+  if [ -n "$why" ]; then
+    :
+  elif [ "$parent_ok" -eq 0 ]; then
+    if [ ${#extra[@]} -gt 0 ]; then
+      why="HEAD is not a single commit on the pre-run HEAD (a git hook committed or merged on top)"
+    else
+      why="HEAD was moved to ${headsha:-an unreadable commit} (not one commit on $pre_head)"
+    fi
+  elif [ ${#extra[@]} -gt 0 ]; then
+    why="the commit held paths that were not judged (a git hook added them)"
+  elif [ -s "$tmpd/judged" ]; then
+    if git ls-tree -r -z HEAD > "$tmpd/headtree" \
+      && tree_lines < "$tmpd/headtree" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/got" && pipe_ok "${PIPESTATUS[@]}" \
+      && LC_ALL=C sort "$tmpd/expected" "$tmpd/got" | uniq -u > "$tmpd/merged" && pipe_ok "${PIPESTATUS[@]}"; then
+      while IFS= read -r line; do printf '%s\n' "${line#*$'\t'}"; done < "$tmpd/merged" | LC_ALL=C sort -u > "$tmpd/diffl"
+      while IFS= read -r line; do differ+=("$line"); done < "$tmpd/diffl"
+      if [ ${#differ[@]} -gt 0 ]; then why="the commit differs from what was judged (a git hook changed it)"; fi
+    else
+      why="the committed entries could not be compared with the judged ones"
+    fi
+  fi
+  [ -n "$why" ] || return 0
+  git reset -q --soft "$pre_head" || pb_die "cannot undo the commit" 3
+  restore_index
   echo "error: $why; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
   for g in ${extra[@]+"${extra[@]}"}; do printf '  %s\n' "$g" >&2; done
   for g in ${differ[@]+"${differ[@]}"}; do printf 'error: the commit differs from what was judged: %s\n' "$g" >&2; done
@@ -173,7 +191,7 @@ if [ "$(LC_ALL=C tr '\0' 'x' < "$tmpd/status0" | wc -l)" -gt 0 ] || [ "$(LC_ALL=
   echo "error: a changed path contains a newline or a \\002 byte: commit the role's paths by hand - nothing committed" >&2
   exit 1
 fi
-bash "$here/role-gate.sh" snapshot --out "$tmpd/before" >/dev/null || pb_die "cannot snapshot the work tree" 3
+GIT_OPTIONAL_LOCKS=0 bash "$here/role-gate.sh" snapshot --out "$tmpd/before" >/dev/null 2>"$tmpd/snap.err" || { cat "$tmpd/snap.err" >&2; pb_die "cannot snapshot the work tree" 3; }
 head_before="$(git rev-parse HEAD)" || pb_die "cannot read HEAD" 3
 
 bash "$here/proof-run.sh" --label "$step" -- "$@"
@@ -189,11 +207,11 @@ elif [ "$rc" -ne 0 ]; then
 fi
 
 # --baseline: the role's paths, from git status after the test command
-bash "$here/role-gate.sh" snapshot --out "$tmpd/after" >/dev/null || refuse "cannot snapshot the work tree after the test command"
+GIT_OPTIONAL_LOCKS=0 bash "$here/role-gate.sh" snapshot --out "$tmpd/after" >/dev/null 2>"$tmpd/snap.err" || { cat "$tmpd/snap.err" >&2; refuse "cannot snapshot the work tree after the test command"; }
 cmp -s "$tmpd/before" "$tmpd/after" || refuse "the test command changed the work tree (a file was written, edited or committed)"
 [ "$(git rev-parse HEAD)" = "$head_before" ] || refuse "HEAD moved while the test command ran"
-gout2="$(run_gate)"; grc2=$?
-[ "$grc2" -eq 0 ] || { printf '%s\n' "$gout2"; refuse "the role gate fails after the test command"; }
+gout2="$(GIT_OPTIONAL_LOCKS=0 run_gate 2>"$tmpd/gate2.err")"; grc2=$?
+[ "$grc2" -eq 0 ] || { printf '%s\n' "$gout2"; cat "$tmpd/gate2.err" >&2; refuse "the role gate fails after the test command"; }
 paths=(); untr=()
 if [ -n "$baseline" ]; then
   notes="$(notes_of "$gout2")"
@@ -244,19 +262,24 @@ if [ "$commit" -eq 1 ]; then
       GIT_LITERAL_PATHSPECS=1 git add -- "${untr[@]}" || pb_die "git add failed" 3
     fi
     # what git commit --only commits: a scratch index of HEAD plus the judged paths from the work tree
-    GIT_INDEX_FILE="$tmpd/scratch.idx" git read-tree HEAD || pb_die "cannot build the scratch index" 3
-    GIT_INDEX_FILE="$tmpd/scratch.idx" GIT_LITERAL_PATHSPECS=1 git add -A -- "${paths[@]}" || pb_die "git add failed" 3
-    GIT_INDEX_FILE="$tmpd/scratch.idx" GIT_LITERAL_PATHSPECS=1 git ls-files -s -z -- "${paths[@]}" | index_lines | LC_ALL=C sort > "$tmpd/expected" || pb_die "cannot read the scratch index" 3
+    GIT_INDEX_FILE="$tmpd/scratch.idx" git read-tree HEAD || refuse_staged "cannot build the scratch index"
+    GIT_INDEX_FILE="$tmpd/scratch.idx" GIT_LITERAL_PATHSPECS=1 git add -A -- "${paths[@]}" || refuse_staged "git add failed"
+    printf '%s\n' "${paths[@]}" > "$tmpd/judged"
+    GIT_INDEX_FILE="$tmpd/scratch.idx" git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the scratch index"
+    index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
+    pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the scratch index"
     GIT_LITERAL_PATHSPECS=1 git commit -q -m "$subject" -- "${paths[@]}" || pb_die "git commit failed" 3
-    check_commit "${paths[@]}"
+    check_commit
   else
     git add -A || pb_die "git add failed" 3
     git reset -q -- .agents/handoff 2>/dev/null || true
-    judged=()
-    while IFS= read -r -d '' g; do judged+=("$g"); done < <(git diff --cached --name-only --no-renames -z)
-    GIT_LITERAL_PATHSPECS=1 git ls-files -s -z -- ${judged[@]+"${judged[@]}"} | index_lines | LC_ALL=C sort > "$tmpd/expected" || pb_die "cannot read the index" 3
+    git diff --cached --name-only --no-renames -z > "$tmpd/judged.z" || refuse_staged "cannot list the staged paths"
+    tr '\0' '\n' < "$tmpd/judged.z" > "$tmpd/judged" || refuse_staged "cannot list the staged paths"
+    git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the index"
+    index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
+    pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the index"
     git commit -q -m "$subject" || pb_die "git commit failed" 3
-    check_commit ${judged[@]+"${judged[@]}"}
+    check_commit
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi
 elif [ -n "$baseline" ]; then
