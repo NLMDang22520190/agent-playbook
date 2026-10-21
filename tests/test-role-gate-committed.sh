@@ -249,4 +249,36 @@ if printf 'x\n' > "$NLC" 2>/dev/null && [ -f "$NLC" ] && nl_stores "$NLC"; then
   blk_check "AC5 newline BASE..HEAD block" 2 $((T_PASS + T_FAIL - B0))
 else rm -f -- "$NLC" 2>/dev/null; t_skip 2 "AC5 newline path in BASE..HEAD (this file system cannot store a newline in a name, or git does not list it back unchanged)"; fi
 
+echo "v0.24.22 --base that is not an ancestor of HEAD: a note on stderr, the verdict and exit code unchanged"
+NOTE_TXT="is not an ancestor of HEAD; to exempt a dirty tree use role-gate.sh snapshot and --baseline (see SKILL.md Preconditions)"
+new_repo; ANC="$(git rev-parse HEAD)"; MAINB="$(git rev-parse --abbrev-ref HEAD)"
+git checkout -q -b snapside; printf 'x\n' > tests/untracked-snap.test.js; git add -A; git commit -qm "snapshot of a dirty tree"
+SNAP="$(git rev-parse HEAD)"; git checkout -q "$MAINB"
+printf 'x\n' > tests/untracked-snap.test.js
+git merge-base --is-ancestor "$SNAP" HEAD 2>/dev/null; assert_eq "NOTE setup: the snapshot commit is not an ancestor of HEAD" "1" "$?"
+# split_run ARGS: the gate in the cwd; OUT is stdout only, ERR is stderr only
+split_run() { local e; e="$(mk_tmp)/err"; OUT="$(env PLAYBOOK_HOME="$IH" bash "$GATE" check "$@" 2>"$e")"; RC=$?; ERR="$(cat "$e")"; }
+split_run implementer --base "$SNAP"
+assert_contains "NOTE non-ancestor base: the note is on stderr" "$ERR" "note: --base $SNAP $NOTE_TXT"
+assert_eq "NOTE ... exactly one such note" "1" "$(printf '%s\n' "$ERR" | grep -c -F -- "--base $SNAP $NOTE_TXT")"
+assert_not_contains "NOTE ... the note is not on stdout" "$OUT" "is not an ancestor"
+NRC="$RC"; NOUT="$OUT"; NERR="$(printf '%s\n' "$ERR" | grep -v -F -- "$NOTE_TXT")"
+OLDN="$(mk_tmp)"
+if git -C "$PB_ROOT" cat-file -e f1d6bce 2>/dev/null && git -C "$PB_ROOT" archive f1d6bce scripts 2>/dev/null | tar -x -C "$OLDN" 2>/dev/null && [ -f "$OLDN/scripts/role-gate.sh" ]; then
+  B0=$((T_PASS + T_FAIL))
+  e="$(mk_tmp)/err"; OOUT="$(env PLAYBOOK_HOME="$IH" bash "$OLDN/scripts/role-gate.sh" check implementer --base "$SNAP" 2>"$e")"; ORC=$?; OERR="$(cat "$e")"
+  assert_eq "NOTE verdict (stdout) equals the gate of f1d6bce" "$OOUT" "$NOUT"
+  assert_eq "NOTE stderr minus the note equals the gate of f1d6bce" "$OERR" "$NERR"
+  assert_eq "NOTE exit code equals the gate of f1d6bce" "$ORC" "$NRC"
+  blk_check "NOTE old-gate comparison block" 3 $((T_PASS + T_FAIL - B0))
+else t_skip 3 "NOTE old-gate comparison (commit f1d6bce is not in this repository)"; fi
+assert_contains "NOTE the verdict is still the violation" "$NOUT" "VIOLATION (implementer): tests/untracked-snap.test.js [test]"
+assert_eq "NOTE ... exit code 1" "1" "$NRC"
+split_run implementer --base "$ANC"
+assert_not_contains "NOTE ancestor base: no note" "$ERR" "is not an ancestor"
+split_run implementer
+assert_not_contains "NOTE default base: no note" "$ERR" "is not an ancestor"
+split_run implementer --base HEAD
+assert_not_contains "NOTE --base HEAD: no note" "$ERR" "is not an ancestor"
+
 t_summary
