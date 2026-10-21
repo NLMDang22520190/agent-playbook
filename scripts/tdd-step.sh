@@ -28,6 +28,10 @@
 #        only when R is back and restores the index. Only R and HEAD changed and all steps ran: exit 1, nothing
 #        committed. Otherwise exit 3, naming the refs and shas left behind and HEAD (a branch is never deleted
 #        or created, also when git commit fails after a hook switched the branch).
+# Limits (v0.24.23): a commit the test command makes inside an untracked nested repo (a gitlink the snapshot
+#        records as unhashable) is not detected. On --baseline, a path whose exec bit staged in the index git commit
+#        --only would not carry is refused (print mode warns); only a mode staged in the index is checked, so a
+#        disk-only exec bit under core.filemode=false is not.
 # --baseline FILE (red and green): passed to the gate (a manifest from role-gate.sh snapshot, for a repo
 #        that was already dirty when the role started). Then --commit commits ONLY the role's paths:
 #        git status (-z, all untracked files, both sides of a rename) minus the paths the gate reported
@@ -134,6 +138,42 @@ restore_index() {
 }
 # a refusal after tdd-step staged something: the saved index file comes back first
 refuse_staged() { restore_index; refuse "$1"; }
+
+# "mode<TAB>path" lines of the stage-0 regular entries (mode 100644 or 100755) of git ls-files -s -z (stdin)
+reg_lines() {
+  local r h m
+  while IFS= read -r -d '' r; do
+    h="${r%%$'\t'*}"; m="${h%% *}"
+    case "$h" in *" 0") ;; *) continue ;; esac
+    case "$m" in 100644 | 100755) printf '%s\t%s\n' "$m" "${r#*$'\t'}" ;; esac
+  done
+}
+# AC4. Needs $tmpd/scratch.idx (what git commit --only commits) and $tmpd/judged. Sets XB to the judged paths (one per line)
+# whose staged exec bit the commit would not carry: a stage-0 regular entry in the real index and in the scratch index with
+# different modes, and the real mode differs from HEAD's (or the path is absent in HEAD).
+xbit_paths() {
+  git ls-files -s -z > "$tmpd/real.z" || return 1
+  reg_lines < "$tmpd/real.z" > "$tmpd/real.m" || return 1
+  GIT_INDEX_FILE="$tmpd/scratch.idx" git ls-files -s -z > "$tmpd/scr.z" || return 1
+  reg_lines < "$tmpd/scr.z" > "$tmpd/scr.m" || return 1
+  git ls-tree -r -z HEAD > "$tmpd/head.z" || return 1
+  tree_lines < "$tmpd/head.z" > "$tmpd/head.m" || return 1
+  awk 'function pth(l) { return substr(l, index(l, "\t") + 1) }
+    FILENAME == ARGV[1] { j[$0] = 1; next }
+    FILENAME == ARGV[2] { r[pth($0)] = substr($0, 1, index($0, "\t") - 1); next }
+    FILENAME == ARGV[3] { s[pth($0)] = substr($0, 1, index($0, "\t") - 1); next }
+    { p = pth($0); h[p] = substr($0, 1, index($0, " ") - 1) }
+    END { for (p in j) if ((p in r) && (p in s) && r[p] != s[p] && (!(p in h) || r[p] != h[p])) print p }' \
+    "$tmpd/judged" "$tmpd/real.m" "$tmpd/scr.m" "$tmpd/head.m" > "$tmpd/xb.raw" || return 1
+  XB="$(LC_ALL=C sort "$tmpd/xb.raw")" || return 1
+  return 0
+}
+xbit_text() {
+  local fm="" cfg
+  cfg="$(git config --bool core.filemode 2>/dev/null)" || cfg=""
+  [ "$cfg" != false ] || fm=" (core.filemode=false)"
+  printf '%s: the exec bit staged in the index would not be committed by git commit --only%s' "$(printf '%s' "$XB" | paste -s -d, - | sed 's/,/, /g')" "$fm"
+}
 
 # HEAD's branch into BR: refs/heads/NAME (attached) or "detached"; returns 1 (BR empty) when git cannot say
 BR=""
@@ -360,6 +400,8 @@ if [ "$commit" -eq 1 ]; then
     GIT_INDEX_FILE="$tmpd/scratch.idx" git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the scratch index"
     index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the scratch index"
+    xbit_paths || refuse_staged "cannot compare the staged modes"
+    [ -z "$XB" ] || refuse_staged "$(xbit_text)"
     GIT_LITERAL_PATHSPECS=1 git commit -q -m "$subject" -- "${paths[@]}" || commit_failed
     check_commit
   else
@@ -384,6 +426,11 @@ elif [ -n "$baseline" ]; then
   printf 'GIT_LITERAL_PATHSPECS=1 git commit -m %q --' "$subject"
   for p in "${paths[@]}"; do printf ' %q' "$p"; done
   printf '\n'
+  GIT_INDEX_FILE="$tmpd/scratch.idx" git read-tree HEAD || refuse "cannot build the scratch index"
+  GIT_INDEX_FILE="$tmpd/scratch.idx" GIT_LITERAL_PATHSPECS=1 git add -A -- "${paths[@]}" || refuse "git add failed"
+  printf '%s\n' "${paths[@]}" > "$tmpd/judged"
+  xbit_paths || refuse "cannot compare the staged modes"
+  [ -z "$XB" ] || echo "warning: $(xbit_text)" >&2
 else
   echo "not committing (no --commit). To commit: git add -A && git commit -m \"$subject\""
 fi
