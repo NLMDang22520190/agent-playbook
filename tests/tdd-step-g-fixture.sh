@@ -62,6 +62,8 @@ exec "@REAL@" "$@"'
 HK_MERGE2="$(mkhook merge2 'touch .git/mg2-done' 'pre=$(git rev-parse HEAD^)' 'cur=$(git rev-parse HEAD)' 't=$(git rev-parse "HEAD^{tree}")' \
   'c=$(git commit-tree "$t" -p "$pre" -p "$cur" -m merged)' 'git update-ref HEAD "$c"')"
 HK_EXIST="$(mkhook h1 'git checkout -q existing')"
+# the same, a post-commit hook that first records the commit C it runs for in .git/csha (the end state of a hook that switches to another branch names C)
+HK_EXISTC="$(mkhook h1c 'git rev-parse HEAD > .git/csha' 'git checkout -q existing')"
 HK_NEWB="$(mkhook h2 'git checkout -q -b newb')"
 HK_BRF="$(mkhook h3 'git branch -f existing HEAD')"
 HK_BRNEW="$(mkhook h4 'git branch extra')"
@@ -69,3 +71,24 @@ HK_BRDEL="$(mkhook h5 'git branch -D existing')"
 HK_DETACH="$(mkhook h6 'git checkout -q --detach')"
 HK_NOOP="$(mkhook h7 'true')"
 
+# a2_lost TAG -> the message of a hook that switched HEAD to another branch and so took the role's files out of the work tree (review round 1, finding 1, decision D3):
+# exit 3, never "nothing committed" or "the work tree is kept", and it names C (the commit the hook ran for, read from .git/csha), C's parent (the pre-run HEAD) and a
+# recovery line "git checkout C -- ."
+a2_lost() {
+  local c l; c="$(cat "$R/.git/csha" 2>/dev/null)"
+  assert_eq "$1: the hook ran (it recorded C)" "yes" "$([ -n "$c" ] && echo yes || echo no)"
+  assert_rc "$1: exit 3" 3
+  assert_not_contains "$1: does not say nothing committed" "$(lower "$OUT")" "nothing committed"
+  assert_not_contains "$1: does not say the work tree is kept" "$(lower "$OUT")" "the work tree is kept"
+  assert_contains "$1: the message names C" "$OUT" "$(s7 "$c")"
+  # the "- git: <sha>+dirty" line of the evidence block shows the pre-run HEAD anyway: it does not count
+  assert_contains "$1: the message names the parent of C (the pre-run HEAD)" "$(printf '%s\n' "$OUT" | grep -v '^- git: ')" "$(s7 "$H0")"
+  l="$(printf '%s\n' "$OUT" | grep -F -- ' -- .')"
+  assert_contains "$1: a recovery line git checkout C -- ." "$l" "git checkout"
+  assert_contains "$1: that recovery line names C" "$l" "$(s7 "$c")"
+}
+# wasnow TAG REF OLD NEW -> a line of the exit-3 message reads exactly "REF: was OLD, now NEW" (old first; "none" = no such branch; the shas in full as the undo read them)
+wasnow() {
+  local l; l="$(printf '%s\n' "$OUT" | grep -F "$2: was ")"
+  assert_contains "$1: a line reads $2: was OLD, now NEW (old first)" "$l" "$2: was $3, now $4"
+}

@@ -3,6 +3,16 @@
 # Source it after lib.sh, tdd-step-fixture.sh, tdd-step-d-fixture.sh and tdd-step-g-fixture.sh. It is not a suite: run-all.sh only starts tests/test-*.sh.
 # Disk mode: "755" = the file is executable on disk when tdd-step runs, "644" = it is not.
 F="tests/x.test.js"
+# can_exec_f -> 0 when a .js file really gets an exec bit here: chmod sticks ([ -x ]) and git (core.filemode=true) stages it 100755. can_exec probes a .sh file, which is no
+# proof: NTFS under msys (Git Bash, the windows-latest runner) keeps the bit only for names it knows (.sh, .exe), so "chmod +x tests/x.test.js" does not stick there.
+can_exec_f() {
+  local d; d="$(mk_tmp)"
+  git -C "$d" init -q 2>/dev/null || return 1
+  printf 'x\n' > "$d/p.test.js"; chmod +x "$d/p.test.js" 2>/dev/null
+  [ -x "$d/p.test.js" ] || return 1
+  git -C "$d" -c core.filemode=true add p.test.js 2>/dev/null || return 1
+  [ "$(git -C "$d" -c core.filemode=true ls-files -s -- p.test.js | cut -d' ' -f1)" = 100755 ]
+}
 # The role gate refuses a tracked file that loses its exec bit relative to --base (VIOLATION (mode)). The rows with a tracked 100755 file (t755) therefore pass
 # --base HEAD~1, the commit before the one that added the file: for the gate the file is new and 100644. The other rows pass no --base.
 # xprep FM HEADKIND DISK STAGE -> R (a dirty repo with a baseline BL) and the role's change to $F:
@@ -44,7 +54,7 @@ xrefuse() {
   label="$name (core.filemode=$fm, disk $disk)"
   xprep "$fm" "$hk" "$disk" "$stage"; x_disk "$label" "$disk"
   x_run --commit
-  l="$(printf '%s\n' "$OUT" | grep -i -F 'the exec bit')"
+  l="$(printf '%s\n' "$OUT" | tr '[:upper:]' '[:lower:]' | grep -F 'the exec bit')"
   assert_rc "$label: exit 1" 1
   assert_contains "$label: a line says the exec bit and names the path" "$l" "$F"
   assert_contains "$label: says nothing committed" "$(lower "$OUT")" "nothing committed"
@@ -80,7 +90,7 @@ xprint() {
   assert_contains "$label: prints the commit commands" "$OUT" "not committing (no --commit)"
   assert_untouched "$label: nothing committed" "$R" "$H0" "$N0"
   assert_eq "$label: the index file is byte for byte as before" "same" "$(same_idx)"
-  l="$(printf '%s\n' "$OUT" | grep -i -F 'exec bit')"
+  l="$(printf '%s\n' "$OUT" | tr '[:upper:]' '[:lower:]' | grep -F 'exec bit')"
   if [ "$warn" = yes ]; then
     assert_contains "$label: a warning line names the path" "$l" "$F"
     assert_contains "$label: the line is a warning" "$(lower "$l")" "warn"

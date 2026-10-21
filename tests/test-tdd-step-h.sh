@@ -24,7 +24,7 @@ branch_case() {
     rm -f "$R/tests/n.test.js"; printf 'module.exports = 3;\n' > "$R/src/impl.js"
     run_in "$R" bash "$STEP" green --base "$H0" --message "m" $flag ${BL:+--baseline "$BL"} -- sh -c "$cmd; exit 0"
   fi
-  errl="$(lower "$(printf '%s\n' "$OUT" | grep -i 'nothing committed')")"
+  errl="$(lower "$(printf '%s\n' "$OUT" | tr '[:upper:]' '[:lower:]' | grep 'nothing committed')")"
   assert_rc "$tag: exit 1" 1
   assert_contains "$tag: a message says nothing committed" "$errl" "nothing committed"
   assert_contains "$tag: that message says branch" "$errl" "branch"

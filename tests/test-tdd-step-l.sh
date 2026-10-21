@@ -30,10 +30,10 @@ a2_left() {
 }
 if can_exec; then
   for MODE in baseline; do
-    # --- exit 1: only main and HEAD had to change
+    # --- exit 3 (checkout existing: the role's files left the work tree) or exit 1 (--detach: the work tree is as committed): only main and HEAD had to change
     T="AC2 post-commit hook: git checkout existing ($MODE)"
-    gprep "$MODE"; run_red --commit sh -c "$(hookcmd "$HK_EXIST" post-commit)"
-    a2_msg "$T" 1; a2_back "$T"
+    gprep "$MODE"; run_red --commit sh -c "$(hookcmd "$HK_EXISTC" post-commit)"
+    a2_lost "$T"; a2_back "$T"
     assert_eq "$T: every branch tip is as before (existing keeps its tip)" "$REFS0" "$(refs "$R")"
     assert_eq "$T: no test(red) commit reachable from any ref" "" "$(red_any)"
     assert_not_contains "$T: no RED= line" "$OUT" "RED="
@@ -45,8 +45,8 @@ if can_exec; then
     assert_eq "$T: no test(red) commit reachable from any ref" "" "$(red_any)"
 
     T="AC2 detached before the run, post-commit hook: git checkout existing ($MODE)"
-    gprep "$MODE" "git checkout -q --detach"; run_red --commit sh -c "$(hookcmd "$HK_EXIST" post-commit)"
-    a2_msg "$T" 1
+    gprep "$MODE" "git checkout -q --detach"; run_red --commit sh -c "$(hookcmd "$HK_EXISTC" post-commit)"
+    a2_lost "$T"
     assert_eq "$T: HEAD is detached again" "detached" "$(headref)"
     assert_eq "$T: HEAD is at the pre-run HEAD" "$H0" "$(head_of "$R")"
     assert_eq "$T: every branch tip is as before" "$REFS0" "$(refs "$R")"
@@ -61,6 +61,7 @@ if can_exec; then
       assert_eq "$T: the other branches are as before" "$REFS0" "$(refs "$R" | grep -v '^refs/heads/newb ')"
       assert_contains "$T: the message names newb" "$OUT" "newb"
       assert_contains "$T: the message names the commit left on newb" "$OUT" "$(s7 "$C")"
+      wasnow "$T" refs/heads/newb none "$C"
       assert_not_contains "$T: no RED= line" "$OUT" "RED="
     done
 
@@ -79,6 +80,7 @@ if can_exec; then
     assert_contains "$T: the message names existing" "$OUT" "existing"
     assert_contains "$T: the message names its old sha" "$OUT" "$(s7 "$E0")"
     assert_contains "$T: the message names its new sha" "$OUT" "$(s7 "$C")"
+    wasnow "$T" refs/heads/existing "$E0" "$C"
     assert_not_contains "$T: no RED= line" "$OUT" "RED="
 
     T="AC2 post-commit hook: git branch extra (a branch created) ($MODE)"
@@ -87,6 +89,7 @@ if can_exec; then
     assert_eq "$T: the other branches are as before" "$REFS0" "$(refs "$R" | grep -v '^refs/heads/extra ')"
     assert_contains "$T: the message names extra" "$OUT" "extra"
     assert_contains "$T: the message names its sha" "$OUT" "$(s7 "$C")"
+    wasnow "$T" refs/heads/extra none "$C"
 
     T="AC2 post-commit hook: git branch -D existing (a branch deleted) ($MODE)"
     gprep "$MODE"; run_red --commit sh -c "$(hookcmd "$HK_BRDEL" post-commit)"
@@ -95,6 +98,7 @@ if can_exec; then
     assert_eq "$T: the other branches are as before" "$(printf '%s\n' "$REFS0" | grep -v '^refs/heads/existing ')" "$(refs "$R")"
     assert_contains "$T: the message names existing" "$OUT" "existing"
     assert_contains "$T: the message names its old sha" "$OUT" "$(s7 "$E0")"
+    wasnow "$T" refs/heads/existing "$E0" none
 
     # --- compare-and-swap and re-attach that cannot run: exit 3, what is left is named
     T="AC2 the compare-and-swap fails (git update-ref refused), a branch was created ($MODE)"

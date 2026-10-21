@@ -5,7 +5,7 @@
 #        (the print-mode rows are in test-tdd-step-m.sh, split off for the local Windows Git Bash time, L-0009)
 #   AC5  the header comment of scripts/tdd-step.sh states the nested-repo limit and the disk-only exec bit limit
 # Shared setup: tdd-step-fixture.sh, tdd-step-d-fixture.sh, tdd-step-g-fixture.sh and tdd-step-j-fixture.sh. Cases that already pass on v0.24.22 are named "control" or "unchanged".
-# Disk mode: "755" = the file is executable on disk when tdd-step runs, "644" = it is not. Rows that need a real exec bit are skipped where the file system has none (can_exec).
+# Disk mode: "755" = the file is executable on disk when tdd-step runs, "644" = it is not. Rows that need a real exec bit are skipped where the file system has none (can_exec_f).
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/tdd-step-fixture.sh"
 . "$(dirname "$0")/tdd-step-d-fixture.sh"
@@ -17,11 +17,11 @@
 echo "AC4 --baseline --commit: a staged mode that git commit --only would not carry is refused before the commit (the table, row by row)"
 # disk 644 rows do not need a real exec bit when core.filemode=false (git ignores the disk bit); every other row does
 xrefuse "AC4 row 1 new path, staged +x"             false new  644 plus
-if can_exec; then
+if can_exec_f; then
   xrefuse "AC4 row 2 new path, staged +x"           false new  755 plus
 fi
 xrefuse "AC4 row 3 tracked 100644, staged +x"       false t644 644 plus
-if can_exec; then
+if can_exec_f; then
   xrefuse "AC4 row 4 tracked 100755, staged -x" false t755 755 minus
   xrefuse "AC4 row 5 new path, staged +x"           true  new  644 plus
 else
@@ -31,7 +31,7 @@ else
 fi
 
 echo "AC4 control: rows that commit as today"
-if can_exec; then
+if can_exec_f; then
   xcommit "AC4 row 6 control: new path, staged +x, executable on disk" true new 755 plus 100755
   xcommit "AC4 row 7 control: tracked 100755 chmod -x on disk, edited, nothing staged (the user's intent: 100644)" true t755 644 none 100644
   xcommit "AC4 row 8 control: a path staged 100644" true new 644 plain 100644
