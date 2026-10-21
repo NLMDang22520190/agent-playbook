@@ -35,6 +35,29 @@ EQ=differ; [ "$N7" = "$N1" ] && EQ=same
 assert_eq "AC2/3 normalizer: an extra word stays different" "differ" "$EQ"
 
 # ---------------------------------------------------------------------------------------------------------------
+echo "AC2/AC3 git line-ending warning filter: only the exact LF/CRLF warning lines are dropped from the compared outputs"
+# With core.autocrlf=true (Windows Git Bash and the windows-latest runner) git prints "warning: in the working copy of PATH, LF will be replaced by CRLF the next time Git touches it".
+# How many of them appear depends on which stderr a script lets through and on racy-git timestamps, so they are environment noise, not behaviour: drop them from BOTH outputs
+# before the "unchanged ... byte-identical output" comparisons. The dedicated autocrlf test (crlf_same_as_old) does not use this filter. Every other line stays byte for byte.
+dropw() { printf '%s\n' "$1" | sed -E "/^warning: in the working copy of '[^']*', LF will be replaced by CRLF the next time Git touches it$/d"; }
+W1="warning: in the working copy of 'tests/n.test.js', LF will be replaced by CRLF the next time Git touches it"
+W2="warning: in the working copy of 'src/x y.js', LF will be replaced by CRLF the next time Git touches it"
+BASEOUT=$'first line\nsecond line'
+WOUT=$'first line\n'"$W1"$'\nsecond line\n'"$W2"
+WOUT2=$'first line\nsecond line\n'"$W1"
+assert_eq "AC2/3 warning filter: output with warnings equals output without" "$(dropw "$BASEOUT")" "$(dropw "$WOUT")"
+assert_eq "AC2/3 warning filter: a different number of warnings is equal" "$(dropw "$WOUT2")" "$(dropw "$WOUT")"
+assert_eq "AC2/3 warning filter: the other lines are kept" "$BASEOUT" "$(dropw "$WOUT")"
+EQ=differ; [ "$(dropw "$BASEOUT")" = "$(dropw $'first line\nsecond line CHANGED')" ] && EQ=same
+assert_eq "AC2/3 warning filter: a differing other line stays different" "differ" "$EQ"
+EQ=differ; [ "$(dropw "$BASEOUT")" = "$(dropw $'first line\nsecond line\nwarning: something else')" ] && EQ=same
+assert_eq "AC2/3 warning filter: a warning with another message stays different" "differ" "$EQ"
+EQ=differ; [ "$(dropw "$BASEOUT")" = "$(dropw $'first line\nsecond line\nwarning: in the working copy of \x27a\x27, CRLF will be replaced by LF the next time Git touches it')" ] && EQ=same
+assert_eq "AC2/3 warning filter: another line-ending message stays different" "differ" "$EQ"
+EQ=differ; [ "$(dropw "$BASEOUT")" = "$(dropw $'first line\nsecond line\nxx warning: in the working copy of \x27a\x27, LF will be replaced by CRLF the next time Git touches it')" ] && EQ=same
+assert_eq "AC2/3 warning filter: the pattern is anchored (a prefixed line is kept)" "differ" "$EQ"
+
+# ---------------------------------------------------------------------------------------------------------------
 echo "AC2/AC3 a normal RED or GREEN run prints and commits exactly what v0.24.21 did (old scripts from git archive f1d6bce)"
 OLDD="$(mk_tmp)"
 if git -C "$PB_ROOT" cat-file -e f1d6bce 2>/dev/null && git -C "$PB_ROOT" archive f1d6bce scripts 2>/dev/null | tar -x -C "$OLDD" 2>/dev/null && [ -f "$OLDD/scripts/tdd-step.sh" ]; then
@@ -69,7 +92,8 @@ if git -C "$PB_ROOT" cat-file -e f1d6bce 2>/dev/null && git -C "$PB_ROOT" archiv
     if [ -n "$ba" ]; then oa="$(repl_path "$oa" "<BL>" "$ba")"; ob="$(repl_path "$ob" "<BL>" "$bb")"; fi
     assert_eq "$label: the old script passes (exit 0)" "0" "$ra"
     assert_eq "$label: same exit code" "$ra" "$rb"
-    assert_eq "$label: byte-identical output" "$(norm "$oa")" "$(norm "$ob")"
+    # git LF/CRLF warning lines are dropped from both outputs (see dropw above): environment noise that only appears with core.autocrlf=true
+    assert_eq "$label: byte-identical output" "$(norm "$(dropw "$oa")")" "$(norm "$(dropw "$ob")")"
     assert_eq "$label: same commit (sha)" "$(head_of "$a")" "$(head_of "$b")"
   }
   same_as_old "AC2 unchanged RED --commit (default path)" red default --commit
