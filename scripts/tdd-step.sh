@@ -81,6 +81,28 @@ refuse() { echo "error: $1 - nothing committed" >&2; exit 1; }
 # the "unchanged since the baseline" note lines of a gate output
 notes_of() { printf '%s\n' "$1" | grep -F "$NOTEP" || true; }
 
+# After git commit: a hook may have added a path that was never judged. Args: the judged paths.
+# Any extra path in HEAD undoes the commit (HEAD back, work tree kept), names the paths, exits 1.
+check_commit() {
+  local -a extra=(); local g e hit
+  while IFS= read -r -d '' g; do
+    hit=0
+    for e in "$@"; do if [ "$e" = "$g" ]; then hit=1; break; fi; done
+    [ "$hit" -eq 1 ] || extra+=("$g")
+  done < <(git diff-tree --root --no-commit-id --name-only -r -z --no-renames HEAD)
+  [ ${#extra[@]} -gt 0 ] || return 0
+  if git rev-parse -q --verify HEAD~1 >/dev/null 2>&1; then
+    git reset -q --soft HEAD~1 || pb_die "cannot undo the commit" 3
+  else
+    git update-ref -d HEAD || pb_die "cannot undo the first commit" 3
+  fi
+  GIT_LITERAL_PATHSPECS=1 git reset -q -- "${extra[@]}" 2>/dev/null || true
+  if [ ${#untr[@]} -gt 0 ]; then GIT_LITERAL_PATHSPECS=1 git reset -q -- "${untr[@]}" 2>/dev/null || true; fi
+  echo "error: the commit held paths that were not judged (a git hook added them); the commit is undone, the work tree is kept - nothing committed:" >&2
+  for g in "${extra[@]}"; do printf '  %s\n' "$g" >&2; done
+  exit 1
+}
+
 tmpd=""
 if [ -z "$baseline" ]; then
   run_gate || exit 1
@@ -92,6 +114,12 @@ else
   [ "$grc" -eq 0 ] || exit 1
   notes1="$(notes_of "$gout")"
   if [ "$commit" -eq 1 ]; then
+    # a newline in a path makes the snapshot die (exit 3): refuse it like the other control characters
+    git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status0" || pb_die "git status failed" 3
+    if [ "$(LC_ALL=C tr '\0' 'x' < "$tmpd/status0" | wc -l)" -gt 0 ]; then
+      echo "error: a changed path contains a newline: commit the role's paths by hand - nothing committed" >&2
+      exit 1
+    fi
     bash "$here/role-gate.sh" snapshot --out "$tmpd/before" >/dev/null || pb_die "cannot snapshot the work tree" 3
     head_before="$(git rev-parse HEAD)" || pb_die "cannot read HEAD" 3
   fi
@@ -167,10 +195,14 @@ if [ "$commit" -eq 1 ]; then
       GIT_LITERAL_PATHSPECS=1 git add -- "${untr[@]}" || pb_die "git add failed" 3
     fi
     GIT_LITERAL_PATHSPECS=1 git commit -q -m "$subject" -- "${paths[@]}" || pb_die "git commit failed" 3
+    check_commit "${paths[@]}"
   else
     git add -A || pb_die "git add failed" 3
     git reset -q -- .agents/handoff 2>/dev/null || true
+    judged=()
+    while IFS= read -r -d '' g; do judged+=("$g"); done < <(git diff --cached --name-only --no-renames -z)
     git commit -q -m "$subject" || pb_die "git commit failed" 3
+    check_commit ${judged[@]+"${judged[@]}"}
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi
 elif [ -n "$baseline" ]; then
