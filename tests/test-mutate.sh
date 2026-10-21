@@ -790,4 +790,29 @@ mrun "$R" --base base --test true --max 0
 assert_rc "W1 --max 0: exit 0" 0
 no_text "W1 --max 0 asked for no mutants: no warning" "$W0"
 
+# =====================================================================================================
+echo "v0.24.22 J1 (feedback #14): no <, >, <=, >= mutants in .jsx/.tsx (a JSX tag turned into a comparison never compiles)"
+R="$W/jsx"; mkfx "$R"; set_base "$R"
+( cd "$R" && mkdir -p src &&
+  printf '%s\n' 'const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {}' > src/v.tsx &&
+  printf '%s\n' 'const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {}' > src/v.jsx &&
+  printf '%s\n' 'if (n < 3 && a == b) go();' > src/w.ts &&
+  printf '%s\n' 'if (n < 3 && a == b) go();' > src/w.js ) || exit 3
+commit_all "$R" change
+mrun "$R" --base base --test true
+assert_rc "J1 run exits 0" 0
+assert_eq "J1 .tsx/.jsx give no <,> mutant (== and && still mutate); .ts/.js keep their < mutant" \
+  "$(printf '%s\n' \
+    'survived: src/v.jsx:1: const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {} -> const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a != b) {}' \
+    'survived: src/v.jsx:1: const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {} -> const el = <Foo a="1">{n < 3 || ok ? <b>x</b> : null}</Foo>; if (a == b) {}' \
+    'survived: src/v.tsx:1: const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {} -> const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a != b) {}' \
+    'survived: src/v.tsx:1: const el = <Foo a="1">{n < 3 && ok ? <b>x</b> : null}</Foo>; if (a == b) {} -> const el = <Foo a="1">{n < 3 || ok ? <b>x</b> : null}</Foo>; if (a == b) {}' \
+    'survived: src/w.js:1: if (n < 3 && a == b) go(); -> if (n < 3 && a != b) go();' \
+    'survived: src/w.js:1: if (n < 3 && a == b) go(); -> if (n < 3 || a == b) go();' \
+    'survived: src/w.js:1: if (n < 3 && a == b) go(); -> if (n >= 3 && a == b) go();' \
+    'survived: src/w.ts:1: if (n < 3 && a == b) go(); -> if (n < 3 && a != b) go();' \
+    'survived: src/w.ts:1: if (n < 3 && a == b) go(); -> if (n < 3 || a == b) go();' \
+    'survived: src/w.ts:1: if (n < 3 && a == b) go(); -> if (n >= 3 && a == b) go();')" "$(surv)"
+has_line "J1 total line" "mutants: 10, killed: 0, survived: 10"
+
 t_summary
