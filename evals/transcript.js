@@ -3,6 +3,7 @@
 //   json=1|0  result_ok=1|0  cost=<usd or empty>  subagent=1|0  tdd_order=ok|bad|na
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 //   asked=<N>|na (the number of tool_use blocks named AskUserQuestion; na when the log is not stream-json)
+//   prose_q=<N>|na (the number of questions in the final reply, the rule at proseQ below; na when there is no result text)
 //   models=<the `model` parameter of each Agent/Task tool_use, in order, comma separated; '-' for a call without one;
 //   empty when there is no call>   (always the last key). Only calls whose subagent_type is absent or general-purpose are
 //   listed: a helper sub-agent such as Explore or Plan is not a role and may run without a model.
@@ -354,6 +355,22 @@ function fullNamed(s) {   // Full as a word, not negated ("not Full", "isn't Ful
 }
 const untested = s => /\buntested\b|\b(has no|added no|without( (a|any))?) tests?\b(?![ \t]*(failing|that (are|were) failing|that fail))|\bno tests? (covers|covering)\b|\bno automated (test )?coverage\b|\bnot covered by (a )?tests?\b/i.test(s);
 
+// proseQ: the questions in the final reply (E26: a headless run asks nothing, not even in prose). A question is a run of "?"
+// followed, after optional closing ) ] " ' * _, by whitespace or the end of a line. Not counted: lines inside a fenced block
+// (a line starting with ``` or ~~~ opens or closes it; the fence lines too), lines whose first non-blank character is ">"
+// (quoted text), and inline code spans (`...`). Kept simple and conservative: there is no rhetorical-question filter, so a
+// rhetorical "?" in prose counts; a "?" inside a word or URL (a?b=1) does not.
+function proseQ(s) {
+  let fence = false, n = 0;
+  for (const line of s.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) { fence = !fence; continue; }
+    if (fence || /^\s*>/.test(line)) continue;
+    const m = line.replace(/`[^`]*`/g, " ").match(/\?+(?=[)\]"'*_]*(\s|$))/g);
+    if (m) n += m.length;
+  }
+  return n;
+}
+
 const b = v => (v ? "1" : "0");
 process.stdout.write([
   "json=" + b(json),
@@ -367,5 +384,6 @@ process.stdout.write([
   "ran_tests=" + (!json ? "na" : b(ran)),
   "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
   "asked=" + (!json ? "na" : String(asked)),
+  "prose_q=" + (reply === null ? "na" : String(proseQ(reply))),
   "models=" + models.join(","),
 ].join("\n") + "\n");
