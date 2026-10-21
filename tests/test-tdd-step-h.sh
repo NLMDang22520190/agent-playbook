@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/tdd-step.sh (v0.24.23 lane A, Full), part 2 of 3 (parts 1 and 3: test-tdd-step-g.sh, test-tdd-step-i.sh; slice S2 of .agents/handoff/01-spec.md):
+# Tests for scripts/tdd-step.sh (v0.24.23 lane A, Full), part 2 of 7 (parts: test-tdd-step-g.sh, -i.sh, -k.sh, -l.sh, -j.sh, -m.sh; slice S2 of .agents/handoff/01-spec.md):
 #   AC1  the branch is compared before and after the test command: a changed branch is refused with nothing committed (red and green, default path and --baseline, with and without --commit)
 # Shared setup: tdd-step-fixture.sh, tdd-step-d-fixture.sh and tdd-step-g-fixture.sh.
 . "$(dirname "$0")/lib.sh"

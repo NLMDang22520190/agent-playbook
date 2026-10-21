@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers of tests/test-tdd-step-g.sh, -h.sh and -i.sh (v0.24.23 lane A, the branch check and the safe undo; three suites so that none is the floor of a CI shard, L-0009):
+# Shared helpers of tests/test-tdd-step-g.sh, -h.sh, -i.sh, -k.sh and -l.sh (v0.24.23 lane A, the branch check and the safe undo; five suites so that none is the floor of a CI shard, L-0009):
 # refs, tip, headref, s7, red_any, allcount, gprep, stubdir, run_red_p, the fault-injection stubs (AWK_STUB, SORT_STUB, SRREAD_STUB, SRWRITE_STUB, UPDREF_STUB) and the hooks (HK_*).
 # Source it after lib.sh, tdd-step-fixture.sh and tdd-step-d-fixture.sh. It is not a suite: run-all.sh only starts tests/test-*.sh.
 SAVEP="$PATH"

@@ -5,21 +5,18 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # test-tdd-step-d.sh 398, test-tdd-step-e.sh 201, test-tdd-step-f.sh 352 (new in v0.24.22, the commit-gap suite in three parts): estimates, not CI times: 0.87 x the times on a local Git Bash (457, 231 and 405 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). Measure them in the first CI run and replace them (L-0009).
-# v0.24.23 lane A (tester slice S1+S2): test-tdd-step-g.sh 475, test-tdd-step-h.sh 398 and test-tdd-step-i.sh 581 are estimates, not CI times: 28 x the Linux (WSL) seconds of one run (17, 14 and 21 s). Measure them in the first CI run and replace them (L-0009).
-# v0.24.23 lane A (tester slice S3): test-tdd-step-j.sh 616 is an estimate, not a CI time: 28 x the Linux (WSL) seconds of one run (22 s). Measure it in the first CI run and replace it (L-0009).
-test-tdd-step-j.sh 616
-test-tdd-step-i.sh 581
-test-tdd-step-g.sh 475
+# v0.24.23 lane A: test-tdd-step-g.sh 270, -h.sh 332, -i.sh 284, -j.sh 257, -k.sh 239, -l.sh 364 and -m.sh 193 are estimates, not CI times: 0.87 x the seconds of one run on a local Windows Git Bash (310, 382, 326, 295, 275, 418 and 222 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). The old g/i/j were split at section boundaries (k from g, l from i, m from j) so that none is over about 450 s locally (L-0009). Measure them in the first CI run and replace them.
 test-evals-grade6-b.sh 445
 test-role-gate-baseline.sh 425
-test-tdd-step-h.sh 398
 test-tdd-step-d.sh 398
+test-tdd-step-l.sh 364
 test-evals-grade2.sh 353
 test-tdd-step-f.sh 352
 test-ci-tree-tested-steps.sh 340
 test-role-gate-batch.sh 340
 test-ship-b.sh 339
 test-tdd-step-c.sh 332
+test-tdd-step-h.sh 332
 test-evals-runner.sh 328
 test-evals-grade6.sh 323
 test-role-gate-b.sh 322
@@ -30,14 +27,18 @@ test-leak-check-push-b.sh 298
 test-leak-check-mode.sh 297
 test-evals-grade4.sh 291
 test-evals-runner-b.sh 284
+test-tdd-step-i.sh 284
 test-evals-grade3.sh 283
 test-evals-grade.sh 280
 test-leak-check.sh 276
+test-tdd-step-g.sh 270
 test-evals-grade2-e20.sh 269
 test-leak-check-push.sh 263
 test-role-model.sh 261
 test-evals-grade5.sh 260
+test-tdd-step-j.sh 257
 test-tdd-step-b.sh 248
+test-tdd-step-k.sh 239
 test-ci-tree-tested.sh 234
 test-run-all.sh 232
 test-ship-c.sh 231
@@ -45,6 +46,7 @@ test-evals-grade2-e20-capture.sh 208
 test-tdd-step-e.sh 201
 test-ship.sh 200
 test-role-model-b.sh 196
+test-tdd-step-m.sh 193
 test-evals-budget.sh 190
 test-tdd-step.sh 184
 test-run-checks-sections.sh 183

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Tests for scripts/tdd-step.sh (v0.24.23 lane A, Full), part 3 of 3 (parts 1 and 2: test-tdd-step-g.sh, test-tdd-step-h.sh; slice S2 of .agents/handoff/01-spec.md):
+# Tests for scripts/tdd-step.sh (v0.24.23 lane A, Full), part 3 of 7 (parts: test-tdd-step-g.sh, -h.sh, -k.sh, -l.sh, -j.sh, -m.sh; slice S2 of .agents/handoff/01-spec.md):
 #   AC2  after every commit the branch list is compared; the undo moves only the pre-run branch (compare-and-swap), re-attaches HEAD and restores the index; exit 1 or exit 3 with the full end state
+# Split in v0.24.23 for the local Windows Git Bash time: test-tdd-step-i.sh runs the cases in MODE default (and the last control of MODE baseline), test-tdd-step-l.sh the other cases in MODE baseline (a suite over about 450 s would set a shard floor, L-0009).
 # Shared setup: tdd-step-fixture.sh, tdd-step-d-fixture.sh and tdd-step-g-fixture.sh.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/tdd-step-fixture.sh"
@@ -28,7 +29,7 @@ a2_left() {
   assert_eq "$1: that commit is the test(red) commit" "test(red): m" "$(git -C "$R" log -1 --format=%s "$C" 2>/dev/null)"
 }
 if can_exec; then
-  for MODE in default baseline; do
+  for MODE in default; do
     # --- exit 1: only main and HEAD had to change
     T="AC2 post-commit hook: git checkout existing ($MODE)"
     gprep "$MODE"; run_red --commit sh -c "$(hookcmd "$HK_EXIST" post-commit)"
@@ -132,8 +133,17 @@ if can_exec; then
     assert_eq "$T: HEAD is one commit on the pre-run HEAD" "$H0" "$(git -C "$R" rev-parse HEAD^)"
     assert_eq "$T: every branch tip is as before" "$REFS0" "$(refs "$R")"
   done
+  # the last control of MODE baseline runs here, not in test-tdd-step-l.sh, so that the two suites take about the same time
+  for MODE in baseline; do
+    T="AC2 control: detached before the run, a post-commit hook that does nothing ($MODE)"
+    gprep "$MODE" "git checkout -q --detach"; run_red --commit sh -c "$(hookcmd "$HK_NOOP" post-commit)"
+    a2_msg "$T" 0
+    assert_eq "$T: HEAD is still detached" "detached" "$(headref)"
+    assert_eq "$T: HEAD is one commit on the pre-run HEAD" "$H0" "$(git -C "$R" rev-parse HEAD^)"
+    assert_eq "$T: every branch tip is as before" "$REFS0" "$(refs "$R")"
+  done
 else
-  t_skip 392 "AC2 hook cases (the file system cannot make a hook executable)"
+  t_skip 196 "AC2 hook cases (the file system cannot make a hook executable)"
 fi
 
 
