@@ -6,6 +6,7 @@
 # estimated weight in this header and in the release PR (L-0009).
 # test-mutate-b.sh 11 (new in v0.24.23): an estimate, 0.40 s on Linux x 28 (the Linux to CI ratio of the tdd-step suites); replace it with a CI time (L-0009).
 # test-tdd-step-g.sh .. test-tdd-step-q.sh (new in v0.24.23): estimates, 0.87 x their times on a local Git Bash (g 268, h 323, i 321, j 120, k 257, l 377, m 108, n 283, o 223, p 306, q 321 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split; j and m skip their disk-755 rows there). Replace them with CI times (L-0009).
+# test-tdd-step-r.sh, -s.sh, -t.sh (new in v0.24.24): estimates, Linux seconds x 28 (r 8 s = 224, s 10 s = 280, t 5 s = 140; 28 = the Linux to CI ratio of the tdd-step suites). Replace them with CI times (L-0009).
 test-tdd-step-d.sh 463
 test-tdd-step-f.sh 434
 test-evals-grade6-b.sh 426
@@ -33,6 +34,7 @@ test-leak-check-push-b.sh 298
 test-leak-check-push.sh 296
 test-tdd-step-b.sh 290
 test-tdd-step-h.sh 281
+test-tdd-step-s.sh 280
 test-tdd-step-i.sh 279
 test-tdd-step-q.sh 279
 test-tdd-step-e.sh 275
@@ -47,6 +49,7 @@ test-tdd-step.sh 256
 test-tdd-step-n.sh 246
 test-tdd-step-g.sh 233
 test-tdd-step-k.sh 224
+test-tdd-step-r.sh 224
 test-ship-c.sh 218
 test-role-model-b.sh 215
 test-evals-budget.sh 214
@@ -55,6 +58,7 @@ test-content.sh 181
 test-run-checks-sections.sh 176
 test-role-gate-committed.sh 148
 test-release.sh 142
+test-tdd-step-t.sh 140
 test-release-tool.sh 135
 test-leak-check-uname.sh 119
 test-update.sh 113
