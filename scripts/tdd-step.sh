@@ -33,8 +33,13 @@
 #        git commit compares the branch list too (and in a detached run the sha): same undo, exit 3.
 #        Another worktree of the same repository that commits while the step runs can move a branch the step
 #        compares: that is exit 3 too (the step cannot tell it from a hook).
+# Nested repositories (v0.24.24): an untracked nested repository is refused before CMD runs (exit 1, nothing
+#        committed), also on --baseline and also one that existed before the snapshot: a git status row ending in
+#        a slash outside .agents/handoff/. A staged gitlink (mode 160000) that HEAD lacks is refused too. The message
+#        names the path and hints at .git/info/exclude or .gitignore. Not refused: a nested repository under
+#        .agents/handoff/, a submodule tracked in HEAD, an empty directory.
 # Limits (v0.24.23): a commit the test command makes inside an untracked nested repo (a gitlink the snapshot
-#        records as unhashable) is not detected. On --baseline, a path whose exec bit staged in the index git commit
+#        records as unhashable) is therefore never reached. On --baseline, a path whose exec bit staged in the index git commit
 #        --only would not carry is refused (print mode warns); only a mode staged in the index is checked, so a
 #        disk-only exec bit under core.filemode=false is not.
 # --baseline FILE (red and green): passed to the gate (a manifest from role-gate.sh snapshot, for a repo
@@ -423,6 +428,30 @@ else
   [ -z "$gout" ] || printf '%s\n' "$gout"
   [ "$grc" -eq 0 ] || exit 1
   notes1="$(notes_of "$gout")"
+fi
+# an untracked nested repository (a status row ending in a slash) or a staged gitlink that HEAD lacks: the snapshot
+# cannot hash it, so refuse it before the test command runs (a nested repository under .agents/handoff/ is exempt)
+# read-only status (no index refresh) for the nested repository check: a refusal leaves the index file untouched
+GIT_OPTIONAL_LOCKS=0 git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/statusn" || pb_die "git status failed" 3
+nest=""; nxt=0
+while IFS= read -r -d '' ent; do
+  if [ "$nxt" -eq 1 ]; then p="$ent"; nxt=0; else
+    xy="${ent:0:2}"; p="${ent:3}"
+    case "$xy" in R? | C? | ?R | ?C) nxt=1 ;; esac
+  fi
+  case "$p" in .agents/handoff/*) continue ;; */) nest="${nest:-$p}" ;; esac
+done < "$tmpd/statusn"
+if [ -z "$nest" ]; then
+  git ls-files -s -z > "$tmpd/lsf" || pb_die "git ls-files failed" 3
+  while IFS= read -r -d '' ent; do
+    case "$ent" in 160000" "*) ;; *) continue ;; esac
+    p="${ent#*$'\t'}"
+    if [ -z "$(GIT_LITERAL_PATHSPECS=1 git ls-tree --name-only HEAD -- "$p" 2>/dev/null)" ]; then nest="$p"; break; fi
+  done < "$tmpd/lsf"
+fi
+if [ -n "$nest" ]; then
+  printf 'error: nested repository: %s - the snapshot cannot hash it; add it to .git/info/exclude or .gitignore and run again - nothing committed\n' "$nest" >&2
+  exit 1
 fi
 # a newline or a \002 byte in a path makes the snapshot die (exit 3): refuse it before the test command runs
 git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status0" || pb_die "git status failed" 3
