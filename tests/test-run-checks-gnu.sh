@@ -67,11 +67,34 @@ gnu_case "a trailing comment after a tab"   scripts/zz-gnu.sh "true$(printf '\t'
 gnu_case "the word in another tool: a prefixed grep" tests/zz-gnu.sh "my$G $PF 'a' f" pass
 gnu_case "the word in another tool: a --date option" tests/zz-gnu.sh "foo --$DT $DD x" pass
 gnu_case "the word in another tool: a prefixed readlink" scripts/zz-gnu.sh "my$RL $FF x" pass
+# ---- v0.24.24: grep with both ignore-case and fixed-strings aborts in Git for Windows grep 3.0 (core dump, rc 134) ----
+echo "v0.24.24 grep -i with -F is refused (Git for Windows grep 3.0 aborts)"
+# spelled through variables, so this file does not trip its own check
+CK="ignore-case+fixed-strings"; QIF="-qiF"; I1="-i"; F1="-F"; FI="-Fi"; LI="--ignore-case"; LF="--fixed-strings"
+gnu_case "ignore-case and fixed-strings in one cluster"        tests/zz-gnu.sh   "$G $QIF x f" fail "$CK"
+gnu_case "ignore-case and fixed-strings as separate flags"     scripts/zz-gnu.sh "$G $I1 $F1 x f" fail "$CK"
+gnu_case "fixed-strings first in a cluster"                    tools/zz-gnu.sh   "$G $FI x f" fail "$CK"
+gnu_case "two flags with others between them"                  tests/zz-gnu.sh   "$G -n $I1 -q $F1 -- x f" fail "$CK"
+gnu_case "long ignore-case with short fixed-strings"           evals/zz-gnu.sh   "$G $LI $F1 x f" fail "$CK"
+gnu_case "short ignore-case with long fixed-strings"           tests/zz-gnu.sh   "$G $I1 $LF x f" fail "$CK"
+gnu_case "after a pipe"                                        scripts/zz-gnu.sh "printf a | $G $QIF x" fail "$CK"
+gnu_case "inside a substitution"                               install.sh        "v=\$(printf a | $G $QIF x)" fail "$CK"
+gnu_case "flags after the operands"                            tests/zz-gnu.sh   "$G x f $I1 $F1" fail "$CK"
+gnu_case "an if condition"                                     tests/zz-gnu.sh   "if printf a | $G $QIF x; then :; fi" fail "$CK"
+gnu_case "fixed-strings alone"                                 tests/zz-gnu.sh   "$G $F1 x f >/dev/null" pass
+gnu_case "ignore-case alone"                                   tests/zz-gnu.sh   "$G $I1 x f >/dev/null" pass
+gnu_case "quiet fixed-strings and ignore-case on two commands" tests/zz-gnu.sh   "$G $I1 x f | $G $F1 y >/dev/null" pass
+gnu_case "the two joined by a semicolon are two commands"      tests/zz-gnu.sh   "$G $I1 x f; $G $F1 y f >/dev/null" pass
+gnu_case "a whole-line comment"                                scripts/zz-gnu.sh "# $G $QIF x f" pass
+gnu_case "flags after the end-of-options marker are operands"  tests/zz-gnu.sh   "$G $F1 -- $I1 f >/dev/null" pass
+gnu_case "ignore-case with the extended-regex flag"            tests/zz-gnu.sh   "$G -iE x f >/dev/null" pass
+gnu_case "the i of a pattern argument is not a flag"           tests/zz-gnu.sh   "$G $F1 -e -i f >/dev/null" pass
 # the repository itself stays clean and says so
 C="$(mk_copy)"
 run bash "$C/evals/run-checks.sh"
 assert_rc "AC5.1 the real tree passes run-checks" 0
 assert_contains "AC5.1 the ok line is printed" "$OUT" "  ok   GNU-only options absent (BSD/macOS)"
+assert_contains "v0.24.24 the real tree has no grep pairing ignore-case with fixed-strings" "$OUT" "  ok   no grep call pairs ignore-case with fixed-strings"
 FULL_RC=$RC; FULL_OUT="$OUT"   # AC6 below asserts on the same run
 
 # ---- v0.22.1 review: an explicit exemption marker, and no GNU flag hidden in a variable ----
