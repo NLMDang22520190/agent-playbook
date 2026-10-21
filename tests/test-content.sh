@@ -881,6 +881,49 @@ assert_eq 'v0.24.21 AC3 the macOS aggregator has timeout-minutes 5' "5" "$(wf_ti
 if printf '%s\n' "$MAB" | grep 'needs\.macos-shard\.result' | grep -F 'success' | grep -q 'exit 0'; then t_ok 'v0.24.21 AC3 the macOS aggregator passes on a successful shard result'; else t_bad 'v0.24.21 AC3 the macOS aggregator passes on a successful shard result' "block: $MAB"; fi
 if printf '%s\n' "$MAB" | grep 'needs\.macos-shard\.result' | grep 'skipped' | grep 'needs\.reuse\.result' | grep 'success' | grep 'needs\.reuse\.outputs\.run' | grep -q -- '-n'; then t_ok 'v0.24.21 AC3 the macOS aggregator accepts skipped shards only next to a successful reuse and a non-empty run'; else t_bad 'v0.24.21 AC3 the macOS aggregator accepts skipped shards only next to a successful reuse and a non-empty run' "block: $MAB"; fi
 
+# F1 (review): behavioural pins of the macOS aggregator pass rule. The run: block of the job named
+# "test (macos-latest)" is extracted from a workflow file, its three tokens are substituted, and it runs under bash.
+# mac_agg_script FILE -> the run: script of that job (de-indented); empty when missing
+mac_agg_script() {
+  local f="$1" id j
+  id=""
+  for j in $(WF="$f" wf_jobs); do [ "$(WF="$f" wf_name "$j")" = "test (macos-latest)" ] && { id="$j"; break; }; done
+  [ -n "$id" ] || return 0
+  WF="$f" wf_block "$id" | awk '/^        run: [|]/ { f = 1; next } f && /^          / { sub(/^          /, ""); print; next } f { exit }'
+}
+# mac_agg_rc FILE SHARD REUSE RUN -> the exit code of the aggregator script with those three values
+mac_agg_rc() {
+  local s; s="$(mac_agg_script "$1")"
+  [ -n "$s" ] || { echo "none"; return 0; }
+  s="${s//\$\{\{ needs.macos-shard.result \}\}/$2}"
+  s="${s//\$\{\{ needs.reuse.result \}\}/$3}"
+  s="${s//\$\{\{ needs.reuse.outputs.run \}\}/$4}"
+  bash -c "$s" >/dev/null 2>&1; echo "$?"
+}
+# mac_agg_matrix FILE -> the seven exit codes, space separated
+mac_agg_matrix() {
+  local f="$1"
+  echo "$(mac_agg_rc "$f" success skipped "") $(mac_agg_rc "$f" failure skipped "") $(mac_agg_rc "$f" cancelled skipped "") $(mac_agg_rc "$f" skipped skipped "") $(mac_agg_rc "$f" skipped success "") $(mac_agg_rc "$f" skipped success 123) $(mac_agg_rc "$f" skipped failure 123)"
+}
+MAC_WANT="0 1 1 1 1 0 1"
+assert_eq "v0.24.21 AC3 the macOS aggregator script exits: success 0; failure 1; cancelled 1; skipped+reuse skipped 1; skipped+reuse success+empty run 1; skipped+reuse success+run 123 0; skipped+reuse failure+run 123 1" "$MAC_WANT" "$(mac_agg_matrix "$PB_ROOT/.github/workflows/test.yml")"
+MACW="$(mk_tmp)"
+MACY="$(cat "$PB_ROOT/.github/workflows/test.yml")"
+# mac_mutant NAME FROM TO: a copy of the workflow with FROM replaced by TO must change the exit-code matrix
+mac_mutant() {
+  local c="${MACY/"$2"/"$3"}" got r
+  if [ "$c" = "$MACY" ]; then t_bad "v0.24.21 AC3 mutant [$1] applies to test.yml" "pattern not found: $2"; return 0; fi
+  printf '%s\n' "$c" > "$MACW/$1.yml"
+  got="$(mac_agg_matrix "$MACW/$1.yml")"
+  if [ "$got" != "$MAC_WANT" ]; then r="caught"; else r="survived: $got"; fi
+  assert_eq "v0.24.21 AC3 mutant [$1] of the macOS aggregator is caught by the exit-code matrix" "caught" "$r"
+}
+mac_mutant success_to_notfailure '= success ] && exit 0' '!= failure ] && exit 0'
+mac_mutant success_or_exit '= success ] && exit 0' '= success ] || exit 0'
+mac_mutant run_or_exit 'outputs.run }}" ] && exit 0' 'outputs.run }}" ] || exit 0'
+mac_mutant cancelled_passes '          exit 1' '          [ "${{ needs.macos-shard.result }}" = cancelled ] && exit 0
+          exit 1'
+
 echo "v22.3 AC6.2 workflow: release and main-ci are unchanged"
 assert_contains 'v22.3 AC6.2 release keeps needs: [test, windows, main-ci]' "$(wf_needs release)" "[test, windows, main-ci]"
 assert_not_contains 'v0.24.21 AC3c release does not need the macOS jobs (D1: tags skip the suites, main-ci gates the release)' "$(wf_needs release)" "mac"
