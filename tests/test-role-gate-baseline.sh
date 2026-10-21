@@ -731,6 +731,52 @@ if command -v cygpath >/dev/null 2>&1 && WIN="$(cygpath -m "$R/src/gone.js" 2>/d
   same_as "T1 ... the tracked file is untouched" src/gone.js "$KEEP/gone"
 else t_skip 2 "T1 C:/ spelling (no cygpath: not Git Bash)"; fi
 
+# ================= v0.24.21 T2: an interrupt in bl_states exits 130 (INT) or 143 (TERM), never 1 or 0 =================
+echo "v0.24.21 T2 INT / TERM while bl_states waits on git: exit 130 / 143 and the temp file is removed"
+SIGD="$(mk_tmp)"; mkdir -p "$SIGD/fake" "$SIGD/tmp"
+REALGIT="$(command -v git)"
+# a fake git first on PATH: the batch hash-object of bl_states drops a marker and waits (at most 60 s) for a release file
+cat > "$SIGD/fake/git" <<EOF
+#!/usr/bin/env bash
+case " \$* " in
+  *" hash-object "*"--stdin-paths"*)
+    : > "$SIGD/marker"
+    n=0; while [ ! -f "$SIGD/release" ] && [ "\$n" -lt 60 ]; do sleep 1; n=\$((n + 1)); done ;;
+esac
+exec "$REALGIT" "\$@"
+EOF
+chmod +x "$SIGD/fake/git"
+# sig_run SIG CMD...: start CMD as a job (set -m: an async list without job control ignores INT), wait until the fake git
+# blocks (at most 10 s), send SIG to that process only, release git; SRC is the exit code, SMK 1 when the marker appeared
+sig_run() {
+  local sig="$1" pid n; shift
+  rm -f "$SIGD/marker" "$SIGD/release"
+  set -m
+  "$@" < /dev/null > /dev/null 2>&1 &
+  pid=$!
+  set +m
+  n=0; while [ ! -f "$SIGD/marker" ] && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n + 1)); done
+  if [ -f "$SIGD/marker" ]; then SMK=1; else SMK=0; fi
+  kill -"$sig" "$pid" 2>/dev/null
+  : > "$SIGD/release"
+  wait "$pid"; SRC=$?
+}
+base_repo; printf 'two\n' > src/mod.js
+# control: a plain bash with its own INT/TERM trap, signalled the same way, must run its trap (else this shell cannot do it)
+CTL=1
+for s in INT TERM; do
+  sig_run "$s" env PATH="$SIGD/fake:$PATH" bash -c 'trap "exit 7" INT TERM; printf "src/mod.js\n" | git hash-object --stdin-paths > /dev/null; exit 0'
+  { [ "$SMK" = 1 ] && [ "$SRC" = 7 ]; } || CTL=0
+done
+if [ "$CTL" = 1 ]; then
+  sig_run INT env PATH="$SIGD/fake:$PATH" TMPDIR="$SIGD/tmp" PLAYBOOK_HOME="$IH" bash "$GATE" snapshot --out "$SIGD/m"
+  RC="$SRC"; assert_rc "T2 INT during the snapshot's bl_states: exit 130" 130
+  assert_eq "T2 ... the temp file is removed" "" "$(ls "$SIGD/tmp")"
+  sig_run TERM env PATH="$SIGD/fake:$PATH" TMPDIR="$SIGD/tmp" PLAYBOOK_HOME="$IH" bash "$GATE" snapshot --out "$SIGD/m"
+  RC="$SRC"; assert_rc "T2 TERM during the snapshot's bl_states: exit 143" 143
+  assert_eq "T2 ... the temp file is removed" "" "$(ls "$SIGD/tmp")"
+else t_skip 4 "T2 signals (a job started here does not get INT/TERM delivered to its trap)"; fi
+
 # ================= AC8 byte-for-byte without --baseline =================
 echo "AC8 without --baseline the output and exit code equal the pre-change gate (a manifest on disk is not consulted)"
 OLD="$(mk_tmp)"
