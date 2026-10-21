@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared helpers of tests/test-tdd-step-d.sh and tests/test-tdd-step-e.sh (the v0.24.22 commit-gap suite, split so that neither is the floor of a CI shard):
-# mkhook, hookcmd, prep, run_red, same_idx, no_red_commit, hook_refused, hook_ok, refusal_checks, refuse_case, refuse_moved. Source it after lib.sh and tdd-step-fixture.sh.
+# Shared helpers of tests/test-tdd-step-d.sh, -e.sh and -f.sh (the v0.24.22 commit-gap suite, split into three so that none is the floor of a CI shard):
+# mkhook, hookcmd, prep, run_red, same_idx, no_red_commit, hook_refused, hook_ok, refusal_checks, refuse_case, refuse_moved, path_forms, repl_path. Source it after lib.sh and tdd-step-fixture.sh.
 # It is not a suite: run-all.sh only starts tests/test-*.sh.
 # ---------------------------------------------------------------------------------------------------------------
 # mkhook NAME LINES... -> path of a hook script (the lines after a #!/bin/sh line)
@@ -76,4 +76,25 @@ refuse_moved() {
   prep "$mode"
   run_red "$flag" sh -c "$cmd"
   refusal_checks "$label ($mode, ${flag:-print})" "$flag" "x" "$((N0 + 1))"
+}
+
+# path_forms PATH -> every form in which PATH can appear in an output, longest first (so that one form that contains another is replaced whole):
+# PATH itself, its $PWD form, the Windows form of pwd -W (Git Bash; absent elsewhere) and cygpath -m (C:/...). A file path uses its directory plus the base name.
+path_forms() {
+  local p="$1" d b
+  if [ -d "$p" ]; then d="$p"; b=""; else d="$(dirname "$p")"; b="/$(basename "$p")"; fi
+  {
+    printf '%s\n' "$p"
+    ( cd "$d" 2>/dev/null && printf '%s\n' "$PWD$b" )
+    ( cd "$d" 2>/dev/null && pwd -W 2>/dev/null | sed "s|\$|$b|" )
+    cygpath -m "$p" 2>/dev/null
+  } | awk 'length($0) > 1 { print length($0) "\t" $0 }' | sort -rn | cut -f2- | uniq
+}
+# repl_path TEXT PLACEHOLDER PATH -> TEXT with PATH, in every form of path_forms, replaced by PLACEHOLDER (byte for byte otherwise)
+repl_path() {
+  local t="$1" ph="$2" f
+  while IFS= read -r f; do [ -n "$f" ] && t="${t//"$f"/$ph}"; done <<EOF
+$(path_forms "$3")
+EOF
+  printf '%s' "$t"
 }
