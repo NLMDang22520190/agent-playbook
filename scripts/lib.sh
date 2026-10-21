@@ -53,11 +53,12 @@ pb_sha256() { # stdin -> hex digest
 }
 
 # Redact obvious secrets from stdin. Case-insensitive without GNU-only flags (BSD sed safe).
+# Key prefixes (sk-, ghp_ ...) count only at a token start (line start or a char outside [A-Za-z0-9_-], kept), so "task-..." is left alone.
 pb_redact() {
   sed -E \
     -e 's#(([Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Pp][Aa][Ss][Ss][Ww]([Oo][Rr])?[Dd]|[Pp][Ww][Dd]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn])[A-Za-z0-9_-]*[[:space:]]*[=:][[:space:]]*)(Bearer[[:space:]]+)?[^[:space:]"'"'"']+#\1[REDACTED]#g' \
     -e 's#([Bb][Ee][Aa][Rr][Ee][Rr][[:space:]]+)[A-Za-z0-9._~+/=-]{8,}#\1[REDACTED]#g' \
-    -e 's#(sk-|ghp_|gho_|ghs_|xox[bap]-|AKIA)[A-Za-z0-9_-]{12,}#[REDACTED]#g'
+    -e 's#(^|[^A-Za-z0-9_-])(sk-|ghp_|gho_|ghs_|xox[bap]-|AKIA)[A-Za-z0-9_-]{12,}#\1[REDACTED]#g'
 }
 
 # pb_raw_lines GIT-DIFF-ARGS... -> one "META<TAB>PATH" line per changed path from `git diff --raw -z` (paths unquoted, so a
