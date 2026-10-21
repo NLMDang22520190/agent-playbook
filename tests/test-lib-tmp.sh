@@ -16,7 +16,7 @@ esac
 
 SD="$(mk_tmp)"    # the stubs live here, outside every private TMPDIR
 # stub NAME BODY -> SD/NAME.sh sources lib.sh and runs BODY; STUB is its path
-stub() { STUB="$SD/$1.sh"; printf '. "%s/tests/lib.sh"\n%s\n' "$PB_ROOT" "$2" > "$STUB"; }
+stub() { STUB="$SD/$1.sh"; printf 'PB_LIB_ALLOW_ANYWHERE=1\n. "%s/tests/lib.sh"\n%s\n' "$PB_ROOT" "$2" > "$STUB"; }
 # run_stub PRIV -> runs STUB with TMPDIR=PRIV; sets OUT and RC
 run_stub() { run env TMPDIR="$1" bash "$STUB"; }
 # run_stub_sig PRIV -> like run_stub, for stubs that signal themselves. A suite started in the background (run-all, CI, bsd-check
