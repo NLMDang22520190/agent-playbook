@@ -39,14 +39,17 @@ else
   t_skip 87 "AC1 hook cases (the file system cannot make a hook executable)"
 fi
 
-echo "AC1 --baseline with core.filemode=false: a script staged +x is committed 100644 and is not refused (a known separate gap, queued)"
-R="$(fresh)"; ( cd "$R" && git config core.filemode false ); dirty "$R"; BL="$(snap "$R")"; N0="$(count_of "$R")"
+echo "AC4 --baseline with core.filemode=false: a script staged +x is refused (replaces the v0.24.22 gap pin; the AC4 rows are in test-tdd-step-j.sh)"
+R="$(fresh)"; ( cd "$R" && git config core.filemode false ); dirty "$R"; BL="$(snap "$R")"; N0="$(count_of "$R")"; H0="$(head_of "$R")"
 printf '#!/bin/sh\nexit 1\n' > "$R/tests/run.test.sh"
 ( cd "$R" && git add tests/run.test.sh && git update-index --chmod=+x tests/run.test.sh )
 run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c 'exit 1'
-assert_rc "AC1 filemode=false --baseline: exit 0 (not refused)" 0
-assert_eq "AC1 filemode=false --baseline: one new commit" "$((N0 + 1))" "$(count_of "$R")"
-assert_eq "AC1 filemode=false --baseline: the script is committed as 100644 (the +x drop is the known gap)" "100644" "$(git -C "$R" ls-tree HEAD -- tests/run.test.sh | cut -d' ' -f1)"
+assert_rc "AC4 filemode=false --baseline: exit 1 (refused)" 1
+assert_contains "AC4 filemode=false --baseline: names the path" "$OUT" "tests/run.test.sh"
+assert_contains "AC4 filemode=false --baseline: says the exec bit" "$(lower "$OUT")" "the exec bit"
+assert_contains "AC4 filemode=false --baseline: says nothing committed" "$(lower "$OUT")" "nothing committed"
+assert_contains "AC4 filemode=false --baseline: names core.filemode=false" "$OUT" "core.filemode=false"
+assert_untouched "AC4 filemode=false --baseline: nothing committed" "$R" "$H0" "$N0"
 
 # ---------------------------------------------------------------------------------------------------------------
 echo "AC2 default path: the test command may not write, edit or commit anything that is not ignored"
