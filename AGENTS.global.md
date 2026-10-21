@@ -14,7 +14,7 @@ Load a skill named here before work it covers (the `Skill` tool, or read its `SK
 Why: agents reading only this summary skipped steps.
 
 ### Proof for every claim
-Label non-trivial claims: [VERIFIED] ran or read this session, with evidence; [INFERRED] reasoned from stated facts; [UNVERIFIED] not checked. Code claims cite `path:line` read this session. "Passes", "works", "fixed" need run output from this session (`~/.agents/playbook/scripts/proof-run.sh`). Library, API and version facts cite official docs (URL, version). No evidence: say "unverified", never a plausible guess. Details: `playbook-proof`.
+Label non-trivial claims: [VERIFIED] ran or read this session, with evidence; [INFERRED] reasoned from stated facts; [UNVERIFIED] not checked. Code claims cite `path:line` read this session. "Passes", "works", "fixed" need run output from this session (`~/.agents/playbook/scripts/proof-run.sh`). Library, API and version facts cite official docs (URL, version). No evidence: say "unverified", never a plausible guess. Details: `playbook-proof`. On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence.
 Why: tests passed on the wrong screen; confident guesses cost others a day.
 
 ### Scope discipline
