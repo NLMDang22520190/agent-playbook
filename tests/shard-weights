@@ -5,8 +5,12 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # test-tdd-step-d.sh 398, test-tdd-step-e.sh 201, test-tdd-step-f.sh 352 (new in v0.24.22, the commit-gap suite in three parts): estimates, not CI times: 0.87 x the times on a local Git Bash (457, 231 and 405 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split). Measure them in the first CI run and replace them (L-0009).
+# v0.24.23 lane A (tester slice S1+S2): test-tdd-step-g.sh 475, test-tdd-step-h.sh 398 and test-tdd-step-i.sh 581 are estimates, not CI times: 28 x the Linux (WSL) seconds of one run (17, 14 and 21 s). Measure them in the first CI run and replace them (L-0009).
+test-tdd-step-i.sh 581
+test-tdd-step-g.sh 475
 test-evals-grade6-b.sh 445
 test-role-gate-baseline.sh 425
+test-tdd-step-h.sh 398
 test-tdd-step-d.sh 398
 test-evals-grade2.sh 353
 test-tdd-step-f.sh 352
