@@ -6,6 +6,7 @@
 # estimated weight in this header and in the release PR (L-0009).
 # test-mutate-b.sh 11 (new in v0.24.23): an estimate, 0.40 s on Linux x 28 (the Linux to CI ratio of the tdd-step suites); replace it with a CI time (L-0009).
 # test-tdd-step-g.sh .. test-tdd-step-q.sh (new in v0.24.23): estimates, 0.87 x their times on a local Git Bash (g 268, h 323, i 321, j 120, k 257, l 377, m 108, n 283, o 223, p 306, q 321 s; 0.87 = 764/883, the local Git Bash to CI ratio of the v0.24.21 tdd-step split; j and m skip their disk-755 rows there). Replace them with CI times (L-0009).
+# test-evals-grade7.sh 392 (new in v0.24.24): an estimate, 14 s on Linux x 28 (reference run), see L-0009; replace it with a CI time.
 test-tdd-step-d.sh 463
 test-tdd-step-f.sh 434
 test-evals-grade6-b.sh 426
@@ -83,3 +84,4 @@ test-docs-rules.sh 2
 test-bsd-check.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-evals-grade7.sh 392

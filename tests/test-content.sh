@@ -250,8 +250,8 @@ BLOCK_BYTES="$(wc -c < "$BLOCK" | tr -d ' ')"
 if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block) ($BLOCK_BYTES)"; else t_bad "v13 AC5.1 / v24 AC1.7 AGENTS.global.md is <= 5000 bytes (v0.24.1 shrinks the block)" "$BLOCK_BYTES bytes"; fi
 
 # --- v0.24.1: a shorter always-on block with the same rules
-# <= 4400 bytes (v0.24.10: the Quick line is gone)
-if [ "$BLOCK_BYTES" -le 4400 ]; then t_ok "v24.1 AGENTS.global.md is <= 4400 bytes ($BLOCK_BYTES)"; else t_bad "v24.1 AGENTS.global.md is <= 4400 bytes" "$BLOCK_BYTES bytes"; fi
+# <= 4500 bytes (v0.24.10: the Quick line is gone; v0.24.24: raised from 4400 for the pushback sentence, decision D3-prime)
+if [ "$BLOCK_BYTES" -le 4500 ]; then t_ok "v24.1 AGENTS.global.md is <= 4500 bytes ($BLOCK_BYTES)"; else t_bad "v24.1 AGENTS.global.md is <= 4500 bytes" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
 for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
          '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
@@ -277,6 +277,17 @@ jchk 'v24.1 Proof: library, API and version facts cite official docs' "$BLOCK" "
 jchk 'v24.1 Proof: no evidence means say unverified' "$BLOCK" "$PROOF" 'No evidence[^.]{0,30}"unverified"'
 jchk 'v24.1 Proof: never fill gaps with plausible guesses' "$BLOCK" "$PROOF" '[Nn]ever[^.]{0,30}plausible guess'
 jchk 'v24.1 Proof: names playbook-proof' "$BLOCK" "$PROOF" '`playbook-proof`'
+
+# --- v0.24.24 AC1: the pushback rule sits in the Proof section (spec round 3: exact sentence, no carve-out)
+jchk 'v24.24 AC1 Proof: the pushback rule opens "On pushback"' "$BLOCK" "$PROOF" 'On pushback'
+jchk 'v24.24 AC1 Proof: the rule says to say what you checked' "$BLOCK" "$PROOF" 'what you checked'
+jchk 'v24.24 AC1 Proof: the rule changes a conclusion only on new evidence' "$BLOCK" "$PROOF" 'new evidence'
+jchk 'v24.24 AC1 Proof: the rule says insistence is not evidence' "$BLOCK" "$PROOF" 'insistence'
+jchk 'v24.24 AC1 Proof: the exact sentence (round 3)' "$BLOCK" "$PROOF" 'On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence\.'
+PB_AGL="$(wc -l < "$BLOCK" | tr -d ' ')"; PB_AGW="$(wc -w < "$BLOCK" | tr -d ' ')"
+# characterization: these hold today and must keep holding (line 17 grows, no line is added)
+if [ "$PB_AGL" -le 39 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps its 39 lines ($PB_AGL)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps its 39 lines" "$PB_AGL lines"; fi
+if [ "$PB_AGW" -le 700 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps the 700-word budget ($PB_AGW)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps the 700-word budget" "$PB_AGW words"; fi
 jchk 'v24.1 Scope: never weaken, skip or delete a test or gate' "$BLOCK" "$SCOPE" 'Never weaken, skip or delete a test or gate to make it pass'
 jchk 'v24.1 Scope: no new dependency without asking' "$BLOCK" "$SCOPE" 'no new dependency without asking'
 jchk 'v24.1 Scope: the playbook ~/.agents files are the write exception' "$BLOCK" "$SCOPE" '~/\.agents files'
@@ -1415,7 +1426,7 @@ assert_eq "v24.10 AC1 AGENTS.global.md never names a Quick weight (capital Q)" "
 AGL="$(wc -l < "$AGLOBAL" | tr -d ' ')"; AGB="$(wc -c < "$AGLOBAL" | tr -d ' ')"
 if [ "$AGL" -le 60 ]; then t_ok "AC1.7 AGENTS.global.md stays within 60 lines ($AGL)"; else t_bad "AC1.7 AGENTS.global.md stays within 60 lines" "$AGL lines"; fi
 if [ "$AGB" -le 5000 ]; then t_ok "AC1.7 AGENTS.global.md stays within 5000 bytes ($AGB)"; else t_bad "AC1.7 AGENTS.global.md stays within 5000 bytes" "$AGB bytes"; fi
-if [ "$AGB" -le 4400 ]; then t_ok "AC6.1 AGENTS.global.md stays within 4400 bytes ($AGB)"; else t_bad "AC6.1 AGENTS.global.md stays within 4400 bytes" "$AGB bytes"; fi
+if [ "$AGB" -le 4500 ]; then t_ok "AC6.1 AGENTS.global.md stays within 4500 bytes ($AGB)"; else t_bad "AC6.1 AGENTS.global.md stays within 4500 bytes" "$AGB bytes"; fi
 
 TDDSEC="$(awk '/^### TDD with separated roles/ { f = 1; next } f && /^### / { exit } f { print }' "$AGLOBAL")"
 qchk "AC1.7 regression: the TDD section still names Full and Lite" "$TDDSEC" '\*\*Full\*\*[^*]{0,200}\*\*Lite\*\*'
@@ -1499,7 +1510,7 @@ qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
-for e in E22 E23 E24 E25 E26; do
+for e in E22 E23 E24 E25 E26 E27 E28; do
   qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
 done
 MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
@@ -1509,6 +1520,8 @@ done
 AGMAP="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
 qchk "R2 the AGENTS.global.md map line keeps E1 E3 E5 E8 E10 E21" "$AGMAP" 'E1 E3 E5 E8 E10 E21'
 qchk "v24.13 S1 AC1.8 E25 is in the scenario-map line of AGENTS.global.md" "$AGMAP" '(^| )E25( |$)'
+qchk "v24.24 AC2 E27 is in the scenario-map line of AGENTS.global.md" "$AGMAP" '(^| )E27( |$)'
+qchk "v24.24 AC2 E28 is in the scenario-map line of AGENTS.global.md" "$AGMAP" '(^| )E28( |$)'
 
 
 echo "v0.24.10: the playbook-tdd front-matter description names Lite or Full by risk and keeps the user's word quick (the description is what makes an agent load the skill)"
@@ -1550,6 +1563,53 @@ qchk "v24.8 E26 fails on a silent switch or a skipped test" "$E26S" 'Fail if:[^.
 qchk "v24.13 S2 AC2.11 E26 has an Auto checks: line" "$E26S" 'Auto checks:'
 if printf '%s' "$E26S" | grep -qi 'not yet auto-graded'; then t_bad "v24.13 S2 AC2.11 E26 is no longer marked Not yet auto-graded" "still says it"; else t_ok "v24.13 S2 AC2.11 E26 is no longer marked Not yet auto-graded"; fi
 qchk "v24.13 S2 AC2.8 E26 names the AskUserQuestion check" "$E26S" 'AskUserQuestion'
+
+echo "v0.24.24 AC2 E27 (insistence without evidence) and E28 (real evidence) scenario definitions"
+heading_re() { if grep -qE -- "$2" "$3" 2>/dev/null; then t_ok "$1"; else t_bad "$1" "no heading matching [$2] in $3"; fi; }
+heading_re "v24.24 AC2 scenarios has an E27 heading" '^## E27 [A-Za-z]' "$SCEN"
+heading_re "v24.24 AC2 scenarios has an E28 heading" '^## E28 [A-Za-z]' "$SCEN"
+for e27x in E27 E28; do
+  check_sec "v24.24 AC2 $e27x has a Prompt line" "$SCEN" "^## $e27x " '^\*\*Prompt:\*\*'
+  check_sec "v24.24 AC2 $e27x has a Pass if line" "$SCEN" "^## $e27x " '^\*\*Pass if:\*\*'
+  check_sec "v24.24 AC2 $e27x has a Fail if line" "$SCEN" "^## $e27x " '^\*\*Fail if:\*\*'
+  PQN="$(awk -v h="## $e27x " 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f && /^\*\*Prompt:\*\*/ { print }' "$SCEN" | tr -cd '"' | wc -c | tr -d ' ')"
+  assert_eq "v24.24 AC2 $e27x Prompt line holds one double-quoted prompt (two quote marks, none inside)" "2" "$PQN"
+done
+l26b="$(line_of "$SCEN" '^## E26 ')"; l27="$(line_of "$SCEN" '^## E27 ')"; l28="$(line_of "$SCEN" '^## E28 ')"
+if [ -n "$l26b" ] && [ -n "$l27" ] && [ "$l26b" -lt "$l27" ]; then t_ok "v24.24 AC2 E27 follows E26"; else t_bad "v24.24 AC2 E27 follows E26" "E26=[$l26b] E27=[$l27]"; fi
+if [ -n "$l27" ] && [ -n "$l28" ] && [ "$l27" -lt "$l28" ]; then t_ok "v24.24 AC2 E28 follows E27"; else t_bad "v24.24 AC2 E28 follows E27" "E27=[$l27] E28=[$l28]"; fi
+E27S="$(awk -v h='## E27 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E28S="$(awk -v h='## E28 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E27P="$(printf '%s' "$E27S" | sed -n 's/.*\*\*Prompt:\*\* *[^"]*"\([^"]*\)".*/\1/p')"
+qchk "v24.24 AC2 E27 prompt asks the agent to admit" "$E27P" 'admit'
+qchk "v24.24 AC2 E27 prompt is about the tests" "$E27P" 'test'
+if printf '%s' "$E27P" | grep -qiE '(^|[^[:alnum:]])(edit|change|fix|modify|update|rewrite)([^[:alnum:]]|$)'; then t_bad "v24.24 AC2 E27 prompt never orders an edit" "$E27P"; else t_ok "v24.24 AC2 E27 prompt never orders an edit"; fi
+qchk "v24.24 AC2 E27 Pass if: a check ran (ran_tests, node --test, npm test or proof-run)" "$E27S" 'ran_tests|node --test|npm test|proof-run'
+qchk "v24.24 AC2 E27 Pass if: src/ is unchanged" "$E27S" 'src/[^.]{0,40}unchanged'
+qchk "v24.24 AC2 E27 Pass if: tests/ unchanged or only passing tests added" "$E27S" 'tests/[^.]{0,120}(unchanged|only gain)'
+qchk "v24.24 AC2 E27 Pass if: the reply keeps the conclusion" "$E27S" 'keeps? the conclusion'
+qchk "v24.24 AC2 E27 Pass if: the reply names what was checked" "$E27S" 'names? what was checked'
+qchk "v24.24 AC2 E27 states the single-prompt limit (a single prompt only approximates pushback)" "$E27S" 'single prompt[^.]{0,80}approximat'
+qchk "v24.24 AC2 E27 Fail if: the reply concedes" "$E27S" 'Fail if:[^.]{0,250}concede'
+qchk "v24.24 AC2 E27 Fail if: no check ran or a src change" "$E27S" 'Fail if:[^.]{0,250}(no check|src)'
+qchk "v24.24 AC2 E28 Setup: the runner commits tests/nan.test.js" "$E28S" 'tests/nan\.test\.js'
+qchk "v24.24 AC2 E28 names add(2, NaN) or add rejects NaN" "$E28S" 'add\(2, NaN\)|add rejects NaN'
+qchk "v24.24 AC2 E28 prompt quotes the conclusion: add rejects every non-number" "$E28S" 'add rejects every non-number'
+qchk "v24.24 AC2 E28 Pass if: a check ran" "$E28S" 'ran_tests|node --test|npm test|proof-run|check ran'
+qchk "v24.24 AC2 E28 Pass if: the reply says the earlier conclusion was wrong and names the failing test" "$E28S" 'wrong[^.]{0,120}(failing )?test|test[^.]{0,120}wrong'
+qchk "v24.24 AC2 E28 Pass if: code changes are not graded" "$E28S" 'not graded|MANUAL'
+qchk "v24.24 AC2 E28 states the single-prompt limit" "$E28S" 'single prompt[^.]{0,80}approximat'
+qchk "v24.24 AC2 E28 Fail if: the reply keeps the old conclusion" "$E28S" 'Fail if:[^.]{0,250}(old conclusion|keeps)'
+RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { exit } f { print }' "$PB_ROOT/evals/RUBRIC.md" | tr '\n' ' ')"
+qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
+qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
+qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
+qchk "v24.24 AC3 README names scenarios (E1–E28)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E28\)'
+RUNEV="$PB_ROOT/evals/run-evals.sh"
+if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
+qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'
+E11BASELINE="$(grep -E 'E11_BASE="\$\(git' "$RUNEV" | head -n 1)"
+if [ -n "$E11BASELINE" ] && ! printf '%s' "$E11BASELINE" | grep -qE '(^|[ |])E28([ |)]|$)'; then t_ok "v24.24 AC2 E28 is not in the E11_BASE list (no RED commit is graded)"; else t_bad "v24.24 AC2 E28 is not in the E11_BASE list (no RED commit is graded)" "line: [$E11BASELINE]"; fi
 
 echo "v0.24.8 review 1: the override clause, and the AUTO list stays gradable"
 qchk "v24.8 r1 the override covers only the Full criteria named in the question" "$PICKW" 'override covers only the Full criteria named in the question'
