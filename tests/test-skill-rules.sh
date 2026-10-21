@@ -238,6 +238,9 @@ assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" 
 if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
 chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
 chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
+# fix round 1: the reviewer/tester gates read --base <sha before the role> (the role files' wording), not a bare <sha>
+NSHA="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
+assert_eq "v0.24.21 AC1 (fix 6) every 'check tester|reviewer' in SKILL.md reads --base <sha before the role>" "$NALL" "$NSHA"
 
 echo "v0.24.21 AC2: role files, README and the beginners doc show the gates with --base"
 TESTERMD="$PB_ROOT/skills/playbook-tdd/roles/tester.md"

@@ -408,5 +408,122 @@ run_in "$R" bash "$STEP" green --base "$BASE" --message "m" -- true
 assert_contains "AC5 default green prints the blanket commit command" "$OUT" 'git add -A && git commit -m "feat(green): m"'
 assert_not_contains "AC5 default green: no note about --base" "$OUT" "no --base"
 
+# ---------------------------------------------------------------------------------------------------------------
+# v0.24.21 lane G, fix round 1 (review findings)
+# ---------------------------------------------------------------------------------------------------------------
+# can_nl -> 0 when the file system stores a file name holding a newline (probed by globbing: ls would print two lines)
+can_nl() { local d; d="$(mk_tmp)"; { : > "$d/a"$'\n'"b"; } 2>/dev/null || return 1; set -- "$d"/*; [ $# -eq 1 ] && [ -f "$1" ]; }
+# can_exec -> 0 when a file made executable here really runs (NTFS mounts refuse the mode)
+can_exec() { local d f; d="$(mk_tmp)"; f="$d/h.sh"; printf '#!/bin/sh\nexit 0\n' > "$f"; chmod +x "$f" 2>/dev/null; [ -x "$f" ] && "$f" 2>/dev/null; }
+
+echo "AC4 (fix 1) --baseline: the gate runs again after the test command (a corrupted manifest refuses the commit)"
+R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "echo garbage > '$BL'; exit 1"
+assert_rc "AC4 fix1 the test command corrupts the manifest: exit 1" 1
+assert_untouched "AC4 fix1 the test command corrupts the manifest: nothing committed" "$R" "$H0" "$N0"
+assert_not_contains "AC4 fix1 the test command corrupts the manifest: no RED= line" "$OUT" "RED="
+assert_file "AC4 fix1 the test command corrupts the manifest: the role file stays in the work tree" "$R/tests/new.test.js"
+# a clean start: the first gate reports no unchanged paths, so only the post-test gate verdict can refuse
+R="$(fresh)"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "echo garbage > '$BL'; exit 1"
+assert_rc "AC4 fix1 clean start, the test command corrupts the manifest: exit 1" 1
+assert_untouched "AC4 fix1 clean start, the test command corrupts the manifest: nothing committed" "$R" "$H0" "$N0"
+
+echo "AC4 (fix 1) --baseline: the unchanged-since-baseline notes must equal before and after the test command"
+R="$(fresh)"; printf 'baseline edit\n' >> "$R/tests/app.test.js"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+printf 'test("n", () => {});\n' > "$R/tests/n.test.js"
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "grep -vF tests/app.test.js '$BL' > '$BL.new'; mv '$BL.new' '$BL'; exit 1"
+assert_rc "AC4 fix1 the test command drops a manifest line: exit 1" 1
+assert_contains "AC4 fix1 the test command drops a manifest line: says nothing committed" "$(lower "$OUT")" "nothing committed"
+assert_untouched "AC4 fix1 the test command drops a manifest line: nothing committed" "$R" "$H0" "$N0"
+assert_eq "AC4 fix1 the test command drops a manifest line: the baseline test file is not committed" "" "$(noeol_ls "$R" | grep -x 'tests/n.test.js')"
+assert_contains "AC4 fix1 the test command drops a manifest line: the baseline edit is still in the work tree" "$(git -C "$R" status --porcelain)" " M tests/app.test.js"
+
+echo "AC4 (fix 2) --baseline --commit: a newline in a role path is refused like other control characters"
+if can_nl; then
+  R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+  printf 'test("n", () => {});\n' > "$R/tests/ok.test.js"
+  printf 'test("n", () => {});\n' > "$R/tests/nl"$'\n'"x.test.js"
+  BS0="$(bstate "$R")"
+  run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c 'exit 1'
+  assert_rc "AC4 fix2 newline in a path: exit 1" 1
+  assert_contains "AC4 fix2 newline in a path: tells the user to commit by hand" "$(lower "$OUT")" "by hand"
+  assert_untouched "AC4 fix2 newline in a path: nothing committed" "$R" "$H0" "$N0"
+  assert_eq "AC4 fix2 newline in a path: baseline paths untouched" "$BS0" "$(bstate "$R")"
+else
+  t_skip 5 "AC4 fix2 newline in a path (the file system refuses a newline in a name)"
+fi
+
+echo "AC4 (fix 3) --baseline with an empty value is a usage error"
+R="$(fresh)"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "m" --baseline "" -- sh -c 'exit 1'
+assert_rc "AC4 fix3 red --baseline \"\" -> exit 2" 2
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "" -- sh -c 'exit 1'
+assert_rc "AC4 fix3 red --commit --baseline \"\" -> exit 2" 2
+assert_untouched "AC4 fix3 --baseline \"\": nothing committed" "$R" "$H0" "$N0"
+
+echo "AC4 (fix 4) --baseline: the first gate's output passes through"
+R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"
+printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+run_in "$R" bash "$STEP" red --message "m" --baseline "$BL" -- sh -c 'exit 1'
+assert_contains "AC4 fix4 red --baseline: the baseline note line (2 paths, digest) is printed" "$OUT" "note: baseline $BL (2 path(s), digest "
+assert_contains "AC4 fix4 red --baseline: the unchanged note for src/app.js is printed" "$OUT" "note: unchanged since the baseline: src/app.js"
+assert_contains "AC4 fix4 red --baseline: the unchanged note for README.md is printed" "$OUT" "note: unchanged since the baseline: README.md"
+run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c 'exit 1'
+assert_contains "AC4 fix4 red --baseline --commit: the baseline note line is printed" "$OUT" "note: baseline $BL (2 path(s), digest "
+assert_contains "AC4 fix4 red --baseline --commit: the unchanged note is printed" "$OUT" "note: unchanged since the baseline: src/app.js"
+R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; BASE="$(head_of "$R")"
+printf 'module.exports = 3;\n' > "$R/src/impl.js"
+run_in "$R" bash "$STEP" green --base "$BASE" --message "m" --baseline "$BL" -- true
+assert_contains "AC4 fix4 green --baseline: the baseline note line is printed" "$OUT" "note: baseline $BL (2 path(s), digest "
+assert_contains "AC4 fix4 green --baseline: the unchanged note is printed" "$OUT" "note: unchanged since the baseline: README.md"
+
+echo "AC4 (fix 5) a git hook cannot smuggle an unjudged file into the commit"
+HS="$(mk_tmp)/hook-evil.sh"
+printf '%s\n' '#!/bin/sh' 'mkdir -p src' 'echo evil > src/evil.js' 'git add src/evil.js' > "$HS"
+HT="$(mk_tmp)/hook-true.sh"
+printf '%s\n' '#!/bin/sh' 'true' > "$HT"
+INSTALL_EVIL="cp '$HS' .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit; exit 1"
+INSTALL_TRUE="cp '$HT' .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit; exit 1"
+if can_exec; then
+  R="$(fresh)"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+  printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "$INSTALL_EVIL"
+  assert_rc "AC4 fix5 default path, hook adds src/evil.js: exit 1" 1
+  assert_contains "AC4 fix5 default path: the message names the unexpected committed path" "$OUT" "src/evil.js"
+  assert_untouched "AC4 fix5 default path: the commit is undone (HEAD unchanged)" "$R" "$H0" "$N0"
+  assert_eq "AC4 fix5 default path: src/evil.js is in no commit" "" "$(noeol_ls "$R" | grep -x 'src/evil.js')"
+  assert_eq "AC4 fix5 default path: the role's work tree content is kept" 'test("n", () => {});' "$(cat "$R/tests/new.test.js")"
+
+  R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; H0="$(head_of "$R")"; N0="$(count_of "$R")"
+  printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_EVIL"
+  assert_rc "AC4 fix5 --baseline, hook adds src/evil.js: exit 1" 1
+  assert_contains "AC4 fix5 --baseline: the message names the unexpected committed path" "$OUT" "src/evil.js"
+  assert_untouched "AC4 fix5 --baseline: the commit is undone (HEAD unchanged)" "$R" "$H0" "$N0"
+  assert_eq "AC4 fix5 --baseline: src/evil.js is in no commit" "" "$(noeol_ls "$R" | grep -x 'src/evil.js')"
+  assert_eq "AC4 fix5 --baseline: the role's work tree content is kept" 'test("n", () => {});' "$(cat "$R/tests/new.test.js")"
+  assert_eq "AC4 fix5 --baseline: the baseline work tree file is kept" "module.exports = 9;" "$(cat "$R/src/app.js")"
+
+  R="$(fresh)"; N0="$(count_of "$R")"
+  printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  run_in "$R" bash "$STEP" red --message "m" --commit -- sh -c "$INSTALL_TRUE"
+  assert_rc "AC4 fix5 control, a harmless hook (default path): exit 0" 0
+  assert_eq "AC4 fix5 control (default path): one new commit" "$((N0 + 1))" "$(count_of "$R")"
+  assert_contains "AC4 fix5 control (default path): the test file is committed" "$(committed "$R")" "tests/new.test.js"
+
+  R="$(fresh)"; dirty "$R"; BL="$(snap "$R")"; N0="$(count_of "$R")"
+  printf 'test("n", () => {});\n' > "$R/tests/new.test.js"
+  run_in "$R" bash "$STEP" red --message "m" --commit --baseline "$BL" -- sh -c "$INSTALL_TRUE"
+  assert_rc "AC4 fix5 control, a harmless hook (--baseline): exit 0" 0
+  assert_eq "AC4 fix5 control (--baseline): one new commit" "$((N0 + 1))" "$(count_of "$R")"
+  assert_eq "AC4 fix5 control (--baseline): only the role's file is committed" "tests/new.test.js" "$(committed "$R")"
+else
+  t_skip 19 "AC4 fix5 git hooks (the file system cannot make a hook executable)"
+fi
+
 
 t_summary
