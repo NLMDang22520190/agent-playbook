@@ -233,6 +233,12 @@ chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforc
 chk "v0.24.21 AC1 the rule: record before each role, pass it as --base to that role's gate" "$SKILL_ONE" 'before (each|every|any) role.{0,200}--base|rev-parse HEAD.{0,250}--base'
 chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,250}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
 chk "v0.24.21 r2 the rule near Mechanical enforcement says every pass as well as each role" "$SKILL_ONE" 'Mechanical enforcement.{0,250}(every|each) pass'
+echo "v0.24.22 the tdd-step line names --base and --baseline; shared checkouts"
+chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKILL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
+HARN="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
+chk "v0.24.22 harnesses.md: concurrent tasks each get their own git worktree add" "$HARN" 'git worktree add.{0,400}(never|not)[^.]{0,60}(share|same)|(never|not)[^.]{0,60}(share|same)[^.]{0,200}git worktree add'
+chk "v0.24.22 harnesses.md: pre-existing changes use role-gate.sh snapshot and --baseline" "$HARN" 'role-gate\.sh snapshot.{0,300}--baseline|--baseline.{0,300}role-gate\.sh snapshot'
+chk "v0.24.22 harnesses.md: says why no path-scope for out-of-scope changes" "$HARN" '(outside|out-of)[- ]?(its )?scope.{0,200}(unseen|not seen|unnoticed)|(unseen|not seen|unnoticed).{0,200}(outside|out-of)[- ]?(its )?scope'
 NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
 NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
