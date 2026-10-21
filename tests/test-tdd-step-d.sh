@@ -280,9 +280,12 @@ if can_exec; then
     assert_contains "AC4 post-commit reset ($MODE): says nothing committed" "$(lower "$OUT")" "nothing committed"
     assert_contains "AC4 post-commit reset ($MODE): says HEAD was moved" "$OUT" "HEAD was moved to "
     assert_contains "AC4 post-commit reset ($MODE): names the pre-run commit" "$OUT" "(not one commit on "
-    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (README.md)" "$OUT" "README.md"
-    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (src/app.js)" "$OUT" "src/app.js"
-    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (tests/app.test.js)" "$OUT" "tests/app.test.js"
+    # the refusal only: the --baseline first gate prints "note: unchanged since the baseline: <path>" lines before it
+    REFUSAL="$(printf '%s\n' "$OUT" | sed -n '/error: HEAD was moved/,$p')"
+    assert_contains "AC4 post-commit reset ($MODE): the refusal text starts at the HEAD was moved line" "$REFUSAL" "error: HEAD was moved"
+    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (README.md)" "$REFUSAL" "README.md"
+    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (src/app.js)" "$REFUSAL" "src/app.js"
+    assert_not_contains "AC4 post-commit reset ($MODE): names no pre-run path (tests/app.test.js)" "$REFUSAL" "tests/app.test.js"
     assert_untouched "AC4 post-commit reset ($MODE): the commit is undone" "$R" "$H0" "$N0"
   done
 else
