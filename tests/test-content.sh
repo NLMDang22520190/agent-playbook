@@ -911,8 +911,14 @@ MACW="$(mk_tmp)"
 MACY="$(cat "$PB_ROOT/.github/workflows/test.yml")"
 # mac_mutant NAME FROM TO: a copy of the workflow with FROM replaced by TO must change the exit-code matrix
 mac_mutant() {
-  local c="${MACY/"$2"/"$3"}" got r
+  local to="$3" c got r qa qb qc   # no ${v/p/r}: bash 3.2 keeps quotes in the replacement and bash 5.2 expands & in it; cut at the first match instead
+  case "$MACY" in *"$2"*) c="${MACY%%"$2"*}$to${MACY#*"$2"}" ;; *) c="$MACY" ;; esac
   if [ "$c" = "$MACY" ]; then t_bad "v0.24.21 AC3 mutant [$1] applies to test.yml" "pattern not found: $2"; return 0; fi
+  # the copy is exactly the intended edit: the replacement is present and the double-quote count moved by exactly the quotes of FROM -> TO
+  qa="$(printf '%s' "$MACY" | tr -cd '"' | wc -c | tr -d ' ')"; qb="$(printf '%s' "$c" | tr -cd '"' | wc -c | tr -d ' ')"
+  qc=$(( $(printf '%s' "$to" | tr -cd '"' | wc -c | tr -d ' ') - $(printf '%s' "$2" | tr -cd '"' | wc -c | tr -d ' ') ))
+  assert_eq "v0.24.21 AC3 mutant [$1] copy holds the intended text and no stray quote" "$qc" "$((qb - qa))"
+  case "$c" in *"$to"*) t_ok "v0.24.21 AC3 mutant [$1] copy contains its replacement text" ;; *) t_bad "v0.24.21 AC3 mutant [$1] copy contains its replacement text" "missing: $to" ;; esac
   printf '%s\n' "$c" > "$MACW/$1.yml"
   got="$(mac_agg_matrix "$MACW/$1.yml")"
   if [ "$got" != "$MAC_WANT" ]; then r="caught"; else r="survived: $got"; fi
