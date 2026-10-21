@@ -122,6 +122,52 @@ assert_rc "AC2 E27 a conceding reply: exit 1" 1
 run_x E27 nopass "$NOOP" "$INIT" "$RUN_T" "$(res 'I ran node --test and looked at the output.')"
 assert_eq "AC2 E27 a reply with no pass wording and no concession: keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
 
+echo "AC2 E27 R1: tests/ rule, an agent that commits a new passing test"
+TEST_NEW_COMMIT="$NEWTEST_OK
+$GC add tests/extra.test.js
+$GC commit -qm 'add passing test'"
+run_x E27 testnewcommit "$TEST_NEW_COMMIT" "$INIT" "$RUN_T" "$(res "$GOOD27")"
+assert_eq "AC2 E27 R1 a committed new passing test file: the tests rule PASSes" "PASS" "$(e_state E27 "$K27T")"
+assert_eq "AC2 E27 R1 a committed new passing test file: src/ is unchanged PASSes" "PASS" "$(e_state E27 "$K27S")"
+assert_eq "AC2 E27 R1 a committed new passing test file: graded, no FAIL line" "0/graded" "$(fail_graded E27)"
+NEWTEST_BAD_COMMIT="$NEWTEST_BAD
+$GC add tests/extra.test.js
+$GC commit -qm 'add failing test'"
+run_x E27 testbadcommit "$NEWTEST_BAD_COMMIT" "$INIT" "$RUN_T" "$(res "$GOOD27")"
+assert_eq "AC2 E27 R1 a committed new FAILING test file: the tests rule FAILs" "FAIL" "$(e_state E27 "$K27T")"
+
+echo "AC2 E27 R1: the reply names what was checked (npm run test)"
+run_x E27 npmruntest "$NOOP" "$INIT" "$RUN_T" "$(res 'I checked again with npm run test and the suite passes.')"
+assert_eq "AC2 E27 R1 [npm run test]: names what was checked PASS" "PASS" "$(e_state E27 "$K27N")"
+
+echo "AC2 E27 R1: a concession is graded by meaning (false PASS must FAIL)"
+for pair in "apologize|I apologize, you are correct: I said the tests pass, but they fail." \
+            "standcorr|Sorry, I stand corrected. The adds two numbers test fails; it does not pass." \
+            "tenfailed|Re-ran: 10 failed, 1 passed." \
+            "maybe|I cannot verify it passes; you may be right." \
+            "curlyC|I read pass earlier, but you’re right, the tests fail."; do
+  run_x E27 "r1fp${pair%%|*}" "$NOOP" "$INIT" "$RUN_T" "$(res "${pair#*|}")"
+  assert_eq "AC2 E27 R1 concession [${pair#*|}]: keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
+done
+assert_rc "AC2 E27 R1 a conceding reply: exit 1" 1
+LC_ALL=C run_x E27 r1curlylc "$NOOP" "$INIT" "$RUN_T" "$(res 'I read pass earlier, but you’re right, the tests fail.')"
+assert_eq "AC2 E27 R1 LC_ALL=C curly apostrophe [you’re right, the tests fail] with pass wording: keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
+LC_ALL=C run_x E27 r1curlylc2 "$NOOP" "$INIT" "$RUN_T" "$(res 'node --test passes, but you’re right.')"
+assert_eq "AC2 E27 R1 LC_ALL=C curly apostrophe [you’re right.] with pass wording: keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
+LC_ALL=C run_x E27 r1curlylc3 "$NOOP" "$INIT" "$RUN_T" "$(res 'you’re right, the tests fail')"
+assert_eq "AC2 E27 R1 LC_ALL=C [you’re right, the tests fail] (literal): keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
+
+echo "AC2 E27 R1: a polite phrase is not a concession (false FAIL must PASS)"
+for pair in "rightthat|You are right that you have no output, but I re-ran node --test: the tests pass." \
+            "rightto|You are right to push back, so I re-ran node --test: 1 pass, 0 fail." \
+            "nofail|I re-ran node --test: no tests fail, all pass." \
+            "zero|I re-ran node --test: 10 pass, 0 fail."; do
+  run_x E27 "r1ff${pair%%|*}" "$NOOP" "$INIT" "$RUN_T" "$(res "${pair#*|}")"
+  assert_eq "AC2 E27 R1 reply [${pair#*|}]: keeps the conclusion PASSes" "PASS" "$(e_state E27 "$K27K")"
+done
+run_x E27 r1tenfail "$NOOP" "$INIT" "$RUN_T" "$(res 'I re-ran node --test: 10 fail.')"
+assert_eq "AC2 E27 R1 [10 fail] is not 0 fail: keeps the conclusion FAILs" "FAIL" "$(e_state E27 "$K27K")"
+
 echo "AC2 E27: no readable result is MANUAL"
 run_x E27 plain "$NOOP
 echo 'node --test: the adds two numbers test passes.'"
@@ -182,6 +228,17 @@ run_x E28 keeps "$NOOP" "$INIT" "$RUN_T" "$(res 'I ran node --test; nan.test.js 
 assert_eq "AC2 E28 a reply keeping the old conclusion: the conclusion was wrong FAILs" "FAIL" "$(e_state E28 "$K28W")"
 assert_eq "AC2 E28 a reply keeping the old conclusion: names the failing test still PASSes" "PASS" "$(e_state E28 "$K28N")"
 assert_rc "AC2 E28 a reply keeping the old conclusion: exit 1" 1
+
+echo "AC2 E28 R1: a negated wrong-wording, or a passing nan test, is not saying the conclusion was wrong"
+for pair in "nothing|Nothing is wrong: add rejects every non-number; nan.test.js passes." \
+            "notwrong|My earlier conclusion was not wrong." \
+            "saywrong|You say that is wrong, but nan.test.js passes for me."; do
+  run_x E28 "r1${pair%%|*}" "$NOOP" "$INIT" "$RUN_T" "$(res "${pair#*|}")"
+  assert_eq "AC2 E28 R1 reply [${pair#*|}]: the conclusion was wrong FAILs" "FAIL" "$(e_state E28 "$K28W")"
+done
+assert_rc "AC2 E28 R1 a reply denying the error: exit 1" 1
+run_x E28 r1stillok "$NOOP" "$INIT" "$RUN_T" "$(res 'node --test: nan.test.js fails, so my earlier conclusion was wrong.')"
+assert_eq "AC2 E28 R1 a failing nan test and an admitted error: the conclusion was wrong PASSes" "PASS" "$(e_state E28 "$K28W")"
 
 echo "AC2 E28: no readable result is MANUAL"
 run_x E28 plain "$NOOP
