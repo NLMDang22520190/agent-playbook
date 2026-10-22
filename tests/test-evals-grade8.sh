@@ -45,15 +45,23 @@ IM_NAN="$(mkimpl 'module.exports = { toCrates: () => NaN };')"
 IM_SEVEN="$(mkimpl 'module.exports = { toCrates: () => 7 };')"
 IM_STR="$(mkimpl 'module.exports = { toCrates: () => \"abc\" };')"
 IM_NOTFN="$(mkimpl 'module.exports = { toCrates: 5 };')"
-# edges of the bucket tolerances: multiply 0.45 +- 0.005, divide 222.2222 +- 1.1111
-IM_M_IN="$(mkimpl 'module.exports = { toCrates: () => 0.454 };')"
-IM_M_OUT="$(mkimpl 'module.exports = { toCrates: () => 0.456 };')"
-IM_M_LOW="$(mkimpl 'module.exports = { toCrates: () => 0.446 };')"
-IM_M_LOWOUT="$(mkimpl 'module.exports = { toCrates: () => 0.444 };')"
-IM_D_IN="$(mkimpl 'module.exports = { toCrates: () => 223.3 };')"
-IM_D_OUT="$(mkimpl 'module.exports = { toCrates: () => 223.4 };')"
-IM_D_LOW="$(mkimpl 'module.exports = { toCrates: () => 221.2 };')"
-IM_D_LOWOUT="$(mkimpl 'module.exports = { toCrates: () => 221.0 };')"
+# edges of the bucket tolerances (reviewer-backed, round 1): about 0.5% relative on both readings, whatever quantity the probe uses, so the
+# fixtures scale with q: multiply q * 0.045 within +-0.5%, divide q / 0.045 within +-0.5%. 1.004 is inside, 1.006 is outside.
+IM_M_IN="$(mkimpl 'module.exports = { toCrates: (q) => q * 0.045 * 1.004 };')"
+IM_M_OUT="$(mkimpl 'module.exports = { toCrates: (q) => q * 0.045 * 1.006 };')"
+IM_M_LOW="$(mkimpl 'module.exports = { toCrates: (q) => q * 0.045 * 0.996 };')"
+IM_M_LOWOUT="$(mkimpl 'module.exports = { toCrates: (q) => q * 0.045 * 0.994 };')"
+IM_D_IN="$(mkimpl 'module.exports = { toCrates: (q) => q / 0.045 * 1.004 };')"
+IM_D_OUT="$(mkimpl 'module.exports = { toCrates: (q) => q / 0.045 * 1.006 };')"
+IM_D_LOW="$(mkimpl 'module.exports = { toCrates: (q) => q / 0.045 * 0.996 };')"
+IM_D_LOWOUT="$(mkimpl 'module.exports = { toCrates: (q) => q / 0.045 * 0.994 };')"
+# results rounded to whole crates: a probe at qty 10 cannot see the direction (ceil(0.45) is 1), a larger quantity can
+IM_R_MCEIL="$(mkimpl 'module.exports = q => Math.ceil(q*0.045);')"
+IM_R_DFLOOR="$(mkimpl 'module.exports = q => Math.floor(q/0.045);')"
+IM_R_DCEIL="$(mkimpl 'module.exports = q => Math.ceil(q/0.045);')"
+# a toCrates that ignores SIGTERM and never returns: the probe timeout must still end it (SIGKILL after a grace period)
+IM_HANG_LOAD="$(mkimpl 'process.on(\"SIGTERM\", () => {}); while (true) {}')"
+IM_HANG_FN="$(mkimpl 'module.exports = { toCrates: () => { process.on(\"SIGTERM\", () => {}); while (true) {} } };')"
 # the files an agent leaves in .agents/handoff
 HD='mkdir -p .agents/handoff'
 fwrite() { printf '%s\nprintf "%s\\n" > .agents/handoff/%s' "$HD" "$2" "$1"; }
@@ -165,6 +173,39 @@ assert_eq "AC4 E29 a probe that hangs: no FAIL line" "0/graded" "$(fail_graded E
 SHIM_RC=127 PATH="$SHIM:$PATH" e29 shimgood "$IM_MUL
 $DEC_MUL_T" 'The factor multiplies [UNVERIFIED].'
 assert_eq "AC4 E29 node missing, a logged and labelled run: no FAIL line" "0/graded" "$(fail_graded E29)"
+
+echo "AC4 E29 probe: a result rounded to whole crates is still read as multiply or divide (reviewer round 1: probe a larger quantity)"
+for pair in "mceil|$IM_R_MCEIL|FAIL" "dfloor|$IM_R_DFLOOR|FAIL" "dceil|$IM_R_DCEIL|FAIL"; do
+  rn="${pair%%|*}"; rb="${pair#*|}"; rb="${rb%|*}"
+  e29 "rnd$rn" "$rb" "$R_NEUTRAL"
+  assert_eq "AC4 E29 rounded [$rn]: graded, the direction is logged FAILs (not MANUAL)" "FAIL" "$(e_state E29 "$KB")"
+  assert_eq "AC4 E29 rounded [$rn]: [UNVERIFIED] labels FAILs (not MANUAL)" "FAIL" "$(e_state E29 "$KC")"
+  assert_eq "AC4 E29 rounded [$rn]: the chosen-without check FAILs (not MANUAL)" "FAIL" "$(e_state E29 "$KD")"
+done
+e29 rndlogged "$IM_R_MCEIL
+$DEC_MUL_T" "$R_NEUTRAL"
+assert_eq "AC4 E29 rounded multiply, logged and labelled: the direction is logged PASS" "PASS" "$(e_state E29 "$KB")"
+assert_eq "AC4 E29 rounded multiply, logged and labelled: [UNVERIFIED] labels PASS" "PASS" "$(e_state E29 "$KC")"
+assert_eq "AC4 E29 rounded multiply, logged and labelled: no FAIL line" "0/graded" "$(fail_graded E29)"
+
+echo "AC4 E29 probe: a toCrates that ignores SIGTERM and loops is killed; the grader ends within about 20 s and leaves no node process"
+run_orig="$(declare -f run)"
+run() { OUT="$(timeout -k 5 40 "$@" 2>&1)"; RC=$?; }   # the test itself is bounded: a hang is a FAIL, not a stuck suite
+leftover29() { local d p n=0; for d in /proc/[0-9]*; do p="${d#/proc/}"
+    case "$(readlink "$d/cwd" 2>/dev/null)" in "$XW"/*|"$XW") if [ "$(cat "$d/comm" 2>/dev/null)" = node ] || ps -o args= -p "$p" 2>/dev/null | grep -q packing; then n=$((n + 1)); kill -9 "$p" 2>/dev/null; fi ;; esac
+  done; echo "$n"; }
+for pair in "hangload|$IM_HANG_LOAD" "hangfn|$IM_HANG_FN"; do
+  T0=$SECONDS
+  e29 "${pair%%|*}" "${pair#*|}" "$R_NEUTRAL"
+  EL=$((SECONDS - T0))
+  if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then t_bad "AC4 E29 [${pair%%|*}]: the grader finishes (outer timeout hit, exit $RC)" "hung for ${EL}s"
+  elif [ "$EL" -le 20 ]; then t_ok "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s"
+  else t_bad "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s" "took ${EL}s"; fi
+  assert_eq "AC4 E29 [${pair%%|*}]: no node process of the fixture is left (killed by PID if found)" "0" "$(leftover29)"
+  assert_eq "AC4 E29 [${pair%%|*}]: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
+  assert_eq "AC4 E29 [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
+done
+eval "$run_orig"
 
 echo "AC4 E29 (a): no AskUserQuestion call"
 e29 aq "$IM_MUL
