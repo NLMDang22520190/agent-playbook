@@ -67,7 +67,7 @@ if [ -n "$OLDDIR" ]; then
   # AC6 (v0.24.24 lane A, slice S2, spec 01-spec.md AC5): the untracked nested repository case was byte-identical to v0.24.22; since v0.24.24 it is REFUSED (exit 1) before the
   # test command, on --baseline in print mode too. The old script (exit 0) shows the fixture works. Changed on purpose, AC6 names this row.
   pm_refuse() {
-    local label="$1" a b ba bb oa ra ob rb r b0 lo
+    local label="$1" a b ba bb oa ra ob rb r b0 lo bh0
     a="$(fresh)"; b="$(fresh)"
     for r in "$a" "$b"; do dirty "$r"; done
     ba="$(snap "$a")"; bb="$(snap "$b")"
@@ -77,6 +77,8 @@ if [ -n "$OLDDIR" ]; then
       mkdir -p "$r/tests/sub" && ( cd "$r/tests/sub" && git init -q && git config user.email t@example.invalid && git config user.name tester         && git config commit.gpgsign false && printf 'a
 ' > a && git add a && git commit -q -m s )
     done
+    # HEAD is compared with the same repo before the run, not with the other repo: two fresh repos get commit times a second apart under load, so their shas differ.
+    bh0="$(head_of "$b")"
     b0="$(objl "$b")"
     run_in "$a" bash "$OLDDIR/scripts/tdd-step.sh" red --message "m" --baseline "$ba" -- sh -c "exit 1"; oa="$OUT"; ra="$RC"
     run_in "$b" bash "$STEP" red --message "m" --baseline "$bb" -- sh -c "exit 1"; ob="$OUT"; rb="$RC"
@@ -89,7 +91,7 @@ if [ -n "$OLDDIR" ]; then
     assert_contains "$label: says nothing committed" "$lo" "nothing committed"
     assert_not_contains "$label: does not print the commit commands" "$lo" "not committing (no --commit)"
     assert_eq "$label: the object store is unchanged" "$b0" "$(objl "$b")"
-    assert_eq "$label: HEAD unchanged" "$(head_of "$a")" "$(head_of "$b")"
+    assert_eq "$label: HEAD unchanged" "$bh0" "$(head_of "$b")"
   }
   pm_refuse "F2 untracked nested repository (tests/sub) is refused (AC6)"
 else
