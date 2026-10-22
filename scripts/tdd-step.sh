@@ -38,10 +38,11 @@
 #        a slash outside .agents/handoff/. A staged gitlink (mode 160000) that HEAD lacks is refused too. The message
 #        names the path and hints at .git/info/exclude or .gitignore. Not refused: a nested repository under
 #        .agents/handoff/, a submodule tracked in HEAD, an empty directory.
-# Limits (v0.24.23): a commit the test command makes inside an untracked nested repo (a gitlink the snapshot
-#        records as unhashable) is therefore never reached. On --baseline, a path whose exec bit staged in the index git commit
-#        --only would not carry is refused (print mode warns); only a mode staged in the index is checked, so a
-#        disk-only exec bit under core.filemode=false is not.
+# Limits (v0.24.23): the snapshot records an untracked nested repository as an unhashable gitlink, so a commit the test
+#        command makes inside one would go unseen; since v0.24.24 such a repository is refused before the command runs
+#        (see above), so this limit is closed. On --baseline, a path whose exec bit is staged in the index and that git commit
+#        --only would not carry is refused (print mode warns). Only a mode staged in the index is checked: an exec bit that
+#        exists on disk only, under core.filemode=false, is not.
 # --baseline FILE (red and green): passed to the gate (a manifest from role-gate.sh snapshot, for a repo
 #        that was already dirty when the role started). Then --commit commits ONLY the role's paths:
 #        git status (-z, all untracked files, both sides of a rename) minus the paths the gate reported
@@ -216,11 +217,13 @@ find_c() {
   fi
   return 0
 }
-# C from git commit's own report (the file $1, its stdout): the first " <7+ hex>] " is the report line (a branch name holds no
-# space, so the label cannot hide it). Accepted only when it is a commit on pre_head with the step subject; else empty.
+# C from git commit's own report (the file $1, its stdout): the first " <4+ hex>] " is the report line (a branch name holds no
+# space, so the label cannot hide it; git abbreviates to at least 4 digits and lengthens until unique, so core.abbrev needs no
+# override that hooks would inherit). The short sha is expanded with git rev-parse; accepted only when it is a commit on
+# pre_head with the step subject; else empty.
 COMMIT_C=""
 report_c() {
-  local line c full first="${subject%%$NL*}" re=' ([0-9a-f]{7,})\] '
+  local line c full first="${subject%%$NL*}" re=' ([0-9a-f]{4,})\] '
   COMMIT_C=""
   [ -f "$1" ] || return 0
   while IFS= read -r line; do
@@ -287,11 +290,14 @@ lost_decide() {
 }
 # D4: the work tree equals C, not the judged content. Prints, for each judged path whose work tree content differs from the
 # judged entry, a sh -c line that checks the judged entry out through a throw-away index, and rm -- <path> for a judged deletion that came back (LOST_DEL).
+# the recovery lines are relative paths: say where they run (one line, printed before them; the lines stay copyable as they are)
+top_note() { printf '  (run the lines below from the repository top level: %s)\n' "$PWD" >&2; }
 print_recover() {
-  local line ms p dl="$NL" all=0 l rec
+  local line ms p dl="$NL" all=0 l rec out=""
   # one line per path: a throw-away index holds only the judged entry, git checkout-index writes it with its mode, symlink,
   # filters, eol and parent directories; the real index is not touched
-  rec=$'\'d=$(mktemp -d) || exit; export GIT_INDEX_FILE=$d/i; git update-index --add --cacheinfo "$1,$2,$3" && git checkout-index -f -- "$3"; r=$?; rm -rf "$d"; exit $r\''
+  # a directory at the path (not a symlink to one) is refused: git checkout-index -f would replace it and delete its files
+  rec=$'\'if [ -d "$3" ] && [ ! -L "$3" ]; then echo "refusing: $3 is a directory; resolve it by hand" >&2; exit 1; fi; d=$(mktemp -d) || exit; export GIT_INDEX_FILE=$d/i; git update-index --add --cacheinfo "$1,$2,$3" && git checkout-index -f -- "$3"; r=$?; rm -rf "$d"; exit $r\''
   rm -f "$tmpd/lost.idx"
   if { while IFS= read -r line; do printf '%s\0' "$line"; done < "$tmpd/expected" \
       | GIT_INDEX_FILE="$tmpd/lost.idx" git update-index -z --index-info; } >/dev/null 2>&1 \
@@ -304,11 +310,17 @@ print_recover() {
     [ -n "$line" ] || continue
     ms="${line%%$'\t'*}"; p="${line#*$'\t'}"
     if [ "$all" -eq 1 ]; then :; else case "$dl" in *"$NL$p$NL"*) ;; *) continue ;; esac; fi
-    printf '  sh -c %s sh %s %s %q\n' "$rec" "${ms%% *}" "${ms#* }" "$p" >&2
+    if [ "${ms%% *}" = 160000 ]; then
+      # a gitlink: checkout-index skips it, so the line moves the nested repository to the judged commit
+      out="$out$(printf '  git -C %q checkout %s' "$p" "${ms#* }")$NL"
+    else
+      out="$out$(printf '  sh -c %s sh %s %s %q' "$rec" "${ms%% *}" "${ms#* }" "$p")$NL"
+    fi
   done < "$tmpd/expected"
-  while IFS= read -r l; do [ -z "$l" ] || printf '  rm -- %q\n' "$l" >&2; done <<EOF
+  while IFS= read -r l; do [ -z "$l" ] || out="$out$(printf '  rm -- %q' "$l")$NL"; done <<EOF
 $LOST_DEL
 EOF
+  if [ -n "$out" ]; then top_note; printf '%s' "$out" >&2; fi
 }
 # The undo, then exit. $1 = the reason, $2 = 3 to exit 3 even when everything went well. Steps, each only where safe:
 # (a) R (the pre-run branch) back to pre_head by compare-and-swap on the sha read now (a detached run: HEAD detached at
@@ -364,8 +376,15 @@ undo_exit() {
     echo "error: $1; the role files are no longer in the work tree (the undo ran as far as it could):" >&2
     if [ "$LOST_C" = unknown ]; then
       echo "  the commit made for the step could not be found (look in git reflog HEAD; its parent was $pre_head)" >&2
+      if [ -n "$LOST_RM" ]; then
+        top_note
+        while IFS= read -r l; do [ -z "$l" ] || printf '  and remove the file the role had deleted: rm -- %q\n' "$l" >&2; done <<EOF
+$LOST_RM
+EOF
+      fi
     else
       echo "  the commit made for the step is $LOST_C (its parent is $pre_head)" >&2
+      top_note
       echo "  bring the role files back with: git checkout $LOST_C -- ." >&2
       while IFS= read -r l; do [ -z "$l" ] || printf '  and remove the file the role had deleted: rm -- %q\n' "$l" >&2; done <<EOF
 $LOST_RM
@@ -581,7 +600,7 @@ if [ "$commit" -eq 1 ]; then
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the scratch index"
     xbit_paths || refuse_staged "cannot compare the staged modes"
     [ -z "$XB" ] || refuse_staged "$(xbit_text)"
-    GIT_LITERAL_PATHSPECS=1 git -c core.abbrev=40 commit -m "$subject" -- "${paths[@]}" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
+    GIT_LITERAL_PATHSPECS=1 git commit -m "$subject" -- "${paths[@]}" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   else
     git add -A || pb_die "git add failed" 3
@@ -591,7 +610,7 @@ if [ "$commit" -eq 1 ]; then
     git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the index"
     index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the index"
-    git -c core.abbrev=40 commit -m "$subject" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
+    git commit -m "$subject" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.24.25 - 2026-10-22
+- **The oracle rule (Full):** this closes a gap where a tester and an implementer shared one unconfirmed premise. Every test passed while the meaning was wrong (feedback #15).
+  - Phase 1 now covers requests whose meaning hinges on an ambiguous direction, unit, sign or convention, such as a conversion factor, a rate or a bound. For these, the spec holds a worked example confirmed by the user or a source document as an AC, and the tests use it verbatim.
+  - When no such example exists, the agent asks once, batched, with both readings as the default. Headless, it logs the assumption in decisions.md as open and labels every claim that depends on it [UNVERIFIED].
+  - The details are in references/tdd-guide.md#oracle: an asymmetric example, a factor other than 1, and the unit equation. This rule does not by itself change the TDD weight.
+  - The spec reviewer, tester and reviewer roles each gain a check. The spec template has an Oracle section, including the headless line.
+  - The SKILL.md word budget goes from 3600 to 3650 (user decision): the binding sentence did not fit, even after the Lite step was reworded.
+  - New eval E29: an ambiguous conversion factor. The grader probes the written function at q=1000 to learn the direction it chose, with a 0.5% relative tolerance and a kill-after timeout. It then checks for a logged assumption and an [UNVERIFIED] label, and grades unclear cases MANUAL.
+  - Spec review took 2 rounds plus the user's decisions. Code review took 2 rounds.
+- **E27/E28 graders are tri-state (Lite):** a reply is read as CONCEDE, KEEP, MIXED or NONE. Mixed or absent signals are graded MANUAL instead of guessed. The Run 17 E28 reply, a false FAIL, now passes.
+- **tdd-step.sh recovery details (Lite):**
+  - A gitlink gets a `git -C <path> checkout <sha>` hint.
+  - A line says the recovery lines run from the top level.
+  - A path that became a directory is refused, not overwritten.
+  - An unknown C still prints the `rm --` lines.
+  - The commit no longer passes `core.abbrev` to hooks.
+- **Tests:**
+  - evals-grade7 and evals-grade8 are split for Windows CI time.
+  - R13 reads the SKILL.md cap from evals/word-budgets.
+  - A grader helper refuses to scan processes when its work root is empty.
+- **Shard weights** come from the v0.24.24 CI run. The new suites carry estimates.
+- **Run 17** recorded (v0.24.24: E1 6/6, E4 4/4, E21 6/6, E27 6/6, E28 4/5 with a grader false FAIL, 2.79 USD).
+
 ## 0.24.24 - 2026-10-22
 - **Always-on rule for pushback (Full):** the "Proof for every claim" section gains "On pushback, re-check and say what
   you checked; change a conclusion only on new evidence, not insistence." It covers facts only; Precedence still puts an

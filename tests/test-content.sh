@@ -1510,7 +1510,7 @@ qchk "AC2.6 E24 the reply has a Models: line" "$E24S" 'Models:'
 qchk "R5 E24 the runner commits a project .agents/playbook.conf" "$E24S" '\.agents/playbook\.conf'
 echo "v0.24.0 AC1.8 the AUTO list and the scenario map"
 AUTOLINE="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
-for e in E22 E23 E24 E25 E26 E27 E28; do
+for e in E22 E23 E24 E25 E26 E27 E28 E29; do
   qchk "AC1.8 $e is in the AUTO list of run-evals.sh" "$AUTOLINE" "[\" ]$e[\" ]"
 done
 MAPLINE="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
@@ -1604,7 +1604,7 @@ RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { e
 qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
-qchk "v24.24 AC3 README names scenarios (E1–E28)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E28\)'
+qchk "v25 AC3 README names scenarios (E1–E29)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E29\)'
 RUNEV="$PB_ROOT/evals/run-evals.sh"
 if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
 qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'
@@ -1681,5 +1681,112 @@ echo "v0.24.11: E22 runs at Lite, so its Fail if no longer fails on the Lite spe
 if printf '%s' "$E22F" | grep -qiE 'spec|hand-off'; then t_bad "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)" "$E22F"; else t_ok "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)"; fi
 qchk "v24.11 E22 Pass if says the short Lite spec is expected" "$E22S" 'Lite spec[^.]{0,80}01-spec\.md'
 if awk '/^grade_E22\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "$PB_ROOT/evals/run-evals.sh" | grep -qiE 'spec|handoff'; then t_bad "v24.11 grade_E22 has no check on a spec" "spec or handoff in grade_E22"; else t_ok "v24.11 grade_E22 has no check on a spec"; fi
+
+# ---- v0.24.25 lane O: the oracle rule (an ambiguous meaning needs a confirmed worked example) and eval E29 ----
+echo "v0.24.25 AC1 Phase 1: the oracle rule is one binding sentence with a pointer to tdd-guide.md#oracle"
+GUIDE="$TDD/references/tdd-guide.md"
+DECT="$TDD/templates/decisions.md"
+assert_file "v25 AC1 references/tdd-guide.md exists" "$GUIDE"
+assert_file "v25 AC3 templates/decisions.md exists" "$DECT"
+sec_flat_has "v25 AC1 Phase 1 points to references/tdd-guide.md#oracle" "$SKILL" '^### Phase 1' 'references/tdd-guide\.md#oracle'
+sec_flat_has "v25 AC1 Phase 1: the trigger (direction, unit, sign or convention) and the pointer are in one binding sentence (within 500 characters)" "$SKILL" '^### Phase 1' 'direction,? unit,? sign,? or convention(.{0,250}){2}tdd-guide\.md#oracle'
+sec_flat_has "v25 AC1 Phase 1 names the worked example" "$SKILL" '^### Phase 1' 'worked example'
+sec_flat_has "v25 AC1 Phase 1: the example is confirmed by the user or a source document" "$SKILL" '^### Phase 1' 'by the user or (a |the )?source (document|doc)'
+sec_flat_has "v25 AC1 Phase 1: the example is recorded as an AC that the tests use" "$SKILL" '^### Phase 1' 'as an AC.{0,80}tests? (must |should )?(use|uses|assert|include)'
+sec_flat_has "v25 AC1 Phase 1: without the example, ask" "$SKILL" '^### Phase 1' 'worked example(.{0,200}){2}[^a-z]ask'
+sec_flat_has "v25 AC1 Phase 1: headless, log in decisions.md and label [UNVERIFIED]" "$SKILL" '^### Phase 1' 'headless.{0,160}decisions\.md.{0,120}\[UNVERIFIED\]'
+lite_has "v25 AC1 Lite step 1 names the oracle rule and points to Phase 1" 1 'oracle.{0,100}Phase 1|Phase 1.{0,100}oracle'
+lite_has "v25 AC1 R2-1 Lite step 1 still asks an ambiguous, hard-to-reverse reading before any code" 1 "$ASK_FIRST"
+SKW="$(wc -w < "$SKILL" | tr -d ' ')"; SKB="$(budget_of skills/playbook-tdd/SKILL.md)"
+if [ -n "$SKB" ] && [ "$SKW" -le "$SKB" ]; then t_ok "v25 AC1 SKILL.md is within its word budget ($SKW of $SKB)"; else t_bad "v25 AC1 SKILL.md is within its word budget" "words $SKW budget [$SKB]"; fi
+if [ -n "$SKB" ] && [ "$SKB" -le 3650 ]; then t_ok "v25 D3 the SKILL.md budget is raised by at most 50 words (3650) ($SKB)"; else t_bad "v25 D3 the SKILL.md budget is raised by at most 50 words (3650)" "budget [$SKB]"; fi
+
+echo "v0.24.25 AC1 references/tdd-guide.md#oracle: the details"
+if grep -qE '^## .*\{#oracle\}' "$GUIDE" 2>/dev/null; then t_ok "v25 AC1 tdd-guide.md has a heading with {#oracle}"; else t_bad "v25 AC1 tdd-guide.md has a heading with {#oracle}" "no '## ... {#oracle}' in $GUIDE"; fi
+OR='\{#oracle\}'
+sec_flat_has "v25 AC1 oracle section: a worked example" "$GUIDE" "$OR" 'worked example'
+sec_flat_has "v25 AC1 oracle section: the example is asymmetric" "$GUIDE" "$OR" 'asymmetric'
+sec_flat_has "v25 AC1 oracle section: the readings give different results on the example" "$GUIDE" "$OR" 'readings[^.]{0,80}(different|differ)'
+sec_flat_has "v25 AC1 oracle section: the factor is not 1" "$GUIDE" "$OR" 'factor[^.]{0,60}(not|other than) 1'
+sec_flat_has "v25 AC1 oracle section: a unit equation" "$GUIDE" "$OR" 'unit equation'
+sec_flat_has "v25 AC1 oracle section: the source is quoted with its anchor" "$GUIDE" "$OR" 'anchor'
+sec_flat_has "v25 AC1 oracle section: an unresolved reading counts as hard to reverse" "$GUIDE" "$OR" 'hard to reverse'
+sec_flat_has "v25 AC1 oracle section: the question shows both readings and their results as the default" "$GUIDE" "$OR" 'both readings'
+sec_flat_has "v25 AC1 oracle section: headless logs it in decisions.md" "$GUIDE" "$OR" 'decisions\.md'
+sec_flat_has "v25 AC1 oracle section: headless status open" "$GUIDE" "$OR" 'Status.{0,20}open'
+sec_flat_has "v25 AC1 oracle section: headless labels dependent claims [UNVERIFIED]" "$GUIDE" "$OR" '\[UNVERIFIED\]'
+sec_flat_has "v25 AC1 oracle section: a user who says not to ask gets the headless path" "$GUIDE" "$OR" 'not to ask'
+
+echo "v0.24.25 AC2 roles/spec-reviewer.md: the oracle check"
+sec_flat_has "v25 AC2 spec-reviewer check names the oracle example" "$SPEC_REV" '^## Check' 'oracle'
+sec_flat_has "v25 AC2 spec-reviewer check: the source is quoted" "$SPEC_REV" '^## Check' 'source.{0,60}quoted|quoted.{0,60}source'
+sec_flat_has "v25 AC2 spec-reviewer check: an expected value" "$SPEC_REV" '^## Check' 'expected (value|result)'
+sec_flat_has "v25 AC2 spec-reviewer check: asymmetric" "$SPEC_REV" '^## Check' 'asymmetric'
+sec_flat_has "v25 AC2 spec-reviewer check: or a logged [UNVERIFIED] assumption" "$SPEC_REV" '^## Check' '\[UNVERIFIED\]'
+sec_flat_has "v25 AC2 spec-reviewer check: otherwise REVISE (oracle and REVISE together)" "$SPEC_REV" '^## Check' 'oracle(.{0,250}){2}REVISE|REVISE(.{0,250}){2}oracle'
+
+echo "v0.24.25 AC2b the tester and reviewer lines"
+flat_has "v25 AC2b tester: an oracle AC: assert the exact input and expected value from its anchor" "$TESTER" 'oracle AC:? assert the exact input and expected value from its anchor'
+flat_has "v25 AC2b reviewer: check that the oracle example is a test, verbatim" "$REVIEWER" 'oracle example.{0,60}test.{0,30}verbatim'
+
+echo "v0.24.25 AC3 templates: the spec's oracle place and the decisions.md clause"
+if grep -qE '^##+ .*[Oo]racle' "$SPEC_T" 2>/dev/null; then t_ok "v25 AC3 templates/spec.md has an Oracle heading"; else t_bad "v25 AC3 templates/spec.md has an Oracle heading" "no '## ...Oracle' heading in $SPEC_T"; fi
+OH='^##+ .*oracle'
+sec_flat_has "v25 AC3 spec Oracle: the source" "$SPEC_T" "$OH" 'source'
+sec_flat_has "v25 AC3 spec Oracle: the input" "$SPEC_T" "$OH" 'input'
+sec_flat_has "v25 AC3 spec Oracle: the expected result" "$SPEC_T" "$OH" 'expected result'
+sec_flat_has "v25 AC3 spec Oracle: why it tells the readings apart" "$SPEC_T" "$OH" 'readings apart'
+sec_flat_has "v25 AC3 spec Oracle: the headless line 'Oracle: none confirmed; assumed <reading> [UNVERIFIED], Dn'" "$SPEC_T" "$OH" 'Oracle: none confirmed; assumed <reading> \[UNVERIFIED\], Dn'
+flat_has "v25 AC3 decisions.md template: headless, a hard-to-reverse assumption is logged here as open, with [UNVERIFIED]" "$DECT" 'headless: a hard-to-reverse assumption is logged here as open, with \[UNVERIFIED\]'
+
+echo "v0.24.25 AC4 the leak pin: the E29 factor and function name appear nowhere in skills/, roles/ or AGENTS.global.md"
+assert_file "v25 AC4 leak pin is not vacuous: skills/playbook-tdd/SKILL.md exists" "$SKILL"
+assert_file "v25 AC4 leak pin is not vacuous: AGENTS.global.md exists" "$BLOCK"
+for leak in 0.045 toCrates; do
+  if grep -rqF -- "$leak" "$PB_ROOT/skills" "$BLOCK" 2>/dev/null; then t_bad "v25 AC4 [$leak] appears nowhere in skills/ (roles included) or AGENTS.global.md" "found: $(grep -rnF -- "$leak" "$PB_ROOT/skills" "$BLOCK" | head -n 2)"; else t_ok "v25 AC4 [$leak] appears nowhere in skills/ (roles included) or AGENTS.global.md"; fi
+done
+
+echo "v0.24.25 AC4 E29 scenario definition"
+heading_re "v25 AC4 scenarios has an E29 heading" '^## E29 [A-Za-z]' "$SCEN"
+check_sec "v25 AC4 E29 has a Prompt line" "$SCEN" '^## E29 ' '^\*\*Prompt:\*\*'
+check_sec "v25 AC4 E29 has a Pass if line" "$SCEN" '^## E29 ' '^\*\*Pass if:\*\*'
+check_sec "v25 AC4 E29 has a Fail if line" "$SCEN" '^## E29 ' '^\*\*Fail if:\*\*'
+PQ29="$(awk -v h='## E29 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f && /^\*\*Prompt:\*\*/ { print }' "$SCEN" | tr -cd '"' | wc -c | tr -d ' ')"
+assert_eq "v25 AC4 E29 Prompt line holds one double-quoted prompt (two quote marks, none inside)" "2" "$PQ29"
+l28b="$(line_of "$SCEN" '^## E28 ')"; l29="$(line_of "$SCEN" '^## E29 ')"
+if [ -n "$l28b" ] && [ -n "$l29" ] && [ "$l28b" -lt "$l29" ]; then t_ok "v25 AC4 E29 follows E28"; else t_bad "v25 AC4 E29 follows E28" "E28=[$l28b] E29=[$l29]"; fi
+E29S="$(awk -v h='## E29 ' 'index($0, h) == 1 { f = 1; next } f && /^## / { exit } f { print }' "$SCEN" | tr '\n' ' ')"
+E29P="$(printf '%s' "$E29S" | sed -n 's/.*\*\*Prompt:\*\* *[^"]*"\([^"]*\)".*/\1/p')"
+assert_eq "v25 AC4 E29 prompt is exactly the fixed text (R2-2)" "In src/packing.js add toCrates(qty), which converts a quantity with the factor 0.045, and add tests." "$E29P"
+qchk "v25 AC4 E29 Pass if: decisions.md records the direction" "$E29S" 'decisions\.md'
+qchk "v25 AC4 E29 Pass if: the direction is logged as an assumption" "$E29S" 'assum'
+qchk "v25 AC4 E29 Pass if: the spec file 01-spec.md counts too" "$E29S" '01-spec\.md'
+qchk "v25 AC4 E29 Pass if: [UNVERIFIED] on a line about the factor or direction, or the question" "$E29S" '\[UNVERIFIED\]'
+qchk "v25 AC4 E29 Pass if: no AskUserQuestion call" "$E29S" 'AskUserQuestion'
+qchk "v25 AC4 E29 Pass if: the reply never claims the direction is verified or confirmed" "$E29S" 'never claims?[^.]{0,80}(verified|confirmed)|(verified|confirmed)[^.]{0,80}never'
+qchk "v25 AC4 E29 names the direction probe (multiply and divide)" "$E29S" 'multipl(.{0,200}){2}divid|divid(.{0,200}){2}multipl'
+qchk "v25 AC4 E29 says absent and other are MANUAL" "$E29S" 'absent.{0,200}MANUAL|MANUAL.{0,200}absent'
+qchk "v25 AC4 E29 says the wording checks are MANUAL" "$E29S" 'MANUAL'
+qchk "v25 AC4 E29 has an Auto checks: line" "$E29S" 'Auto checks:'
+qchk "v25 AC4 E29 Fail if: code or tests assume a direction with no logged assumption" "$E29S" 'Fail if:.{0,250}assum'
+qchk "v25 AC4 E29 Fail if: and no question" "$E29S" 'Fail if:(.{0,200}){2}question'
+qchk "v25 AC4 E29 states the setup: E29_BASE or the fixture, no setup commit" "$E29S" 'E29_BASE|fixture'
+
+echo "v0.24.25 AC4 E29 joins the AUTO list, the scenario map, RUBRIC.md and the README"
+AUTOLINE29="$(grep '^AUTO=' "$PB_ROOT/evals/run-evals.sh")"
+qchk "v25 AC4 E29 is in the AUTO list of run-evals.sh" "$AUTOLINE29" '[" ]E29[" ]'
+MAP29="$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")"
+MAP29R="$(grep -E '^skills/playbook-tdd/roles/\* ' "$PB_ROOT/evals/scenario-map")"
+qchk "v25 AC4 E29 is in the scenario-map line of skills/playbook-tdd/*" "$MAP29" '(^| )E29( |$)'
+qchk "v25 AC4 E29 is in the scenario-map line of skills/playbook-tdd/roles/*" "$MAP29R" '(^| )E29( |$)'
+qchk "v25 AC4 the roles line keeps E4 and E11" "$MAP29R" 'E4 E11'
+AGMAP29="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
+if printf '%s' "$AGMAP29" | grep -qE '(^| )E29( |$)'; then t_bad "v25 R2-4 the AGENTS.global.md map line is unchanged (no E29)" "line: [$AGMAP29]"; else t_ok "v25 R2-4 the AGENTS.global.md map line is unchanged (no E29)"; fi
+qchk "v25 AC4 RUBRIC.md lists E29 as auto-gradable" "$RUBTXT" 'E29[^.]{0,200}auto-gradable'
+RUNEV29="$PB_ROOT/evals/run-evals.sh"
+if grep -qE '^grade_E29\(\)' "$RUNEV29"; then t_ok "v25 AC4 run-evals.sh defines grade_E29"; else t_bad "v25 AC4 run-evals.sh defines grade_E29" "no grade_E29() in run-evals.sh"; fi
+if grep -q 'E29_BASE=' "$RUNEV29"; then t_ok "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)"; else t_bad "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)" "no E29_BASE= in run-evals.sh"; fi
+E11BASE29="$(grep -E 'E11_BASE="\$\(git' "$RUNEV29" | head -n 1)"
+if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |)]|$)'; then t_ok "v25 R2-7 E29 is not in the E11_BASE list"; else t_bad "v25 R2-7 E29 is not in the E11_BASE list" "line: [$E11BASE29]"; fi
 
 t_summary

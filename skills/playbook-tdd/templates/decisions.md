@@ -3,6 +3,7 @@
 Defaults chosen without asking because they are reversible. Review them in one batch at the end.
 Ask instead (and do not log here) when a choice is hard to reverse: public API or data shape,
 migrations, security, money, anything sent outside, or a product choice that belongs to the user.
+Exception, when nobody can answer: headless: a hard-to-reverse assumption is logged here as open, with [UNVERIFIED].
 
 | ID | Decision (the default taken) | Why this default | Alternatives | How to undo | Where (`path:line`, marker) | Status |
 |---|---|---|---|---|---|---|
