@@ -19,7 +19,7 @@ has() { grep -qiE -- "$2" "$1" 2>/dev/null; }
 check() { if has "$2" "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in $2"; fi; }
 # section FILE HEADING_REGEX: text from the matching heading to the next ##/### heading (exclusive)
 section() {
-  awk -v re="$2" 'BEGIN{IGNORECASE=1} f && /^##+ /{exit} !f && $0 ~ re {f=1} f{print}' "$1" 2>/dev/null
+  awk -v re="$2" 'BEGIN{re=tolower(re)} f && /^##+ /{exit} !f && tolower($0) ~ re {f=1} f{print}' "$1" 2>/dev/null
 }
 # check_sec NAME FILE HEADING_REGEX PATTERN
 check_sec() {
@@ -30,6 +30,13 @@ exact_heading() {
   if grep -qxF -- "$3" "$2" 2>/dev/null; then t_ok "$1"; else t_bad "$1" "no line exactly [$3] in $2"; fi
 }
 line_of() { grep -n -m1 -- "$2" "$1" 2>/dev/null | cut -d: -f1; }
+
+# v0.24.27: section() matches the heading case-insensitively on any awk (gawk IGNORECASE is not in BSD awk)
+SECFX="$(mk_tmp)/fx.md"
+printf '## oracle\nthe body line\n## next heading\nafter the section\n' > "$SECFX"
+SECOUT="$(section "$SECFX" '^## Oracle')"
+case "$SECOUT" in *"the body line"*) t_ok 'section() matches a capitalised pattern against a lower-case heading' ;; *) t_bad 'section() matches a capitalised pattern against a lower-case heading' "got [$SECOUT]" ;; esac
+case "$SECOUT" in *"after the section"*) t_bad 'section() stops at the next heading' "got [$SECOUT]" ;; *) t_ok 'section() stops at the next heading' ;; esac
 
 # --- AC5: focused tests for sub-agents, full run at close-out by orchestrator
 for f in "$IMPL" "$REVIEWER"; do
@@ -154,7 +161,7 @@ if [ -n "$l18" ] && [ -n "$l19" ] && [ "$l18" -lt "$l19" ]; then t_ok 'AC2.2 E19
 # --- v0.9.0 #4 AC4.6: the test-infra role is documented
 TDDALL="$(cat "$SKILL" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
 # paragraphs (blank-line separated) that talk about infra
-infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n";IGNORECASE=1} /infra/'; }
+infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n"} tolower($0) ~ /infra/'; }
 IP="$(infra_paras)"
 case "$IP" in *[![:space:]]*) t_ok 'AC4.6 playbook-tdd has an infra paragraph' ;; *) t_bad 'AC4.6 playbook-tdd has an infra paragraph' 'no paragraph mentions infra' ;; esac
 case "$IP" in *"check infra"*) t_ok 'AC4.6 playbook-tdd mentions `check infra`' ;; *) t_bad 'AC4.6 playbook-tdd mentions `check infra`' 'not found' ;; esac
