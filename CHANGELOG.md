@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.27 - 2026-10-22
+- **E29 grader wording (Lite):**
+  - Check (b) accepts the arithmetic form of a direction (`qty * 0.045`, `qty / 0.045`, "times", "over", "per"). Run 19 logged the direction as `qty * 0.045` and was graded a false negative; its files are now a PASS fixture.
+  - "factor" needs a word boundary, so "refactored" no longer counts.
+  - An `[UNVERIFIED]` line must name the direction. A bare "factor" or "0.045" on that line is graded MANUAL.
+  - A negated label ("NOT [UNVERIFIED]") is MANUAL.
+  - Normalisation keeps only the steps a fixture proves: the `**` strip and the curly apostrophe.
+- **tests/test-content.sh case-insensitive matching without gawk (Lite):** `section()` and `infra_paras()` used gawk-only `IGNORECASE`, so a capitalised heading pin never matched under BSD or macOS awk. They now compare `tolower()`.
+- **Docs:**
+  - The worked example in tdd-guide.md#oracle is now a currency rate. It used to be in the same domain as E29.
+  - Lite step 1 glosses "oracle".
+  - The E29 text says every graded check is MANUAL without node or a working process kill.
+  - A double colon in the decisions template is fixed.
+- **Shard weights** come from the v0.24.25 and v0.24.26 CI runs. Every weight is now CI-measured.
+- **Run 19** recorded (v0.24.26: E29 4/5, the (b) FAIL a grader false negative, 0.46 USD).
+
 ## 0.24.26 - 2026-10-22
 - **The E29 grader reads the handoff files from the work tree (Lite).** In the first real run (Run 18) it graded a correct run as FAIL.
   - The agent had logged the assumed direction with [UNVERIFIED] in `.agents/handoff/decisions.md` and in the spec.

@@ -673,8 +673,14 @@ grade_E28() {
 }
 # E29 (an ambiguous conversion factor), v0.24.25: the oracle rule. A probe runs toCrates(10) and puts the result in a bucket; the file and label
 # checks are graded only for multiply and divide (absent, other, no node or a timeout are MANUAL, never FAIL).
-# norm29 -> stdin with ** dropped, fence marker lines dropped (their content kept) and curly quotes mapped; LC_ALL=C
-norm29() { LC_ALL=C sed -e 's/\*\*//g' -e '/^[[:space:]]*\(```\|~~~\)/d' -e "s/$(printf '\342\200\234')/\"/g; s/$(printf '\342\200\235')/\"/g; s/$(printf '\342\200\231')/'/g"; }
+# norm29 -> stdin with ** dropped and the curly apostrophe mapped to '; LC_ALL=C. Each step is pinned by a negated-label fixture in tests/test-evals-grade8b.sh
+# ("**not** [UNVERIFIED]" and "isn<curly>t [UNVERIFIED]"; a mutant without the step fails it). v0.24.27: the fence-marker-line drop and the curly double-quote
+# map were removed: no pattern reads a double quote or a fence, and no fixture needed them (fenced content was always kept).
+norm29() { LC_ALL=C sed -e 's/\*\*//g' -e "s/$(printf '\342\200\231')/'/g"; }
+# v0.24.27: the direction signals. OP29 (grep -iE): multipl, divid, the multiplication or division sign, * or / next to 0.045, 0.045 * qty, and times, over or per
+# next to 0.045 or the word factor (a word boundary before factor: "refactor" is not the factor). SUBJ29 names the factor or the direction.
+OP29='multipl|divid|'"$(printf '\303\227')"'|'"$(printf '\303\267')"'|[*/] *0[.]045|0[.]045 *[*/] *qty|(times|over|per)[ ]+(0[.]045|factor)|(0[.]045|(^|[^a-z])factor)[ ]+(times|over|per)([^a-z]|$)'
+SUBJ29='0[.]045|(^|[^a-z])factor|direction'
 # probe29 -> sets P29 to multiply, divide, absent, other or manual (node missing (127) or the 10 s watchdog fired: TERM at 10 s, KILL 3 s later)
 # The watchdog is portable (macOS has no GNU timeout; bash 3.2): node runs in the background, a subshell polls once a second and signals it.
 probe29() { local out rc tf pid wd n
@@ -708,8 +714,10 @@ changed29() {
 }
 # files29 -> the text of decisions.md and 01-spec.md under .agents/handoff, each only when absent at E29_BASE or differs from it
 files29() { local f; for f in .agents/handoff/decisions.md .agents/handoff/01-spec.md; do if changed29 "$f"; then cat "$WD/$f"; printf '\n'; fi; done; }
-# qual29 -> stdin lines that name the factor or the direction (0.045, factor, direction, multipl, divid)
-qual29() { LC_ALL=C grep -iE '0[.]045|factor|direction|multipl|divid'; }
+# qual29 -> stdin lines that carry a direction signal (direction or any OP29 form); factor or 0.045 alone does not qualify (v0.24.27)
+qual29() { LC_ALL=C grep -iE "direction|$OP29"; }
+# unneg29 -> stdin without the lines where not, no longer or isn't comes right before [UNVERIFIED]: a negated label is no label (v0.24.27)
+unneg29() { LC_ALL=C grep -ivE "(^|[^a-z])(not|no longer|isn't)[ ]+\[UNVERIFIED\]"; }
 grade_E29() {
   local r="" haveres=0 fl all b=0 c=manual pq="$T_prose_q"
   probe29
@@ -721,11 +729,11 @@ grade_E29() {
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   case "$P29" in
     multiply|divide)
-      if printf '%s\n' "$fl" | LC_ALL=C grep -iE '0[.]045|factor|direction' | LC_ALL=C grep -qiE 'multipl|divid|'"$(printf '\303\227')"'|'"$(printf '\303\267')"; then b=1; fi
+      if printf '%s\n' "$fl" | LC_ALL=C grep -iE "$SUBJ29" | LC_ALL=C grep -qiE "$OP29"; then b=1; fi
       if [ "$b" = 1 ]; then record PASS "the assumed direction is logged in decisions.md or 01-spec.md"
       else record FAIL "the assumed direction is logged in decisions.md or 01-spec.md"; fi
       all="$fl"; [ "$haveres" = 1 ] && all="$(printf '%s\n%s\n' "$r" "$fl" | norm29)"
-      if printf '%s\n' "$all" | qual29 | grep -qF '[UNVERIFIED]'; then c=pass
+      if printf '%s\n' "$all" | qual29 | unneg29 | grep -qF '[UNVERIFIED]'; then c=pass
       elif printf '%s\n' "$all" | grep -qF '[UNVERIFIED]'; then c=manual
       elif [ "$haveres" = 1 ]; then c=fail
       else c=manual; fi
