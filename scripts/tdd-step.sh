@@ -265,6 +265,7 @@ wt_equals() {
 # also with the entries of the commit C git made: a work tree equal to C (a pre-commit hook rewrote the files and added them) has
 # no role file lost, the commit just differs from what was judged. Sets LOST_C (C, or "unknown") and LOST_RM (the brought-back
 # deletions, one per line). Any git error counts as lost. Runs once.
+LOST_WTC=0; LOST_DEL=""
 lost_decide() {
   local c
   [ "$LOST_DONE" -eq 0 ] || return 0
@@ -272,16 +273,39 @@ lost_decide() {
   [ -s "$tmpd/judged" ] || return 0
   wt_equals "$tmpd/expected" && return 0
   LOST_RM="$RM_NOW"
+  report_c "$tmpd/creport"
   if [ -n "$COMMIT_C" ] \
     && git ls-tree -r -z "$COMMIT_C" > "$tmpd/ctree" 2>/dev/null \
     && tree_lines < "$tmpd/ctree" | filter_judged "$tmpd/judged" > "$tmpd/clines" && pipe_ok "${PIPESTATUS[@]}" \
     && wt_equals "$tmpd/clines"; then
-    LOST_RM=""
+    LOST_WTC=1; LOST_DEL="$LOST_RM"; LOST_RM=""
     return 0
   fi
   c="$COMMIT_C"
   [ -n "$c" ] || c="$(find_c)"
   LOST_C="${c:-unknown}"
+}
+# D4: the work tree equals C, not the judged content. Prints, for each judged path whose work tree content differs from the
+# judged entry, git show <blob sha> > <path>, and rm -- <path> for a judged deletion that came back (LOST_DEL).
+print_recover() {
+  local line ms p dl="$NL" all=0 l
+  rm -f "$tmpd/lost.idx"
+  if { while IFS= read -r line; do printf '%s\0' "$line"; done < "$tmpd/expected" \
+      | GIT_INDEX_FILE="$tmpd/lost.idx" git update-index -z --index-info; } >/dev/null 2>&1 \
+    && GIT_INDEX_FILE="$tmpd/lost.idx" GIT_OPTIONAL_LOCKS=0 git --literal-pathspecs diff --name-only -z > "$tmpd/wtdiff" 2>/dev/null; then
+    while IFS= read -r -d '' p; do dl="$dl$p$NL"; done < "$tmpd/wtdiff"
+  else
+    all=1
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ms="${line%%$'\t'*}"; p="${line#*$'\t'}"
+    if [ "$all" -eq 1 ]; then :; else case "$dl" in *"$NL$p$NL"*) ;; *) continue ;; esac; fi
+    printf '  git show %s > %q\n' "${ms#* }" "$p" >&2
+  done < "$tmpd/expected"
+  while IFS= read -r l; do [ -z "$l" ] || printf '  rm -- %q\n' "$l" >&2; done <<EOF
+$LOST_DEL
+EOF
 }
 # The undo, then exit. $1 = the reason, $2 = 3 to exit 3 even when everything went well. Steps, each only where safe:
 # (a) R (the pre-run branch) back to pre_head by compare-and-swap on the sha read now (a detached run: HEAD detached at
@@ -320,7 +344,12 @@ undo_exit() {
   fi
   refs_now && refs_changed "" || { ok=0; fails="$fails branches-unreadable"; : > "$tmpd/chg"; }
   if [ "$ok" -eq 1 ] && [ ! -s "$tmpd/chg" ] && [ "${2:-}" != 3 ] && [ -z "$LOST_C" ]; then
-    echo "error: $1; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
+    if [ "$LOST_WTC" -eq 1 ]; then
+      echo "error: $1; the commit is undone, HEAD and the index are restored, but the work tree does not hold what was judged - nothing committed; bring the role content back with:" >&2
+      print_recover
+    else
+      echo "error: $1; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
+    fi
     for l in ${extra[@]+"${extra[@]}"}; do printf '  %s\n' "$l" >&2; done
     for l in ${differ[@]+"${differ[@]}"}; do printf 'error: the commit differs from what was judged: %s\n' "$l" >&2; done
     exit 1
@@ -446,7 +475,8 @@ if [ -z "$nest" ]; then
   while IFS= read -r -d '' ent; do
     case "$ent" in 160000" "*) ;; *) continue ;; esac
     p="${ent#*$'\t'}"
-    if [ -z "$(GIT_LITERAL_PATHSPECS=1 git ls-tree --name-only HEAD -- "$p" 2>/dev/null)" ]; then nest="$p"; break; fi
+    hm="$(GIT_LITERAL_PATHSPECS=1 git ls-tree HEAD -- "$p" 2>/dev/null)"
+    case "$hm" in 160000" "*) ;; *) nest="$p"; break ;; esac
   done < "$tmpd/lsf"
 fi
 if [ -n "$nest" ]; then
@@ -542,8 +572,7 @@ if [ "$commit" -eq 1 ]; then
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the scratch index"
     xbit_paths || refuse_staged "cannot compare the staged modes"
     [ -z "$XB" ] || refuse_staged "$(xbit_text)"
-    GIT_LITERAL_PATHSPECS=1 git commit -m "$subject" -- "${paths[@]}" > "$tmpd/creport" || { report_c "$tmpd/creport"; commit_failed; }
-    report_c "$tmpd/creport"
+    GIT_LITERAL_PATHSPECS=1 git -c core.abbrev=40 commit -m "$subject" -- "${paths[@]}" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   else
     git add -A || pb_die "git add failed" 3
@@ -553,8 +582,7 @@ if [ "$commit" -eq 1 ]; then
     git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the index"
     index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the index"
-    git commit -m "$subject" > "$tmpd/creport" || { report_c "$tmpd/creport"; commit_failed; }
-    report_c "$tmpd/creport"
+    git -c core.abbrev=40 commit -m "$subject" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi
