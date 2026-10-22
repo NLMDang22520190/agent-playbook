@@ -9,6 +9,7 @@
 # test-tdd-step-r.sh, -s.sh, -t.sh (new in v0.24.24): estimates, Linux seconds x 28 (r 8 s = 224, s 10 s = 280, t 5 s = 140; 28 = the Linux to CI ratio of the tdd-step suites). Replace them with CI times (L-0009).
 # test-tdd-step-u.sh (new in v0.24.24, lane A slice S2): an estimate, Linux seconds x 28 (u 10.7 s = 300; 28 = the Linux to CI ratio of the tdd-step suites). Replace it with a CI time (L-0009).
 # test-tdd-step-v.sh, -w.sh (new in v0.24.24, lane A review fix round 1): estimates, Linux seconds x 28 (v 8.3 s = 232, w 5.3 s = 148; 28 = the Linux to CI ratio of the tdd-step suites). Replace them with CI times (L-0009).
+# test-tdd-step-x.sh (new in v0.24.24, lane A review fix round 3): an estimate, Linux seconds x 28 (x 4.6 s = 129). Replace it with a CI time (L-0009).
 test-tdd-step-d.sh 463
 test-tdd-step-f.sh 434
 test-evals-grade6-b.sh 426
@@ -62,6 +63,7 @@ test-content.sh 181
 test-run-checks-sections.sh 176
 test-role-gate-committed.sh 148
 test-tdd-step-w.sh 148
+test-tdd-step-x.sh 129
 test-release.sh 142
 test-tdd-step-t.sh 140
 test-release-tool.sh 135
