@@ -309,7 +309,12 @@ if command -v git >/dev/null 2>&1 && git -C "$PB_ROOT" show "$G9BASE_SHA:evals/r
   run bash "$C/evals/run-checks.sh" --only gnu
   G9NEW_RC=$RC; G9NEW_OUT="$OUT"
   assert_eq "AC1.3 the new scanner exits as the base scanner over every *.sh of the tree" "$G9BASE_RC" "$G9NEW_RC"
-  assert_eq "AC1.3 the new scanner prints the same lines as the base scanner over every *.sh of the tree" "$G9BASE_OUT" "$G9NEW_OUT"
+  # v0.24.24 added one check to the gnu group after the base (ok "no grep call pairs ignore-case with fixed-strings").
+  # Drop exactly that one line, by whole-line match, from the new output; every other line must stay identical.
+  G9NEWLINE="  ok   no grep call pairs ignore-case with fixed-strings"
+  assert_contains "AC1.3 the new gnu group prints its added ignore-case/fixed-strings ok line" "$G9NEW_OUT" "$G9NEWLINE"
+  G9NEW_SAME="$(printf '%s\n' "$G9NEW_OUT" | grep -vxF -e "$G9NEWLINE")"
+  assert_eq "AC1.3 the new scanner prints the same lines as the base scanner over every *.sh of the tree (minus the one added ok line)" "$G9BASE_OUT" "$G9NEW_SAME"
   assert_contains "AC1.3 sanity: the base run scanned (it printed the GNU summary lines)" "$G9BASE_OUT" "ok"
 else
   t_skip 3 "AC1.3 the base scanner is not available (git, or $G9BASE_SHA, missing)"

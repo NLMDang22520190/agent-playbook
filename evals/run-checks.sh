@@ -301,7 +301,7 @@ scan_miss_fail "GNU-only"; gmiss="$SMISS"
 # Limits (not covered): text inside single quotes (bash -c '...', awk programs) is not looked at; a tool named through
 # an alias or a longer variable name is not seen; a flag on a continuation line (after a backslash) is not seen; an ANSI-C
 # quote does not span lines; only the names and options listed above are checked, so a new GNU-only option needs a new entry.
-ggnu="$(awk '
+ggnu="$(LC_ALL=C awk '
   function flush() { if (t != "") { TK[++nk] = t; t = "" } }
   # scan(s): the words of one line, with the quote state (sp/MS/PD/inS) carried over from the line before.
   # MS[sp] is "c" (code), "d" (inside double quotes) or "b" (a backtick command inside double quotes).
@@ -453,6 +453,46 @@ ggnu="$(printf '%s' "$ggnu" | tr -s ' ')"
 if [ "$grc" -ne 0 ]; then bad "GNU-only scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
 elif [ -z "${ggnu// /}" ]; then [ -z "$gmiss" ] && ok "GNU-only options absent (BSD/macOS)"
 else bad "GNU-only options (BSD/macOS lacks them; use a portable form or node) at: $ggnu"; fi
+# Git for Windows ships grep 3.0, which aborts (core dump, exit 134) on a grep call that has both ignore-case and fixed-strings
+# (-i with -F, or --ignore-case, --fixed-strings, in any mix). Lowercase both sides with tr and use -F, or keep -i and drop -F.
+# Per line: whole-line comments are skipped; the line is cut at | ; & ( ) and backtick into commands; in each command that has the
+# word grep (or a path ending in /grep) the words after it are read as options up to the -- marker; in a short cluster the letters
+# up to the first option that takes an argument (e f m A B C d D) count, and the next word is skipped when that letter ends the cluster.
+# Not covered: a call spelled through a variable, text inside single quotes (read as code, a conservative false positive).
+gif="$(awk '
+  /^[[:space:]]*#/ { next }
+  {
+    nseg = split($0, seg, /[|;&()`]/)
+    for (k = 1; k <= nseg; k++) {
+      nw = split(seg[k], w, /[[:space:]]+/)
+      for (j = 1; j <= nw; j++) {
+        if (w[j] != "grep" && w[j] !~ /\/grep$/) continue
+        gi = 0; gf = 0
+        for (q = j + 1; q <= nw; q++) {
+          t = w[q]
+          if (t == "--") break
+          if (t ~ /^--/) {
+            if (t == "--ignore-case") gi = 1
+            else if (t == "--fixed-strings") gf = 1
+          } else if (t ~ /^-[[:alnum:]]/) {
+            for (c = 2; c <= length(t); c++) {
+              ch = substr(t, c, 1)
+              if (index("efmABCdD", ch) > 0) { if (c == length(t)) q++; break }
+              if (ch == "i") gi = 1
+              else if (ch == "F") gf = 1
+            }
+          }
+        }
+        if (gi && gf) { out = out FILENAME ":" FNR " "; break }
+      }
+    }
+  }
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+gfrc=$?
+gif="$(printf '%s' "$gif" | tr -s ' ')"
+if [ "$gfrc" -ne 0 ]; then bad "grep ignore-case/fixed-strings scan failed (awk exit $gfrc; a missing or unreadable file in the scanned list?)"
+elif [ -z "${gif// /}" ]; then [ -z "$gmiss" ] && ok "no grep call pairs ignore-case with fixed-strings"
+else bad "grep with both ignore-case (-i) and fixed-strings (-F): Git for Windows grep 3.0 aborts; lowercase both sides with tr and use -F, or drop -F, at: $gif (ignore-case+fixed-strings)"; fi
 fi
 
 if want soh; then
@@ -462,7 +502,10 @@ nofiles 'tests/*.sh' 'evals/*.sh' 'scripts/*.sh' 'tools/*.sh'
 # length ends in a live escape): the octal forms with 4, 3 or 2 digits and the two-digit hex form. No gnu-ok exemption; build
 # fixtures from pieces. Not covered: the one-digit octal \1, the one-digit hex \x1, the control escape \cA (printf %b and the
 # ANSI-C quote of newer bashes), and a byte made another way (for example from a variable or a file); quote state is per line.
-gsoh="$(awk "$AWKSTRIP"'
+# LC_ALL=C: awk reads bytes, not characters. The macOS awk (one-true-awk, UTF-8 aware) failed the per-character split on a script
+# that holds a multibyte character; SOH is one ASCII byte, so the findings are the same. stderr goes to a file, shown if the scan fails.
+sohe="$(mktemp "${TMPDIR:-/tmp}/rc-soh.XXXXXX" 2>/dev/null || echo /dev/null)"
+gsoh="$(LC_ALL=C awk "$AWKSTRIP"'
   {
     line = strip($0)
     if (index(line, "\\") == 0) next
@@ -475,13 +518,16 @@ gsoh="$(awk "$AWKSTRIP"'
       i = j
     }
   }
-  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>/dev/null)"
+  END { print out }' tests/*.sh evals/*.sh scripts/*.sh tools/*.sh install.sh 2>"$sohe")"
 grc=$?   # the exit status of the awk scan: a scan that did not finish is never an ok
 gsoh="$(printf '%s' "$gsoh" | tr -s ' ')"
 if scan_miss_fail "SOH"; then :
-elif [ "$grc" -ne 0 ]; then bad "SOH scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+elif [ "$grc" -ne 0 ]; then
+  bad "SOH scan failed (awk exit $grc; a missing or unreadable file in the scanned list?)"
+  [ -s "$sohe" ] && sed 's/^/       awk: /' "$sohe"
 elif [ -z "${gsoh// /}" ]; then ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)"
 else bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"; fi
+[ "$sohe" = /dev/null ] || rm -f "$sohe"
 fi
 
 if want modes; then

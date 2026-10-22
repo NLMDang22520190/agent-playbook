@@ -536,7 +536,7 @@ NOTE='leak-check: no UTF-8 locale; literal case folding is ASCII-only'
 ERRF="$(mk_tmp)/err"
 HAVE_UTF8=0
 for cand in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
-  if printf '\304\220' | LC_ALL="$cand" grep -qiF "$(printf '\304\221')" 2>/dev/null; then HAVE_UTF8=1; break; fi
+  if printf '\304\220' | LC_ALL="$cand" grep -qi "$(printf '\304\221')" 2>/dev/null; then HAVE_UTF8=1; break; fi
 done
 conf_global "leak_literals=$LIT_LOW"
 newrepo

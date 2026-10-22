@@ -332,6 +332,33 @@ assert_rc "AC4.3 --only gnu ignores a soh-flagged file: exit 0" 0
 run bash "$C/evals/run-checks.sh" --only sed
 assert_rc "AC4.3 --only sed ignores a soh-flagged file: exit 0" 0
 
+# ---- v0.24.25: the soh scan under a UTF-8 locale (macOS awk is multibyte aware; its per-character split failed on a UTF-8 script) ----
+echo "v0.24.25 the soh scan runs under LC_ALL=C and explains its own failure"
+# (1) a scanned script with a UTF-8 multibyte character (U+2019) right before a backslash escape: still exit 0 under a UTF-8 locale
+UTFLOC=""
+for l in en_US.UTF-8 en_US.utf8 C.UTF-8 C.utf8; do
+  if LC_ALL="$l" bash -c 'exit 0' 2>/dev/null && locale -a 2>/dev/null | grep -q -x -e "$l" -e "$(printf '%s' "$l" | tr 'A-Z' 'a-z')"; then UTFLOC="$l"; break; fi
+done
+if [ -n "$UTFLOC" ]; then
+  C="$(mk_min_copy)"
+  printf '#!/usr/bin/env bash\n# fixture\n%s\n' "echo it$(printf '\342\200\231')s ${B}n ${B}${B}01" > "$C/tests/zz-soh-utf.sh"
+  run env LC_ALL="$UTFLOC" bash "$C/evals/run-checks.sh" --only soh
+  assert_rc "v0.24.25 --only soh with a UTF-8 character beside a backslash escape ($UTFLOC): exit 0" 0
+  assert_contains "v0.24.25 the same run prints the ok line" "$OUT" "  ok   no SOH byte"
+else
+  t_ok "v0.24.25 no UTF-8 locale installed: the multibyte case is skipped"
+fi
+# (2) a failing awk: the reason (its stderr) is printed after the FAIL line
+C="$(mk_min_copy)"; SHIM="$(mk_tmp)"
+printf '#!/bin/sh\necho "shim-awk: boom on stderr" >&2\nexit 2\n' > "$SHIM/awk"; chmod +x "$SHIM/awk"
+run env PATH="$SHIM:$PATH" bash "$C/evals/run-checks.sh" --only soh
+assert_contains "v0.24.25 a failing awk is reported as SOH scan failed" "$OUT" "SOH scan failed (awk exit 2"
+assert_contains "v0.24.25 the awk stderr is shown after the failure" "$OUT" "shim-awk: boom on stderr"
+# (3) static pins: the soh awk and the gnu awk run byte-wise (LC_ALL=C); SOH is one ASCII byte, so the findings do not change
+RCSRC="$(cat "$PB_ROOT/evals/run-checks.sh")"
+assert_contains "v0.24.25 the soh awk runs under LC_ALL=C" "$RCSRC" 'gsoh="$(LC_ALL=C awk "$AWKSTRIP"'
+assert_contains "v0.24.25 the gnu awk runs under LC_ALL=C" "$RCSRC" "ggnu=\"\$(LC_ALL=C awk '"
+
 # ---- v0.23.0 review: four-digit octal, what the soh check documents as not covered, executable bits ----
 echo "v0.23.0 review: AC4.3 four digits"
 soh_case "printf %b with a four-digit octal escape" tests/zz-soh.sh "printf ${Q}%b${Q} ${Q}${B}0001${Q}" fail
