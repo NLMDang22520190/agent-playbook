@@ -42,7 +42,8 @@ blob_line() {
   ( cd "$R" && sh -e "$s" ) >/dev/null 2>&1; rc=$?
   after="$(git -C "$R" ls-files -s)"; sa="$(git -C "$R" diff --cached --name-status)"
   assert_eq "$1: the recovery line runs without an error (sh -e)" "0" "$rc"
-  assert_eq "$1: after the recovery $2 holds the role's content" "$3" "$(cat "$R/$2" 2>/dev/null)"
+  # compared as git sees the file (git hash-object applies the work tree's autocrlf): with core.autocrlf=true the recovery checks the file out with CRLF while the role wrote LF; git treats both as the same content, the judged sha
+  assert_eq "$1: after the recovery $2 holds the role's content (the sha git computes for the file is the judged sha)" "$sha" "$(git -C "$R" hash-object --path="$2" -- "$R/$2" 2>/dev/null)"
   assert_eq "$1: the recovery leaves the index entries unchanged" "$before" "$after"
   assert_eq "$1: the recovery stages nothing (git diff --cached is as before: the baseline fixture stages a file of its own)" "$sb" "$sa"
 }

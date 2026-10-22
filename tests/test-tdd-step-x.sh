@@ -14,6 +14,7 @@
 . "$(dirname "$0")/tdd-step-fixture.sh"
 . "$(dirname "$0")/tdd-step-d-fixture.sh"
 . "$(dirname "$0")/tdd-step-g-fixture.sh"
+. "$(dirname "$0")/tdd-step-j-fixture.sh"
 
 # can_link -> 0 when the file system stores a symbolic link that reads back
 can_link() { local d; d="$(mk_tmp)"; ln -s target "$d/l" 2>/dev/null && [ -L "$d/l" ] && [ "$(readlink "$d/l")" = target ]; }
@@ -62,17 +63,22 @@ if can_exec; then
   basics "$T" 1
   assert_eq "$T: the file is gone (the case is real)" "no" "$([ -e "$R/tests/run.sh" ] && echo yes || echo no)"
   recover "$T"
-  assert_eq "$T: the file is back with its content" "$(printf '#!/bin/sh\necho hi\n')" "$(cat "$R/tests/run.sh" 2>/dev/null)"
+  # compared as git sees the file (autocrlf may give the recovered file CRLF; git hash-object --path normalizes it like git add did): the sha of the role's LF content
+  assert_eq "$T: the file is back with its content" "$(printf '#!/bin/sh\necho hi\n' | git -C "$R" hash-object --stdin)" "$(git -C "$R" hash-object --path=tests/run.sh -- "$R/tests/run.sh" 2>/dev/null)"
   assert_eq "$T: it is executable" "yes" "$([ -x "$R/tests/run.sh" ] && echo yes || echo no)"
 
-  T="X2 exec-bit-only change reverted by the hook"
-  gprep default; chmod +x "$R/tests/app.test.js"
-  run_red --commit sh -c "$(hookcmd "$(mkhook x3 'touch .git/x-ran' 'git checkout -q HEAD -- tests/app.test.js')")"
-  basics "$T" 1
-  assert_eq "$T: the bit is gone (the case is real)" "no" "$([ -x "$R/tests/app.test.js" ] && echo yes || echo no)"
-  recover "$T"
-  assert_eq "$T: it is executable" "yes" "$([ -x "$R/tests/app.test.js" ] && echo yes || echo no)"
-  assert_eq "$T: the content is unchanged" 'test("x", () => {});' "$(cat "$R/tests/app.test.js")"
+  if can_exec_f; then
+    T="X2 exec-bit-only change reverted by the hook"
+    gprep default; chmod +x "$R/tests/app.test.js"
+    run_red --commit sh -c "$(hookcmd "$(mkhook x3 'touch .git/x-ran' 'git checkout -q HEAD -- tests/app.test.js')")"
+    basics "$T" 1
+    assert_eq "$T: the bit is gone (the case is real)" "no" "$([ -x "$R/tests/app.test.js" ] && echo yes || echo no)"
+    recover "$T"
+    assert_eq "$T: it is executable" "yes" "$([ -x "$R/tests/app.test.js" ] && echo yes || echo no)"
+    assert_eq "$T: the content is unchanged" 'test("x", () => {});' "$(cat "$R/tests/app.test.js")"
+  else
+    t_skip 10 "X2 exec-bit-only change (this file system or git cannot record an exec bit on a .js file: no such change exists here)"
+  fi
 
   T="P2b new file in a new directory the hook removed"
   gprep default; mkdir -p "$R/tests/newdir/deep"; printf 'deep content\n' > "$R/tests/newdir/deep/f.test.js"
@@ -93,6 +99,7 @@ if can_exec; then
 
   T="R2-2 pre-commit reverts the judged file, post-commit creates a branch"
   gprep default; printf 'edited by the role\n' >> "$R/tests/app.test.js"; WANT="$(cat "$R/tests/app.test.js")"
+  WSHA="$(git -C "$R" hash-object --path=tests/app.test.js -- "$R/tests/app.test.js")"
   PRE="$(mkhook x6 'touch .git/x-ran' 'git checkout -q HEAD -- tests/app.test.js')"
   POST="$(mkhook x7 'git show-ref --verify -q refs/heads/extra || git branch extra')"
   run_red --commit sh -c "$(hookcmd2 "$PRE" "$POST")"
@@ -100,7 +107,8 @@ if can_exec; then
   assert_eq "$T: the branch extra is left behind (the case is real)" "yes" "$(git -C "$R" show-ref --verify -q refs/heads/extra && echo yes || echo no)"
   assert_eq "$T: the edit is gone from the work tree (the case is real)" 'test("x", () => {});' "$(cat "$R/tests/app.test.js")"
   recover "$T"
-  assert_eq "$T: the role content is back" "$WANT" "$(cat "$R/tests/app.test.js")"
+  # compared as git sees the file (autocrlf may give the recovered file CRLF): the sha git computes is the judged sha
+  assert_eq "$T: the role content is back" "$WSHA" "$(git -C "$R" hash-object --path=tests/app.test.js -- "$R/tests/app.test.js")"
 else
   t_skip 60 "X D4 recovery cases (the file system cannot make a hook executable)"
 fi
