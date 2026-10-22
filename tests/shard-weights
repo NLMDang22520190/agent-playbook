@@ -5,6 +5,7 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # The suites new in v0.24.24 (test-tdd-step-r.sh .. -x.sh, test-evals-grade7.sh) are estimates: 0.87 x their times on a local Git Bash (r 291, s 318, t 192, u 210, v 250, w 207, x 102, grade7 346 s; 0.87 = 764/883, L-0009). Replace them with CI times.
+# v0.24.25: test-tdd-step-y.sh is an estimate: about 7.6 s on Linux x 28 = 212 (not CI-measured). Replace it with the CI time.
 test-evals-grade6-b.sh 408
 test-tdd-step-d.sh 400
 test-role-gate-batch.sh 389
@@ -43,6 +44,7 @@ test-tdd-step-e.sh 242
 test-tdd-step-q.sh 231
 test-tdd-step-h.sh 228
 test-tdd-step-v.sh 218
+test-tdd-step-y.sh 212
 test-role-model-b.sh 215
 test-ship-c.sh 211
 test-tdd-step-i.sh 211
