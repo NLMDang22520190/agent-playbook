@@ -61,3 +61,25 @@ R_NEUTRAL='Added toCrates in src/packing.js and the tests. All done.'
 # e29 NAME BODY REPLY [TRANSCRIPT-LINE...]: one headless E29 run; sets OUT, RC
 e29() { local n="$1" body="$2" reply="$3"; shift 3
   if [ $# -gt 0 ]; then run_x E29 "$n" "$body" "$INIT" "$@" "$(res "$reply")"; else run_x E29 "$n" "$body" "$INIT" "$(res "$reply")"; fi; }
+
+# ptimeout KILL_AFTER SECS CMD... : a portable stand-in for GNU timeout -k (macOS has none). CMD runs in the background, a watchdog sends TERM after SECS and
+# KILL KILL_AFTER s later; a timed-out CMD returns 124, else its own status. Bash 3.2, no GNU tools.
+ptimeout() { local k="$1" t="$2" pid wd rc n; shift 2
+  "$@" & pid=$!
+  ( trap - EXIT INT TERM HUP; n=0; while [ "$n" -lt "$t" ]; do sleep 1; kill -0 "$pid" 2>/dev/null || exit 0; n=$((n + 1)); done
+    kill -TERM "$pid" 2>/dev/null; n=0; while [ "$n" -lt "$k" ]; do sleep 1; kill -0 "$pid" 2>/dev/null || exit 0; n=$((n + 1)); done
+    kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  wd=$!
+  wait "$pid" 2>/dev/null; rc=$?
+  kill "$wd" 2>/dev/null; { wait "$wd"; } 2>/dev/null
+  case "$rc" in 143) rc=124 ;; esac
+  return "$rc"; }
+# mk_notimeout_path -> prints a dir holding symlinks to every command of /usr/bin, /bin and the node and bash dirs, except timeout and gtimeout
+mk_notimeout_path() { local d x f b; d="$(mk_tmp)"
+  for x in /usr/bin /bin "$(dirname "$(command -v node)")" "$(dirname "$(command -v bash)")"; do
+    for f in "$x"/*; do b="${f##*/}"
+      case "$b" in timeout|gtimeout) continue ;; esac
+      [ -e "$f" ] && [ ! -e "$d/$b" ] && ln -s "$f" "$d/$b"
+    done
+  done
+  printf '%s\n' "$d"; }

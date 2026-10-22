@@ -31,7 +31,7 @@
 . "$(dirname "$0")/evals-grade8-fixture.sh"
 
 echo "AC4 E29 setup: the plain fixture, no setup commit, nothing resolves the direction"
-E29_REC='{ if [ -e src/packing.js ]; then echo "packing=present"; else echo "packing=none"; fi; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; echo "commits=$(git rev-list --count HEAD)"; echo "decisions=$(ls .agents/handoff 2>/dev/null | wc -l | tr -d " ")"; grep -rlE "0[.]045|toCrates" . --exclude-dir=.git 2>/dev/null | wc -l | sed "s/^/mentions=/"; } > "$REC/E29.fix"'
+E29_REC='{ if [ -e src/packing.js ]; then echo "packing=present"; else echo "packing=none"; fi; echo "dirty=$(git status --porcelain | wc -l | tr -d " ")"; echo "commits=$(git rev-list --count HEAD)"; echo "decisions=$(ls .agents/handoff 2>/dev/null | wc -l | tr -d " ")"; grep -rlE "0[.]045|toCrates" . --exclude-dir=.git 2>/dev/null | wc -l | tr -d " " | sed "s/^/mentions=/"; } > "$REC/E29.fix"'
 e29 good "$E29_REC
 $IM_MUL
 $DEC_MUL_T" 'Added toCrates in src/packing.js and the tests. I assumed the factor multiplies: toCrates(10) is 0.45 [UNVERIFIED].'
@@ -115,6 +115,17 @@ assert_eq "AC4 E29 a probe that hangs: no FAIL line" "0/graded" "$(fail_graded E
 SHIM_RC=127 PATH="$SHIM:$PATH" e29 shimgood "$IM_MUL
 $DEC_MUL_T" 'The factor multiplies [UNVERIFIED].'
 assert_eq "AC4 E29 node missing, a logged and labelled run: no FAIL line" "0/graded" "$(fail_graded E29)"
+
+echo "AC4 E29 probe: with no timeout command on PATH multiply and divide are still graded (macOS has no GNU timeout)"
+NT="$(mk_notimeout_path)"
+PATH="$NT" e29 ntmul "$IM_MUL
+$DEC_MUL_T" 'The factor multiplies [UNVERIFIED].'
+assert_eq "AC4 E29 no timeout command, multiply, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
+PATH="$NT" e29 ntdiv "$IM_DIV
+$DEC_DIV_T" 'The factor divides [UNVERIFIED].'
+assert_eq "AC4 E29 no timeout command, divide, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
+PATH="$NT" e29 ntmulbad "$IM_MUL" "$R_NEUTRAL"
+assert_eq "AC4 E29 no timeout command, multiply, nothing logged: the direction is logged FAILs (graded)" "FAIL" "$(e_state E29 "$KB")"
 
 echo "AC4 E29 probe: a result rounded to whole crates is still read as multiply or divide (reviewer round 1: probe a larger quantity)"
 for pair in "mceil|$IM_R_MCEIL|FAIL" "dfloor|$IM_R_DFLOOR|FAIL" "dceil|$IM_R_DCEIL|FAIL"; do

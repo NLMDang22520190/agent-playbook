@@ -32,7 +32,7 @@
 
 echo "AC4 E29 probe: a toCrates that ignores SIGTERM and loops is killed; the grader ends within about 20 s and leaves no node process"
 run_orig="$(declare -f run)"
-run() { OUT="$(timeout -k 5 40 "$@" 2>&1)"; RC=$?; }   # the test itself is bounded: a hang is a FAIL, not a stuck suite
+run() { OUT="$(ptimeout 5 40 "$@" 2>&1)"; RC=$?; }   # the test itself is bounded: a hang is a FAIL, not a stuck suite
 leftover29() { local d p n=0; case "$XW" in ""|/) echo "refused: XW is empty or /"; return 0 ;; esac
   for d in /proc/[0-9]*; do p="${d#/proc/}"
     case "$(readlink "$d/cwd" 2>/dev/null)" in "$XW"/*|"$XW") if [ "$(cat "$d/comm" 2>/dev/null)" = node ] || ps -o args= -p "$p" 2>/dev/null | grep -q packing; then n=$((n + 1)); kill -9 "$p" 2>/dev/null; fi ;; esac
@@ -51,12 +51,21 @@ for pair in "hangload|$IM_HANG_LOAD" "hangfn|$IM_HANG_FN"; do
   e29 "${pair%%|*}" "${pair#*|}" "$R_NEUTRAL"
   EL=$((SECONDS - T0))
   if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then t_bad "AC4 E29 [${pair%%|*}]: the grader finishes (outer timeout hit, exit $RC)" "hung for ${EL}s"
-  elif [ "$EL" -le 20 ]; then t_ok "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s"
-  else t_bad "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s" "took ${EL}s"; fi
+  elif [ "$EL" -le 35 ]; then t_ok "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)"
+  else t_bad "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)" "took ${EL}s"; fi
   assert_eq "AC4 E29 [${pair%%|*}]: no node process of the fixture is left (killed by PID if found)" "0" "$(leftover29)"
   assert_eq "AC4 E29 [${pair%%|*}]: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
   assert_eq "AC4 E29 [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
 done
+echo "AC4 E29 probe: with no timeout command on PATH the probe still kills a SIGTERM-ignoring module"
+NT="$(mk_notimeout_path)"
+if PATH="$NT" command -v timeout >/dev/null 2>&1; then t_bad "AC4 E29 no-timeout PATH really has no timeout" "timeout still found"; fi
+T0=$SECONDS
+PATH="$NT" e29 nthang "$IM_HANG_LOAD" "$R_NEUTRAL"
+EL=$((SECONDS - T0))
+if [ "$EL" -le 35 ]; then t_ok "AC4 E29 no timeout command: the SIGTERM-ignoring probe is killed and the grader finishes (bound 35 s, Windows)"; else t_bad "AC4 E29 no timeout command: the SIGTERM-ignoring probe is killed and the grader finishes (bound 35 s, Windows)" "took ${EL}s"; fi
+assert_eq "AC4 E29 no timeout command: no node process of the fixture is left" "0" "$(leftover29)"
+assert_eq "AC4 E29 no timeout command, hang: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
 eval "$run_orig"
 
 echo "AC4 E29 (a): no AskUserQuestion call"
