@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.24.24 - 2026-10-22
+- **Always-on rule for pushback (Full):** the "Proof for every claim" section gains "On pushback, re-check and say what
+  you checked; change a conclusion only on new evidence, not insistence." It covers facts only; Precedence still puts an
+  explicit user order first. The always-on byte cap is raised from 4400 to 4500 (user decision): a wording trim of the
+  section could not fit even the shortest form (4351 + 76 bytes). New evals E27 (insistence without evidence: re-check,
+  keep the conclusion, name the check) and E28 (real evidence: change the conclusion), graded automatically from the
+  reply and transcript; a single prompt only approximates a pushback. Spec review 2 rounds plus the user's decisions;
+  code review 3 rounds (the reply graders now read concessions in context, anchored counts, negations, any locale).
+- **tdd-step.sh: lost work is always named (Full):**
+  - Whether a hook took the role's work out of the work tree is now decided on every undo path, attached or detached
+    and with reflogs off. The work tree is compared with the judged entries, through a temp index.
+  - C is taken from git commit's own report, and the parent and subject are verified.
+  - Lost work exits 3, names the commit and prints `git checkout C -- .`, plus `rm --` for deletions brought back.
+  - A mixed reset that leaves the files on disk is not lost.
+  - When a pre-commit hook reverts or removes the role's file, the step keeps exit 1 (user decision). It no longer
+    claims "the work tree is kept". Instead it prints one recovery line per path, which restores mode, symlink, filters
+    and missing directories through a throw-away index, and never touches the real index.
+  - A failed git commit now shows git's own output.
+- **tdd-step.sh: untracked nested repositories are refused (Full):** before the test command runs, an untracked nested
+  repository outside .agents/handoff/ is refused, as is a staged gitlink that HEAD does not hold as a gitlink. This holds
+  on --baseline too, including one that existed before the role started. The message tells you to exclude it. The
+  snapshot cannot hash such a repository, so it was committed as an unjudged gitlink before.
+- **No `grep -i -F` anywhere (Lite):** Git for Windows grep 3.0 aborts on it. scripts/leak-check.sh and two suites are
+  changed, and run-checks now flags it.
+- **Shard weights** come from the v0.24.23 CI run; the new suites (tdd-step r..x, evals-grade7) carry estimates
+  (0.87 x their local Git Bash times; replace with CI times).
+- **Run 16** recorded earlier; Run 17 (E1, E4, E21, E27, E28) follows this release (user OK).
+
 ## 0.24.23 - 2026-10-21
 - **tdd-step.sh: a branch switch is refused, and every undo is safe (Full):**
   - The branch is read with `git symbolic-ref -q HEAD` before and after the test command. A test command that switches, detaches or attaches HEAD is refused, and nothing is committed. An unreadable branch gives exit 3.
