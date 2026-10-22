@@ -5,6 +5,7 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # v0.24.25: test-tdd-step-y.sh is an estimate: about 7.6 s on Linux x 28 = 212 (not CI-measured). Replace it with the CI time.
+# The suite new in v0.24.25 (test-evals-grade8.sh) is an estimate: 310 = 34 s on a WSL2 Linux host x 9.1 (test-evals-grade7.sh takes 33 s on the same host and weighs 301; L-0009). Replace it with the CI time.
 test-tdd-step-f.sh 434
 test-evals-grade.sh 415
 test-role-gate-batch.sh 413
@@ -19,6 +20,7 @@ test-run-all.sh 327
 test-evals-runner.sh 313
 test-role-gate-baseline.sh 313
 test-ship-b.sh 313
+test-evals-grade8.sh 310
 test-tdd-step.sh 306
 test-role-gate-b.sh 301
 test-leak-check-push-b.sh 298

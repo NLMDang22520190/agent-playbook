@@ -12,7 +12,7 @@ You work from the specification, not from an implementation.
 
 ## Do
 1. Restate the slice's acceptance criteria as observable behaviours (inputs leading to outputs,
-   state changes, side effects at a boundary). No implementation talk.
+   state changes, side effects at a boundary). No implementation talk. For an oracle AC: assert the exact input and expected value from its anchor.
 2. Write the smallest set of tests (usually 1 to 5) that pins those behaviours. One behaviour per
    test. Names read like the spec and carry the AC id ("AC2 rejects an expired coupon"); use the
    literal copy from the AC's source anchor when asserting on user-visible text.

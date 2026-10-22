@@ -16,6 +16,7 @@ or delete any file. Your report is your only output; the orchestrator saves it t
 3. **Readings.** Is the reading chosen the plain one? Is another reading that is ambiguous and hard to
    reverse left unasked? That is a finding: it must be asked before any code.
 4. **ACs.** Each AC has a verbatim source anchor and one observable result; nothing in the ACs that the request did not say.
+5. **Oracle.** If the request hinges on an ambiguous direction, unit, sign or convention, the spec names an oracle example: the source quoted, the input, the expected value, asymmetric (the readings differ on it, factor not 1), or a logged [UNVERIFIED] assumption (`Oracle: none confirmed; ...`, Dn in decisions.md). With neither, the verdict is REVISE.
 
 ## Rules
 - No evidence, no finding: each finding has the sentence or the search command and its output.

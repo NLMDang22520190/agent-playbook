@@ -70,8 +70,8 @@ reversible fix.
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
    with short `## Understanding` and `## Impact` sections (as in Phase 1) written before any test or code.
-   A reading that is ambiguous and hard to reverse is asked before any code, in one batched question; a
-   reversible one gets a logged default.
+   An ambiguous, hard-to-reverse reading (or a missing oracle, Phase 1) is asked before any code, in one
+   batched question; else a logged default.
 2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
@@ -140,6 +140,8 @@ Gaps, by reversibility: a reading that is ambiguous and hard to reverse is asked
 code, in one batched message; for the rest choose a default, log it in `.agents/handoff/decisions.md` from
 `templates/decisions.md`, and mark the code `DECISION[Dn]`. Get the user's OK on the AC list when
 the request was ambiguous. Re-read the AC table before each commit.
+
+Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention, the spec needs a worked example with a concrete expected result, confirmed by the user or a source document and recorded as an AC that the tests use verbatim; without one, ask (headless: log it in decisions.md as open and label every claim that depends on it [UNVERIFIED]); details: `references/tdd-guide.md#oracle`.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
 **Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough.
