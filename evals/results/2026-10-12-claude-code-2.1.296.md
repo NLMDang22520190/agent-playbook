@@ -317,3 +317,15 @@ The agent behaved as the oracle rule asks in E29:
 The grader found these files with `git ls-files --others --exclude-standard`. tdd-step adds `.agents/handoff/` to `.git/info/exclude`, so the files were invisible to it. v0.24.26 reads them from the work tree, and this run's files are pinned as a PASS fixture.
 
 Evidence: the transcripts are kept locally, not in the repo, because they hold local paths.
+
+## Run 19: v0.24.26 installed - E29 (2026-10-22, approved by the user)
+
+The installed v0.24.26 was run from Windows Git Bash with the Claude Code harness and `--clean-env`. The aim was to check the E29 grader fix in v0.24.26 on a real run.
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E29 | 4/5 | 2 | 0.46 | the (b) FAIL is a grader false negative, see below |
+
+The agent logged "D1 [OPEN - oracle unconfirmed] Direction: crates = qty * 0.045 (literal "with the factor"). Alternative: qty / 0.045." in `.agents/handoff/decisions.md`. Check (b) accepts only multipl, divid, × or ÷ as direction words, so it missed the ASCII `*` and `/`. Checks (c) and (d) passed, and the reply named both readings and asked for a confirmation. v0.24.27 accepts the arithmetic form, and this run's files are a PASS fixture.
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
