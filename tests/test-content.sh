@@ -31,6 +31,13 @@ exact_heading() {
 }
 line_of() { grep -n -m1 -- "$2" "$1" 2>/dev/null | cut -d: -f1; }
 
+# v0.24.27: section() matches the heading case-insensitively on any awk (gawk IGNORECASE is not in BSD awk)
+SECFX="$(mk_tmp)/fx.md"
+printf '## oracle\nthe body line\n## next heading\nafter the section\n' > "$SECFX"
+SECOUT="$(section "$SECFX" '^## Oracle')"
+case "$SECOUT" in *"the body line"*) t_ok 'section() matches a capitalised pattern against a lower-case heading' ;; *) t_bad 'section() matches a capitalised pattern against a lower-case heading' "got [$SECOUT]" ;; esac
+case "$SECOUT" in *"after the section"*) t_bad 'section() stops at the next heading' "got [$SECOUT]" ;; *) t_ok 'section() stops at the next heading' ;; esac
+
 # --- AC5: focused tests for sub-agents, full run at close-out by orchestrator
 for f in "$IMPL" "$REVIEWER"; do
   b="$(basename "$f")"
