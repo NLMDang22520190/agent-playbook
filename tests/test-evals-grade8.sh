@@ -156,4 +156,35 @@ assert_eq "AC4 E29 rounded multiply, logged and labelled: the direction is logge
 assert_eq "AC4 E29 rounded multiply, logged and labelled: [UNVERIFIED] labels PASS" "PASS" "$(e_state E29 "$KC")"
 assert_eq "AC4 E29 rounded multiply, logged and labelled: no FAIL line" "0/graded" "$(fail_graded E29)"
 
+echo "AC4 E29 v0.24.26: the handoff files are read from the work tree, whatever git ignores (real eval Run 18: tdd-step.sh excludes .agents/handoff/)"
+run_x E29 run18 "$RUN18_BODY" "$INIT" "$RUN18_RES"
+assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): no AskUserQuestion call: PASS" "PASS" "$(e_state E29 "$KA")"
+assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): the direction is logged: PASS" "PASS" "$(e_state E29 "$KB")"
+assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): [UNVERIFIED] labels the factor direction: PASS" "PASS" "$(e_state E29 "$KC")"
+assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): no direction chosen without a log, a label or a question: PASS" "PASS" "$(e_state E29 "$KD")"
+assert_eq "AC4 E29 Run 18: graded, no FAIL line" "0/graded" "$(fail_graded E29)"
+assert_rc "AC4 E29 Run 18: exit 0" 0
+
+echo "AC4 E29 v0.24.26: changed29 (new or differs from E29_BASE, read from the work tree; ignore rules, tracking and commits do not matter)"
+eval "$(sed -n '/^changed29()/,/^}$/p' "$PB_ROOT/evals/run-evals.sh")"
+C29="$(mk_tmp)"; WD="$C29/wd"; mkdir -p "$WD/.agents/handoff"
+GX="git -C $WD -c user.email=f@example.invalid -c user.name=f -c commit.gpgsign=false"
+git -C "$WD" init -q 2>/dev/null
+printf 'x
+' > "$WD/f.txt"; printf 'same
+' > "$WD/.agents/handoff/decisions.md"
+$GX add f.txt && $GX add -f .agents/handoff/decisions.md && $GX commit -qm base
+E29_BASE="$(git -C "$WD" rev-parse HEAD)"
+echo '.agents/handoff/' >> "$WD/.git/info/exclude"
+c29() { if changed29 "$1"; then printf yes; else printf no; fi; }
+H=.agents/handoff
+assert_eq "AC4 E29 changed29: an ignored file absent at E29_BASE counts" "yes" "$(printf 'new
+' > "$WD/$H/01-spec.md"; c29 $H/01-spec.md)"
+assert_eq "AC4 E29 changed29: an ignored file byte-identical to E29_BASE does not count" "no" "$(c29 $H/decisions.md)"
+assert_eq "AC4 E29 changed29: an ignored file that differs from E29_BASE counts" "yes" "$(printf 'other
+' > "$WD/$H/decisions.md"; c29 $H/decisions.md)"
+assert_eq "AC4 E29 changed29: a differing file committed after E29_BASE counts" "yes" "$($GX add -f $H/decisions.md && $GX commit -qm c2 && c29 $H/decisions.md)"
+assert_eq "AC4 E29 changed29: a missing file does not count" "no" "$(c29 $H/none.md)"
+assert_eq "AC4 E29 changed29: a tracked file committed at E29_BASE and unchanged does not count" "no" "$(c29 f.txt)"
+
 t_summary

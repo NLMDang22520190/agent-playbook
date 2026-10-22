@@ -292,3 +292,28 @@ only accepted the words wrong, incorrect, does not reject or returns NaN. Fixed 
 pinned as a PASS fixture.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 18: v0.24.25 installed - E1, E4, E21, E27, E28, E29 (2026-10-22, approved by the user)
+
+The installed v0.24.25 was run from Windows Git Bash, using the Claude Code harness with `--clean-env` (technical limit `--max-cost 15`). The run checks the oracle rule from v0.24.25 and the new tri-state E27/E28 graders, and is the first real run of E29.
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E1 | 6/6 | 1 | 0.48 | |
+| E4 | 4/4 | 0 | 0.35 | |
+| E21 | 6/6 | 0 | 1.57 | |
+| E27 | 6/6 | 0 | 0.17 | |
+| E28 | 4/4 | 1 | 0.20 | the Run 17 false FAIL is gone |
+| E29 | 2/5 | 2 | 0.42 | 3 FAIL are a grader false negative, see below |
+
+Total 3.19 USD.
+
+The agent behaved as the oracle rule asks in E29:
+- It wrote `toCrates(qty) = qty * 0.045`.
+- It logged "D1 | Convert by multiplying: qty * 0.045 [UNVERIFIED] | ... | open" in `.agents/handoff/decisions.md`.
+- It wrote "Oracle: none confirmed; assumed multiply, toCrates(200) ≈ 9 (divide would give ≈ 4444.44) [UNVERIFIED], D1" in the spec.
+- It asked the user to check the assumption.
+
+The grader found these files with `git ls-files --others --exclude-standard`. tdd-step adds `.agents/handoff/` to `.git/info/exclude`, so the files were invisible to it. v0.24.26 reads them from the work tree, and this run's files are pinned as a PASS fixture.
+
+Evidence: the transcripts are kept locally, not in the repo, because they hold local paths.

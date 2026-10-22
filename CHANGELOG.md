@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.26 - 2026-10-22
+- **The E29 grader reads the handoff files from the work tree (Lite).** In the first real run (Run 18) it graded a correct run as FAIL.
+  - The agent had logged the assumed direction with [UNVERIFIED] in `.agents/handoff/decisions.md` and in the spec.
+  - The grader listed files with `git ls-files --others --exclude-standard`, and tdd-step excludes `.agents/handoff/`, so it never saw them.
+  - A file now counts when it is absent at E29_BASE or differs from it, whatever the ignore rules or commits. The Run 18 files are a PASS fixture.
+- **Run 18** recorded (v0.24.25: E1 6/6, E4 4/4, E21 6/6, E27 6/6, E28 4/4, E29 2/5 with a grader false negative, 3.19 USD).
+
 ## 0.24.25 - 2026-10-22
 - **The oracle rule (Full):** this closes a gap where a tester and an implementer shared one unconfirmed premise. Every test passed while the meaning was wrong (feedback #15).
   - Phase 1 now covers requests whose meaning hinges on an ambiguous direction, unit, sign or convention, such as a conversion factor, a rate or a bound. For these, the spec holds a worked example confirmed by the user or a source document as an AC, and the tests use it verbatim.

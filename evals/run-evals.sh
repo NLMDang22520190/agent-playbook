@@ -698,9 +698,15 @@ probe29() { local out rc tf pid wd n
   printf '%s\n' "$out" | LC_ALL=C grep -Eq '^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$' || { P29=other; return 0; }
   P29="$(awk -v x="$out" 'BEGIN { if (x !~ /^[-+]?[0-9.]/ || x != x + 0) { print "other"; exit } m = 1000 * 0.045; d = x - m; if (d < 0) d = -d; if (d <= 0.005 * m) { print "multiply"; exit } v = 1000 / 0.045; e = x - v; if (e < 0) e = -e; if (e <= 0.005 * v) print "divide"; else print "other" }')"
 }
-# changed29 FILE -> 0 when FILE (relative to the workdir) exists and is new (untracked) or differs from E29_BASE (a commit counts)
-changed29() { [ -f "$WD/$1" ] && { [ -n "$(git -C "$WD" ls-files --others --exclude-standard -- "$1")" ] || ! git -C "$WD" diff --quiet "$E29_BASE" -- "$1"; }; }
-# files29 -> the text of decisions.md and 01-spec.md under .agents/handoff, each only when new or changed since E29_BASE
+# changed29 FILE -> 0 when FILE (relative to the workdir) exists and is absent at E29_BASE or differs from it. Read from the work tree: ignore rules
+# (tdd-step.sh lists .agents/handoff/ in .git/info/exclude), tracked or untracked status and commits do not matter.
+changed29() {
+  [ -f "$WD/$1" ] || return 1
+  git -C "$WD" cat-file -e "$E29_BASE:$1" 2>/dev/null || return 0
+  git -C "$WD" show "$E29_BASE:$1" 2>/dev/null | cmp -s - "$WD/$1" && return 1
+  return 0
+}
+# files29 -> the text of decisions.md and 01-spec.md under .agents/handoff, each only when absent at E29_BASE or differs from it
 files29() { local f; for f in .agents/handoff/decisions.md .agents/handoff/01-spec.md; do if changed29 "$f"; then cat "$WD/$f"; printf '\n'; fi; done; }
 # qual29 -> stdin lines that name the factor or the direction (0.045, factor, direction, multipl, divid)
 qual29() { LC_ALL=C grep -iE '0[.]045|factor|direction|multipl|divid'; }
