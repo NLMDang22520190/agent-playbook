@@ -3,7 +3,7 @@
 #   A  D4 a pre-commit hook takes a judged change out of the work tree AND out of the commit: it reverts the role's edit of a tracked file (git checkout HEAD -- f), it removes the role's
 #      new file (git rm --cached, rm), or it brings back a file the role deleted. The work tree then equals the commit C, so the step stays exit 1 (the undo is complete), but it must NOT
 #      say "the work tree is kept": the role's work is not there. Each judged path that differs is printed with the blob sha of the role's content and the recovery line
-#      git show <sha> > <path> (the blob is in the object store: git add wrote it); a judged deletion that was brought back gets rm -- <path>. Default path and --baseline.
+#      a sh -c recovery line (any form; each row runs it; the blob is in the object store: git add wrote it); a judged deletion that was brought back gets rm -- <path>. Default path and --baseline.
 #      The formatter-hook rows of tests/test-tdd-step-d.sh and -e.sh stay as they are (there the work tree holds what C holds and the message may stay).
 # Shared setup: tdd-step-fixture.sh, tdd-step-d-fixture.sh, tdd-step-g-fixture.sh, tdd-step-n-fixture.sh and tdd-step-r-fixture.sh.
 . "$(dirname "$0")/lib.sh"
@@ -26,14 +26,25 @@ kept_not_claimed() {
   assert_eq "$1: the index file is restored byte for byte" "same" "$(same_idx)"
   assert_eq "$1: no test(red) commit in the log" "" "$(no_red_commit)"
 }
-# blob_line TAG PATH WANT -> the recovery line "git show <sha> > PATH" is printed, and <sha> is a blob that holds the role's content WANT
+# rec_line PATH -> the printed recovery line for PATH: two-space indent, sh -c SCRIPT sh MODE SHA PATH (the form is not pinned: the rows below run it)
+rec_line() { printf '%s\n' "$OUT" | grep -E '^  sh -c ' | grep -F -- " $1" | head -n 1; }
+# blob_line TAG PATH WANT -> the recovery line for PATH is printed; its sha (second word from the end) names a blob that holds the role's content WANT;
+# running the line with sh -e in R brings WANT back into the work tree and leaves the index entries and the staged diff unchanged
 blob_line() {
-  local l sha
-  l="$(printf '%s\n' "$OUT" | grep -F 'git show' | grep -F -- "> $2")"
-  sha="$(printf '%s\n' "$l" | sed -n 's/.*git show \([0-9a-f]\{7,\}\) > .*/\1/p' | head -n 1)"
-  assert_contains "$1: a recovery line git show <sha> > $2" "$l" "git show"
+  local l sha before after rc s sb sa
+  l="$(rec_line "$2")"
+  sha="$(printf '%s\n' "$l" | awk '{print $(NF-1)}')"
+  assert_contains "$1: a recovery line sh -c ... sh MODE SHA $2" "$l" "  sh -c "
   assert_eq "$1: that sha is a blob" "blob" "$(git -C "$R" cat-file -t "$sha" 2>/dev/null)"
   assert_eq "$1: that blob holds the role's content of $2" "$3" "$(git -C "$R" cat-file -p "$sha" 2>/dev/null)"
+  s="$(mk_tmp)/recover.sh"; printf '%s\n' "$l" > "$s"
+  before="$(git -C "$R" ls-files -s)"; sb="$(git -C "$R" diff --cached --name-status)"
+  ( cd "$R" && sh -e "$s" ) >/dev/null 2>&1; rc=$?
+  after="$(git -C "$R" ls-files -s)"; sa="$(git -C "$R" diff --cached --name-status)"
+  assert_eq "$1: the recovery line runs without an error (sh -e)" "0" "$rc"
+  assert_eq "$1: after the recovery $2 holds the role's content" "$3" "$(cat "$R/$2" 2>/dev/null)"
+  assert_eq "$1: the recovery leaves the index entries unchanged" "$before" "$after"
+  assert_eq "$1: the recovery stages nothing (git diff --cached is as before: the baseline fixture stages a file of its own)" "$sb" "$sa"
 }
 
 echo "A D4 a hook takes the role's work out of the work tree and the commit: exit 1, not kept, blob sha and recovery line"
@@ -60,7 +71,7 @@ if can_exec; then
     kept_not_claimed "$T"
     assert_eq "$T: the deleted file is back on disk (the case is real)" "yes" "$([ -e "$R/tests/app.test.js" ] && echo yes || echo no)"
     assert_contains "$T: the recovery line is rm -- <path>" "$(printf '%s\n' "$OUT" | grep -F 'rm --')" "rm -- tests/app.test.js"
-    assert_eq "$T: no git show line for the deleted path (it has no blob)" "" "$(printf '%s\n' "$OUT" | grep -F 'git show' | grep -F -- '> tests/app.test.js')"
+    assert_eq "$T: no sh -c recovery line for the deleted path (it has no blob)" "" "$(rec_line tests/app.test.js)"
   done
 else
   t_skip 70 "A D4 cases (the file system cannot make a hook executable)"
