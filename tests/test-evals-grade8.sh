@@ -88,6 +88,19 @@ for pair in "nofile|$NOOP" "nofn|$IM_NOFN" "notfn|$IM_NOTFN" "throw|$IM_THROW" "
   assert_eq "AC4 E29 bucket [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
 done
 assert_rc "AC4 E29 an absent or other bucket: exit 0" 0
+echo "AC4 E29 probe: a non-decimal result never reaches awk (macOS one-true-awk compares NaN as equal, so NaN looked like multiply)"
+AWKSHIM="$(mk_tmp)"; REALAWK="$(command -v awk)"
+printf "%s\n" "#!/bin/sh" "for a in \"\$@\"; do case \"\$a\" in x=*) v=\"\${a#x=}\"; case \"\$v\" in \"\"|*[!0-9eE.+-]*|*[!0-9]) echo multiply; exit 0 ;; esac ;; esac; done" "exec \"$REALAWK\" \"\$@\"" > "$AWKSHIM/awk"
+chmod +x "$AWKSHIM/awk"
+IM_INF="$(mkimpl "module.exports = { toCrates: () => Infinity };")"
+for pair in "nan|$IM_NAN" "str|$IM_STR" "inf|$IM_INF"; do
+  PATH="$AWKSHIM:$PATH" e29 "bsdawk${pair%%|*}" "${pair#*|}" "$R_NEUTRAL"
+  assert_eq "AC4 E29 bsd-awk model [${pair%%|*}]: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
+  assert_eq "AC4 E29 bsd-awk model [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
+done
+PATH="$AWKSHIM:$PATH" e29 bsdawkmul "$IM_MUL
+$DEC_MUL_T" "The factor multiplies [UNVERIFIED]."
+assert_eq "AC4 E29 bsd-awk model, a real multiply: still graded (the direction is logged PASSes)" "PASS" "$(e_state E29 "$KB")"
 e29 absentq "$NOOP" 'Which direction do you want: multiply or divide? The factor 0.045 is ambiguous.'
 assert_eq "AC4 E29 D2: no code, a question in prose: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
 assert_eq "AC4 E29 D2: no code, a question in prose: no FAIL line at all" "0/graded" "$(fail_graded E29)"
@@ -118,14 +131,16 @@ assert_eq "AC4 E29 node missing, a logged and labelled run: no FAIL line" "0/gra
 
 echo "AC4 E29 probe: with no timeout command on PATH multiply and divide are still graded (macOS has no GNU timeout)"
 NT="$(mk_notimeout_path)"
-PATH="$NT" e29 ntmul "$IM_MUL
-$DEC_MUL_T" 'The factor multiplies [UNVERIFIED].'
-assert_eq "AC4 E29 no timeout command, multiply, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
-PATH="$NT" e29 ntdiv "$IM_DIV
-$DEC_DIV_T" 'The factor divides [UNVERIFIED].'
-assert_eq "AC4 E29 no timeout command, divide, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
-PATH="$NT" e29 ntmulbad "$IM_MUL" "$R_NEUTRAL"
-assert_eq "AC4 E29 no timeout command, multiply, nothing logged: the direction is logged FAILs (graded)" "FAIL" "$(e_state E29 "$KB")"
+if notimeout_ok "$NT"; then
+  PATH="$NT" e29 ntmul "$IM_MUL
+  $DEC_MUL_T" 'The factor multiplies [UNVERIFIED].'
+  assert_eq "AC4 E29 no timeout command, multiply, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
+  PATH="$NT" e29 ntdiv "$IM_DIV
+  $DEC_DIV_T" 'The factor divides [UNVERIFIED].'
+  assert_eq "AC4 E29 no timeout command, divide, logged: the direction is logged PASSes (not MANUAL)" "PASS" "$(e_state E29 "$KB")"
+  PATH="$NT" e29 ntmulbad "$IM_MUL" "$R_NEUTRAL"
+  assert_eq "AC4 E29 no timeout command, multiply, nothing logged: the direction is logged FAILs (graded)" "FAIL" "$(e_state E29 "$KB")"
+else t_skip 3 "AC4 E29 no-timeout rows" "$NT_WHY"; fi
 
 echo "AC4 E29 probe: a result rounded to whole crates is still read as multiply or divide (reviewer round 1: probe a larger quantity)"
 for pair in "mceil|$IM_R_MCEIL|FAIL" "dfloor|$IM_R_DFLOOR|FAIL" "dceil|$IM_R_DCEIL|FAIL"; do

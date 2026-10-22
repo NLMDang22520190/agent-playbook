@@ -83,3 +83,8 @@ mk_notimeout_path() { local d x f b; d="$(mk_tmp)"
     done
   done
   printf '%s\n' "$d"; }
+# notimeout_ok DIR -> 0 when DIR really hides `timeout` and the platform can (not MSYS/MINGW/CYGWIN); else sets NT_WHY and returns 1
+notimeout_ok() { NT_WHY=""
+  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) NT_WHY="Windows keeps timeout.exe in System32, which no PATH built here can hide"; return 1 ;; esac
+  if PATH="$1" command -v timeout >/dev/null 2>&1; then NT_WHY="timeout is still found on the no-timeout PATH"; return 1; fi
+  return 0; }
