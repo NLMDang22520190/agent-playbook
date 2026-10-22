@@ -105,8 +105,8 @@ assert_not_contains "AC1.1 E25 is accepted (not a usage error)" "$OUT" "not auto
 assert_eq "AC1.1 E25: the idle adapter is graded (a check line for E25)" "graded" "$([ "$(printf '%s\n' "$OUT" | grep -cE '^E25 (PASS|FAIL|MANUAL) ')" -gt 0 ] && echo graded || echo not-graded)"
 assert_rc "AC1.1 E25: the idle adapter fails a check (exit 1, not 2)" 1
 
-echo "v0.24.24 AC3 AUTO list: E27 and E28 are auto-gradable (graded by tests/test-evals-grade7.sh)"
-for e in E27 E28; do
+echo "v0.24.25 AC3 AUTO list: E27, E28 and E29 are auto-gradable (graded by tests/test-evals-grade7.sh and test-evals-grade8.sh)"
+for e in E27 E28 E29; do
   W="$(mk_tmp)"
   run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios "$e" --workroot "$W" --out "$W/results.md"
   assert_not_contains "AC3 AUTO $e is accepted (not a usage error)" "$OUT" "not auto-gradable"
