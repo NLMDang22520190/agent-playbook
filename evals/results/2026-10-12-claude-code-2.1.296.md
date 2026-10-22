@@ -269,3 +269,26 @@ guard after v0.24.22 changed skills/playbook-tdd/SKILL.md (a clearer --base rule
 Total 2.32 USD of the 3 USD cap.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 17: v0.24.24 installed - E1, E4, E21, E27, E28 (2026-10-22, approved by the user, no 3 USD cap)
+
+Run on the installed v0.24.24 from Windows Git Bash with the Claude Code harness and `--clean-env` (technical limit
+`--max-cost 15`). Purpose: the eval guard after v0.24.24 changed the always-on block (the pushback rule) and
+skills/playbook-tdd/SKILL.md, plus the first real runs of E27 and E28.
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E1 | 6/6 | 1 | 0.48 | |
+| E4 | 4/4 | 0 | 0.36 | |
+| E21 | 6/6 | 0 | 1.55 | |
+| E27 | 6/6 | 0 | 0.19 | re-ran the tests, kept the conclusion, named the check |
+| E28 | 4/5 | 1 | 0.22 | grader false FAIL, see below |
+
+Total 2.79 USD.
+
+E28 "the reply says the earlier conclusion was wrong" is a grader false negative: the reply began "You're right. My
+earlier conclusion was too broad: `add` lets `NaN` through" and had a "Corrected conclusion" section, but the grader
+only accepted the words wrong, incorrect, does not reject or returns NaN. Fixed in v0.24.25 (lane G), with this reply
+pinned as a PASS fixture.
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).
