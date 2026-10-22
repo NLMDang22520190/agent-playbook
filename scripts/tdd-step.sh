@@ -286,9 +286,12 @@ lost_decide() {
   LOST_C="${c:-unknown}"
 }
 # D4: the work tree equals C, not the judged content. Prints, for each judged path whose work tree content differs from the
-# judged entry, git show <blob sha> > <path>, and rm -- <path> for a judged deletion that came back (LOST_DEL).
+# judged entry, a sh -c line that checks the judged entry out through a throw-away index, and rm -- <path> for a judged deletion that came back (LOST_DEL).
 print_recover() {
-  local line ms p dl="$NL" all=0 l
+  local line ms p dl="$NL" all=0 l rec
+  # one line per path: a throw-away index holds only the judged entry, git checkout-index writes it with its mode, symlink,
+  # filters, eol and parent directories; the real index is not touched
+  rec=$'\'d=$(mktemp -d) || exit; export GIT_INDEX_FILE=$d/i; git update-index --add --cacheinfo "$1,$2,$3" && git checkout-index -f -- "$3"; r=$?; rm -rf "$d"; exit $r\''
   rm -f "$tmpd/lost.idx"
   if { while IFS= read -r line; do printf '%s\0' "$line"; done < "$tmpd/expected" \
       | GIT_INDEX_FILE="$tmpd/lost.idx" git update-index -z --index-info; } >/dev/null 2>&1 \
@@ -301,7 +304,7 @@ print_recover() {
     [ -n "$line" ] || continue
     ms="${line%%$'\t'*}"; p="${line#*$'\t'}"
     if [ "$all" -eq 1 ]; then :; else case "$dl" in *"$NL$p$NL"*) ;; *) continue ;; esac; fi
-    printf '  git show %s > %q\n' "${ms#* }" "$p" >&2
+    printf '  sh -c %s sh %s %s %q\n' "$rec" "${ms%% *}" "${ms#* }" "$p" >&2
   done < "$tmpd/expected"
   while IFS= read -r l; do [ -z "$l" ] || printf '  rm -- %q\n' "$l" >&2; done <<EOF
 $LOST_DEL
@@ -369,7 +372,13 @@ $LOST_RM
 EOF
     fi
   else
-    echo "error: $1; the undo is incomplete (the work tree is kept), these refs are left behind:" >&2
+    if [ "$LOST_WTC" -eq 1 ]; then
+      echo "error: $1; the undo is incomplete and the work tree does not hold what was judged; bring the role content back with:" >&2
+      print_recover
+      echo "  these refs are left behind:" >&2
+    else
+      echo "error: $1; the undo is incomplete (the work tree is kept), these refs are left behind:" >&2
+    fi
   fi
   echo "  HEAD is now $hd (it was $R before the step, at $pre_head)" >&2
   while read -r l rsha hsha; do [ -z "$l" ] || printf '  %s: was %s, now %s\n' "$l" "$rsha" "$hsha" >&2; done < "$tmpd/chg"
