@@ -5,6 +5,10 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # test-evals-grade7.sh 392 (new in v0.24.24): an estimate, 14 s on Linux x 28 (reference run), see L-0009; replace it with a CI time.
+# test-tdd-step-r.sh, -s.sh, -t.sh (new in v0.24.24): estimates, Linux seconds x 28 (r 8 s = 224, s 10 s = 280, t 5 s = 140; 28 = the Linux to CI ratio of the tdd-step suites). Replace them with CI times (L-0009).
+# test-tdd-step-u.sh (new in v0.24.24, lane A slice S2): an estimate, Linux seconds x 28 (u 10.7 s = 300; 28 = the Linux to CI ratio of the tdd-step suites). Replace it with a CI time (L-0009).
+# test-tdd-step-v.sh, -w.sh (new in v0.24.24, lane A review fix round 1): estimates, Linux seconds x 28 (v 8.3 s = 232, w 5.3 s = 148; 28 = the Linux to CI ratio of the tdd-step suites). Replace them with CI times (L-0009).
+# test-tdd-step-x.sh (new in v0.24.24, lane A review fix round 3): an estimate, Linux seconds x 28 (x 4.6 s = 129). Replace it with a CI time (L-0009).
 test-evals-grade6-b.sh 408
 test-tdd-step-d.sh 400
 test-evals-grade7.sh 392
@@ -26,9 +30,11 @@ test-role-gate.sh 309
 test-evals-grade3.sh 303
 test-evals-grade4-b.sh 302
 test-role-gate-b.sh 301
+test-tdd-step-u.sh 300
 test-leak-check-push-b.sh 298
 test-leak-check-push.sh 296
 test-evals-runner-b.sh 284
+test-tdd-step-s.sh 280
 test-tdd-step-l.sh 271
 test-evals-grade5.sh 257
 test-evals-grade2-e20-capture.sh 256
@@ -38,8 +44,10 @@ test-tdd-step-b.sh 248
 test-role-model.sh 247
 test-mutate.sh 242
 test-tdd-step-e.sh 242
+test-tdd-step-v.sh 232
 test-tdd-step-q.sh 231
 test-tdd-step-h.sh 228
+test-tdd-step-r.sh 224
 test-role-model-b.sh 215
 test-ship-c.sh 211
 test-tdd-step-i.sh 211
@@ -48,12 +56,15 @@ test-tdd-step-p.sh 196
 test-tdd-step.sh 188
 test-tdd-step-k.sh 171
 test-release-tool.sh 155
+test-tdd-step-w.sh 148
 test-run-checks-sections.sh 147
 test-content.sh 146
 test-ship.sh 143
 test-release.sh 142
+test-tdd-step-t.sh 140
 test-tdd-step-n.sh 136
 test-role-gate-committed.sh 130
+test-tdd-step-x.sh 129
 test-tdd-step-g.sh 126
 test-leak-check-uname.sh 119
 test-update.sh 113

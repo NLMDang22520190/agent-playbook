@@ -33,8 +33,13 @@
 #        git commit compares the branch list too (and in a detached run the sha): same undo, exit 3.
 #        Another worktree of the same repository that commits while the step runs can move a branch the step
 #        compares: that is exit 3 too (the step cannot tell it from a hook).
+# Nested repositories (v0.24.24): an untracked nested repository is refused before CMD runs (exit 1, nothing
+#        committed), also on --baseline and also one that existed before the snapshot: a git status row ending in
+#        a slash outside .agents/handoff/. A staged gitlink (mode 160000) that HEAD lacks is refused too. The message
+#        names the path and hints at .git/info/exclude or .gitignore. Not refused: a nested repository under
+#        .agents/handoff/, a submodule tracked in HEAD, an empty directory.
 # Limits (v0.24.23): a commit the test command makes inside an untracked nested repo (a gitlink the snapshot
-#        records as unhashable) is not detected. On --baseline, a path whose exec bit staged in the index git commit
+#        records as unhashable) is therefore never reached. On --baseline, a path whose exec bit staged in the index git commit
 #        --only would not carry is refused (print mode warns); only a mode staged in the index is checked, so a
 #        disk-only exec bit under core.filemode=false is not.
 # --baseline FILE (red and green): passed to the gate (a manifest from role-gate.sh snapshot, for a repo
@@ -211,6 +216,100 @@ find_c() {
   fi
   return 0
 }
+# C from git commit's own report (the file $1, its stdout): the first " <7+ hex>] " is the report line (a branch name holds no
+# space, so the label cannot hide it). Accepted only when it is a commit on pre_head with the step subject; else empty.
+COMMIT_C=""
+report_c() {
+  local line c full first="${subject%%$NL*}" re=' ([0-9a-f]{7,})\] '
+  COMMIT_C=""
+  [ -f "$1" ] || return 0
+  while IFS= read -r line; do
+    if [[ "$line" =~ $re ]]; then
+      c="${BASH_REMATCH[1]}"
+      full="$(git rev-parse --verify -q "$c^{commit}" 2>/dev/null)" || full=""
+      if [ -n "$full" ] && [ "$(git rev-list --parents -n 1 "$full" 2>/dev/null)" = "$full $pre_head" ] \
+        && [ "$(git log -1 --format=%s "$full" 2>/dev/null)" = "$first" ]; then COMMIT_C="$full"; fi
+      return 0
+    fi
+  done < "$1"
+  return 0
+}
+# The lost decision (AC0). Needs $tmpd/judged and $tmpd/expected. Compares the WORK TREE with the judged entries: a temp index
+# built from them, then git diff --quiet on the judged paths; a judged deletion is lost when the path is on disk. Any git error
+# counts as lost. Sets LOST_C (C, or "unknown") and LOST_RM (the brought-back deletions, one per line). Runs once.
+LOST_DONE=0; LOST_RM=""
+# true when the work tree equals the entries in the file $1 ("mode sha<TAB>path" lines) for every judged path of $tmpd/judged: a temp
+# index built from them, then git diff --quiet (no pathspec: the temp index holds only judged entries, so the argument limit never
+# matters). A judged path without an entry must be absent from disk; those present are appended to RM_NOW. Any git error: false.
+RM_NOW=""
+wt_equals() {
+  local line eq=0
+  RM_NOW=""
+  rm -f "$tmpd/lost.idx"
+  if ! { while IFS= read -r line; do printf '%s\0' "$line"; done < "$1" \
+      | GIT_INDEX_FILE="$tmpd/lost.idx" git update-index -z --index-info; } >/dev/null 2>&1; then
+    eq=1
+  elif ! GIT_INDEX_FILE="$tmpd/lost.idx" GIT_OPTIONAL_LOCKS=0 git --literal-pathspecs diff --quiet >/dev/null 2>&1; then
+    eq=1
+  fi
+  if awk 'FILENAME == ARGV[1] { e[substr($0, index($0, "\t") + 1)] = 1; next } !($0 in e)' "$1" "$tmpd/judged" > "$tmpd/deleted"; then
+    while IFS= read -r line; do
+      if [ -e "$line" ] || [ -L "$line" ]; then eq=1; RM_NOW="$RM_NOW$line$NL"; fi
+    done < "$tmpd/deleted"
+  else
+    eq=1
+  fi
+  return $eq
+}
+# The lost decision (AC0). Needs $tmpd/judged and $tmpd/expected. Compares the WORK TREE with the judged entries; when it differs,
+# also with the entries of the commit C git made: a work tree equal to C (a pre-commit hook rewrote the files and added them) has
+# no role file lost, the commit just differs from what was judged. Sets LOST_C (C, or "unknown") and LOST_RM (the brought-back
+# deletions, one per line). Any git error counts as lost. Runs once.
+LOST_WTC=0; LOST_DEL=""
+lost_decide() {
+  local c
+  [ "$LOST_DONE" -eq 0 ] || return 0
+  LOST_DONE=1
+  [ -s "$tmpd/judged" ] || return 0
+  wt_equals "$tmpd/expected" && return 0
+  LOST_RM="$RM_NOW"
+  report_c "$tmpd/creport"
+  if [ -n "$COMMIT_C" ] \
+    && git ls-tree -r -z "$COMMIT_C" > "$tmpd/ctree" 2>/dev/null \
+    && tree_lines < "$tmpd/ctree" | filter_judged "$tmpd/judged" > "$tmpd/clines" && pipe_ok "${PIPESTATUS[@]}" \
+    && wt_equals "$tmpd/clines"; then
+    LOST_WTC=1; LOST_DEL="$LOST_RM"; LOST_RM=""
+    return 0
+  fi
+  c="$COMMIT_C"
+  [ -n "$c" ] || c="$(find_c)"
+  LOST_C="${c:-unknown}"
+}
+# D4: the work tree equals C, not the judged content. Prints, for each judged path whose work tree content differs from the
+# judged entry, a sh -c line that checks the judged entry out through a throw-away index, and rm -- <path> for a judged deletion that came back (LOST_DEL).
+print_recover() {
+  local line ms p dl="$NL" all=0 l rec
+  # one line per path: a throw-away index holds only the judged entry, git checkout-index writes it with its mode, symlink,
+  # filters, eol and parent directories; the real index is not touched
+  rec=$'\'d=$(mktemp -d) || exit; export GIT_INDEX_FILE=$d/i; git update-index --add --cacheinfo "$1,$2,$3" && git checkout-index -f -- "$3"; r=$?; rm -rf "$d"; exit $r\''
+  rm -f "$tmpd/lost.idx"
+  if { while IFS= read -r line; do printf '%s\0' "$line"; done < "$tmpd/expected" \
+      | GIT_INDEX_FILE="$tmpd/lost.idx" git update-index -z --index-info; } >/dev/null 2>&1 \
+    && GIT_INDEX_FILE="$tmpd/lost.idx" GIT_OPTIONAL_LOCKS=0 git --literal-pathspecs diff --name-only -z > "$tmpd/wtdiff" 2>/dev/null; then
+    while IFS= read -r -d '' p; do dl="$dl$p$NL"; done < "$tmpd/wtdiff"
+  else
+    all=1
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ms="${line%%$'\t'*}"; p="${line#*$'\t'}"
+    if [ "$all" -eq 1 ]; then :; else case "$dl" in *"$NL$p$NL"*) ;; *) continue ;; esac; fi
+    printf '  sh -c %s sh %s %s %q\n' "$rec" "${ms%% *}" "${ms#* }" "$p" >&2
+  done < "$tmpd/expected"
+  while IFS= read -r l; do [ -z "$l" ] || printf '  rm -- %q\n' "$l" >&2; done <<EOF
+$LOST_DEL
+EOF
+}
 # The undo, then exit. $1 = the reason, $2 = 3 to exit 3 even when everything went well. Steps, each only where safe:
 # (a) R (the pre-run branch) back to pre_head by compare-and-swap on the sha read now (a detached run: HEAD detached at
 # pre_head); no other ref is moved, created or deleted; (b) HEAD attached to R again, only when R is back;
@@ -218,6 +317,7 @@ find_c() {
 # otherwise exit 3 naming HEAD and the branches left behind.
 undo_exit() {
   local ok=1 fails="" hsha rsha l hd
+  lost_decide
   if [ "$R" = detached ]; then
     hsha="$(git rev-parse --verify -q HEAD)" || hsha=""
     read_branch || BR="?"
@@ -247,7 +347,12 @@ undo_exit() {
   fi
   refs_now && refs_changed "" || { ok=0; fails="$fails branches-unreadable"; : > "$tmpd/chg"; }
   if [ "$ok" -eq 1 ] && [ ! -s "$tmpd/chg" ] && [ "${2:-}" != 3 ] && [ -z "$LOST_C" ]; then
-    echo "error: $1; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
+    if [ "$LOST_WTC" -eq 1 ]; then
+      echo "error: $1; the commit is undone, HEAD and the index are restored, but the work tree does not hold what was judged - nothing committed; bring the role content back with:" >&2
+      print_recover
+    else
+      echo "error: $1; the commit is undone, HEAD and the index are restored, the work tree is kept - nothing committed:" >&2
+    fi
     for l in ${extra[@]+"${extra[@]}"}; do printf '  %s\n' "$l" >&2; done
     for l in ${differ[@]+"${differ[@]}"}; do printf 'error: the commit differs from what was judged: %s\n' "$l" >&2; done
     exit 1
@@ -262,9 +367,18 @@ undo_exit() {
     else
       echo "  the commit made for the step is $LOST_C (its parent is $pre_head)" >&2
       echo "  bring the role files back with: git checkout $LOST_C -- ." >&2
+      while IFS= read -r l; do [ -z "$l" ] || printf '  and remove the file the role had deleted: rm -- %q\n' "$l" >&2; done <<EOF
+$LOST_RM
+EOF
     fi
   else
-    echo "error: $1; the undo is incomplete (the work tree is kept), these refs are left behind:" >&2
+    if [ "$LOST_WTC" -eq 1 ]; then
+      echo "error: $1; the undo is incomplete and the work tree does not hold what was judged; bring the role content back with:" >&2
+      print_recover
+      echo "  these refs are left behind:" >&2
+    else
+      echo "error: $1; the undo is incomplete (the work tree is kept), these refs are left behind:" >&2
+    fi
   fi
   echo "  HEAD is now $hd (it was $R before the step, at $pre_head)" >&2
   while read -r l rsha hsha; do [ -z "$l" ] || printf '  %s: was %s, now %s\n' "$l" "$rsha" "$hsha" >&2; done < "$tmpd/chg"
@@ -327,28 +441,16 @@ check_commit() {
     fi
   fi
   # the branch: HEAD still where it was, and no other branch moved, created or deleted
-  local bwhy="" f3="" skip="" lc
+  local bwhy="" f3="" skip=""
   [ "$R" = detached ] || skip="$R"
   if ! read_branch; then bwhy="the branch could not be read after the commit"; f3=3
   elif [ "$BR" != "$R" ]; then
     bwhy="a git hook switched HEAD to $BR (it was on $R)"
-    if [ "$BR" != detached ]; then
-      lc="$(find_c)"
-      if [ -z "$lc" ]; then LOST_C=unknown; elif [ "$lc" != "$headsha" ]; then LOST_C="$lc"; fi
-    fi
   elif ! { refs_now && refs_changed "$skip"; }; then bwhy="the branches could not be compared after the commit"; f3=3
   elif [ -s "$tmpd/chg" ]; then bwhy="a git hook moved, created or deleted a branch"
   fi
-  # HEAD moved off the single commit (attached run): when the judged entries are no longer in the work tree
-  # (a hook ran checkout --detach or reset --hard), the work is lost from it too (D3)
-  if [ -z "$LOST_C" ] && [ "$R" != detached ] && [ -s "$tmpd/judged" ] && { [ "$parent_ok" -eq 0 ] || [ "$BR" != "$R" ]; }; then
-    lc="$(find_c)"
-    if [ -n "$lc" ] && [ "$lc" != "$headsha" ]; then
-      local -a jp=()
-      while IFS= read -r line; do jp+=("$line"); done < "$tmpd/judged"
-      git --literal-pathspecs diff --quiet "$lc" -- "${jp[@]}" >/dev/null 2>&1 || LOST_C="$lc"
-    fi
-  fi
+  # the lost decision (AC0) runs on every failed check, attached or detached
+  if [ -n "$bwhy" ] || [ -n "$why" ]; then lost_decide; fi
   if [ -n "$bwhy" ] && { [ -n "$LOST_C" ] || [ -z "$why" ]; }; then why="$bwhy"; fi
   [ -n "$why" ] || return 0
   undo_exit "$why" "$f3"
@@ -364,6 +466,31 @@ else
   [ -z "$gout" ] || printf '%s\n' "$gout"
   [ "$grc" -eq 0 ] || exit 1
   notes1="$(notes_of "$gout")"
+fi
+# an untracked nested repository (a status row ending in a slash) or a staged gitlink that HEAD lacks: the snapshot
+# cannot hash it, so refuse it before the test command runs (a nested repository under .agents/handoff/ is exempt)
+# read-only status (no index refresh) for the nested repository check: a refusal leaves the index file untouched
+GIT_OPTIONAL_LOCKS=0 git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/statusn" || pb_die "git status failed" 3
+nest=""; nxt=0
+while IFS= read -r -d '' ent; do
+  if [ "$nxt" -eq 1 ]; then p="$ent"; nxt=0; else
+    xy="${ent:0:2}"; p="${ent:3}"
+    case "$xy" in R? | C? | ?R | ?C) nxt=1 ;; esac
+  fi
+  case "$p" in .agents/handoff/*) continue ;; */) nest="${nest:-$p}" ;; esac
+done < "$tmpd/statusn"
+if [ -z "$nest" ]; then
+  git ls-files -s -z > "$tmpd/lsf" || pb_die "git ls-files failed" 3
+  while IFS= read -r -d '' ent; do
+    case "$ent" in 160000" "*) ;; *) continue ;; esac
+    p="${ent#*$'\t'}"
+    hm="$(GIT_LITERAL_PATHSPECS=1 git ls-tree HEAD -- "$p" 2>/dev/null)"
+    case "$hm" in 160000" "*) ;; *) nest="$p"; break ;; esac
+  done < "$tmpd/lsf"
+fi
+if [ -n "$nest" ]; then
+  printf 'error: nested repository: %s - the snapshot cannot hash it; add it to .git/info/exclude or .gitignore and run again - nothing committed\n' "$nest" >&2
+  exit 1
 fi
 # a newline or a \002 byte in a path makes the snapshot die (exit 3): refuse it before the test command runs
 git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status0" || pb_die "git status failed" 3
@@ -454,7 +581,7 @@ if [ "$commit" -eq 1 ]; then
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the scratch index"
     xbit_paths || refuse_staged "cannot compare the staged modes"
     [ -z "$XB" ] || refuse_staged "$(xbit_text)"
-    GIT_LITERAL_PATHSPECS=1 git commit -q -m "$subject" -- "${paths[@]}" || commit_failed
+    GIT_LITERAL_PATHSPECS=1 git -c core.abbrev=40 commit -m "$subject" -- "${paths[@]}" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   else
     git add -A || pb_die "git add failed" 3
@@ -464,7 +591,7 @@ if [ "$commit" -eq 1 ]; then
     git ls-files -s -z > "$tmpd/idxfull" || refuse_staged "cannot read the index"
     index_lines < "$tmpd/idxfull" | filter_judged "$tmpd/judged" | LC_ALL=C sort > "$tmpd/expected"
     pipe_ok "${PIPESTATUS[@]}" || refuse_staged "cannot read the index"
-    git commit -q -m "$subject" || commit_failed
+    git -c core.abbrev=40 commit -m "$subject" > "$tmpd/creport" || { cat "$tmpd/creport"; commit_failed; }
     check_commit
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi

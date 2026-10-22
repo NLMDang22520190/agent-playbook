@@ -44,8 +44,10 @@ xcommit "AC4 control: an untracked file, disk 644" false new 644 untracked 10064
 # ---------------------------------------------------------------------------------------------------------------
 echo "AC5 the header comment of scripts/tdd-step.sh states the two limits"
 HDR="$(lower "$(awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$STEP")")"
-assert_contains "AC5 the header names the nested repository limit" "$HDR" "nested repo"
-assert_contains "AC5 the header says the commit in a nested repository is not detected" "$HDR" "not detected"
+assert_contains "AC5 the header names the nested repository limit" "$HDR" "nested repositor"
+# AC6 (v0.24.24 lane A, slice S2): "not detected" became "refused" (an untracked nested repository is refused before the test command). The word must sit with the nested repository
+# text, not anywhere in the header (the header says "refused" about other limits too).
+assert_eq "AC5 the header says an untracked nested repository is refused" "yes" "$(if printf '%s' "$HDR" | tr '\n' ' ' | grep -o -E 'nested repositor.{0,200}' | grep -q 'refused'; then echo yes; else echo no; fi)"
 assert_contains "AC5 the header says the snapshot records it as unhashable" "$HDR" "unhashable"
 assert_contains "AC5 the header names the exec bit" "$HDR" "exec bit"
 assert_contains "AC5 the header says only a mode staged in the index is checked" "$HDR" "staged in the index"

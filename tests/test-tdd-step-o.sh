@@ -64,7 +64,34 @@ if [ -n "$OLDDIR" ]; then
   pm_case "F2 plain repo" plain
   pm_case "F2 core.autocrlf=true" crlf
   pm_case "F2 core.autocrlf=true and core.safecrlf=true" safecrlf
-  pm_case "F2 untracked nested repository (tests/sub)" nested
+  # AC6 (v0.24.24 lane A, slice S2, spec 01-spec.md AC5): the untracked nested repository case was byte-identical to v0.24.22; since v0.24.24 it is REFUSED (exit 1) before the
+  # test command, on --baseline in print mode too. The old script (exit 0) shows the fixture works. Changed on purpose, AC6 names this row.
+  pm_refuse() {
+    local label="$1" a b ba bb oa ra ob rb r b0 lo
+    a="$(fresh)"; b="$(fresh)"
+    for r in "$a" "$b"; do dirty "$r"; done
+    ba="$(snap "$a")"; bb="$(snap "$b")"
+    for r in "$a" "$b"; do
+      printf 'test("n", () => {});
+' > "$r/tests/n.test.js"
+      mkdir -p "$r/tests/sub" && ( cd "$r/tests/sub" && git init -q && git config user.email t@example.invalid && git config user.name tester         && git config commit.gpgsign false && printf 'a
+' > a && git add a && git commit -q -m s )
+    done
+    b0="$(objl "$b")"
+    run_in "$a" bash "$OLDDIR/scripts/tdd-step.sh" red --message "m" --baseline "$ba" -- sh -c "exit 1"; oa="$OUT"; ra="$RC"
+    run_in "$b" bash "$STEP" red --message "m" --baseline "$bb" -- sh -c "exit 1"; ob="$OUT"; rb="$RC"
+    lo="$(lower "$ob")"
+    assert_eq "$label: the old script passes (exit 0; the fixture works)" "0" "$ra"
+    assert_eq "$label: refused (exit 1)" "1" "$rb"
+    assert_contains "$label: says nested repository" "$lo" "nested repository"
+    assert_contains "$label: names tests/sub" "$lo" "tests/sub"
+    assert_contains "$label: hints at .git/info/exclude" "$lo" ".git/info/exclude"
+    assert_contains "$label: says nothing committed" "$lo" "nothing committed"
+    assert_not_contains "$label: does not print the commit commands" "$lo" "not committing (no --commit)"
+    assert_eq "$label: the object store is unchanged" "$b0" "$(objl "$b")"
+    assert_eq "$label: HEAD unchanged" "$(head_of "$a")" "$(head_of "$b")"
+  }
+  pm_refuse "F2 untracked nested repository (tests/sub) is refused (AC6)"
 else
   t_skip 40 "F2 print mode against v0.24.22 (commit aeeb809 is not in this clone, or git archive is not available)"
 fi
