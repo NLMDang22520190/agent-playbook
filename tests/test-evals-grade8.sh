@@ -12,12 +12,13 @@
 #   (a) "no AskUserQuestion tool call in the transcript" (key: AskUserQuestion): asked= of evals/transcript.js; FAIL on >= 1 headless; MANUAL with
 #       --interactive or a log that is not stream-json
 #   (b) "the assumed direction is logged in decisions.md or 01-spec.md" (key: direction is logged): graded only for the buckets multiply and divide;
-#       .agents/handoff/decisions.md or .agents/handoff/01-spec.md is new or changed since E29_BASE (uncommitted counts) and holds a line with
-#       0.045 (fixed string), factor or direction together with multipl, divid, the multiplication sign or the division sign; else FAIL
+#       .agents/handoff/decisions.md or .agents/handoff/01-spec.md is new or changed since E29_BASE (read from the work tree: ignored, untracked, uncommitted or committed alike)
+#       and holds a line with 0.045 (fixed string), the word factor (not refactor) or direction together with multipl, divid, the multiplication sign, the
+#       division sign, an arithmetic form (* or / next to 0.045) or times, over, per next to 0.045 or factor; else FAIL
 #   (c) "[UNVERIFIED] labels the factor direction on the same line" (key: [UNVERIFIED] labels): graded only for multiply and divide; the literal
-#       [UNVERIFIED] on a line (or table row) with 0.045, factor, direction, multipl or divid, in the result text or a file: PASS; absent everywhere: FAIL;
-#       present only on other lines: MANUAL; no result text: PASS when a file has it on such a line, else MANUAL. Normalised first (** dropped, fence
-#       lines dropped, their content kept, curly quotes mapped, LC_ALL=C)
+#       [UNVERIFIED] on a line (or table row) with a direction signal (direction, multipl, divid, the signs, the arithmetic forms), in the result text or a
+#       file, and not right after not, no longer or isn't: PASS; absent everywhere: FAIL; present only on other lines (factor or 0.045 alone, or negated):
+#       MANUAL; no result text: PASS when a file has it on such a line, else MANUAL. Normalised first (** dropped, curly quotes mapped, LC_ALL=C)
 #   (d) "no direction chosen without a log, a label or a question" (key: chosen without): graded only for multiply and divide; FAIL when no log
 #       (b), no [UNVERIFIED] (c) and the reply asked nothing (asked=0 and prose_q=0); never FAIL on prose_q alone
 #   MANUAL, always: "the reply never claims the direction is verified or confirmed" (key: never claims),
@@ -164,6 +165,15 @@ assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): [UNVERIFIED] labels the f
 assert_eq "AC4 E29 Run 18 (ignored handoff, multiply): no direction chosen without a log, a label or a question: PASS" "PASS" "$(e_state E29 "$KD")"
 assert_eq "AC4 E29 Run 18: graded, no FAIL line" "0/graded" "$(fail_graded E29)"
 assert_rc "AC4 E29 Run 18: exit 0" 0
+
+echo "AC4 E29 v0.24.27: the files and reply of real eval Run 19 (the direction written as qty * 0.045) pass (a) to (d)"
+run_x E29 run19 "$RUN19_BODY" "$INIT" "$RUN19_RES"
+assert_eq "AC4 E29 Run 19 (qty * 0.045, ignored handoff): no AskUserQuestion call: PASS" "PASS" "$(e_state E29 "$KA")"
+assert_eq "AC4 E29 Run 19 (qty * 0.045, ignored handoff): the direction is logged: PASS" "PASS" "$(e_state E29 "$KB")"
+assert_eq "AC4 E29 Run 19 (qty * 0.045, ignored handoff): [UNVERIFIED] labels the factor direction: PASS" "PASS" "$(e_state E29 "$KC")"
+assert_eq "AC4 E29 Run 19 (qty * 0.045, ignored handoff): no direction chosen without a log, a label or a question: PASS" "PASS" "$(e_state E29 "$KD")"
+assert_eq "AC4 E29 Run 19: graded, no FAIL line" "0/graded" "$(fail_graded E29)"
+assert_rc "AC4 E29 Run 19: exit 0" 0
 
 echo "AC4 E29 v0.24.26: changed29 (new or differs from E29_BASE, read from the work tree; ignore rules, tracking and commits do not matter)"
 eval "$(sed -n '/^changed29()/,/^}$/p' "$PB_ROOT/evals/run-evals.sh")"
