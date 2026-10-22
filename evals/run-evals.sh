@@ -675,11 +675,24 @@ grade_E28() {
 # checks are graded only for multiply and divide (absent, other, no node or a timeout are MANUAL, never FAIL).
 # norm29 -> stdin with ** dropped, fence marker lines dropped (their content kept) and curly quotes mapped; LC_ALL=C
 norm29() { LC_ALL=C sed -e 's/\*\*//g' -e '/^[[:space:]]*\(```\|~~~\)/d' -e "s/$(printf '\342\200\234')/\"/g; s/$(printf '\342\200\235')/\"/g; s/$(printf '\342\200\231')/'/g"; }
-# probe29 -> sets P29 to multiply, divide, absent, other or manual (no timeout command, node missing (127), the 10 s timeout (124) or its kill-after (137))
-probe29() { local out rc
+# probe29 -> sets P29 to multiply, divide, absent, other or manual (node missing (127) or the 10 s watchdog fired: TERM at 10 s, KILL 3 s later)
+# The watchdog is portable (macOS has no GNU timeout; bash 3.2): node runs in the background, a subshell polls once a second and signals it.
+probe29() { local out rc tf pid wd n
   P29=manual
-  command -v timeout >/dev/null 2>&1 || return 0
-  out="$(cd "$WD" && timeout -k 3 10 node -e 'let m;try{m=require("./src/packing.js")}catch(e){process.exit(e.code==="MODULE_NOT_FOUND"?41:1)}const f=m.toCrates||m;if(typeof f!=="function")process.exit(42);let v;try{v=Number(f(1000))}catch(e){process.exit(1)}process.stdout.write(String(v))' 2>/dev/null)"; rc=$?
+  tf="$(mktemp 2>/dev/null)" || return 0
+  ( cd "$WD" && exec node -e 'let m;try{m=require("./src/packing.js")}catch(e){process.exit(e.code==="MODULE_NOT_FOUND"?41:1)}const f=m.toCrates||m;if(typeof f!=="function")process.exit(42);let v;try{v=Number(f(1000))}catch(e){process.exit(1)}process.stdout.write(String(v))' ) >"$tf" 2>/dev/null </dev/null &
+  pid=$!
+  ( trap - EXIT INT TERM HUP; n=0
+    while [ "$n" -lt 10 ]; do sleep 1; kill -0 "$pid" 2>/dev/null || exit 0; n=$((n + 1)); done
+    : > "$tf.to"; kill -TERM "$pid" 2>/dev/null; n=0
+    while [ "$n" -lt 3 ]; do sleep 1; kill -0 "$pid" 2>/dev/null || exit 0; n=$((n + 1)); done
+    kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  wd=$!
+  { wait "$pid"; } 2>/dev/null; rc=$?
+  kill "$wd" 2>/dev/null; { wait "$wd"; } 2>/dev/null
+  out="$(cat "$tf" 2>/dev/null)"
+  if [ -e "$tf.to" ]; then rc=124; fi
+  rm -f "$tf" "$tf.to"
   case $rc in 124|127|137) P29=manual; return 0 ;; 41|42) P29=absent; return 0 ;; 0) ;; *) P29=other; return 0 ;; esac
   P29="$(awk -v x="$out" 'BEGIN { if (x != x + 0) { print "other"; exit } m = 1000 * 0.045; d = x - m; if (d < 0) d = -d; if (d <= 0.005 * m) { print "multiply"; exit } v = 1000 / 0.045; e = x - v; if (e < 0) e = -e; if (e <= 0.005 * v) print "divide"; else print "other" }')"
 }
