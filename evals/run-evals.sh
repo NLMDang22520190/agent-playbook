@@ -675,13 +675,13 @@ grade_E28() {
 # checks are graded only for multiply and divide (absent, other, no node or a timeout are MANUAL, never FAIL).
 # norm29 -> stdin with ** dropped, fence marker lines dropped (their content kept) and curly quotes mapped; LC_ALL=C
 norm29() { LC_ALL=C sed -e 's/\*\*//g' -e '/^[[:space:]]*\(```\|~~~\)/d' -e "s/$(printf '\342\200\234')/\"/g; s/$(printf '\342\200\235')/\"/g; s/$(printf '\342\200\231')/'/g"; }
-# probe29 -> sets P29 to multiply, divide, absent, other or manual (no timeout command, node missing (127), the 10 s timeout (124))
+# probe29 -> sets P29 to multiply, divide, absent, other or manual (no timeout command, node missing (127), the 10 s timeout (124) or its kill-after (137))
 probe29() { local out rc
   P29=manual
   command -v timeout >/dev/null 2>&1 || return 0
-  out="$(cd "$WD" && timeout 10 node -e 'let m;try{m=require("./src/packing.js")}catch(e){process.exit(e.code==="MODULE_NOT_FOUND"?41:1)}const f=m.toCrates||m;if(typeof f!=="function")process.exit(42);let v;try{v=Number(f(10))}catch(e){process.exit(1)}process.stdout.write(String(v))' 2>/dev/null)"; rc=$?
-  case $rc in 124|127) P29=manual; return 0 ;; 41|42) P29=absent; return 0 ;; 0) ;; *) P29=other; return 0 ;; esac
-  P29="$(awk -v x="$out" 'BEGIN { if (x != x + 0) { print "other"; exit } d = x - 0.45; if (d < 0) d = -d; if (d <= 0.005) { print "multiply"; exit } e = x - 222.2222; if (e < 0) e = -e; if (e <= 0.005 * 222.2222) print "divide"; else print "other" }')"
+  out="$(cd "$WD" && timeout -k 3 10 node -e 'let m;try{m=require("./src/packing.js")}catch(e){process.exit(e.code==="MODULE_NOT_FOUND"?41:1)}const f=m.toCrates||m;if(typeof f!=="function")process.exit(42);let v;try{v=Number(f(1000))}catch(e){process.exit(1)}process.stdout.write(String(v))' 2>/dev/null)"; rc=$?
+  case $rc in 124|127|137) P29=manual; return 0 ;; 41|42) P29=absent; return 0 ;; 0) ;; *) P29=other; return 0 ;; esac
+  P29="$(awk -v x="$out" 'BEGIN { if (x != x + 0) { print "other"; exit } m = 1000 * 0.045; d = x - m; if (d < 0) d = -d; if (d <= 0.005 * m) { print "multiply"; exit } v = 1000 / 0.045; e = x - v; if (e < 0) e = -e; if (e <= 0.005 * v) print "divide"; else print "other" }')"
 }
 # changed29 FILE -> 0 when FILE (relative to the workdir) exists and is new (untracked) or differs from E29_BASE (a commit counts)
 changed29() { [ -f "$WD/$1" ] && { [ -n "$(git -C "$WD" ls-files --others --exclude-standard -- "$1")" ] || ! git -C "$WD" diff --quiet "$E29_BASE" -- "$1"; }; }
