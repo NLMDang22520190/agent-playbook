@@ -694,7 +694,9 @@ probe29() { local out rc tf pid wd n
   if [ -e "$tf.to" ]; then rc=124; fi
   rm -f "$tf" "$tf.to"
   case $rc in 124|127|137) P29=manual; return 0 ;; 41|42) P29=absent; return 0 ;; 0) ;; *) P29=other; return 0 ;; esac
-  P29="$(awk -v x="$out" 'BEGIN { if (x != x + 0) { print "other"; exit } m = 1000 * 0.045; d = x - m; if (d < 0) d = -d; if (d <= 0.005 * m) { print "multiply"; exit } v = 1000 / 0.045; e = x - v; if (e < 0) e = -e; if (e <= 0.005 * v) print "divide"; else print "other" }')"
+  # only a plain decimal reaches awk: one-true-awk (macOS) reads nan and inf as numbers and compares NaN as equal to anything
+  printf '%s\n' "$out" | LC_ALL=C grep -Eq '^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$' || { P29=other; return 0; }
+  P29="$(awk -v x="$out" 'BEGIN { if (x !~ /^[-+]?[0-9.]/ || x != x + 0) { print "other"; exit } m = 1000 * 0.045; d = x - m; if (d < 0) d = -d; if (d <= 0.005 * m) { print "multiply"; exit } v = 1000 / 0.045; e = x - v; if (e < 0) e = -e; if (e <= 0.005 * v) print "divide"; else print "other" }')"
 }
 # changed29 FILE -> 0 when FILE (relative to the workdir) exists and is new (untracked) or differs from E29_BASE (a commit counts)
 changed29() { [ -f "$WD/$1" ] && { [ -n "$(git -C "$WD" ls-files --others --exclude-standard -- "$1")" ] || ! git -C "$WD" diff --quiet "$E29_BASE" -- "$1"; }; }
