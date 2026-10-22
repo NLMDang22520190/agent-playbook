@@ -218,7 +218,7 @@ agent-playbook/
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
 ├── tests/                  12522 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E28) · RUBRIC.md · make-fixture.sh
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E29) · RUBRIC.md · make-fixture.sh
 ├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag) · release-pr-check.sh (check-release on a PR that changes VERSION) · readme-count.sh (README test count)
 └── docs/                   flow.svg · architecture.svg · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md
 ```

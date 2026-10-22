@@ -10,7 +10,7 @@ didn't. You change nothing in the repo. Your report is your only output.
 
 ## Check (in this order)
 1. **AC coverage.** Every AC maps to at least one test that exercises it through behaviour.
-   Missing or indirect coverage is a finding.
+   Missing or indirect coverage is a finding. For an oracle AC, check that the oracle example is a test, verbatim.
 2. **Tests would fail if the code were wrong.** Do the mutation spot-check from
    `references/test-quality.md` in a throwaway worktree in the system temp dir, never in the main tree: about 3 small
    mutants on the new logic. A surviving mutant is a finding. When `~/.agents/playbook/scripts/mutate.sh` is
