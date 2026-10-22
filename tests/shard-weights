@@ -1,9 +1,10 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.25: suites changed in v0.24.24 take run
 # 39715102925 (v0.24.24) alone; suites changed in v0.24.23 the median (mean) of 39617968160 (v0.24.23) and 39715102925;
-# the others the median of 39572120997 (v0.24.22), 39617968160 and 39715102925, per L-0003. All weights are CI-measured.
+# the others the median of 39572120997 (v0.24.22), 39617968160 and 39715102925, per L-0003. All weights are CI-measured except the ones named below.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
+# v0.24.25: test-tdd-step-y.sh is an estimate: about 7.6 s on Linux x 28 = 212 (not CI-measured). Replace it with the CI time.
 test-tdd-step-f.sh 434
 test-evals-grade.sh 415
 test-role-gate-batch.sh 413
@@ -40,6 +41,7 @@ test-evals-grade2-e20-capture.sh 222
 test-tdd-step-i.sh 218
 test-evals-budget.sh 214
 test-tdd-step-p.sh 213
+test-tdd-step-y.sh 212
 test-ship-c.sh 211
 test-tdd-step-q.sh 208
 test-evals-grade5.sh 204
