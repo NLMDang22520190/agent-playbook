@@ -107,6 +107,16 @@ bump "$D"; printf '![v](https://img.shields.io/badge/version-1.2.4-4F5BD5)\n' > 
 rpc "$D" "$B"
 assert_rc "(f) README without a count: exit 0" 0
 
+# (f2) no count in the README history: a release commit does not switch the check on
+D="$(mk)"
+printf '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)\n' > "$D/README.md"; ( cd "$D" && git add -A && git commit -q --amend -m nocount )
+B="$(sha "$D")"
+printf 'echo early\n' >> "$D/tests/test-a.sh"; cm "$D" fix
+bump "$D"; printf '![v](https://img.shields.io/badge/version-1.2.4-4F5BD5)\n' > "$D/README.md"; cm "$D" "release: v1.2.4"
+printf 'echo late\n' >> "$D/tests/test-a.sh"; cm "$D" fix2
+rpc "$D" "$B"
+assert_rc "(f2) README without a count, release commit then test change: exit 0" 0
+
 # (g) test change (count total unchanged), then the release commit "release: vX.Y.Z" with the same count: the release commit is a checkpoint
 D="$(mk)"; B="$(sha "$D")"
 printf 'echo reworded\n' >> "$D/tests/test-a.sh"; cm "$D" refactor
