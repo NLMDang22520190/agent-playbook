@@ -146,6 +146,8 @@ echo "AC3 F3, N2, G1: a negated marker is no marker, only the negated token goes
 rd "F3 'not D1' only" "$D20" "// not D1" FAIL
 rd "F3 'NOT D1' only" "$D20" "// NOT D1" FAIL
 rd "F3 'isn't D1' only" "$D20" "// isn't D1" FAIL
+rd "F7 'not<TAB>D1' only (a tab is white space too)" "$D20" "// not$(printf '\t')D1" FAIL
+rd "F7 'not<TAB>[UNVERIFIED]' only" "$D20" "// not$(printf '\t')[UNVERIFIED]" FAIL
 rd "F3 'no [UNVERIFIED]' only" "$D20" "// no [UNVERIFIED]" FAIL
 rd "F3 'not [UNVERIFIED]' only" "$D20" "// not [UNVERIFIED]" FAIL
 rd "F3 'no longer [UNVERIFIED]' only" "$D20" "// no longer [UNVERIFIED]" FAIL
@@ -259,6 +261,22 @@ mv tests/packing.test.js tests/packing.js" MANUAL "no qualifying test file"
 x9 "AC3 F8 a test file renamed to another qualifying name keeps counting (unmarked)" "$(dwrite decisions.md "$D20")
 $(tbody tests/packing.test.js '')
 mv tests/packing.test.js tests/crates.test.js" FAIL
+
+echo "AC3 F2: a test file committed in the base commit and left unchanged stays out of grading (function-level: the fixture base is fixed)"
+# The runner's fixture base has no toCrates test, so the filter "new or changed since E29_BASE" (changed29 in tests29) is exercised on a mktemp repo:
+# tests29 and its helpers are read from evals/run-evals.sh, WD is the repo and E29_BASE its first commit. A mutant of tests29 without
+# `changed29 "$rel" || continue` makes R29 fail here instead of none.
+eval "$(sed -n '/^norm29()/,/^grade_E29()/p' "$RUNNER" | sed '$d')"
+f2repo() { local d; d="$(mk_tmp)"
+  git -C "$d" init -q && mkdir -p "$d/tests" && printf '%s\n' "$R20_HEAD" "$R20_REST" > "$d/tests/packing.test.js" &&
+    git -C "$d" add tests/packing.test.js && git -C "$d" -c user.email=x@example.invalid -c user.name=x -c commit.gpgsign=false commit -qm base || return 1
+  printf '%s\n' "$d"; }
+WD="$(f2repo)"; E29_BASE="$(git -C "$WD" rev-parse HEAD)"
+tests29 "$D20"
+assert_eq "AC3 F2 an unmarked toCrates test committed in the base and unchanged: none (no qualifying test file)" "none" "$R29"
+printf '// edited\n' >> "$WD/tests/packing.test.js"
+tests29 "$D20"
+assert_eq "AC3 F2 the same file once changed since the base: fail (unmarked)" "fail" "$R29"
 
 echo "AC3 G2: several qualifying files, PASS beats unclear beats FAIL"
 G2A="$(tbody tests/a.test.js '// D1 [UNVERIFIED]')"

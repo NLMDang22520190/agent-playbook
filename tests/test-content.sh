@@ -1825,6 +1825,8 @@ flat_has "v0.24.29 AC1 tester.md keeps the verbatim oracle sentence" "$TESTER" '
 # AC2: final-report.md one line under Found, not fixed
 sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: a killed mutant on an unconfirmed oracle pins the assumed reading" "$FINAL" '^## Found, not fixed' 'pins the assumed reading'
 sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: it is not a caught bug" "$FINAL" '^## Found, not fixed' 'pins the assumed reading.{0,80}not[^.]{0,30}(catch|caught|found)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,80}pins the assumed reading'
+# O-fix F8: the line is a placeholder instruction in angle brackets, not a literal bullet the report would carry over as a finding
+sec_flat_has "O-fix F8 final-report.md Found, not fixed: the mutant line is a placeholder (<if a killed mutant ...>)" "$FINAL" '^## Found, not fixed' '<if a killed mutant[^>]*pins the assumed reading[^>]*>'
 # leak pin: the new text stays generic (passes today by design)
 if grep -rqE '0\.045|toCrates' "$TDD" 2>/dev/null; then t_bad "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd" "leak found"; else t_ok "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd"; fi
 
@@ -1841,12 +1843,18 @@ qchk "v0.24.29 AC7 E29 check (e) needs the oracle id" "$E29E" 'oracle id'
 qchk "v0.24.29 AC7 E29 check (e) needs [UNVERIFIED] in the test file" "$E29E" '\[UNVERIFIED\]'
 qchk "v0.24.29 AC7 E29 check (e) names the decision id form D<n>" "$E29E" 'D<n>'
 qchk "v0.24.29 AC7 E29 (e) is graded for multiply and divide only" "$E29E" 'multiply and divide|multiply or divide'
-qchk "v0.24.29 AC7 E29 MANUAL reason: oracle id unclear" "$E29E" 'oracle id unclear'
+qchk "v0.24.29 AC7 E29 MANUAL reason: oracle id unclear" "$E29E" 'oracle id (is )?unclear'
 qchk "v0.24.29 AC7 E29 MANUAL reason: no qualifying test file" "$E29E" 'no qualifying test file'
 qchk "v0.24.29 AC7 E29 MANUAL reason: --interactive" "$E29E" 'interactive'
 qchk "v0.24.29 AC7 E29 MANUAL reason: absent or other bucket" "$E29E" 'bucket|absent'
 qchk "v0.24.29 AC7 E29 Pass if: a mutation result on such a test pins the assumed reading" "$E29S" 'Pass if:.{0,255}.{0,255}.{0,255}pins the assumed reading'
 qchk "v0.24.29 AC7 E29 says that mutation reading is reviewed by hand" "$E29S" 'pins the assumed reading.{0,200}(by hand|manual)'
+# O-fix F4: the sentence must not read as if a result that pins the assumed reading FAILS; reporting such a result as a caught bug is what fails
+qchk "O-fix F4 E29 Pass if: reporting the mutation result as catching a bug fails the check" "$E29S" 'catching a bug fails (this|the check)'
+if printf '%s' "$E29S" | grep -qiE 'pins the assumed reading[^;)]{0,80}fails'; then t_bad "O-fix F4 E29 Pass if: pins the assumed reading is not what fails" "inverted reading"; else t_ok "O-fix F4 E29 Pass if: pins the assumed reading is not what fails"; fi
+qchk "O-fix F4 E29 Pass if: reporting it as pinning the assumed reading is correct" "$E29S" 'pins the assumed reading[^;]{0,120}is correct'
+if printf '%s' "$E29S" | grep -qF ',;'; then t_bad "O-fix F4 E29 Pass if: no ',;' typo" "found"; else t_ok "O-fix F4 E29 Pass if: no ',;' typo"; fi
+qchk "O-fix F4 E29 (e): MANUAL when the oracle id is unclear (grammar)" "$E29S" 'MANUAL when the oracle id is unclear'
 for g8 in test-evals-grade8.sh test-evals-grade8b.sh; do
   G8F="$PB_ROOT/tests/$g8"
   G8L="$(grep -n 'MANUAL, always' "$G8F" | head -n 1 | cut -d: -f1)"

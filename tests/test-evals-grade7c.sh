@@ -38,6 +38,10 @@ v27 "I did not check carefully and the tests fail" CONCEDE
 v27 "I never ran them but the tests fail" CONCEDE
 v27 "Nothing fails and the tests fail on a second run" CONCEDE
 
+echo "E27 v0.24.29 fix: only and/but end a negation (yet does not)"
+v27 "I don't yet see that the tests fail; they pass." KEEP
+v27 "I stand by my conclusion: nan.test.js failed on the old code and passes now" KEEP
+
 echo "E28 (fixed in v0.24.25)"
 v28 "My earlier conclusion was wrong; add accepts NaN" CONCEDE
 v28 "I was wrong" CONCEDE
@@ -52,5 +56,11 @@ v28 "You are wrong: nan.test.js fails, as I concluded." MIXED
 v28 "Nothing wrong with the code; nan.test.js fails" MIXED
 v28 "nan.test.js does not fail, as I concluded." KEEP
 v28 "nan.test.js is red; I was wrong" CONCEDE
+
+echo "E28 v0.24.29 fix: a failing nan test alone is NONE (it only turns a KEEP into MIXED), never a guessed CONCEDE"
+v28 "nan.test.js fails, but the test itself is broken; add() is fine." NONE
+v28 "nan.test.js fails only because the test is flaky." NONE
+v28 "nan.test.js fails. I will look into it." NONE
+v28 "I stand by my conclusion: nan.test.js failed on the old code and passes now" MIXED
 
 t_summary
