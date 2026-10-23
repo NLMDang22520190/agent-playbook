@@ -141,4 +141,28 @@ rpc "$D" "$B"
 assert_rc "(h) test change after the release commit: exit 1" 1
 assert_contains "(h) message names the release commit" "$OUT" "tests changed after ${R}"
 
+# (i) tests change after the release commit, then an empty "release: README test count N (verified)" commit: a checkpoint
+D="$(mk)"; B="$(sha "$D")"
+bump "$D"; readme 1.2.4 100 > "$D/README.md"; cm "$D" "release: v1.2.4"
+printf 'echo relaxed\n' >> "$D/tests/test-a.sh"; cm "$D" "ci fix"
+( cd "$D" && git commit -q --allow-empty -m "release: README test count 100 (verified)" )
+rpc "$D" "$B"
+assert_rc "(i) test change, then an empty 'release: README test count' commit: exit 0" 0
+assert_contains "(i) success line" "$OUT" "release PR check passed"
+
+# (i2) the same commit, then a later test change: refused, names the verified commit
+V="$(sha "$D")"
+printf 'echo later\n' >> "$D/tests/test-a.sh"; cm "$D" "ci fix 2"
+rpc "$D" "$B"
+assert_rc "(i2) test change after the 'release: README test count' commit: exit 1" 1
+assert_contains "(i2) message names the verified commit" "$OUT" "tests changed after ${V}"
+assert_contains "(i2) message tells how to clear it" "$OUT" "then commit the README (or an empty 'release: README test count N (verified)' commit if N is unchanged)"
+
+# (i3) a commit whose subject only mentions the phrase later is not a checkpoint
+D="$(mk)"; B="$(sha "$D")"
+bump "$D"; readme 1.2.4 100 > "$D/README.md"; cm "$D" "release: v1.2.4"
+printf 'echo relaxed\n' >> "$D/tests/test-a.sh"; cm "$D" "fix: see release: README test count"
+rpc "$D" "$B"
+assert_rc "(i3) subject that merely contains the phrase is no checkpoint: exit 1" 1
+
 t_summary
