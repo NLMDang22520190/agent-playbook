@@ -93,3 +93,4 @@ test-docs-rules.sh 2
 test-bsd-check.sh 1
 test-get-bash32.sh 1
 test-lib-tmp.sh 1
+test-release-stale-count.sh 5
