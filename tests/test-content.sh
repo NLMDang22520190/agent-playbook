@@ -1706,7 +1706,7 @@ lite_has "v25 AC1 Lite step 1 names the oracle rule and points to Phase 1" 1 'or
 lite_has "v25 AC1 R2-1 Lite step 1 still asks an ambiguous, hard-to-reverse reading before any code" 1 "$ASK_FIRST"
 SKW="$(wc -w < "$SKILL" | tr -d ' ')"; SKB="$(budget_of skills/playbook-tdd/SKILL.md)"
 if [ -n "$SKB" ] && [ "$SKW" -le "$SKB" ]; then t_ok "v25 AC1 SKILL.md is within its word budget ($SKW of $SKB)"; else t_bad "v25 AC1 SKILL.md is within its word budget" "words $SKW budget [$SKB]"; fi
-if [ -n "$SKB" ] && [ "$SKB" -le 3650 ]; then t_ok "v25 D3 the SKILL.md budget is raised by at most 50 words (3650) ($SKB)"; else t_bad "v25 D3 the SKILL.md budget is raised by at most 50 words (3650)" "budget [$SKB]"; fi
+if [ -n "$SKB" ] && [ "$SKB" -le 3700 ]; then t_ok "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23) ($SKB)"; else t_bad "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23)" "budget [$SKB]"; fi
 
 echo "v0.24.25 AC1 references/tdd-guide.md#oracle: the details"
 if grep -qE '^## .*\{#oracle\}' "$GUIDE" 2>/dev/null; then t_ok "v25 AC1 tdd-guide.md has a heading with {#oracle}"; else t_bad "v25 AC1 tdd-guide.md has a heading with {#oracle}" "no '## ... {#oracle}' in $GUIDE"; fi
@@ -1797,5 +1797,70 @@ if grep -qE '^grade_E29\(\)' "$RUNEV29"; then t_ok "v25 AC4 run-evals.sh defines
 if grep -q 'E29_BASE=' "$RUNEV29"; then t_ok "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)"; else t_bad "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)" "no E29_BASE= in run-evals.sh"; fi
 E11BASE29="$(grep -E 'E11_BASE="\$\(git' "$RUNEV29" | head -n 1)"
 if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |)]|$)'; then t_ok "v25 R2-7 E29 is not in the E11_BASE list"; else t_bad "v25 R2-7 E29 is not in the E11_BASE list" "line: [$E11BASE29]"; fi
+
+echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
+# AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
+if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
+# AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
+sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
+sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
+CLAIMDN='claim that depends on it.{0,12}\[UNVERIFIED\] or Dn'
+if section "$SKILL" '^### Phase 1' | tr '\n' ' ' | grep -qiE -- "$CLAIMDN"; then t_bad "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)" "claim clause allows Dn"; else t_ok "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)"; fi
+# AC2: Lite step 4, one sentence.
+lite_has "v0.24.29 AC2 Lite step 4: on a test built on an unconfirmed oracle, a killed mutant pins the assumed reading" 4 'unconfirmed oracle.{0,60}killed mutant pins the assumed reading'
+lite_has "v0.24.29 AC2 Lite step 4: it does not catch a bug" 4 'pins the assumed reading.{0,40}(does not|not) catch a bug'
+# AC1 + AC2: tdd-guide.md#oracle
+sec_flat_has "v0.24.29 AC1 tdd-guide oracle: the test names Dn or [UNVERIFIED]" "$GUIDE" "$OR" 'test[^.]{0,120}(Dn|D<n>)[^.]{0,40}\[UNVERIFIED\]|test[^.]{0,120}\[UNVERIFIED\][^.]{0,40}(Dn|D<n>)'
+sec_flat_has "v0.24.29 AC1 tdd-guide oracle: in its name or in a comment" "$GUIDE" "$OR" 'name or (in )?a comment|comment or (in )?(its|the) name'
+sec_flat_has "v0.24.29 AC2 tdd-guide oracle: a killed mutant pins the assumed reading" "$GUIDE" "$OR" 'pins the assumed reading'
+sec_flat_has "v0.24.29 AC2 tdd-guide oracle: not reported as catching a bug" "$GUIDE" "$OR" 'pins the assumed reading.{0,120}not[^.]{0,30}(catch|caught)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,120}pins the assumed reading'
+# AC2: test-quality.md, next to "Expected: each mutant ..."
+TQ="$TDD/references/test-quality.md"
+flat_has "v0.24.29 AC2 test-quality.md: pins the assumed reading, within 600 characters of the Expected: each mutant line" "$TQ" 'Expected: each mutant.{0,250}.{0,250}.{0,100}pins the assumed reading'
+flat_has "v0.24.29 AC2 test-quality.md: names the unconfirmed oracle case" "$TQ" 'unconfirmed (oracle|reading).{0,200}pins the assumed reading|pins the assumed reading.{0,200}unconfirmed (oracle|reading)'
+# AC1: tester.md marker rule (the oracle line of step 1)
+sec_flat_has "v0.24.29 AC1 tester.md Do: a test on an unconfirmed oracle names Dn or [UNVERIFIED]" "$TESTER" '^## Do' 'unconfirmed[^.]{0,200}(Dn|D<n>)[^.]{0,60}\[UNVERIFIED\]|unconfirmed[^.]{0,200}\[UNVERIFIED\][^.]{0,60}(Dn|D<n>)'
+sec_flat_has "v0.24.29 AC1 tester.md Do: in the test name or a comment" "$TESTER" '^## Do' '(Dn|D<n>|\[UNVERIFIED\])[^.]{0,100}(name or (in )?a comment|comment or (in )?(its|the) name)'
+flat_has "v0.24.29 AC1 tester.md keeps the verbatim oracle sentence" "$TESTER" 'oracle AC:? assert the exact input and expected value from its anchor'
+# AC2: final-report.md one line under Found, not fixed
+sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: a killed mutant on an unconfirmed oracle pins the assumed reading" "$FINAL" '^## Found, not fixed' 'pins the assumed reading'
+sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: it is not a caught bug" "$FINAL" '^## Found, not fixed' 'pins the assumed reading.{0,80}not[^.]{0,30}(catch|caught|found)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,80}pins the assumed reading'
+# O-fix F8: the line is a placeholder instruction in angle brackets, not a literal bullet the report would carry over as a finding
+sec_flat_has "O-fix F8 final-report.md Found, not fixed: the mutant line is a placeholder (<if a killed mutant ...>)" "$FINAL" '^## Found, not fixed' '<if a killed mutant[^>]*pins the assumed reading[^>]*>'
+# leak pin: the new text stays generic (passes today by design)
+if grep -rqE '0\.045|toCrates' "$TDD" 2>/dev/null; then t_bad "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd" "leak found"; else t_ok "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd"; fi
+
+echo "v0.24.29 lane O (S3): E29 text describes the graded check (e) (AC7)"
+# E29E: the text from " (e) " up to the "MANUAL:" list (empty while the text has no (e)); E29M: the MANUAL list to its end
+E29E="$(printf '%s' "$E29S" | sed -n 's/.*\( (e) .*\)/\1/p' | sed 's/MANUAL: the reply.*//')"
+E29M="$(printf '%s' "$E29S" | sed -n 's/.*\(MANUAL: the reply never claims.*\)/\1/p')"
+qchk "v0.24.29 AC7 E29 carries the version marker v0.24.29" "$E29S" 'v0\.24\.29'
+qchk "v0.24.29 AC7 E29 Auto checks: has a check (e) with the tests-do-not-present-the-assumption text" "$E29E" 'tests do not present the assumption as the oracle'
+if [ -n "$E29M" ] && ! printf '%s' "$E29M" | grep -qiE 'present the assumption'; then t_ok "v0.24.29 AC7 E29 MANUAL list no longer holds the tests-do-not-present-the-assumption line"; else t_bad "v0.24.29 AC7 E29 MANUAL list no longer holds the tests-do-not-present-the-assumption line" "MANUAL list: [$E29M]"; fi
+qchk "v0.24.29 AC7 E29 MANUAL list still holds the reply never claims line" "$E29M" 'the reply never claims.{0,120}(verified|confirmed)'
+qchk "v0.24.29 AC7 E29 check (e) says it reads the qualifying test files" "$E29E" 'qualifying test files?'
+qchk "v0.24.29 AC7 E29 check (e) needs the oracle id" "$E29E" 'oracle id'
+qchk "v0.24.29 AC7 E29 check (e) needs [UNVERIFIED] in the test file" "$E29E" '\[UNVERIFIED\]'
+qchk "v0.24.29 AC7 E29 check (e) names the decision id form D<n>" "$E29E" 'D<n>'
+qchk "v0.24.29 AC7 E29 (e) is graded for multiply and divide only" "$E29E" 'multiply and divide|multiply or divide'
+qchk "v0.24.29 AC7 E29 MANUAL reason: oracle id unclear" "$E29E" 'oracle id (is )?unclear'
+qchk "v0.24.29 AC7 E29 MANUAL reason: no qualifying test file" "$E29E" 'no qualifying test file'
+qchk "v0.24.29 AC7 E29 MANUAL reason: --interactive" "$E29E" 'interactive'
+qchk "v0.24.29 AC7 E29 MANUAL reason: absent or other bucket" "$E29E" 'bucket|absent'
+qchk "v0.24.29 AC7 E29 Pass if: a mutation result on such a test pins the assumed reading" "$E29S" 'Pass if:.{0,255}.{0,255}.{0,255}pins the assumed reading'
+qchk "v0.24.29 AC7 E29 says that mutation reading is reviewed by hand" "$E29S" 'pins the assumed reading.{0,200}(by hand|manual)'
+# O-fix F4: the sentence must not read as if a result that pins the assumed reading FAILS; reporting such a result as a caught bug is what fails
+qchk "O-fix F4 E29 Pass if: reporting the mutation result as catching a bug fails the check" "$E29S" 'catching a bug fails (this|the check)'
+if printf '%s' "$E29S" | grep -qiE 'pins the assumed reading[^;)]{0,80}fails'; then t_bad "O-fix F4 E29 Pass if: pins the assumed reading is not what fails" "inverted reading"; else t_ok "O-fix F4 E29 Pass if: pins the assumed reading is not what fails"; fi
+qchk "O-fix F4 E29 Pass if: reporting it as pinning the assumed reading is correct" "$E29S" 'pins the assumed reading[^;]{0,120}is correct'
+if printf '%s' "$E29S" | grep -qF ',;'; then t_bad "O-fix F4 E29 Pass if: no ',;' typo" "found"; else t_ok "O-fix F4 E29 Pass if: no ',;' typo"; fi
+qchk "O-fix F4 E29 (e): MANUAL when the oracle id is unclear (grammar)" "$E29S" 'MANUAL when the oracle id is unclear'
+for g8 in test-evals-grade8.sh test-evals-grade8b.sh; do
+  G8F="$PB_ROOT/tests/$g8"
+  G8L="$(grep -n 'MANUAL, always' "$G8F" | head -n 1 | cut -d: -f1)"
+  G8T=""; [ -n "$G8L" ] && G8T="$(sed -n "${G8L},$((G8L+3))p" "$G8F")"
+  if [ -n "$G8L" ] && ! printf '%s' "$G8T" | grep -qE 'present the assumption'; then t_ok "v0.24.29 AC7 $g8 header: MANUAL, always no longer lists present the assumption"; else t_bad "v0.24.29 AC7 $g8 header: MANUAL, always no longer lists present the assumption" "lines: [$G8T]"; fi
+  if grep -qE '^#.*\(e\).*present the assumption' "$G8F"; then t_ok "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption"; else t_bad "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption" "no (e) line"; fi
+done
 
 t_summary

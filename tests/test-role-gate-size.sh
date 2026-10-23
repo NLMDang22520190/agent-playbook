@@ -49,7 +49,7 @@ WIDE="--max-files 1000 --max-lines 100000"
 SHIM="$(mk_tmp)"; SHIMLOG="$DT/shim.log"; SHIMFIRED="$DT/shim.fired"
 cat > "$SHIM/git" <<'SHIMEOF'
 #!/usr/bin/env bash
-# PB_SHIM_MODE: count (default) | upd-fail | diff-fail | upd-rc | upd-partial | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128 | hang.
+# PB_SHIM_MODE: count (default) | upd-fail | diff-fail | upd-rc | upd-partial | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128 | rc2 | hang.
 # Every call appends "<label> idx=<0|1> obj=<0|1>" to PB_SHIM_LOG (idx: GIT_INDEX_FILE set, obj: GIT_OBJECT_DIRECTORY set); update-index, diff-batch and
 # hash-object calls also append "<label>: <args>" to PB_SHIM_LOG.args. hang: the first call labelled $PB_HANG_LABEL (default update-index) marks
 # PB_HANG_REACHED, then waits (up to 25 s) for PB_HANG_RELEASE before it runs.
@@ -81,6 +81,8 @@ case "${PB_SHIM_MODE:-count}:$label" in
     if [ -e "$PB_SHIM_FIRED.listed" ] && [ -e "$PB_VANISH_PATH" ]; then rm -f "$PB_VANISH_PATH"; echo 1 >> "$PB_SHIM_FIRED"; fi ;;
   uncount-none:update-index | uncount-none:diff-batch | uncount-none:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;   # no output at all
   uncount-128:update-index | uncount-128:diff-batch) exit 1 ;;   # the batch is refused; the per-file command fails with 128
+  rc2:update-index | rc2:diff-batch) exit 1 ;;   # the batch is refused; the per-file command exits 2 but still prints its numstat line
+  rc2:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@"; exit 2 ;;
   uncount-128:diff-noindex) printf 'fatal: shim\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 128 ;;
   upd-partial:update-index)   # most of the list is indexed, then git fails: a partial failure
     echo 1 >> "$PB_SHIM_FIRED"; tr '\0' '\n' | sed '$d' | tr '\n' '\0' | "$REAL_GIT" "$@" >/dev/null 2>&1; printf 'fatal: shim partial update\n' >&2; exit 128 ;;
@@ -463,6 +465,36 @@ if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
   s2row "S2 AC8 symlink to a directory, dangling symlink, nested repo + unreadable src/unr.js: exit 3 names only src/unr.js" "$R" "$(s2_err src/unr.js)" size
 else t_skip 2 "S2 AC8 non-regular kinds next to an unreadable file (chmod 000 does not block reads, or no symlinks)"; fi
 
+# S-fix F3: the AC5 clause "git exits above 1" on its own: the per-file command exits 2 yet prints a numstat line -> exit 3 (kills rc -gt 128)
+mkrepo; printf 'a\nb\n' > src/p.js
+s2shim rc2 "S-fix F3 per-file git exits 2 but prints a numstat line for src/p.js" "$R" "$(s2_err src/p.js)" size
+chk "S-fix F3 control: the per-file command ran and exited 2 (the shim fired)" "1" "$([ -s "$SHIMFIRED" ] && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+
+# S-fix F1: git counts a symlink's link text, so a symlink to an unreadable target is 1 file, 1 line, whatever the route
+echo "S-fix F1 a symlink is counted by its link text (never by its target), also on the per-file route"
+if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
+  F1T="$(mk_tmp)/tgt"; printf 'a\nb\nc\n' > "$F1T"; chmod 000 "$F1T"
+  mkrepo; ln -s "$F1T" src/pl.js
+  nrow "S-fix F1 control: plain-name symlink to an unreadable target (batch route): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  mkrepo; ln -s "$F1T" "src/$(s1_name dquote js)"
+  nrow "S-fix F1 quoted-name (q\"x.js) symlink to an unreadable target (per-file route): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  chk "S-fix F1 quoted-name symlink: no cannot-count line on stderr" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+  mkrepo; ln -s "$F1T" src/pl.js
+  GENV=(X_PB=1 PB_SHIM_MODE=upd-fail PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"; : > "$SHIMFIRED"
+  nrow "S-fix F1 plain-name symlink to an unreadable target, batch refused (whole list per-file): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  chk "S-fix F1 control: the batch was refused and the per-file command ran" "1" "$([ -s "$SHIMFIRED" ] && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+  unset GPATH; GENV=(X_PB=1)
+else t_skip 5 "S-fix F1 symlink to an unreadable target (chmod 000 does not block reads, or no symlinks)"; fi
+
+# S-fix F4: a path the manifest records as unchanged that vanishes after the listing is skipped, not an error (spec: baseline-unchanged paths
+# are left out of the error list); only the BL_UNCH skip in pf_emit does this
+mkrepo; printf 'a\nb\n' > src/v.js; MF_V="$(mk_mf "$R")"; printf 'ok\n' > src/ok.js
+S2_VANISH=src/v.js
+GENV=(X_PB=1 PB_SHIM_MODE=vanish PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_VANISH_PATH="$S2_VANISH"); GPATH="$SHIM:$PATH"; : > "$SHIMFIRED"; rm -f "$SHIMFIRED.listed"
+nrow "S-fix F4 manifest-unchanged src/v.js vanishes after the listing, --baseline: skipped, not exit 3: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF_V"
+chk "S-fix F4 control: the shim really deleted src/v.js after the listing" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R/src/v.js" ] && echo 1 || echo 0)"
+unset GPATH; GENV=(X_PB=1); S2_VANISH=
+
 # AC16 (the docs the spec puts in S2: the header, the exit line, SKILL.md; the method comment and CHANGELOG are S3 / the release)
 echo "S2 AC16 the docs name the size exit 3"
 HDR="$(sed -n '1,/^set -u$/p' "$PB_ROOT/scripts/role-gate.sh")"
@@ -713,6 +745,7 @@ ac15_run() {
     t_skip 3 "$name (the gate is not the leader of its own process group here: pgid [$pgid] pid [$pid])"; return
   fi
   chk "$name: control: a temporary entry exists in TMPDIR while the gate is inside the batch (so the empty-TMPDIR row below can fail)" "1" "$([ -n "$(ls -A "$lk")" ] && echo 1 || echo 0)"
+  chk "$name: S4 AC20 every temporary entry is named pbgate.XXXXXX (the mktemp -d has the template, as BL_TMPW)" "" "$(ls -A "$lk" | grep -v '^pbgate\.[A-Za-z0-9]\{6\}$' || true)"
   kill -TERM "$pid" 2>/dev/null; : > "$ad/release"
   i=0
   while [ "$i" -lt 300 ]; do
@@ -726,6 +759,48 @@ ac15_run() {
 }
 mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (plain size)" "$R" size $WIDE
 mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (size --baseline)" "$R" size $WIDE --baseline "$MF0"
+
+# ---------------------------------------------------------------- S4 route-only mutants and nits (AC18, AC19, AC20)
+echo "S4 AC18 the batch sorts under LC_ALL=C: a caller in en_US.UTF-8 still gets the batch and the same totals"
+# s4_run DIR LOCALE ARGS... -> one run under the counting shim with LC_ALL=LOCALE; stdout in S4_OUT, call counts in S4_UI / S4_PF
+s4_run() {
+  local d="$1" loc="$2"; shift 2
+  : > "$SHIMLOG"; : > "$SHIMFIRED"
+  S4_OUT="$( cd "$d" && env X_PB=1 PLAYBOOK_HOME="$PLAYBOOK_HOME" LC_ALL="$loc" PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PATH="$SHIM:$PATH" bash "$NEWG" "$@" 2>/dev/null </dev/null )"
+  S4_UI="$(lbl update-index)"; S4_PF="$(lbl diff-noindex)"
+}
+S4_EN="$(locale -a 2>/dev/null | grep -i '^en_US\.utf-\{0,1\}8$' | head -n 1 || true)"
+S4_ORD_C="$(printf 'a.js\nB.js\n_c.js\nZ.js\n' | LC_ALL=C sort | tr '\n' ' ')"
+S4_ORD_EN="$(printf 'a.js\nB.js\n_c.js\nZ.js\n' | LC_ALL="${S4_EN:-C}" sort 2>/dev/null | tr '\n' ' ')"
+if [ -z "$S4_EN" ] || [ "$S4_ORD_C" = "$S4_ORD_EN" ]; then
+  t_skip 4 "S4 AC18 (no en_US.UTF-8 locale here, or it sorts a.js B.js _c.js Z.js like C)"
+else
+  chk "S4 AC18 control: C and $S4_EN order the four names differently" "1" "$([ "$S4_ORD_C" != "$S4_ORD_EN" ] && echo 1 || echo 0)"
+  mkrepo; for n in a B _c Z; do printf 'l1\nl2\n' > "$n.js"; done
+  s4_run "$R" "$S4_EN" size $WIDE
+  chk "S4 AC18 en_US run: totals equal the C-locale run (4 files, 8 lines)" "files: 4/1000 lines: 8/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC18 en_US run: the batch is used (one update-index call)" "1" "$S4_UI"
+  chk "S4 AC18 en_US run: no per-file diff --no-index call (the two sorted lists matched)" "0" "$S4_PF"
+fi
+
+echo "S4 AC19 untracked paths that are not regular files go per file, never into the batch input"
+if [ "$SYMLINKS" != 1 ]; then t_skip 6 "S4 AC19 (no symlinks on this file system)"
+else
+  mkrepo; printf 'x\n' > f1.js; ln -s nowhere.js dang.js
+  s4_run "$R" C size $WIDE
+  chk "S4 AC19 dangling symlink + 1 file: counted, 2 files 2 lines" "files: 2/1000 lines: 2/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC19 dangling symlink: exactly one per-file diff --no-index call (it is not in the batch)" "1" "$S4_PF"
+  chk "S4 AC19 dangling symlink: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
+  mkrepo; printf 'x\n' > f1.js; ln -s src sd
+  s4_run "$R" C size $WIDE
+  chk "S4 AC19 symlink to a directory + 1 file: 2 files, 1 line (a directory link has no numstat line, as v0.24.27)" "files: 2/1000 lines: 1/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC19 symlink to a directory: exactly one per-file diff --no-index call (it is not in the batch)" "1" "$S4_PF"
+  chk "S4 AC19 symlink to a directory: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
+fi
+
+echo "S4 AC20 the batch directory has the pbgate template (row in S3 AC15) and the redundant [ ! -d ] is gone"
+chk "S4 AC20 role-gate.sh holds no [ -f \"\$u\" ] && [ ! -d \"\$u\" ] (a regular file is never a directory)" "0" "$(grep -c '\[ -f "\$u" \] && \[ ! -d "\$u" \]' "$NEWG" | tr -d ' ' || true)"
+chk "S4 AC20 every mktemp -d in role-gate.sh carries the pbgate.XXXXXX template" "0" "$(grep 'mktemp -d' "$NEWG" | grep -vc 'pbgate\.XXXXXX' | tr -d ' ' || true)"
 
 # ---------------------------------------------------------------- AC5 the existing size rows are not edited here
 echo "AC5 the existing size rows live in test-role-gate.sh, -batch.sh, -baseline.sh and -b.sh (not copied here; they must stay green and unchanged)"
