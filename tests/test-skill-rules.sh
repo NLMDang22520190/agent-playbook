@@ -236,9 +236,42 @@ chk "v0.24.21 r2 the rule near Mechanical enforcement says every pass as well as
 echo "v0.24.22 the tdd-step line names --base and --baseline; shared checkouts"
 chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKILL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
 HARN="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
-chk "v0.24.22 harnesses.md: concurrent tasks each get their own git worktree add" "$HARN" 'git worktree add.{0,250}(never|not)[^.]{0,60}(share|same)|(never|not)[^.]{0,60}(share|same)[^.]{0,200}git worktree add'
+# v0.24.29 lane C (D-0, S3): the v0.24.22 sentence "never share one work tree between tasks" is softened ON PURPOSE (user decision U1, 2026-10-23); this pin keeps its intent
+# (worktrees stay first; git worktree add is still the way) and adds the other half (sharing one checkout only with a scope file per task).
+HSEC="$(printf '%s' "$HARN" | sed -E 's/.*## Several tasks, one repository//; s/## Honest limit.*//')"
+chk "v0.24.29 D-0 harnesses.md still names git worktree add for concurrent tasks" "$HSEC" 'git worktree add'
+chk "v0.24.29 D-0 harnesses.md: separate worktrees stay the first choice" "$HSEC" 'worktrees? stay[s]? the first choice|first (choice|option)[^.]{0,80}worktree|prefer(red)?[^.]{0,60}worktree|worktree[^.]{0,80}(first choice|preferred)'
+chk "v0.24.29 D-0 harnesses.md: share one checkout only with a scope file per task" "$HSEC" '(share|shared|sharing)[^.]{0,160}scope file[^.]{0,60}(per|each|every) task|(per|each|every) task[^.]{0,60}scope file'
+if printf '%s' "$HSEC" | grep -qiE -- 'never share one work ?tree between tasks'; then t_bad "v0.24.29 D-0 harnesses.md: the old 'never share one work tree between tasks' wording is gone (softened on purpose, U1)" "still present"; else t_ok "v0.24.29 D-0 harnesses.md: the old 'never share one work tree between tasks' wording is gone (softened on purpose, U1)"; fi
+chk "v0.24.29 AC12 harnesses.md: a baseline per task when foreign work exists or may start" "$HSEC" 'baseline[^.]{0,40}(per|each|every) task|(per|each|every) task[^.]{0,40}baseline'
+chk "v0.24.29 AC12 harnesses.md: foreign work 'exists or may start'" "$HSEC" 'foreign work[^.]{0,60}(exists|may start)'
+chk "v0.24.29 AC12 harnesses.md: without --baseline only other entries exempt foreign work" "$HSEC" 'without[^.]{0,30}--baseline[^.]{0,120}only[^.]{0,30}other'
+chk "v0.24.29 AC12 harnesses.md: --base is the sha from git rev-parse HEAD before the role" "$HSEC" '--base[^.]{0,160}git rev-parse HEAD|git rev-parse HEAD[^.]{0,160}--base'
+chk "v0.24.29 AC12 harnesses.md: never the word HEAD as --base (R2-6)" "$HSEC" 'never[^.]{0,30}the word[^.]{0,5}HEAD'
+chk "v0.24.29 AC12 harnesses.md: per-task files in the git dir (pb-scope-<task>, pb-gate-baseline-<task>)" "$HSEC" 'pb-scope-[^.]{0,200}pb-gate-baseline-|pb-gate-baseline-[^.]{0,200}pb-scope-'
+chk "v0.24.29 AC12 harnesses.md: record git hash-object of the scope file and compare it with the E1 digest" "$HSEC" 'hash-object[^.]{0,200}digest|digest[^.]{0,200}hash-object'
+chk "v0.24.29 AC12 harnesses.md: no-checkpoint-commit workflow (snapshot instead of committing between roles)" "$HSEC" 'instead of (a |any )?(checkpoint )?commit(ting)?[^.]{0,40}between roles|no[- ]checkpoint[- ]commit'
+chk "v0.24.29 AC12 harnesses.md: the role's gate gets --base, --baseline and --scope" "$HSEC" '--base[^.]{0,200}--baseline[^.]{0,200}--scope'
+chk "v0.24.29 AC12 harnesses.md: keep other entries narrow, exact paths over prefixes" "$HSEC" 'narrow[^.]{0,200}exact paths?[^.]{0,30}over prefix|exact paths?[^.]{0,30}over prefix(es)?'
+chk "v0.24.29 AC12 harnesses.md: never an other path the task's own tests or code read" "$HSEC" 'never[^.]{0,40}(a )?path[^.]{0,80}(tests?|code)[^.]{0,40}read'
+chk "v0.24.29 AC12 harnesses.md: attribute the E2/E3 paths (another task's path / changed since the baseline) for implementer and reviewer" "$HSEC" 'attribut[^.]{0,250}implementer[^.]{0,200}reviewer|implementer[^.]{0,250}reviewer[^.]{0,200}attribut'
+chk "v0.24.29 AC12 harnesses.md: the attribution names the gate's notes (another task's path, changed since the baseline)" "$HSEC" "attribut[^.]{0,250}(another task.s path|changed since the baseline)|(another task.s path|changed since the baseline)[^.]{0,250}attribut"
+chk "v0.24.29 AC12 harnesses.md: a path the gate names as outside the scope that passed goes into own or is committed before the next snapshot (r5)" "$HSEC" 'own[^.]{0,60}commit[^.]{0,60}before the next snapshot'
+chk "v0.24.29 AC12 harnesses.md: a path you cannot attribute is a stop" "$HSEC" 'cannot attribute[^.]{0,100}stop|stop[^.]{0,100}cannot attribute'
+chk "v0.24.29 AC12 harnesses.md: never reset, stash or revert concurrent work" "$HSEC" 'never[^.]{0,80}reset[^.]{0,30}stash[^.]{0,30}revert'
+chk "v0.24.29 AC12 harnesses.md: the mode check exempts nothing with --scope; PB_ALLOW_MODE_CHANGE" "$HSEC" 'PB_ALLOW_MODE_CHANGE'
+for r in r1 r2 r3 r4 r5; do chk "v0.24.29 AC12 harnesses.md: residual risk $r is named" "$HSEC" "(^|[^a-z0-9])$r([^a-z0-9]|\$)"; done
 chk "v0.24.22 harnesses.md: pre-existing changes use role-gate.sh snapshot and --baseline" "$HARN" 'role-gate\.sh snapshot.{0,250}--baseline|--baseline.{0,250}role-gate\.sh snapshot'
-chk "v0.24.22 harnesses.md: says why no path-scope for out-of-scope changes" "$HARN" '(outside|out-of)[- ]?(its )?scope.{0,200}(unseen|not seen|unnoticed)|(unseen|not seen|unnoticed).{0,200}(outside|out-of)[- ]?(its )?scope'
+# v0.24.29 lane C (D-0, S3): the v0.24.22 sentence "The gate has no option to ignore changes outside a role's scope, on purpose" is REVERSED ON PURPOSE (U1, 2026-10-23).
+# The intent of the old pin stays: the blind spot (a role writing outside its scope, unseen) is still named, and a separate worktree is still the isolation without it.
+if printf '%s' "$HSEC" | grep -qiE -- 'no option to ignore changes outside'; then t_bad "v0.24.29 D-0 harnesses.md: the old 'no option to ignore changes outside a role's scope' sentence is reversed (U1)" "still present"; else t_ok "v0.24.29 D-0 harnesses.md: the old 'no option to ignore changes outside a role's scope' sentence is reversed (U1)"; fi
+chk "v0.24.29 D-0 harnesses.md: the blind spot is still named (a role writing outside its scope, unseen)" "$HSEC" '(outside|out-of)[- ]?(its |the |a role.s |task )?scope[^.]{0,200}(unseen|not seen|unnoticed|blind spot)|blind spot[^.]{0,250}(outside|out-of)[- ]?(its |the |a role.s |task )?scope'
+chk "v0.24.29 D-0 harnesses.md: the scope closes the blind spot only for unknown paths (rule 4); declared and recorded paths stay a residual risk" "$HSEC" 'only[^.]{0,60}(unknown|unrecorded|undeclared)[^.]{0,80}path|(unknown|rule 4)[^.]{0,120}only|residual risk'
+chk "v0.24.29 D-0 harnesses.md: a separate worktree gives the isolation without the blind spot" "$HSEC" 'worktree[^.]{0,120}(isolation|without)[^.]{0,80}blind spot|blind spot[^.]{0,120}worktree'
+# SKILL.md:108 pointer (at most about 7 words, SKILL.md stays within the 3700 budget of lane O)
+chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$SKILL_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
+SKW3="$(wc -w < "$SKILL" | tr -d ' ')"
+if [ "$SKW3" -le 3700 ]; then t_ok "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer ($SKW3)"; else t_bad "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer" "$SKW3 words"; fi
 NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
 NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
