@@ -256,9 +256,12 @@ _pb_scope_sig() {
   kill -"$1" "$(exec sh -c 'echo "$PPID"')"
 }
 
-# Traps (probed on bash 5.2.21 and 3.2.57: both run this subshell's EXIT trap on a TERM or INT death): the EXIT trap removes the
-# temp file on the normal and error returns (it duplicates the explicit rm below) and on a signal death; the TERM and INT handlers
-# re-raise the signal with its default action, so callers see 143 / 130, and are defensive, not needed on those two bash versions.
+# Traps (mutant run: with both signal handlers dropped, tests/test-scope-classify.sh on bash 3.2.57 fails its two group-TERM rows,
+# AC6.4b "no pb-scope.* temp file left", and passes on bash 5.2.21; dropping only the INT handler passes on both): when a TERM kills
+# this subshell while it waits on the foreground awk, bash 3.2 does not run the EXIT trap, so the TERM handler is what removes the
+# temp file there, and bash 5 runs the EXIT trap. Both handlers re-raise the signal with its default action, so callers see 143 / 130.
+# The INT handler is defensive (no suite row needs it). The EXIT trap covers the normal and error returns (it duplicates the explicit
+# rm below).
 pb_scope_classify() (
   tf=""
   trap 'rm -f "$tf"' EXIT
