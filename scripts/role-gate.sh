@@ -709,7 +709,7 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
       # test, .agents/handoff/ and baseline-unchanged paths are left out of it (D2); a newline name is always production (D23)
       pf_emit() {
         local u="$1" ix="$2" counts raw rc disp bad=0
-        if [ -f "$u" ] && [ ! -d "$u" ]; then
+        if [ -f "$u" ]; then
           if [ -r "$u" ]; then
             raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
             counts="$(printf '%s\n' "$raw" | cut -f1,2)"
@@ -738,7 +738,7 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
           *)       printf '%s\t%s\n' "$counts" "$u" ;;
         esac
       }
-      d="$(mktemp -d 2>/dev/null)" || d=""
+      d="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX" 2>/dev/null)" || d=""
       if [ -z "$d" ]; then
         ix=0
         git -c core.quotepath=off ls-files -z --others --exclude-standard | while IFS= read -r -d '' u; do
@@ -759,7 +759,7 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
         printf '%s\n' "$u" >> "$d/names"
         printf '%s\n' "$ix" >> "$d/idxs"
         case "$u" in *[[:cntrl:]]* | *\"* | *\\*) continue ;; esac
-        if [ -f "$u" ] && [ ! -d "$u" ]; then
+        if [ -f "$u" ]; then
           printf '%s\n' "$u" >> "$d/in"
           printf '%s\0' "$u" >> "$d/in0"
           nb=$((nb + 1))
