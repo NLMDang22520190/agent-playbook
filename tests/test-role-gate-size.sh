@@ -455,8 +455,8 @@ chk "S2 AC8 nested repo with a commit: stderr has no cannot-count line" "0" "$(g
 mkrepo; git init -q emptynest
 nrow "S2 AC8 nested repo without commits: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
 chk "S2 AC8 nested repo without commits: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
-# the fifo row needs a git that sees a fifo as a non-regular file: Git Bash on Windows makes a file git lists, so it skips there
-if mkrepo && mkfifo pipe.fifo 2>/dev/null && [ -p pipe.fifo ] && ! git -c core.quotepath=off ls-files --others | grep -q '^pipe.fifo$'; then
+# the fifo row needs a git that sees a fifo as a non-regular file: Git Bash on Windows makes a pipe.fifo.lnk shortcut that git lists, so it skips there
+if mkrepo && mkfifo pipe.fifo 2>/dev/null && [ -p pipe.fifo ] && ! git -c core.quotepath=off ls-files --others | grep -q '^pipe[.]fifo'; then
   printf 'ok\n' > src/p.js
   nrow "S2 AC8 a fifo next to a 1-line src/p.js: the fifo is not listed and not counted: 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
 else t_skip 1 "S2 AC8 fifo (mkfifo is not available here, or makes no real fifo: Git Bash on Windows)"; fi
