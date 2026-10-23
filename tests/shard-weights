@@ -1,18 +1,15 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs). Most weights are the median of CI runs 39715102925
-# (v0.24.24), 39746450470 (v0.24.25) and 39771266412 (v0.24.26), per L-0003; test-tdd-step-z.sh 58 and
-# test-release-stale-count.sh 67 come from run 39891830540 (v0.24.28) alone.
+# (v0.24.24), 39746450470 (v0.24.25) and 39771266412 (v0.24.26), per L-0003; test-tdd-step-z.sh and
+# test-release-stale-count.sh come from run 39891830540 (v0.24.28) alone; the suites new or changed in v0.24.29
+# (role-gate-size, role-gate-scope, tdd-step-scope, role-gate-batch, content, skill-rules, evals-grade7c, evals-grade8,
+# 8b, 8c, 8d, 9, 9b) come from run 39931483719 (v0.24.29) alone.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
-# estimated weight in this header and in the release PR (L-0009).
-# v0.24.29 estimates (not CI-measured; local Windows Git Bash time; replace each with a CI time, L-0009):
-# test-role-gate-size.sh 566 (run alone; 263 rows, was 84), test-role-gate-scope.sh 528 (two suites in parallel),
-# test-tdd-step-scope.sh 465 (run alone), and, run three in parallel on one machine: test-evals-grade8b.sh 253 (rows moved
-# to 8c and 8d), test-evals-grade8c.sh 243, test-evals-grade8d.sh 112, test-evals-grade9.sh 591, test-evals-grade9b.sh 521,
-# test-evals-grade7c.sh 30.
+# estimated weight in this header and in the release PR (L-0009). No weight is an estimate at v0.24.29.
 test-tdd-step-f.sh 524
-test-role-gate-batch.sh 522
-test-role-gate-scope.sh 528
-test-tdd-step-scope.sh 465
+test-role-gate-batch.sh 512
+test-role-gate-scope.sh 530
+test-tdd-step-scope.sh 496
 test-evals-grade6-b.sh 482
 test-evals-grade.sh 427
 test-role-gate-baseline.sh 427
@@ -20,15 +17,15 @@ test-ci-tree-tested.sh 411
 test-tdd-step-d.sh 398
 test-evals-grade4.sh 397
 test-evals-grade6.sh 375
-test-role-gate-size.sh 566
+test-role-gate-size.sh 549
 test-tdd-step.sh 356
 test-tdd-step-b.sh 349
-test-evals-grade8b.sh 253
-test-evals-grade8c.sh 243
-test-evals-grade8d.sh 112
-test-evals-grade9.sh 591
-test-evals-grade9b.sh 521
-test-evals-grade7c.sh 30
+test-evals-grade8b.sh 255
+test-evals-grade8c.sh 280
+test-evals-grade8d.sh 139
+test-evals-grade9.sh 582
+test-evals-grade9b.sh 537
+test-evals-grade7c.sh 25
 test-role-gate.sh 335
 test-leak-check.sh 334
 test-evals-runner.sh 324
@@ -49,12 +46,12 @@ test-evals-grade2-e20-capture.sh 271
 test-evals-grade7b.sh 270
 test-tdd-step-h.sh 267
 test-evals-grade2-e20.sh 264
-test-evals-grade8.sh 263
+test-evals-grade8.sh 343
 test-evals-grade5.sh 261
 test-tdd-step-i.sh 254
 test-tdd-step-s.sh 253
 test-leak-check-mode.sh 252
-test-content.sh 248
+test-content.sh 237
 test-ship-c.sh 242
 test-ship.sh 238
 test-evals-grade4-b.sh 237
@@ -98,7 +95,7 @@ test-role-gate-mode.sh 39
 test-shard-weights.sh 32
 test-readme-count.sh 30
 test-eval-guard.sh 22
-test-skill-rules.sh 16
+test-skill-rules.sh 24
 test-pr-body.sh 13
 test-proof-run.sh 9
 test-lib.sh 7
