@@ -316,6 +316,11 @@ chk "v0.24.30 AC6.3 role-gate.sh header (Task scope block) names 'the scope file
 chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) names 'cannot classify the changed paths'" "$TDH" 'cannot classify the changed paths'
 chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) names 'the scope file changed while it was read'" "$TDH" 'the scope file changed while it was read'
 chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) says exit 3 for them" "$TDH" '(cannot classify the changed paths|the scope file changed while it was read)[^.]{0,160}(exit(s|ed)? (code )?3|exit 3)|(exit(s|ed)? (code )?3)[^.]{0,160}(cannot classify the changed paths|the scope file changed while it was read)'
+echo "v0.24.30 G-fix the role-gate.sh size header names a production symlink as an exit-3 cause"
+SZH="$(sed -n '/^# size fails closed/,/^#$/p' "$PB_ROOT/scripts/role-gate.sh" | sed 's/^# *//' | tr '
+' ' ')"
+chk "v0.24.30 G-fix size header: a production symlink that it cannot count is an exit-3 cause" "$SZH" 'production symlink[^.]{0,160}(exit(s|ed)? (code )?3|cannot count)'
+if printf '%s' "$SZH" | grep -qE -- 'dangling symlink[^.;]{0,20}keep'; then t_bad "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count" "the header still lists it with those that keep their count"; else t_ok "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count"; fi
 if printf '%s %s %s' "$HSEC" "$RGH" "$TDH" | grep -qE -- '(^|[^A-Za-z0-9])E(19|20)([^0-9]|$)'; then t_bad "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)" "an E19 or E20 id is present"; else t_ok "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)"; fi
 
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
