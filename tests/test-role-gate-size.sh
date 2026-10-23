@@ -316,10 +316,10 @@ fi
 
 # D13/D23: a raw name with a newline is production even under tests/ (the newline-separated classify could otherwise under-count)
 mkrepo
-if s1_put $'tests/a\nb.js' 2; then
+if s1_put $'tests/a\nb.js' 2 && git -c core.quotepath=off ls-files --others | grep -q '\\n'; then
   nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines): counted as production (D23): 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size
   nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines), --baseline of a clean repo: 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size --baseline "$MF0"
-else t_skip 2 "S1 AC2 tests/a<LF>b.js (this file system cannot hold a newline in a name)"; fi
+else t_skip 2 "S1 AC2 tests/a<LF>b.js (this file system cannot hold a newline in a name, or git does not list it as a quoted name: NTFS maps it to a private-use character)"; fi
 
 # ---------------------------------------------------------------- S2 fail closed: an uncountable untracked production file is exit 3
 echo "S2 an untracked production file that size cannot count fails closed: stderr line, no files: line, exit 3 (D1, D21)"
@@ -410,10 +410,10 @@ s2shim vanish "S2 AC5 src/v.js vanishes after the listing, --baseline of a clean
 chk "S2 AC5 control: --baseline: the shim really deleted src/v.js after the listing" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R_V/src/v.js" ] && echo 1 || echo 0)"
 # a tab-named file (routed per-file) vanishes the same way
 mkrepo
-if s1_put "src/$(s1_name tab js)" 2; then
+if s1_put "src/$(s1_name tab js)" 2 && routed_listed; then
   S2_VANISH="src/$(s1_name tab js)"
   s2shim vanish "S2 AC5 src/a<TAB>b.js vanishes after the listing" "$R" "$(s2_err "src/$(s1_name tab js)")" size
-else t_skip 2 "S2 AC5 tab-named file that vanishes (this file system cannot hold a tab in a name)"; fi
+else t_skip 2 "S2 AC5 tab-named file that vanishes (this file system cannot hold a tab in a name, or git does not list it as a quoted name: NTFS maps a tab to a private-use character)"; fi
 # D2: a test file that vanishes is not an error
 mkrepo; printf 'a\nb\n' > tests/gone.js; printf 'ok\n' > src/p.js; S2_VANISH=tests/gone.js
 GENV=(X_PB=1 PB_SHIM_MODE=vanish PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_VANISH_PATH="$S2_VANISH"); GPATH="$SHIM:$PATH"; : > "$SHIMFIRED"; rm -f "$SHIMFIRED.listed"
@@ -455,10 +455,10 @@ chk "S2 AC8 nested repo with a commit: stderr has no cannot-count line" "0" "$(g
 mkrepo; git init -q emptynest
 nrow "S2 AC8 nested repo without commits: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
 chk "S2 AC8 nested repo without commits: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
-if mkrepo && mkfifo pipe.fifo 2>/dev/null; then
+if mkrepo && mkfifo pipe.fifo 2>/dev/null && [ -p pipe.fifo ]; then
   printf 'ok\n' > src/p.js
   nrow "S2 AC8 a fifo next to a 1-line src/p.js: the fifo is not listed and not counted: 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
-else t_skip 1 "S2 AC8 fifo (mkfifo is not available here)"; fi
+else t_skip 1 "S2 AC8 fifo (mkfifo is not available here, or makes no real fifo: Git Bash on Windows)"; fi
 # the non-regular kinds do not hide a regular uncountable file next to them, and are not named in the error
 if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
   mkrepo; ln -s src sd; ln -s nowhere.js dang.js; git init -q nested; printf 'a\nb\n' > src/unr.js; chmod 000 src/unr.js
