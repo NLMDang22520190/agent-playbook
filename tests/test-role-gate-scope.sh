@@ -405,6 +405,236 @@ if printf 'x\n' > "$NLC" 2>/dev/null && [ -f "$NLC" ] && stores_name "$NLC"; the
   blk_check "AC13 newline block" 2 $((T_PASS + T_FAIL - B0))
 else rm -f -- "$NLC" 2>/dev/null; t_skip 2 "AC13 newline path (this file system cannot store a newline in a name, or git does not list it back unchanged)"; fi
 
+# ================= S2: --scope with --baseline (rule 3, E3) and a moving HEAD =================
+# snap: take a snapshot of the cwd repo into a fresh MF; a snapshot that fails is a failure here, not in every later row
+snap() { MF="$(mk_tmp)/m"; gate snapshot --out "$MF"; assert_rc "setup: snapshot exits 0" 0; }
+# scb ROLE [ARGS]: check ROLE --base BASE --scope SF --baseline MF
+scb() { local r="$1"; shift; sc "$r" --baseline "$MF" "$@"; }
+# bln N K: the baseline note of the current MF (N recorded paths, K unchanged)
+bln() { printf 'note: baseline %s (%s path(s), digest %s): %s path(s) unchanged, not checked' "$MF" "$1" "$(dig "$MF")" "$2"; }
+e3() { printf 'note: outside the task scope, changed since the baseline, not checked: %s [%s]' "$1" "$2"; }
+unch() { printf 'note: unchanged since the baseline: %s' "$1"; }
+# other_commit PATH...: another task writes and commits the paths (HEAD moves after BASE)
+other_commit() { local p; for p in "$@"; do mkdir -p -- "$(dirname -- "$p")"; printf 'other task\n' > "$p"; git add -- "$p"; done; git commit -q -m "other task"; }
+
+echo "AC6 (a) P1: the other task edits its test after the snapshot; with the other entry the implementer passes and E2 names it (rule 2)"
+new_repo
+printf 'o\n' > src/other.js
+snap
+printf 'module.exports = 3;\n' > src/mine.js; printf 'test("o", () => {});\n' > tests/other.test.js
+sf "$SF" own:src/mine.js other:tests/other.test.js
+scb implementer
+assert_rc "AC6a P1 with an other entry: implementer exit 0" 0
+has_line "AC6a E2 names tests/other.test.js [test]" "$(e2 tests/other.test.js test)"
+has_line "AC6a the baseline-recorded src/other.js, unchanged, keeps today's skip note" "$(unch src/other.js)"
+has_line "AC6a E1: 1 own, 1 other entry, K = 1 (the unchanged recorded path is not in K)" "$(e1 1 1 1)"
+has_line "AC6a the baseline note is today's" "$(bln 1 1)"
+has_line "AC6a only src/mine.js was judged" "OK: role gate passed for implementer (1 file(s) checked, base=$BASE)"
+assert_not_contains "AC6a no violation" "$OUT" "VIOLATION"
+assert_not_contains "AC6a no E3 (rule 2 path, not recorded)" "$OUT" "changed since the baseline, not checked"
+assert_before "AC6a the baseline note comes before E1" "$(bln 1 1)" "$(e1 1 1 1)"
+assert_before "AC6a E1 comes before the E2 note" "$(e1 1 1 1)" "$(e2 tests/other.test.js test)"
+echo "AC6 (a) control: without the other entry the same edit is rule 4: P1's VIOLATION plus E4"
+sf "$SF" own:src/mine.js
+scb implementer
+assert_rc "AC6a control: no other entry: implementer exit 1" 1
+has_line "AC6a control: P1's VIOLATION line" "VIOLATION (implementer): tests/other.test.js [test]"
+assert_next "AC6a control: E4 right after it" "VIOLATION (implementer): tests/other.test.js [test]" "$(e4 tests/other.test.js)"
+
+echo "AC6 (b) a path dirty at the snapshot and edited further by another task: rule 3, not judged, E3 names it; unchanged recorded paths keep today's skip note"
+new_repo
+printf 'v1\n' > src/rec.js; printf 'v1\n' > src/still.js
+snap
+printf 'v2\n' > src/rec.js
+sf "$SF" own:docs/
+scb reviewer
+assert_rc "AC6b a recorded path edited further: the reviewer passes: exit 0" 0
+has_line "AC6b E3 names src/rec.js [code]" "$(e3 src/rec.js code)"
+has_line "AC6b the unchanged recorded path keeps today's skip note" "$(unch src/still.js)"
+has_line "AC6b E1 counts only the changed recorded path (K = 1)" "$(e1 1 0 1)"
+has_line "AC6b the baseline note is today's (2 recorded, 1 unchanged)" "$(bln 2 1)"
+has_line "AC6b 0 files judged" "OK: role gate passed for reviewer (0 file(s) checked, base=$BASE)"
+assert_not_contains "AC6b no E4 for a recorded path" "$OUT" "is outside the task scope and not in the baseline"
+assert_not_contains "AC6b no violation" "$OUT" "VIOLATION"
+assert_before "AC6b the baseline note comes before E1" "$(bln 2 1)" "$(e1 1 0 1)"
+assert_before "AC6b E1 comes before E3" "$(e1 1 0 1)" "$(e3 src/rec.js code)"
+echo "AC6 (b) every role leaves a recorded, changed, out-of-scope path alone (tester: a code path too)"
+for role in tester implementer reviewer infra; do
+  scb "$role"
+  assert_rc "AC6b $role: only a recorded, changed path outside the scope: exit 0" 0
+  has_line "AC6b $role: E3" "$(e3 src/rec.js code)"
+done
+echo "AC6 (b) control: without --baseline rule 3 never applies; the same edit is rule 4 (judged, E4)"
+gate check reviewer --base "$BASE" --scope "$SF"
+assert_rc "AC6b control: no --baseline: reviewer exit 1" 1
+has_line "AC6b control: VIOLATION" "VIOLATION (reviewer): src/rec.js [code]"
+has_line "AC6b control: E4" "$(e4 src/rec.js)"
+echo "AC6 (b) rule 2 comes before rule 3: a path that is other and recorded is named with E2, not E3"
+sf "$SF" own:docs/ other:src/rec.js
+scb reviewer
+assert_rc "AC6b other + recorded + changed: exit 0" 0
+has_line "AC6b ... E2" "$(e2 src/rec.js code)"
+assert_not_contains "AC6b ... no E3" "$OUT" "changed since the baseline, not checked"
+has_line "AC6b ... K = 1" "$(e1 1 1 1)"
+
+echo "AC6 (b) a recorded OWN path stays judged: edited further by the implementer it is today's VIOLATION, with no E3"
+new_repo
+printf 'test("t2", () => {});\n' > tests/app.test.js; printf 'v1\n' > src/rec.js
+snap
+printf 'test("t3", () => {});\n' > tests/app.test.js; printf 'v2\n' > src/rec.js
+sf "$SF" own:tests/app.test.js own:src/mine.js
+scb implementer
+assert_rc "AC6b a recorded own test path edited further: implementer exit 1" 1
+has_line "AC6b ... today's VIOLATION line" "VIOLATION (implementer): tests/app.test.js [test]"
+no_line "AC6b ... not named as an out-of-scope path" "$(e3 tests/app.test.js test)"
+no_line "AC6b ... and no E4" "$(e4 tests/app.test.js)"
+has_line "AC6b ... the other recorded path is rule 3" "$(e3 src/rec.js code)"
+has_line "AC6b ... one violation" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+printf 'test("t2", () => {});\n' > tests/app.test.js
+scb implementer
+assert_rc "AC6b the own recorded path back to its snapshot state: skipped as today: exit 0" 0
+has_line "AC6b ... today's skip note" "$(unch tests/app.test.js)"
+
+echo "AC7 moving HEAD: another task's commit between BASE and HEAD, touching only other paths, is exempt (P3 test path, P4 code path)"
+new_repo
+other_commit tests/other.test.js
+sf "$SF" own:src/mine.js other:tests/other.test.js
+sc implementer
+assert_rc "AC7 P3 with an other entry: implementer exit 0" 0
+has_line "AC7 P3 ... E2" "$(e2 tests/other.test.js test)"
+has_line "AC7 P3 ... --base is still the sha before the role" "OK: role gate passed for implementer (0 file(s) checked, base=$BASE)"
+has_line "AC7 P3 ... E1 K = 1" "$(e1 1 1 1)"
+gate check implementer --base "$BASE"
+assert_rc "AC7 P3 regression: without --scope the commit is a violation: exit 1" 1
+has_line "AC7 P3 regression: today's VIOLATION line" "VIOLATION (implementer): tests/other.test.js [test]"
+new_repo
+other_commit src/other.js
+sf "$SF" own:docs/ other:src/other.js
+sc reviewer
+assert_rc "AC7 P4 with an other entry: reviewer exit 0" 0
+has_line "AC7 P4 ... E2" "$(e2 src/other.js code)"
+gate check reviewer --base "$BASE"
+assert_rc "AC7 P4 regression: without --scope the commit is a violation: exit 1" 1
+has_line "AC7 P4 regression: today's VIOLATION line" "VIOLATION (reviewer): src/other.js [code]"
+
+echo "AC7 P9/P10: another task commits the recorded dirty files unchanged: rule 3 (E3) with --scope; today's two violations without it"
+new_repo
+printf 'r\n' > src/rec.js; printf 'r\n' > tests/rec.test.js
+snap
+git add -A; git commit -q -m "other task commits its recorded work"
+sf "$SF" own:docs/
+scb reviewer
+assert_rc "AC7 P9 with --scope: the reviewer passes: exit 0" 0
+has_line "AC7 P9 ... E3 for the code path" "$(e3 src/rec.js code)"
+has_line "AC7 P9 ... E3 for the test path" "$(e3 tests/rec.test.js test)"
+has_line "AC7 P9 ... K = 2" "$(e1 1 0 2)"
+has_line "AC7 P9 ... 0 files judged, base is the sha before the role" "OK: role gate passed for reviewer (0 file(s) checked, base=$BASE)"
+gate check reviewer --base "$BASE" --baseline "$MF"
+assert_rc "AC7 P9 regression: without --scope: exit 1" 1
+has_line "AC7 P9 regression: VIOLATION for the code path" "VIOLATION (reviewer): src/rec.js [code]"
+has_line "AC7 P9 regression: VIOLATION for the test path" "VIOLATION (reviewer): tests/rec.test.js [test]"
+has_line "AC7 P9 regression: 2 violations" "role gate FAILED for reviewer: 2 violation(s), base=$BASE"
+gate check reviewer --baseline "$MF"
+assert_rc "AC7 P10 regression: default base HEAD, without --scope: exit 1" 1
+has_line "AC7 P10 regression: 2 violations" "role gate FAILED for reviewer: 2 violation(s), base=HEAD"
+
+echo "AC7 a reviewer commit to an own path still fails, whatever another task committed in the same range (P11 stays closed with the fixed base)"
+new_repo
+other_commit src/other.js
+printf 'module.exports = 9;\n' > src/mine.js; git add src/mine.js; git commit -q -m "reviewer commit"
+sf "$SF" own:src/mine.js other:src/other.js
+sc reviewer
+assert_rc "AC7 a reviewer commit of an own path: exit 1" 1
+has_line "AC7 ... today's VIOLATION line" "VIOLATION (reviewer): src/mine.js [code]"
+has_line "AC7 ... the other task's path is exempt (E2)" "$(e2 src/other.js code)"
+has_line "AC7 ... one violation, base is the sha before the role" "role gate FAILED for reviewer: 1 violation(s), base=$BASE"
+echo "AC7 an other task's commit that touches an own path is judged; its other path in the same commit is exempt"
+new_repo
+other_commit tests/app.test.js src/other.js
+sf "$SF" own:tests/app.test.js other:src/other.js
+sc implementer
+assert_rc "AC7 a commit touching an own test path: implementer exit 1" 1
+has_line "AC7 ... own path judged (BASE..HEAD is never unchanged)" "VIOLATION (implementer): tests/app.test.js [test]"
+has_line "AC7 ... the other path of the same commit is E2" "$(e2 src/other.js code)"
+has_line "AC7 ... one violation" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+echo "AC7 an unknown path in another task's commit is rule 4: a forbidden kind is a VIOLATION plus E4, an allowed kind passes with E4"
+new_repo
+other_commit tests/stray.test.js lib/ok.js
+sf "$SF" own:src/mine.js other:docs/
+sc implementer
+assert_rc "AC7 unknown paths in BASE..HEAD: implementer exit 1" 1
+has_line "AC7 ... the forbidden kind is a VIOLATION" "VIOLATION (implementer): tests/stray.test.js [test]"
+assert_next "AC7 ... E4 right after it" "VIOLATION (implementer): tests/stray.test.js [test]" "$(e4 tests/stray.test.js)"
+has_line "AC7 ... the allowed kind gets E4" "$(e4 lib/ok.js)"
+no_line "AC7 ... and is no violation" "VIOLATION (implementer): lib/ok.js [code]"
+has_line "AC7 ... one violation" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+
+echo "AC8 the no-checkpoint-commit flow: tests left uncommitted, HEAD recorded, snapshot taken; own test edited -> VIOLATION; own code only -> pass"
+new_repo
+RED='test("red", () => {});\n'
+printf "$RED" > tests/app.test.js; printf 'v1\n' > src/theirs.js
+BASE="$(git rev-parse HEAD)"
+snap
+HEAD0="$(git rev-parse HEAD)"; SNAPSHOT_STATE="$(git status --porcelain)"
+sf "$SF" own:src/mine.js own:tests/app.test.js other:docs/
+printf 'test("changed by the implementer", () => {});\n' > tests/app.test.js
+sc implementer --baseline "$MF"
+assert_rc "AC8 the implementer edits the own test: exit 1" 1
+has_line "AC8 ... today's VIOLATION line" "VIOLATION (implementer): tests/app.test.js [test]"
+has_line "AC8 ... base is the sha recorded before the role" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+assert_eq "AC8 no checkpoint commit was needed or made: HEAD is the recorded sha" "$BASE" "$(git rev-parse HEAD)"
+assert_eq "AC8 nothing was reset or stashed by the gate (stash empty, the foreign file untouched)" "0|v1" "$(git stash list | wc -l | tr -d ' ')|$(cat src/theirs.js)"
+printf "$RED" > tests/app.test.js
+printf 'module.exports = 4;\n' > src/mine.js
+mkdir -p docs; printf 'n\n' > docs/note.md; printf 'v2\n' > src/theirs.js
+git add docs/note.md; git commit -q -m "other task commit" -- docs/note.md
+sc implementer --baseline "$MF"
+assert_rc "AC8 own test back at its snapshot state, own code edited, foreign work around: exit 0" 0
+has_line "AC8 ... the own test is skipped as unchanged since the baseline" "$(unch tests/app.test.js)"
+has_line "AC8 ... only the own code path was judged (HEAD moved by another task)" "OK: role gate passed for implementer (1 file(s) checked, base=$BASE)"
+has_line "AC8 ... the other task's commit is E2" "$(e2 docs/note.md code)"
+has_line "AC8 ... the foreign recorded path edited further is E3" "$(e3 src/theirs.js code)"
+assert_not_contains "AC8 ... no violation" "$OUT" "VIOLATION"
+echo "AC8 the role gate stays read-only for the reviewer in the same flow: own code edit fails it, a foreign edit does not"
+new_repo
+printf 'v1\n' > src/theirs.js
+BASE="$(git rev-parse HEAD)"
+snap
+sf "$SF" own:src/mine.js other:docs/
+printf 'v2\n' > src/theirs.js; mkdir -p docs; printf 'n\n' > docs/x.md
+sc reviewer --baseline "$MF"
+assert_rc "AC8 reviewer: only foreign and other changes: exit 0" 0
+has_line "AC8 reviewer: E3 for the foreign recorded path" "$(e3 src/theirs.js code)"
+has_line "AC8 reviewer: E2 for the other path" "$(e2 docs/x.md code)"
+printf 'module.exports = 5;\n' > src/mine.js
+sc reviewer --baseline "$MF"
+assert_rc "AC8 reviewer: an own path written: exit 1" 1
+has_line "AC8 reviewer: today's VIOLATION line" "VIOLATION (reviewer): src/mine.js [code]"
+
+echo "AC13 recorded-path variant: an exec-bit drop on a recorded path outside the scope is reported (U6), the escape silences it, a drop already there at the snapshot is not reported"
+R="$(mk_tmp)"; mk_mode_repo "$R"; cd "$R" || exit 3; BASE="$(git rev-parse HEAD)"; SF="$(mk_tmp)/scope"
+printf 'echo b\n' >> ci/run.sh
+snap
+git update-index --chmod=-x -- ci/run.sh
+if git diff --cached --raw --no-renames HEAD | grep -q '^:100755 100644'; then
+  B0=$((T_PASS + T_FAIL))
+  sf "$SF" own:src/
+  scb implementer
+  assert_rc "AC13 recorded path, outside the scope, bit dropped and changed since the snapshot: exit 1" 1
+  has_line "AC13 ... today's mode string names it" "VIOLATION (mode): ci/run.sh lost its executable bit (100755 -> 100644)"
+  has_line "AC13 ... the path itself is rule 3 (E3)" "$(e3 ci/run.sh infra)"
+  has_line "AC13 ... exactly one violation" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+  run env PLAYBOOK_HOME="$IH" PB_ALLOW_MODE_CHANGE=ci/run.sh bash "$GATE" check implementer --base "$BASE" --scope "$SF" --baseline "$MF"
+  assert_rc "AC13 ... the path in PB_ALLOW_MODE_CHANGE: exit 0" 0
+  assert_not_contains "AC13 ... not reported" "$OUT" "VIOLATION (mode)"
+  snap
+  scb implementer
+  assert_rc "AC13 a drop already present at the snapshot and unchanged since: not reported (today's baseline semantics): exit 0" 0
+  assert_not_contains "AC13 ... no mode violation" "$OUT" "VIOLATION (mode)"
+  git update-index --chmod=+x -- ci/run.sh
+  blk_check "AC13 recorded-path block" 9 $((T_PASS + T_FAIL - B0))
+else t_skip 9 "AC13 recorded-path drop (git does not show a staged mode drop here)"; fi
+
 # ================= the shared matcher of scripts/lib.sh =================
 echo "D-1a pb_scope_read / pb_scope_classify: one output line per input line (an empty line gives none), own wins over other, byte-exact"
 new_repo
