@@ -89,6 +89,19 @@ case "${PB_SHIM_MODE:-count}:$label" in
   race:update-index | race:diff-noindex)   # a listed file turns into a directory right before the first command that reads it
     if [ -f "$PB_RACE_PATH" ]; then rm -f "$PB_RACE_PATH"; mkdir -p "$PB_RACE_PATH"; printf 'a\nb\nc\n' > "$PB_RACE_PATH/inner"; fi ;;
 esac
+# v0.24.30 G1: PB_FAIL_PATH (newline-separated paths) fails the per-file `diff --no-index` of exactly those paths, whatever PB_SHIM_MODE is;
+# PB_FAIL_KIND: 128 (fatal, no output, default) | none (exit 1, no output) | rc2 (the real output, exit 2)
+if [ "$label" = diff-noindex ] && [ -n "${PB_FAIL_PATH:-}" ]; then
+  last="${!#}"; nlc=$'\n'
+  case "$nlc$PB_FAIL_PATH$nlc" in *"$nlc$last$nlc"*)
+    echo 1 >> "$PB_SHIM_FIRED"
+    case "${PB_FAIL_KIND:-128}" in
+      none) exit 1 ;;
+      rc2) "$REAL_GIT" "$@"; exit 2 ;;
+      *) printf 'fatal: shim\n' >&2; exit 128 ;;
+    esac ;;
+  esac
+fi
 if [ "${PB_SHIM_MODE:-}" = hang ] && [ "$label" = "${PB_HANG_LABEL:-update-index}" ]; then
   : > "$PB_HANG_REACHED"; w=0
   while [ ! -e "$PB_HANG_RELEASE" ] && [ "$w" -lt 250 ]; do sleep 0.1 2>/dev/null || sleep 1; w=$((w + 1)); done
@@ -495,6 +508,119 @@ GENV=(X_PB=1 PB_SHIM_MODE=vanish PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRE
 nrow "S-fix F4 manifest-unchanged src/v.js vanishes after the listing, --baseline: skipped, not exit 3: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF_V"
 chk "S-fix F4 control: the shim really deleted src/v.js after the listing" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R/src/v.js" ] && echo 1 || echo 0)"
 unset GPATH; GENV=(X_PB=1); S2_VANISH=
+
+# ---------------------------------------------------------------- v0.24.30 G1 (AC7): an untracked production symlink (not to a directory) that git cannot count is exit 3
+echo "G1 AC7 an untracked production symlink that git cannot count fails closed (a per-path shim: PB_FAIL_PATH fails only its diff --no-index)"
+# g1shim MODE FAILPATHS KIND NAME DIR EXPECTED_STDERR ARGS... -> s2row with the git shim in MODE (count = the batch works; upd-fail = it is refused)
+# and the per-file `diff --no-index` of the listed path(s) (newline-separated) failing as KIND (128 = fatal | none = exit 1, no output | rc2 = exit 2 with output)
+g1shim() {
+  local mode="$1" fp="$2" kind="$3"; shift 3
+  GENV=(X_PB=1 PB_SHIM_MODE="$mode" PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_FAIL_PATH="$fp" PB_FAIL_KIND="$kind"); GPATH="$SHIM:$PATH"
+  : > "$SHIMLOG"; : > "$SHIMFIRED"
+  s2row "$@"
+  unset GPATH; GENV=(X_PB=1)
+}
+g1fired() { [ -s "$SHIMFIRED" ] && echo 1 || echo 0; }   # did the shim fail a per-path diff --no-index in the last run
+# g1ok NAME DIR EXPECTED_STDOUT ARGS... -> the same shim (batch works; G1_FP / G1_KIND name the failing path(s)): stdout, exit 0, no cannot-count line
+g1ok() {
+  local name="$1" d="$2" exp="$3"; shift 3
+  GENV=(X_PB=1 PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_FAIL_PATH="$G1_FP" PB_FAIL_KIND="$G1_KIND"); GPATH="$SHIM:$PATH"
+  : > "$SHIMLOG"; : > "$SHIMFIRED"
+  nrow "$name" "$d" "$exp" 0 "$@"
+  assert_not_contains "$name: no cannot-count line on stderr" "$(cat "$DT/n.err")" "cannot count"
+  unset GPATH; GENV=(X_PB=1)
+}
+G1_NL=$'\n'
+if [ "$SYMLINKS" = 1 ]; then
+  G1T="$(mk_tmp)/tgt"; printf 'a\nb\nc\n' > "$G1T"
+  # a dangling plain-name symlink is not [ -f ]: it goes straight to the per-file command (never batched); git failing there is exit 3
+  for kind in 128 none rc2; do
+    mkrepo; ln -s nowhere.js src/dang.js; R_D="$R"
+    g1shim count src/dang.js "$kind" "G1 AC7.1 dangling plain-name symlink src/dang.js, per-file git fails ($kind)" "$R_D" "$(s2_err src/dang.js)" size
+    chk "G1 AC7.1 control ($kind): the shim really failed the per-file command of src/dang.js" "1" "$(g1fired)"
+    g1shim count src/dang.js "$kind" "G1 AC7.1 dangling src/dang.js, per-file git fails ($kind), --baseline of a clean repo" "$R_D" "$(s2_err src/dang.js)" size --baseline "$MF0"
+  done
+  mkrepo; ln -s nowhere.js src/dang.js; printf 'ok\n' > src/ok.js
+  g1shim count src/dang.js 128 "G1 AC7.1 dangling src/dang.js next to a countable src/ok.js: no total, only src/dang.js named" "$R" "$(s2_err src/dang.js)" size
+  # a plain-name symlink to a file rides the batch; when the batch is refused it is counted per file, and git failing there is exit 3
+  for kind in 128 none rc2; do
+    mkrepo; ln -s "$G1T" src/lnk.js
+    g1shim upd-fail src/lnk.js "$kind" "G1 AC7.1 plain-name symlink src/lnk.js to a file, batch refused, per-file git fails ($kind)" "$R" "$(s2_err src/lnk.js)" size
+    chk "G1 AC7.1 control ($kind): the batch was refused and the shim failed the per-file command of src/lnk.js" "1" "$([ "$(g1fired)" = 1 ] && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+    g1shim upd-fail src/lnk.js "$kind" "G1 AC7.1 plain-name symlink src/lnk.js, batch refused, per-file git fails ($kind), --baseline of a clean repo" "$R" "$(s2_err src/lnk.js)" size --baseline "$MF0"
+  done
+  # a quoted name (q"x.js) always rides the per-file command
+  mkrepo; ln -s "$G1T" "src/$(s1_name dquote js)"
+  g1shim count "src/$(s1_name dquote js)" 128 "G1 AC7.1 quoted-name symlink src/q\"x.js to a file, per-file git fails (128): the raw name is in the line" "$R" "$(s2_err "src/$(s1_name dquote js)")" size
+  chk "G1 AC7.1 control: the shim really failed the per-file command of src/q\"x.js" "1" "$(g1fired)"
+  g1shim count "src/$(s1_name dquote js)" none "G1 AC7.1 quoted-name symlink src/q\"x.js, per-file git prints no numstat line, --baseline" "$R" "$(s2_err "src/$(s1_name dquote js)")" size --baseline "$MF0"
+  # a newline name is production, also under tests/ (D3); the newline is shown as ?
+  mkrepo
+  if ln -s "$G1T" "src/n${G1_NL}x.js" 2>/dev/null && git -c core.quotepath=off ls-files --others | grep -q '\\n'; then
+    g1shim count "src/n${G1_NL}x.js" 128 "G1 AC7.1 newline-name symlink src/n<LF>x.js, per-file git fails: C1 with the newline shown as ?" "$R" "$(s2_err 'src/n?x.js')" size
+    mkrepo; ln -s "$G1T" "tests/n${G1_NL}x.js"
+    g1shim count "tests/n${G1_NL}x.js" 128 "G1 AC7.2 newline-name symlink tests/n<LF>x.js is production (D3): C1" "$R" "$(s2_err 'tests/n?x.js')" size
+  else t_skip 4 "G1 AC7.1/AC7.2 newline-name symlinks (this file system cannot hold a newline in a name, or git does not list it as a quoted name)"; fi
+  # no temporary directory (TMPDIR names nothing): the whole list goes through pf_emit
+  G1_NOTMP="$(mk_tmp)/absent"
+  mkrepo; ln -s nowhere.js src/dang.js
+  GENV=(X_PB=1 PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_FAIL_PATH=src/dang.js PB_FAIL_KIND=128 TMPDIR="$G1_NOTMP"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"; : > "$SHIMFIRED"
+  s2row "G1 AC7.1 no temporary directory, dangling src/dang.js, per-file git fails" "$R" "$(s2_err src/dang.js)" size
+  chk "G1 AC7.1 control: no temporary directory (no update-index call) and the shim failed the per-file command" "1" "$([ "$(g1fired)" = 1 ] && ! grep -q '^update-index' "$SHIMLOG" && echo 1 || echo 0)"
+  unset GPATH; GENV=(X_PB=1)
+  mkrepo; ln -s "$G1T" src/lnk.js
+  GENV=(X_PB=1 PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_FAIL_PATH=src/lnk.js PB_FAIL_KIND=none TMPDIR="$G1_NOTMP"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"; : > "$SHIMFIRED"
+  s2row "G1 AC7.1 no temporary directory, plain-name symlink src/lnk.js to a file, per-file git prints no numstat line" "$R" "$(s2_err src/lnk.js)" size
+  unset GPATH; GENV=(X_PB=1)
+  # a link to a fifo (where the platform has a real one) is not [ -f ]: the per-file route; git failing there is exit 3
+  if mkrepo && mkfifo "$R/ff" 2>/dev/null && [ -p "$R/ff" ]; then
+    ln -s "$R/ff" src/lf.js
+    g1shim count src/lf.js 128 "G1 AC7.1 plain-name symlink src/lf.js to a fifo, per-file git fails" "$R" "$(s2_err src/lf.js)" size
+  else t_skip 2 "G1 AC7.1 symlink to a fifo (mkfifo is not available here, or makes no real fifo)"; fi
+
+  # AC7.2 / D3: never named: .agents/handoff/, a test path, a path the --baseline manifest records as unchanged
+  mkrepo; mkdir -p .agents/handoff tests; ln -s nowhere.js .agents/handoff/dang.md; ln -s nowhere.js tests/dang.js; printf 'ok\n' > src/ok.js
+  G1_FP=".agents/handoff/dang.md${G1_NL}tests/dang.js"; G1_KIND=128
+  g1ok "G1 AC7.2 failing symlinks under .agents/handoff/ and tests/ are not production: only src/ok.js counts" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" size
+  chk "G1 AC7.2 control: the shim really failed their per-file command" "1" "$(g1fired)"
+  g1ok "G1 AC7.2 the same, --baseline of a clean repo" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" size --baseline "$MF0"
+  mkrepo; ln -s nowhere.js src/dang.js; MF_G="$(mk_mf "$R")"; printf 'ok\n' > src/ok.js
+  G1_FP=src/dang.js; G1_KIND=128
+  g1ok "G1 AC7.2 manifest-unchanged failing symlink src/dang.js, --baseline: not named, only src/ok.js counts" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" size --baseline "$MF_G"
+  chk "G1 AC7.2 control: the shim really failed the per-file command of src/dang.js" "1" "$(g1fired)"
+  g1shim count src/dang.js 128 "G1 AC7.2 the same src/dang.js, not in the manifest (--baseline of a clean repo) is named" "$R" "$(s2_err src/dang.js)" size --baseline "$MF0"
+
+  # AC7.3 / D1: a symlink to a directory (also through another symlink) keeps its count, whatever git does
+  for kind in 128 none rc2; do
+    mkrepo; ln -s src sd; ln -s sd sd2; printf 'ok\n' > src/ok.js
+    G1_FP="sd${G1_NL}sd2"; G1_KIND="$kind"
+    g1ok "G1 AC7.3 symlinks sd and sd2 to a directory, per-file git fails ($kind): 3 files, 1 line, exit 0" "$R" "files: 3/3 lines: 1/100 (base=HEAD)" size
+    chk "G1 AC7.3 control ($kind): the shim really failed their per-file command" "1" "$(g1fired)"
+  done
+  mkrepo; ln -s src sd; printf 'ok\n' > src/ok.js; G1_FP=sd; G1_KIND=128
+  g1ok "G1 AC7.3 symlink to a directory, per-file git fails, --baseline of a clean repo: 2 files, 1 line" "$R" "files: 2/3 lines: 1/100 (base=HEAD)" size --baseline "$MF0"
+  mkrepo; git init -q nested; printf 'ok\n' > src/ok.js; G1_FP=nested; G1_KIND=128
+  g1ok "G1 AC7.3 nested repo, per-file git fails: still 2 files, 1 line, exit 0" "$R" "files: 2/3 lines: 1/100 (base=HEAD)" size
+
+  # AC7.4: several uncountable production paths: one line each in ls-files -z order; a countable symlink does not make a total
+  mkrepo; ln -s nowhere.js src/b.js; ln -s "$G1T" "src/$(s1_name dquote js)"; ln -s nowhere.js src/a.js; ln -s "$G1T" src/c.js
+  G1_FP="src/b.js${G1_NL}src/$(s1_name dquote js)${G1_NL}src/a.js"
+  exp74="$(s2_err src/a.js)${G1_NL}$(s2_err src/b.js)${G1_NL}$(s2_err "src/$(s1_name dquote js)")"
+  g1shim count "$G1_FP" 128 "G1 AC7.4 three failing symlinks (created b, q\"x, a) + a countable symlink src/c.js: three lines in ls-files -z order, no total" "$R" "$exp74" size
+  g1shim count "$G1_FP" none "G1 AC7.4 the same, per-file git prints no numstat line, --baseline of a clean repo" "$R" "$exp74" size --baseline "$MF0"
+  if [ "$S2_CHMOD" = 1 ]; then
+    mkrepo; printf 'a\nb\n' > src/m.js; chmod 000 src/m.js; ln -s nowhere.js src/z.js; ln -s nowhere.js src/a.js
+    g1shim count "src/z.js${G1_NL}src/a.js" 128 "G1 AC7.4 an unreadable regular src/m.js and two failing symlinks (z, a): three lines in listing order" "$R" "$(s2_err src/a.js)${G1_NL}$(s2_err src/m.js)${G1_NL}$(s2_err src/z.js)" size
+  else t_skip 2 "G1 AC7.4 regular + symlink mix (chmod 000 does not block reads here)"; fi
+
+  # AC7.5: a symlink whose per-file count succeeds keeps its counts on every route (link text, 1 line); the shim fails a DIFFERENT path
+  mkrepo; ln -s nowhere.js src/dang.js; G1_FP=src/other.js; G1_KIND=128
+  g1ok "G1 AC7.5 dangling src/dang.js whose per-file count succeeds: 1 file, 1 line (the link text), exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" size
+  g1ok "G1 AC7.5 the same, --baseline of a clean repo" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" size --baseline "$MF0"
+  mkrepo; ln -s "$G1T" src/lnk.js; ln -s "$G1T" "src/$(s1_name dquote js)"
+  g1ok "G1 AC7.5 plain-name (batch) and quoted-name (per-file) symlinks to a file whose count succeeds: 2 files, 2 lines" "$R" "files: 2/3 lines: 2/100 (base=HEAD)" size
+  chk "G1 AC7.5 control: the batch route and the per-file route both ran" "1" "$(grep -q '^update-index' "$SHIMLOG" && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+else t_skip 60 "G1 AC7 symlink rows (this file system has none)"; fi
 
 # AC16 (the docs the spec puts in S2: the header, the exit line, SKILL.md; the method comment and CHANGELOG are S3 / the release)
 echo "S2 AC16 the docs name the size exit 3"

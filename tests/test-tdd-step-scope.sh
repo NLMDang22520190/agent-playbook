@@ -328,4 +328,63 @@ SD=""
 assert_rc "H relative scope file from a subdirectory: exit 0" 0
 assert_eq "H relative scope file: the own path is committed" "tests/mine.test.js" "$(committed "$R")"
 
+# ================= I  AC6.2 / AC6.5  the fallbacks of own_notes and scope_cmd_diff (characterization tests: the guards exist today; mutants N4 and M11 make these fail) =================
+# shims: a PATH dir with a counting mktemp (fails templates holding pb-scope. from call PB_FAIL_FROM on) and a cmp (exits 2 on tdd-step's before/after compare)
+SH_RM="$(command -v mktemp)"; SH_CMP="$(command -v cmp)"
+SHD="$(mk_tmp)"; SHLOG="$(mk_tmp)"
+cat > "$SHD/mktemp" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *pb-scope.*) n=\$(cat "$SHLOG/cnt" 2>/dev/null); n=\$((\${n:-0} + 1)); echo "\$n" > "$SHLOG/cnt"; echo "pb-scope call \$n" >> "$SHLOG/mlog"
+  if [ -n "\${PB_FAIL_FROM:-}" ] && [ "\$n" -ge "\$PB_FAIL_FROM" ]; then exit 1; fi ;; esac
+exec "$SH_RM" "\$@"
+EOF
+cat > "$SHD/cmp" <<EOF
+#!/usr/bin/env bash
+if [ -n "\${PB_CMP_FAIL:-}" ]; then
+  prev=""; last=""
+  for a in "\$@"; do prev="\$last"; last="\$a"; done
+  case "\$prev:\$last" in */before:*/after) echo "cmp shim fired" >> "$SHLOG/clog"; exit 2 ;; esac
+fi
+exec "$SH_CMP" "\$@"
+EOF
+chmod +x "$SHD/mktemp" "$SHD/cmp"
+if [ -x "$SHD/mktemp" ] && [ -x "$SHD/cmp" ]; then
+echo "I AC6.2 [characterization, N4] --scope --baseline: pb_scope_classify failing from its 4th call (own_notes) keeps the note in the comparison: the step exits 1 with ND, never 3"
+new_s
+printf 'dirty\n' >> "$R/README.md"; BL="$(snap "$R")"
+sf "$SF" own:src/mine.js
+printf 'module.exports = 3;\n' > "$R/src/mine.js"
+: > "$SHLOG/cnt"; : > "$SHLOG/mlog"
+OLDP="$PATH"; PATH="$SHD:$PATH"; export PB_FAIL_FROM=4
+green --commit sh -c "printf 'more\n' >> README.md"
+unset PB_FAIL_FROM; PATH="$OLDP"
+assert_eq "I AC6.2 the mktemp shim saw exactly 4 pb-scope. calls (gate 1, scope_cmd_diff, gate 2, own_notes): the order is as assumed" "4" "$(grep -c '^pb-scope call' "$SHLOG/mlog" 2>/dev/null || true)"
+has_err "I AC6.2 the edit of the recorded path reached the own_notes call (E13 names README.md)" "$(e13 README.md)"
+assert_rc "I AC6.2 own_notes fallback (classify fails): exit 1, not 3" 1
+has_err "I AC6.2 own_notes fallback: ND, the unchanged-notes comparison refuses the step" "error: the paths unchanged since the baseline differ after the test command - nothing committed"
+assert_not_contains "I AC6.2 own_notes fallback: no cannot-classify error (exit 3 is the mutant)" "$OUT" "cannot classify the changed paths"
+untouched "I AC6.2 own_notes fallback"
+echo "I AC6.5 [characterization, M11] --scope, CMD changes nothing, tdd-step's before/after cmp exits 2 (an error, not a difference): the any-eq-0 guard refuses, as without --scope"
+new_s
+sf "$SF" own:src/mine.js
+printf 'module.exports = 3;\n' > "$R/src/mine.js"
+: > "$SHLOG/clog"
+OLDP="$PATH"; PATH="$SHD:$PATH"; export PB_CMP_FAIL=1
+green --commit true
+PATH="$OLDP"
+assert_eq "I AC6.5 the cmp shim fired on the before/after compare (control)" "1" "$(grep -c 'cmp shim fired' "$SHLOG/clog" 2>/dev/null || true)"
+assert_rc "I AC6.5 --scope, equal manifests, cmp error: exit 1" 1
+has_err "I AC6.5 --scope, equal manifests, cmp error: E12W" "$E12W"
+untouched "I AC6.5 --scope"
+: > "$SHLOG/clog"
+OLDP="$PATH"; PATH="$SHD:$PATH"
+stp green --base "$BASE" --message m --commit -- true
+PATH="$OLDP"; unset PB_CMP_FAIL
+assert_eq "I AC6.5 without --scope the cmp shim fired too (control)" "1" "$(grep -c 'cmp shim fired' "$SHLOG/clog" 2>/dev/null || true)"
+assert_rc "I AC6.5 without --scope the same input: exit 1" 1
+has_err "I AC6.5 without --scope the same input: E12W" "$E12W"
+else
+  t_skip 15 "I AC6.2 / AC6.5 PATH shims (cannot make an executable shim here)"
+fi
+
 t_summary

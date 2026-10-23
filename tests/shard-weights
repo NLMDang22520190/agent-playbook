@@ -7,6 +7,8 @@
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
 # v0.24.30 estimate (not CI-measured; Linux WSL seconds x 28, L-0009): test-pre-commit.sh 56.
+# v0.24.30 estimate (not CI-measured; Linux 59 s with the signal rows, which skip on Windows Git Bash (no job control), so the Windows
+# time is unknown; replace with a CI time, L-0009): test-scope-classify.sh 224 (new suite, lane G slice G2).
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 512
 test-role-gate-scope.sh 530
@@ -107,3 +109,4 @@ test-docs-rules.sh 2
 test-bsd-check.sh 1
 test-get-bash32.sh 1
 test-lib-tmp.sh 1
+test-scope-classify.sh 224

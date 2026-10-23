@@ -66,12 +66,13 @@
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
-# size fails closed (v0.24.29): an untracked production regular file that it cannot count (unreadable, gone since the listing,
+# size fails closed (v0.24.29, symlinks v0.24.30): an untracked production regular file, or a production symlink (not to a directory,
+# a dangling one included) that it cannot count (unreadable, gone since the listing,
 # git exits above 1 for it, or no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
 # "error: cannot count the lines of untracked file PATH (unreadable, or gone since the listing); fix it and run size again"
 # (control characters but TAB shown as ?), prints no "files:" line and exits 3. The same line reports a failing clean filter.
 # Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
-# unreadable); a symlink to a directory, a nested repo, a dangling symlink keep their count.
+# unreadable); only a symlink to a directory, a nested repo and a symlink that git counts keep their count.
 #
 # Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
 # --scope needs --base (the sha recorded before the role; a base that moves with HEAD hides the role's own commits), else exit 2.
@@ -83,6 +84,8 @@
 # checked: PATH [KIND]". Any other path is judged as today and gets "note: PATH is outside the task scope and not in the baseline; ...".
 # "note: scope FILE (N own, M other entries, digest D): K path(s) outside the scope not checked" comes first. The mode check
 # exempts nothing with --scope; PB_ALLOW_MODE_CHANGE is the only escape. A missing, tracked or malformed FILE exits 3, no verdict.
+# Two scope errors exit 3 with no verdict: "error: cannot classify the changed paths" (the path classifier failed: run the gate again)
+# and "error: the scope file changed while it was read: FILE" (FILE was edited during the run: stop the writer, then run the gate again).
 # Residual risk: the gate cannot tell two writers apart on one path, so an other path or prefix is exempt for every writer.
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
@@ -797,8 +800,10 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] |
           else bad=1; fi
         elif [ ! -L "$u" ] && [ ! -e "$u" ]; then bad=1   # gone since the listing
         else
-          counts="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null | cut -f1,2)"
-          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+          raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
+          counts="$(printf '%s\n' "$raw" | cut -f1,2)"
+          if [ -L "$u" ] && [ ! -d "$u" ] && { [ "$rc" -gt 1 ] || [ -z "$counts" ]; }; then bad=1   # a symlink (not to a directory) git cannot count (G1)
+          else [ -n "$counts" ] || counts="$(printf '0\t0')"; fi   # empty file: no numstat line
         fi
         if [ "$bad" -eq 1 ]; then
           case "$u" in
