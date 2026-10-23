@@ -101,7 +101,7 @@ assert_rc "(e) test change after the last count commit (version bump keeps the c
 
 # (f) no count anywhere in the README history: no check
 D="$(mk)"; B="$(sha "$D")"
-printf '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)\n' > "$D/README.md"; cm "$D" nocount
+printf '![v](https://img.shields.io/badge/version-1.2.3-4F5BD5)\n' > "$D/README.md"; ( cd "$D" && git add -A && git commit -q --amend -m nocount )
 B="$(sha "$D")"
 bump "$D"; printf '![v](https://img.shields.io/badge/version-1.2.4-4F5BD5)\n' > "$D/README.md"; printf 'echo b\n' >> "$D/tests/test-a.sh"; cm "$D" release
 rpc "$D" "$B"
