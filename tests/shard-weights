@@ -7,8 +7,10 @@
 # test-tdd-step-z.sh 56 (new in v0.24.28): an estimate, Linux seconds x 28; replace it with a CI time (L-0009).
 # v0.24.28 lane S estimate (not CI-measured): test-role-gate-size.sh 364 = about 13 s on Linux (green prototype run) x 28.
 # test-release-stale-count.sh 66 (new in v0.24.28): an estimate, the local Windows Git Bash time; replace it with a CI time (L-0009).
+# test-role-gate-scope.sh 330 (new in v0.24.29 lane C): an estimate, Linux seconds x 28 (round up); the tester re-measures on GREEN; replace it with a CI time (L-0009).
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 522
+test-role-gate-scope.sh 330
 test-evals-grade6-b.sh 482
 test-evals-grade.sh 427
 test-role-gate-baseline.sh 427
