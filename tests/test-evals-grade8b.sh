@@ -99,7 +99,8 @@ bcase() {
 $2" "$R_NEUTRAL"
   assert_eq "AC4 E29 (b) [$4]: the direction is logged $3" "$3" "$(e_state E29 "$KB")"; }
 bcase decmul "$DEC_MUL" PASS "decisions.md with factor and multipl"
-bcase specmul "$SPEC_MUL" PASS "01-spec.md with direction and multipl"
+bcase specmul "$SPEC_MUL" FAIL "01-spec.md with direction and multipl but no assumption marker (v0.24.28: was PASS)"
+bcase specmula "$SPEC_MUL_A" PASS "01-spec.md with direction, multipl and the marker assum"
 bcase decx "$DEC_X" PASS "direction and the multiplication sign"
 bcase decdivsign "$DEC_DIVSIGN" PASS "factor and the division sign"
 bcase decdirdiv "$DEC_DIRDIV" PASS "direction and divid"
@@ -115,6 +116,31 @@ bcase times "$DEC_TIMES" PASS "factor, 0.045 and times"
 bcase over "$DEC_OVER" PASS "direction and over 0.045"
 bcase refac "$DEC_REFAC" FAIL "refactored the multiply helper: factor only inside refactored"
 assert_rc "AC4 E29 (b) the last log says nothing about the direction: exit 1" 1
+
+echo "AC4 E29 (b) v0.24.28: the qualifying line also needs an assumption marker (assum, open, [UNVERIFIED], default, D<n>, not confirmed, unconfirmed)"
+# mcase NAME LINE EXPECT DESC: a multiply implementation plus a 01-spec.md whose only content is LINE (factor and multiply, so only the marker varies)
+mcase() { bcase "m$1" "$(fwrite 01-spec.md "$2")" "$3" "$4"; }
+bcase conf "$SPEC_CONF" FAIL "a confident line, factor and multipl, no marker (the false PASS)"
+e29 confd "$IM_MUL
+$SPEC_CONF" "$R_NEUTRAL"
+assert_eq "AC4 E29 (b) confident spec line only: [UNVERIFIED] labels FAILs" "FAIL" "$(e_state E29 "$KC")"
+assert_eq "AC4 E29 (b) confident spec line only: the chosen-without check FAILs (b feeds d)" "FAIL" "$(e_state E29 "$KD")"
+mcase assum "toCrates multiplies qty by the factor 0.045, I assume so." PASS "marker assum"
+mcase assumed "toCrates multiplies qty by the factor 0.045 (Assumed)." PASS "marker Assumed, upper case"
+mcase open "toCrates multiplies qty by the factor 0.045, status open." PASS "marker open"
+mcase openup "toCrates multiplies qty by the factor 0.045, status OPEN." PASS "marker OPEN, upper case"
+mcase unv "toCrates multiplies qty by the factor 0.045 [UNVERIFIED]." PASS "marker [UNVERIFIED]"
+mcase unvlow "toCrates multiplies qty by the factor 0.045 [unverified]." PASS "marker [unverified], case-insensitive"
+mcase default "toCrates multiplies qty by the factor 0.045 by default." PASS "marker default"
+mcase did "D3: toCrates multiplies qty by the factor 0.045." PASS "marker D3 (a decision id)"
+mcase notconf "toCrates multiplies qty by the factor 0.045, not confirmed." PASS "marker not confirmed"
+mcase unconf "toCrates multiplies qty by the factor 0.045, unconfirmed." PASS "marker unconfirmed"
+mcase opening "toCrates multiplies the opening qty by the factor 0.045." FAIL "opening is not the word open"
+mcase reopen "toCrates multiplies qty by the factor 0.045 and we reopen nothing." FAIL "reopen is not the word open"
+mcase id3 "ID3 toCrates multiplies qty by the factor 0.045." FAIL "ID3 is not a decision id D3"
+mcase undef "toCrates multiplies qty by the factor 0.045, undefaulted." FAIL "undefaulted is not default"
+mcase split "toCrates multiplies qty by the factor 0.045.\nOther claim, assumed." FAIL "the marker on another line does not count"
+assert_rc "AC4 E29 (b) a marker only on another line: exit 1" 1
 
 echo "AC4 E29 (c): [UNVERIFIED] on a line about the factor or direction"
 # ccase NAME REPLY EXPECT DESC: a multiply implementation, nothing logged, the reply REPLY
@@ -211,5 +237,18 @@ echo "AC4 E29 headless: the batched-question line is for --interactive only, a h
 e29 hl "$NOOP" 'Nothing.'
 assert_eq "AC4 E29 headless, no call: the AskUserQuestion line is PASS" "PASS" "$(e_state E29 "$KA")"
 
+
+echo "AC4 E29 --interactive v0.24.28: one batched question, then code written with no log and no label (pinned: the text grades (b) and (c) for multiply and divide with no interactive exemption)"
+jl "xE29intc" "$(AQ)" "$(res 'Which direction do you mean for the factor 0.045? Default: multiply. I wrote toCrates as multiply.')"
+mk_adapter "E29intc" "$IM_MUL
+cat $J/xE29intc.json"
+XW="$(mk_tmp)"
+run bash "$RUNNER" --interactive --cmd "bash $A/E29intc.sh" --scenarios E29 --workroot "$XW" --out "$XW/results.md"
+assert_eq "AC4 E29 --interactive, question then code: (a) is MANUAL" "MANUAL" "$(e_state E29 "$KA")"
+assert_eq "AC4 E29 --interactive, question then code, no log: the direction is logged FAILs" "FAIL" "$(e_state E29 "$KB")"
+assert_eq "AC4 E29 --interactive, question then code, no label: [UNVERIFIED] labels FAILs" "FAIL" "$(e_state E29 "$KC")"
+assert_eq "AC4 E29 --interactive, question then code: the chosen-without check PASSes (a question was asked)" "PASS" "$(e_state E29 "$KD")"
+assert_eq "AC4 E29 --interactive, question then code: the batched-question line stays MANUAL" "MANUAL" "$(e_state E29 "$KQ")"
+assert_rc "AC4 E29 --interactive, question then code with no log: exit 1" 1
 
 t_summary

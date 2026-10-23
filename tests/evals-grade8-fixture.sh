@@ -58,6 +58,9 @@ DEC_OVER="$(fwrite decisions.md '# Decisions\nD1: direction: the quantity over 0
 DEC_REFAC="$(fwrite decisions.md '# Decisions\nD1: refactored the multiply helper in tests.')"
 SPEC_MUL="$(fwrite 01-spec.md '# Spec\nThe direction of the conversion: multiply.')"
 SPEC_MUL_T="$(fwrite 01-spec.md '# Spec\nThe direction of the conversion: multiply [UNVERIFIED].')"
+# v0.24.28: check (b) also needs an assumption marker on the qualifying line. SPEC_CONF is a confident line with none; SPEC_MUL_A is the marked variant of SPEC_MUL.
+SPEC_CONF="$(fwrite 01-spec.md '# Spec\ntoCrates multiplies qty by the factor 0.045.')"
+SPEC_MUL_A="$(fwrite 01-spec.md '# Spec\nThe direction of the conversion: multiply (assumed).')"
 DEC_COMMIT="$DEC_MUL
 $GC add -f .agents/handoff/decisions.md
 $GC commit -qm 'log the assumption'"
