@@ -98,7 +98,9 @@ assert_rc "B print mode: exit 0" 0
 assert_contains "B print mode says it did not commit" "$SO" "not committing (no --commit)"
 has_out "B print mode: the add command names only the own untracked path" "GIT_LITERAL_PATHSPECS=1 git add -- tests/mine.test.js"
 has_out "B print mode: the commit command names only the own path" "$(printf 'GIT_LITERAL_PATHSPECS=1 git commit -m %q -- tests/mine.test.js' 'test(red): m')"
-assert_eq "B print mode: no printed command mentions a foreign path" "0" "$(printf '%s\n' "$SO" | grep -c -e 'other\.test\.js' -e 'README\.md' || true)"
+assert_eq "B print mode: no printed GIT_LITERAL command mentions a foreign path" "0" "$(printf '%s\n' "$SO" | grep '^GIT_LITERAL' | grep -c -e 'other\.test\.js' -e 'README\.md' || true)"
+has_out "B print mode: the gate E2 note names the foreign test path" "note: another task's path, not checked: tests/other.test.js [test]"
+has_out "B print mode: the gate E2 note names the foreign README path" "note: another task's path, not checked: README.md [code]"
 untouched "B print mode"
 
 echo "B AC10 E11: nothing of the task's changed (only a foreign path): exit 1, nothing committed"
