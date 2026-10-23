@@ -1863,4 +1863,17 @@ for g8 in test-evals-grade8.sh test-evals-grade8b.sh; do
   if grep -qE '^#.*\(e\).*present the assumption' "$G8F"; then t_ok "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption"; else t_bad "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption" "no (e) line"; fi
 done
 
+# ---- v0.24.30 lane K (S1): a Lite test on an unconfirmed oracle Dn says so; the Lite and template Pre-mortems say it pins the reading ----
+echo "v0.24.30 lane K (S1): Lite step 2 and step 5, template Pre-mortem"
+# AC1: Lite step 2 names the unconfirmed oracle by its decision id and says the name or a comment carries Dn or [UNVERIFIED]
+lite_has "v0.24.30 AC1 Lite step 2: unconfirmed oracle Dn, the test name or a comment carries Dn or [UNVERIFIED]" 2 'unconfirmed oracle,? Dn[^.]{0,20}name or (in )?a comment[^.]{0,20}`?Dn`? or `?\[UNVERIFIED\]'
+# AC2 regression: step 2 keeps its old rules (pass today and after)
+lite_has "v0.24.30 AC2 Lite step 2 still runs proof-run.sh --label red" 2 'proof-run\.sh --label red'
+lite_has "v0.24.30 AC2 Lite step 2 still says see it fail for the right reason" 2 'right reason'
+lite_has "v0.24.30 AC2 Lite step 2 still commits test(red)" 2 'test\(red\)'
+# AC3: Lite step 5 Pre-mortem clause
+lite_has "v0.24.30 AC3 Lite step 5 Pre-mortem: a test on Dn pins the assumed reading, never catches the other reading" 5 'pre-mortem[^.]{0,80}Dn[^.]{0,40}pins the assumed reading[^.]{0,30}(never|not) catch(es)? the other reading'
+# AC4: the template Pre-mortem has the angle-bracket placeholder (not a literal line a report would carry over)
+sec_flat_has "v0.24.30 AC4 final-report.md Pre-mortem: placeholder <if a risk rests on a test built on an unconfirmed oracle ...> pins the assumed reading, not the other reading" "$FINAL" '^## Pre-mortem' '<if a risk rests on a test built on an unconfirmed oracle[^>]*(Dn|\[UNVERIFIED\])[^>]*pins the assumed reading[^>]*not catch the other reading[^>]*>'
+
 t_summary
