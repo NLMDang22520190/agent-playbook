@@ -9,6 +9,7 @@
 # test-tdd-step-scope.sh 465 (run alone), and, run three in parallel on one machine: test-evals-grade8b.sh 253 (rows moved
 # to 8c and 8d), test-evals-grade8c.sh 243, test-evals-grade8d.sh 112, test-evals-grade9.sh 591, test-evals-grade9b.sh 521,
 # test-evals-grade7c.sh 30.
+# v0.24.30 estimate (not CI-measured; Linux WSL seconds x 28, L-0009): test-pre-commit.sh 56.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 522
 test-role-gate-scope.sh 528
@@ -28,6 +29,7 @@ test-evals-grade8c.sh 243
 test-evals-grade8d.sh 112
 test-evals-grade9.sh 591
 test-evals-grade9b.sh 521
+test-pre-commit.sh 56
 test-evals-grade7c.sh 30
 test-role-gate.sh 335
 test-leak-check.sh 334
