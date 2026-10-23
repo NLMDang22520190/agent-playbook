@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.24.28 - 2026-10-23
+- **role-gate size counts untracked files in one batch (Full):**
+  - **Method:** regular files and symlinks to files whose names need no quoting are marked intent-to-add in an empty temporary index, then counted with one `git diff --numstat -z`. The real index, the git dir and the object store are untouched.
+  - **Other paths:** quoted names, symlinks to directories and nested repositories keep the per-file command.
+  - **Fallback:** if either git call fails, or the output paths do not match the input exactly, the whole list goes per-file as in v0.24.27. The result is never lower, and stdout is byte-identical.
+  - **Speed:** 200 untracked files take 0.15 s instead of 0.80 s. 70k files take 9 git calls in total.
+  - **Review:** spec review took 2 rounds, code review 1 round (OK; 30+ probes, no under-count found).
+  - **Windows:** the routed-name characterization row skips when git lists the name unquoted (NTFS maps a tab in a name to a private-use character, so the name is batched, correctly).
+- **The release PR check refuses a stale README test count (Lite):**
+  - A release PR fails when a `tests/*.sh` file changed after the last README count checkpoint, so the count can no longer go stale at CI.
+  - A checkpoint is a README count change, the `release: vX.Y.Z` commit, or a `release: README test count` commit. The last one can be an empty commit when the count is unchanged.
+  - The refusal says how to clear it.
+- **E29 check (b) needs an assumption marker (Lite):**
+  - A confident spec line ("multiplies qty by the factor 0.045") no longer passes as a logged assumption. The line must carry `[UNVERIFIED]`, assumed, open, default, a decision id, or unconfirmed.
+  - The `--interactive` question-then-code case is pinned.
+- **tdd-step.sh (Lite):**
+  - Dead `|| return` guards are removed, so the near-equivalent mutants are gone (mutate.sh: 5 of 5 killed).
+  - The nested-repository check reuses the existing status listing, which saves one `git status` per step. The index is saved and restored around it for the refusal path.
+- **Always-on block wording (docs, reviewed):** 26 bytes of headroom (4474 of 4500), with no rule changed. A proposed rewording of the "quick" sentence was reverted after review, because it made "quick" read like a Full-overriding trigger.
+- **Shard weights:** three new suites carry estimates, each named in the header (L-0009).
+
 ## 0.24.27 - 2026-10-22
 - **E29 grader wording (Lite):**
   - Check (b) accepts the arithmetic form of a direction (`qty * 0.045`, `qty / 0.045`, "times", "over", "per"). Run 19 logged the direction as `qty * 0.045` and was graded a false negative; its files are now a PASS fixture.
