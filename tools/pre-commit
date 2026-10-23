@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Opt-in git pre-commit hook for the agent-playbook repo (install with tools/install-hooks.sh; nothing installs it for you).
+# Refuses a commit that would store a script as git mode 100644 where evals/run-checks.sh requires 100755: agents that edit
+# files with an edit tool often drop the executable bit, and `evals/run-checks.sh` (check "every script is stored with git
+# mode 100755") only catches it late. The rule is not copied here: this hook runs `evals/run-checks.sh --only modes`, which
+# reads the INDEX modes (git ls-files -s), so it works with core.filemode=false and changes nothing.
+# Exit: 0 commit allowed (also when evals/run-checks.sh is missing or cannot run: a warning goes to stderr), 1 refused.
+# Bypass once, if you must: git commit --no-verify
+set -u
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+rc_script="$top/evals/run-checks.sh"
+if [ ! -f "$rc_script" ]; then
+  echo "pre-commit: $rc_script not found; exec-bit check skipped" >&2
+  exit 0
+fi
+out="$(cd "$top" && bash evals/run-checks.sh --only modes 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && exit 0
+if [ "$rc" -ne 1 ]; then
+  echo "pre-commit: evals/run-checks.sh --only modes exited $rc; exec-bit check skipped" >&2
+  printf '%s\n' "$out" >&2
+  exit 0
+fi
+paths="$(printf '%s\n' "$out" | sed -n 's/^  FAIL script stored with git mode .*): //p')"
+if [ -z "$paths" ]; then
+  echo "pre-commit: refusing to commit (evals/run-checks.sh --only modes failed):" >&2
+  printf '%s\n' "$out" >&2
+  exit 1
+fi
+{
+  echo "pre-commit: refusing to commit: these scripts would be stored without the executable bit (git mode 100644, want 100755):"
+  printf '%s\n' "$paths" | while IFS= read -r p; do
+    printf '  %s\n' "$p"
+    printf '    fix: git update-index --chmod=+x %s\n' "$p"
+    printf '     or: chmod +x %s && git add %s\n' "$p" "$p"
+  done
+  echo "(bypass once, not advised: git commit --no-verify)"
+} >&2
+exit 1

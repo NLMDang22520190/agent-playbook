@@ -5,7 +5,8 @@
 # 8b, 8c, 8d, 9, 9b) come from run 39931483719 (v0.24.29) alone.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
-# estimated weight in this header and in the release PR (L-0009). No weight is an estimate at v0.24.29.
+# estimated weight in this header and in the release PR (L-0009).
+# v0.24.30 estimate (not CI-measured; Linux WSL seconds x 28, L-0009): test-pre-commit.sh 56.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 512
 test-role-gate-scope.sh 530
