@@ -330,7 +330,7 @@ else
 fi
 
 # ---------------------------------------------------------------- R9: size with a git-quoted untracked name
-echo "size with git-quoted untracked names (unchanged, R9)"
+echo "size with git-quoted untracked names (counted by the raw name, R9)"
 UQ="$(mk_tmp)"; mk_repo "$UQ"
 TABFILE_OK=0
 mkdir -p "$UQ/tests"
@@ -341,7 +341,7 @@ if printf 'u\n' > "$UQ/src/a"$'\t'"b.js" 2>/dev/null && printf 'u\n' > "$UQ/test
 # does not apply there (found on Windows in the v0.24.14 release run; the v0.24.13 gate gives the same result)
 if [ "$TABFILE_OK" = 1 ]; then
   OUT="$(cd "$UQ" && env PLAYBOOK_HOME="$PH0" LC_ALL=C bash "$GATE" size 2>/dev/null </dev/null)"; RC=$?
-  chk "size: a git-quoted untracked name is classified as printed (code counted, .test. name is test)" "files: 1/3 lines: 0/100 (base=HEAD)"$'\n'"rc=0" "$OUT"$'\n'"rc=$RC"
+  chk "size: a git-quoted untracked name is classified by the raw name (code counted with its line, .test. name is test)" "files: 1/3 lines: 1/100 (base=HEAD)"$'\n'"rc=0" "$OUT"$'\n'"rc=$RC"
 else
   t_skip 1 "this file system cannot hold a tab in a file name, or git does not print it quoted"
 fi

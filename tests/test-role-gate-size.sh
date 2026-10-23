@@ -12,6 +12,12 @@
 #        duplicates a record, or turns a listed file into a directory (race) still gives the v0.24.27 result: the whole batch
 #        falls back to the per-file loop (a `diff --no-index` per file in the log), so it is never fewer
 #   AC5  the size rows of test-role-gate.sh, -batch.sh, -baseline.sh and -b.sh are not part of this suite: they stay as they are
+# v0.24.29 lane S1 (quoted names): an untracked name that git C-quotes (tab, `"`, `\`, newline) is read raw (one `ls-files -z`), counted,
+# classified (test / .agents/handoff skip) and baseline-matched by its raw name:
+#   S1-AC1  routed-tab/-dquote/-backslash/-newline: v0.24.27 file count and 2 more lines (cmp_q; plain and --baseline); corpus rows re-pinned
+#   S1-AC2  tests/ and .agents/handoff/ names with a tab, quote or backslash are not production; a --baseline manifest matches the raw name;
+#           a raw name with a newline is production even under tests/ (D13/D23); an unreadable tests/ name is not an error (D2)
+#   S1-AC3  a 101-line production file with a quoted name: over the limit, exit 1
 # The expected values are v0.24.27's own scripts (git archive 0b6af9c), run beside the current gate on the same repo.
 # Kinds that this file system cannot hold (tab or quote in a name, symlinks) are skipped, not failed.
 . "$(dirname "$0")/lib.sh"
@@ -94,6 +100,41 @@ chk() { # name expected actual
   printf '%s\n' "$2" > "$DT/exp"; printf '%s\n' "$3" > "$DT/act"
   t_bad "$1" "$(diff -a "$DT/exp" "$DT/act" | head -6 | tr '\n' '|')"
 }
+# routed_listed: 0 when git lists the file just made as a quoted (routed) name; NTFS maps a tab to a private-use character, git lists it unquoted and batches it
+routed_listed() { git -c core.quotepath=off ls-files --others | head -n 1 | grep -q '^"'; }
+# quoted_count -> (current dir) how many untracked names git lists C-quoted: 0 on NTFS, where the tab name stays plain (D15)
+quoted_count() { git -c core.quotepath=off ls-files --others --exclude-standard | grep -c '^"' || true; }
+# cmp_q NAME DF_PER DL_PER DIR ARGS... -> the current gate prints what v0.24.27 prints with the files count moved by
+# quoted_count x DF_PER and the lines count by quoted_count x DL_PER (the `over the Lite size limit` line follows the new totals);
+# exit code 1 when over, else 0; stderr gets no line v0.24.27 did not print
+cmp_q() {
+  local name="$1" dfp="$2" dlp="$3" d="$4" qc F N L M B why="" extra exp erc re; shift 4
+  if [ "$REF_OK" != 1 ]; then t_skip 1 "$name (the reference commit $PRE is not in this clone, or git archive is not available)"; return; fi
+  qc="$(cd "$d" && quoted_count)"
+  : > "$SHIMLOG"; oneside o "$OLDG" "$d" "$@"
+  oneside n "$NEWG" "$d" "$@"
+  re='^files: ([0-9]+)/([0-9]+) lines: ([0-9]+)/([0-9]+) \(base=(.*)\)$'
+  if ! [[ "$(head -n 1 "$DT/o.out")" =~ $re ]]; then
+    why="the v0.24.27 run printed no size line: [$(head -c 120 "$DT/o.out" | tr '\n' '|')] [$(head -c 120 "$DT/o.err" | tr '\n' '|')]"
+  else
+    F=$((BASH_REMATCH[1] + qc * dfp)); N="${BASH_REMATCH[2]}"; L=$((BASH_REMATCH[3] + qc * dlp)); M="${BASH_REMATCH[4]}"; B="${BASH_REMATCH[5]}"
+    exp="files: $F/$N lines: $L/$M (base=$B)"; erc=0
+    if [ "$F" -gt "$N" ] || [ "$L" -gt "$M" ]; then exp="$exp"$'\n'"over the Lite size limit: escalate to Full"; erc=1; fi
+    printf '%s\n' "$exp" > "$DT/q.exp"
+    cmp -s "$DT/q.exp" "$DT/n.out" || why="stdout: expected [$(head -c 160 "$DT/q.exp" | tr '\n' '|')] (v0.24.27 [$(head -c 100 "$DT/o.out" | tr '\n' '|')], $qc quoted) now [$(head -c 160 "$DT/n.out" | tr '\n' '|')]"
+    [ "$(cat "$DT/n.rc")" = "$erc" ] || why="$why exit code: expected $erc now $(cat "$DT/n.rc")"
+    LC_ALL=C sort "$DT/o.err" > "$DT/o.es"; LC_ALL=C sort "$DT/n.err" > "$DT/n.es"
+    extra="$(LC_ALL=C comm -13 "$DT/o.es" "$DT/n.es")"
+    if [ -n "$extra" ]; then why="$why stderr has a line v0.24.27 did not print: [$(printf '%s' "$extra" | head -c 200 | tr '\n' '|')]"; fi
+  fi
+  if [ -z "$why" ]; then t_ok "$name"; else t_bad "$name" "$why"; fi
+}
+# nrow NAME DIR EXPECTED_STDOUT EXPECTED_RC ARGS... -> the current gate's stdout (absolute) and exit code; $DT/n.err keeps its stderr
+nrow() {
+  local name="$1" d="$2" exp="$3" erc="$4"; shift 4
+  oneside n "$NEWG" "$d" "$@"
+  chk "$name" "$exp"$'\n'"rc=$erc" "$(cat "$DT/n.out")"$'\n'"rc=$(cat "$DT/n.rc")"
+}
 # mk_mf DIR -> a baseline manifest of DIR's current state (on stdout)
 mk_mf() {
   local mf; mf="$(mk_tmp)/m"
@@ -161,8 +202,13 @@ for k in $K_SAME $K_ROUTED; do
   GENV=(X_PB=1)
   mkrepo
   if ! mkkind "$k"; then t_skip 1 "AC1 kind $k (this file system cannot hold it)"; continue; fi
-  case "$k" in routed-*) cls="routed to the per-file command" ;; *) cls="batch" ;; esac
-  cmp_gate "AC1 kind $k ($cls): stdout, exit code and stderr as v0.24.27" "$R" size $WIDE
+  case "$k" in
+    routed-tab | routed-dquote | routed-backslash | routed-newline)
+      cmp_q "AC1 kind $k (git-quoted name, 2 lines): v0.24.27 files, 2 more lines (NTFS tab: as v0.24.27)" 0 2 "$R" size $WIDE
+      cmp_q "AC1 kind $k (git-quoted name, 2 lines), --baseline of a clean repo: v0.24.27 files, 2 more lines" 0 2 "$R" size $WIDE --baseline "$MF0" ;;
+    routed-*) cmp_gate "AC1 kind $k (routed to the per-file command): stdout, exit code and stderr as v0.24.27" "$R" size $WIDE ;;
+    *) cmp_gate "AC1 kind $k (batch): stdout, exit code and stderr as v0.24.27" "$R" size $WIDE ;;
+  esac
 done
 GENV=(X_PB=1)
 
@@ -174,15 +220,71 @@ for k in $K_SAME routed-tab routed-dquote routed-backslash routed-symlink-dir ro
   mkkind "$k" 2>/dev/null || true
 done
 GENV=(X_PB=1)
-cmp_gate "AC1 corpus: plain size, wide limits" "$CORP" size $WIDE
-cmp_gate "AC1 corpus: plain size, default limits (over the limit: exit 1)" "$CORP" size
-cmp_gate "AC1 corpus: size --baseline of a clean repo (every untracked path counted)" "$CORP" size $WIDE --baseline "$MF0"
+cmp_q "AC1 corpus: plain size, wide limits: v0.24.27 + 2 lines per git-quoted file (3 files: +6; NTFS +4)" 0 2 "$CORP" size $WIDE
+cmp_q "AC1 corpus: plain size, default limits (over the limit: exit 1): + 2 lines per git-quoted file" 0 2 "$CORP" size
+cmp_q "AC1 corpus: size --baseline of a clean repo (every untracked path counted): + 2 lines per git-quoted file" 0 2 "$CORP" size $WIDE --baseline "$MF0"
 CMF="$(mk_mf "$CORP")"
 if [ -s "$CMF" ]; then
   printf 'a\nb\nc\nd\n' > zz-new.js; printf 'more\n' >> t.js
-  cmp_gate "AC1 corpus: size --baseline taken with every kind present (those paths left out, new and edited ones counted)" "$CORP" size $WIDE --baseline "$CMF"
-  cmp_gate "AC1 corpus: size --baseline with default limits" "$CORP" size --baseline "$CMF"
+  cmp_q "AC1 corpus: size --baseline taken with every kind present: the git-quoted files match the manifest by raw name and are left out (1 file less each, same lines)" -1 0 "$CORP" size $WIDE --baseline "$CMF"
+  cmp_q "AC1 corpus: size --baseline with default limits: the git-quoted files are left out (1 file less each, same lines)" -1 0 "$CORP" size --baseline "$CMF"
 else t_bad "AC1 corpus: the baseline manifest of the corpus could not be written" "snapshot --out gave no file"; fi
+
+# ---------------------------------------------------------------- S1 quoted names: raw-name classification and counting, default limits
+echo "S1 git-quoted untracked names are classified, skipped, baseline-matched and counted by the raw name (default limits: 3 files, 100 lines)"
+S1_OVER="over the Lite size limit: escalate to Full"
+# s1_name KIND EXT -> the file name of KIND (tab, dquote, backslash) with extension EXT
+s1_name() { case "$1" in tab) printf 'a\tb.%s' "$2" ;; dquote) printf 'q"x.%s' "$2" ;; backslash) printf 'bs\\x.%s' "$2" ;; esac; }
+# s1_put PATH LINES -> PATH with that many lines (parent dirs made); 1 when this file system cannot hold the name
+s1_put() { local i=0; mkdir -p "$(dirname "$1")" && : > "$1" 2>/dev/null || return 1; while [ "$i" -lt "$2" ]; do printf 'line %s\n' "$i" >> "$1"; i=$((i + 1)); done; }
+for kind in tab dquote backslash; do
+  for place in tests handoff; do
+    case "$place" in tests) rel="tests/$(s1_name "$kind" js)" ;; handoff) rel=".agents/handoff/$(s1_name "$kind" md)" ;; esac
+    mkrepo
+    if ! s1_put "$rel" 2 || ! s1_put src/p.js 1; then t_skip 2 "S1 $place $kind name (this file system cannot hold it)"; continue; fi
+    nrow "S1 AC2 untracked $rel + 1-line src/p.js: the $kind-named $place file is not production: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+    nrow "S1 AC2 untracked $rel + 1-line src/p.js, --baseline of a clean repo: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF0"
+  done
+done
+
+# a baseline manifest that holds production files with the three names; the raw names match it, so only the new src/p.js counts
+mkrepo; made=0
+for kind in tab dquote backslash; do if s1_put "src/$(s1_name "$kind" js)" 1; then made=$((made + 1)); fi; done
+if [ "$made" -gt 0 ]; then
+  S1MF="$(mk_mf "$R")"
+  if [ -s "$S1MF" ]; then
+    s1_put src/p.js 1
+    nrow "S1 AC2 --baseline manifest holds src files named with a tab, a quote, a backslash ($made made): they match by raw name; new src/p.js: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$S1MF"
+  else t_bad "S1 AC2 --baseline manifest with quoted production names could not be written" "snapshot --out gave no file"; fi
+else t_skip 1 "S1 AC2 --baseline manifest with quoted production names (this file system cannot hold them)"; fi
+
+# a 101-line production file with a quoted name pushes the total over the limit
+for kind in tab dquote backslash; do
+  mkrepo
+  if ! s1_put "src/$(s1_name "$kind" js)" 101; then t_skip 1 "S1 AC3 $kind-named production file (this file system cannot hold it)"; continue; fi
+  nrow "S1 AC3 a 101-line production file with a $kind in its name: lines 101/100, escalate to Full, exit 1" "$R" "files: 1/3 lines: 101/100 (base=HEAD)"$'\n'"$S1_OVER" 1 size
+done
+
+# an unreadable test path is a test (D2): no error, no count; skipped where chmod 000 does not block reads (root, NTFS)
+UP="$(mk_tmp)/probe"; printf 'x\n' > "$UP"; chmod 000 "$UP" 2>/dev/null
+if cat "$UP" >/dev/null 2>&1; then t_skip 4 "S1 AC2 unreadable tests/ name (chmod 000 does not block reads here: root or NTFS)"
+else
+  mkrepo
+  if s1_put "tests/$(s1_name tab js)" 3 && s1_put src/p.js 1; then
+    chmod 000 "tests/$(s1_name tab js)"
+    nrow "S1 AC2 unreadable (chmod 000) tests/x<TAB>y.js + 1-line src/p.js: a test path, no error: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+    assert_not_contains "S1 AC2 unreadable tests/ name: no 'cannot count' line on stderr" "$(cat "$DT/n.err")" "cannot count"
+    nrow "S1 AC2 unreadable tests/ name, --baseline of a clean repo: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF0"
+    assert_not_contains "S1 AC2 unreadable tests/ name, --baseline: no 'cannot count' line on stderr" "$(cat "$DT/n.err")" "cannot count"
+  else t_skip 4 "S1 AC2 unreadable tests/ name (this file system cannot hold a tab in a name)"; fi
+fi
+
+# D13/D23: a raw name with a newline is production even under tests/ (the newline-separated classify could otherwise under-count)
+mkrepo
+if s1_put $'tests/a\nb.js' 2; then
+  nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines): counted as production (D23): 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size
+  nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines), --baseline of a clean repo: 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size --baseline "$MF0"
+else t_skip 2 "S1 AC2 tests/a<LF>b.js (this file system cannot hold a newline in a name)"; fi
 
 # ---------------------------------------------------------------- AC2 git calls do not grow with the number of files
 echo "AC2 the number of git calls does not depend on the number of untracked files (counting git shim)"
@@ -235,8 +337,6 @@ else t_skip 2 "AC2 symlinks (this file system has none)"; fi
 
 mkrepo; count_calls "$R" size $WIDE
 chk "AC2/N2 characterization: no untracked file, no add -N and no temporary index" "0" "$(grep -c '^add-N\|idx=1' "$SHIMLOG" | tr -d ' ')"
-# routed_listed: 0 when git lists the file just made as a quoted (routed) name; NTFS maps a tab to a private-use character, git lists it unquoted and batches it
-routed_listed() { git -c core.quotepath=off ls-files --others | head -n 1 | grep -q '^"'; }
 if mkrepo && mkkind routed-tab && routed_listed; then
   count_calls "$R" size $WIDE
   chk "AC2/N2 characterization: only a per-file-routed untracked name: no add -N" "0" "$(grep -c '^add-N' "$SHIMLOG" | tr -d ' ')"
