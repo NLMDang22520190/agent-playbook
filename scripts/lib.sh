@@ -183,7 +183,7 @@ EOF
 # returns non-zero: callers stop, they never treat the paths as own.
 SC_ENTRIES=""
 pb_scope_read() {
-  local f="$1" tracked verr res hops lt rd pd
+  local f="$1" tracked verr res hops lt rd pd crl cn cl
   SC_ENTRIES=""
   { [ -f "$f" ] && [ -r "$f" ]; } || pb_die "scope file not readable: $f" 3
   tracked="$(git --literal-pathspecs ls-files -- "$f" 2>/dev/null)" || tracked=""
@@ -205,11 +205,21 @@ pb_scope_read() {
     tracked="$(git --literal-pathspecs ls-files -- "$res" 2>/dev/null)" || tracked=""
     [ -z "$tracked" ] || pb_die "the scope file is a tracked file of this repository: $f" 3
   fi
-  verr="$(LC_ALL=C awk '
+  # CR: awk (and grep) of Git Bash on Windows drop the CR before a LF, so awk cannot see it; the line numbers that hold a CR are found
+  # here with tr, cmp and read, which keep it, and awk gets them as " 3 7 " (crl). Only a file that has a CR takes the slow loop.
+  crl=" "
+  if ! tr -d '\r' < "$f" | cmp -s - "$f"; then
+    cn=0
+    while IFS= read -r cl || [ -n "$cl" ]; do
+      cn=$((cn + 1))
+      case "$cl" in *$'\r'*) crl="$crl$cn " ;; esac
+    done < "$f"
+  fi
+  verr="$(LC_ALL=C awk -v crl="$crl" '
     BEGIN { BOM = "\357\273\277" }
     NR == 1 {
       if (substr($0, 1, 3) == BOM) { print "line 1: starts with a UTF-8 BOM (save the file as UTF-8 without BOM)"; bad = 1; exit }
-      if (index($0, "\r")) { print "line 1: CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
+      if (index(crl, " 1 ")) { print "line 1: CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
       if ($0 != "# role-gate scope v1") { print "line 1 is not the header: # role-gate scope v1"; bad = 1; exit }
       next }
     { t = index($0, "\t")
@@ -220,7 +230,7 @@ pb_scope_read() {
       if (substr(p, 1, 1) == "/") { print "line " NR ": absolute path"; bad = 1; exit }
       n = split(p, seg, "/")
       for (j = 1; j <= n; j++) if (seg[j] == "." || seg[j] == "..") { print "line " NR ": a . or .. segment"; bad = 1; exit }
-      if (index($0, "\r")) { print "line " NR ": CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
+      if (index(crl, " " NR " ")) { print "line " NR ": CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
       key = k "\t" p
       if (key in seen) { print "line " NR ": duplicate entry (also line " seen[key] ")"; bad = 1; exit }
       seen[key] = NR
