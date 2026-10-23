@@ -683,14 +683,67 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     fi
 
     # one "added<TAB>deleted<TAB>path" line per file; untracked files diffed against /dev/null
+    # untracked files (v0.24.28): plain files and symlinks to files are counted in one batch (an intent-to-add `add -N` into an
+    # empty temporary index, then one `diff --numstat -z`); the real index and object store are not touched. The batch result
+    # is used only when both git calls succeed and the output paths equal the input set; otherwise the whole batch list goes
+    # through the per-file command. C-quoted names, directories and nested repos always keep the per-file command.
+    untracked_stats() (
+      ul="$(git -c core.quotepath=off ls-files --others --exclude-standard)"
+      [ -n "$ul" ] || exit 0
+      d="$(mktemp -d 2>/dev/null)" || d=""
+      if [ -n "$d" ]; then
+        trap 'rm -rf "$d"' EXIT
+        : > "$d/in"; : > "$d/in0"; : > "$d/counts"; mkdir "$d/obj"
+        nb=0
+        while IFS= read -r u; do
+          [ -n "$u" ] || continue
+          case "$u" in \"*) continue ;; esac
+          if [ -f "$u" ] && [ ! -d "$u" ]; then
+            printf '%s\n' "$u" >> "$d/in"
+            printf '%s\0' "$u" >> "$d/in0"
+            nb=$((nb + 1))
+          fi
+        done <<EOF
+$ul
+EOF
+        if [ "$nb" -gt 0 ]; then
+          ok=0
+          if GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.splitIndex=false --literal-pathspecs add -N --pathspec-from-file=- --pathspec-file-nul < "$d/in0" >/dev/null 2>&1 &&
+             GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.quotepath=off diff --numstat -z --no-renames --no-ext-diff > "$d/out0" 2>/dev/null; then
+            while IFS=$'\t' read -r -d '' a dl pl; do
+              printf '%s\t%s\t%s\n' "$a" "$dl" "$pl"
+            done < "$d/out0" > "$d/counts"
+            cut -f3- "$d/counts" | LC_ALL=C sort > "$d/s1"
+            LC_ALL=C sort "$d/in" > "$d/s2"
+            if cmp -s "$d/s1" "$d/s2"; then ok=1; fi
+          fi
+          [ "$ok" -eq 1 ] || : > "$d/counts"
+        fi
+        { printf 'x\tx\t//sentinel//\n'; cat "$d/counts"; } > "$d/cj"   # never empty: the awk join keys on NR == FNR
+        joined="$(awk -F'\t' 'NR == FNR { c[$3] = $1 "\t" $2; next }
+          ($0 in c) { print "B\t" c[$0] "\t" $0; next }
+          { print "P\t-\t-\t" $0 }' "$d/cj" - <<EOF
+$ul
+EOF
+        )"
+      else
+        joined="$(printf '%s\n' "$ul" | while IFS= read -r u; do printf 'P\t-\t-\t%s\n' "$u"; done)"
+      fi
+      while IFS=$'\t' read -r kind a dl u; do
+        [ -n "$u" ] || continue
+        if [ "$kind" = B ]; then
+          printf '%s\t%s\t%s\n' "$a" "$dl" "$u"
+        else
+          counts="$(git diff --no-index --numstat -- /dev/null "$u" | cut -f1,2)"
+          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+          printf '%s\t%s\n' "$counts" "$u"
+        fi
+    done <<EOF
+$joined
+EOF
+    )
     stats="$( git -c core.quotepath=off diff --numstat --no-renames "$base" --
-              git -c core.quotepath=off ls-files --others --exclude-standard |
-                while IFS= read -r u; do
-                  [ -n "$u" ] || continue
-                  counts="$(git diff --no-index --numstat -- /dev/null "$u" | cut -f1,2)"
-                  [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
-                  printf '%s\t%s\n' "$counts" "$u"
-                done )"
+              untracked_stats )"
 
     files=0
     lines=0
