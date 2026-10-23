@@ -693,11 +693,18 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     # matched against a --baseline manifest as `check` does); no `read` with a tab IFS touches a name field (it would strip a
     # leading or trailing tab). A raw name with a newline cannot ride a line list: it is emitted as "!<TAB>added<TAB>deleted"
     # and counted as production code (D23). Plain files and symlinks to files whose names git would not C-quote are counted
-    # in one batch (v0.24.28: an intent-to-add `add -N` into an empty temporary index, then one `diff --numstat -z`; the real
-    # index and object store are not touched). The batch result is used only when both git calls succeed and the output paths
-    # equal the input set; otherwise the whole batch list goes through the per-file command. Quoted names (a quote, backslash or
-    # control character), directories and nested repos always keep the per-file command, fed the raw path.
+    # in one batch (v0.24.29, linear: `update-index --add -z --stdin` into an empty temporary index whose objects go to a temporary
+    # object dir, then ONE `diff --cached --numstat -z` against the empty tree, whose id comes from `hash-object -t tree` without -w,
+    # so any object format works; v0.24.28 used `add -N` + `diff --numstat`, which cost a pathspec match per file). update-index takes
+    # paths, not pathspecs, so a name like `*.js` stays literal. The real index, git dir and object store are not touched. The batch
+    # result is used only when both git calls succeed (update-index rc != 0, also a partial one, skips the diff) and the output paths
+    # equal the input set; otherwise the whole batch list goes through the per-file command. With core.safecrlf=true under autocrlf
+    # update-index refuses an LF file (rc 128) where `add -N` did not: the whole list then falls back to per-file, same totals (D18).
+    # Quoted names (a quote, backslash or control character), directories and nested repos always keep the per-file command, fed the
+    # raw path. The temp dir is removed by the EXIT trap of this subshell; SIGPIPE is ignored here so that a closed stdout (parent killed
+    # by TERM) cannot kill the subshell before the trap runs (D22).
     untracked_stats() (
+      trap '' PIPE
       # pf_emit PATH IDX: a regular file or symlink to a file that cannot be counted becomes "E<TAB>IDX<TAB>DISPLAY" (v0.24.29, D1);
       # test, .agents/handoff/ and baseline-unchanged paths are left out of it (D2); a newline name is always production (D23)
       pf_emit() {
@@ -760,8 +767,10 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
       done < "$d/ul0"
       if [ "$nb" -gt 0 ]; then
         ok=0
-        if GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.splitIndex=false --literal-pathspecs add -N --pathspec-from-file=- --pathspec-file-nul < "$d/in0" >/dev/null 2>&1 &&
-           GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.quotepath=off diff --numstat -z --no-renames --no-ext-diff > "$d/out0" 2>/dev/null; then
+        et="$(git hash-object -t tree --stdin </dev/null 2>/dev/null)"
+        if [ -n "$et" ] &&
+           GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.splitIndex=false update-index --add -z --stdin < "$d/in0" >/dev/null 2>&1 &&
+           GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.quotepath=off diff --cached --numstat -z --no-renames --no-ext-diff "$et" > "$d/out0" 2>/dev/null; then
           while IFS= read -r -d '' rec; do
             ba="${rec%%$'\t'*}"; br="${rec#*$'\t'}"
             printf '%s\t%s\t%s\n' "$ba" "${br%%$'\t'*}" "${br#*$'\t'}"
