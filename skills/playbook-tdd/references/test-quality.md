@@ -26,6 +26,7 @@ cd - && git worktree remove --force "$WT" && rmdir "$D"
 ```
 Expected: each mutant makes at least one test fail (a non-zero exit). A surviving mutant points to a
 missing or too-weak assertion, which is a `major` finding when it is on core logic.
+On a test built on an unconfirmed oracle, a killed mutant pins the assumed reading, not a caught bug; report it that way.
 
 ## Mutation tools (for larger suites; check each tool's docs for current usage)
 | Ecosystem | Tool |

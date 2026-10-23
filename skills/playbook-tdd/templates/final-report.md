@@ -50,6 +50,7 @@ Verdict: ... (model: ...). Findings resolved: ... Open: ...
 
 ## Found, not fixed / [UNVERIFIED]
 - ...
+- A killed mutant on a test built on an unconfirmed oracle pins the assumed reading; it is not a caught bug.
 
 **Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)
 
