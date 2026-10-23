@@ -49,7 +49,7 @@ WIDE="--max-files 1000 --max-lines 100000"
 SHIM="$(mk_tmp)"; SHIMLOG="$DT/shim.log"; SHIMFIRED="$DT/shim.fired"
 cat > "$SHIM/git" <<'SHIMEOF'
 #!/usr/bin/env bash
-# PB_SHIM_MODE: count (default) | upd-fail | diff-fail | upd-rc | upd-partial | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128 | hang.
+# PB_SHIM_MODE: count (default) | upd-fail | diff-fail | upd-rc | upd-partial | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128 | rc2 | hang.
 # Every call appends "<label> idx=<0|1> obj=<0|1>" to PB_SHIM_LOG (idx: GIT_INDEX_FILE set, obj: GIT_OBJECT_DIRECTORY set); update-index, diff-batch and
 # hash-object calls also append "<label>: <args>" to PB_SHIM_LOG.args. hang: the first call labelled $PB_HANG_LABEL (default update-index) marks
 # PB_HANG_REACHED, then waits (up to 25 s) for PB_HANG_RELEASE before it runs.
@@ -81,6 +81,8 @@ case "${PB_SHIM_MODE:-count}:$label" in
     if [ -e "$PB_SHIM_FIRED.listed" ] && [ -e "$PB_VANISH_PATH" ]; then rm -f "$PB_VANISH_PATH"; echo 1 >> "$PB_SHIM_FIRED"; fi ;;
   uncount-none:update-index | uncount-none:diff-batch | uncount-none:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;   # no output at all
   uncount-128:update-index | uncount-128:diff-batch) exit 1 ;;   # the batch is refused; the per-file command fails with 128
+  rc2:update-index | rc2:diff-batch) exit 1 ;;   # the batch is refused; the per-file command exits 2 but still prints its numstat line
+  rc2:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@"; exit 2 ;;
   uncount-128:diff-noindex) printf 'fatal: shim\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 128 ;;
   upd-partial:update-index)   # most of the list is indexed, then git fails: a partial failure
     echo 1 >> "$PB_SHIM_FIRED"; tr '\0' '\n' | sed '$d' | tr '\n' '\0' | "$REAL_GIT" "$@" >/dev/null 2>&1; printf 'fatal: shim partial update\n' >&2; exit 128 ;;
@@ -462,6 +464,36 @@ if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
   mkrepo; ln -s src sd; ln -s nowhere.js dang.js; git init -q nested; printf 'a\nb\n' > src/unr.js; chmod 000 src/unr.js
   s2row "S2 AC8 symlink to a directory, dangling symlink, nested repo + unreadable src/unr.js: exit 3 names only src/unr.js" "$R" "$(s2_err src/unr.js)" size
 else t_skip 2 "S2 AC8 non-regular kinds next to an unreadable file (chmod 000 does not block reads, or no symlinks)"; fi
+
+# S-fix F3: the AC5 clause "git exits above 1" on its own: the per-file command exits 2 yet prints a numstat line -> exit 3 (kills rc -gt 128)
+mkrepo; printf 'a\nb\n' > src/p.js
+s2shim rc2 "S-fix F3 per-file git exits 2 but prints a numstat line for src/p.js" "$R" "$(s2_err src/p.js)" size
+chk "S-fix F3 control: the per-file command ran and exited 2 (the shim fired)" "1" "$([ -s "$SHIMFIRED" ] && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+
+# S-fix F1: git counts a symlink's link text, so a symlink to an unreadable target is 1 file, 1 line, whatever the route
+echo "S-fix F1 a symlink is counted by its link text (never by its target), also on the per-file route"
+if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
+  F1T="$(mk_tmp)/tgt"; printf 'a\nb\nc\n' > "$F1T"; chmod 000 "$F1T"
+  mkrepo; ln -s "$F1T" src/pl.js
+  nrow "S-fix F1 control: plain-name symlink to an unreadable target (batch route): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  mkrepo; ln -s "$F1T" "src/$(s1_name dquote js)"
+  nrow "S-fix F1 quoted-name (q\"x.js) symlink to an unreadable target (per-file route): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  chk "S-fix F1 quoted-name symlink: no cannot-count line on stderr" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+  mkrepo; ln -s "$F1T" src/pl.js
+  GENV=(X_PB=1 PB_SHIM_MODE=upd-fail PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"; : > "$SHIMFIRED"
+  nrow "S-fix F1 plain-name symlink to an unreadable target, batch refused (whole list per-file): 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  chk "S-fix F1 control: the batch was refused and the per-file command ran" "1" "$([ -s "$SHIMFIRED" ] && grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+  unset GPATH; GENV=(X_PB=1)
+else t_skip 5 "S-fix F1 symlink to an unreadable target (chmod 000 does not block reads, or no symlinks)"; fi
+
+# S-fix F4: a path the manifest records as unchanged that vanishes after the listing is skipped, not an error (spec: baseline-unchanged paths
+# are left out of the error list); only the BL_UNCH skip in pf_emit does this
+mkrepo; printf 'a\nb\n' > src/v.js; MF_V="$(mk_mf "$R")"; printf 'ok\n' > src/ok.js
+S2_VANISH=src/v.js
+GENV=(X_PB=1 PB_SHIM_MODE=vanish PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_VANISH_PATH="$S2_VANISH"); GPATH="$SHIM:$PATH"; : > "$SHIMFIRED"; rm -f "$SHIMFIRED.listed"
+nrow "S-fix F4 manifest-unchanged src/v.js vanishes after the listing, --baseline: skipped, not exit 3: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF_V"
+chk "S-fix F4 control: the shim really deleted src/v.js after the listing" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R/src/v.js" ] && echo 1 || echo 0)"
+unset GPATH; GENV=(X_PB=1); S2_VANISH=
 
 # AC16 (the docs the spec puts in S2: the header, the exit line, SKILL.md; the method comment and CHANGELOG are S3 / the release)
 echo "S2 AC16 the docs name the size exit 3"
