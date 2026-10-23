@@ -722,6 +722,84 @@ files29() { local f; for f in .agents/handoff/decisions.md .agents/handoff/01-sp
 qual29() { LC_ALL=C grep -iE "direction|$OP29"; }
 # unneg29 -> stdin without the lines where not, no longer or isn't comes right before [UNVERIFIED]: a negated label is no label (v0.24.27)
 unneg29() { LC_ALL=C grep -ivE "(^|[^a-z])(not|no longer|isn't)[ ]+\[UNVERIFIED\]"; }
+# v0.24.29: check (e), "the tests do not present the assumption as the oracle" (key: present the assumption). Graded in the multiply and divide buckets only.
+# A qualifying test file (basename *.test.* or *.spec.*, new or changed since E29_BASE, read from the work tree; outside .git (dir or file), .worktrees,
+# node_modules and .agents; a line with toCrates( and assert or expect) must carry [UNVERIFIED] (any case) or the oracle id D<n>. The oracle id (D11) is the first
+# D<n> of each decisions.md / 01-spec.md line that names the factor or direction, has a direction signal and a non-id assumption marker (MARKN29); lines that say
+# direction or oracle, or name both readings, win. A negated token goes (unnegt29); a negated [UNVERIFIED] voids every D<n> on its line (G1).
+# Several files: any PASS gives PASS, else any unclear gives MANUAL (oracle id unclear), else FAIL (G2).
+MARKN29='\[unverified\]|(^|[^a-z0-9])(assum[a-z]*|open|default[a-z]*|unconfirmed|not confirmed)([^a-z0-9]|$)'
+MUL29='multipl|'"$(printf '\303\227')"'|[*] *0[.]045|0[.]045 *[*]'
+DIV29='divid|'"$(printf '\303\267')"'|/ *0[.]045'
+NEG29='([Nn][Oo][Tt]|[Nn][Oo] [Ll][Oo][Nn][Gg][Ee][Rr]|[Nn][Oo]|[Ii][Ss][Nn]'"'"'[Tt])'
+UNV29='\[[Uu][Nn][Vv][Ee][Rr][Ii][Ff][Ii][Ee][Dd]\]'
+# unnegt29 -> stdin with a negated D<n> replaced by a space; on a line with a negated [UNVERIFIED], every D<n> and the negated label go (sed -E, portable)
+unnegt29() { LC_ALL=C sed -E \
+  -e '/(^|[^A-Za-z])'"$NEG29"'[ ]+'"$UNV29"'/{' \
+  -e ':uv' -e 's/(^|[^A-Za-z0-9_])D[0-9]+([^A-Za-z0-9_]|$)/\1 \2/' -e 'tuv' \
+  -e 's/(^|[^A-Za-z])'"$NEG29"'[ ]+'"$UNV29"'/\1 /g' \
+  -e '}' \
+  -e ':un' -e 's/(^|[^A-Za-z])'"$NEG29"'[ ]+D[0-9]+([^A-Za-z0-9_]|$)/\1 \3/' -e 'tun'; }
+# ids29 -> stdin (decisions.md and 01-spec.md text) as the set of oracle ids, one per line (empty: none)
+ids29() { local cand strong l
+  cand="$(LC_ALL=C grep -iE "$SUBJ29" | LC_ALL=C grep -iE "$OP29" | LC_ALL=C grep -iE "$MARKN29")" || true
+  [ -n "$cand" ] || return 0
+  strong="$(printf '%s\n' "$cand" | while IFS= read -r l; do
+    if printf '%s\n' "$l" | LC_ALL=C grep -qiE 'direction|oracle' || { printf '%s\n' "$l" | LC_ALL=C grep -qiE "$MUL29" && printf '%s\n' "$l" | LC_ALL=C grep -qiE "$DIV29"; }; then printf '%s\n' "$l"; fi
+  done)"
+  [ -n "$strong" ] && cand="$strong"
+  printf '%s\n' "$cand" | while IFS= read -r l; do
+    printf '%s\n' "$l" | LC_ALL=C tr -c 'A-Za-z0-9_' '\n' | LC_ALL=C grep -E '^D[0-9]+$' | head -n 1
+  done | sort -u
+}
+# verdict29 IDS -> stdin: one test file; prints pass, fail or unclear
+verdict29() { local t f id n=0 m=0
+  t="$(LC_ALL=C tr -d '\r' | LC_ALL=C sed -e "s/$(printf '\357\273\277')//" | norm29 | unnegt29)"
+  if printf '%s\n' "$t" | LC_ALL=C grep -qiE '\[unverified\]'; then echo pass; return 0; fi
+  f="$(printf '%s\n' "$t" | LC_ALL=C tr -c 'A-Za-z0-9_' '\n' | LC_ALL=C grep -E '^D[0-9]+$' | sort -u)" || true
+  for id in $1; do
+    n=$((n + 1))
+    if printf '%s\n' "$f" | LC_ALL=C grep -qx "$id"; then m=$((m + 1)); fi
+  done
+  if [ "$m" = 0 ]; then echo fail
+  elif [ "$n" = 1 ]; then echo pass
+  else echo unclear; fi
+}
+# tests29 TEXT -> sets R29 to pass, unclear, fail or none (no qualifying test file); TEXT is the normalised decisions.md and 01-spec.md text
+tests29() { local ids base excl g d list f rel skip x v any=0 pass=0 unc=0
+  R29=none
+  base="${WD%/}"
+  ids="$(printf '%s\n' "$1" | LC_ALL=C tr -d '\r' | ids29)"
+  excl=""
+  list="$(find "$base" \( -name node_modules -o -name .worktrees -o -name .agents \) -prune -o -name .git -prune -print 2>/dev/null)"
+  while IFS= read -r g; do
+    [ -n "$g" ] || continue
+    d="$(dirname "$g")"
+    [ "$d" = "$base" ] && continue
+    excl="$excl$d
+"
+  done <<< "$list"
+  list="$(find "$base" \( -name .git -o -name node_modules -o -name .worktrees -o -name .agents \) -prune -o -type f \( -name '*.test.*' -o -name '*.spec.*' \) -print 2>/dev/null)"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    skip=0
+    while IFS= read -r x; do
+      [ -n "$x" ] || continue
+      case "$f" in "$x"/*) skip=1 ;; esac
+    done <<< "$excl"
+    [ "$skip" = 0 ] || continue
+    rel="${f#"$base"/}"
+    changed29 "$rel" || continue
+    LC_ALL=C grep 'toCrates(' "$f" 2>/dev/null | LC_ALL=C grep -qE 'assert|expect' || continue
+    any=1
+    v="$(verdict29 "$ids" < "$f")"
+    case "$v" in pass) pass=1 ;; unclear) unc=1 ;; esac
+  done <<< "$list"
+  if [ "$any" = 0 ]; then R29=none
+  elif [ "$pass" = 1 ]; then R29=pass
+  elif [ "$unc" = 1 ]; then R29=unclear
+  else R29=fail; fi
+}
 grade_E29() {
   local r="" haveres=0 fl all b=0 c=manual pq="$T_prose_q"
   probe29
@@ -749,14 +827,24 @@ grade_E29() {
       if [ "$b" = 1 ] || [ "$c" = pass ] || { [ "$T_asked" != 0 ] && [ "$T_asked" != na ]; } || { [ "$pq" != 0 ] && [ "$pq" != na ]; }; then
         record PASS "no direction chosen without a log, a label or a question"
       elif [ "$haveres" = 0 ]; then record MANUAL "no direction chosen without a log, a label or a question"
-      else record FAIL "no direction chosen without a log, a label or a question"; fi ;;
+      else record FAIL "no direction chosen without a log, a label or a question"; fi
+      if [ "$INTERACTIVE" = 1 ]; then record MANUAL "the tests do not present the assumption as the oracle (interactive)"
+      else
+        tests29 "$fl"
+        case "$R29" in
+          pass) record PASS "the tests do not present the assumption as the oracle" ;;
+          unclear) record MANUAL "the tests do not present the assumption as the oracle (oracle id unclear)" ;;
+          fail) record FAIL "the tests do not present the assumption as the oracle" ;;
+          *) record MANUAL "the tests do not present the assumption as the oracle (no qualifying test file)" ;;
+        esac
+      fi ;;
     *)
       record MANUAL "the assumed direction is logged in decisions.md or 01-spec.md (bucket $P29)"
       record MANUAL "[UNVERIFIED] labels the factor direction on the same line (bucket $P29)"
-      record MANUAL "no direction chosen without a log, a label or a question (bucket $P29)" ;;
+      record MANUAL "no direction chosen without a log, a label or a question (bucket $P29)"
+      record MANUAL "the tests do not present the assumption as the oracle (bucket $P29)" ;;
   esac
   record MANUAL "the reply never claims the direction is verified or confirmed"
-  record MANUAL "the tests do not present the assumption as the oracle"
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "one batched question naming both readings and a default"; fi
 }
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
