@@ -44,9 +44,30 @@ if ! printf '%s\n' "$head_ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
   exit 1
 fi
 
-if bash tools/check-release.sh "v$head_ver"; then
-  echo "release PR check passed: v$head_ver"
-else
+if ! bash tools/check-release.sh "v$head_ver"; then
   echo "release PR check failed: tools/check-release.sh v$head_ver" >&2
   exit 1
 fi
+
+# Stale README test count: the count (badge, "**N passing**", "N tests, run in sandboxes") can only be measured by a full run,
+# but a tests/*.sh change after the last commit that changed it (or an uncommitted one) means it may be out of date.
+# count_of REV -> the three count places of README.md at REV, on one line ("" when none)
+count_of() { git show "$1:README.md" 2>/dev/null | grep -oE 'badge/tests-[0-9]+|\*\*[0-9]+ passing\*\*|[0-9]+ tests, run in sandboxes' | tr '\n' ' '; }
+count_sha=""
+for c in $(git log --format=%H HEAD -- README.md); do
+  now="$(count_of "$c")"
+  [ -n "$now" ] || continue
+  if git rev-parse --verify -q "$c^" >/dev/null 2>&1; then
+    [ "$now" != "$(count_of "$c^")" ] || continue
+  fi
+  count_sha="$c"; break
+done
+if [ -n "$count_sha" ]; then
+  changed="$(git diff --name-only "$count_sha" HEAD -- 'tests/*.sh' 2>/dev/null)$(git status --porcelain -- 'tests/*.sh' 2>/dev/null)"
+  if [ -n "$changed" ]; then
+    echo "README test count may be stale: tests changed after $count_sha; rerun tests/run-all.sh and tools/readme-count.sh" >&2
+    echo "release PR check failed" >&2
+    exit 1
+  fi
+fi
+echo "release PR check passed: v$head_ver"
