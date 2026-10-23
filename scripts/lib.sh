@@ -171,3 +171,104 @@ EOF
     END { for (i = 1; i <= na; i++) if (as[i] in del) print "L" ap[i] }
   ' | LC_ALL=C sort -u
 }
+
+# Task scope (v0.24.29, role-gate.sh check --scope FILE): a file "# role-gate scope v1", then one "own|other<TAB>path" line per entry.
+# pb_scope_read FILE validates FILE and loads its entries into this shell (call it in the repository, not in a subshell):
+# E6 not readable, E7 a tracked file of the repository (git --literal-pathspecs ls-files), E8 malformed (the first bad line wins, top to
+# bottom, "no own entry" last); each ends in pb_die, exit 3. Sets SC_ENTRIES (the entry lines).
+# pb_scope_classify reads paths on stdin and prints exactly one line per input line (an empty line too): "own", "other" or "none".
+# An entry ending in "/" is a directory prefix, any other entry is one exact path; own wins over other. The entries reach awk through
+# a temp file that awk reads (never ENVIRON or awk -v: ENVIRON is capped at 128 KB on Linux and 32 KB on Windows, and -v expands
+# backslash escapes; a file has no size limit), and awk runs under LC_ALL=C (byte comparison). A failure (no temp file, awk error)
+# returns non-zero: callers stop, they never treat the paths as own.
+SC_ENTRIES=""
+pb_scope_read() {
+  local f="$1" tracked verr res hops lt rd pd crl cn cl
+  SC_ENTRIES=""
+  { [ -f "$f" ] && [ -r "$f" ]; } || pb_die "scope file not readable: $f" 3
+  tracked="$(git --literal-pathspecs ls-files -- "$f" 2>/dev/null)" || tracked=""
+  [ -z "$tracked" ] || pb_die "the scope file is a tracked file of this repository: $f" 3
+  # a symlink (or a symlinked directory in the path) into a tracked file is the same E7: follow the links by hand as snapshot --out
+  # does (readlink without -f: portable) and ask git about the real path
+  res="$f"; hops=0
+  while [ -L "$res" ] && [ "$hops" -lt 40 ]; do
+    lt="$(readlink "$res")" || break
+    case "$lt" in
+      /* | [A-Za-z]:[/\\]*) res="$lt" ;;
+      *) case "$res" in */*) res="${res%/*}/$lt" ;; *) res="$lt" ;; esac ;;
+    esac
+    hops=$((hops + 1))
+  done
+  case "$res" in */*) rd="${res%/*}"; [ -n "$rd" ] || rd=/ ;; *) rd=. ;; esac
+  if pd="$(cd -P "$rd" 2>/dev/null && pwd -P)"; then res="${pd%/}/${res##*/}"; fi
+  if [ "$res" != "$f" ]; then
+    tracked="$(git --literal-pathspecs ls-files -- "$res" 2>/dev/null)" || tracked=""
+    [ -z "$tracked" ] || pb_die "the scope file is a tracked file of this repository: $f" 3
+  fi
+  # CR: awk (and grep) of Git Bash on Windows drop the CR before a LF, so awk cannot see it; the line numbers that hold a CR are found
+  # here with tr, cmp and read, which keep it, and awk gets them as " 3 7 " (crl). Only a file that has a CR takes the slow loop.
+  crl=" "
+  if ! tr -d '\r' < "$f" | cmp -s - "$f"; then
+    cn=0
+    while IFS= read -r cl || [ -n "$cl" ]; do
+      cn=$((cn + 1))
+      case "$cl" in *$'\r'*) crl="$crl$cn " ;; esac
+    done < "$f"
+  fi
+  verr="$(LC_ALL=C awk -v crl="$crl" '
+    BEGIN { BOM = "\357\273\277" }
+    NR == 1 {
+      if (substr($0, 1, 3) == BOM) { print "line 1: starts with a UTF-8 BOM (save the file as UTF-8 without BOM)"; bad = 1; exit }
+      if (index(crl, " 1 ")) { print "line 1: CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
+      if ($0 != "# role-gate scope v1") { print "line 1 is not the header: # role-gate scope v1"; bad = 1; exit }
+      next }
+    { t = index($0, "\t")
+      if (!t) { print "line " NR ": no TAB"; bad = 1; exit }
+      k = substr($0, 1, t - 1); p = substr($0, t + 1)
+      if (k != "own" && k != "other") { print "line " NR ": unknown kind (want own or other)"; bad = 1; exit }
+      if (p == "") { print "line " NR ": empty path"; bad = 1; exit }
+      if (substr(p, 1, 1) == "/") { print "line " NR ": absolute path"; bad = 1; exit }
+      n = split(p, seg, "/")
+      for (j = 1; j <= n; j++) if (seg[j] == "." || seg[j] == "..") { print "line " NR ": a . or .. segment"; bad = 1; exit }
+      if (index(crl, " " NR " ")) { print "line " NR ": CR in the line (CRLF line ends? save the file with LF)"; bad = 1; exit }
+      key = k "\t" p
+      if (key in seen) { print "line " NR ": duplicate entry (also line " seen[key] ")"; bad = 1; exit }
+      seen[key] = NR
+      if (k == "own") nown++ }
+    END { if (bad) exit 1
+          if (NR == 0) { print "empty file, no header"; exit 1 }
+          if (!nown) { print "no own entry"; exit 1 } }' "$f")" ||
+    pb_die "malformed scope file $f: $verr" 3
+  SC_ENTRIES="$(LC_ALL=C awk 'NR > 1' "$f")"
+}
+
+# pb_scope_counts: prints "N M" (own and other entries of the loaded file)
+pb_scope_counts() {
+  printf '%s\n' "$SC_ENTRIES" | LC_ALL=C awk -F '\t' '$1 == "own" { a++ } $1 == "other" { b++ } END { print a + 0, b + 0 }'
+}
+
+pb_scope_classify() {
+  local tf rc
+  tf="$(mktemp "${TMPDIR:-/tmp}/pb-scope.XXXXXX")" || return 1
+  printf '%s\n' "$SC_ENTRIES" > "$tf" || { rm -f "$tf"; return 1; }
+  SCF="$tf" LC_ALL=C awk '
+    BEGIN {
+      f = ENVIRON["SCF"]
+      while ((getline line < f) > 0) {
+        t = index(line, "\t"); if (!t) continue
+        k = substr(line, 1, t - 1); p = substr(line, t + 1)
+        if (p == "") continue
+        if (substr(p, length(p), 1) == "/") { if (k == "own") po[++npo] = p; else px[++npx] = p }
+        else { if (k == "own") eo[p] = 1; else ex[p] = 1 } }
+      close(f) }
+    { r = "none"
+      if ($0 in eo) r = "own"
+      else for (i = 1; i <= npo; i++) if (substr($0, 1, length(po[i])) == po[i]) { r = "own"; break }
+      if (r == "none") {
+        if ($0 in ex) r = "other"
+        else for (i = 1; i <= npx; i++) if (substr($0, 1, length(px[i])) == px[i]) { r = "other"; break } }
+      print r }'
+  rc=$?
+  rm -f "$tf"
+  return "$rc"
+}

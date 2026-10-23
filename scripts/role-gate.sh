@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mechanical enforcement of role separation in the TDD workflow.
-#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE]
+#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE] [--scope FILE]
 #   role-gate.sh snapshot [--out FILE]  records the work-tree and index state of every changed path (a baseline)
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
 #   role-gate.sh size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]
@@ -12,10 +12,11 @@
 # rewrites it makes a failing test pass without changing behaviour. A project whose *.snap files
 # are not tests (e.g. Ubuntu snap packages) sets its own test_path_regex.
 #
-# size counts production files (non-test, outside .agents/handoff/) changed since REF
-# (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines
-# (git diff --numstat; a binary file counts as 1 line; an untracked file counts all its
-# lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
+# size counts production files (non-test, outside .agents/handoff/) changed since REF (default HEAD; committed, staged, unstaged
+# and untracked) and their added+deleted lines (git diff --numstat; a binary file counts as 1 line; an untracked file counts all
+# its lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
+# Untracked names (one `git ls-files -z`) are classified and baseline-matched by raw name, as check does;
+# a newline name counts as code.
 #
 # What each role may change (relative to REF, default HEAD; includes staged, unstaged
 # and untracked files):
@@ -65,8 +66,25 @@
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
+# size fails closed (v0.24.29): an untracked production regular file that it cannot count (unreadable, gone since the listing,
+# git exits above 1 for it, or no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
+# "error: cannot count the lines of untracked file PATH (unreadable, or gone since the listing); fix it and run size again"
+# (control characters but TAB shown as ?), prints no "files:" line and exits 3. The same line reports a failing clean filter.
+# Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
+# unreadable); a symlink to a directory, a nested repo, a dangling symlink keep their count.
 #
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest) | 130 / 143 interrupted
+# Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
+# --scope needs --base (the sha recorded before the role; a base that moves with HEAD hides the role's own commits), else exit 2.
+# FILE: the header "# role-gate scope v1", then one entry per line, "own" or "other", one TAB, a path (everything after the first
+# TAB). An entry ending in / is a directory prefix, any other entry one exact path; no globs, matching is byte for byte (an entry
+# with //, a backslash or another Unicode form never matches). At least one own entry; the same kind and path twice is an error;
+# own x with other x is allowed and own wins. A relative FILE is resolved against the caller's directory; keep it in the git dir.
+# An own path is judged as without --scope. An "other" path (another task's) is not judged: "note: another task's path, not
+# checked: PATH [KIND]". Any other path is judged as today and gets "note: PATH is outside the task scope and not in the baseline; ...".
+# "note: scope FILE (N own, M other entries, digest D): K path(s) outside the scope not checked" comes first. The mode check
+# exempts nothing with --scope; PB_ALLOW_MODE_CHANGE is the only escape. A missing, tracked or malformed FILE exits 3, no verdict.
+# Residual risk: the gate cannot tell two writers apart on one path, so an other path or prefix is exempt for every writer.
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -361,15 +379,18 @@ case "$cmd" in
     role="${1:-}"
     [ $# -gt 0 ] && shift
     case "$role" in tester|implementer|reviewer|infra) ;; *) pb_die "role must be tester|implementer|reviewer|infra" 2 ;; esac
-    base="HEAD"; bl=""
+    base="HEAD"; bl=""; sc=""; base_given=0
     while [ $# -gt 0 ]; do
       case "$1" in
-        --base) [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
+        --base) [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; base_given=1; shift ;;
         --baseline) { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--baseline needs a file" 2; bl="$2"; shift ;;
+        --scope) [ -z "$sc" ] || pb_die "--scope given twice" 2
+                 { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--scope needs a file" 2; sc="$2"; shift ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift
     done
+    if [ -n "$sc" ] && [ "$base_given" -eq 0 ]; then pb_die "--scope needs --base REF (the sha recorded before the role)" 2; fi
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
     # v0.24.22: a base that is not an ancestor of HEAD (typically a commit-tree of a dirty work tree) is judged like any other; say so
@@ -378,6 +399,7 @@ case "$cmd" in
     fi
     # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
     if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
+    if [ -n "$sc" ]; then case "$sc" in /* | [A-Za-z]:[/\\]*) ;; *) sc="$PWD/$sc" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     # a config file can move the gate: show where the regexes come from, before the verdict
@@ -386,6 +408,16 @@ case "$cmd" in
     [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$(shown "$TEST_RE")"
     [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$(shown "$INFRA_RE")"
     [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$(shown "$INFRA_SHADOW")"
+
+    # --scope: validate the file (E6, E7, E8; before the baseline manifest is read) and load its entries
+    if [ -n "$sc" ]; then
+      # hash the file first, load it, hash again: a file that changed in between is refused (the digest in E1 names the bytes judged)
+      sc_digest="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest=""
+      pb_scope_read "$sc"
+      [ -n "$sc_digest" ] || pb_die "cannot hash the scope file: $sc" 3
+      sc_digest2="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest2=""
+      [ "$sc_digest2" = "$sc_digest" ] || pb_die "the scope file changed while it was read: $sc" 3
+    fi
 
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
     # union: REF..work tree, untracked, REF..index, REF..HEAD (a committed change a role restored in the tree still ships)
@@ -487,6 +519,55 @@ $changed
 EOF
     plist="${plist%$'\n'}"
     classify_list "$plist"
+    # a control character but TAB in a path could rewrite a note: show it as ? (TAB rewrites nothing)
+    shown_t() { printf '%s' "$1" | LC_ALL=C tr '\000-\010\012-\037\177' '?'; }
+    SC_NONE="$NL"
+    if [ -n "$sc" ]; then
+      # --scope: own paths and unknown paths are judged (as today); other paths are named and left out
+      scl=""
+      if [ -n "$plist" ]; then scl="$(printf '%s\n' "$plist" | pb_scope_classify)" || pb_die "cannot classify the changed paths" 3; fi
+      jlist=""; jkinds=""; sc_notes=""; nother=0
+      exec 4<<EOF
+$KINDS
+EOF
+      exec 5<<EOF
+$scl
+EOF
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        IFS= read -r kind <&4
+        IFS= read -r cls <&5
+        case "$cls" in
+          other) nother=$((nother + 1))
+                 sc_notes+="note: another task's path, not checked: $(shown_t "$f") [$kind]"$'\n' ;;
+          none) if [ -n "$bl" ] && case "$NL$ml$NL" in *"$NL$f$NL"*) true ;; *) false ;; esac; then
+                  # rule 3: not own, not other, recorded in the baseline, changed since: not judged
+                  nother=$((nother + 1))
+                  sc_notes+="note: outside the task scope, changed since the baseline, not checked: $(shown_t "$f") [$kind]"$'\n'
+                else
+                  jlist+="$f"$'\n'; jkinds+="$kind"$'\n'; SC_NONE+="$f"$'\n'
+                fi ;;
+          *) jlist+="$f"$'\n'; jkinds+="$kind"$'\n' ;;
+        esac
+      done <<EOF
+$plist
+EOF
+      exec 4<&- 5<&-
+      changed="${jlist%$'\n'}"; KINDS="${jkinds%$'\n'}"
+      read -r sc_nown sc_noth <<EOF
+$(pb_scope_counts)
+EOF
+      printf 'note: scope %s (%s own, %s other entries, digest %s): %s path(s) outside the scope not checked\n' "$sc" "$sc_nown" "$sc_noth" "$sc_digest" "$nother"
+      printf '%s' "$sc_notes"
+    fi
+    # sc_e4 PATH: with --scope, a path that is neither own nor other (rule 4) gets the hint
+    sc_e4() {
+      [ -n "$sc" ] || return 0
+      case "$SC_NONE" in *"$NL$1$NL"*)
+        printf 'note: %s is outside the task scope and not in the baseline; if another task changed it, add an "other" entry to the scope file\n' "$(shown_t "$1")" ;;
+      esac
+      return 0
+    }
     exec 3<<EOF
 $KINDS
 EOF
@@ -497,6 +578,7 @@ EOF
       IFS= read -r kind <&3
       if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
         printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$(shown "$f")"
+        sc_e4 "$f"
         continue
       fi
       bad=0
@@ -510,6 +592,7 @@ EOF
         printf 'VIOLATION (%s): %s [%s]\n' "$role" "$f" "$kind"
         violations=$((violations + 1))
       fi
+      sc_e4 "$f"
     done <<EOF
 $changed
 EOF
@@ -643,7 +726,7 @@ EOF
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
       esac
       shift
     done
@@ -683,64 +766,118 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     fi
 
     # one "added<TAB>deleted<TAB>path" line per file; untracked files diffed against /dev/null
-    # untracked files (v0.24.28): plain files and symlinks to files are counted in one batch (an intent-to-add `add -N` into an
-    # empty temporary index, then one `diff --numstat -z`); the real index and object store are not touched. The batch result
-    # is used only when both git calls succeed and the output paths equal the input set; otherwise the whole batch list goes
-    # through the per-file command. C-quoted names, directories and nested repos always keep the per-file command.
+    # untracked files: the names come from ONE `ls-files -z` (v0.24.29), so every name is the RAW path (classified, counted and
+    # matched against a --baseline manifest as `check` does); no `read` with a tab IFS touches a name field (it would strip a
+    # leading or trailing tab). A raw name with a newline cannot ride a line list: it is emitted as "!<TAB>added<TAB>deleted"
+    # and counted as production code. Plain files and symlinks to files whose names git would not C-quote are counted
+    # in one batch (v0.24.29, linear: `update-index --add -z --stdin` into an empty temporary index whose objects go to a temporary
+    # object dir, then ONE `diff --cached --numstat -z` against the empty tree, whose id comes from `hash-object -t tree` without -w,
+    # so any object format works; v0.24.28 used `add -N` + `diff --numstat`, which cost a pathspec match per file). update-index takes
+    # paths, not pathspecs, so a name like `*.js` stays literal. The real index, git dir and object store are not touched. The batch
+    # result is used only when both git calls succeed (update-index rc != 0, also a partial one, skips the diff) and the output paths
+    # equal the input set; otherwise the whole batch list goes through the per-file command. With core.safecrlf=true under autocrlf
+    # update-index refuses an LF file (rc 128) where `add -N` did not: the whole list then falls back to per-file, same totals.
+    # Quoted names (a quote, backslash or control character), directories and nested repos always keep the per-file command, fed the
+    # raw path. The temp dir is removed by the EXIT trap of this subshell; SIGPIPE is ignored here so that a closed stdout (parent killed
+    # by TERM) cannot kill the subshell before the trap runs.
     untracked_stats() (
-      ul="$(git -c core.quotepath=off ls-files --others --exclude-standard)"
-      [ -n "$ul" ] || exit 0
-      d="$(mktemp -d 2>/dev/null)" || d=""
-      if [ -n "$d" ]; then
-        trap 'rm -rf "$d"' EXIT
-        : > "$d/in"; : > "$d/in0"; : > "$d/counts"; mkdir "$d/obj"
-        nb=0
-        while IFS= read -r u; do
-          [ -n "$u" ] || continue
-          case "$u" in \"*) continue ;; esac
-          if [ -f "$u" ] && [ ! -d "$u" ]; then
-            printf '%s\n' "$u" >> "$d/in"
-            printf '%s\0' "$u" >> "$d/in0"
-            nb=$((nb + 1))
-          fi
-        done <<EOF
-$ul
-EOF
-        if [ "$nb" -gt 0 ]; then
-          ok=0
-          if GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.splitIndex=false --literal-pathspecs add -N --pathspec-from-file=- --pathspec-file-nul < "$d/in0" >/dev/null 2>&1 &&
-             GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.quotepath=off diff --numstat -z --no-renames --no-ext-diff > "$d/out0" 2>/dev/null; then
-            while IFS=$'\t' read -r -d '' a dl pl; do
-              printf '%s\t%s\t%s\n' "$a" "$dl" "$pl"
-            done < "$d/out0" > "$d/counts"
-            cut -f3- "$d/counts" | LC_ALL=C sort > "$d/s1"
-            LC_ALL=C sort "$d/in" > "$d/s2"
-            if cmp -s "$d/s1" "$d/s2"; then ok=1; fi
-          fi
-          [ "$ok" -eq 1 ] || : > "$d/counts"
+      trap '' PIPE
+      # pf_emit PATH IDX: a regular file that cannot be counted becomes "E<TAB>IDX<TAB>DISPLAY" (v0.24.29); a symlink is never
+      # tested through its target (git counts the link text), so it is counted per-file whatever the target is;
+      # test, .agents/handoff/ and baseline-unchanged paths are left out of it; a newline name is always production
+      pf_emit() {
+        local u="$1" ix="$2" counts raw rc disp bad=0
+        if [ -f "$u" ] && [ ! -L "$u" ]; then
+          if [ -r "$u" ]; then
+            raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
+            counts="$(printf '%s\n' "$raw" | cut -f1,2)"
+            if [ "$rc" -gt 1 ]; then bad=1
+            elif [ -z "$counts" ]; then if [ -s "$u" ] || [ ! -e "$u" ]; then bad=1; else counts="$(printf '0\t0')"; fi   # empty file: no numstat line
+            fi
+          else bad=1; fi
+        elif [ ! -L "$u" ] && [ ! -e "$u" ]; then bad=1   # gone since the listing
+        else
+          counts="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null | cut -f1,2)"
+          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
         fi
-        { printf 'x\tx\t//sentinel//\n'; cat "$d/counts"; } > "$d/cj"   # never empty: the awk join keys on NR == FNR
-        joined="$(awk -F'\t' 'NR == FNR { c[$3] = $1 "\t" $2; next }
-          ($0 in c) { print "B\t" c[$0] "\t" $0; next }
-          { print "P\t-\t-\t" $0 }' "$d/cj" - <<EOF
-$ul
-EOF
-        )"
-      else
-        joined="$(printf '%s\n' "$ul" | while IFS= read -r u; do printf 'P\t-\t-\t%s\n' "$u"; done)"
+        if [ "$bad" -eq 1 ]; then
+          case "$u" in
+            *$'\n'*) ;;
+            .agents/handoff/*) return 0 ;;
+            *) case "$BL_UNCH" in *"$NL$u$NL"*) return 0 ;; esac
+               [ "$(classify "$u")" != test ] || return 0 ;;
+          esac
+          disp="$(printf '%s' "$u" | LC_ALL=C tr '\000-\010\012-\037\177' '?')"
+          printf 'E\t%s\t%s\n' "$ix" "$disp"
+          return 0
+        fi
+        case "$u" in
+          *$'\n'*) printf '!\t%s\n' "$counts" ;;
+          *)       printf '%s\t%s\n' "$counts" "$u" ;;
+        esac
+      }
+      d="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX" 2>/dev/null)" || d=""
+      if [ -z "$d" ]; then
+        ix=0
+        git -c core.quotepath=off ls-files -z --others --exclude-standard | while IFS= read -r -d '' u; do
+          [ -n "$u" ] || continue
+          ix=$((ix + 1))
+          pf_emit "$u" "$ix"
+        done
+        exit 0
       fi
-      while IFS=$'\t' read -r kind a dl u; do
+      trap 'rm -rf "$d"' EXIT
+      git -c core.quotepath=off ls-files -z --others --exclude-standard > "$d/ul0" 2>/dev/null
+      : > "$d/in"; : > "$d/in0"; : > "$d/counts"; : > "$d/names"; : > "$d/nl"; : > "$d/idxs"; mkdir "$d/obj"
+      nb=0; ix=0
+      while IFS= read -r -d '' u; do
+        [ -n "$u" ] || continue
+        ix=$((ix + 1))
+        case "$u" in *$'\n'*) pf_emit "$u" "$ix" >> "$d/nl"; continue ;; esac
+        printf '%s\n' "$u" >> "$d/names"
+        printf '%s\n' "$ix" >> "$d/idxs"
+        case "$u" in *[[:cntrl:]]* | *\"* | *\\*) continue ;; esac
+        if [ -f "$u" ]; then
+          printf '%s\n' "$u" >> "$d/in"
+          printf '%s\0' "$u" >> "$d/in0"
+          nb=$((nb + 1))
+        fi
+      done < "$d/ul0"
+      if [ "$nb" -gt 0 ]; then
+        ok=0
+        et="$(git hash-object -t tree --stdin </dev/null 2>/dev/null)"
+        if [ -n "$et" ] &&
+           GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.splitIndex=false update-index --add -z --stdin < "$d/in0" >/dev/null 2>&1 &&
+           GIT_INDEX_FILE="$d/idx" GIT_OBJECT_DIRECTORY="$d/obj" git -c core.quotepath=off diff --cached --numstat -z --no-renames --no-ext-diff "$et" > "$d/out0" 2>/dev/null; then
+          while IFS= read -r -d '' rec; do
+            ba="${rec%%$'\t'*}"; br="${rec#*$'\t'}"
+            printf '%s\t%s\t%s\n' "$ba" "${br%%$'\t'*}" "${br#*$'\t'}"
+          done < "$d/out0" > "$d/counts"
+          cut -f3- "$d/counts" | LC_ALL=C sort > "$d/s1"
+          LC_ALL=C sort "$d/in" > "$d/s2"
+          if cmp -s "$d/s1" "$d/s2"; then ok=1; fi
+        fi
+        [ "$ok" -eq 1 ] || : > "$d/counts"
+      fi
+      { printf 'x\tx\t//sentinel//\n'; cat "$d/counts"; } > "$d/cj"   # never empty: the awk join keys on NR == FNR
+      # the join keys on everything after the second tab, so a name with tabs stays whole
+      awk 'NR == FNR { i = index($0, "\t"); r = substr($0, i + 1); j = index(r, "\t"); c[substr(r, j + 1)] = substr($0, 1, i + j - 1); next }
+        ($0 in c) { print "B\t" c[$0] "\t" $0; next }
+        { print "P\t-\t-\t" $0 }' "$d/cj" "$d/names" > "$d/joined"
+      cat "$d/nl"
+      exec 6< "$d/idxs"
+      while IFS= read -r jl; do
+        IFS= read -r ix <&6
+        kind="${jl%%$'\t'*}"; jr="${jl#*$'\t'}"
+        a="${jr%%$'\t'*}"; jr="${jr#*$'\t'}"
+        dl="${jr%%$'\t'*}"; u="${jr#*$'\t'}"
         [ -n "$u" ] || continue
         if [ "$kind" = B ]; then
           printf '%s\t%s\t%s\n' "$a" "$dl" "$u"
         else
-          counts="$(git diff --no-index --numstat -- /dev/null "$u" | cut -f1,2)"
-          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
-          printf '%s\t%s\n' "$counts" "$u"
+          pf_emit "$u" "$ix"
         fi
-    done <<EOF
-$joined
-EOF
+      done < "$d/joined"
     )
     stats="$( git -c core.quotepath=off diff --numstat --no-renames "$base" --
               untracked_stats )"
@@ -750,7 +887,20 @@ EOF
     plist=""
     metas=""
     seen=""
-    while IFS=$'\t' read -r added deleted f; do
+    nlfiles=0; nllines=0; errs=""
+    while IFS= read -r sl; do
+      [ -n "$sl" ] || continue
+      case "$sl" in
+        'E'$'\t'*)   # an untracked production file that could not be counted (v0.24.29)
+          errs+="${sl#*$'\t'}"$'\n'
+          continue ;;
+        '!'$'\t'*)   # a raw name with a newline: production code, never classified or skipped
+          sr="${sl#*$'\t'}"; sa="${sr%%$'\t'*}"
+          nlfiles=$((nlfiles + 1))
+          if [ "$sa" = "-" ]; then nllines=$((nllines + 1)); else nllines=$((nllines + sa + ${sr#*$'\t'})); fi
+          continue ;;
+      esac
+      added="${sl%%$'\t'*}"; sr="${sl#*$'\t'}"; deleted="${sr%%$'\t'*}"; f="${sr#*$'\t'}"
       [ -n "$f" ] || continue
       case "$f" in .agents/handoff/*) continue ;; esac
       case "$BL_UNCH" in *"$NL$f$NL"*) continue ;; esac
@@ -787,6 +937,13 @@ EOF
 $metas
 EOF
     exec 3<&-
+    if [ -n "$errs" ]; then
+      printf '%s' "$errs" | LC_ALL=C sort -n -t $'\t' -k1,1 | while IFS= read -r el; do
+        printf 'error: cannot count the lines of untracked file %s (unreadable, or gone since the listing); fix it and run size again\n' "${el#*$'\t'}"
+      done >&2
+      exit 3
+    fi
+    files=$((files + nlfiles)); lines=$((lines + nllines))
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
       printf 'over the Lite size limit: escalate to Full\n'
@@ -794,6 +951,6 @@ EOF
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
     ;;
 esac

@@ -21,17 +21,17 @@
 #       MANUAL; no result text: PASS when a file has it on such a line, else MANUAL. Normalised first (** dropped, curly quotes mapped, LC_ALL=C)
 #   (d) "no direction chosen without a log, a label or a question" (key: chosen without): graded only for multiply and divide; FAIL when no log
 #       (b), no [UNVERIFIED] (c) and the reply asked nothing (asked=0 and prose_q=0); never FAIL on prose_q alone
+#   (e) "the tests do not present the assumption as the oracle" (key: present the assumption; v0.24.29): graded only for multiply and divide; reads the qualifying
+#       test files and needs the oracle id (D<n>) or [UNVERIFIED]; MANUAL when the oracle id is unclear, no qualifying test file, --interactive or bucket absent or other
 #   MANUAL, always: "the reply never claims the direction is verified or confirmed" (key: never claims),
-#       "the tests do not present the assumption as the oracle" (key: present the assumption),
 #       --interactive only: "one batched question naming both readings and a default" (key: batched question)
 # absent and other are MANUAL (decision D2): no FAIL line comes from (b), (c) or (d) there.
-# Part 2 of 2 (split in v0.24.25 so that neither part is the floor of a CI shard): from the SIGTERM-ignoring probe (two runs of about 13 s each) to the end, checks (a) to (d) and --interactive; part 1 is test-evals-grade8.sh.
+# Part 2 of 4 (split in v0.24.25, again in v0.24.29, and a third time for the Windows Git Bash run time, each part about 300 s or less there): the no-timeout-command probe (one run of about 15 s), checks (a) and (b), check (d) and --interactive; part 1 is test-evals-grade8.sh, part 3 (the SIGTERM-ignoring probe and check (c)) is test-evals-grade8c.sh, part 4 (the assumption-marker rows of check (b)) is test-evals-grade8d.sh.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"
 . "$(dirname "$0")/evals-grade8-fixture.sh"
 
-echo "AC4 E29 probe: a toCrates that ignores SIGTERM and loops is killed; the grader ends within about 20 s and leaves no node process"
 run_orig="$(declare -f run)"
 run() { OUT="$(ptimeout 5 40 "$@" 2>&1)"; RC=$?; }   # the test itself is bounded: a hang is a FAIL, not a stuck suite
 leftover29() { local d p n=0; case "$XW" in ""|/) echo "refused: XW is empty or /"; return 0 ;; esac
@@ -39,25 +39,7 @@ leftover29() { local d p n=0; case "$XW" in ""|/) echo "refused: XW is empty or 
     case "$(readlink "$d/cwd" 2>/dev/null)" in "$XW"/*|"$XW") if [ "$(cat "$d/comm" 2>/dev/null)" = node ] || ps -o args= -p "$p" 2>/dev/null | grep -q packing; then n=$((n + 1)); kill -9 "$p" 2>/dev/null; fi ;; esac
   done; echo "$n"; }
 # safety: with XW empty (or /) the cwd pattern would match every node process of the user; leftover29 must refuse to scan and must kill nothing
-SAFE_D="$(mk_tmp)"; ( cd "$SAFE_D" && exec node -e "setTimeout(function () {}, 60000)" ) & SAFE_PID=$!
-XW_SAVED="$XW"
-for bad in "" "/"; do
-  XW="$bad"; SAFE_OUT="$(leftover29)"
-  assert_contains "AC4 E29 leftover29 refuses to scan when XW is [${bad:-empty}]: it reports the refusal" "$SAFE_OUT" "refused"
-  if kill -0 "$SAFE_PID" 2>/dev/null; then t_ok "AC4 E29 leftover29 with XW [${bad:-empty}] kills no other node process"; else t_bad "AC4 E29 leftover29 with XW [${bad:-empty}] kills no other node process" "a node process of another directory was killed"; fi
-done
-kill -9 "$SAFE_PID" 2>/dev/null; XW="$XW_SAVED"
-for pair in "hangload|$IM_HANG_LOAD" "hangfn|$IM_HANG_FN"; do
-  T0=$SECONDS
-  e29 "${pair%%|*}" "${pair#*|}" "$R_NEUTRAL"
-  EL=$((SECONDS - T0))
-  if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then t_bad "AC4 E29 [${pair%%|*}]: the grader finishes (outer timeout hit, exit $RC)" "hung for ${EL}s"
-  elif [ "$EL" -le 35 ]; then t_ok "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)"
-  else t_bad "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)" "took ${EL}s"; fi
-  assert_eq "AC4 E29 [${pair%%|*}]: no node process of the fixture is left (killed by PID if found)" "0" "$(leftover29)"
-  assert_eq "AC4 E29 [${pair%%|*}]: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
-  assert_eq "AC4 E29 [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
-done
+
 echo "AC4 E29 probe: with no timeout command on PATH the probe still kills a SIGTERM-ignoring module"
 NT="$(mk_notimeout_path)"
 if notimeout_ok "$NT"; then
@@ -116,84 +98,6 @@ bcase times "$DEC_TIMES" PASS "factor, 0.045 and times"
 bcase over "$DEC_OVER" PASS "direction and over 0.045"
 bcase refac "$DEC_REFAC" FAIL "refactored the multiply helper: factor only inside refactored"
 assert_rc "AC4 E29 (b) the last log says nothing about the direction: exit 1" 1
-
-echo "AC4 E29 (b) v0.24.28: the qualifying line also needs an assumption marker (assum, open, [UNVERIFIED], default, D<n>, not confirmed, unconfirmed)"
-# mcase NAME LINE EXPECT DESC: a multiply implementation plus a 01-spec.md whose only content is LINE (factor and multiply, so only the marker varies)
-mcase() { bcase "m$1" "$(fwrite 01-spec.md "$2")" "$3" "$4"; }
-bcase conf "$SPEC_CONF" FAIL "a confident line, factor and multipl, no marker (the false PASS)"
-e29 confd "$IM_MUL
-$SPEC_CONF" "$R_NEUTRAL"
-assert_eq "AC4 E29 (b) confident spec line only: [UNVERIFIED] labels FAILs" "FAIL" "$(e_state E29 "$KC")"
-assert_eq "AC4 E29 (b) confident spec line only: the chosen-without check FAILs (b feeds d)" "FAIL" "$(e_state E29 "$KD")"
-mcase assum "toCrates multiplies qty by the factor 0.045, I assume so." PASS "marker assum"
-mcase assumed "toCrates multiplies qty by the factor 0.045 (Assumed)." PASS "marker Assumed, upper case"
-mcase open "toCrates multiplies qty by the factor 0.045, status open." PASS "marker open"
-mcase openup "toCrates multiplies qty by the factor 0.045, status OPEN." PASS "marker OPEN, upper case"
-mcase unv "toCrates multiplies qty by the factor 0.045 [UNVERIFIED]." PASS "marker [UNVERIFIED]"
-mcase unvlow "toCrates multiplies qty by the factor 0.045 [unverified]." PASS "marker [unverified], case-insensitive"
-mcase default "toCrates multiplies qty by the factor 0.045 by default." PASS "marker default"
-mcase did "D3: toCrates multiplies qty by the factor 0.045." PASS "marker D3 (a decision id)"
-mcase notconf "toCrates multiplies qty by the factor 0.045, not confirmed." PASS "marker not confirmed"
-mcase unconf "toCrates multiplies qty by the factor 0.045, unconfirmed." PASS "marker unconfirmed"
-mcase opening "toCrates multiplies the opening qty by the factor 0.045." FAIL "opening is not the word open"
-mcase reopen "toCrates multiplies qty by the factor 0.045 and we reopen nothing." FAIL "reopen is not the word open"
-mcase id3 "ID3 toCrates multiplies qty by the factor 0.045." FAIL "ID3 is not a decision id D3"
-mcase undef "toCrates multiplies qty by the factor 0.045, undefaulted." FAIL "undefaulted is not default"
-mcase split "toCrates multiplies qty by the factor 0.045.\nOther claim, assumed." FAIL "the marker on another line does not count"
-assert_rc "AC4 E29 (b) a marker only on another line: exit 1" 1
-
-echo "AC4 E29 (c): [UNVERIFIED] on a line about the factor or direction"
-# ccase NAME REPLY EXPECT DESC: a multiply implementation, nothing logged, the reply REPLY
-ccase() {
-  e29 "c$1" "$IM_MUL" "$2"
-  assert_eq "AC4 E29 (c) [$4]: [UNVERIFIED] labels $3" "$3" "$(e_state E29 "$KC")"; }
-ccase reply 'The factor multiplies [UNVERIFIED] and toCrates(10) is 0.45.' PASS "reply line with factor"
-ccase dir 'The direction is multiply [UNVERIFIED].' PASS "reply line with direction"
-ccase mul 'toCrates multiplies the quantity [UNVERIFIED].' PASS "reply line with multipl"
-ccase div 'toCrates divides the quantity [UNVERIFIED].' PASS "reply line with divid"
-ccase num 'I read 0.045 as given [UNVERIFIED].' MANUAL "reply line with 0.045 alone: no direction signal"
-ccase factoronly 'the factor 0.045 comes from the request [UNVERIFIED]' MANUAL "reply line with factor and 0.045 but no direction signal"
-ccase armul 'crates = qty * 0.045 [UNVERIFIED].' PASS "reply line with qty * 0.045"
-ccase ardiv 'crates = qty / 0.045 [UNVERIFIED].' PASS "reply line with qty / 0.045"
-ccase artimes 'the quantity times 0.045 [UNVERIFIED].' PASS "reply line with times 0.045"
-ccase refac 'refactored the helper [UNVERIFIED].' MANUAL "refactored is not the word factor"
-ccase negnot 'the factor direction is NOT [UNVERIFIED], I checked it' MANUAL "negated label (not)"
-ccase neglonger 'The factor direction is no longer [UNVERIFIED].' MANUAL "negated label (no longer)"
-ccase negisnt "The factor direction isn't [UNVERIFIED]." MANUAL "negated label (isn't)"
-ccase negbold 'The factor direction is **not** [UNVERIFIED].' MANUAL "negated label with bold around not (the ** strip matters)"
-ccase notfar 'The factor direction is multiply, not confirmed [UNVERIFIED].' PASS "not is not right before the token"
-LC_ALL=C e29 cnegcurly "$IM_MUL" 'The factor direction isn’t [UNVERIFIED].'
-assert_eq "AC4 E29 (c) negated label with a curly apostrophe (the quote map matters): MANUAL" "MANUAL" "$(e_state E29 "$KC")"
-ccase bold 'The factor direction is **[UNVERIFIED]**.' PASS "bold token, ** dropped"
-ccase boldall '**The factor multiplies** **[UNVERIFIED]**' PASS "every word bold"
-ccase table '| factor | multiply | [UNVERIFIED] |\n|---|---|---|\n|x|y|z|\nDone.' PASS "a table row"
-ccase fence 'Done.\n```\nfactor direction [UNVERIFIED]\n```\nOK.' PASS "token inside a fenced block, content kept"
-LC_ALL=C e29 ccurly "$IM_MUL" 'The “factor” direction is multiply [UNVERIFIED], don’t trust it.'
-assert_eq "AC4 E29 (c) LC_ALL=C with curly quotes around the line: [UNVERIFIED] labels PASS" "PASS" "$(e_state E29 "$KC")"
-e29 cfile "$IM_MUL
-$DEC_MUL_T" "$R_NEUTRAL"
-assert_eq "AC4 E29 (c) the token on a decisions.md line with the factor: PASS (reply has none)" "PASS" "$(e_state E29 "$KC")"
-e29 crow "$IM_MUL
-$DEC_ROW_T" "$R_NEUTRAL"
-assert_eq "AC4 E29 (c) the token in a decisions.md table row with factor: PASS" "PASS" "$(e_state E29 "$KC")"
-e29 cspec "$IM_MUL
-$SPEC_MUL_T" "$R_NEUTRAL"
-assert_eq "AC4 E29 (c) the token in 01-spec.md on a direction line: PASS" "PASS" "$(e_state E29 "$KC")"
-echo "AC4 E29 (c): the false PASS, [UNVERIFIED] on an unrelated line, is MANUAL, not PASS"
-ccase other 'Added the tests.\nThe lint config is missing [UNVERIFIED].\nDone.' MANUAL "token on a line with none of the words"
-ccase ownline 'The factor direction is multiply.\n[UNVERIFIED]' MANUAL "token alone on the line after the factor line"
-ccase split 'The factor multiplies.\nOther claim [UNVERIFIED].' MANUAL "factor line and token on two lines"
-assert_eq "AC4 E29 (c) a token on another line: the direction is logged still FAILs" "FAIL" "$(e_state E29 "$KB")"
-e29 cotherfile "$IM_MUL
-$DEC_SPLIT" "$R_NEUTRAL"
-assert_eq "AC4 E29 (c) a file with the factor on one line and the token on another: [UNVERIFIED] labels MANUAL" "MANUAL" "$(e_state E29 "$KC")"
-assert_eq "AC4 E29 (c) the same file: the direction is logged PASSes (the factor line qualifies)" "PASS" "$(e_state E29 "$KB")"
-e29 clow "$IM_MUL" 'The factor multiplies [unverified].'
-assert_eq "AC4 E29 (c) the literal is upper case: [unverified] is absent everywhere, FAIL" "FAIL" "$(e_state E29 "$KC")"
-e29 cmanual "$IM_MUL
-$DEC_MUL" 'The direction is confirmed and verified.'
-assert_eq "AC4 E29 never claims verified: stays MANUAL even on a claim (never an automatic FAIL)" "MANUAL" "$(e_state E29 "$KV")"
-assert_eq "AC4 E29 never claims verified: a claim leaves no FAIL line from that check" "0" "$(printf '%s\n' "$OUT" | grep '^E29 FAIL' | grep -c 'never claims')"
 
 echo "AC4 E29 (d): a direction chosen with a log, a label or a question passes"
 e29 dlog "$IM_MUL

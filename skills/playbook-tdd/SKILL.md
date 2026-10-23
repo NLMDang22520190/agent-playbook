@@ -76,9 +76,9 @@ reversible fix.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
-   if it exits 1, escalate to Full.
+   if it exits 1, escalate to Full; exit 3: fix named file, run again.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended. A user-visible change (UI, HTTP API, CLI output, file format) needs one
+   logic is recommended. On a test built on an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
    real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
    command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
@@ -105,7 +105,7 @@ CLI flag and a file format, or two endpoints).
 **Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low.
 
 ## Preconditions
-- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand.
+- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand. Concurrent tasks: `--scope`, see `references/harnesses.md`.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
   then confirm with the user (or run `playbook-setup`).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
@@ -141,7 +141,7 @@ code, in one batched message; for the rest choose a default, log it in `.agents/
 `templates/decisions.md`, and mark the code `DECISION[Dn]`. Get the user's OK on the AC list when
 the request was ambiguous. Re-read the AC table before each commit.
 
-Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention, the spec needs a worked example with a concrete expected result, confirmed by the user or a source document and recorded as an AC that the tests use verbatim; without one, ask (headless: log it in decisions.md as open and label every claim that depends on it [UNVERIFIED]); details: `references/tdd-guide.md#oracle`.
+Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention, the spec needs a worked example with a concrete expected result, confirmed by the user or a source document and recorded as an AC that the tests use verbatim; without one, ask (headless: log it in decisions.md as open and label every claim that depends on it [UNVERIFIED] (a test on it: [UNVERIFIED] or Dn)); details: `references/tdd-guide.md#oracle`.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
 **Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough.

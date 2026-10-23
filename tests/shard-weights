@@ -1,14 +1,18 @@
-# Seconds per suite on the windows-latest CI runner (shard jobs). v0.24.27: suites changed in v0.24.26 take run
-# 39771266412 (v0.24.26) alone; suites changed in v0.24.25 the median (mean) of 39746450470 (v0.24.25) and 39771266412;
-# the others the median of 39715102925 (v0.24.24), 39746450470 and 39771266412, per L-0003. All weights are CI-measured except the three named below.
+# Seconds per suite on the windows-latest CI runner (shard jobs). Most weights are the median of CI runs 39715102925
+# (v0.24.24), 39746450470 (v0.24.25) and 39771266412 (v0.24.26), per L-0003; test-tdd-step-z.sh 58 and
+# test-release-stale-count.sh 67 come from run 39891830540 (v0.24.28) alone.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-# test-tdd-step-z.sh 56 (new in v0.24.28): an estimate, Linux seconds x 28; replace it with a CI time (L-0009).
-# v0.24.28 lane S estimate (not CI-measured): test-role-gate-size.sh 364 = about 13 s on Linux (green prototype run) x 28.
-# test-release-stale-count.sh 66 (new in v0.24.28): an estimate, the local Windows Git Bash time; replace it with a CI time (L-0009).
+# v0.24.29 estimates (not CI-measured; local Windows Git Bash time; replace each with a CI time, L-0009):
+# test-role-gate-size.sh 566 (run alone; 263 rows, was 84), test-role-gate-scope.sh 528 (two suites in parallel),
+# test-tdd-step-scope.sh 465 (run alone), and, run three in parallel on one machine: test-evals-grade8b.sh 253 (rows moved
+# to 8c and 8d), test-evals-grade8c.sh 243, test-evals-grade8d.sh 112, test-evals-grade9.sh 591, test-evals-grade9b.sh 521,
+# test-evals-grade7c.sh 30.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 522
+test-role-gate-scope.sh 528
+test-tdd-step-scope.sh 465
 test-evals-grade6-b.sh 482
 test-evals-grade.sh 427
 test-role-gate-baseline.sh 427
@@ -16,10 +20,15 @@ test-ci-tree-tested.sh 411
 test-tdd-step-d.sh 398
 test-evals-grade4.sh 397
 test-evals-grade6.sh 375
-test-role-gate-size.sh 364
+test-role-gate-size.sh 566
 test-tdd-step.sh 356
 test-tdd-step-b.sh 349
-test-evals-grade8b.sh 338
+test-evals-grade8b.sh 253
+test-evals-grade8c.sh 243
+test-evals-grade8d.sh 112
+test-evals-grade9.sh 591
+test-evals-grade9b.sh 521
+test-evals-grade7c.sh 30
 test-role-gate.sh 335
 test-leak-check.sh 334
 test-evals-runner.sh 324
@@ -78,10 +87,10 @@ test-feedback.sh 76
 test-tdd-step-x.sh 74
 test-run-checks-gnu9.sh 71
 test-leak-check-uname.sh 69
-test-release-stale-count.sh 66
+test-release-stale-count.sh 67
 test-conf.sh 64
 test-cost.sh 60
-test-tdd-step-z.sh 56
+test-tdd-step-z.sh 58
 test-docs-only.sh 54
 test-install.sh 50
 test-tdd-step-j.sh 49
