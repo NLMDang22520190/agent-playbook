@@ -797,8 +797,10 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] |
           else bad=1; fi
         elif [ ! -L "$u" ] && [ ! -e "$u" ]; then bad=1   # gone since the listing
         else
-          counts="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null | cut -f1,2)"
-          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+          raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
+          counts="$(printf '%s\n' "$raw" | cut -f1,2)"
+          if [ -L "$u" ] && [ ! -d "$u" ] && { [ "$rc" -gt 1 ] || [ -z "$counts" ]; }; then bad=1   # a symlink (not to a directory) git cannot count (G1)
+          else [ -n "$counts" ] || counts="$(printf '0\t0')"; fi   # empty file: no numstat line
         fi
         if [ "$bad" -eq 1 ]; then
           case "$u" in
