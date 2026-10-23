@@ -62,6 +62,12 @@ for c in $(git log --format=%H HEAD -- README.md); do
   fi
   count_sha="$c"; break
 done
+# The release commit "release: vX.Y.Z" (X.Y.Z = VERSION at HEAD) is a checkpoint too: the flow makes it after a fresh full run plus
+# readme-count, and a test change that keeps the total (a refactor) never produces a README count commit. The newer one wins.
+rel_sha="$(git log --format='%H %s' HEAD | awk -v s="release: v$head_ver" '{ h = $1; sub(/^[^ ]+ /, ""); if ($0 == s) { print h; exit } }')"
+if [ -n "$rel_sha" ]; then
+  if [ -n "$count_sha" ] && git merge-base --is-ancestor "$count_sha" "$rel_sha" 2>/dev/null; then count_sha="$rel_sha"; fi
+fi
 if [ -n "$count_sha" ]; then
   changed="$(git diff --name-only "$count_sha" HEAD -- 'tests/*.sh' 2>/dev/null)$(git status --porcelain -- 'tests/*.sh' 2>/dev/null)"
   if [ -n "$changed" ]; then
