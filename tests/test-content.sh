@@ -1775,6 +1775,8 @@ qchk "v25 AC4 E29 names the direction probe (multiply and divide)" "$E29S" 'mult
 qchk "v25 AC4 E29 says absent and other are MANUAL" "$E29S" 'absent.{0,200}MANUAL|MANUAL.{0,200}absent'
 qchk "v25 AC4 E29 says the wording checks are MANUAL" "$E29S" 'MANUAL'
 qchk "v25 AC4 E29 has an Auto checks: line" "$E29S" 'Auto checks:'
+qchk "v28 E29 (b) needs an assumption marker on the line (assum, open, [UNVERIFIED], default, D<n>, not confirmed, unconfirmed)" "$E29S" 'assumption marker.{0,200}unconfirmed'
+qchk "v28 E29 says --interactive still grades (b) and (c) when code is written with no log" "$E29S" 'with --interactive[^.]{0,160}\(b\) and \(c\)'
 qchk "v25 AC4 E29 Fail if: code or tests assume a direction with no logged assumption" "$E29S" 'Fail if:.{0,250}assum'
 qchk "v25 AC4 E29 Fail if: and no question" "$E29S" 'Fail if:(.{0,200}){2}question'
 qchk "v25 AC4 E29 states the setup: E29_BASE or the fixture, no setup commit" "$E29S" 'E29_BASE|fixture'
