@@ -1706,7 +1706,7 @@ lite_has "v25 AC1 Lite step 1 names the oracle rule and points to Phase 1" 1 'or
 lite_has "v25 AC1 R2-1 Lite step 1 still asks an ambiguous, hard-to-reverse reading before any code" 1 "$ASK_FIRST"
 SKW="$(wc -w < "$SKILL" | tr -d ' ')"; SKB="$(budget_of skills/playbook-tdd/SKILL.md)"
 if [ -n "$SKB" ] && [ "$SKW" -le "$SKB" ]; then t_ok "v25 AC1 SKILL.md is within its word budget ($SKW of $SKB)"; else t_bad "v25 AC1 SKILL.md is within its word budget" "words $SKW budget [$SKB]"; fi
-if [ -n "$SKB" ] && [ "$SKB" -le 3650 ]; then t_ok "v25 D3 the SKILL.md budget is raised by at most 50 words (3650) ($SKB)"; else t_bad "v25 D3 the SKILL.md budget is raised by at most 50 words (3650)" "budget [$SKB]"; fi
+if [ -n "$SKB" ] && [ "$SKB" -le 3700 ]; then t_ok "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23) ($SKB)"; else t_bad "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23)" "budget [$SKB]"; fi
 
 echo "v0.24.25 AC1 references/tdd-guide.md#oracle: the details"
 if grep -qE '^## .*\{#oracle\}' "$GUIDE" 2>/dev/null; then t_ok "v25 AC1 tdd-guide.md has a heading with {#oracle}"; else t_bad "v25 AC1 tdd-guide.md has a heading with {#oracle}" "no '## ... {#oracle}' in $GUIDE"; fi
@@ -1797,5 +1797,35 @@ if grep -qE '^grade_E29\(\)' "$RUNEV29"; then t_ok "v25 AC4 run-evals.sh defines
 if grep -q 'E29_BASE=' "$RUNEV29"; then t_ok "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)"; else t_bad "v25 R2-7 run-evals.sh sets E29_BASE (the fixture HEAD)" "no E29_BASE= in run-evals.sh"; fi
 E11BASE29="$(grep -E 'E11_BASE="\$\(git' "$RUNEV29" | head -n 1)"
 if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |)]|$)'; then t_ok "v25 R2-7 E29 is not in the E11_BASE list"; else t_bad "v25 R2-7 E29 is not in the E11_BASE list" "line: [$E11BASE29]"; fi
+
+echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
+# AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
+if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
+# AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
+sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
+sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
+CLAIMDN='claim that depends on it.{0,12}\[UNVERIFIED\] or Dn'
+if section "$SKILL" '^### Phase 1' | tr '\n' ' ' | grep -qiE -- "$CLAIMDN"; then t_bad "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)" "claim clause allows Dn"; else t_ok "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)"; fi
+# AC2: Lite step 4, one sentence.
+lite_has "v0.24.29 AC2 Lite step 4: on a test built on an unconfirmed oracle, a killed mutant pins the assumed reading" 4 'unconfirmed oracle.{0,60}killed mutant pins the assumed reading'
+lite_has "v0.24.29 AC2 Lite step 4: it does not catch a bug" 4 'pins the assumed reading.{0,40}(does not|not) catch a bug'
+# AC1 + AC2: tdd-guide.md#oracle
+sec_flat_has "v0.24.29 AC1 tdd-guide oracle: the test names Dn or [UNVERIFIED]" "$GUIDE" "$OR" 'test[^.]{0,120}(Dn|D<n>)[^.]{0,40}\[UNVERIFIED\]|test[^.]{0,120}\[UNVERIFIED\][^.]{0,40}(Dn|D<n>)'
+sec_flat_has "v0.24.29 AC1 tdd-guide oracle: in its name or in a comment" "$GUIDE" "$OR" 'name or (in )?a comment|comment or (in )?(its|the) name'
+sec_flat_has "v0.24.29 AC2 tdd-guide oracle: a killed mutant pins the assumed reading" "$GUIDE" "$OR" 'pins the assumed reading'
+sec_flat_has "v0.24.29 AC2 tdd-guide oracle: not reported as catching a bug" "$GUIDE" "$OR" 'pins the assumed reading.{0,120}not[^.]{0,30}(catch|caught)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,120}pins the assumed reading'
+# AC2: test-quality.md, next to "Expected: each mutant ..."
+TQ="$TDD/references/test-quality.md"
+flat_has "v0.24.29 AC2 test-quality.md: pins the assumed reading, within 600 characters of the Expected: each mutant line" "$TQ" 'Expected: each mutant.{0,600}pins the assumed reading'
+flat_has "v0.24.29 AC2 test-quality.md: names the unconfirmed oracle case" "$TQ" 'unconfirmed (oracle|reading).{0,200}pins the assumed reading|pins the assumed reading.{0,200}unconfirmed (oracle|reading)'
+# AC1: tester.md marker rule (the oracle line of step 1)
+sec_flat_has "v0.24.29 AC1 tester.md Do: a test on an unconfirmed oracle names Dn or [UNVERIFIED]" "$TESTER" '^## Do' 'unconfirmed[^.]{0,200}(Dn|D<n>)[^.]{0,60}\[UNVERIFIED\]|unconfirmed[^.]{0,200}\[UNVERIFIED\][^.]{0,60}(Dn|D<n>)'
+sec_flat_has "v0.24.29 AC1 tester.md Do: in the test name or a comment" "$TESTER" '^## Do' '(Dn|D<n>|\[UNVERIFIED\])[^.]{0,100}(name or (in )?a comment|comment or (in )?(its|the) name)'
+flat_has "v0.24.29 AC1 tester.md keeps the verbatim oracle sentence" "$TESTER" 'oracle AC:? assert the exact input and expected value from its anchor'
+# AC2: final-report.md one line under Found, not fixed
+sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: a killed mutant on an unconfirmed oracle pins the assumed reading" "$FINAL" '^## Found, not fixed' 'pins the assumed reading'
+sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: it is not a caught bug" "$FINAL" '^## Found, not fixed' 'pins the assumed reading.{0,80}not[^.]{0,30}(catch|caught|found)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,80}pins the assumed reading'
+# leak pin: the new text stays generic (passes today by design)
+if grep -rqE '0\.045|toCrates' "$TDD" 2>/dev/null; then t_bad "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd" "leak found"; else t_ok "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd"; fi
 
 t_summary
