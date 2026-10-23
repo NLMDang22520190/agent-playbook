@@ -368,8 +368,9 @@ ac3_run() { # NAME DIR [lock]
   lk="$(mk_tmp)"; GENV=(X_PB=1 TMPDIR="$lk")
   if [ -n "$lock" ]; then printf 'held\n' > "$gd/index.lock"; fi
   s0="$(gsnap "$d")"; o0="$(objlist "$d")"
-  cmp_gate "AC3 $name: plain size equals v0.24.27" "$d" size $WIDE
-  cmp_gate "AC3 $name: size --baseline equals v0.24.27" "$d" size $WIDE --baseline "$MF0"
+  # ac3_files holds a git-quoted name (routed-tab, 2 lines): AC1 counts its lines, v0.24.27 counted 0 (quoted_count is 0 on NTFS)
+  cmp_q "AC3 $name: plain size equals v0.24.27 (+2 lines per git-quoted name)" 0 2 "$d" size $WIDE
+  cmp_q "AC3 $name: size --baseline equals v0.24.27 (+2 lines per git-quoted name)" 0 2 "$d" size $WIDE --baseline "$MF0"
   s1="$(gsnap "$d")"; o1="$(objlist "$d")"
   chk "AC3 $name: real index sha256, git dir and common dir listing, index.lock unchanged" "$s0" "$s1"
   chk "AC3 $name: no new loose object in the real object store" "$o0" "$o1"
