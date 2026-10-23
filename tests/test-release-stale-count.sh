@@ -107,4 +107,28 @@ bump "$D"; printf '![v](https://img.shields.io/badge/version-1.2.4-4F5BD5)\n' > 
 rpc "$D" "$B"
 assert_rc "(f) README without a count: exit 0" 0
 
+# (g) test change (count total unchanged), then the release commit "release: vX.Y.Z" with the same count: the release commit is a checkpoint
+D="$(mk)"; B="$(sha "$D")"
+printf 'echo reworded\n' >> "$D/tests/test-a.sh"; cm "$D" refactor
+bump "$D"; readme 1.2.4 100 > "$D/README.md"; cm "$D" "release: v1.2.4"
+rpc "$D" "$B"
+assert_rc "(g) test change, then release commit with an unchanged count: exit 0" 0
+assert_contains "(g) success line" "$OUT" "release PR check passed"
+
+# (g2) a release commit for another version is not a checkpoint
+D="$(mk)"; B="$(sha "$D")"
+printf 'echo reworded\n' >> "$D/tests/test-a.sh"; cm "$D" refactor
+bump "$D"; readme 1.2.4 100 > "$D/README.md"; cm "$D" "release: v1.2.3"
+rpc "$D" "$B"
+assert_rc "(g2) release commit naming another version is no checkpoint: exit 1" 1
+
+# (h) release commit, then a later test change: refused, names the release commit
+D="$(mk)"; B="$(sha "$D")"
+bump "$D"; readme 1.2.4 100 > "$D/README.md"; cm "$D" "release: v1.2.4"
+R="$(sha "$D")"
+printf 'echo late\n' >> "$D/tests/test-a.sh"; cm "$D" fix
+rpc "$D" "$B"
+assert_rc "(h) test change after the release commit: exit 1" 1
+assert_contains "(h) message names the release commit" "$OUT" "tests changed after ${R}"
+
 t_summary
