@@ -687,17 +687,21 @@ no_verdict "C-fix F2 ... no verdict"
 echo "C-fix F3 a scope file that is a symlink into a tracked file is E7 too"
 new_repo
 mkdir -p docs; sf docs/scope.txt own:src/; git add docs/scope.txt; git commit -q -m "tracked scope"
-SF="$R/.git/pb-scope-link"; ln -s "$R/docs/scope.txt" "$SF"
+SF="$R/.git/pb-scope-link"; ln -s "$R/docs/scope.txt" "$SF" 2>/dev/null
+if [ -L "$SF" ]; then
 sc implementer
 assert_rc "C-fix F3 E7 through a symlink: exit 3" 3
 has_line "C-fix F3 E7 the message is exact" "error: the scope file is a tracked file of this repository: $SF"
 no_verdict "C-fix F3 E7 no verdict"
+else t_skip 3 "C-fix F3 E7 through a symlink (ln -s makes a copy here, no symlink: Git Bash on Windows)"; fi
 new_repo
 mkdir -p docs; sf docs/scope.txt own:src/; git add docs/scope.txt; git commit -q -m "tracked scope"
-mkdir -p "$R/.git/hop"; ln -s "$R/docs/scope.txt" "$R/.git/hop/l2"; SF="$R/.git/pb-scope-link2"; ln -s "hop/l2" "$SF"
+mkdir -p "$R/.git/hop"; ln -s "$R/docs/scope.txt" "$R/.git/hop/l2" 2>/dev/null; SF="$R/.git/pb-scope-link2"; ln -s "hop/l2" "$SF" 2>/dev/null
+if [ -L "$SF" ] && [ -L "$R/.git/hop/l2" ]; then
 sc implementer
 assert_rc "C-fix F3 E7 through two links (a relative link first): exit 3" 3
 has_line "C-fix F3 E7 ... the message is exact" "error: the scope file is a tracked file of this repository: $SF"
+else t_skip 2 "C-fix F3 E7 through two links (ln -s makes a copy here, no symlink: Git Bash on Windows)"; fi
 new_repo
 sf "$R/.git/pb-real" own:src/; SF="$R/.git/pb-scope-ok"; ln -s "$R/.git/pb-real" "$SF"
 sc implementer
