@@ -713,6 +713,7 @@ ac15_run() {
     t_skip 3 "$name (the gate is not the leader of its own process group here: pgid [$pgid] pid [$pid])"; return
   fi
   chk "$name: control: a temporary entry exists in TMPDIR while the gate is inside the batch (so the empty-TMPDIR row below can fail)" "1" "$([ -n "$(ls -A "$lk")" ] && echo 1 || echo 0)"
+  chk "$name: S4 AC20 every temporary entry is named pbgate.XXXXXX (the mktemp -d has the template, as BL_TMPW)" "" "$(ls -A "$lk" | grep -v '^pbgate\.[A-Za-z0-9]\{6\}$' || true)"
   kill -TERM "$pid" 2>/dev/null; : > "$ad/release"
   i=0
   while [ "$i" -lt 300 ]; do
@@ -726,6 +727,48 @@ ac15_run() {
 }
 mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (plain size)" "$R" size $WIDE
 mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (size --baseline)" "$R" size $WIDE --baseline "$MF0"
+
+# ---------------------------------------------------------------- S4 route-only mutants and nits (AC18, AC19, AC20)
+echo "S4 AC18 the batch sorts under LC_ALL=C: a caller in en_US.UTF-8 still gets the batch and the same totals"
+# s4_run DIR LOCALE ARGS... -> one run under the counting shim with LC_ALL=LOCALE; stdout in S4_OUT, call counts in S4_UI / S4_PF
+s4_run() {
+  local d="$1" loc="$2"; shift 2
+  : > "$SHIMLOG"; : > "$SHIMFIRED"
+  S4_OUT="$( cd "$d" && env X_PB=1 PLAYBOOK_HOME="$PLAYBOOK_HOME" LC_ALL="$loc" PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PATH="$SHIM:$PATH" bash "$NEWG" "$@" 2>/dev/null </dev/null )"
+  S4_UI="$(lbl update-index)"; S4_PF="$(lbl diff-noindex)"
+}
+S4_EN="$(locale -a 2>/dev/null | grep -i '^en_US\.utf-\{0,1\}8$' | head -n 1 || true)"
+S4_ORD_C="$(printf 'a.js\nB.js\n_c.js\nZ.js\n' | LC_ALL=C sort | tr '\n' ' ')"
+S4_ORD_EN="$(printf 'a.js\nB.js\n_c.js\nZ.js\n' | LC_ALL="${S4_EN:-C}" sort 2>/dev/null | tr '\n' ' ')"
+if [ -z "$S4_EN" ] || [ "$S4_ORD_C" = "$S4_ORD_EN" ]; then
+  t_skip 4 "S4 AC18 (no en_US.UTF-8 locale here, or it sorts a.js B.js _c.js Z.js like C)"
+else
+  chk "S4 AC18 control: C and $S4_EN order the four names differently" "1" "$([ "$S4_ORD_C" != "$S4_ORD_EN" ] && echo 1 || echo 0)"
+  mkrepo; for n in a B _c Z; do printf 'l1\nl2\n' > "$n.js"; done
+  s4_run "$R" "$S4_EN" size $WIDE
+  chk "S4 AC18 en_US run: totals equal the C-locale run (4 files, 8 lines)" "files: 4/1000 lines: 8/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC18 en_US run: the batch is used (one update-index call)" "1" "$S4_UI"
+  chk "S4 AC18 en_US run: no per-file diff --no-index call (the two sorted lists matched)" "0" "$S4_PF"
+fi
+
+echo "S4 AC19 untracked paths that are not regular files go per file, never into the batch input"
+if [ "$SYMLINKS" != 1 ]; then t_skip 6 "S4 AC19 (no symlinks on this file system)"
+else
+  mkrepo; printf 'x\n' > f1.js; ln -s nowhere.js dang.js
+  s4_run "$R" C size $WIDE
+  chk "S4 AC19 dangling symlink + 1 file: counted, 2 files 2 lines" "files: 2/1000 lines: 2/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC19 dangling symlink: exactly one per-file diff --no-index call (it is not in the batch)" "1" "$S4_PF"
+  chk "S4 AC19 dangling symlink: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
+  mkrepo; printf 'x\n' > f1.js; ln -s src sd
+  s4_run "$R" C size $WIDE
+  chk "S4 AC19 symlink to a directory + 1 file: 2 files, 1 line (a directory link has no numstat line, as v0.24.27)" "files: 2/1000 lines: 1/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC19 symlink to a directory: exactly one per-file diff --no-index call (it is not in the batch)" "1" "$S4_PF"
+  chk "S4 AC19 symlink to a directory: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
+fi
+
+echo "S4 AC20 the batch directory has the pbgate template (row in S3 AC15) and the redundant [ ! -d ] is gone"
+chk "S4 AC20 role-gate.sh holds no [ -f \"\$u\" ] && [ ! -d \"\$u\" ] (a regular file is never a directory)" "0" "$(grep -c '\[ -f "\$u" \] && \[ ! -d "\$u" \]' "$NEWG" | tr -d ' ' || true)"
+chk "S4 AC20 every mktemp -d in role-gate.sh carries the pbgate.XXXXXX template" "0" "$(grep 'mktemp -d' "$NEWG" | grep -vc 'pbgate\.XXXXXX' | tr -d ' ' || true)"
 
 # ---------------------------------------------------------------- AC5 the existing size rows are not edited here
 echo "AC5 the existing size rows live in test-role-gate.sh, -batch.sh, -baseline.sh and -b.sh (not copied here; they must stay green and unchanged)"
