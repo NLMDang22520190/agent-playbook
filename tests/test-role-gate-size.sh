@@ -18,6 +18,12 @@
 #   S1-AC2  tests/ and .agents/handoff/ names with a tab, quote or backslash are not production; a --baseline manifest matches the raw name;
 #           a raw name with a newline is production even under tests/ (D13/D23); an unreadable tests/ name is not an error (D2)
 #   S1-AC3  a 101-line production file with a quoted name: over the limit, exit 1
+# v0.24.29 lane S2 (fail closed): an untracked production regular file or symlink to a file that size cannot count (unreadable, gone after the
+# listing, git exits above 1, no numstat line for a non-empty file) prints one `error: cannot count the lines of untracked file PATH ...` line
+# per file (ls-files -z order, control chars but TAB as ?), no `files:` line, exit 3; test and .agents/handoff paths are not affected (D2, D23):
+#   S2-AC4 unreadable (chmod 000)   S2-AC5 vanished / per-file git failure; size-0 file still 0 lines   S2-AC6 stderr pinned byte for byte
+#   S2-AC7 test / handoff unaffected, newline names are production   S2-AC8 symlink to a dir, nested repos, dangling symlink, fifo keep their count
+#   S2-AC16 header exit line and SKILL.md Lite step name the exit 3
 # The expected values are v0.24.27's own scripts (git archive 0b6af9c), run beside the current gate on the same repo.
 # Kinds that this file system cannot hold (tab or quote in a name, symlinks) are skipped, not failed.
 . "$(dirname "$0")/lib.sh"
@@ -36,7 +42,7 @@ WIDE="--max-files 1000 --max-lines 100000"
 SHIM="$(mk_tmp)"; SHIMLOG="$DT/shim.log"; SHIMFIRED="$DT/shim.fired"
 cat > "$SHIM/git" <<'SHIMEOF'
 #!/usr/bin/env bash
-# PB_SHIM_MODE: count (default) | add-fail | diff-fail | add-rc | diff-rc | diff-drop | diff-dup | race. Every call appends "<label> idx=<0|1>" to PB_SHIM_LOG.
+# PB_SHIM_MODE: count (default) | add-fail | diff-fail | add-rc | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128. Every call appends "<label> idx=<0|1>" to PB_SHIM_LOG.
 sub=""; skip=0; hasN=0; hasz=0; hasnum=0; hasnoindex=0
 for a in "$@"; do
   if [ -z "$sub" ]; then
@@ -58,6 +64,12 @@ case "${PB_SHIM_MODE:-count}:$label" in
   diff-drop:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@" | tr '\0' '\n' | sed 1d | tr '\n' '\0'; exit 0 ;;
   diff-dup:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@" | tr '\0' '\n' | sed 1p | tr '\n' '\0'; exit 0 ;;
   add-rc:add-N | diff-rc:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@"; exit 1 ;;
+  vanish:ls-files) : > "$PB_SHIM_FIRED.listed" ;;   # v0.24.29 S2: after the listing, the first count call finds PB_VANISH_PATH gone
+  vanish:add-N | vanish:update-index | vanish:diff-batch | vanish:diff-noindex)
+    if [ -e "$PB_SHIM_FIRED.listed" ] && [ -e "$PB_VANISH_PATH" ]; then rm -f "$PB_VANISH_PATH"; echo 1 >> "$PB_SHIM_FIRED"; fi ;;
+  uncount-none:add-N | uncount-none:update-index | uncount-none:diff-batch | uncount-none:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;   # no output at all
+  uncount-128:add-N | uncount-128:update-index | uncount-128:diff-batch) exit 1 ;;   # the batch is refused; the per-file command fails with 128
+  uncount-128:diff-noindex) printf 'fatal: shim\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 128 ;;
   race:add-N | race:diff-noindex)   # a listed file turns into a directory right before the first command that reads it
     if [ -f "$PB_RACE_PATH" ]; then rm -f "$PB_RACE_PATH"; mkdir -p "$PB_RACE_PATH"; printf 'a\nb\nc\n' > "$PB_RACE_PATH/inner"; fi ;;
 esac
@@ -285,6 +297,160 @@ if s1_put $'tests/a\nb.js' 2; then
   nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines): counted as production (D23): 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size
   nrow "S1 AC2 untracked tests/a<LF>b.js (2 lines), --baseline of a clean repo: 1 file, 2 lines" "$R" "files: 1/3 lines: 2/100 (base=HEAD)" 0 size --baseline "$MF0"
 else t_skip 2 "S1 AC2 tests/a<LF>b.js (this file system cannot hold a newline in a name)"; fi
+
+# ---------------------------------------------------------------- S2 fail closed: an uncountable untracked production file is exit 3
+echo "S2 an untracked production file that size cannot count fails closed: stderr line, no files: line, exit 3 (D1, D21)"
+S2_MSG_TAIL="(unreadable, or gone since the listing); fix it and run size again"
+s2_err() { printf 'error: cannot count the lines of untracked file %s %s' "$1" "$S2_MSG_TAIL"; }   # one expected stderr line (no trailing newline)
+# chmod 000 does not block reads as root or on NTFS: the unreadable rows skip there (as tests/test-role-gate-baseline.sh:636-640)
+S2_UP="$(mk_tmp)/probe"; printf 'x\n' > "$S2_UP"; chmod 000 "$S2_UP" 2>/dev/null
+if cat "$S2_UP" >/dev/null 2>&1; then S2_CHMOD=0; else S2_CHMOD=1; fi
+# s2row NAME DIR EXPECTED_STDERR ARGS... -> the current gate prints no stdout (no `files:` line), exit 3, and stderr is EXACTLY EXPECTED_STDERR
+s2row() {
+  local name="$1" d="$2" experr="$3"; shift 3
+  oneside n "$NEWG" "$d" "$@"
+  chk "$name: stdout empty (no files: line), exit 3" $'\nrc=3' "$(cat "$DT/n.out")"$'\nrc='"$(cat "$DT/n.rc")"
+  chk "$name: stderr is exactly the cannot-count line(s)" "$experr" "$(cat "$DT/n.err")"
+}
+# an s2 gate run under the counting shim in MODE (the shim env is set only for this call); PATH = shim first
+s2shim() { # MODE NAME DIR EXPECTED_STDERR ARGS...
+  local mode="$1"; shift
+  GENV=(X_PB=1 PB_SHIM_MODE="$mode" PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_VANISH_PATH="${S2_VANISH:-}"); GPATH="$SHIM:$PATH"
+  : > "$SHIMLOG"; : > "$SHIMFIRED"; rm -f "$SHIMFIRED.listed"
+  s2row "$@"
+  unset GPATH; GENV=(X_PB=1)
+}
+
+if [ "$S2_CHMOD" = 1 ]; then
+  # AC4: unreadable production file (plain name, plain and --baseline)
+  mkrepo; printf 'a\nb\nc\n' > src/unr.js; chmod 000 src/unr.js; R_UNR="$R"
+  s2row "S2 AC4 unreadable (chmod 000) untracked src/unr.js" "$R_UNR" "$(s2_err src/unr.js)" size
+  s2row "S2 AC4 unreadable untracked src/unr.js, --baseline of a clean repo" "$R_UNR" "$(s2_err src/unr.js)" size --baseline "$MF0"
+  # an unreadable file next to a readable one: the readable one does not make a total (no files: line at all)
+  mkrepo; printf 'a\nb\nc\n' > src/unr.js; chmod 000 src/unr.js; printf 'ok\n' > src/ok.js
+  s2row "S2 AC4 unreadable src/unr.js next to a readable src/ok.js: still no total" "$R" "$(s2_err src/unr.js)" size
+  # AC4: the same on a file with a git-quoted name (tab): the raw name is in the line
+  mkrepo
+  if s1_put "src/$(s1_name tab js)" 2; then
+    chmod 000 "src/$(s1_name tab js)"
+    s2row "S2 AC4 unreadable src/a<TAB>b.js (git-quoted name): the raw name (a real TAB) is in the line" "$R" "$(s2_err "src/$(s1_name tab js)")" size
+  else t_skip 2 "S2 AC4 unreadable tab-named file (this file system cannot hold a tab in a name)"; fi
+
+  # AC6: several uncountable files: one line each, in ls-files -z order (byte order, not creation order); control chars but TAB shown as ?
+  mkrepo; printf 'ok\n' > src/m.js
+  mk_ok=1
+  for nm in src/z.js $'src/t\tb.js' $'src/n\nx.js' $'src/c\003d.js' src/a.js; do
+    if ! { : > "$nm" 2>/dev/null && printf 'l1\nl2\n' > "$nm" && chmod 000 "$nm"; }; then mk_ok=0; fi
+  done
+  if [ "$mk_ok" = 1 ]; then
+    exp6="$(s2_err src/a.js)"$'\n'"$(s2_err 'src/c?d.js')"$'\n'"$(s2_err 'src/n?x.js')"$'\n'"$(s2_err $'src/t\tb.js')"$'\n'"$(s2_err src/z.js)"
+    s2row "S2 AC6 five uncountable files (created z, t<TAB>, n<LF>, c<ETX>, a): five lines in ls-files -z order, control chars but TAB as ?" "$R" "$exp6" size
+    s2row "S2 AC6 the same five files, --baseline of a clean repo" "$R" "$exp6" size --baseline "$MF0"
+  else t_skip 4 "S2 AC6 five uncountable files (this file system cannot hold the names)"; fi
+  mkrepo; for nm in src/z.js src/a.js; do printf 'l1\n' > "$nm"; chmod 000 "$nm"; done
+  s2row "S2 AC6 two unreadable files (created z, a): two lines, a first" "$R" "$(s2_err src/a.js)"$'\n'"$(s2_err src/z.js)" size
+
+  # AC7 / D2: a test path or .agents/handoff/ file is not counted and causes no error, also when unreadable
+  mkrepo; printf 'ok\n' > src/p.js; mkdir -p .agents/handoff tests
+  printf 'a\n' > tests/u.js; printf 'a\n' > .agents/handoff/h.md; chmod 000 tests/u.js .agents/handoff/h.md
+  s1_put ".agents/handoff/$(s1_name tab md)" 2 && chmod 000 ".agents/handoff/$(s1_name tab md)"
+  nrow "S2 AC7 unreadable tests/u.js, .agents/handoff/h.md and .agents/handoff/a<TAB>b.md + 1-line src/p.js: all skipped, no error: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  assert_not_contains "S2 AC7 unreadable test and handoff files: no 'cannot count' line on stderr" "$(cat "$DT/n.err")" "cannot count"
+  nrow "S2 AC7 the same, --baseline of a clean repo" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF0"
+  assert_not_contains "S2 AC7 the same, --baseline: no 'cannot count' line on stderr" "$(cat "$DT/n.err")" "cannot count"
+  # an unreadable test file next to an unreadable production file: only the production file is named
+  mkrepo; printf 'a\n' > tests/u.js; chmod 000 tests/u.js; printf 'a\nb\n' > src/unr.js; chmod 000 src/unr.js
+  s2row "S2 AC7 unreadable tests/u.js + unreadable src/unr.js: exit 3 names only src/unr.js" "$R" "$(s2_err src/unr.js)" size
+  # D13/D23: a raw name with a newline is production even under tests/ or .agents/handoff/: unreadable -> exit 3
+  mkrepo
+  if s1_put $'tests/a\nb.js' 2; then
+    chmod 000 $'tests/a\nb.js'
+    s2row "S2 AC7 unreadable tests/a<LF>b.js (production by D23): exit 3, the newline shown as ?" "$R" "$(s2_err 'tests/a?b.js')" size
+  else t_skip 2 "S2 AC7 unreadable tests/a<LF>b.js (this file system cannot hold a newline in a name)"; fi
+  mkrepo
+  if s1_put $'.agents/handoff/a\nb.md' 2; then
+    chmod 000 $'.agents/handoff/a\nb.md'
+    s2row "S2 AC7 unreadable .agents/handoff/a<LF>b.md (production by D23): exit 3, the newline shown as ?" "$R" "$(s2_err '.agents/handoff/a?b.md')" size
+  else t_skip 2 "S2 AC7 unreadable .agents/handoff/a<LF>b.md (this file system cannot hold a newline in a name)"; fi
+else
+  t_skip 22 "S2 AC4/AC6/AC7 unreadable rows (chmod 000 does not block reads here: root or NTFS)"
+fi
+
+# AC5: a file that vanishes after the listing (the shim deletes it right before the first count call; the tracked numstat runs before the
+# listing, and hash-object is not a trigger because --baseline hashes the work tree first): same exit 3, same line
+mkrepo; printf 'a\nb\n' > src/v.js; printf 'ok\n' > src/ok.js; R_V="$R"
+S2_VANISH=src/v.js
+s2shim vanish "S2 AC5 src/v.js vanishes after the listing" "$R_V" "$(s2_err src/v.js)" size
+chk "S2 AC5 control: the shim really deleted src/v.js after the listing (it fired, and the file is gone)" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R_V/src/v.js" ] && echo 1 || echo 0)"
+mkrepo; printf 'a\nb\n' > src/v.js; printf 'ok\n' > src/ok.js; R_V="$R"
+s2shim vanish "S2 AC5 src/v.js vanishes after the listing, --baseline of a clean repo" "$R_V" "$(s2_err src/v.js)" size --baseline "$MF0"
+chk "S2 AC5 control: --baseline: the shim really deleted src/v.js after the listing" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R_V/src/v.js" ] && echo 1 || echo 0)"
+# a tab-named file (routed per-file) vanishes the same way
+mkrepo
+if s1_put "src/$(s1_name tab js)" 2; then
+  S2_VANISH="src/$(s1_name tab js)"
+  s2shim vanish "S2 AC5 src/a<TAB>b.js vanishes after the listing" "$R" "$(s2_err "src/$(s1_name tab js)")" size
+else t_skip 2 "S2 AC5 tab-named file that vanishes (this file system cannot hold a tab in a name)"; fi
+# D2: a test file that vanishes is not an error
+mkrepo; printf 'a\nb\n' > tests/gone.js; printf 'ok\n' > src/p.js; S2_VANISH=tests/gone.js
+GENV=(X_PB=1 PB_SHIM_MODE=vanish PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED" PB_VANISH_PATH="$S2_VANISH"); GPATH="$SHIM:$PATH"; : > "$SHIMFIRED"; rm -f "$SHIMFIRED.listed"
+nrow "S2 AC7 tests/gone.js vanishes after the listing: not an error: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+assert_not_contains "S2 AC7 vanished test file: no 'cannot count' line on stderr" "$(cat "$DT/n.err")" "cannot count"
+chk "S2 AC7 control: the shim really deleted tests/gone.js" "1" "$([ -s "$SHIMFIRED" ] && [ ! -e "$R/tests/gone.js" ] && echo 1 || echo 0)"
+unset GPATH; GENV=(X_PB=1); S2_VANISH=
+
+# AC5: the per-file count itself fails (batch refused too, so the file reaches the per-file command): git exits above 1, or prints no
+# numstat line for a non-empty file -> exit 3; a regular file of size 0 still counts 1 file, 0 lines
+mkrepo; printf 'a\nb\n' > src/p.js; R_P="$R"
+s2shim uncount-128 "S2 AC5 per-file git exits 128 for src/p.js (2 lines)" "$R_P" "$(s2_err src/p.js)" size
+s2shim uncount-128 "S2 AC5 per-file git exits 128 for src/p.js, --baseline of a clean repo" "$R_P" "$(s2_err src/p.js)" size --baseline "$MF0"
+chk "S2 AC5 control: the per-file command was reached (a diff --no-index in the shim log)" "1" "$(grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+s2shim uncount-none "S2 AC5 per-file git prints no numstat line for the non-empty src/p.js (exit 1)" "$R_P" "$(s2_err src/p.js)" size
+chk "S2 AC5 control: the per-file command was reached (a diff --no-index in the shim log)" "1" "$(grep -q '^diff-noindex' "$SHIMLOG" && echo 1 || echo 0)"
+mkrepo; : > src/empty.js
+GENV=(X_PB=1 PB_SHIM_MODE=uncount-none PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"
+nrow "S2 AC5 a size-0 src/empty.js with no numstat line from git: still 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
+chk "S2 AC5 size-0 file: no cannot-count line on stderr" "" "$(cat "$DT/n.err")"
+unset GPATH; GENV=(X_PB=1)
+mkrepo; : > src/empty.js; printf 'a\nb\n' > src/two.js
+nrow "S2 AC5 control (no shim): a size-0 file and a 2-line file: 2 files, 2 lines" "$R" "files: 2/3 lines: 2/100 (base=HEAD)" 0 size
+
+# AC8: a path that is not a regular file or a symlink to a file keeps its v0.24.27 count and never causes exit 3
+echo "S2 AC8 non-regular kinds keep their count and never exit 3"
+if [ "$SYMLINKS" = 1 ]; then
+  mkrepo; ln -s src sd
+  nrow "S2 AC8 untracked symlink to a directory: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
+  chk "S2 AC8 symlink to a directory: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+  mkrepo; ln -s nowhere.js dang.js
+  nrow "S2 AC8 untracked dangling symlink alone: 1 file, 1 line (the link text), exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+  chk "S2 AC8 dangling symlink: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+  nrow "S2 AC8 untracked dangling symlink alone, --baseline of a clean repo: 1 file, 1 line" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size --baseline "$MF0"
+else t_skip 5 "S2 AC8 symlink kinds (this file system has none)"; fi
+mkrepo; git init -q nested && ( cd nested && git config user.email t@example.invalid && git config user.name t && printf 'a\n' > f && git add f && git commit -q -m n )
+nrow "S2 AC8 nested repo with a commit: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
+chk "S2 AC8 nested repo with a commit: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+mkrepo; git init -q emptynest
+nrow "S2 AC8 nested repo without commits: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
+chk "S2 AC8 nested repo without commits: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
+if mkrepo && mkfifo pipe.fifo 2>/dev/null; then
+  printf 'ok\n' > src/p.js
+  nrow "S2 AC8 a fifo next to a 1-line src/p.js: the fifo is not listed and not counted: 1 file, 1 line, exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
+else t_skip 1 "S2 AC8 fifo (mkfifo is not available here)"; fi
+# the non-regular kinds do not hide a regular uncountable file next to them, and are not named in the error
+if [ "$S2_CHMOD" = 1 ] && [ "$SYMLINKS" = 1 ]; then
+  mkrepo; ln -s src sd; ln -s nowhere.js dang.js; git init -q nested; printf 'a\nb\n' > src/unr.js; chmod 000 src/unr.js
+  s2row "S2 AC8 symlink to a directory, dangling symlink, nested repo + unreadable src/unr.js: exit 3 names only src/unr.js" "$R" "$(s2_err src/unr.js)" size
+else t_skip 2 "S2 AC8 non-regular kinds next to an unreadable file (chmod 000 does not block reads, or no symlinks)"; fi
+
+# AC16 (the docs the spec puts in S2: the header, the exit line, SKILL.md; the method comment and CHANGELOG are S3 / the release)
+echo "S2 AC16 the docs name the size exit 3"
+HDR="$(sed -n '1,/^set -u$/p' "$PB_ROOT/scripts/role-gate.sh")"
+EXITL="$(printf '%s\n' "$HDR" | sed -n '/^# Exit:/,/(INT \/ TERM)/p' | tr '\n' ' ')"
+case "$EXITL" in *"untracked"*) t_ok "S2 AC16 the header exit line names an untracked file that size cannot count as an exit-3 cause" ;; *) t_bad "S2 AC16 the header exit line names an untracked file that size cannot count as an exit-3 cause" "exit line: [$EXITL]" ;; esac
+case "$HDR" in *"cannot count the lines of untracked file"*) t_ok "S2 AC16 the header says size prints the cannot-count line" ;; *) t_bad "S2 AC16 the header says size prints the cannot-count line" "no 'cannot count the lines of untracked file' in the header (before set -u)" ;; esac
+SKL="$(sed -n '/^### Lite workflow/,/^### Exempt/p' "$PB_ROOT/skills/playbook-tdd/SKILL.md" | tr '\n' ' ')"
+case "$SKL" in *"size --base"*"exit 3"* | *"size --base"*"exits 3"*) t_ok "S2 AC16 SKILL.md Lite step 3 says what exit 3 from size means" ;; *) t_bad "S2 AC16 SKILL.md Lite step 3 says what exit 3 from size means" "no 'exit 3' / 'exits 3' after 'size --base' in the Lite workflow" ;; esac
+case "$SKL" in *"exit 3"*"fix"*"again"* | *"exits 3"*"fix"*"again"*) t_ok "S2 AC16 SKILL.md says to fix the named file and run size again" ;; *) t_bad "S2 AC16 SKILL.md says to fix the named file and run size again" "no 'fix ... again' next to exit 3 in the Lite workflow" ;; esac
 
 # ---------------------------------------------------------------- AC2 git calls do not grow with the number of files
 echo "AC2 the number of git calls does not depend on the number of untracked files (counting git shim)"
