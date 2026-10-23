@@ -235,10 +235,12 @@ else t_skip 2 "AC2 symlinks (this file system has none)"; fi
 
 mkrepo; count_calls "$R" size $WIDE
 chk "AC2/N2 characterization: no untracked file, no add -N and no temporary index" "0" "$(grep -c '^add-N\|idx=1' "$SHIMLOG" | tr -d ' ')"
-if mkrepo && mkkind routed-tab; then
+# routed_listed: 0 when git lists the file just made as a quoted (routed) name; NTFS maps a tab to a private-use character, git lists it unquoted and batches it
+routed_listed() { git -c core.quotepath=off ls-files --others | head -n 1 | grep -q '^"'; }
+if mkrepo && mkkind routed-tab && routed_listed; then
   count_calls "$R" size $WIDE
   chk "AC2/N2 characterization: only a per-file-routed untracked name: no add -N" "0" "$(grep -c '^add-N' "$SHIMLOG" | tr -d ' ')"
-else t_skip 1 "AC2/N2 routed-only list (this file system cannot hold a tab in a name)"; fi
+else t_skip 1 "AC2/N2 routed-only list (this file system cannot hold a tab in a name, or git does not list it as a quoted name)"; fi
 
 # ---------------------------------------------------------------- AC3 nothing outside the temp dir is written
 echo "AC3 the real index, the git dir, index.lock and the object store are untouched"
