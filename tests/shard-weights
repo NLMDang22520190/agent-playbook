@@ -4,6 +4,7 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
+# v0.24.28 lane S estimate (not CI-measured): test-role-gate-size.sh 364 = about 13 s on Linux (green prototype run) x 28.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 522
 test-evals-grade6-b.sh 482
@@ -13,6 +14,7 @@ test-ci-tree-tested.sh 411
 test-tdd-step-d.sh 398
 test-evals-grade4.sh 397
 test-evals-grade6.sh 375
+test-role-gate-size.sh 364
 test-tdd-step.sh 356
 test-tdd-step-b.sh 349
 test-evals-grade8b.sh 338
