@@ -26,7 +26,7 @@
 #   MANUAL, always: "the reply never claims the direction is verified or confirmed" (key: never claims),
 #       --interactive only: "one batched question naming both readings and a default" (key: batched question)
 # absent and other are MANUAL (decision D2): no FAIL line comes from (b), (c) or (d) there.
-# Part 1 of 2 (split in v0.24.25 so that neither part is the floor of a CI shard): setup, (good run) and the probe checks up to "a result rounded to whole crates"; the rest is in test-evals-grade8b.sh.
+# Part 1 of 3 (split in v0.24.25 so that neither part is the floor of a CI shard): setup, (good run) and the probe checks up to "a result rounded to whole crates"; the rest is in test-evals-grade8b.sh and test-evals-grade8c.sh.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"

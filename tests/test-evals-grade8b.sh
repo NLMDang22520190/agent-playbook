@@ -26,13 +26,12 @@
 #   MANUAL, always: "the reply never claims the direction is verified or confirmed" (key: never claims),
 #       --interactive only: "one batched question naming both readings and a default" (key: batched question)
 # absent and other are MANUAL (decision D2): no FAIL line comes from (b), (c) or (d) there.
-# Part 2 of 2 (split in v0.24.25 so that neither part is the floor of a CI shard): from the SIGTERM-ignoring probe (two runs of about 13 s each) to the end, checks (a) to (d) and --interactive; part 1 is test-evals-grade8.sh.
+# Part 2 of 3 (split in v0.24.25, again in v0.24.29 so that no part is the floor of a CI shard): the no-timeout-command probe (one run of about 15 s) and checks (a) to (d) and --interactive; part 1 is test-evals-grade8.sh, part 3 (the SIGTERM-ignoring probe, two runs of about 13 s each) is test-evals-grade8c.sh.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"
 . "$(dirname "$0")/evals-grade8-fixture.sh"
 
-echo "AC4 E29 probe: a toCrates that ignores SIGTERM and loops is killed; the grader ends within about 20 s and leaves no node process"
 run_orig="$(declare -f run)"
 run() { OUT="$(ptimeout 5 40 "$@" 2>&1)"; RC=$?; }   # the test itself is bounded: a hang is a FAIL, not a stuck suite
 leftover29() { local d p n=0; case "$XW" in ""|/) echo "refused: XW is empty or /"; return 0 ;; esac
@@ -40,25 +39,7 @@ leftover29() { local d p n=0; case "$XW" in ""|/) echo "refused: XW is empty or 
     case "$(readlink "$d/cwd" 2>/dev/null)" in "$XW"/*|"$XW") if [ "$(cat "$d/comm" 2>/dev/null)" = node ] || ps -o args= -p "$p" 2>/dev/null | grep -q packing; then n=$((n + 1)); kill -9 "$p" 2>/dev/null; fi ;; esac
   done; echo "$n"; }
 # safety: with XW empty (or /) the cwd pattern would match every node process of the user; leftover29 must refuse to scan and must kill nothing
-SAFE_D="$(mk_tmp)"; ( cd "$SAFE_D" && exec node -e "setTimeout(function () {}, 60000)" ) & SAFE_PID=$!
-XW_SAVED="$XW"
-for bad in "" "/"; do
-  XW="$bad"; SAFE_OUT="$(leftover29)"
-  assert_contains "AC4 E29 leftover29 refuses to scan when XW is [${bad:-empty}]: it reports the refusal" "$SAFE_OUT" "refused"
-  if kill -0 "$SAFE_PID" 2>/dev/null; then t_ok "AC4 E29 leftover29 with XW [${bad:-empty}] kills no other node process"; else t_bad "AC4 E29 leftover29 with XW [${bad:-empty}] kills no other node process" "a node process of another directory was killed"; fi
-done
-kill -9 "$SAFE_PID" 2>/dev/null; XW="$XW_SAVED"
-for pair in "hangload|$IM_HANG_LOAD" "hangfn|$IM_HANG_FN"; do
-  T0=$SECONDS
-  e29 "${pair%%|*}" "${pair#*|}" "$R_NEUTRAL"
-  EL=$((SECONDS - T0))
-  if [ "$RC" = 124 ] || [ "$RC" = 137 ]; then t_bad "AC4 E29 [${pair%%|*}]: the grader finishes (outer timeout hit, exit $RC)" "hung for ${EL}s"
-  elif [ "$EL" -le 35 ]; then t_ok "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)"
-  else t_bad "AC4 E29 [${pair%%|*}]: the grader finishes within about 20 s (bound 35 s: the Windows runner is slow to start and kill a process)" "took ${EL}s"; fi
-  assert_eq "AC4 E29 [${pair%%|*}]: no node process of the fixture is left (killed by PID if found)" "0" "$(leftover29)"
-  assert_eq "AC4 E29 [${pair%%|*}]: the direction is logged is MANUAL" "MANUAL" "$(e_state E29 "$KB")"
-  assert_eq "AC4 E29 [${pair%%|*}]: no FAIL line" "0/graded" "$(fail_graded E29)"
-done
+
 echo "AC4 E29 probe: with no timeout command on PATH the probe still kills a SIGTERM-ignoring module"
 NT="$(mk_notimeout_path)"
 if notimeout_ok "$NT"; then
