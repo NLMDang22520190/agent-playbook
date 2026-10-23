@@ -247,8 +247,20 @@ pb_scope_counts() {
   printf '%s\n' "$SC_ENTRIES" | LC_ALL=C awk -F '\t' '$1 == "own" { a++ } $1 == "other" { b++ } END { print a + 0, b + 0 }'
 }
 
-pb_scope_classify() {
-  local tf rc
+# _pb_scope_sig SIG: handler of pb_scope_classify (runs in its subshell): remove the temp file, restore the
+# default action of SIG and re-raise it on the subshell, so callers see a signal death (130 / 143). The own pid
+# comes from sh (bash 3.2 has no BASHPID) and only here, to keep the per-call cost down.
+_pb_scope_sig() {
+  rm -f "$tf"
+  trap - "$1"
+  kill -"$1" "$(exec sh -c 'echo "$PPID"')"
+}
+
+pb_scope_classify() (
+  tf=""
+  trap 'rm -f "$tf"' EXIT
+  trap '_pb_scope_sig INT' INT
+  trap '_pb_scope_sig TERM' TERM
   tf="$(mktemp "${TMPDIR:-/tmp}/pb-scope.XXXXXX")" || return 1
   printf '%s\n' "$SC_ENTRIES" > "$tf" || { rm -f "$tf"; return 1; }
   SCF="$tf" LC_ALL=C awk '
@@ -271,4 +283,4 @@ pb_scope_classify() {
   rc=$?
   rm -f "$tf"
   return "$rc"
-}
+)
