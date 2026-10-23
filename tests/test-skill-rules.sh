@@ -264,7 +264,7 @@ done
 
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
-if [ -n "$TB" ] && [ "$TW" -le "$TB" ]; then t_ok "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650): $TW <= $TB"; else t_bad "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650)" "$TW words, cap [$TB]"; fi
+if [ -n "$TB" ] && [ "$TW" -le "$TB" ]; then t_ok "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23): $TW <= $TB"; else t_bad "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23)" "$TW words, cap [$TB]"; fi
 WANT=$(( (TW + 49) / 50 * 50 ))
 assert_eq "R13 the playbook-tdd budget is the new count rounded up to the next 50" "$WANT" "$TB"
 t_summary
