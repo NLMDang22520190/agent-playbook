@@ -329,3 +329,21 @@ The installed v0.24.26 was run from Windows Git Bash with the Claude Code harnes
 The agent logged "D1 [OPEN - oracle unconfirmed] Direction: crates = qty * 0.045 (literal "with the factor"). Alternative: qty / 0.045." in `.agents/handoff/decisions.md`. Check (b) accepts only multipl, divid, × or ÷ as direction words, so it missed the ASCII `*` and `/`. Checks (c) and (d) passed, and the reply named both readings and asked for a confirmation. v0.24.27 accepts the arithmetic form, and this run's files are a PASS fixture.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 20: v0.24.28 installed - E29 (2026-10-23, approved by the user)
+
+The installed v0.24.28 was run from Windows Git Bash with the Claude Code harness and `--clean-env`. The aim was to check the v0.24.28 assumption-marker rule for check (b) on a real run.
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E29 | 5/5 | 2 (1 pass, 1 partial) | 0.43 | first clean auto pass on a real run |
+
+The agent logged "D1 (OPEN oracle): ... read as qty * 0.045 ... [UNVERIFIED]" in `.agents/handoff/decisions.md`. It made no AskUserQuestion call. Its reply called the reading a guess, named `qty / 0.045` as the other reading, and asked for a check.
+
+Manual items, graded by the orchestrator:
+- **Reply never claims the direction is verified: PASS.** The reply says "this is a guess".
+- **Tests do not present the assumption as the oracle: PARTIAL.**
+  - `tests/packing.test.js` asserts `toCrates(1000) === 45` under the name "converts a quantity with the factor 0.045". Neither the name nor a comment refers to D1 or the assumption.
+  - The reply also says a `*` to `/` mutation shows "the tests do catch the wrong direction", which treats the assumed direction as correct.
+
+Evidence: transcripts kept locally, not in the repo (they hold local paths).

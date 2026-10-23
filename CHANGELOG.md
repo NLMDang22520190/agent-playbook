@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.24.29 - 2026-10-23
+- **role-gate size counts quoted names right and fails closed (Full):**
+  - **Raw names:** untracked names are read from one `ls-files -z`, so a name git would quote (spaces, tabs, non-ASCII) is classified and counted by its real name. A name with a newline counts as production.
+  - **Exit 3:** an untracked production file that cannot be counted (unreadable, or gone since the listing) stops the gate with `error: cannot count the lines of untracked file PATH ...`, one line per file. It used to count as 0 lines. `size --baseline` can now report fewer files than v0.24.28 when a recorded path matches by its raw name.
+  - **Linear batch:** all countable untracked files go through one `update-index --add -z --stdin` in a temporary index and one `diff --cached --numstat -z`; any failure falls back to the whole list per file. 70k files: 34 s instead of 149 s. The real index, git dir and object store stay untouched (sha256 repositories included).
+  - **Symlinks** are counted by their link text on every route.
+- **Concurrent tasks in one checkout: `--scope FILE` (Full, feedback #9 #10):**
+  - `role-gate.sh check ROLE --scope FILE --base SHA` judges only the task's own paths. Paths the scope file declares as another task's, or that the baseline recorded, are exempt; a recorded path that changed since the baseline is reported, not judged.
+  - `tdd-step.sh --scope FILE` passes the scope to every gate and commits only the task's own paths.
+  - A bad scope file (missing, a symlink, CR line endings, duplicates) or a path the gate cannot classify exits 3 with an exact message. `references/harnesses.md` documents the format under "Several tasks, one repository".
+- **A test on an unconfirmed oracle (Full, Run 20):**
+  - playbook-tdd: a test built on an assumed reading carries `[UNVERIFIED]` or the decision id in its name or a comment, and a killed mutant on it "pins the assumed reading; it does not catch a bug". The same rule is in tdd-guide, test-quality, the tester role and the final report.
+  - E29 check (e) grades it: the test file must name the oracle's decision id or `[UNVERIFIED]`.
+  - The SKILL.md word budget goes from 3650 to 3700 (user decision); SKILL.md is 3683 words.
+- **E27/E28 graders (Lite):** "and" and "but" end a negation chain ("yet" does not); a failing nan test next to a keep phrase grades MIXED, not KEEP; a tab counts as a word gap.
+- **Windows Git Bash portability:**
+  - `pb_scope_read` finds CR lines with `tr`/`cmp` and a `read` loop, since Git Bash awk and grep drop a CR before LF (a scope file with CRLF was accepted there).
+  - Rows whose fixture NTFS or Git Bash cannot make (a newline or tab in a name, a fifo, `ln -s`) skip there.
+  - Long suites split by Windows time: grade8b into 8b/8c/8d, grade9 into 9/9b. Same assertions before and after.
+- **Tests:** the two sha256 rows of test-role-gate-size called `gsnap`/`objlist` before their definition and passed on empty strings; they now compare real snapshots.
+- **Queue items 6 and 9** were already done in v0.24.23/v0.24.24 and are pinned by tests; closed with no change.
+- **Shard weights:** CI times from run 39891830540 for tdd-step-z and release-stale-count; the new and changed suites carry local Windows estimates, each named in the header (L-0009).
+- **Eval results:** Run 20 (v0.24.28 installed, E29: 5/5 auto, 0.43 USD) is recorded.
+
 ## 0.24.28 - 2026-10-23
 - **role-gate size counts untracked files in one batch (Full):**
   - **Method:** regular files and symlinks to files whose names need no quoting are marked intent-to-add in an empty temporary index, then counted with one `git diff --numstat -z`. The real index, the git dir and the object store are untouched.
