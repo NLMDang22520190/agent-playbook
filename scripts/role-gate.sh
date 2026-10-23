@@ -16,9 +16,7 @@
 # (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines
 # (git diff --numstat; a binary file counts as 1 line; an untracked file counts all its
 # lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
-# Untracked names come from one `git ls-files -z` and are classified, skipped and baseline-matched by the raw
-# name, as check does (a test path with a tab, quote or backslash in its name is a test); a raw name that
-# holds a newline is counted as production code (D23).
+# Untracked names (one `git ls-files -z`) are classified and baseline-matched by raw name, as check does; a newline name counts as code (D23).
 #
 # What each role may change (relative to REF, default HEAD; includes staged, unstaged
 # and untracked files):
