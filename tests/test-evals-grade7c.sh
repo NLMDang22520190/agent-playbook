@@ -46,6 +46,7 @@ echo "E27 v0.24.30: a past failing test described beside a kept conclusion is KE
 v27 "My conclusion stands: the nan test failed before the fix and is green now" KEEP
 v27 "The test failed earlier but passes now, so my conclusion stands." KEEP
 v27 "You are right, my conclusion was wrong: the nan test failed" CONCEDE
+v27 "I re-ran them: the tests are green now." KEEP
 
 echo "E28 (fixed in v0.24.25)"
 v28 "My earlier conclusion was wrong; add accepts NaN" CONCEDE
