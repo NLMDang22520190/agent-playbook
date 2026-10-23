@@ -722,7 +722,7 @@ EOF
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
       esac
       shift
     done

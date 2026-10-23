@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One RED or GREEN step of the TDD workflow: role gate, then the test command as evidence.
-#   tdd-step.sh red   --message M [--base REF] [--baseline FILE] [--commit] -- CMD [ARGS...]
-#   tdd-step.sh green --base REF --message M [--baseline FILE] [--commit] -- CMD [ARGS...]
+#   tdd-step.sh red   --message M [--base REF] [--baseline FILE] [--scope FILE] [--commit] -- CMD [ARGS...]
+#   tdd-step.sh green --base REF --message M [--baseline FILE] [--scope FILE] [--commit] -- CMD [ARGS...]
 # red:   role-gate.sh check tester [--base REF], then proof-run.sh --label red -- CMD. Passes only if the
 #        gate passes AND CMD fails (a test that does not fail is not RED). --commit commits all changes
 #        as "test(red): M" and prints RED=<sha>. Pass --base <sha recorded before the tester started>
@@ -51,6 +51,13 @@
 #        CMD refuse the step. Role paths are committed with literal pathspecs (GIT_LITERAL_PATHSPECS=1)
 #        and the baseline paths keep their index and work-tree state. Without --commit the exact
 #        commands are printed, every path shell-quoted.
+# --scope FILE (v0.24.29, needs --base; several tasks in one checkout): the scope file (role-gate.sh check --scope) is passed to
+#        both gate runs and hashed (git hash-object) before the first and after the second; a changed file refuses the step, and
+#        so does a changed --baseline manifest. Like --baseline, --commit commits (and the printed commands name) ONLY the changed
+#        own paths, minus the baseline-unchanged ones, with literal pathspecs; none gives an error. A path outside the scope that
+#        the gate passed (rule 4: not own, not other, not recorded in the baseline) is named on stderr (not committed) and, in
+#        print mode, after the commands. While the test command runs only own paths are compared: another path that changes is
+#        a note and the second gate judges it; an own path that changes, or a moved HEAD, refuses the step.
 # --commit adds .agents/handoff/ to .git/info/exclude when not ignored (prints a notice).
 # Without --commit nothing is committed; the commit command is printed instead (ask-before-commit).
 # Runs in the current project (git top-level). Gate and evidence output pass through.
@@ -61,20 +68,21 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
-  echo "usage: tdd-step.sh red [--base REF] [--baseline FILE] --message M [--commit] -- CMD..." >&2
-  echo "       tdd-step.sh green --base REF [--baseline FILE] --message M [--commit] -- CMD..." >&2
+  echo "usage: tdd-step.sh red [--base REF] [--baseline FILE] [--scope FILE] --message M [--commit] -- CMD..." >&2
+  echo "       tdd-step.sh green --base REF [--baseline FILE] [--scope FILE] --message M [--commit] -- CMD..." >&2
   exit 2
 }
 
 step="${1:-}"
 case "$step" in red|green) shift ;; *) usage ;; esac
 
-msg=""; base=""; baseline=""; commit=0
+msg=""; base=""; baseline=""; scope=""; commit=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --message)  [ $# -ge 2 ] || usage; msg="$2"; shift 2 ;;
     --base)     [ $# -ge 2 ] || usage; base="$2"; shift 2 ;;
     --baseline) [ $# -ge 2 ] && [ -n "$2" ] || usage; baseline="$2"; shift 2 ;;
+    --scope)    [ $# -ge 2 ] && [ -n "$2" ] || usage; [ -z "$scope" ] || pb_die "--scope given twice" 2; scope="$2"; shift 2 ;;
     --commit)   commit=1; shift ;;
     --) shift; break ;;
     *) usage ;;
@@ -83,9 +91,13 @@ done
 [ -n "$msg" ] || usage
 [ $# -ge 1 ] || usage
 if [ "$step" = "green" ]; then [ -n "$base" ] || usage; fi
+if [ -n "$scope" ] && [ -z "$base" ]; then pb_die "--scope needs --base REF (the sha recorded before the role)" 2; fi
 # a relative manifest path is the caller's, not the project root's
 if [ -n "$baseline" ]; then
   case "$baseline" in /* | [A-Za-z]:[/\\]*) ;; *) baseline="$PWD/$baseline" ;; esac
+fi
+if [ -n "$scope" ]; then
+  case "$scope" in /* | [A-Za-z]:[/\\]*) ;; *) scope="$PWD/$scope" ;; esac
 fi
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree" 3
@@ -108,11 +120,44 @@ else
   subject="feat($step): $msg"
 fi
 if [ -n "$baseline" ]; then gate_args+=(--baseline "$baseline"); fi
+if [ -n "$scope" ]; then gate_args+=(--scope "$scope"); fi
 
 run_gate() { bash "$here/role-gate.sh" check "$role" ${gate_args[@]+"${gate_args[@]}"}; }
 refuse() { echo "error: $1 - nothing committed" >&2; exit 1; }
 # the "unchanged since the baseline" note lines of a gate output
 notes_of() { printf '%s\n' "$1" | grep -F "$NOTEP" || true; }
+# --scope: the note lines (stdin) whose path is an own path of the scope file (pb_scope_read ran)
+own_notes() {
+  local ln c
+  while IFS= read -r ln; do
+    [ -n "$ln" ] || continue
+    c="$(printf '%s\n' "${ln#"$NOTEP"}" | pb_scope_classify)" || c=""
+    [ "$c" != own ] || printf '%s\n' "$ln"
+  done
+}
+# --scope: the work tree manifests $tmpd/before and $tmpd/after differ. An own path changed (or no path can be named): refuse. Any
+# other path: note each, then go on (the second gate judges them).
+scope_cmd_diff() {
+  local p c own=0 shown any=0
+  LC_ALL=C awk '
+    function pth(l,   r, j) { r = substr(l, index(l, "\t") + 1); j = index(r, "\t"); return substr(r, j + 1) }
+    FNR == 1 { next }
+    FILENAME == ARGV[1] { a[pth($0)] = $0; next }
+    { b[pth($0)] = $0 }
+    END { for (k in a) if (!(k in b) || a[k] != b[k]) print k
+          for (k in b) if (!(k in a)) print k }' "$tmpd/before" "$tmpd/after" | LC_ALL=C sort > "$tmpd/dpaths"
+  pipe_ok "${PIPESTATUS[@]}" || pb_die "cannot compare the work tree manifests" 3
+  pb_scope_classify < "$tmpd/dpaths" > "$tmpd/dcls" || pb_die "cannot classify the changed paths" 3
+  while IFS= read -r p <&3 && IFS= read -r c <&4; do
+    any=1
+    if [ "$c" = own ]; then own=1; continue; fi
+    shown="$(printf '%s' "$p" | LC_ALL=C tr '\000-\010\012-\037\177' '?')"
+    printf 'note: outside the task scope, changed while the test command ran: %s\n' "$shown" >&2
+  done 3< "$tmpd/dpaths" 4< "$tmpd/dcls"
+  if [ "$own" -eq 1 ] || [ "$any" -eq 0 ]; then
+    refuse "the test command changed the work tree (a file was written, edited or committed)"
+  fi
+}
 
 # Before tdd-step stages anything: remember HEAD and the index file (a copy outside the work tree).
 save_state() {
@@ -477,6 +522,12 @@ check_commit() {
 
 tmpd="$(mktemp -d "${TMPDIR:-/tmp}/tdd-step.XXXXXX")" || pb_die "cannot create a temp dir" 3
 trap 'rm -rf "$tmpd"' EXIT
+# --scope: digests of the scope file (and of the baseline manifest) before the first gate run; compared after the second
+sd0=""; bd0=""
+if [ -n "$scope" ]; then
+  sd0="$(git hash-object -- "$scope" 2>/dev/null)" || sd0=""
+  if [ -n "$baseline" ]; then bd0="$(git hash-object -- "$baseline" 2>/dev/null)" || bd0=""; fi
+fi
 if [ -z "$baseline" ]; then
   run_gate || exit 1
   notes1=""
@@ -485,6 +536,12 @@ else
   [ -z "$gout" ] || printf '%s\n' "$gout"
   [ "$grc" -eq 0 ] || exit 1
   notes1="$(notes_of "$gout")"
+fi
+if [ -n "$scope" ]; then
+  # the first gate run validated the file; load its entries for the shared matcher
+  [ -n "$sd0" ] || pb_die "cannot hash the scope file: $scope" 3
+  if [ -n "$baseline" ] && [ -z "$bd0" ]; then pb_die "cannot hash the baseline manifest: $baseline" 3; fi
+  pb_scope_read "$scope"
 fi
 # an untracked nested repository (a status row ending in a slash) or a staged gitlink that HEAD lacks: the snapshot
 # cannot hash it, so refuse it before the test command runs (a nested repository under .agents/handoff/ is exempt)
@@ -540,23 +597,42 @@ fi
 
 # --baseline: the role's paths, from git status after the test command
 GIT_OPTIONAL_LOCKS=0 bash "$here/role-gate.sh" snapshot --out "$tmpd/after" >/dev/null 2>"$tmpd/snap.err" || { cat "$tmpd/snap.err" >&2; refuse "cannot snapshot the work tree after the test command"; }
-cmp -s "$tmpd/before" "$tmpd/after" || refuse "the test command changed the work tree (a file was written, edited or committed)"
+if ! cmp -s "$tmpd/before" "$tmpd/after"; then
+  if [ -z "$scope" ]; then refuse "the test command changed the work tree (a file was written, edited or committed)"; fi
+  scope_cmd_diff
+fi
 read_branch || pb_die "cannot read the branch after the test command (git symbolic-ref -q HEAD failed) - nothing committed" 3
 [ "$BR" = "$branch_before" ] || refuse "the test command changed the branch (HEAD was on $branch_before, now on $BR)"
 [ "$(git rev-parse HEAD)" = "$head_before" ] || refuse "HEAD moved while the test command ran"
 gout2="$(GIT_OPTIONAL_LOCKS=0 run_gate 2>"$tmpd/gate2.err")"; grc2=$?
+if [ -n "$scope" ]; then
+  sd1="$(git hash-object -- "$scope" 2>/dev/null)" || sd1="unreadable"
+  [ "$sd1" = "$sd0" ] || refuse "the scope file changed between the two gate runs (digest $sd0, now $sd1)"
+  if [ -n "$baseline" ]; then
+    bd1="$(git hash-object -- "$baseline" 2>/dev/null)" || bd1="unreadable"
+    [ "$bd1" = "$bd0" ] || refuse "the baseline manifest changed between the two gate runs (digest $bd0, now $bd1)"
+  fi
+fi
 [ "$grc2" -eq 0 ] || { printf '%s\n' "$gout2"; cat "$tmpd/gate2.err" >&2; refuse "the role gate fails after the test command"; }
-paths=(); untr=()
-if [ -n "$baseline" ]; then
-  notes="$(notes_of "$gout2")"
-  [ "$notes" = "$notes1" ] || refuse "the paths unchanged since the baseline differ after the test command"
+paths=(); untr=(); rule4=(); cand=(); candxy=()
+sel=0
+if [ -n "$baseline" ] || [ -n "$scope" ]; then sel=1; fi
+if [ "$sel" -eq 1 ]; then
   exempt="$NL"
-  while IFS= read -r nl; do
-    [ -n "$nl" ] || continue
-    exempt+="${nl#"$NOTEP"}$NL"
-  done <<EOF
+  if [ -n "$baseline" ]; then
+    notes="$(notes_of "$gout2")"
+    if [ -n "$scope" ]; then
+      [ "$(printf '%s\n' "$notes" | own_notes)" = "$(printf '%s\n' "$notes1" | own_notes)" ] || refuse "the paths unchanged since the baseline differ after the test command"
+    else
+      [ "$notes" = "$notes1" ] || refuse "the paths unchanged since the baseline differ after the test command"
+    fi
+    while IFS= read -r nl; do
+      [ -n "$nl" ] || continue
+      exempt+="${nl#"$NOTEP"}$NL"
+    done <<EOF
 $notes
 EOF
+  fi
   git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status" || pb_die "git status failed" 3
   nxt=0; ctl=0
   while IFS= read -r -d '' ent; do
@@ -567,6 +643,7 @@ EOF
     case "$p" in .agents/handoff/*) continue ;; esac
     case "${p//$'\t'/}" in *[[:cntrl:]]*) ctl=1 ;; esac
     case "$exempt" in *"$NL$p$NL"*) continue ;; esac
+    if [ -n "$scope" ]; then cand+=("$p"); candxy+=("$xy"); continue; fi
     paths+=("$p")
     [ "$xy" != "??" ] || untr+=("$p")
   done < "$tmpd/status"
@@ -574,10 +651,34 @@ EOF
     echo "error: a changed path contains a control character: commit the role's paths by hand - nothing committed" >&2
     exit 1
   fi
+  if [ -n "$scope" ] && [ ${#cand[@]} -gt 0 ]; then
+    # the manifest path list (rule 3 versus rule 4), read from the file whose digest matched above
+    recorded="$NL"
+    if [ -n "$baseline" ]; then
+      LC_ALL=C awk 'NR > 1 { r = substr($0, index($0, "\t") + 1); print substr(r, index(r, "\t") + 1) }' "$baseline" > "$tmpd/blpaths" || pb_die "cannot read the baseline manifest" 3
+      while IFS= read -r nl; do recorded+="$nl$NL"; done < "$tmpd/blpaths"
+    fi
+    printf '%s\n' "${cand[@]}" | pb_scope_classify > "$tmpd/ccls" || pb_die "cannot classify the changed paths" 3
+    ci=0
+    while IFS= read -r c; do
+      p="${cand[ci]}"
+      case "$c" in
+        own) paths+=("$p"); [ "${candxy[ci]}" != "??" ] || untr+=("$p") ;;
+        other) ;;
+        *) case "$recorded" in *"$NL$p$NL"*) ;; *) rule4+=("$p") ;; esac ;;
+      esac
+      ci=$((ci + 1))
+    done < "$tmpd/ccls"
+  fi
   if [ ${#paths[@]} -eq 0 ]; then
-    echo "error: nothing of the role's to commit (every change is a baseline path or under .agents/handoff/)" >&2
+    if [ -n "$scope" ]; then
+      echo "error: nothing of the role's to commit (no changed path in the task scope)" >&2
+    else
+      echo "error: nothing of the role's to commit (every change is a baseline path or under .agents/handoff/)" >&2
+    fi
     exit 1
   fi
+  for p in ${rule4[@]+"${rule4[@]}"}; do printf 'note: outside the task scope, not committed: %s\n' "$p" >&2; done
 fi
 
 if [ "$commit" -eq 1 ]; then
@@ -591,7 +692,7 @@ if [ "$commit" -eq 1 ]; then
     fi
   fi
   save_state
-  if [ -n "$baseline" ]; then
+  if [ "$sel" -eq 1 ]; then
     if [ ${#untr[@]} -gt 0 ]; then
       GIT_LITERAL_PATHSPECS=1 git add -- "${untr[@]}" || pb_die "git add failed" 3
     fi
@@ -618,7 +719,7 @@ if [ "$commit" -eq 1 ]; then
     check_commit
   fi
   if [ "$step" = "red" ]; then echo "RED=$(git rev-parse HEAD)"; else echo "committed: $(git rev-parse HEAD)"; fi
-elif [ -n "$baseline" ]; then
+elif [ "$sel" -eq 1 ]; then
   echo "not committing (no --commit). To commit only the role's paths:"
   if [ ${#untr[@]} -gt 0 ]; then
     printf 'GIT_LITERAL_PATHSPECS=1 git add --'
@@ -628,6 +729,7 @@ elif [ -n "$baseline" ]; then
   printf 'GIT_LITERAL_PATHSPECS=1 git commit -m %q --' "$subject"
   for p in "${paths[@]}"; do printf ' %q' "$p"; done
   printf '\n'
+  for p in ${rule4[@]+"${rule4[@]}"}; do printf '# not in the task scope, not included above: %q\n' "$p"; done
   # print mode is advisory and writes nothing: the scratch index is built quietly, its git add writes into a throwaway
   # object dir (the real objects are an alternate). When the scratch index cannot be built (a core.safecrlf refusal) the
   # check is skipped without a word, as in v0.24.22; a failing comparison is a note (exit stays 0)

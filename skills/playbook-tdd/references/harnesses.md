@@ -21,7 +21,7 @@ Build every sub-agent prompt from `templates/role-prompt.md` (fixed part first, 
 
 ## Several tasks, one repository
 
-Give each concurrent task its own worktree (`git worktree add`) and never share one work tree between tasks: the gate judges every change in the tree, so another task's edits or a moved HEAD would land in your gate. Within one task, changes that already existed before the first role are recorded with a snapshot and passed to every gate.
+Separate worktrees stay the first choice for concurrent tasks (`git worktree add`): the gate judges every change in the tree, so another task's edits or a moved HEAD would land in your gate. Within one task, changes that already existed before the first role are recorded with a snapshot and passed to every gate.
 
 ```bash
 git worktree add ../myrepo-task-a -b task-a
@@ -29,7 +29,26 @@ bash ~/.agents/playbook/scripts/role-gate.sh snapshot --out baseline.txt
 bash ~/.agents/playbook/scripts/role-gate.sh check <role> --base <sha> --baseline baseline.txt
 ```
 
-The gate has no option to ignore changes outside a role's scope, on purpose: a role could edit outside its scope unseen. A separate worktree gives the same isolation without that blind spot.
+When you must use one checkout, share it only with a scope file per task, plus a baseline per task when foreign work exists or may start. The scope file lists `own` paths (judged as always) and `other` paths (another task's, not judged). The gate accepts `--scope` without `--baseline`, then only `other` entries exempt foreign work; a baseline also exempts the paths recorded in it.
+
+- `--base` is the sha printed by `git rev-parse HEAD` before the role, never the word `HEAD`: a base that moves with HEAD hides the role's own commits.
+- Per-task files in the git dir: `$(git rev-parse --git-path pb-scope-<task>)` for the scope file and `snapshot --out "$(git rev-parse --git-path pb-gate-baseline-<task>)"` for the baseline (the default `pb-gate-baseline` is one per checkout, so two tasks would overwrite it). Record `git hash-object` of the scope file when you write it and compare it with the digest in the gate's scope note after each gate; `tdd-step.sh` refuses when the scope file or the manifest changes between its two gate runs.
+- The no-checkpoint-commit workflow: before each role record `git rev-parse HEAD` and take a snapshot instead of committing between roles, then pass `--base <that sha> --baseline <that file> --scope <task file>` to the role's gate (and to `tdd-step.sh`, which then commits or prints only the changed `own` paths).
+- Keep `other` entries as narrow as possible: exact paths over prefixes, never a path the task's own tests or code read.
+- The gate does not judge the notes `another task's path` and `changed since the baseline`, so attribute every such note of a test kind to the other task for an implementer, and every such note for a reviewer, before you accept the verdict.
+- A path the gate names as outside the task scope and not in the baseline, and that passed, is probably the task's own work: add it to `own` or commit it before the next snapshot, or the next snapshot records it and exempts every later edit to it (r5).
+- A path you cannot attribute is a stop, never a reason to reset, stash or revert concurrent work.
+- The mode check exempts nothing with `--scope`: another task's exec-bit drop fails the gate; attribute it, then run the gate again with that path in `PB_ALLOW_MODE_CHANGE`.
+
+The blind spot: a role could still write outside its scope unseen. The scope closes it only for unknown paths (rule 4, judged as without a scope and named in a note); declared and recorded paths stay a residual risk, which you check by attribution:
+
+- r1: an `other` directory prefix exempts every path under it, also a new file a role writes there.
+- r2: a recorded path is exempt for every further edit, also an edit by the role.
+- r3: a role that commits over `other` or recorded paths passes, because those commits are exempt too.
+- r4: an edit to a declared or recorded path that the task's own tests read can change the RED or GREEN signal.
+- r5: laundering through the next snapshot (see above).
+
+A separate worktree gives the same isolation without that blind spot.
 
 ## Honest limit
 

@@ -105,7 +105,7 @@ CLI flag and a file format, or two endpoints).
 **Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low.
 
 ## Preconditions
-- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand.
+- git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand. Concurrent tasks: `--scope`, see `references/harnesses.md`.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
   then confirm with the user (or run `playbook-setup`).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
