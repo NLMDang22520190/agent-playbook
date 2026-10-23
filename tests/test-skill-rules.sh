@@ -303,6 +303,21 @@ for f in README.md docs/tdd-for-beginners.md; do
 done
 
 TW="$(wc -w < "$SKILL" | tr -d ' ')"
+# v0.24.30 lane G (AC6.3, D7): the two exit-3 scope errors are documented verbatim (no E-ids) in harnesses.md and in the --scope blocks of both script headers
+echo "v0.24.30 AC6.3 the cannot-classify and scope-changed-while-read errors are documented, with exit 3"
+chk "v0.24.30 AC6.3 harnesses.md names the message 'cannot classify the changed paths'" "$HSEC" 'cannot classify the changed paths'
+chk "v0.24.30 AC6.3 harnesses.md names the message 'the scope file changed while it was read'" "$HSEC" 'the scope file changed while it was read'
+chk "v0.24.30 AC6.3 harnesses.md: 'cannot classify the changed paths' goes with exit 3" "$HSEC" 'cannot classify the changed paths[^.]{0,120}exit(s|ed)? (code )?3|exit(s|ed)? (code )?3[^.]{0,120}cannot classify the changed paths'
+chk "v0.24.30 AC6.3 harnesses.md: 'the scope file changed while it was read' goes with exit 3" "$HSEC" 'the scope file changed while it was read[^.]{0,120}exit(s|ed)? (code )?3|exit(s|ed)? (code )?3[^.]{0,120}the scope file changed while it was read'
+RGH="$(sed -n '/^# Task scope (v0.24.29/,/^set -u/p' "$PB_ROOT/scripts/role-gate.sh" | sed 's/^# *//' | tr '\n' ' ')"
+TDH="$(sed -n '/^# --scope FILE (v0.24.29/,/^# --commit adds/p' "$PB_ROOT/scripts/tdd-step.sh" | sed 's/^# *//' | tr '\n' ' ')"
+chk "v0.24.30 AC6.3 role-gate.sh header (Task scope block) names 'cannot classify the changed paths'" "$RGH" 'cannot classify the changed paths'
+chk "v0.24.30 AC6.3 role-gate.sh header (Task scope block) names 'the scope file changed while it was read'" "$RGH" 'the scope file changed while it was read'
+chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) names 'cannot classify the changed paths'" "$TDH" 'cannot classify the changed paths'
+chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) names 'the scope file changed while it was read'" "$TDH" 'the scope file changed while it was read'
+chk "v0.24.30 AC6.3 tdd-step.sh header (--scope block) says exit 3 for them" "$TDH" '(cannot classify the changed paths|the scope file changed while it was read)[^.]{0,160}(exit(s|ed)? (code )?3|exit 3)|(exit(s|ed)? (code )?3)[^.]{0,160}(cannot classify the changed paths|the scope file changed while it was read)'
+if printf '%s %s %s' "$HSEC" "$RGH" "$TDH" | grep -qE -- '(^|[^A-Za-z0-9])E(19|20)([^0-9]|$)'; then t_bad "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)" "an E19 or E20 id is present"; else t_ok "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)"; fi
+
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
 if [ -n "$TB" ] && [ "$TW" -le "$TB" ]; then t_ok "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23): $TW <= $TB"; else t_bad "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23)" "$TW words, cap [$TB]"; fi
 WANT=$(( (TW + 49) / 50 * 50 ))
