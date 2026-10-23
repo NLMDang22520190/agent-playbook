@@ -180,7 +180,8 @@ EOF
 # An entry ending in "/" is a directory prefix, any other entry is one exact path; own wins over other. The entries reach awk through
 # a temp file that awk reads (never ENVIRON or awk -v: ENVIRON is capped at 128 KB on Linux and 32 KB on Windows, and -v expands
 # backslash escapes; a file has no size limit), and awk runs under LC_ALL=C (byte comparison). A failure (no temp file, awk error)
-# returns non-zero: role-gate.sh stops (exit 3); tdd-step.sh falls back to own (the conservative direction).
+# returns non-zero: role-gate.sh and tdd-step.sh stop (exit 3), except tdd-step.sh own_notes, which treats the path as own (the
+# conservative direction: the before/after comparison then refuses the step).
 SC_ENTRIES=""
 pb_scope_read() {
   local f="$1" tracked verr res hops lt rd pd crl cn cl
