@@ -171,6 +171,36 @@ assert_eq "H --force: now the playbook hook" "$(cksum < "$R/tools/pre-commit")" 
 run_in "$R" bash tools/install-hooks.sh --bogus
 assert_rc "H an unknown option: exit 2" 2
 
+echo "coexistence with the leak-check hook (the leak guard has priority)"
+LC="$PB_ROOT/scripts/leak-check.sh"
+mk_repo
+HD="$R/.git/hooks"
+run_in "$R" bash "$LC" install-hooks --repo "$R"
+assert_rc "H leak-check install-hooks first: exit 0" 0
+lk="$(cksum < "$HD/pre-commit")"
+run_in "$R" bash tools/install-hooks.sh
+assert_rc "H install over a leak-check hook: refused (exit 1)" 1
+assert_eq "H install message is exact" "install-hooks: $HD/pre-commit is a leak-check hook (agent-playbook leak guard); not replaced, with or without --force. Run the exec-bit check by hand: bash evals/run-checks.sh --only modes" "$OUT"
+assert_eq "H the leak-check hook is byte for byte unchanged" "$lk" "$(cksum < "$HD/pre-commit")"
+run_in "$R" bash tools/install-hooks.sh --force
+assert_rc "H --force over a leak-check hook: still refused (exit 1)" 1
+assert_contains "H --force refusal names the leak guard" "$OUT" "is a leak-check hook"
+assert_eq "H --force: the leak-check hook is byte for byte unchanged" "$lk" "$(cksum < "$HD/pre-commit")"
+run_in "$R" bash tools/install-hooks.sh --uninstall
+assert_rc "H --uninstall on a leak-check hook: refused (exit 1)" 1
+assert_eq "H --uninstall leaves the leak-check hook untouched" "$lk" "$(cksum < "$HD/pre-commit")"
+run_in "$R" bash "$LC" uninstall-hooks --repo "$R"
+assert_no_path "H leak-check uninstall-hooks still removes its own hook" "$HD/pre-commit"
+
+mk_repo
+HD="$R/.git/hooks"
+run_in "$R" bash tools/install-hooks.sh
+ours="$(cksum < "$HD/pre-commit")"
+run_in "$R" bash "$LC" install-hooks --repo "$R"
+assert_rc "H ours installed first, then leak-check install-hooks: it leaves pre-commit alone (exit 1)" 1
+assert_contains "H leak-check says it left pre-commit alone" "$OUT" "pre-commit already exists and is not a leak-check hook; left alone"
+assert_eq "H our hook is unchanged" "$ours" "$(cksum < "$HD/pre-commit")"
+
 echo "installer in a linked worktree"
 mk_repo
 WT="$(mk_tmp)/wt"
@@ -186,5 +216,7 @@ echo "documentation"
 RD="$(cat "$PB_ROOT/README.md")"
 assert_contains "H README names tools/install-hooks.sh" "$RD" "tools/install-hooks.sh"
 assert_contains "H README says it is opt-in" "$RD" "opt-in"
+assert_contains "H README: the leak guard takes priority" "$RD" "leak guard takes priority"
+assert_contains "H README: manual mode check" "$RD" "evals/run-checks.sh --only modes"
 
 t_summary
