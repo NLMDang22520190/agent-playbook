@@ -58,6 +58,9 @@
 #        the gate passed (rule 4: not own, not other, not recorded in the baseline) is named on stderr (not committed) and, in
 #        print mode, after the commands. While the test command runs only own paths are compared: another path that changes is
 #        a note and the second gate judges it; an own path that changes, or a moved HEAD, refuses the step.
+#        Two scope errors exit 3 and the step stops: "error: cannot classify the changed paths" (the path classifier failed: run the
+#        step again) and "error: the scope file changed while it was read: FILE" (FILE was edited during the step: stop the writer, then
+#        run the step again).
 # --commit adds .agents/handoff/ to .git/info/exclude when not ignored (prints a notice).
 # Without --commit nothing is committed; the commit command is printed instead (ask-before-commit).
 # Runs in the current project (git top-level). Gate and evidence output pass through.

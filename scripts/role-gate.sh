@@ -83,6 +83,8 @@
 # checked: PATH [KIND]". Any other path is judged as today and gets "note: PATH is outside the task scope and not in the baseline; ...".
 # "note: scope FILE (N own, M other entries, digest D): K path(s) outside the scope not checked" comes first. The mode check
 # exempts nothing with --scope; PB_ALLOW_MODE_CHANGE is the only escape. A missing, tracked or malformed FILE exits 3, no verdict.
+# Two scope errors exit 3 with no verdict: "error: cannot classify the changed paths" (the path classifier failed: run the gate again)
+# and "error: the scope file changed while it was read: FILE" (FILE was edited during the run: stop the writer, then run the gate again).
 # Residual risk: the gate cannot tell two writers apart on one path, so an other path or prefix is exempt for every writer.
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
