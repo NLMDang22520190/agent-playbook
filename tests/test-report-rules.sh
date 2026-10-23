@@ -85,4 +85,20 @@ if printf '%s\n' "$MITEM" | grep -qiE 'sub-?agents? (ran|were (started|used))|wh
 if printf '%s\n' "$MITEM" | grep -qE 'Playbook feedback|Learnings proposed'; then t_ok "I5 the Phase 4 item says where the line sits (before the learnings / feedback line)"; else t_bad "I5 the Phase 4 item says where the line sits (before the learnings / feedback line)" "[$MITEM]"; fi
 assert_eq "I5 SKILL.md has at most 296 lines" "ok" "$([ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ] && echo ok || echo "too long")"
 
+
+# ---- v0.24.30 lane K (S1): CHARACTERIZATION pins (true today by design; no implementer step) for the weight line ----
+echo "v0.24.30 lane K AC6/AC7 characterization pins: the template **Weight:** line and Lite step 5 Weight: Lite"
+WCOUNT="$(grep -c '^\*\*Weight:\*\*' "$FINAL" 2>/dev/null)"
+assert_eq "v0.24.30 AC6 characterization: exactly one line of the template starts with **Weight:**" "1" "$WCOUNT"
+WL="$(grep -n -m1 '^\*\*Weight:\*\*' "$FINAL" 2>/dev/null | cut -d: -f1)"
+RC="$(grep -n -m1 '^## Request coverage' "$FINAL" 2>/dev/null | cut -d: -f1)"
+if [ -n "$WL" ] && [ -n "$RC" ] && [ "$WL" -lt "$RC" ]; then t_ok "v0.24.30 AC6 characterization: the **Weight:** line comes before ## Request coverage"; else t_bad "v0.24.30 AC6 characterization: the **Weight:** line comes before ## Request coverage" "weight line [$WL], request coverage heading [$RC]"; fi
+WTXT="$(grep -m1 '^\*\*Weight:\*\*' "$FINAL" 2>/dev/null)"
+for wopt in 'Full' 'Lite (no independent review)' 'Lite (user override; Full criteria: <x>)' 'Exempt' 'reason:'; do
+  case "$WTXT" in *"$wopt"*) t_ok "v0.24.30 AC6 characterization: the **Weight:** line lists [$wopt]" ;; *) t_bad "v0.24.30 AC6 characterization: the **Weight:** line lists [$wopt]" "[$WTXT]" ;; esac
+done
+case "$LITE5" in *'`Weight: Lite`'*) t_ok "v0.24.30 AC7 characterization: Lite step 5 carries the Weight: Lite label" ;; *) t_bad "v0.24.30 AC7 characterization: Lite step 5 carries the Weight: Lite label" "[$LITE5]" ;; esac
+case "$LITE5" in "5. Final report with"*) t_ok "v0.24.30 AC7 characterization: Lite step 5 still starts 5. Final report with" ;; *) t_bad "v0.24.30 AC7 characterization: Lite step 5 still starts 5. Final report with" "[$LITE5]" ;; esac
+if printf '%s\n' "$LITE5" | tr '\n' ' ' | grep -qiE 'Weight: Lite`?.{0,20}verbatim'; then t_bad "v0.24.30 AC7 characterization: Lite step 5 adds no verbatim after Weight: Lite" "verbatim found within 20 characters"; else t_ok "v0.24.30 AC7 characterization: Lite step 5 adds no verbatim after Weight: Lite"; fi
+
 t_summary
