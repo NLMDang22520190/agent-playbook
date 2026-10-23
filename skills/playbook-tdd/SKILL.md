@@ -72,16 +72,17 @@ reversible fix.
    with short `## Understanding` and `## Impact` sections (as in Phase 1) written before any test or code.
    An ambiguous, hard-to-reverse reading (or a missing oracle, a confirmed worked example, Phase 1) is asked before any code, in one
    batched question; else a logged default.
-2. Write the test, run it with `proof-run.sh --label red`, and see it fail for the right reason.
+2. Write the test (unconfirmed oracle Dn: its name or a comment carries `Dn` or `[UNVERIFIED]`), run it with
+   `proof-run.sh --label red`, and see it fail for the right reason.
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full; exit 3: fix named file, run again.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended. On a test built on an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
+   logic is recommended. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
    real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
    command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
-5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough).
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, never catches the other reading).
    The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`.
    If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask.
@@ -256,7 +257,7 @@ never saw your reasoning cannot inherit its mistakes.
 In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report.
 
 ## Resuming
-The orchestrator keeps `.agents/handoff/state.md` (from `templates/state.md`) up to date: it updates the file
+The orchestrator updates `.agents/handoff/state.md` (from `templates/state.md`)
 after each phase (spec, each RED, each GREEN, review, close-out) with the phase, the slice, the last sha per role,
 the next step and the open questions. When a session resumes or a context was lost, read `state.md` first, then
 the other hand-off files.

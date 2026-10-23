@@ -30,6 +30,7 @@ it is true.
 ## Pre-mortem
 Three ways the result could still be wrong. For each: the command you ran to check it, and its outcome (one line per risk is enough at Lite).
 1. risk: ... · command: ... · outcome: ...
+<if a risk rests on a test built on an unconfirmed oracle (`Dn` or `[UNVERIFIED]`): say the test pins the assumed reading; it does not catch the other reading>
 
 ## Cost
 <paste `bash ~/.agents/playbook/scripts/cost.sh summary`>. Weight: Full | Lite. Wall-clock: <total>.
