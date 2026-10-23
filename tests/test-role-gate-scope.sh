@@ -647,4 +647,60 @@ printf '# role-gate scope v1\nother\tdocs/\n' > "$SF"
 RE="$(env PLAYBOOK_HOME="$IH" bash -c '. "$1/scripts/lib.sh"; cd "$2" && pb_scope_read "$3"; echo "rc=$?"' _ "$PB_ROOT" "$R" "$SF" 2>&1)"
 assert_contains "D-1a pb_scope_read reports a bad file (no own entry) with the E8 message" "$RE" "malformed scope file $SF: no own entry"
 
+# ================= C-fix (review round): prefix anchoring, a big scope file, a symlinked scope file =================
+echo "C-fix F1 a dir/ prefix matches at the start only: a path that merely contains the prefix is none (own and other prefixes)"
+new_repo
+sf "$SF" own:app/ other:docs/ own:tests/app.test.js
+CL="$(printf 'x/docs/a.md\nlib/app/z\ndocs/a.md\napp/z\nsrc/docs/x.js\nx/app/y\n' |
+  ( env PLAYBOOK_HOME="$IH" bash -c '. "$1/scripts/lib.sh"; cd "$2" && pb_scope_read "$3" && pb_scope_classify' _ "$PB_ROOT" "$R" "$SF" ) 2>&1)"
+assert_eq "C-fix F1 classify: none, none, other, own, none, none" "none|none|other|own|none|none" "$(printf '%s\n' "$CL" | tr '\n' '|' | sed 's/|$//')"
+new_repo
+sf "$SF" own:tests/app.test.js other:docs/
+mkdir -p lib/docs; printf 'x\n' > lib/docs/x.js
+sc implementer
+assert_rc "C-fix F1 a path that contains an other prefix past the first byte is rule 4 (judged, passes for code): exit 0" 0
+has_line "C-fix F1 ... named with E4" "$(e4 lib/docs/x.js)"
+no_line "C-fix F1 ... and not exempted as another task's path" "$(e2 lib/docs/x.js code)"
+
+echo "C-fix F2 a big scope file (3001 entries, over 300 KB) classifies correctly: the other path is exempt, the own path judged"
+new_repo
+PAD="$(printf 'p%.0s' $(seq 1 90))"
+{ printf '# role-gate scope v1\n'; awk -v pad="$PAD" 'BEGIN { for (i = 1; i <= 3000; i++) printf "other\tgen/%s/d%05d/\n", pad, i }'
+  printf 'own\tsrc/\nother\ttests/foreign/\n'; } > "$SF"
+SZ="$(wc -c < "$SF" | tr -d ' ')"
+if [ "$SZ" -gt 300000 ]; then t_ok "C-fix F2 the scope file is over 300 KB: $SZ"; else t_bad "C-fix F2 the scope file is over 300 KB" "$SZ bytes"; fi
+mkdir -p tests/foreign; printf 't\n' > tests/foreign/a.test.js
+printf 'module.exports = 3;\n' > src/app.js
+sc implementer
+assert_rc "C-fix F2 big scope file: the foreign test is not judged: exit 0" 0
+has_line "C-fix F2 ... named as another task's path (E2)" "$(e2 tests/foreign/a.test.js test)"
+
+echo "C-fix F2 a classification failure is exit 3 with a message, never a silent all-own verdict"
+new_repo
+sf "$SF" own:src/ other:tests/foreign/
+mkdir -p tests/foreign; printf 't\n' > tests/foreign/a.test.js
+run env PLAYBOOK_HOME="$IH" TMPDIR=/nonexistent/pb-none bash "$GATE" check implementer --base "$BASE" --scope "$SF"
+assert_rc "C-fix F2 classify cannot run (no temp dir): exit 3" 3
+has_line "C-fix F2 ... the message is exact" "error: cannot classify the changed paths"
+no_verdict "C-fix F2 ... no verdict"
+
+echo "C-fix F3 a scope file that is a symlink into a tracked file is E7 too"
+new_repo
+mkdir -p docs; sf docs/scope.txt own:src/; git add docs/scope.txt; git commit -q -m "tracked scope"
+SF="$R/.git/pb-scope-link"; ln -s "$R/docs/scope.txt" "$SF"
+sc implementer
+assert_rc "C-fix F3 E7 through a symlink: exit 3" 3
+has_line "C-fix F3 E7 the message is exact" "error: the scope file is a tracked file of this repository: $SF"
+no_verdict "C-fix F3 E7 no verdict"
+new_repo
+mkdir -p docs; sf docs/scope.txt own:src/; git add docs/scope.txt; git commit -q -m "tracked scope"
+mkdir -p "$R/.git/hop"; ln -s "$R/docs/scope.txt" "$R/.git/hop/l2"; SF="$R/.git/pb-scope-link2"; ln -s "hop/l2" "$SF"
+sc implementer
+assert_rc "C-fix F3 E7 through two links (a relative link first): exit 3" 3
+has_line "C-fix F3 E7 ... the message is exact" "error: the scope file is a tracked file of this repository: $SF"
+new_repo
+sf "$R/.git/pb-real" own:src/; SF="$R/.git/pb-scope-ok"; ln -s "$R/.git/pb-real" "$SF"
+sc implementer
+assert_rc "C-fix F3 control: a symlink to an untracked file is accepted: exit 0" 0
+
 t_summary

@@ -260,6 +260,13 @@ chk "v0.24.29 AC12 harnesses.md: a path the gate names as outside the scope that
 chk "v0.24.29 AC12 harnesses.md: a path you cannot attribute is a stop" "$HSEC" 'cannot attribute[^.]{0,100}stop|stop[^.]{0,100}cannot attribute'
 chk "v0.24.29 AC12 harnesses.md: never reset, stash or revert concurrent work" "$HSEC" 'never[^.]{0,80}reset[^.]{0,30}stash[^.]{0,30}revert'
 chk "v0.24.29 AC12 harnesses.md: the mode check exempts nothing with --scope; PB_ALLOW_MODE_CHANGE" "$HSEC" 'PB_ALLOW_MODE_CHANGE'
+# C-fix F4/F7: the scope file format and the baseline example in the git dir
+chk "C-fix F4 harnesses.md: the scope file header is '# role-gate scope v1'" "$HSEC" '# role-gate scope v1'
+chk "C-fix F4 harnesses.md: lines are own<TAB>path or other<TAB>path" "$HSEC" 'own[^.]{0,30}TAB[^.]{0,30}path[^.]{0,80}other[^.]{0,30}TAB'
+chk "C-fix F4 harnesses.md: a path is exact or a dir/ prefix" "$HSEC" 'exact path[^.]{0,120}dir/|dir/[^.]{0,120}exact path'
+chk "C-fix F4 harnesses.md: no globs" "$HSEC" '(no|never|without) glob'
+chk "C-fix F4 harnesses.md: LF line ends, no BOM" "$HSEC" 'LF[^.]{0,80}(no|without) (a )?(UTF-8 )?BOM'
+if printf '%s' "$HSEC" | grep -q -- 'snapshot --out baseline.txt'; then t_bad "C-fix F7 harnesses.md: the snapshot example does not write baseline.txt into the work tree" "still present"; else t_ok "C-fix F7 harnesses.md: the snapshot example does not write baseline.txt into the work tree"; fi
 for r in r1 r2 r3 r4 r5; do chk "v0.24.29 AC12 harnesses.md: residual risk $r is named" "$HSEC" "(^|[^a-z0-9])$r([^a-z0-9]|\$)"; done
 chk "v0.24.22 harnesses.md: pre-existing changes use role-gate.sh snapshot and --baseline" "$HARN" 'role-gate\.sh snapshot.{0,250}--baseline|--baseline.{0,250}role-gate\.sh snapshot'
 # v0.24.29 lane C (D-0, S3): the v0.24.22 sentence "The gate has no option to ignore changes outside a role's scope, on purpose" is REVERSED ON PURPOSE (U1, 2026-10-23).
