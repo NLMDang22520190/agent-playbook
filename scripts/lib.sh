@@ -180,7 +180,7 @@ EOF
 # An entry ending in "/" is a directory prefix, any other entry is one exact path; own wins over other. The entries reach awk through
 # a temp file that awk reads (never ENVIRON or awk -v: ENVIRON is capped at 128 KB on Linux and 32 KB on Windows, and -v expands
 # backslash escapes; a file has no size limit), and awk runs under LC_ALL=C (byte comparison). A failure (no temp file, awk error)
-# returns non-zero: callers stop, they never treat the paths as own.
+# returns non-zero: role-gate.sh stops (exit 3); tdd-step.sh falls back to own (the conservative direction).
 SC_ENTRIES=""
 pb_scope_read() {
   local f="$1" tracked verr res hops lt rd pd crl cn cl
@@ -256,6 +256,9 @@ _pb_scope_sig() {
   kill -"$1" "$(exec sh -c 'echo "$PPID"')"
 }
 
+# Traps (probed on bash 5.2.21 and 3.2.57: both run this subshell's EXIT trap on a TERM or INT death): the EXIT trap removes the
+# temp file on the normal and error returns (it duplicates the explicit rm below) and on a signal death; the TERM and INT handlers
+# re-raise the signal with its default action, so callers see 143 / 130, and are defensive, not needed on those two bash versions.
 pb_scope_classify() (
   tf=""
   trap 'rm -f "$tf"' EXIT

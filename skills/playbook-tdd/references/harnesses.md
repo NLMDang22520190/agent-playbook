@@ -39,9 +39,9 @@ When you must use one checkout, share it only with a scope file per task, plus a
 - The gate does not judge the notes `another task's path` and `changed since the baseline`, so attribute every such note of a test kind to the other task for an implementer, and every such note for a reviewer, before you accept the verdict.
 - A path the gate names as outside the task scope and not in the baseline, and that passed, is probably the task's own work: add it to `own` or commit it before the next snapshot, or the next snapshot records it and exempts every later edit to it (r5).
 - A path you cannot attribute is a stop, never a reason to reset, stash or revert concurrent work.
-- Two scope errors stop the gate script (both `role-gate` and `tdd-step`) with no verdict:
+- Two scope errors stop `role-gate.sh` and `tdd-step.sh` with no verdict:
   - `error: cannot classify the changed paths` exits 3: the path classifier failed; run the command again.
-  - `error: the scope file changed while it was read: FILE` exits 3: the scope file was edited while the command ran; stop whoever writes it, fix the file, then run the command again.
+  - `error: the scope file changed while it was read: FILE` exits 3: the scope file was edited while the command ran; stop the writer, then run the command again.
   - Exit 3 is an environment error, never a pass.
 - The mode check exempts nothing with `--scope`: another task's exec-bit drop fails the gate; attribute it, then run the gate again with that path in `PB_ALLOW_MODE_CHANGE`.
 

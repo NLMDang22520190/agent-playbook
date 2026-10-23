@@ -66,12 +66,13 @@
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
-# size fails closed (v0.24.29): an untracked production regular file that it cannot count (unreadable, gone since the listing,
+# size fails closed (v0.24.29, symlinks v0.24.30): an untracked production regular file, or a production symlink (not to a directory,
+# a dangling one included) that it cannot count (unreadable, gone since the listing,
 # git exits above 1 for it, or no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
 # "error: cannot count the lines of untracked file PATH (unreadable, or gone since the listing); fix it and run size again"
 # (control characters but TAB shown as ?), prints no "files:" line and exits 3. The same line reports a failing clean filter.
 # Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
-# unreadable); a symlink to a directory, a nested repo, a dangling symlink keep their count.
+# unreadable); only a symlink to a directory, a nested repo and a symlink that git counts keep their count.
 #
 # Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
 # --scope needs --base (the sha recorded before the role; a base that moves with HEAD hides the role's own commits), else exit 2.
