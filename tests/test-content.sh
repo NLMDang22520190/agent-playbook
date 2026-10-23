@@ -1816,7 +1816,7 @@ sec_flat_has "v0.24.29 AC2 tdd-guide oracle: a killed mutant pins the assumed re
 sec_flat_has "v0.24.29 AC2 tdd-guide oracle: not reported as catching a bug" "$GUIDE" "$OR" 'pins the assumed reading.{0,120}not[^.]{0,30}(catch|caught)[^.]{0,20}bug|not[^.]{0,30}(catch|caught)[^.]{0,20}bug.{0,120}pins the assumed reading'
 # AC2: test-quality.md, next to "Expected: each mutant ..."
 TQ="$TDD/references/test-quality.md"
-flat_has "v0.24.29 AC2 test-quality.md: pins the assumed reading, within 600 characters of the Expected: each mutant line" "$TQ" 'Expected: each mutant.{0,600}pins the assumed reading'
+flat_has "v0.24.29 AC2 test-quality.md: pins the assumed reading, within 600 characters of the Expected: each mutant line" "$TQ" 'Expected: each mutant.{0,250}.{0,250}.{0,100}pins the assumed reading'
 flat_has "v0.24.29 AC2 test-quality.md: names the unconfirmed oracle case" "$TQ" 'unconfirmed (oracle|reading).{0,200}pins the assumed reading|pins the assumed reading.{0,200}unconfirmed (oracle|reading)'
 # AC1: tester.md marker rule (the oracle line of step 1)
 sec_flat_has "v0.24.29 AC1 tester.md Do: a test on an unconfirmed oracle names Dn or [UNVERIFIED]" "$TESTER" '^## Do' 'unconfirmed[^.]{0,200}(Dn|D<n>)[^.]{0,60}\[UNVERIFIED\]|unconfirmed[^.]{0,200}\[UNVERIFIED\][^.]{0,60}(Dn|D<n>)'
