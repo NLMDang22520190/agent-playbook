@@ -66,8 +66,13 @@
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
+# size fails closed (v0.24.29, D1): an untracked production regular file or symlink to a file that it cannot count (unreadable, gone
+# since the listing, no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
+# "error: cannot count the lines of untracked file PATH (unreadable, or gone since the listing); fix it and run size again"
+# (control characters but TAB shown as ?), prints no "files:" line and exits 3. Test and .agents/handoff/ paths are not
+# affected; a symlink to a directory, a nested repo, a dangling symlink keep their count.
 #
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest) | 130 / 143 interrupted
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -693,10 +698,34 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     # equal the input set; otherwise the whole batch list goes through the per-file command. Quoted names (a quote, backslash or
     # control character), directories and nested repos always keep the per-file command, fed the raw path.
     untracked_stats() (
+      # pf_emit PATH IDX: a regular file or symlink to a file that cannot be counted becomes "E<TAB>IDX<TAB>DISPLAY" (v0.24.29, D1);
+      # test, .agents/handoff/ and baseline-unchanged paths are left out of it (D2); a newline name is always production (D23)
       pf_emit() {
-        local u="$1" counts
-        counts="$(git diff --no-index --numstat -- /dev/null "$u" | cut -f1,2)"
-        [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+        local u="$1" ix="$2" counts raw rc disp bad=0
+        if [ -f "$u" ] && [ ! -d "$u" ]; then
+          if [ -r "$u" ]; then
+            raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
+            counts="$(printf '%s\n' "$raw" | cut -f1,2)"
+            if [ "$rc" -gt 1 ]; then bad=1
+            elif [ -z "$counts" ]; then if [ -s "$u" ] || [ ! -e "$u" ]; then bad=1; else counts="$(printf '0\t0')"; fi   # empty file: no numstat line
+            fi
+          else bad=1; fi
+        elif [ ! -L "$u" ] && [ ! -e "$u" ]; then bad=1   # gone since the listing
+        else
+          counts="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null | cut -f1,2)"
+          [ -n "$counts" ] || counts="$(printf '0\t0')"   # empty file: no numstat line
+        fi
+        if [ "$bad" -eq 1 ]; then
+          case "$u" in
+            *$'\n'*) ;;
+            .agents/handoff/*) return 0 ;;
+            *) case "$BL_UNCH" in *"$NL$u$NL"*) return 0 ;; esac
+               [ "$(classify "$u")" != test ] || return 0 ;;
+          esac
+          disp="$(printf '%s' "$u" | LC_ALL=C tr '\000-\010\012-\037\177' '?')"
+          printf 'E\t%s\t%s\n' "$ix" "$disp"
+          return 0
+        fi
         case "$u" in
           *$'\n'*) printf '!\t%s\n' "$counts" ;;
           *)       printf '%s\t%s\n' "$counts" "$u" ;;
@@ -704,20 +733,24 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
       }
       d="$(mktemp -d 2>/dev/null)" || d=""
       if [ -z "$d" ]; then
+        ix=0
         git -c core.quotepath=off ls-files -z --others --exclude-standard | while IFS= read -r -d '' u; do
           [ -n "$u" ] || continue
-          pf_emit "$u"
+          ix=$((ix + 1))
+          pf_emit "$u" "$ix"
         done
         exit 0
       fi
       trap 'rm -rf "$d"' EXIT
       git -c core.quotepath=off ls-files -z --others --exclude-standard > "$d/ul0" 2>/dev/null
-      : > "$d/in"; : > "$d/in0"; : > "$d/counts"; : > "$d/names"; : > "$d/nl"; mkdir "$d/obj"
-      nb=0
+      : > "$d/in"; : > "$d/in0"; : > "$d/counts"; : > "$d/names"; : > "$d/nl"; : > "$d/idxs"; mkdir "$d/obj"
+      nb=0; ix=0
       while IFS= read -r -d '' u; do
         [ -n "$u" ] || continue
-        case "$u" in *$'\n'*) pf_emit "$u" >> "$d/nl"; continue ;; esac
+        ix=$((ix + 1))
+        case "$u" in *$'\n'*) pf_emit "$u" "$ix" >> "$d/nl"; continue ;; esac
         printf '%s\n' "$u" >> "$d/names"
+        printf '%s\n' "$ix" >> "$d/idxs"
         case "$u" in *[[:cntrl:]]* | *\"* | *\\*) continue ;; esac
         if [ -f "$u" ] && [ ! -d "$u" ]; then
           printf '%s\n' "$u" >> "$d/in"
@@ -745,7 +778,9 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
         ($0 in c) { print "B\t" c[$0] "\t" $0; next }
         { print "P\t-\t-\t" $0 }' "$d/cj" "$d/names" > "$d/joined"
       cat "$d/nl"
+      exec 6< "$d/idxs"
       while IFS= read -r jl; do
+        IFS= read -r ix <&6
         kind="${jl%%$'\t'*}"; jr="${jl#*$'\t'}"
         a="${jr%%$'\t'*}"; jr="${jr#*$'\t'}"
         dl="${jr%%$'\t'*}"; u="${jr#*$'\t'}"
@@ -753,7 +788,7 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
         if [ "$kind" = B ]; then
           printf '%s\t%s\t%s\n' "$a" "$dl" "$u"
         else
-          pf_emit "$u"
+          pf_emit "$u" "$ix"
         fi
       done < "$d/joined"
     )
@@ -765,10 +800,13 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     plist=""
     metas=""
     seen=""
-    nlfiles=0; nllines=0
+    nlfiles=0; nllines=0; errs=""
     while IFS= read -r sl; do
       [ -n "$sl" ] || continue
       case "$sl" in
+        'E'$'\t'*)   # an untracked production file that could not be counted (v0.24.29, D1)
+          errs+="${sl#*$'\t'}"$'\n'
+          continue ;;
         '!'$'\t'*)   # a raw name with a newline: production code, never classified or skipped (D23)
           sr="${sl#*$'\t'}"; sa="${sr%%$'\t'*}"
           nlfiles=$((nlfiles + 1))
@@ -812,6 +850,12 @@ EOF
 $metas
 EOF
     exec 3<&-
+    if [ -n "$errs" ]; then
+      printf '%s' "$errs" | LC_ALL=C sort -n -t $'\t' -k1,1 | while IFS= read -r el; do
+        printf 'error: cannot count the lines of untracked file %s (unreadable, or gone since the listing); fix it and run size again\n' "${el#*$'\t'}"
+      done >&2
+      exit 3
+    fi
     files=$((files + nlfiles)); lines=$((lines + nllines))
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
