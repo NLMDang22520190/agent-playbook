@@ -62,9 +62,10 @@ for c in $(git log --format=%H HEAD -- README.md); do
   fi
   count_sha="$c"; break
 done
+# A commit "release: README test count ..." (it may be empty, made after a fresh full run confirms the count) is a checkpoint as well.
 # The release commit "release: vX.Y.Z" (X.Y.Z = VERSION at HEAD) is a checkpoint too: the flow makes it after a fresh full run plus
 # readme-count, and a test change that keeps the total (a refactor) never produces a README count commit. The newer one wins.
-rel_sha="$(git log --format='%H %s' HEAD | awk -v s="release: v$head_ver" '{ h = $1; sub(/^[^ ]+ /, ""); if ($0 == s) { print h; exit } }')"
+rel_sha="$(git log --format='%H %s' HEAD | awk -v s="release: v$head_ver" -v t="release: README test count" '{ h = $1; sub(/^[^ ]+ /, ""); if ($0 == s || index($0, t) == 1) { print h; exit } }')"
 if [ -n "$rel_sha" ]; then
   if [ -n "$count_sha" ] && git merge-base --is-ancestor "$count_sha" "$rel_sha" 2>/dev/null; then count_sha="$rel_sha"; fi
 fi
@@ -72,6 +73,7 @@ if [ -n "$count_sha" ]; then
   changed="$(git diff --name-only "$count_sha" HEAD -- 'tests/*.sh' 2>/dev/null)$(git status --porcelain -- 'tests/*.sh' 2>/dev/null)"
   if [ -n "$changed" ]; then
     echo "README test count may be stale: tests changed after $count_sha; rerun tests/run-all.sh and tools/readme-count.sh" >&2
+    echo "rerun tests/run-all.sh and tools/readme-count.sh, then commit the README (or an empty 'release: README test count N (verified)' commit if N is unchanged)" >&2
     echo "release PR check failed" >&2
     exit 1
   fi
