@@ -164,11 +164,11 @@ reg_lines() {
 # different modes, and the real mode differs from HEAD's (or the path is absent in HEAD).
 xbit_paths() {
   git ls-files -s -z > "$tmpd/real.z" || return 1
-  reg_lines < "$tmpd/real.z" > "$tmpd/real.m" || return 1
+  reg_lines < "$tmpd/real.z" > "$tmpd/real.m"
   GIT_INDEX_FILE="$tmpd/scratch.idx" git ls-files -s -z > "$tmpd/scr.z" || return 1
-  reg_lines < "$tmpd/scr.z" > "$tmpd/scr.m" || return 1
+  reg_lines < "$tmpd/scr.z" > "$tmpd/scr.m"
   git ls-tree -r -z HEAD > "$tmpd/head.z" || return 1
-  tree_lines < "$tmpd/head.z" > "$tmpd/head.m" || return 1
+  tree_lines < "$tmpd/head.z" > "$tmpd/head.m"
   awk 'function pth(l) { return substr(l, index(l, "\t") + 1) }
     FILENAME == ARGV[1] { j[$0] = 1; next }
     FILENAME == ARGV[2] { r[pth($0)] = substr($0, 1, index($0, "\t") - 1); next }
@@ -332,7 +332,7 @@ undo_exit() {
   lost_decide
   if [ "$R" = detached ]; then
     hsha="$(git rev-parse --verify -q HEAD)" || hsha=""
-    read_branch || BR="?"
+    read_branch
     if [ -z "$hsha" ]; then ok=0; fails="$fails HEAD-unreadable"
     elif [ "$BR" != detached ] || [ "$hsha" != "$pre_head" ]; then
       git update-ref --no-deref HEAD "$pre_head" "$hsha" || { ok=0; fails="$fails HEAD-not-detached-at-$pre_head"; }
@@ -488,8 +488,12 @@ else
 fi
 # an untracked nested repository (a status row ending in a slash) or a staged gitlink that HEAD lacks: the snapshot
 # cannot hash it, so refuse it before the test command runs (a nested repository under .agents/handoff/ is exempt)
-# read-only status (no index refresh) for the nested repository check: a refusal leaves the index file untouched
-GIT_OPTIONAL_LOCKS=0 git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/statusn" || pb_die "git status failed" 3
+# the one pre-run git status (also used by the newline / backslash-002 check below); its rows are scanned here
+# this status may refresh the index file; a nested repository refusal below puts the saved copy back, so it leaves the index file untouched
+ix0="$(git rev-parse --git-path index)" || pb_die "cannot find the index" 3
+ix0_had=0
+if [ -f "$ix0" ]; then cp -p "$ix0" "$tmpd/ix0.save" || pb_die "cannot save the index" 3; ix0_had=1; fi
+git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status0" || pb_die "git status failed" 3
 nest=""; nxt=0
 while IFS= read -r -d '' ent; do
   if [ "$nxt" -eq 1 ]; then p="$ent"; nxt=0; else
@@ -497,7 +501,7 @@ while IFS= read -r -d '' ent; do
     case "$xy" in R? | C? | ?R | ?C) nxt=1 ;; esac
   fi
   case "$p" in .agents/handoff/*) continue ;; */) nest="${nest:-$p}" ;; esac
-done < "$tmpd/statusn"
+done < "$tmpd/status0"
 if [ -z "$nest" ]; then
   git ls-files -s -z > "$tmpd/lsf" || pb_die "git ls-files failed" 3
   while IFS= read -r -d '' ent; do
@@ -508,11 +512,11 @@ if [ -z "$nest" ]; then
   done < "$tmpd/lsf"
 fi
 if [ -n "$nest" ]; then
+  if [ "$ix0_had" -eq 1 ]; then cp -p "$tmpd/ix0.save" "$ix0" || pb_die "cannot restore the index" 3; else rm -f "$ix0"; fi
   printf 'error: nested repository: %s - the snapshot cannot hash it; add it to .git/info/exclude or .gitignore and run again - nothing committed\n' "$nest" >&2
   exit 1
 fi
 # a newline or a \002 byte in a path makes the snapshot die (exit 3): refuse it before the test command runs
-git -c core.quotepath=off status --porcelain=v1 -z --untracked-files=all > "$tmpd/status0" || pb_die "git status failed" 3
 if [ "$(LC_ALL=C tr '\0' 'x' < "$tmpd/status0" | wc -l)" -gt 0 ] || [ "$(LC_ALL=C tr -cd '\002' < "$tmpd/status0" | wc -c)" -gt 0 ]; then
   echo "error: a changed path contains a newline or a \\002 byte: commit the role's paths by hand - nothing committed" >&2
   exit 1
