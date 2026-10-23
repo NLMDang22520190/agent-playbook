@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mechanical enforcement of role separation in the TDD workflow.
-#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE]
+#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE] [--scope FILE]
 #   role-gate.sh snapshot [--out FILE]  records the work-tree and index state of every changed path (a baseline)
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
 #   role-gate.sh size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]
@@ -73,7 +73,18 @@
 # Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
 # unreadable); a symlink to a directory, a nested repo, a dangling symlink keep their count.
 #
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest; size: an untracked file it cannot count) | 130 / 143 interrupted
+# Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
+# --scope needs --base (the sha recorded before the role; a base that moves with HEAD hides the role's own commits), else exit 2.
+# FILE: the header "# role-gate scope v1", then one entry per line, "own" or "other", one TAB, a path (everything after the first
+# TAB). An entry ending in / is a directory prefix, any other entry one exact path; no globs, matching is byte for byte (an entry
+# with //, a backslash or another Unicode form never matches). At least one own entry; the same kind and path twice is an error;
+# own x with other x is allowed and own wins. A relative FILE is resolved against the caller's directory; keep it in the git dir.
+# An own path is judged as without --scope. An "other" path (another task's) is not judged: "note: another task's path, not
+# checked: PATH [KIND]". Any other path is judged as today and gets "note: PATH is outside the task scope and not in the baseline; ...".
+# "note: scope FILE (N own, M other entries, digest D): K path(s) outside the scope not checked" comes first. The mode check
+# exempts nothing with --scope; PB_ALLOW_MODE_CHANGE is the only escape. A missing, tracked or malformed FILE exits 3, no verdict.
+# Residual risk: the gate cannot tell two writers apart on one path, so an other path or prefix is exempt for every writer.
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -368,15 +379,18 @@ case "$cmd" in
     role="${1:-}"
     [ $# -gt 0 ] && shift
     case "$role" in tester|implementer|reviewer|infra) ;; *) pb_die "role must be tester|implementer|reviewer|infra" 2 ;; esac
-    base="HEAD"; bl=""
+    base="HEAD"; bl=""; sc=""; base_given=0
     while [ $# -gt 0 ]; do
       case "$1" in
-        --base) [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; shift ;;
+        --base) [ $# -ge 2 ] || pb_die "--base needs a ref" 2; base="$2"; base_given=1; shift ;;
         --baseline) { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--baseline needs a file" 2; bl="$2"; shift ;;
+        --scope) [ -z "$sc" ] || pb_die "--scope given twice" 2
+                 { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--scope needs a file" 2; sc="$2"; shift ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift
     done
+    if [ -n "$sc" ] && [ "$base_given" -eq 0 ]; then pb_die "--scope needs --base REF (the sha recorded before the role)" 2; fi
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || pb_die "not inside a git work tree (role gates need git)" 3
     git rev-parse --verify -q "$base^{commit}" >/dev/null 2>&1 || pb_die "base ref not found: $base" 3
     # v0.24.22: a base that is not an ancestor of HEAD (typically a commit-tree of a dirty work tree) is judged like any other; say so
@@ -385,6 +399,7 @@ case "$cmd" in
     fi
     # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
     if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
+    if [ -n "$sc" ]; then case "$sc" in /* | [A-Za-z]:[/\\]*) ;; *) sc="$PWD/$sc" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     # a config file can move the gate: show where the regexes come from, before the verdict
@@ -393,6 +408,16 @@ case "$cmd" in
     [ -n "$TEST_SCOPE" ] && printf 'note: test_path_regex from the %s conf: %s\n' "$TEST_SCOPE" "$(shown "$TEST_RE")"
     [ -n "$INFRA_RE" ] && printf 'note: test_infra_regex from the %s conf: %s\n' "$INFRA_SCOPE" "$(shown "$INFRA_RE")"
     [ -n "$INFRA_SHADOW" ] && printf 'note: test_infra_regex is empty in the project conf and switches off the global value: %s\n' "$(shown "$INFRA_SHADOW")"
+
+    # --scope: validate the file (E6, E7, E8; before the baseline manifest is read) and load its entries
+    if [ -n "$sc" ]; then
+      # hash the file first, load it, hash again: a file that changed in between is refused (the digest in E1 names the bytes judged)
+      sc_digest="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest=""
+      pb_scope_read "$sc"
+      [ -n "$sc_digest" ] || pb_die "cannot hash the scope file: $sc" 3
+      sc_digest2="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest2=""
+      [ "$sc_digest2" = "$sc_digest" ] || pb_die "the scope file changed while it was read: $sc" 3
+    fi
 
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
     # union: REF..work tree, untracked, REF..index, REF..HEAD (a committed change a role restored in the tree still ships)
@@ -494,6 +519,55 @@ $changed
 EOF
     plist="${plist%$'\n'}"
     classify_list "$plist"
+    # a control character but TAB in a path could rewrite a note: show it as ? (TAB rewrites nothing)
+    shown_t() { printf '%s' "$1" | LC_ALL=C tr '\000-\010\012-\037\177' '?'; }
+    SC_NONE="$NL"
+    if [ -n "$sc" ]; then
+      # --scope: own paths and unknown paths are judged (as today); other paths are named and left out
+      scl=""
+      if [ -n "$plist" ]; then scl="$(printf '%s\n' "$plist" | pb_scope_classify)" || pb_die "cannot classify the changed paths" 3; fi
+      jlist=""; jkinds=""; sc_notes=""; nother=0
+      exec 4<<EOF
+$KINDS
+EOF
+      exec 5<<EOF
+$scl
+EOF
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        IFS= read -r kind <&4
+        IFS= read -r cls <&5
+        case "$cls" in
+          other) nother=$((nother + 1))
+                 sc_notes+="note: another task's path, not checked: $(shown_t "$f") [$kind]"$'\n' ;;
+          none) if [ -n "$bl" ] && case "$NL$ml$NL" in *"$NL$f$NL"*) true ;; *) false ;; esac; then
+                  # rule 3: not own, not other, recorded in the baseline, changed since: not judged
+                  nother=$((nother + 1))
+                  sc_notes+="note: outside the task scope, changed since the baseline, not checked: $(shown_t "$f") [$kind]"$'\n'
+                else
+                  jlist+="$f"$'\n'; jkinds+="$kind"$'\n'; SC_NONE+="$f"$'\n'
+                fi ;;
+          *) jlist+="$f"$'\n'; jkinds+="$kind"$'\n' ;;
+        esac
+      done <<EOF
+$plist
+EOF
+      exec 4<&- 5<&-
+      changed="${jlist%$'\n'}"; KINDS="${jkinds%$'\n'}"
+      read -r sc_nown sc_noth <<EOF
+$(pb_scope_counts)
+EOF
+      printf 'note: scope %s (%s own, %s other entries, digest %s): %s path(s) outside the scope not checked\n' "$sc" "$sc_nown" "$sc_noth" "$sc_digest" "$nother"
+      printf '%s' "$sc_notes"
+    fi
+    # sc_e4 PATH: with --scope, a path that is neither own nor other (rule 4) gets the hint
+    sc_e4() {
+      [ -n "$sc" ] || return 0
+      case "$SC_NONE" in *"$NL$1$NL"*)
+        printf 'note: %s is outside the task scope and not in the baseline; if another task changed it, add an "other" entry to the scope file\n' "$(shown_t "$1")" ;;
+      esac
+      return 0
+    }
     exec 3<<EOF
 $KINDS
 EOF
@@ -504,6 +578,7 @@ EOF
       IFS= read -r kind <&3
       if [ "$role" = implementer ] && [ "$kind" = test ] && mode_restore_only "$f"; then
         printf 'note: %s mode restore only (100644 -> 100755, content unchanged)\n' "$(shown "$f")"
+        sc_e4 "$f"
         continue
       fi
       bad=0
@@ -517,6 +592,7 @@ EOF
         printf 'VIOLATION (%s): %s [%s]\n' "$role" "$f" "$kind"
         violations=$((violations + 1))
       fi
+      sc_e4 "$f"
     done <<EOF
 $changed
 EOF
@@ -650,7 +726,7 @@ EOF
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
       esac
       shift
     done
@@ -875,6 +951,6 @@ EOF
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
     ;;
 esac
