@@ -535,8 +535,14 @@ EOF
         case "$cls" in
           other) nother=$((nother + 1))
                  sc_notes+="note: another task's path, not checked: $(shown_t "$f") [$kind]"$'\n' ;;
-          *) jlist+="$f"$'\n'; jkinds+="$kind"$'\n'
-             [ "$cls" = none ] && SC_NONE+="$f"$'\n' ;;
+          none) if [ -n "$bl" ] && case "$NL$ml$NL" in *"$NL$f$NL"*) true ;; *) false ;; esac; then
+                  # rule 3: not own, not other, recorded in the baseline, changed since: not judged
+                  nother=$((nother + 1))
+                  sc_notes+="note: outside the task scope, changed since the baseline, not checked: $(shown_t "$f") [$kind]"$'\n'
+                else
+                  jlist+="$f"$'\n'; jkinds+="$kind"$'\n'; SC_NONE+="$f"$'\n'
+                fi ;;
+          *) jlist+="$f"$'\n'; jkinds+="$kind"$'\n' ;;
         esac
       done <<EOF
 $plist
