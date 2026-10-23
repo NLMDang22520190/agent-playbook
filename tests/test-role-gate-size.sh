@@ -24,6 +24,13 @@
 #   S2-AC4 unreadable (chmod 000)   S2-AC5 vanished / per-file git failure; size-0 file still 0 lines   S2-AC6 stderr pinned byte for byte
 #   S2-AC7 test / handoff unaffected, newline names are production   S2-AC8 symlink to a dir, nested repos, dangling symlink, fifo keep their count
 #   S2-AC16 header exit line and SKILL.md Lite step name the exit 3
+# v0.24.29 lane S3 (linear batch): the batch is ONE `update-index --add -z --stdin` into an empty temporary index and a temporary object dir, then
+# ONE `diff --cached --numstat -z` against the empty tree (id from `hash-object -t tree`); the shim labels and fault modes follow it (D10):
+#   S3-AC10 one ls-files / hash-object / update-index / diff-batch whatever the number of files, no `add -N`; the calls run with the temp index and
+#           the temp object dir (idx=1 obj=1)   S3-AC9/AC11 the corpus (+ clean filter, core.safecrlf=true, splitIndex repo, sha256 repo) equals v0.24.27
+#   S3-AC12 sha256 repo: real index, git dir, index.lock, object store untouched   S3-AC13 update-index refused / partial / rc 1: whole list per-file
+#   S3-AC15 TERM to the gate during the batch: the process group finishes, no pbgate.* dir (and no BL_TMPW file with --baseline) is left
+#   S3-AC14 (timing) and S3-AC17 (shard weight) are evidence rows in the report, not suite rows
 # The expected values are v0.24.27's own scripts (git archive 0b6af9c), run beside the current gate on the same repo.
 # Kinds that this file system cannot hold (tab or quote in a name, symlinks) are skipped, not failed.
 . "$(dirname "$0")/lib.sh"
@@ -42,7 +49,10 @@ WIDE="--max-files 1000 --max-lines 100000"
 SHIM="$(mk_tmp)"; SHIMLOG="$DT/shim.log"; SHIMFIRED="$DT/shim.fired"
 cat > "$SHIM/git" <<'SHIMEOF'
 #!/usr/bin/env bash
-# PB_SHIM_MODE: count (default) | add-fail | diff-fail | add-rc | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128. Every call appends "<label> idx=<0|1>" to PB_SHIM_LOG.
+# PB_SHIM_MODE: count (default) | upd-fail | diff-fail | upd-rc | upd-partial | diff-rc | diff-drop | diff-dup | race | vanish | uncount-none | uncount-128 | hang.
+# Every call appends "<label> idx=<0|1> obj=<0|1>" to PB_SHIM_LOG (idx: GIT_INDEX_FILE set, obj: GIT_OBJECT_DIRECTORY set); update-index, diff-batch and
+# hash-object calls also append "<label>: <args>" to PB_SHIM_LOG.args. hang: the first call labelled $PB_HANG_LABEL (default update-index) marks
+# PB_HANG_REACHED, then waits (up to 25 s) for PB_HANG_RELEASE before it runs.
 sub=""; skip=0; hasN=0; hasz=0; hasnum=0; hasnoindex=0
 for a in "$@"; do
   if [ -z "$sub" ]; then
@@ -57,22 +67,30 @@ if [ "$sub" = add ] && [ "$hasN" = 1 ]; then label=add-N; fi
 if [ "$sub" = diff ] && [ "$hasnum" = 1 ] && [ "$hasz" = 1 ]; then label=diff-batch; fi
 if [ "$sub" = diff ] && [ "$hasnoindex" = 1 ]; then label=diff-noindex; fi
 idx=0; if [ -n "${GIT_INDEX_FILE:-}" ]; then idx=1; fi
-printf '%s idx=%s\n' "$label" "$idx" >> "$PB_SHIM_LOG"
+obj=0; if [ -n "${GIT_OBJECT_DIRECTORY:-}" ]; then obj=1; fi
+printf '%s idx=%s obj=%s\n' "$label" "$idx" "$obj" >> "$PB_SHIM_LOG"
+case "$label" in update-index | diff-batch | hash-object) printf '%s: %s\n' "$label" "$*" >> "$PB_SHIM_LOG.args" ;; esac
 case "${PB_SHIM_MODE:-count}:$label" in
-  add-fail:add-N) printf 'shim: add -N refused\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;
+  upd-fail:update-index) printf 'shim: update-index refused\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;
   diff-fail:diff-batch) printf 'shim: diff refused\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;
   diff-drop:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@" | tr '\0' '\n' | sed 1d | tr '\n' '\0'; exit 0 ;;
   diff-dup:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@" | tr '\0' '\n' | sed 1p | tr '\n' '\0'; exit 0 ;;
-  add-rc:add-N | diff-rc:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@"; exit 1 ;;
+  upd-rc:update-index | diff-rc:diff-batch) echo 1 >> "$PB_SHIM_FIRED"; "$REAL_GIT" "$@"; exit 1 ;;
   vanish:ls-files) : > "$PB_SHIM_FIRED.listed" ;;   # v0.24.29 S2: after the listing, the first count call finds PB_VANISH_PATH gone
-  vanish:add-N | vanish:update-index | vanish:diff-batch | vanish:diff-noindex)
+  vanish:update-index | vanish:diff-batch | vanish:diff-noindex)
     if [ -e "$PB_SHIM_FIRED.listed" ] && [ -e "$PB_VANISH_PATH" ]; then rm -f "$PB_VANISH_PATH"; echo 1 >> "$PB_SHIM_FIRED"; fi ;;
-  uncount-none:add-N | uncount-none:update-index | uncount-none:diff-batch | uncount-none:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;   # no output at all
-  uncount-128:add-N | uncount-128:update-index | uncount-128:diff-batch) exit 1 ;;   # the batch is refused; the per-file command fails with 128
+  uncount-none:update-index | uncount-none:diff-batch | uncount-none:diff-noindex) echo 1 >> "$PB_SHIM_FIRED"; exit 1 ;;   # no output at all
+  uncount-128:update-index | uncount-128:diff-batch) exit 1 ;;   # the batch is refused; the per-file command fails with 128
   uncount-128:diff-noindex) printf 'fatal: shim\n' >&2; echo 1 >> "$PB_SHIM_FIRED"; exit 128 ;;
-  race:add-N | race:diff-noindex)   # a listed file turns into a directory right before the first command that reads it
+  upd-partial:update-index)   # most of the list is indexed, then git fails: a partial failure
+    echo 1 >> "$PB_SHIM_FIRED"; tr '\0' '\n' | sed '$d' | tr '\n' '\0' | "$REAL_GIT" "$@" >/dev/null 2>&1; printf 'fatal: shim partial update\n' >&2; exit 128 ;;
+  race:update-index | race:diff-noindex)   # a listed file turns into a directory right before the first command that reads it
     if [ -f "$PB_RACE_PATH" ]; then rm -f "$PB_RACE_PATH"; mkdir -p "$PB_RACE_PATH"; printf 'a\nb\nc\n' > "$PB_RACE_PATH/inner"; fi ;;
 esac
+if [ "${PB_SHIM_MODE:-}" = hang ] && [ "$label" = "${PB_HANG_LABEL:-update-index}" ]; then
+  : > "$PB_HANG_REACHED"; w=0
+  while [ ! -e "$PB_HANG_RELEASE" ] && [ "$w" -lt 250 ]; do sleep 0.1 2>/dev/null || sleep 1; w=$((w + 1)); done
+fi
 exec "$REAL_GIT" "$@"
 SHIMEOF
 chmod +x "$SHIM/git"
@@ -177,6 +195,9 @@ mkkind() {
     attr-driver-ext) git config diff.dex.command false; attr '*.ex diff=dex'; printf 'a\nb\n' > a.ex ;;
     autocrlf) GENV=(X_PB=1 GIT_CONFIG_VALUE_0=true); printf 'a\r\nb\r\n' > c1.js; printf 'a\nb\n' > c2.js; printf 'a\r\nb\n' > c3.js
       GIT_CONFIG_VALUE_0=true git status --porcelain >/dev/null 2>&1 ;;   # settle the index: the first run would otherwise print the tracked files' warnings, later runs not
+    attr-clean) git config filter.up.clean 'tr a-z A-Z'; attr '*.up filter=up'; printf 'x\ny\nz\n' > a.up ;;
+    safecrlf) git config core.safecrlf true; GENV=(X_PB=1 GIT_CONFIG_VALUE_0=true)
+      printf 'a\nb\n' > lf.js; printf 'a\r\nb\n' > mix.js; printf 'a\r\nb\r\n' > crlf.js ;;
     attr-untracked) mkdir -p sub; printf '*.x binary\n' > sub/.gitattributes; printf 'a\nb\n' > sub/f.x ;;
     attr-deleted) printf '*.dat binary\n' > .gitattributes; git add .gitattributes; git commit -q -m attr; rm .gitattributes; printf 'x\ny\n' > ad.dat ;;
     symlink-file) [ "$SYMLINKS" = 1 ] || return 1; printf 'l1\nl2\n' > target.js; ln -s target.js lnk.js ;;
@@ -202,7 +223,7 @@ mkkind() {
 }
 K_SAME="text binary empty nofinalnl attr-binary attr-nodiff attr-eol attr-textauto attr-driver-binary attr-driver-textconv
  attr-driver-ext autocrlf attr-untracked attr-deleted symlink-file symlink-dangling bigfile exec name-space name-dash name-unicode
- name-squote name-star name-glob indir"
+ name-squote name-star name-glob indir attr-clean safecrlf"
 K_ROUTED="routed-tab routed-dquote routed-backslash routed-newline routed-symlink-dir routed-nested-repo"
 mkrepo() { R="$(mk_tmp)"; mk_repo "$R"; cd "$R" || exit 3; }
 
@@ -228,7 +249,7 @@ GENV=(X_PB=1)
 echo "AC1 all kinds in one repo: plain, default limits and --baseline"
 mkrepo; CORP="$R"
 for k in $K_SAME routed-tab routed-dquote routed-backslash routed-symlink-dir routed-nested-repo; do
-  case "$k" in autocrlf | attr-deleted) continue ;; esac
+  case "$k" in autocrlf | attr-deleted | safecrlf) continue ;; esac
   mkkind "$k" 2>/dev/null || true
 done
 GENV=(X_PB=1)
@@ -502,11 +523,87 @@ if [ "$SYMLINKS" = 1 ]; then
 else t_skip 2 "AC2 symlinks (this file system has none)"; fi
 
 mkrepo; count_calls "$R" size $WIDE
-chk "AC2/N2 characterization: no untracked file, no add -N and no temporary index" "0" "$(grep -c '^add-N\|idx=1' "$SHIMLOG" | tr -d ' ')"
+chk "AC2/N2 characterization: no untracked file, no batch call (update-index, diff-batch, add -N) and no temporary index" "0" "$(grep -c '^add-N\|^update-index\|^diff-batch\|idx=1' "$SHIMLOG" | tr -d ' ')"
 if mkrepo && mkkind routed-tab && routed_listed; then
   count_calls "$R" size $WIDE
-  chk "AC2/N2 characterization: only a per-file-routed untracked name: no add -N" "0" "$(grep -c '^add-N' "$SHIMLOG" | tr -d ' ')"
+  chk "AC2/N2 characterization: only a per-file-routed untracked name: no update-index and no diff-batch" "0" "$(grep -c '^update-index\|^diff-batch' "$SHIMLOG" | tr -d ' ')"
 else t_skip 1 "AC2/N2 routed-only list (this file system cannot hold a tab in a name, or git does not list it as a quoted name)"; fi
+
+# ---------------------------------------------------------------- S3 AC10: one linear call, whatever the number of files
+echo "S3 AC10 the untracked batch is one ls-files, one hash-object, one update-index --add -z --stdin and one diff --cached --numstat -z (no add -N)"
+lbl() { grep -c "^$1 " "$SHIMLOG" | tr -d ' '; }
+argsof() { grep "^$1: " "$SHIMLOG.args" | head -n 1; }
+s3_calls() { # NAME DIR ARGS... -> one run under the counting shim; rows on the labelled calls of that run
+  local name="$1" d="$2"; shift 2
+  count_calls "$d" "$@"
+  S3_LS="$(lbl ls-files)"; S3_HO="$(lbl hash-object)"; S3_UI="$(lbl update-index)"; S3_DB="$(lbl diff-batch)"; S3_AN="$(lbl add-N)"; S3_PF="$(lbl diff-noindex)"
+}
+mkrepo; mkfiles f 2; D_2="$R"
+mkrepo; mkfiles f 200; D_200="$R"
+for pair in "2:$D_2" "200:$D_200"; do
+  n="${pair%%:*}"; d="${pair#*:}"
+  : > "$SHIMLOG.args"
+  s3_calls x "$d" size $WIDE
+  assert_contains "S3 AC10 control: the run with $n untracked files counted all of them" "$SIZEOUT" "files: $n/1000 lines: $n/100000"
+  chk "S3 AC10 $n files: exactly one update-index call" "1" "$S3_UI"
+  chk "S3 AC10 $n files: exactly one diff --cached --numstat -z call (the batch diff)" "1" "$S3_DB"
+  chk "S3 AC10 $n files: exactly one hash-object call (the empty tree id)" "1" "$S3_HO"
+  chk "S3 AC10 $n files: exactly one ls-files call" "1" "$S3_LS"
+  chk "S3 AC10 $n files: no add -N call" "0" "$S3_AN"
+  chk "S3 AC10 $n files: no per-file diff --no-index call" "0" "$S3_PF"
+  chk "S3 AC10 $n files: the update-index call runs with the temporary index and the temporary object dir" "update-index idx=1 obj=1" "$(grep '^update-index ' "$SHIMLOG" | head -n 1)"
+  chk "S3 AC10 $n files: the batch diff runs with the temporary index and the temporary object dir" "diff-batch idx=1 obj=1" "$(grep '^diff-batch ' "$SHIMLOG" | head -n 1)"
+  UA="$(argsof update-index)"
+  for fl in "--add" "-z" "--stdin" "core.splitIndex=false"; do
+    case " $UA " in *" $fl "* | *"$fl "*) t_ok "S3 AC10 $n files: update-index is called with $fl" ;; *) t_bad "S3 AC10 $n files: update-index is called with $fl" "args: [$UA]" ;; esac
+  done
+  DA="$(argsof diff-batch)"
+  for fl in "--cached" "--numstat" "-z"; do
+    case " $DA " in *" $fl "*) t_ok "S3 AC10 $n files: the batch diff is called with $fl" ;; *) t_bad "S3 AC10 $n files: the batch diff is called with $fl" "args: [$DA]" ;; esac
+  done
+  case "$(argsof hash-object)" in *"-t tree"*) t_ok "S3 AC10 $n files: hash-object asks for the empty tree (-t tree)" ;; *) t_bad "S3 AC10 $n files: hash-object asks for the empty tree (-t tree)" "args: [$(argsof hash-object)]" ;; esac
+done
+# --baseline: the batch is still one update-index and one diff-batch with 4 vs 202 files
+mkrepo; mkfiles f 2; mkfiles g 2; D_2="$R"
+mkrepo; mkfiles f 2; mkfiles g 200; D_200="$R"
+for pair in "4:$D_2" "202:$D_200"; do
+  n="${pair%%:*}"; d="${pair#*:}"
+  s3_calls x "$d" size $WIDE --baseline "$MF0"
+  chk "S3 AC10 --baseline, $n files: one update-index and one diff-batch, no add -N" "1 1 0" "$S3_UI $S3_DB $S3_AN"
+done
+# every kind of the corpus together: still one batch call pair, no per-file command for the batchable kinds
+s3_calls x "$CORP" size $WIDE
+chk "S3 AC10 corpus (all kinds in one repo): one update-index, one diff-batch, no add -N" "1 1 0" "$S3_UI $S3_DB $S3_AN"
+chk "S3 AC10 corpus: the real git calls are 2 + the per-file ones of the routed kinds only (the batch never doubles): update-index runs with idx=1 obj=1" "update-index idx=1 obj=1" "$(grep '^update-index ' "$SHIMLOG" | head -n 1)"
+
+# ---------------------------------------------------------------- S3 AC9/AC11/AC13 more corpus: core.splitIndex, sha256, core.safecrlf=true
+echo "S3 AC9/AC11 the batch equals v0.24.27 on a split-index repo, a sha256 repo and under core.safecrlf=true (whole-batch fallback)"
+mkrepo; git config core.splitIndex true; git update-index --split-index; mkkind text; mkkind binary; mkkind empty; mkkind attr-eol; mkkind exec; mkkind name-space; mkkind indir
+cmp_gate "S3 AC11 core.splitIndex=true repo: stdout, exit code and stderr as v0.24.27" "$R" size $WIDE
+cmp_gate "S3 AC11 core.splitIndex=true repo, --baseline of a clean repo: as v0.24.27" "$R" size $WIDE --baseline "$MF0"
+S3_SHA="$(mk_tmp)"
+if git init -q --object-format=sha256 "$S3_SHA" 2>/dev/null; then
+  ( cd "$S3_SHA" && git config user.email t@example.invalid && git config user.name t && mkdir -p src tests && printf 'a\n' > src/app.js &&
+    printf 'b\n' > tests/app.test.js && git add -A && git commit -q -m init ) || t_bad "S3 AC11 sha256 fixture" "could not commit"
+  cd "$S3_SHA" || exit 3; R="$S3_SHA"
+  mkkind text; mkkind binary; mkkind empty; mkkind attr-eol; mkkind name-space; mkkind routed-tab 2>/dev/null || true
+  cmp_q "S3 AC11 sha256 repo: v0.24.27 + 2 lines per git-quoted name (the empty tree id is the sha256 one)" 0 2 "$S3_SHA" size $WIDE
+  count_calls "$S3_SHA" size $WIDE
+  chk "S3 AC11 sha256 repo: the batch was used (one update-index, one diff-batch, no add -N, no per-file call for a plain file)" "1 1 0" "$(lbl update-index) $(lbl diff-batch) $(lbl add-N)"
+  s0="$(gsnap "$S3_SHA")"; o0="$(objlist "$S3_SHA")"
+  oneside n "$NEWG" "$S3_SHA" size $WIDE
+  chk "S3 AC12 sha256 repo: real index sha256, git dir listing and index.lock unchanged" "$s0" "$(gsnap "$S3_SHA")"
+  chk "S3 AC12 sha256 repo: no new loose object in the real object store" "$o0" "$(objlist "$S3_SHA")"
+else t_skip 6 "S3 AC11/AC12 sha256 repo (this git has no --object-format=sha256)"; fi
+# core.safecrlf=true: update-index --add refuses an LF file under autocrlf (rc 128); the whole list falls back to the per-file command (D18)
+GENV=(X_PB=1); mkrepo; mkkind safecrlf
+cmp_gate "S3 AC11 core.autocrlf=true + core.safecrlf=true, LF / mixed / CRLF files: stdout, exit code and stderr as v0.24.27 (files: 3, lines: 6)" "$R" size $WIDE
+GENV=(X_PB=1 GIT_CONFIG_VALUE_0=true PB_SHIM_MODE=count PB_SHIM_LOG="$SHIMLOG" PB_SHIM_FIRED="$SHIMFIRED"); GPATH="$SHIM:$PATH"; : > "$SHIMLOG"
+oneside n "$NEWG" "$R" size $WIDE
+unset GPATH; GENV=(X_PB=1)
+chk "S3 AC11 core.safecrlf=true: the answer is right through the fallback (3 files, 6 lines), exit 0" "files: 3/1000 lines: 6/100000 (base=HEAD)"$'\n'"rc=0" "$(cat "$DT/n.out")"$'\n'"rc=$(cat "$DT/n.rc")"
+chk "S3 AC11 core.safecrlf=true: the batch index step was tried (one update-index call)" "1" "$(lbl update-index)"
+chk "S3 AC11 core.safecrlf=true: the whole list went per-file (a diff --no-index for each of the 3 files)" "3" "$(lbl diff-noindex)"
 
 # ---------------------------------------------------------------- AC3 nothing outside the temp dir is written
 echo "AC3 the real index, the git dir, index.lock and the object store are untouched"
@@ -563,17 +660,22 @@ shimrun() { # NAME MODE DIR ARGS... -> cmp_gate under the shim in MODE; then the
   cmp_gate "$name" "$d" "$@"
   unset GPATH; GENV=(X_PB=1)
 }
+perfile_calls() { grep -c '^diff-noindex' "$SHIMLOG" | tr -d ' '; }
 mk4; D4="$R"
-shimrun "AC4 add -N exits non-zero: result equals v0.24.27" add-fail "$D4" size $WIDE
-chk "AC4 add -N exits non-zero: the batch was tried (shim refused an add -N)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
-shimrun "AC4 add -N exits non-zero, --baseline: result equals v0.24.27" add-fail "$D4" size $WIDE --baseline "$MF0"
+shimrun "AC4 update-index exits non-zero: result equals v0.24.27" upd-fail "$D4" size $WIDE
+chk "AC4 update-index exits non-zero: the batch was tried (shim refused an update-index)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
+shimrun "AC4 update-index exits non-zero, --baseline: result equals v0.24.27" upd-fail "$D4" size $WIDE --baseline "$MF0"
+shimrun "S3 AC13 a partial update-index failure (all but one record indexed, then rc 128): result equals v0.24.27" upd-partial "$D4" size $WIDE
+chk "S3 AC13 partial update-index failure: the batch was tried (shim indexed most of the list, then failed)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
+chk "S3 AC13 partial update-index failure: the whole list went per-file (each of the 5 files had a diff --no-index)" "1" "$([ "$(perfile_calls)" -ge 5 ] && echo 1 || echo 0)"
+chk "S3 AC13 partial update-index failure: the batch diff is not run on a half-built index (no diff-batch call)" "0" "$(lbl diff-batch)"
+shimrun "S3 AC13 partial update-index failure, --baseline: result equals v0.24.27" upd-partial "$D4" size $WIDE --baseline "$MF0"
 shimrun "AC4 the batch diff exits non-zero: result equals v0.24.27" diff-fail "$D4" size $WIDE
 chk "AC4 the batch diff exits non-zero: the batch was tried (shim refused the numstat -z diff)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
 shimrun "AC4 the batch diff exits non-zero, --baseline: result equals v0.24.27" diff-fail "$D4" size $WIDE --baseline "$MF0"
-perfile_calls() { grep -c '^diff-noindex' "$SHIMLOG" | tr -d ' '; }
-shimrun "AC4 add -N does its work but exits 1: result equals v0.24.27" add-rc "$D4" size $WIDE
-chk "AC4 add -N exits 1: the batch was tried (shim let add -N run, then exited 1)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
-chk "AC4 add -N exits 1: its output is not used: each of the 5 files went through the per-file loop" "1" "$([ "$(perfile_calls)" -ge 5 ] && echo 1 || echo 0)"
+shimrun "AC4 update-index does its work but exits 1: result equals v0.24.27" upd-rc "$D4" size $WIDE
+chk "AC4 update-index exits 1: the batch was tried (shim let update-index run, then exited 1)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
+chk "AC4 update-index exits 1: its output is not used: each of the 5 files went through the per-file loop" "1" "$([ "$(perfile_calls)" -ge 5 ] && echo 1 || echo 0)"
 shimrun "AC4 the batch diff prints the right numbers but exits 1: result equals v0.24.27" diff-rc "$D4" size $WIDE
 chk "AC4 diff exits 1: the batch was tried (shim let the diff run, then exited 1)" "1" "$([ -s "$SHIMFIRED" ] && echo 1 || echo 0)"
 chk "AC4 diff exits 1: its output is not used: each of the 5 files went through the per-file loop" "1" "$([ "$(perfile_calls)" -ge 5 ] && echo 1 || echo 0)"
@@ -584,9 +686,46 @@ chk "AC4 duplicated path: the batch was tried (shim changed the numstat -z outpu
 # the race mutates the work tree: the v0.24.27 side and the current side each get their own copy of the same state
 mk4; D4A="$R"; mk4; D4B="$R"
 D2="$D4B"; shimrun "AC4 race on separate copies of the repo: result equals v0.24.27" race "$D4A" size $WIDE; unset D2
-chk "AC4 race on separate copies: the batch was tried (an add -N was made)" "1" "$(grep -q '^add-N' "$SHIMLOG" && echo 1 || echo 0)"
+chk "AC4 race on separate copies: the batch was tried (an update-index was made)" "1" "$(grep -q '^update-index' "$SHIMLOG" && echo 1 || echo 0)"
 chk "AC4 race on separate copies: the shim really turned race.js into a directory in both copies" "dd" "$([ -d "$D4A/race.js" ] && printf d)$([ -d "$D4B/race.js" ] && printf d)"
 chk "AC4 race: the path set of the batch no longer matches, so the whole list went through the per-file loop" "1" "$([ "$(perfile_calls)" -ge 5 ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------- S3 AC15 TERM during the batch leaves no temporary file
+echo "S3 AC15 a TERM sent to the gate's PID while it is inside the batch: its process group finishes and no pbgate.* dir (or BL_TMPW file) is left"
+# ac15_run NAME DIR ARGS... -> the gate runs in its own process group (setsid), the shim holds the update-index call until the TERM is sent,
+# then the row polls (up to 30 s, the first check at once) until nobody is left in that group; TMPDIR must then be empty
+ac15_run() {
+  local name="$1" d="$2" lk ad pid pgid i=0 left=1; shift 2
+  if ! command -v setsid >/dev/null 2>&1; then t_skip 3 "$name (no setsid here)"; return; fi
+  lk="$(mk_tmp)"; ad="$(mk_tmp)"; : > "$SHIMLOG"
+  ( cd "$d" && exec setsid env X_PB=1 PLAYBOOK_HOME="$PLAYBOOK_HOME" LC_ALL=C TMPDIR="$lk" PATH="$SHIM:$PATH" PB_SHIM_MODE=hang PB_SHIM_LOG="$SHIMLOG" \
+      PB_SHIM_FIRED="$SHIMFIRED" PB_HANG_REACHED="$ad/reached" PB_HANG_RELEASE="$ad/release" bash "$NEWG" "$@" ) >"$DT/a15.out" 2>"$DT/a15.err" </dev/null &
+  pid=$!
+  while [ ! -e "$ad/reached" ] && kill -0 "$pid" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.1 2>/dev/null || sleep 1; i=$((i + 1)); done
+  if [ ! -e "$ad/reached" ]; then
+    : > "$ad/release"; wait "$pid" 2>/dev/null
+    t_bad "$name: the gate reached the update-index call (the shim's hang marker)" "the gate ended (or 30 s passed) without an update-index call; stderr [$(head -c 160 "$DT/a15.err" | tr '\n' '|')]"
+    return
+  fi
+  pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  if [ "$pgid" != "$pid" ]; then
+    : > "$ad/release"; wait "$pid" 2>/dev/null
+    t_skip 3 "$name (the gate is not the leader of its own process group here: pgid [$pgid] pid [$pid])"; return
+  fi
+  chk "$name: control: a temporary entry exists in TMPDIR while the gate is inside the batch (so the empty-TMPDIR row below can fail)" "1" "$([ -n "$(ls -A "$lk")" ] && echo 1 || echo 0)"
+  kill -TERM "$pid" 2>/dev/null; : > "$ad/release"
+  i=0
+  while [ "$i" -lt 300 ]; do
+    if ! kill -0 -- "-$pgid" 2>/dev/null; then left=0; break; fi
+    sleep 0.1 2>/dev/null || sleep 1; i=$((i + 1))
+  done
+  if [ "$left" = 1 ]; then kill -KILL -- "-$pgid" 2>/dev/null; fi
+  wait "$pid" 2>/dev/null
+  chk "$name: the process group finished within 30 s of the TERM" "0" "$left"
+  chk "$name: nothing is left in TMPDIR (no pbgate.* dir, no BL_TMPW file)" "" "$(ls -A "$lk")"
+}
+mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (plain size)" "$R" size $WIDE
+mkrepo; mkfiles f 3; ac15_run "S3 AC15 TERM to the gate during the batch (size --baseline)" "$R" size $WIDE --baseline "$MF0"
 
 # ---------------------------------------------------------------- AC5 the existing size rows are not edited here
 echo "AC5 the existing size rows live in test-role-gate.sh, -batch.sh, -baseline.sh and -b.sh (not copied here; they must stay green and unchanged)"
