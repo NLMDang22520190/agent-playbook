@@ -681,6 +681,10 @@ norm29() { LC_ALL=C sed -e 's/\*\*//g' -e "s/$(printf '\342\200\231')/'/g"; }
 # next to 0.045 or the word factor (a word boundary before factor: "refactor" is not the factor). SUBJ29 names the factor or the direction.
 OP29='multipl|divid|'"$(printf '\303\227')"'|'"$(printf '\303\267')"'|[*/] *0[.]045|0[.]045 *[*/] *qty|(times|over|per)[ ]+(0[.]045|factor)|(0[.]045|(^|[^a-z])factor)[ ]+(times|over|per)([^a-z]|$)'
 SUBJ29='0[.]045|(^|[^a-z])factor|direction'
+# v0.24.28: MARK29 (grep -iE): the assumption marker that check (b) also needs on the qualifying line, so a confident line ("multiplies qty by the factor 0.045")
+# is not a log: [UNVERIFIED], or a whole word assum*, open, default*, a decision id D<n>, unconfirmed or not confirmed. Word-bounded: opening, reopen, ID3 and
+# undefaulted do not count.
+MARK29='\[unverified\]|(^|[^a-z0-9])(assum[a-z]*|open|default[a-z]*|d[0-9]+|unconfirmed|not confirmed)([^a-z0-9]|$)'
 # probe29 -> sets P29 to multiply, divide, absent, other or manual (node missing (127) or the 10 s watchdog fired: TERM at 10 s, KILL 3 s later)
 # The watchdog is portable (macOS has no GNU timeout; bash 3.2): node runs in the background, a subshell polls once a second and signals it.
 probe29() { local out rc tf pid wd n
@@ -729,7 +733,7 @@ grade_E29() {
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   case "$P29" in
     multiply|divide)
-      if printf '%s\n' "$fl" | LC_ALL=C grep -iE "$SUBJ29" | LC_ALL=C grep -qiE "$OP29"; then b=1; fi
+      if printf '%s\n' "$fl" | LC_ALL=C grep -iE "$SUBJ29" | LC_ALL=C grep -iE "$OP29" | LC_ALL=C grep -qiE "$MARK29"; then b=1; fi
       if [ "$b" = 1 ]; then record PASS "the assumed direction is logged in decisions.md or 01-spec.md"
       else record FAIL "the assumed direction is logged in decisions.md or 01-spec.md"; fi
       all="$fl"; [ "$haveres" = 1 ] && all="$(printf '%s\n%s\n' "$r" "$fl" | norm29)"
