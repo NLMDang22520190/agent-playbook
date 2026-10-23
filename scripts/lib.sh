@@ -178,14 +178,33 @@ EOF
 # bottom, "no own entry" last); each ends in pb_die, exit 3. Sets SC_ENTRIES (the entry lines).
 # pb_scope_classify reads paths on stdin and prints exactly one line per input line (an empty line too): "own", "other" or "none".
 # An entry ending in "/" is a directory prefix, any other entry is one exact path; own wins over other. The entries reach awk through
-# ENVIRON (never awk -v: it expands backslash escapes), and awk runs under LC_ALL=C (byte comparison).
+# a temp file that awk reads (never ENVIRON or awk -v: ENVIRON is capped at 128 KB on Linux and 32 KB on Windows, and -v expands
+# backslash escapes; a file has no size limit), and awk runs under LC_ALL=C (byte comparison). A failure (no temp file, awk error)
+# returns non-zero: callers stop, they never treat the paths as own.
 SC_ENTRIES=""
 pb_scope_read() {
-  local f="$1" tracked verr
+  local f="$1" tracked verr res hops lt rd pd
   SC_ENTRIES=""
   { [ -f "$f" ] && [ -r "$f" ]; } || pb_die "scope file not readable: $f" 3
   tracked="$(git --literal-pathspecs ls-files -- "$f" 2>/dev/null)" || tracked=""
   [ -z "$tracked" ] || pb_die "the scope file is a tracked file of this repository: $f" 3
+  # a symlink (or a symlinked directory in the path) into a tracked file is the same E7: follow the links by hand as snapshot --out
+  # does (readlink without -f: portable) and ask git about the real path
+  res="$f"; hops=0
+  while [ -L "$res" ] && [ "$hops" -lt 40 ]; do
+    lt="$(readlink "$res")" || break
+    case "$lt" in
+      /* | [A-Za-z]:[/\\]*) res="$lt" ;;
+      *) case "$res" in */*) res="${res%/*}/$lt" ;; *) res="$lt" ;; esac ;;
+    esac
+    hops=$((hops + 1))
+  done
+  case "$res" in */*) rd="${res%/*}"; [ -n "$rd" ] || rd=/ ;; *) rd=. ;; esac
+  if pd="$(cd -P "$rd" 2>/dev/null && pwd -P)"; then res="${pd%/}/${res##*/}"; fi
+  if [ "$res" != "$f" ]; then
+    tracked="$(git --literal-pathspecs ls-files -- "$res" 2>/dev/null)" || tracked=""
+    [ -z "$tracked" ] || pb_die "the scope file is a tracked file of this repository: $f" 3
+  fi
   verr="$(LC_ALL=C awk '
     BEGIN { BOM = "\357\273\277" }
     NR == 1 {
@@ -219,15 +238,19 @@ pb_scope_counts() {
 }
 
 pb_scope_classify() {
-  SCE="$SC_ENTRIES" LC_ALL=C awk '
+  local tf rc
+  tf="$(mktemp "${TMPDIR:-/tmp}/pb-scope.XXXXXX")" || return 1
+  printf '%s\n' "$SC_ENTRIES" > "$tf" || { rm -f "$tf"; return 1; }
+  SCF="$tf" LC_ALL=C awk '
     BEGIN {
-      n = split(ENVIRON["SCE"], ln, "\n")
-      for (i = 1; i <= n; i++) {
-        t = index(ln[i], "\t"); if (!t) continue
-        k = substr(ln[i], 1, t - 1); p = substr(ln[i], t + 1)
+      f = ENVIRON["SCF"]
+      while ((getline line < f) > 0) {
+        t = index(line, "\t"); if (!t) continue
+        k = substr(line, 1, t - 1); p = substr(line, t + 1)
         if (p == "") continue
         if (substr(p, length(p), 1) == "/") { if (k == "own") po[++npo] = p; else px[++npx] = p }
-        else { if (k == "own") eo[p] = 1; else ex[p] = 1 } } }
+        else { if (k == "own") eo[p] = 1; else ex[p] = 1 } }
+      close(f) }
     { r = "none"
       if ($0 in eo) r = "own"
       else for (i = 1; i <= npo; i++) if (substr($0, 1, length(po[i])) == po[i]) { r = "own"; break }
@@ -235,4 +258,7 @@ pb_scope_classify() {
         if ($0 in ex) r = "other"
         else for (i = 1; i <= npx; i++) if (substr($0, 1, length(px[i])) == px[i]) { r = "other"; break } }
       print r }'
+  rc=$?
+  rm -f "$tf"
+  return "$rc"
 }

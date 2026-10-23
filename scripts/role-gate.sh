@@ -411,8 +411,12 @@ case "$cmd" in
 
     # --scope: validate the file (E6, E7, E8; before the baseline manifest is read) and load its entries
     if [ -n "$sc" ]; then
+      # hash the file first, load it, hash again: a file that changed in between is refused (the digest in E1 names the bytes judged)
+      sc_digest="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest=""
       pb_scope_read "$sc"
-      sc_digest="$(git hash-object -- "$sc" 2>/dev/null)" || pb_die "cannot hash the scope file: $sc" 3
+      [ -n "$sc_digest" ] || pb_die "cannot hash the scope file: $sc" 3
+      sc_digest2="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest2=""
+      [ "$sc_digest2" = "$sc_digest" ] || pb_die "the scope file changed while it was read: $sc" 3
     fi
 
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
@@ -521,7 +525,7 @@ EOF
     if [ -n "$sc" ]; then
       # --scope: own paths and unknown paths are judged (as today); other paths are named and left out
       scl=""
-      if [ -n "$plist" ]; then scl="$(printf '%s\n' "$plist" | pb_scope_classify)"; fi
+      if [ -n "$plist" ]; then scl="$(printf '%s\n' "$plist" | pb_scope_classify)" || pb_die "cannot classify the changed paths" 3; fi
       jlist=""; jkinds=""; sc_notes=""; nother=0
       exec 4<<EOF
 $KINDS

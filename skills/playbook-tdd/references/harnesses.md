@@ -25,12 +25,13 @@ Separate worktrees stay the first choice for concurrent tasks (`git worktree add
 
 ```bash
 git worktree add ../myrepo-task-a -b task-a
-bash ~/.agents/playbook/scripts/role-gate.sh snapshot --out baseline.txt
-bash ~/.agents/playbook/scripts/role-gate.sh check <role> --base <sha> --baseline baseline.txt
+bash ~/.agents/playbook/scripts/role-gate.sh snapshot --out "$(git rev-parse --git-path pb-gate-baseline-a)"
+bash ~/.agents/playbook/scripts/role-gate.sh check <role> --base <sha> --baseline "$(git rev-parse --git-path pb-gate-baseline-a)"
 ```
 
 When you must use one checkout, share it only with a scope file per task, plus a baseline per task when foreign work exists or may start. The scope file lists `own` paths (judged as always) and `other` paths (another task's, not judged). The gate accepts `--scope` without `--baseline`, then only `other` entries exempt foreign work; a baseline also exempts the paths recorded in it.
 
+- The scope file format: the first line is `# role-gate scope v1`, then one entry per line, `own<TAB>path` or `other<TAB>path` (a TAB between the kind and the path). A path is an exact path or a `dir/` prefix (it ends in a slash), relative to the top of the work tree, with no globs. Write the file with LF line ends and no BOM; the gate refuses anything else (exit 3).
 - `--base` is the sha printed by `git rev-parse HEAD` before the role, never the word `HEAD`: a base that moves with HEAD hides the role's own commits.
 - Per-task files in the git dir: `$(git rev-parse --git-path pb-scope-<task>)` for the scope file and `snapshot --out "$(git rev-parse --git-path pb-gate-baseline-<task>)"` for the baseline (the default `pb-gate-baseline` is one per checkout, so two tasks would overwrite it). Record `git hash-object` of the scope file when you write it and compare it with the digest in the gate's scope note after each gate; `tdd-step.sh` refuses when the scope file or the manifest changes between its two gate runs.
 - The no-checkpoint-commit workflow: before each role record `git rev-parse HEAD` and take a snapshot instead of committing between roles, then pass `--base <that sha> --baseline <that file> --scope <task file>` to the role's gate (and to `tdd-step.sh`, which then commits or prints only the changed `own` paths).

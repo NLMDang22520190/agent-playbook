@@ -131,7 +131,7 @@ own_notes() {
   local ln c
   while IFS= read -r ln; do
     [ -n "$ln" ] || continue
-    c="$(printf '%s\n' "${ln#"$NOTEP"}" | pb_scope_classify)" || c=""
+    c="$(printf '%s\n' "${ln#"$NOTEP"}" | pb_scope_classify)" || c=own
     [ "$c" != own ] || printf '%s\n' "$ln"
   done
 }
@@ -542,6 +542,9 @@ if [ -n "$scope" ]; then
   [ -n "$sd0" ] || pb_die "cannot hash the scope file: $scope" 3
   if [ -n "$baseline" ] && [ -z "$bd0" ]; then pb_die "cannot hash the baseline manifest: $baseline" 3; fi
   pb_scope_read "$scope"
+  # the entries just read are the ones whose digest sd0 was taken (a file rewritten in between is refused)
+  sd0b="$(git hash-object -- "$scope" 2>/dev/null)" || sd0b=""
+  [ "$sd0b" = "$sd0" ] || pb_die "the scope file changed while it was read: $scope" 3
 fi
 # an untracked nested repository (a status row ending in a slash) or a staged gitlink that HEAD lacks: the snapshot
 # cannot hash it, so refuse it before the test command runs (a nested repository under .agents/handoff/ is exempt)
