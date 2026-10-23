@@ -9,6 +9,7 @@
 # test-release-stale-count.sh 66 (new in v0.24.28): an estimate, the local Windows Git Bash time; replace it with a CI time (L-0009).
 # test-role-gate-scope.sh 330 (new in v0.24.29 lane C): an estimate, Linux seconds x 28 (round up); the tester re-measures on GREEN; replace it with a CI time (L-0009).
 # test-tdd-step-scope.sh 392 (new in v0.24.29 lane C, S3): an estimate, about 14 s on Linux (about 35 tdd-step runs at 0.4 s, not measured: the RED run stops at the usage error) x 28; the tester re-measures on GREEN; replace it with a CI time (L-0009).
+# v0.24.29 portability round (local Windows Git Bash time, three suites run in parallel on one machine; replace each with a CI time, L-0009): test-evals-grade8b.sh 253 (was 338; rows moved to 8c and 8d), test-evals-grade8c.sh 243, test-evals-grade8d.sh 112, test-evals-grade9.sh 591, test-evals-grade9b.sh 521 (grade9 was one file of about 1000 s), test-evals-grade7c.sh 30 (had no line).
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 522
 test-role-gate-scope.sh 330
@@ -23,7 +24,12 @@ test-evals-grade6.sh 375
 test-role-gate-size.sh 364
 test-tdd-step.sh 356
 test-tdd-step-b.sh 349
-test-evals-grade8b.sh 338
+test-evals-grade8b.sh 253
+test-evals-grade8c.sh 243
+test-evals-grade8d.sh 112
+test-evals-grade9.sh 591
+test-evals-grade9b.sh 521
+test-evals-grade7c.sh 30
 test-role-gate.sh 335
 test-leak-check.sh 334
 test-evals-runner.sh 324
