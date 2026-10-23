@@ -12,11 +12,11 @@
 # rewrites it makes a failing test pass without changing behaviour. A project whose *.snap files
 # are not tests (e.g. Ubuntu snap packages) sets its own test_path_regex.
 #
-# size counts production files (non-test, outside .agents/handoff/) changed since REF
-# (default HEAD; committed, staged, unstaged and untracked) and their added+deleted lines
-# (git diff --numstat; a binary file counts as 1 line; an untracked file counts all its
-# lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
-# Untracked names (one `git ls-files -z`) are classified and baseline-matched by raw name, as check does; a newline name counts as code (D23).
+# size counts production files (non-test, outside .agents/handoff/) changed since REF (default HEAD; committed, staged, unstaged
+# and untracked) and their added+deleted lines (git diff --numstat; a binary file counts as 1 line; an untracked file counts all
+# its lines). Prints "files: F/N lines: L/M"; over either limit -> exit 1, escalate to Full.
+# Untracked names (one `git ls-files -z`) are classified and baseline-matched by raw name, as check does;
+# a newline name counts as code.
 #
 # What each role may change (relative to REF, default HEAD; includes staged, unstaged
 # and untracked files):
@@ -66,11 +66,12 @@
 # (bad header, missing TAB, empty path, bad state, or the same path on two lines) exits 3. Without --baseline nothing changes.
 # size --baseline FILE (same manifest): leaves out the paths unchanged since the baseline; a manifest path whose state changed
 # but is no longer in the numstat list (reverted, deleted) counts as 1 file and 1 line when production, 0 when test.
-# size fails closed (v0.24.29, D1): an untracked production regular file or symlink to a file that it cannot count (unreadable, gone
-# since the listing, no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
+# size fails closed (v0.24.29): an untracked production regular file that it cannot count (unreadable, gone since the listing,
+# git exits above 1 for it, or no numstat for a non-empty file) prints, per file in ls-files -z order, to stderr
 # "error: cannot count the lines of untracked file PATH (unreadable, or gone since the listing); fix it and run size again"
-# (control characters but TAB shown as ?), prints no "files:" line and exits 3. Test and .agents/handoff/ paths are not
-# affected; a symlink to a directory, a nested repo, a dangling symlink keep their count.
+# (control characters but TAB shown as ?), prints no "files:" line and exits 3. The same line reports a failing clean filter.
+# Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
+# unreadable); a symlink to a directory, a nested repo, a dangling symlink keep their count.
 #
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
@@ -692,24 +693,25 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     # untracked files: the names come from ONE `ls-files -z` (v0.24.29), so every name is the RAW path (classified, counted and
     # matched against a --baseline manifest as `check` does); no `read` with a tab IFS touches a name field (it would strip a
     # leading or trailing tab). A raw name with a newline cannot ride a line list: it is emitted as "!<TAB>added<TAB>deleted"
-    # and counted as production code (D23). Plain files and symlinks to files whose names git would not C-quote are counted
+    # and counted as production code. Plain files and symlinks to files whose names git would not C-quote are counted
     # in one batch (v0.24.29, linear: `update-index --add -z --stdin` into an empty temporary index whose objects go to a temporary
     # object dir, then ONE `diff --cached --numstat -z` against the empty tree, whose id comes from `hash-object -t tree` without -w,
     # so any object format works; v0.24.28 used `add -N` + `diff --numstat`, which cost a pathspec match per file). update-index takes
     # paths, not pathspecs, so a name like `*.js` stays literal. The real index, git dir and object store are not touched. The batch
     # result is used only when both git calls succeed (update-index rc != 0, also a partial one, skips the diff) and the output paths
     # equal the input set; otherwise the whole batch list goes through the per-file command. With core.safecrlf=true under autocrlf
-    # update-index refuses an LF file (rc 128) where `add -N` did not: the whole list then falls back to per-file, same totals (D18).
+    # update-index refuses an LF file (rc 128) where `add -N` did not: the whole list then falls back to per-file, same totals.
     # Quoted names (a quote, backslash or control character), directories and nested repos always keep the per-file command, fed the
     # raw path. The temp dir is removed by the EXIT trap of this subshell; SIGPIPE is ignored here so that a closed stdout (parent killed
-    # by TERM) cannot kill the subshell before the trap runs (D22).
+    # by TERM) cannot kill the subshell before the trap runs.
     untracked_stats() (
       trap '' PIPE
-      # pf_emit PATH IDX: a regular file or symlink to a file that cannot be counted becomes "E<TAB>IDX<TAB>DISPLAY" (v0.24.29, D1);
-      # test, .agents/handoff/ and baseline-unchanged paths are left out of it (D2); a newline name is always production (D23)
+      # pf_emit PATH IDX: a regular file that cannot be counted becomes "E<TAB>IDX<TAB>DISPLAY" (v0.24.29); a symlink is never
+      # tested through its target (git counts the link text), so it is counted per-file whatever the target is;
+      # test, .agents/handoff/ and baseline-unchanged paths are left out of it; a newline name is always production
       pf_emit() {
         local u="$1" ix="$2" counts raw rc disp bad=0
-        if [ -f "$u" ]; then
+        if [ -f "$u" ] && [ ! -L "$u" ]; then
           if [ -r "$u" ]; then
             raw="$(git diff --no-index --numstat -- /dev/null "$u" 2>/dev/null)"; rc=$?
             counts="$(printf '%s\n' "$raw" | cut -f1,2)"
@@ -813,10 +815,10 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] | snapshot [--ou
     while IFS= read -r sl; do
       [ -n "$sl" ] || continue
       case "$sl" in
-        'E'$'\t'*)   # an untracked production file that could not be counted (v0.24.29, D1)
+        'E'$'\t'*)   # an untracked production file that could not be counted (v0.24.29)
           errs+="${sl#*$'\t'}"$'\n'
           continue ;;
-        '!'$'\t'*)   # a raw name with a newline: production code, never classified or skipped (D23)
+        '!'$'\t'*)   # a raw name with a newline: production code, never classified or skipped
           sr="${sl#*$'\t'}"; sa="${sr%%$'\t'*}"
           nlfiles=$((nlfiles + 1))
           if [ "$sa" = "-" ]; then nllines=$((nllines + 1)); else nllines=$((nllines + sa + ${sr#*$'\t'})); fi
