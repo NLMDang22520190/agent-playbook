@@ -89,6 +89,7 @@ test-release-stale-count.sh 67
 test-conf.sh 64
 test-cost.sh 60
 test-tdd-step-z.sh 58
+test-pre-commit.sh 56
 test-docs-only.sh 54
 test-install.sh 50
 test-tdd-step-j.sh 49
