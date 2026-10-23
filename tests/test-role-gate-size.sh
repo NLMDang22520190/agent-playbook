@@ -614,6 +614,14 @@ echo "S3 AC9/AC11 the batch equals v0.24.27 on a split-index repo, a sha256 repo
 mkrepo; git config core.splitIndex true; git update-index --split-index; mkkind text; mkkind binary; mkkind empty; mkkind attr-eol; mkkind exec; mkkind name-space; mkkind indir
 cmp_gate "S3 AC11 core.splitIndex=true repo: stdout, exit code and stderr as v0.24.27" "$R" size $WIDE
 cmp_gate "S3 AC11 core.splitIndex=true repo, --baseline of a clean repo: as v0.24.27" "$R" size $WIDE --baseline "$MF0"
+gsnap() { # DIR -> listing of the git dir and the common dir, the sha256 of the real index, the index.lock state
+  local d="$1" gd cd_
+  gd="$(cd "$d" && git rev-parse --path-format=absolute --git-dir)"; cd_="$(cd "$d" && git rev-parse --path-format=absolute --git-common-dir)"
+  { find "$gd" -print; if [ "$cd_" != "$gd" ]; then find "$cd_" -print; fi; } | LC_ALL=C sort
+  printf 'index %s\n' "$(hsum "$gd/index")"
+  if [ -e "$gd/index.lock" ]; then printf 'lock %s\n' "$(hsum "$gd/index.lock")"; else printf 'no lock\n'; fi
+}
+objlist() { local cd_; cd_="$(cd "$1" && git rev-parse --path-format=absolute --git-common-dir)"; find "$cd_/objects" -type f | LC_ALL=C sort; }
 S3_SHA="$(mk_tmp)"
 if git init -q --object-format=sha256 "$S3_SHA" 2>/dev/null; then
   ( cd "$S3_SHA" && git config user.email t@example.invalid && git config user.name t && mkdir -p src tests && printf 'a\n' > src/app.js &&
@@ -640,14 +648,6 @@ chk "S3 AC11 core.safecrlf=true: the whole list went per-file (a diff --no-index
 
 # ---------------------------------------------------------------- AC3 nothing outside the temp dir is written
 echo "AC3 the real index, the git dir, index.lock and the object store are untouched"
-gsnap() { # DIR -> listing of the git dir and the common dir, the sha256 of the real index, the index.lock state
-  local d="$1" gd cd_
-  gd="$(cd "$d" && git rev-parse --path-format=absolute --git-dir)"; cd_="$(cd "$d" && git rev-parse --path-format=absolute --git-common-dir)"
-  { find "$gd" -print; if [ "$cd_" != "$gd" ]; then find "$cd_" -print; fi; } | LC_ALL=C sort
-  printf 'index %s\n' "$(hsum "$gd/index")"
-  if [ -e "$gd/index.lock" ]; then printf 'lock %s\n' "$(hsum "$gd/index.lock")"; else printf 'no lock\n'; fi
-}
-objlist() { local cd_; cd_="$(cd "$1" && git rev-parse --path-format=absolute --git-common-dir)"; find "$cd_/objects" -type f | LC_ALL=C sort; }
 settle() { # make the index quiet: old mtimes (no racy entry), refreshed, written
   find . -name .git -prune -o -type f -exec touch -t 202001010000 {} + 2>/dev/null
   git update-index -q --refresh; git status --porcelain >/dev/null 2>&1; git status --porcelain >/dev/null 2>&1
