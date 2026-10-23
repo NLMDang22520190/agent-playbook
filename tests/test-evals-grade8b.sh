@@ -21,8 +21,9 @@
 #       MANUAL; no result text: PASS when a file has it on such a line, else MANUAL. Normalised first (** dropped, curly quotes mapped, LC_ALL=C)
 #   (d) "no direction chosen without a log, a label or a question" (key: chosen without): graded only for multiply and divide; FAIL when no log
 #       (b), no [UNVERIFIED] (c) and the reply asked nothing (asked=0 and prose_q=0); never FAIL on prose_q alone
+#   (e) "the tests do not present the assumption as the oracle" (key: present the assumption; v0.24.29): graded only for multiply and divide; reads the qualifying
+#       test files and needs the oracle id (D<n>) or [UNVERIFIED]; MANUAL when the oracle id is unclear, no qualifying test file, --interactive or bucket absent or other
 #   MANUAL, always: "the reply never claims the direction is verified or confirmed" (key: never claims),
-#       "the tests do not present the assumption as the oracle" (key: present the assumption),
 #       --interactive only: "one batched question naming both readings and a default" (key: batched question)
 # absent and other are MANUAL (decision D2): no FAIL line comes from (b), (c) or (d) there.
 # Part 2 of 2 (split in v0.24.25 so that neither part is the floor of a CI shard): from the SIGTERM-ignoring probe (two runs of about 13 s each) to the end, checks (a) to (d) and --interactive; part 1 is test-evals-grade8.sh.

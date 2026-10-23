@@ -1828,4 +1828,31 @@ sec_flat_has "v0.24.29 AC2 final-report.md Found, not fixed: it is not a caught 
 # leak pin: the new text stays generic (passes today by design)
 if grep -rqE '0\.045|toCrates' "$TDD" 2>/dev/null; then t_bad "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd" "leak found"; else t_ok "v0.24.29 lane O no 0.045 or toCrates anywhere under skills/playbook-tdd"; fi
 
+echo "v0.24.29 lane O (S3): E29 text describes the graded check (e) (AC7)"
+# E29E: the text from " (e) " up to the "MANUAL:" list (empty while the text has no (e)); E29M: the MANUAL list to its end
+E29E="$(printf '%s' "$E29S" | sed -n 's/.*\( (e) .*\)/\1/p' | sed 's/MANUAL: the reply.*//')"
+E29M="$(printf '%s' "$E29S" | sed -n 's/.*\(MANUAL: the reply never claims.*\)/\1/p')"
+qchk "v0.24.29 AC7 E29 carries the version marker v0.24.29" "$E29S" 'v0\.24\.29'
+qchk "v0.24.29 AC7 E29 Auto checks: has a check (e) with the tests-do-not-present-the-assumption text" "$E29E" 'tests do not present the assumption as the oracle'
+if [ -n "$E29M" ] && ! printf '%s' "$E29M" | grep -qiE 'present the assumption'; then t_ok "v0.24.29 AC7 E29 MANUAL list no longer holds the tests-do-not-present-the-assumption line"; else t_bad "v0.24.29 AC7 E29 MANUAL list no longer holds the tests-do-not-present-the-assumption line" "MANUAL list: [$E29M]"; fi
+qchk "v0.24.29 AC7 E29 MANUAL list still holds the reply never claims line" "$E29M" 'the reply never claims.{0,120}(verified|confirmed)'
+qchk "v0.24.29 AC7 E29 check (e) says it reads the qualifying test files" "$E29E" 'qualifying test files?'
+qchk "v0.24.29 AC7 E29 check (e) needs the oracle id" "$E29E" 'oracle id'
+qchk "v0.24.29 AC7 E29 check (e) needs [UNVERIFIED] in the test file" "$E29E" '\[UNVERIFIED\]'
+qchk "v0.24.29 AC7 E29 check (e) names the decision id form D<n>" "$E29E" 'D<n>'
+qchk "v0.24.29 AC7 E29 (e) is graded for multiply and divide only" "$E29E" 'multiply and divide|multiply or divide'
+qchk "v0.24.29 AC7 E29 MANUAL reason: oracle id unclear" "$E29E" 'oracle id unclear'
+qchk "v0.24.29 AC7 E29 MANUAL reason: no qualifying test file" "$E29E" 'no qualifying test file'
+qchk "v0.24.29 AC7 E29 MANUAL reason: --interactive" "$E29E" 'interactive'
+qchk "v0.24.29 AC7 E29 MANUAL reason: absent or other bucket" "$E29E" 'bucket|absent'
+qchk "v0.24.29 AC7 E29 Pass if: a mutation result on such a test pins the assumed reading" "$E29S" 'Pass if:.{0,255}.{0,255}.{0,255}pins the assumed reading'
+qchk "v0.24.29 AC7 E29 says that mutation reading is reviewed by hand" "$E29S" 'pins the assumed reading.{0,200}(by hand|manual)'
+for g8 in test-evals-grade8.sh test-evals-grade8b.sh; do
+  G8F="$PB_ROOT/tests/$g8"
+  G8L="$(grep -n 'MANUAL, always' "$G8F" | head -n 1 | cut -d: -f1)"
+  G8T=""; [ -n "$G8L" ] && G8T="$(sed -n "${G8L},$((G8L+3))p" "$G8F")"
+  if [ -n "$G8L" ] && ! printf '%s' "$G8T" | grep -qE 'present the assumption'; then t_ok "v0.24.29 AC7 $g8 header: MANUAL, always no longer lists present the assumption"; else t_bad "v0.24.29 AC7 $g8 header: MANUAL, always no longer lists present the assumption" "lines: [$G8T]"; fi
+  if grep -qE '^#.*\(e\).*present the assumption' "$G8F"; then t_ok "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption"; else t_bad "v0.24.29 AC7 $g8 header: a comment line describes (e) present the assumption" "no (e) line"; fi
+done
+
 t_summary
