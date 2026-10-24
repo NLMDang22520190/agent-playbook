@@ -20,13 +20,25 @@ export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t
 TAB="$(printf '\t')"
 
 GS="$(mk_tmp)"; mkdir -p "$GS/sh" "$GS/shf" "$GS/shm" "$GS/shw" "$GS/shc" "$GS/tmp" "$GS/lt" "$GS/wf"
+# The real tools are resolved ONCE here, before any shim dir is on PATH, as absolute paths outside the shim dirs. A shim never runs
+# `command -v` itself: in Git Bash that found the shim again and recursed without end (the cmp shim, v0.24.30). Every shim also
+# refuses to run when PB_SHIM_DEPTH is already set ("shim recursion" on stderr, exit 99), so a loop is one failed call, not a tree.
 REAL_AWK="$(command -v awk)"; REAL_MKTEMP="$(command -v mktemp)"; REAL_CMP="$(command -v cmp)"
+for _rt in "$REAL_AWK" "$REAL_MKTEMP" "$REAL_CMP"; do
+  case "$_rt" in
+    /*) case "$_rt" in "$GS"/*) echo "FAIL: a real tool resolved inside the shim dir: $_rt" >&2; exit 3 ;; esac ;;
+    *) echo "FAIL: a real tool did not resolve to an absolute path: [$_rt]" >&2; exit 3 ;;
+  esac
+done
+SHIM_GUARD='if [ -n "${PB_SHIM_DEPTH:-}" ]; then echo "shim recursion" >&2; exit 99; fi
+export PB_SHIM_DEPTH=1'
 
 # ---- PATH shims (bash scripts; the awk and mktemp shims act on pb_scope_classify's own calls only) ----
 # sh/awk: counts the classify awk calls (SCF set); when PB_GSIG is set, at call PB_SIG_AT it waits for the go-file and signals the
 # verified process group of the job (`kill -SIG -- -PGID`), then exits; without a go-file it just runs the real awk
 cat > "$GS/sh/awk" <<EOF
 #!/usr/bin/env bash
+$SHIM_GUARD
 if [ -n "\${SCF:-}" ]; then
   n=\$(cat "$GS/cnt" 2>/dev/null || echo 0); n=\$((n + 1)); echo "\$n" > "$GS/cnt"
   if [ -n "\${PB_GLOG:-}" ]; then
@@ -47,12 +59,14 @@ EOF
 # shf/awk: the classify awk fails (exit 2)
 cat > "$GS/shf/awk" <<EOF
 #!/usr/bin/env bash
+$SHIM_GUARD
 if [ -n "\${SCF:-}" ]; then exit 2; fi
 exec "$REAL_AWK" "\$@"
 EOF
 # shm/mktemp: logs its argument, then makes the file in $GS/lt (so a missing TMPDIR still leaves nothing outside the test dir)
 cat > "$GS/shm/mktemp" <<EOF
 #!/usr/bin/env bash
+$SHIM_GUARD
 printf '%s\n' "\$*" >> "$GS/mklog"
 case "\$1" in */pb-scope.XXXXXX) exec "$REAL_MKTEMP" "$GS/lt/pb-scope.XXXXXX" ;; esac
 exec "$REAL_MKTEMP" "\$@"
@@ -60,27 +74,36 @@ EOF
 # shw/mktemp: makes a DIRECTORY named pb-scope.d, so the redirect into it fails (the write-failed return)
 cat > "$GS/shw/mktemp" <<EOF
 #!/usr/bin/env bash
+$SHIM_GUARD
 case "\$1" in *pb-scope.*) mkdir -p "$GS/wf/pb-scope.d"; printf '%s\n' "$GS/wf/pb-scope.d"; exit 0 ;; esac
 exec "$REAL_MKTEMP" "\$@"
 EOF
 # shc/cmp: runs the real cmp, then (only when PB_CMP_APPEND names a marker file that does not exist yet, and the last argument is
 # PB_CMP_FILE) appends one valid entry to the scope file, once
-cat > "$GS/shc/cmp" <<'EOF'
+cat > "$GS/shc/cmp" <<EOF
 #!/usr/bin/env bash
-cmp_real="$(PATH="${PB_REAL_PATH:-$PATH}" command -v cmp)"
-"$cmp_real" "$@"; r=$?
-for last in "$@"; do :; done
-if [ -n "${PB_CMP_APPEND:-}" ] && [ "$last" = "${PB_CMP_FILE:-}" ] && [ ! -e "$PB_CMP_APPEND" ]; then
-  : > "$PB_CMP_APPEND"; printf 'other\tzz\n' >> "$last"
+$SHIM_GUARD
+"$REAL_CMP" "\$@"; r=\$?
+for last in "\$@"; do :; done
+if [ -n "\${PB_CMP_APPEND:-}" ] && [ "\$last" = "\${PB_CMP_FILE:-}" ] && [ ! -e "\$PB_CMP_APPEND" ]; then
+  : > "\$PB_CMP_APPEND"; printf 'other	zz
+' >> "\$last"
 fi
-exit $r
+exit \$r
 EOF
-chmod +x "$GS/sh/awk" "$GS/shf/awk" "$GS/shm/mktemp" "$GS/shw/mktemp" "$GS/shc/cmp" 2>/dev/null
+# shr/cmp: a shim whose "real tool" is itself (the guard row: it must end with 99 once, not a tree)
+mkdir -p "$GS/shr"
+cat > "$GS/shr/cmp" <<EOF
+#!/usr/bin/env bash
+$SHIM_GUARD
+exec "$GS/shr/cmp" "\$@"
+EOF
+chmod +x "$GS/shr/cmp" "$GS/sh/awk" "$GS/shf/awk" "$GS/shm/mktemp" "$GS/shw/mktemp" "$GS/shc/cmp" 2>/dev/null
 # the shims must really run here (NTFS chmod, path conversion): probe, then skip the rows that need them
 SHIMS_OK=1
 [ "$(PATH="$GS/shf:$PATH" SCF=x awk 'BEGIN{print 1}' 2>/dev/null; echo "rc=$?")" = "rc=2" ] || SHIMS_OK=0
 printf 'a\n' > "$GS/pr"
-PATH="$GS/shc:$PATH" PB_REAL_PATH="$PATH" PB_CMP_FILE="$GS/pr" PB_CMP_APPEND="$GS/prm" cmp -s "$GS/pr" "$GS/pr" 2>/dev/null
+PATH="$GS/shc:$PATH" PB_CMP_FILE="$GS/pr" PB_CMP_APPEND="$GS/prm" cmp -s "$GS/pr" "$GS/pr" 2>/dev/null
 [ "$(tail -c 3 "$GS/pr")" = "zz" ] || SHIMS_OK=0
 
 left_in() { ls "$1" 2>/dev/null | grep -c 'pb-scope\.' || true; }
@@ -284,19 +307,28 @@ e1() { printf 'note: scope %s (%s own, %s other entries, digest %s): %s path(s) 
 if [ "$SHIMS_OK" = 1 ]; then
   echo "AC6.1 control: the cmp shim installed but not mutating: today's E1 note and OK verdict"
   new_repo; sf "$SF" own:src/; printf 'module.exports = 2;\n' > src/app.js
-  run env PLAYBOOK_HOME="$IH" PATH="$GS/shc:$PATH" PB_REAL_PATH="$PATH" PB_CMP_FILE="$SF" bash "$GATE" check implementer --base "$BASE" --scope "$SF"
+  run env PLAYBOOK_HOME="$IH" PATH="$GS/shc:$PATH" PB_CMP_FILE="$SF" bash "$GATE" check implementer --base "$BASE" --scope "$SF"
   assert_rc "AC6.1 control (shim, no change): exit 0" 0
   has_line "AC6.1 control: the OK verdict" "OK: role gate passed for implementer (1 file(s) checked, base=$BASE)"
   has_line "AC6.1 control: the E1 note" "$(e1 1 0 0)"
   echo "AC6.1 the scope file gains a valid entry between the first hash and the re-hash: exit 3, G-E2 with the file, no verdict, no E1 note"
   new_repo; sf "$SF" own:src/; printf 'module.exports = 2;\n' > src/app.js
   rm -f "$GS/cmpfired"
-  run env PLAYBOOK_HOME="$IH" PATH="$GS/shc:$PATH" PB_REAL_PATH="$PATH" PB_CMP_FILE="$SF" PB_CMP_APPEND="$GS/cmpfired" bash "$GATE" check implementer --base "$BASE" --scope "$SF"
+  run env PLAYBOOK_HOME="$IH" PATH="$GS/shc:$PATH" PB_CMP_FILE="$SF" PB_CMP_APPEND="$GS/cmpfired" bash "$GATE" check implementer --base "$BASE" --scope "$SF"
   if [ -e "$GS/cmpfired" ] && [ "$(tail -n 1 "$SF")" = "other${TAB}zz" ]; then t_ok "AC6.1 the shim changed the scope file once, between the hashes (a valid 'other' entry was appended)"; else t_bad "AC6.1 the shim changed the scope file once, between the hashes (a valid 'other' entry was appended)" "marker: $([ -e "$GS/cmpfired" ] && echo yes || echo no); last line: $(tail -n 1 "$SF")"; fi
   assert_rc "AC6.1 a scope file changed while it was read: exit 3" 3
   has_line "AC6.1 the message is G-E2 and names the file" "error: the scope file changed while it was read: $SF"
   case "$OUT" in *"OK: role gate"*|*"role gate FAILED"*|*VIOLATION*) t_bad "AC6.1 no verdict line (OK:, FAILED, VIOLATION)" "$OUT" ;; *) t_ok "AC6.1 no verdict line (OK:, FAILED, VIOLATION)" ;; esac
   case "$OUT" in *"note: scope "*) t_bad "AC6.1 no E1 note (the gate stopped before judging)" "$OUT" ;; *) t_ok "AC6.1 no E1 note (the gate stopped before judging)" ;; esac
 else t_skip 8 "AC6.1 re-hash guard (the cmp shim does not run here)"; fi
+
+# ================= shim recursion guard: a shim whose real tool is itself ends with 99 once =================
+echo "shim guard: a shim that calls itself ends with exit 99 and 'shim recursion', not a process tree"
+printf 'a
+' > "$GS/pg"
+SGOUT="$(timeout 60 env -u PB_SHIM_DEPTH "$GS/shr/cmp" "$GS/pg" "$GS/pg" 2>&1; echo "rc=$?")"
+assert_eq "shim guard: a self-calling shim stops at the second call: 'shim recursion', exit 99" "shim recursion|rc=99|" "$(printf '%s
+' "$SGOUT" | tr '
+' '|')"
 
 t_summary
