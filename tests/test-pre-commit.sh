@@ -180,7 +180,13 @@ assert_rc "H leak-check install-hooks first: exit 0" 0
 lk="$(cksum < "$HD/pre-commit")"
 run_in "$R" bash tools/install-hooks.sh
 assert_rc "H install over a leak-check hook: refused (exit 1)" 1
-assert_eq "H install message is exact" "install-hooks: $HD/pre-commit is a leak-check hook (agent-playbook leak guard); not replaced, with or without --force. Run the exec-bit check by hand: bash evals/run-checks.sh --only modes" "$OUT"
+# the path as tools/install-hooks.sh resolves it: `git rev-parse --git-path hooks` in the physical checkout root (pwd -P), made
+# absolute; it differs from $HD where TMPDIR is a symlink (macOS /var -> /private/var) or a mount (Git Bash /tmp -> /c/...)
+ihr="$(cd "$R" && pwd -P)"; ihh="$(cd "$R" && git rev-parse --git-path hooks)"
+case "$ihh" in /* | [A-Za-z]:*) IHD="$ihh" ;; *) IHD="$ihr/$ihh" ;; esac
+# the resolved path must name the hook the test made; else the expected text says so and the row fails
+[ "$IHD/pre-commit" -ef "$HD/pre-commit" ] || IHD="(resolved [$IHD] is not $HD)"
+assert_eq "H install message is exact" "install-hooks: $IHD/pre-commit is a leak-check hook (agent-playbook leak guard); not replaced, with or without --force. Run the exec-bit check by hand: bash evals/run-checks.sh --only modes" "$OUT"
 assert_eq "H the leak-check hook is byte for byte unchanged" "$lk" "$(cksum < "$HD/pre-commit")"
 run_in "$R" bash tools/install-hooks.sh --force
 assert_rc "H --force over a leak-check hook: still refused (exit 1)" 1

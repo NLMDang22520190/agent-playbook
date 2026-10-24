@@ -12,6 +12,12 @@
 # test verifies `kill -0 -- -PID` before an awk shim may signal that group at the Nth classify call (a go-file holds the group's id);
 # a platform without job control (Git Bash on Windows) skips those rows with t_skip and the same count. The shim never signals the
 # runner's group: it signals the verified group id only. Shared setup: role-gate-fixture.sh and tdd-step-fixture.sh.
+# The temp-file check runs once the job's whole process group has ended (bounded wait, `kill -0 -- -PGID`), not when the leader
+# exits: the classify subshell is its own process and runs its handler after the leader may already be gone (Windows CI).
+# INT rows need a deliverable SIGINT. A signal ignored on entry to a non-interactive shell cannot be trapped or reset (POSIX, bash),
+# and children inherit it: bash 3.2 runs tests/run-all.sh's `( ... ) &` suite wrappers with INT and QUIT ignored (macOS CI), and the
+# Windows CI step starts with INT ignored. A run-time probe (a `set -m` job, the gs_run shape, that sends itself INT and survives)
+# then skips the INT rows with t_skip and the same count; the TERM rows still run.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/role-gate-fixture.sh"
 . "$(dirname "$0")/tdd-step-fixture.sh"
@@ -107,6 +113,9 @@ PATH="$GS/shc:$PATH" PB_CMP_FILE="$GS/pr" PB_CMP_APPEND="$GS/prm" cmp -s "$GS/pr
 [ "$(tail -c 3 "$GS/pr")" = "zz" ] || SHIMS_OK=0
 
 left_in() { ls "$1" 2>/dev/null | grep -c 'pb-scope\.' || true; }
+# INT_IGN=1 when SIGINT is ignored on entry here (inherited SIG_IGN): a `set -m` job that sends itself INT survives
+INT_IGN=0
+[ "$( ( set -m; "$BASH" -c 'kill -INT $$; echo survived' < /dev/null 2>/dev/null & wait $! ) 2>/dev/null )" = survived ] && INT_IGN=1
 blk_check() { if [ "$2" != "$3" ]; then t_bad "$1: the declared skip count ($2) matches the assertions run ($3)" ""; fi; }
 dig() { git hash-object -- "$1" 2>/dev/null || printf 'NODIGEST'; }
 has_line() { if printf '%s\n' "$OUT" | grep -Fx -- "$2" >/dev/null 2>&1; then t_ok "$1"; else t_bad "$1" "no line [$2] in: $OUT"; fi; }
@@ -124,7 +133,13 @@ gs_run() {
     PATH="$GS/sh:$PATH" TMPDIR="$GS/tmp" PB_GSIG="$sig" PB_SIG_AT="$at" "$@" > "$GS/o" 2>&1 < /dev/null &
     jp=$!
     if kill -0 -- -"$jp" 2>/dev/null; then echo "$jp" > "$GS/go"; else : > "$GS/nogo"; : > "$GS/mark"; fi
-    wait "$jp"; echo $? )"
+    wait "$jp"; r=$?
+    # files at the leader's exit, then wait (at most 30 s) until no process of the job's group is left
+    a="$(left_in "$GS/tmp")"; i=0
+    while kill -0 -- -"$jp" 2>/dev/null && [ $i -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 -- -"$jp" 2>/dev/null; then d="the group still ran after 30 s"; else d="the group ended $i x 0.1 s after the leader"; fi
+    echo "$a file(s) at the leader's exit; $d" > "$GS/drain"
+    echo "$r" )"
 }
 GS_B0=0
 # gs_go SIG AT N NAME CMD...: gs_run, then 0 when the rows can be judged; otherwise t_skip N and 1
@@ -132,6 +147,7 @@ gs_go() {
   local sig="$1" at="$2" n="$3" name="$4"; shift 4
   GS_B0=$((T_PASS + T_FAIL))
   if [ "$SHIMS_OK" != 1 ]; then t_skip "$n" "$name (the PATH shims do not run here)"; return 1; fi
+  if [ "$sig" = INT ] && [ "$INT_IGN" = 1 ]; then t_skip "$n" "$name (SIGINT is ignored on entry here: an ignored-on-entry signal cannot be trapped or reset, so no group INT can reach the job)"; return 1; fi
   gs_run "$sig" "$at" "$@"
   if [ -e "$GS/mark" ]; then t_skip "$n" "$name (no own process group for a set -m job here: no job control)"; return 1; fi
   return 0
@@ -141,7 +157,9 @@ gs_end() { blk_check "$1" "$2" $((T_PASS + T_FAIL - GS_B0)); }
 gs_check() {
   if [ -e "$GS/fired" ]; then t_ok "$1: the group signal was delivered while a classify awk ran"; else t_bad "$1: the group signal was delivered while a classify awk ran" "no signal sent (classify awk calls seen: $(cat "$GS/cnt" 2>/dev/null)); output: $(head -c 300 "$GS/o")"; fi
   if [ "$GRC" = "$2" ]; then t_ok "$1: exit $2"; else t_bad "$1: exit $2" "expected exit $2 got $GRC; output: $(head -c 300 "$GS/o")"; fi
-  assert_eq "$1: no pb-scope.* temp file left" "0" "$(left_in "$GS/tmp")"
+  # judged after the job's whole process group ended (gs_run); the message keeps what was there at the leader's exit
+  local lf; lf="$(left_in "$GS/tmp")"
+  if [ "$lf" = 0 ]; then t_ok "$1: no pb-scope.* temp file left"; else t_bad "$1: no pb-scope.* temp file left" "$lf left after the group ended ($(cat "$GS/drain" 2>/dev/null))"; fi
 }
 no_cc() { assert_eq "$1: no 'cannot classify' line" "0" "$(grep -c 'cannot classify' "$GS/o" || true)"; }
 
@@ -326,7 +344,14 @@ else t_skip 8 "AC6.1 re-hash guard (the cmp shim does not run here)"; fi
 echo "shim guard: a shim that calls itself ends with exit 99 and 'shim recursion', not a process tree"
 printf 'a
 ' > "$GS/pg"
-SGOUT="$(timeout 60 env -u PB_SHIM_DEPTH "$GS/shr/cmp" "$GS/pg" "$GS/pg" 2>&1; echo "rc=$?")"
+# a portable watchdog (no `timeout` on macOS): a background loop kills the shim after 60 s if it still runs
+env -u PB_SHIM_DEPTH "$GS/shr/cmp" "$GS/pg" "$GS/pg" > "$GS/sgo" 2>&1 &
+sgp=$!
+( i=0; while kill -0 "$sgp" 2>/dev/null && [ $i -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
+  if kill -0 "$sgp" 2>/dev/null; then echo "WATCHDOG: still running after 60 s" >> "$GS/sgo"; kill -9 "$sgp" 2>/dev/null; fi ) &
+sgw=$!
+wait "$sgp"; sgr=$?; wait "$sgw"
+SGOUT="$(cat "$GS/sgo"; echo "rc=$sgr")"
 assert_eq "shim guard: a self-calling shim stops at the second call: 'shim recursion', exit 99" "shim recursion|rc=99|" "$(printf '%s
 ' "$SGOUT" | tr '
 ' '|')"
