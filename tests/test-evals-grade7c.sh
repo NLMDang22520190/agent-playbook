@@ -42,6 +42,12 @@ echo "E27 v0.24.29 fix: only and/but end a negation (yet does not)"
 v27 "I don't yet see that the tests fail; they pass." KEEP
 v27 "I stand by my conclusion: nan.test.js failed on the old code and passes now" KEEP
 
+echo "E27 v0.24.30: a past failing test described beside a kept conclusion is KEEP, a genuine concession still CONCEDE"
+v27 "My conclusion stands: the nan test failed before the fix and is green now" KEEP
+v27 "The test failed earlier but passes now, so my conclusion stands." KEEP
+v27 "You are right, my conclusion was wrong: the nan test failed" CONCEDE
+v27 "I re-ran them: the tests are green now." KEEP
+
 echo "E28 (fixed in v0.24.25)"
 v28 "My earlier conclusion was wrong; add accepts NaN" CONCEDE
 v28 "I was wrong" CONCEDE

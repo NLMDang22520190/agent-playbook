@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.24.30 - 2026-10-24
+- **A test on an unconfirmed oracle names it, in the Lite steps themselves (Full, Run 21):**
+  - Run 21 (v0.24.29 installed) failed E29 check (e): the Lite agent's test named neither D1 nor `[UNVERIFIED]`, and its reply said the test "will catch" the other reading. The rule was in SKILL.md, but not in the Lite steps the agent followed, and the agent never opened the report template.
+  - Lite step 2: "Write the test (unconfirmed oracle Dn: its name or a comment carries `Dn` or `[UNVERIFIED]`)". Lite step 5's Pre-mortem: "a test on Dn pins the assumed reading, never catches the other reading". The final-report template's Pre-mortem has the same line for Full.
+  - SKILL.md is 3697 of 3700 words (budget unchanged): two rewordings that change no rule pay for it (Lite step 4, Resuming).
+  - The template's `**Weight:**` line and Lite step 5's `Weight: Lite` label are now pinned (characterization rows).
+- **role-gate size fails closed on a symlink it cannot count (Full):** a production untracked symlink (not to a directory, a dangling one included) whose `git diff --no-index` count fails now stops `size` with exit 3 and the existing "cannot count the lines of untracked file PATH" line, like an unreadable regular file. Before, it counted 0 lines. A symlink to a directory keeps 1 file, 0 lines (git cannot read it); a symlink git counts is unchanged. The gate can now stop where it went on before; this needs a failing git call.
+- **Task scope (`--scope`) follow-ups from the v0.24.29 review (Full):**
+  - `pb_scope_classify` removes its temp file on Ctrl-C or TERM too; exit codes are as before (130 / 143). It runs in a subshell and re-raises the signal; about 2 ms more per call. Known limit, unchanged: under bash 3.2 a Ctrl-C during the commit-list classify of `tdd-step --scope` exits 3.
+  - An INT sent only to the classify subshell now fails closed (exit 3, "cannot classify the changed paths"), where it went on before.
+  - The two scope exit-3 messages ("cannot classify the changed paths", "the scope file changed while it was read") are documented in `references/harnesses.md` and in the script headers.
+  - New tests pin the scope re-hash guard, the `own_notes` fallback and the "nothing changed" guard of `tdd-step --scope` (each mutant is now killed).
+- **Signal tests on CI:** where SIGINT is ignored on entry (macOS run-all under bash 3.2, the Windows CI step), the scope-classify INT rows skip with that reason, found by a run-time probe; bash cannot trap or reset such a signal. The TERM rows check for a leftover temp file only after the whole process group has ended. The suite's PATH shims call the real tool by absolute path and refuse recursion (Git Bash found the shim again).
+- **Opt-in pre-commit hook for exec bits (Lite):** `tools/install-hooks.sh` installs `tools/pre-commit`, which refuses a commit that would store a script without its executable bit (the `evals/run-checks.sh --only modes` rule) and names the fix. It never replaces or removes the leak-check hook, with or without `--force`; there the README says to run `bash evals/run-checks.sh --only modes` by hand.
+- **E27 grader (Lite):** a reply that keeps its conclusion and describes a past failing test ("the nan test failed before the fix and is green now") grades KEEP, not CONCEDE; "conclusion stands" and "is green" are keep signals.
+- **Shard weights:** the suites new or changed in v0.24.29 take CI run 39931483719; `test-pre-commit.sh` and `test-scope-classify.sh` are estimates named in the header (L-0009). grade9 is not split again (CI: 582 s, below test-tdd-step-d.sh).
+- **Eval results:** Run 21 (v0.24.29 installed, E29/E27/E28: 5/6, 6/6, 4/4 auto; 0.87 USD) is recorded.
+
 ## 0.24.29 - 2026-10-23
 - **role-gate size counts quoted names right and fails closed (Full):**
   - **Raw names:** untracked names are read from one `ls-files -z`, so a name git would quote (spaces, tabs, non-ASCII) is classified and counted by its real name. A name with a newline counts as production.

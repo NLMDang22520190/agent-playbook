@@ -180,7 +180,8 @@ EOF
 # An entry ending in "/" is a directory prefix, any other entry is one exact path; own wins over other. The entries reach awk through
 # a temp file that awk reads (never ENVIRON or awk -v: ENVIRON is capped at 128 KB on Linux and 32 KB on Windows, and -v expands
 # backslash escapes; a file has no size limit), and awk runs under LC_ALL=C (byte comparison). A failure (no temp file, awk error)
-# returns non-zero: callers stop, they never treat the paths as own.
+# returns non-zero: role-gate.sh and tdd-step.sh stop (exit 3), except tdd-step.sh own_notes, which treats the path as own (the
+# conservative direction: the before/after comparison then refuses the step).
 SC_ENTRIES=""
 pb_scope_read() {
   local f="$1" tracked verr res hops lt rd pd crl cn cl
@@ -247,8 +248,26 @@ pb_scope_counts() {
   printf '%s\n' "$SC_ENTRIES" | LC_ALL=C awk -F '\t' '$1 == "own" { a++ } $1 == "other" { b++ } END { print a + 0, b + 0 }'
 }
 
-pb_scope_classify() {
-  local tf rc
+# _pb_scope_sig SIG: handler of pb_scope_classify (runs in its subshell): remove the temp file, restore the
+# default action of SIG and re-raise it on the subshell, so callers see a signal death (130 / 143). The own pid
+# comes from sh (bash 3.2 has no BASHPID) and only here, to keep the per-call cost down.
+_pb_scope_sig() {
+  rm -f "$tf"
+  trap - "$1"
+  kill -"$1" "$(exec sh -c 'echo "$PPID"')"
+}
+
+# Traps (mutant run: with both signal handlers dropped, tests/test-scope-classify.sh on bash 3.2.57 fails its two group-TERM rows,
+# AC6.4b "no pb-scope.* temp file left", and passes on bash 5.2.21; dropping only the INT handler passes on both): when a TERM kills
+# this subshell while it waits on the foreground awk, bash 3.2 does not run the EXIT trap, so the TERM handler is what removes the
+# temp file there, and bash 5 runs the EXIT trap. Both handlers re-raise the signal with its default action, so callers see 143 / 130.
+# The INT handler is defensive (no suite row needs it). The EXIT trap covers the normal and error returns (it duplicates the explicit
+# rm below).
+pb_scope_classify() (
+  tf=""
+  trap 'rm -f "$tf"' EXIT
+  trap '_pb_scope_sig INT' INT
+  trap '_pb_scope_sig TERM' TERM
   tf="$(mktemp "${TMPDIR:-/tmp}/pb-scope.XXXXXX")" || return 1
   printf '%s\n' "$SC_ENTRIES" > "$tf" || { rm -f "$tf"; return 1; }
   SCF="$tf" LC_ALL=C awk '
@@ -271,4 +290,4 @@ pb_scope_classify() {
   rc=$?
   rm -f "$tf"
   return "$rc"
-}
+)

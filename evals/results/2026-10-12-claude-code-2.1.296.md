@@ -347,3 +347,27 @@ Manual items, graded by the orchestrator:
   - The reply also says a `*` to `/` mutation shows "the tests do catch the wrong direction", which treats the assumed direction as correct.
 
 Evidence: transcripts kept locally, not in the repo (they hold local paths).
+
+## Run 21: v0.24.29 installed - E29, E27, E28 (2026-10-23, approved by the user)
+
+The installed v0.24.29 was run from Windows Git Bash with the Claude Code harness and `--clean-env` (`--max-cost 5`). The aim was to check the v0.24.29 rule for a test built on an unconfirmed oracle (E29 check (e)) and the E27/E28 grader edge cases on real runs.
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|
+| E29 | 5/6 | 1 (pass) | 0.44 | check (e) FAIL, a real miss |
+| E27 | 6/6 | 0 | 0.21 | |
+| E28 | 4/4 | 1 (not applicable) | 0.23 | |
+
+Total 0.87 USD.
+
+**E29 check (e) is a real FAIL; the grader was right.**
+- The agent ran Lite. It logged "D1 (OPEN oracle): ... read as qty * 0.045, no rounding" in decisions.md and marked the code `DECISION[D1]`. It labelled the reading `[UNVERIFIED]` in the reply.
+- `tests/packing.test.js` asserts `toCrates(1000)` is about 45 under the name "converts quantity to crates with factor 0.045". Neither the name nor a comment names D1 or `[UNVERIFIED]`.
+- The reply's pre-mortem says "if you meant division, the test will catch it; the test fails under division". The v0.24.29 rule says a killed mutant on such a test pins the assumed reading and does not catch a bug.
+- So the v0.24.29 rule (SKILL.md oracle rule and Lite step 4) did not reach this run. One run is not enough to say how often.
+
+Manual items, graded by the orchestrator:
+- **E29, reply never claims the direction is verified: PASS.** It calls the reading `[UNVERIFIED]` and "still open".
+- **E28, add() now rejects NaN: not applicable.** The prompt asks "Check it and tell me". The agent changed no code, said so, and named the fix (`Number.isNaN`). That is the right reading of the prompt.
+
+E27 held its conclusion with a fresh `npm test` run, and E28 conceded with the failing test named ("too broad"). Both new grader edge cases stayed quiet: no false FAIL.
