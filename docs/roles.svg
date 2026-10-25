@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="t d">
+  <title id="t">Three roles, one slice</title>
+  <desc id="d">The orchestrator writes 01-spec.md with verbatim acceptance criteria and source anchors, plus decisions.md. It sends the slice and spec, with no implementation hints, to the tester, who returns failing tests and RED evidence. The tester gate passes and test(red) is committed. The orchestrator sends the slice and the RED sha to the implementer, who returns code and GREEN evidence, or a dispute. The implementer gate passes against RED and feat(green) is committed. The orchestrator sends the spec, diff and evidence logs to the reviewer, who returns a verdict, its own test re-run, mutants and UI screenshots. The reviewer gate passes and the final report is written.</desc>
+  <defs>
+    <style>
+      :root {
+        --bg: #F7F8FC; --card: #FFFFFF; --ink: #1C2333; --muted: #5B6478; --line: #DDE2EE;
+        --o: #1C2333; --t: #D64545; --i: #1F9D63; --r: #8A4FD0;
+        --soft-o: #E9ECF3; --soft-t: #FCEAEA; --soft-i: #E5F6EE; --soft-r: #F2EAFB;
+        --gate: #FBF2DC; --gate-ink: #7A5300; --gate-line: #E7C76E; --head-ink: #FFFFFF;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0F131C; --card: #171D2A; --ink: #E8ECF6; --muted: #A3ACC2; --line: #2A3347;
+          --o: #E8ECF6; --t: #FF7B7B; --i: #4FD39A; --r: #C29BFF;
+          --soft-o: #1F2636; --soft-t: #3A1C1F; --soft-i: #12301F; --soft-r: #2A1F42;
+          --gate: #352A0E; --gate-ink: #F2C04D; --gate-line: #6B5520; --head-ink: #0F131C;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: var(--ink); }
+      .bg { fill: var(--bg); }
+      .h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+      .sub { font-size: 14.5px; fill: var(--muted); }
+      .hd { font-size: 17px; font-weight: 800; fill: var(--head-ink); }
+      .hs { font-size: 12px; fill: var(--head-ink); opacity: 0.85; }
+      .life { stroke: var(--line); stroke-width: 2; stroke-dasharray: 5 6; }
+      .msg { font-size: 13.5px; }
+      .msgb { font-size: 13.5px; font-weight: 700; }
+      .send { fill: none; stroke: var(--muted); stroke-width: 2; }
+      .back { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 7 5; }
+      .ah { fill: var(--muted); }
+      .gateb { fill: var(--gate); stroke: var(--gate-line); stroke-width: 1.2; }
+      .gt { font-size: 13px; fill: var(--gate-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .gtb { font-size: 13px; font-weight: 800; fill: var(--gate-ink); }
+      .num { font-size: 12px; font-weight: 800; fill: var(--bg); }
+      .self { fill: var(--soft-o); stroke: var(--line); stroke-width: 1.2; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path class="ah" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="640" rx="18"/>
+  <text class="h1" x="40" y="48">Three roles, one slice</text>
+  <text class="sub" x="40" y="74">Each role is a fresh context. A git role gate runs after every hand-back, before anything is committed.</text>
+
+  <!-- lane headers -->
+  <rect x="70" y="98" width="200" height="58" rx="12" style="fill:var(--o)"/>
+  <text class="hd" x="170" y="124" text-anchor="middle">Orchestrator</text>
+  <text class="hs" x="170" y="143" text-anchor="middle">writes no tests, no code</text>
+  <rect x="380" y="98" width="200" height="58" rx="12" style="fill:var(--t)"/>
+  <text class="hd" x="480" y="124" text-anchor="middle">Tester</text>
+  <text class="hs" x="480" y="143" text-anchor="middle">test files only</text>
+  <rect x="690" y="98" width="200" height="58" rx="12" style="fill:var(--i)"/>
+  <text class="hd" x="790" y="124" text-anchor="middle">Implementer</text>
+  <text class="hs" x="790" y="143" text-anchor="middle">production code only</text>
+  <rect x="1000" y="98" width="200" height="58" rx="12" style="fill:var(--r)"/>
+  <text class="hd" x="1100" y="124" text-anchor="middle">Reviewer</text>
+  <text class="hs" x="1100" y="143" text-anchor="middle">read-only</text>
+
+  <line class="life" x1="170" y1="158" x2="170" y2="612"/>
+  <line class="life" x1="480" y1="158" x2="480" y2="612"/>
+  <line class="life" x1="790" y1="158" x2="790" y2="612"/>
+  <line class="life" x1="1100" y1="158" x2="1100" y2="612"/>
+
+  <!-- 1 spec -->
+  <rect class="self" x="60" y="176" width="440" height="34" rx="8"/>
+  <circle cx="82" cy="193" r="11" style="fill:var(--o)"/><text class="num" x="82" y="197" text-anchor="middle">1</text>
+  <text class="msg" x="102" y="198"><tspan class="msgb">01-spec.md</tspan> (verbatim AC + source anchors), <tspan class="msgb">decisions.md</tspan></text>
+
+  <!-- 2,3 tester -->
+  <path class="send" d="M172,244 H476" marker-end="url(#a)"/>
+  <circle cx="190" cy="232" r="11" style="fill:var(--t)"/><text class="num" x="190" y="236" text-anchor="middle">2</text>
+  <text class="msg" x="208" y="236">slice + spec, no implementation hints</text>
+  <path class="back" d="M478,284 H174" marker-end="url(#a)"/>
+  <text class="msg" x="208" y="276">failing tests + RED evidence</text>
+  <rect class="gateb" x="60" y="300" width="1160" height="32" rx="8"/>
+  <text class="gtb" x="80" y="321">GATE</text>
+  <text class="gt" x="128" y="321">role-gate.sh check tester --base &lt;sha&gt;  ✓  →  commit test(red)</text>
+
+  <!-- 4,5 implementer -->
+  <path class="send" d="M172,372 H786" marker-end="url(#a)"/>
+  <circle cx="190" cy="360" r="11" style="fill:var(--i)"/><text class="num" x="190" y="364" text-anchor="middle">3</text>
+  <text class="msg" x="208" y="364">slice + RED sha</text>
+  <path class="back" d="M788,412 H174" marker-end="url(#a)"/>
+  <text class="msg" x="208" y="404">code + GREEN evidence, or a Dispute (the implementer never edits a test)</text>
+  <rect class="gateb" x="60" y="428" width="1160" height="32" rx="8"/>
+  <text class="gtb" x="80" y="449">GATE</text>
+  <text class="gt" x="128" y="449">role-gate.sh check implementer --base RED  ✓  →  commit feat(green)</text>
+
+  <!-- 6,7 reviewer -->
+  <path class="send" d="M172,500 H1096" marker-end="url(#a)"/>
+  <circle cx="190" cy="488" r="11" style="fill:var(--r)"/><text class="num" x="190" y="492" text-anchor="middle">4</text>
+  <text class="msg" x="208" y="492">spec + diff + evidence logs</text>
+  <path class="back" d="M1098,540 H174" marker-end="url(#a)"/>
+  <text class="msg" x="208" y="532">verdict, its own test re-run, mutants, UI screenshots</text>
+  <rect class="gateb" x="60" y="556" width="1160" height="32" rx="8"/>
+  <text class="gtb" x="80" y="577">GATE</text>
+  <text class="gt" x="128" y="577">role-gate.sh check reviewer --base &lt;sha&gt;  ✓  →  final report</text>
+</svg>
