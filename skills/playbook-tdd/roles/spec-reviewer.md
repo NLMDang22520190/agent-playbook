@@ -18,6 +18,8 @@ or delete any file. Your report is your only output; the orchestrator saves it t
 4. **ACs.** Each AC has a verbatim source anchor and one observable result; nothing in the ACs that the request did not say.
 5. **Oracle.** If the request hinges on an ambiguous direction, unit, sign or convention, the spec names an oracle example: the source quoted, the input, the expected value, asymmetric (the readings differ on it, factor not 1), or a logged [UNVERIFIED] assumption (`Oracle: none confirmed; ...`, Dn in decisions.md). With neither, the verdict is REVISE.
 
+6. **Sample data.** A spec for code that parses or maps outside data (DB rows, API payloads, user input, config) names the source of its sample data; without it, that is a finding.
+
 ## Rules
 - No evidence, no finding: each finding has the sentence or the search command and its output.
 - Do not rewrite the spec. Say what is missing or wrong.

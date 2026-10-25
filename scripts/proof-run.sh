@@ -46,6 +46,7 @@ else
   sha="n/a"
 fi
 
+tree="$(bash "$(dirname "$0")/proof-check.sh" --tree 2>/dev/null)" || tree="none"   # see proof-check.sh
 cmdline="$(printf '%s' "$*" | pb_redact)"
 
 printf '### Evidence: %s\n' "$label"
@@ -53,6 +54,7 @@ printf -- '- command: `%s`\n' "$cmdline"
 printf -- '- exit: %s\n' "$rc"
 printf -- '- time (UTC): %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf -- '- git: %s\n' "$sha"
+printf -- '- tree: %s\n' "${tree:-none}"
 printf -- '- full log: %s (sha256: %s, %s lines)\n' "$log" "$digest" "$lines"
 printf '```text\n'
 tail -n "$tail_n" "$log"

@@ -205,4 +205,132 @@ else
   t_bad "AC4.1 the script source has no 'Co-Authored' trailer" "no such file: $PRB"
 fi
 
+# --- v0.26.1 lane R: Decisions from decisions.md, Unverified lines of the report, the Phase 4 PR line
+echo "pr-body.sh: ## Decisions from decisions.md (template table: decision + how to undo)"
+P="$(mk_tmp)"; HD2="$(mk_tmp)/h"; mkh "$HD2"
+cat > "$HD2/decisions.md" <<'EOD'
+# Decisions: widget export
+
+Defaults chosen without asking because they are reversible. BOILERPLATE-MARKER Review them in one batch at the end.
+
+| ID | Decision (the default taken) | Why this default | Alternatives | How to undo | Where (`path:line`, marker) | Status |
+|---|---|---|---|---|---|---|
+| D1 | DEC-ONE comma as separator | WHY-ONE-MARKER spreadsheets expect it | semicolon | UNDO-ONE set SEP in src/export.js | `src/export.js:4` `DECISION[D1]` | open |
+| D2 | DEC-TWO UTF-8 with BOM | WHY-TWO-MARKER Excel | no BOM | UNDO-TWO drop the BOM write | `src/export.js:9` | confirmed |
+
+Status: `open` (waiting for review) · STATUS-FOOTER-MARKER
+EOD
+run_in "$P" bash "$PRB" --handoff "$HD2"
+assert_rc "v0.26.1 R with decisions.md: exit 0" 0
+BODY2="$OUT"
+if printf '%s\n' "$BODY2" | grep -qxF -- '## Decisions'; then t_ok "v0.26.1 R the output has the heading ## Decisions"; else t_bad "v0.26.1 R the output has the heading ## Decisions" "$BODY2"; fi
+DS="$(sec "$BODY2" '## Decisions')"
+assert_contains "v0.26.1 R Decisions has decision D1" "$DS" "DEC-ONE comma as separator"
+assert_contains "v0.26.1 R Decisions has decision D2" "$DS" "DEC-TWO UTF-8 with BOM"
+assert_contains "v0.26.1 R Decisions has how to undo D1" "$DS" "UNDO-ONE set SEP in src/export.js"
+assert_contains "v0.26.1 R Decisions has how to undo D2" "$DS" "UNDO-TWO drop the BOM write"
+assert_contains "v0.26.1 R Decisions keeps the ids" "$DS" "D1"
+assert_not_contains "v0.26.1 R Decisions leaves out the template boilerplate" "$DS" "BOILERPLATE-MARKER"
+assert_not_contains "v0.26.1 R Decisions leaves out the status footer" "$DS" "STATUS-FOOTER-MARKER"
+A="$(lnum "$BODY2" '## Summary')"; B="$(lnum "$BODY2" '## Request coverage')"; C="$(lnum "$BODY2" '## Not checked')"; D="$(lnum "$BODY2" '## Review')"; E="$(lnum "$BODY2" '## Decisions')"
+if [ -n "$A" ] && [ -n "$E" ] && [ "$A" -lt "$B" ] && [ "$B" -lt "$C" ] && [ "$C" -lt "$D" ] && [ "$D" -lt "$E" ]; then t_ok "v0.26.1 R existing order kept, Decisions after Review"; else t_bad "v0.26.1 R existing order kept, Decisions after Review" "lines: $A $B $C $D $E"; fi
+assert_contains "v0.26.1 R the Weight line is still there" "$BODY2" "REASON-MARKER"
+
+echo "pr-body.sh: ## Decisions omitted when decisions.md is missing, empty or has no rows"
+P="$(mk_tmp)"; HD3="$(mk_tmp)/h"; mkh "$HD3"
+run_in "$P" bash "$PRB" --handoff "$HD3"
+assert_not_contains "v0.26.1 R no decisions.md: no Decisions heading" "$OUT" "## Decisions"
+: > "$HD3/decisions.md"
+run_in "$P" bash "$PRB" --handoff "$HD3"
+assert_rc "v0.26.1 R empty decisions.md: exit 0" 0
+assert_not_contains "v0.26.1 R empty decisions.md: no Decisions heading" "$OUT" "## Decisions"
+printf '\n  \n\n' > "$HD3/decisions.md"
+run_in "$P" bash "$PRB" --handoff "$HD3"
+assert_not_contains "v0.26.1 R blank-only decisions.md: no Decisions heading" "$OUT" "## Decisions"
+printf '# Decisions: x\n\n| ID | Decision (the default taken) | Why this default | Alternatives | How to undo | Where | Status |\n|---|---|---|---|---|---|---|\n' > "$HD3/decisions.md"
+run_in "$P" bash "$PRB" --handoff "$HD3"
+assert_not_contains "v0.26.1 R decisions.md with a header row only (D-default): no Decisions heading" "$OUT" "## Decisions"
+
+echo "pr-body.sh: free-form decisions.md is copied (D-default)"
+P="$(mk_tmp)"; HD4="$(mk_tmp)/h"; mkh "$HD4"
+printf '# Decisions\n\n- FREE-DEC-ONE: sort newest first; undo: flip the comparator\n- FREE-DEC-TWO: retry 3 times; undo: set RETRIES=0\n' > "$HD4/decisions.md"
+run_in "$P" bash "$PRB" --handoff "$HD4"
+DS="$(sec "$OUT" '## Decisions')"
+assert_contains "v0.26.1 R free-form decision one copied verbatim" "$DS" "- FREE-DEC-ONE: sort newest first; undo: flip the comparator"
+assert_contains "v0.26.1 R free-form decision two copied verbatim" "$DS" "- FREE-DEC-TWO: retry 3 times; undo: set RETRIES=0"
+assert_not_contains "v0.26.1 R free-form: the file title is not copied" "$DS" "# Decisions"
+
+echo "pr-body.sh: Decisions keeps exactly the ID, Decision, How to undo and Status columns (review fix 2)"
+# line_is NAME TEXT LINE -> TEXT has exactly this line
+line_is() { if printf '%s\n' "$2" | grep -Fx -- "$3" >/dev/null 2>&1; then t_ok "$1"; else t_bad "$1" "no line [$3] in: $2"; fi; }
+DS="$(sec "$BODY2" '## Decisions')"
+line_is "fix2 the header row is exactly ID, Decision, How to undo, Status (cells copied from the source header)" "$DS" '| ID | Decision (the default taken) | How to undo | Status |'
+line_is "fix2 the separator row has four columns" "$DS" '|---|---|---|---|'
+line_is "fix2 row D1 is exactly its four cells" "$DS" '| D1 | DEC-ONE comma as separator | UNDO-ONE set SEP in src/export.js | open |'
+line_is "fix2 row D2 is exactly its four cells" "$DS" '| D2 | DEC-TWO UTF-8 with BOM | UNDO-TWO drop the BOM write | confirmed |'
+assert_not_contains "fix2 the Why column header is left out" "$DS" "Why this default"
+assert_not_contains "fix2 a Why cell value is left out" "$DS" "WHY-ONE-MARKER"
+assert_not_contains "fix2 the Alternatives column is left out" "$DS" "Alternatives"
+assert_not_contains "fix2 the Where column is left out" "$DS" "src/export.js:4"
+P="$(mk_tmp)"; HD7="$(mk_tmp)/h"; mkh "$HD7"
+cat > "$HD7/decisions.md" <<'EOD'
+# Decisions: two tables
+
+| ID | Decision (the default taken) | Why this default | Alternatives | How to undo | Where | Status |
+|---|---|---|---|---|---|---|
+| D1 | DEC-T1 keep it | WHY-T1 | other | UNDO-T1 revert | `a.js:1` | open |
+
+Notes:
+
+| Note | Status |
+|---|---|
+| NOTE-ROW-MARKER | later |
+EOD
+run_in "$P" bash "$PRB" --handoff "$HD7"
+DS="$(sec "$OUT" '## Decisions')"
+line_is "fix2 a later table does not replace the header" "$DS" '| ID | Decision (the default taken) | How to undo | Status |'
+line_is "fix2 ... the decision row is kept" "$DS" '| D1 | DEC-T1 keep it | UNDO-T1 revert | open |'
+line_is "fix2 ... the separator row still has four columns" "$DS" '|---|---|---|---|'
+assert_not_contains "fix2 ... the later table's rows are not copied" "$DS" "NOTE-ROW-MARKER"
+
+echo "pr-body.sh: Not checked copied verbatim, inner blank lines and sub-items kept"
+P="$(mk_tmp)"; HD5="$(mk_tmp)/h"; mkh "$HD5"
+awk '{ print } /^- NOTCHECKED-TWO/ { print "  - NOTCHECKED-SUB: only Linux ran"; print ""; print "NOTCHECKED-PARA after a blank line." }' "$HD5/06-final-report.md" > "$HD5/r.tmp" && mv "$HD5/r.tmp" "$HD5/06-final-report.md"
+run_in "$P" bash "$PRB" --handoff "$HD5"
+NC="$(sec "$OUT" '## Not checked')"
+EXP="$(printf '%s\n' '- NOTCHECKED-ONE: the export on a 1 GB account was not run.' '- NOTCHECKED-TWO: Windows paths.' '  - NOTCHECKED-SUB: only Linux ran' '' 'NOTCHECKED-PARA after a blank line.')"
+assert_eq "v0.26.1 R Not checked is the report section verbatim" "$EXP" "$(printf '%s\n' "$NC" | sed -e '/./,$!d' | awk '{ a[NR] = $0 } END { n = NR; while (n > 0 && a[n] == "") n--; for (i = 1; i <= n; i++) print a[i] }')"
+
+echo "pr-body.sh: ## Unverified lists every report line with [UNVERIFIED]"
+P="$(mk_tmp)"; HD6="$(mk_tmp)/h"; mkh "$HD6"
+cat >> "$HD6/06-final-report.md" <<'EOU'
+- UNV-ASSUME: the CSV reader is Excel 2019 [UNVERIFIED]
+
+## Found, not fixed / [UNVERIFIED]
+- UNV-FOUND: large accounts may time out [UNVERIFIED]
+| AC2 | UNV-TABLE-ROW | none | low [UNVERIFIED] |
+- FOUND-PLAIN: a line without the label
+EOU
+run_in "$P" bash "$PRB" --handoff "$HD6"
+assert_rc "v0.26.1 R report with [UNVERIFIED] lines: exit 0" 0
+if printf '%s\n' "$OUT" | grep -qxF -- '## Unverified'; then t_ok "v0.26.1 R the output has the heading ## Unverified"; else t_bad "v0.26.1 R the output has the heading ## Unverified" "$OUT"; fi
+US="$(sec "$OUT" '## Unverified')"
+assert_contains "v0.26.1 R Unverified lists the Assumptions line" "$US" "UNV-ASSUME: the CSV reader is Excel 2019 [UNVERIFIED]"
+assert_contains "v0.26.1 R Unverified lists the Found line" "$US" "UNV-FOUND: large accounts may time out [UNVERIFIED]"
+assert_contains "v0.26.1 R Unverified lists the table row" "$US" "| AC2 | UNV-TABLE-ROW | none | low [UNVERIFIED] |"
+assert_not_contains "v0.26.1 R Unverified leaves out lines without the label" "$US" "FOUND-PLAIN"
+assert_not_contains "v0.26.1 R Unverified leaves out the heading that carries the label (D-default)" "$US" "Found, not fixed"
+N_UNV="$(printf '%s\n' "$US" | grep -c 'UNVERIFIED')"
+assert_eq "v0.26.1 R Unverified has exactly the three labelled lines" "3" "$N_UNV"
+R_="$(lnum "$OUT" '## Review')"; U_="$(lnum "$OUT" '## Unverified')"
+if [ -n "$U_" ] && [ -n "$R_" ] && [ "$R_" -lt "$U_" ]; then t_ok "v0.26.1 R Unverified comes after the existing sections"; else t_bad "v0.26.1 R Unverified comes after the existing sections" "lines: $R_ $U_"; fi
+run_in "$P" bash "$PRB" --handoff "$HD3"
+assert_not_contains "v0.26.1 R no [UNVERIFIED] line in the report: no Unverified heading" "$OUT" "## Unverified"
+
+echo "playbook-tdd Phase 4: the PR description is the pr-body.sh output"
+TDD_SK="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$TDD_SK" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$P4" | grep -qiE 'PR[^.]{0,80}description[^.]{0,40}pr-body\.sh[^.]{0,20}output'; then t_ok "v0.26.1 R Phase 4 says the PR description is the pr-body.sh output"; else t_bad "v0.26.1 R Phase 4 says the PR description is the pr-body.sh output" "Phase 4 [$P4]"; fi
+
+
 t_summary
