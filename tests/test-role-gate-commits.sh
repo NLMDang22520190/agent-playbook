@@ -3,6 +3,8 @@
 # S1 AC-C1 (oracle P/T1/I1/T2), AC-C2 role matrix per commit (also commit + revert), AC-C3 work tree/index/untracked not judged,
 # AC-C5 verdict lines and the empty range, plus feedback cases fb #3/#4/#7-#13 rebuilt for --commits; S2 AC-C6 argument errors
 # and incompatibilities; S3 AC-C4 merges (first parent), AC-C7 per-commit mode check, AC-C8 mode restore note.
+# S4 `--paths-from FILE` with --base: AC-P1 filter and outside notes, AC-P2 summary note, AC-P4 file format and errors, AC-P5 mode
+# check unchanged; S5 AC-P3 with --baseline and refused with --scope, AC-P6 refused with --commits, AC-D2 header/usage text.
 # Every commit sets modes in the index (git update-index --chmod), so no block depends on chmod working on this file system.
 # Shared setup: role-gate-fixture.sh (gchk = check with a global conf whose test_infra_regex is ^ci/).
 . "$(dirname "$0")/lib.sh"
@@ -269,5 +271,225 @@ gchk implementer --commits "$RED..HEAD"
 assert_rc "AC-C8 a content change in a commit of the range (later reverted): exit 1" 1
 assert_contains "AC-C8 ... the test path is judged by role" "$OUT" "VIOLATION (implementer): tests/run.sh [test]"
 assert_not_contains "AC-C8 ... no restore note" "$OUT" "note: tests/run.sh mode restore only"
+
+# ================= S4 (--paths-from with --base) =================
+# dig FILE -> git hash-object of FILE (the AC-P2 digest)
+dig() { git hash-object -- "$1" 2>/dev/null || printf 'NODIGEST'; }
+# pf FILE ENTRY... -> a paths-from list, one entry per line
+pf() { local f="$1"; shift; printf '%s\n' "$@" > "$f"; }
+# onote PATH KIND -> the AC-P1 per-path note; psum FILE N K -> the AC-P2 summary note
+onote() { printf 'note: outside the paths-from list, not checked: %s [%s]' "$1" "$2"; }
+psum() { printf 'note: paths-from %s (%s entries, digest %s): %s changed path(s) outside the list not checked' "$1" "$2" "$(dig "$1")" "$3"; }
+# has_line NAME LINE: $OUT has exactly this line; no_line NAME LINE: it has not
+has_line() { if printf '%s\n' "$OUT" | grep -Fx -- "$2" >/dev/null 2>&1; then t_ok "$1"; else t_bad "$1" "no line [$2] in: $OUT"; fi; }
+no_line() { if printf '%s\n' "$OUT" | grep -Fx -- "$2" >/dev/null 2>&1; then t_bad "$1" "unexpected line [$2] in: $OUT"; else t_ok "$1"; fi; }
+# first_pnote -> the first paths-from note of $OUT (summary or per-path)
+first_pnote() { printf '%s\n' "$OUT" | grep -e '^note: paths-from ' -e '^note: outside the paths-from list' | head -1; }
+PERR='error: --paths-from cannot be combined with --scope'
+PCERR='error: --paths-from cannot be combined with --commits'
+
+echo "AC-P1/AC-P2 --paths-from with --base: listed paths judged as without it, outside paths named in notes, the summary first"
+new_repo
+PF="$(mk_tmp)/paths"; pf "$PF" src/ README.md
+printf 'module.exports = 2;\n' > src/app.js; mkdir -p src/deep; printf 'd\n' > src/deep/new.js
+printf 'test("y", () => {});\n' > tests/app.test.js; printf 'test("n", () => {});\n' > tests/new.test.js
+mkdir -p ci; printf 'on: push\n' > ci/run.yml
+gchk implementer --base "$P"
+assert_rc "AC-P1 control: without --paths-from the test and infra paths are violations: exit 1" 1
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P1 implementer, only the listed code paths are judged: exit 0" 0
+has_line "AC-P1 ... the OK line counts the judged (listed) paths only" "OK: role gate passed for implementer (2 file(s) checked, base=$P)"
+has_line "AC-P1 ... an outside modified test path is named with its kind" "$(onote tests/app.test.js test)"
+has_line "AC-P1 ... an outside untracked test path is named" "$(onote tests/new.test.js test)"
+has_line "AC-P1 ... an outside infra path is named" "$(onote ci/run.yml infra)"
+no_line "AC-P1 ... a listed path (dir/ prefix) gets no outside note" "$(onote src/deep/new.js code)"
+assert_not_contains "AC-P1 ... no violation" "$OUT" "VIOLATION"
+has_line "AC-P2 the summary note: FILE, 2 entries, digest, 3 outside" "$(psum "$PF" 2 3)"
+assert_eq "AC-P2 ... the summary is printed once" "1" "$(printf '%s\n' "$OUT" | grep -c '^note: paths-from ')"
+assert_eq "AC-P2 ... the summary comes first among the paths-from notes" "$(psum "$PF" 2 3)" "$(first_pnote)"
+
+echo "AC-P1 a listed path is judged as without the option; the default base is HEAD"
+new_repo
+PF="$(mk_tmp)/paths"; pf "$PF" tests/app.test.js
+printf 'module.exports = 2;\n' > src/app.js; printf 'test("y", () => {});\n' > tests/app.test.js
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P1 implementer, the listed test path changed: exit 1" 1
+has_line "AC-P1 ... the VIOLATION line is today's format" "VIOLATION (implementer): tests/app.test.js [test]"
+has_line "AC-P1 ... the FAILED line is today's format (base=REF)" "role gate FAILED for implementer: 1 violation(s), base=$P"
+has_line "AC-P1 ... the outside code path is named" "$(onote src/app.js code)"
+has_line "AC-P2 ... summary: 1 entry, 1 outside" "$(psum "$PF" 1 1)"
+gchk tester --paths-from "$PF"
+assert_rc "AC-P1 tester with the default base (HEAD): listed test passes, code is outside: exit 0" 0
+has_line "AC-P1 ... OK line with base=HEAD" "OK: role gate passed for tester (1 file(s) checked, base=HEAD)"
+has_line "AC-P1 ... the code path is named, not judged" "$(onote src/app.js code)"
+
+echo "AC-P4 entries match byte for byte: dir/ is a prefix, an entry without / is one exact path, no globs, empty lines skipped"
+new_repo
+PF="$(mk_tmp)/paths"; printf 'src\n\nsrc/dee\ntests/*.test.js\n\n' > "$PF"
+mkdir -p src/deep; printf 'x\n' > src/deep/a.js; printf 'module.exports = 2;\n' > src/app.js; printf 'test("y", () => {});\n' > tests/app.test.js
+gchk reviewer --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 reviewer: 'src' (no /), 'src/dee' and a glob match none of the changed paths: exit 0" 0
+has_line "AC-P4 ... 0 files checked" "OK: role gate passed for reviewer (0 file(s) checked, base=$P)"
+has_line "AC-P4 ... 3 entries (empty lines skipped), 3 outside" "$(psum "$PF" 3 3)"
+has_line "AC-P4 ... 'src' is not a prefix of src/app.js" "$(onote src/app.js code)"
+has_line "AC-P4 ... 'src/dee' is not a prefix of src/deep/a.js" "$(onote src/deep/a.js code)"
+has_line "AC-P4 ... no glob: tests/*.test.js does not match" "$(onote tests/app.test.js test)"
+pf "$PF" src/deep/ tests/app.test.js
+gchk reviewer --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 control: a dir/ prefix and an exact path do match: exit 1" 1
+has_line "AC-P4 ... the prefix-matched path is judged" "VIOLATION (reviewer): src/deep/a.js [code]"
+has_line "AC-P4 ... the exact path is judged" "VIOLATION (reviewer): tests/app.test.js [test]"
+has_line "AC-P4 ... the unlisted path is named" "$(onote src/app.js code)"
+
+echo "AC-P1 a control character in an outside path is shown as ?"
+new_repo
+PF="$(mk_tmp)/paths"; pf "$PF" src/
+CN="$(printf 'docs/a\001b.md')"; mkdir -p docs; printf 'x\n' > "$CN" 2>/dev/null
+if [ -f "$CN" ] && [ "$(git ls-files --others -z 2>/dev/null | tr -d '\000')" = "$CN" ]; then
+  gchk implementer --base "$P" --paths-from "$PF"
+  has_line "AC-P1 ... the \\001 byte is shown as ?" "$(onote 'docs/a?b.md' code)"
+  assert_not_contains "AC-P1 ... the raw byte is not printed" "$OUT" "$CN"
+else t_skip 2 "AC-P1 control character (this file system cannot store a \\001 name)"; fi
+
+echo "AC-P4 a bad paths-from file: exit 3, no verdict"
+new_repo
+printf 'module.exports = 2;\n' > src/app.js
+PF="$(mk_tmp)/paths"
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 a missing file: exit 3" 3
+has_line "AC-P4 ... the message is exact" "error: paths-from file not readable: $PF"
+no_verdict "AC-P4 a missing file"
+pf "$PF" src/; chmod 000 "$PF" 2>/dev/null
+if [ "$(id -u)" != 0 ] && ! cat "$PF" >/dev/null 2>&1; then
+  gchk implementer --base "$P" --paths-from "$PF"
+  assert_rc "AC-P4 an unreadable file (chmod 000): exit 3" 3
+  has_line "AC-P4 ... the message is exact" "error: paths-from file not readable: $PF"
+else t_skip 2 "AC-P4 unreadable file (running as root, or chmod 000 has no effect here)"; fi
+chmod 644 "$PF" 2>/dev/null
+# pbad NAME PRINTF-FORMAT LINE -> exit 3, "error: malformed paths-from file FILE: line LINE: <reason>", no verdict
+pbad() {
+  printf "$2" > "$PF"
+  gchk implementer --base "$P" --paths-from "$PF"
+  assert_rc "AC-P4 $1: exit 3" 3
+  assert_contains "AC-P4 $1: malformed, line $3" "$OUT" "error: malformed paths-from file $PF: line $3: "
+  no_verdict "AC-P4 $1"
+}
+pbad "a CR (CRLF line end) on line 1" 'src/\r\n' 1
+pbad "a CR on line 3 (after an empty line; physical line numbers)" 'src/\n\nREADME.md\r\n' 3
+pbad "a UTF-8 BOM" '\xef\xbb\xbfsrc/\n' 1
+pbad "a NUL on line 2" 'src/\nsrc/a\0b.js\n' 2
+: > "$PF"
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 an empty file: exit 3" 3
+has_line "AC-P4 ... the message is exact" "error: paths-from file has no entries: $PF"
+no_verdict "AC-P4 an empty file"
+printf '\n\n' > "$PF"
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 only empty lines: exit 3" 3
+has_line "AC-P4 ... the message is exact" "error: paths-from file has no entries: $PF"
+TF="$R/pf-list.txt"; pf "$TF" src/; git add pf-list.txt; git commit -q -m "list"
+gchk implementer --base "$P" --paths-from "$TF"
+assert_rc "AC-P4 a tracked file of the repository: exit 3" 3
+has_line "AC-P4 ... the message is exact" "error: the paths-from file is a tracked file of this repository: $TF"
+no_verdict "AC-P4 a tracked file"
+
+echo "AC-P4 a missing value or --paths-from twice: exit 2, no verdict"
+pf "$PF" src/
+gchk implementer --base "$P" --paths-from
+assert_rc "AC-P4 --paths-from with no value: exit 2" 2
+has_line "AC-P4 ... the message is exact" "error: --paths-from needs a file"
+no_verdict "AC-P4 no value"
+gchk implementer --paths-from "" --base "$P"
+assert_rc "AC-P4 --paths-from with an empty value: exit 2" 2
+has_line "AC-P4 ... the message is exact" "error: --paths-from needs a file"
+gchk implementer --paths-from "$PF" --base "$P" --paths-from "$PF"
+assert_rc "AC-P4 --paths-from given twice: exit 2" 2
+has_line "AC-P4 ... the message is exact" "error: --paths-from given twice"
+no_verdict "AC-P4 twice"
+
+echo "AC-P4 a relative FILE resolves against the caller's directory"
+new_repo
+printf 'src/\n' > .git/pf-rel
+printf 'module.exports = 2;\n' > src/app.js; printf 'test("y", () => {});\n' > tests/app.test.js
+cd "$R/src" || exit 3
+gchk implementer --base "$P" --paths-from ../.git/pf-rel
+assert_rc "AC-P4 a relative FILE from a subdirectory: exit 0" 0
+has_line "AC-P4 ... the outside path is named top-relative" "$(onote tests/app.test.js test)"
+cd "$R" || exit 3
+
+echo "AC-P5 the mode check exempts nothing with --paths-from; .agents/handoff/ paths are never named"
+new_mode_repo
+PF="$(mk_tmp)/paths"; pf "$PF" src/plain.js
+printf 'plain v2\n' > src/plain.js
+setx -x src/second.sh
+mkdir -p .agents/handoff; printf 'n\n' > .agents/handoff/notes.md
+gchk implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P5 a lost exec bit on a path outside the list: exit 1" 1
+has_line "AC-P5 ... the mode violation" "VIOLATION (mode): src/second.sh lost its executable bit (100755 -> 100644)"
+assert_not_contains "AC-P5 ... .agents/handoff/ is not named" "$OUT" ".agents/handoff"
+gchk_allow src/second.sh implementer --base "$P" --paths-from "$PF"
+assert_rc "AC-P5 PB_ALLOW_MODE_CHANGE stays the escape: exit 0" 0
+has_line "AC-P5 ... the listed path is judged and passes" "OK: role gate passed for implementer (1 file(s) checked, base=$P)"
+assert_not_contains "AC-P5 ... no mode line" "$OUT" "(mode)"
+
+# ================= S5 (combinations, usage text) =================
+echo "AC-P3 --paths-from with --baseline: the list filters what the baseline left to judge"
+new_repo
+printf 'test("pre", () => {});\n' > tests/app.test.js; printf 'pre\n' > src/pre.js
+MF="$(mk_tmp)/manifest"; gate snapshot --out "$MF"
+assert_contains "AC-P3 setup: a baseline manifest was written" "$(cat "$MF" 2>/dev/null)" "# role-gate baseline v1"
+printf 'module.exports = 2;\n' > src/app.js; mkdir -p docs; printf 'other\n' > docs/other.md
+PF="$(mk_tmp)/paths"; pf "$PF" src/
+gchk implementer --baseline "$MF" --paths-from "$PF"
+assert_rc "AC-P3 implementer --baseline --paths-from: exit 0" 0
+has_line "AC-P3 ... the baseline still skips the pre-dirty test path" "note: unchanged since the baseline: tests/app.test.js"
+no_line "AC-P3 ... a baseline-skipped path is not also an outside note" "$(onote tests/app.test.js test)"
+has_line "AC-P3 ... the new outside path is named" "$(onote docs/other.md code)"
+has_line "AC-P3 ... summary: 1 entry, 1 outside (after the baseline)" "$(psum "$PF" 1 1)"
+has_line "AC-P3 ... 1 file checked (src/pre.js is unchanged since the baseline)" "OK: role gate passed for implementer (1 file(s) checked, base=HEAD)"
+gchk tester --base "$P" --baseline "$MF" --paths-from "$PF"
+assert_rc "AC-P3 tester --base --baseline --paths-from: the listed code path is judged: exit 1" 1
+has_line "AC-P3 ... the listed code path is a violation" "VIOLATION (tester): src/app.js [code]"
+no_line "AC-P3 ... the baseline-skipped listed path is not judged" "VIOLATION (tester): src/pre.js [code]"
+has_line "AC-P3 ... the FAILED line names the base" "role gate FAILED for tester: 1 violation(s), base=$P"
+
+echo "AC-P3 --paths-from with --scope: exit 2, no verdict (either order)"
+SF="$(mk_tmp)/scope"; printf '# role-gate scope v1\nown\tsrc/\n' > "$SF"
+gchk implementer --base "$P" --scope "$SF" --paths-from "$PF"
+assert_rc "AC-P3 --scope then --paths-from: exit 2" 2
+has_line "AC-P3 ... the message is exact" "$PERR"
+no_verdict "AC-P3 --scope then --paths-from"
+gchk implementer --paths-from "$PF" --base "$P" --scope "$SF"
+assert_rc "AC-P3 --paths-from then --scope: exit 2" 2
+has_line "AC-P3 ... the message is exact" "$PERR"
+no_verdict "AC-P3 --paths-from then --scope"
+
+echo "AC-P6 --commits with --paths-from: exit 2, no verdict, nothing judged (either order)"
+new_repo
+cmt src/app.js 'module.exports = 2;' "tester touches code"; B="$(git rev-parse HEAD)"
+PF="$(mk_tmp)/paths"; pf "$PF" tests/
+gchk tester --commits "$P..$B" --paths-from "$PF"
+assert_rc "AC-P6 --commits then --paths-from: exit 2" 2
+has_line "AC-P6 ... the message is exact" "$PCERR"
+no_verdict "AC-P6 --commits then --paths-from"
+assert_not_contains "AC-P6 ... nothing judged" "$OUT" "VIOLATION"
+gchk tester --paths-from "$PF" --commits "$P..$B"
+assert_rc "AC-P6 --paths-from then --commits: exit 2" 2
+has_line "AC-P6 ... the message is exact" "$PCERR"
+no_verdict "AC-P6 --paths-from then --commits"
+assert_not_contains "AC-P6 ... no outside note either" "$OUT" "outside the paths-from list"
+
+echo "AC-D2 the header comment and both usage strings list --commits A..B and --paths-from FILE"
+HDR="$(grep -m1 '^#   role-gate.sh check ' "$GATE")"
+assert_contains "AC-D2 the header usage line of check names --commits A..B" "$HDR" "--commits A..B"
+assert_contains "AC-D2 the header usage line of check names --paths-from FILE" "$HDR" "--paths-from FILE"
+gate frobnicate
+assert_rc "AC-D2 an unknown subcommand: exit 2" 2
+assert_contains "AC-D2 ... the usage names --commits A..B" "$OUT" "--commits A..B"
+assert_contains "AC-D2 ... the usage names --paths-from FILE" "$OUT" "--paths-from FILE"
+gate size --bogus
+assert_rc "AC-D2 size with an unknown option: exit 2" 2
+assert_contains "AC-D2 ... the usage names --commits A..B" "$OUT" "--commits A..B"
+assert_contains "AC-D2 ... the usage names --paths-from FILE" "$OUT" "--paths-from FILE"
 
 t_summary
