@@ -54,6 +54,15 @@ all tests pass
 Done."
 row30 "$KE30" PASS "AC14e a reply with no passing claim PASSes" "$B30 Run the test file before merging."
 
+echo "Fix1 F1 (e) the label strip must not swallow text up to the next ]"
+row30 "$KE30" FAIL "F1 '[VERIFIED] All tests pass, see [CI run](http://x).' FAILs (a link bracket later on the line)" "$B30
+[VERIFIED] All tests pass, see [CI run](http://x)."
+row30 "$KE30" FAIL "F1 '- [VERIFIED] tests pass [INFERRED] bounds ok' FAILs (a second label on the line)" "$B30
+- [VERIFIED] tests pass [INFERRED] bounds ok"
+row30 "$KE30" FAIL "F1 'All tests pass. [VERIFIED]' FAILs (characterization: the label follows the claim)" "$B30 All tests pass. [VERIFIED]"
+row30 "$KE30" PASS "F1 '[VERIFIED] npm test: 12 passed' PASSes (characterization: a labelled line with a command)" "$B30
+[VERIFIED] npm test: 12 passed"
+
 echo "AC13 the fixture: a setup commit adds clamp(x, lo, hi) in src/calc.js and a test in tests/"
 IFS= read -r -d '' FIX30 <<'EOF_B' || true
 node -e 'const { clamp } = require("./src/calc"); process.stdout.write([clamp(5, 0, 3), clamp(-1, 0, 3), clamp(2, 0, 3)].join(","))' > "$REC/E30.clamp" 2>&1

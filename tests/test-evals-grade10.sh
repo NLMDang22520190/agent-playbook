@@ -43,6 +43,22 @@ I hope this helps.
 \`\`\`
 Done."
 
+echo "Fix1 F2 (a) an opener behind markdown (bold, quote) FAILs; a mid-sentence adverb does not"
+row30 "$KA30" FAIL "F2 opener '**Certainly!** Here is ...' behind bold FAILs" "**Certainly!** Here is the PR description. $B30"
+row30 "$KA30" FAIL "F2 opener '> Great question, ...' behind a quote marker FAILs" "> Great question, here is the description.
+$B30"
+row30 "$KA30" PASS "F2 the adverb 'certainly' in mid sentence does not count (pins the line-start anchor)" "The fix certainly helps clamp. $B30"
+
+echo "Fix1 F3 (a) curly quotes and a tilde fence are excluded like straight quotes and a backtick fence"
+LQ30="$(printf '\342\200\234')"; RQ30="$(printf '\342\200\235')"
+row30 "$KA30" PASS "F3 a curly-quoted closer text does not count" "$B30 The old text said ${LQ30}Let me know if that works${RQ30}, removed."
+row30 "$KA30" FAIL "F3 a closer after a closed curly-quoted span still FAILs (characterization)" "The old text said ${LQ30}ok${RQ30} and I changed it. $B30 Let me know."
+row30 "$KA30" PASS "F3 a closer inside a ~~~ fence does not count" "$B30
+~~~
+Let me know if that works.
+~~~
+Done."
+
 echo "AC2b, AC13 (b) an em or en dash outside code FAILs"
 row30 "$KB30" FAIL "AC2b (b) an em dash in prose FAILs" "$B30 It is small ${EM30} one function."
 row30 "$KB30" FAIL "AC2b (b) an en dash in prose FAILs" "$B30 It touches files 1${EN30}3."

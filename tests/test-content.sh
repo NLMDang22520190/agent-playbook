@@ -2044,4 +2044,33 @@ SETUP_WORDS="$(wc -w < "$SETUP" | tr -d ' ')"; SETUP_B="$(budget_of skills/playb
 if [ "$SETUP_WORDS" -le 1150 ]; then t_ok "v0.25.0 AC12 playbook-setup SKILL.md is at most 1150 words (orchestrator default D3) ($SETUP_WORDS)"; else t_bad "v0.25.0 AC12 playbook-setup SKILL.md is at most 1150 words (orchestrator default D3)" "$SETUP_WORDS words"; fi
 if [ -n "$SETUP_B" ] && [ "$SETUP_B" -ge "$SETUP_WORDS" ] && [ "$SETUP_B" -le 1150 ]; then t_ok "v0.25.0 AC12 the playbook-setup budget in evals/word-budgets is not below the count and at most 1150 (budget $SETUP_B, count $SETUP_WORDS)"; else t_bad "v0.25.0 AC12 the playbook-setup budget in evals/word-budgets is not below the count and at most 1150" "budget [$SETUP_B] count $SETUP_WORDS"; fi
 
+# ---- v0.25.0 fix round 1 (review findings F4-F7) ----
+echo "v0.25.0 fix1 F4: writing.md does not tell the reader to remove decorative bold (humanizer s19 is not in the approved list)"
+WM_RULES=""; [ -f "$WM" ] && WM_RULES="$(awk '/^## Rules/ { f = 1; next } /^## / { f = 0 } f { print }' "$WM" | tr '\n' ' ')"
+if printf '%s' "$WM_RULES" | grep -qi 'chatbot'; then t_ok "v0.25.0 fix1 F4 writing.md has a Rules list (found by its chatbot rule)"; else t_bad "v0.25.0 fix1 F4 writing.md has a Rules list (found by its chatbot rule)" "rules [$WM_RULES]"; fi
+if [ -n "$WM_RULES" ] && ! printf '%s' "$WM_RULES" | grep -qi 'bold'; then t_ok "v0.25.0 fix1 F4 the Rules list does not mention bold"; else t_bad "v0.25.0 fix1 F4 the Rules list does not mention bold" "rules [$WM_RULES] (empty = no Rules list)"; fi
+if [ -f "$WM" ] && ! flat "$WM" | grep -qi 'decorative bold'; then t_ok "v0.25.0 fix1 F4 writing.md never says decorative bold"; else t_bad "v0.25.0 fix1 F4 writing.md never says decorative bold" "the phrase is in $WM (or the file is missing)"; fi
+if [ -f "$WM" ] && flat "$WM" | grep -qiE 'decorative headings.{0,30}emoji'; then t_ok "v0.25.0 fix1 F4 s20 stays: decorative headings and emojis are still named"; else t_bad "v0.25.0 fix1 F4 s20 stays: decorative headings and emojis are still named" "no decorative headings ... emoji in $WM"; fi
+
+echo "v0.25.0 fix1 F5: the Humanizer section conditions on an installed skill and the key first, then asks (it does not offer)"
+WM_HUM=""; [ -f "$WM" ] && WM_HUM="$(awk '/^## Humanizer/ { f = 1; next } /^## / { f = 0 } /^Credit:/ { f = 0 } f { print }' "$WM" | tr '\n' ' ' | tr -s ' ')"
+HUM_S="$(printf '%s' "$WM_HUM" | tr '.' '\n')"
+HUM_INST="$(printf '%s\n' "$HUM_S" | grep -i 'installed' | head -n 1)"
+HUM_L_INST="$(printf '%s\n' "$HUM_S" | grep -n -i 'installed' | head -n 1 | cut -d: -f1)"
+HUM_L_MAIN="$(printf '%s\n' "$HUM_S" | grep -n -i 'main deliverable' | head -n 1 | cut -d: -f1)"
+if [ -n "$HUM_L_INST" ] && [ -n "$HUM_L_MAIN" ] && [ "$HUM_L_INST" -lt "$HUM_L_MAIN" ]; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence comes before the main deliverable sentence"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence comes before the main deliverable sentence" "installed at sentence [$HUM_L_INST], main deliverable at [$HUM_L_MAIN]"; fi
+if printf '%s' "$HUM_INST" | grep -qiE 'key' && printf '%s' "$HUM_INST" | grep -qE 'ask'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence also conditions on the humanizer key being ask"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence also conditions on the humanizer key being ask" "sentence [$HUM_INST]"; fi
+if printf '%s' "$HUM_INST" | grep -qiE 'ask.{0,100}(run|use)[^.]{0,30}in full'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence asks whether to run it in full"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence asks whether to run it in full" "sentence [$HUM_INST]"; fi
+if [ -n "$HUM_INST" ] && ! printf '%s' "$HUM_INST" | grep -qiE 'offer'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence does not say offer (AGENTS.global.md says ask)"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence does not say offer (AGENTS.global.md says ask)" "sentence [$HUM_INST]"; fi
+
+echo "v0.25.0 fix1 F6: setup gives the humanizer install command for both skills dirs"
+if grep -qF -- 'git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer' "$QUESTIONS"; then t_ok "v0.25.0 fix1 F6 questions.md gives the Claude Code clone command (characterization)"; else t_bad "v0.25.0 fix1 F6 questions.md gives the Claude Code clone command (characterization)" "missing in $QUESTIONS"; fi
+if grep -qF -- 'git clone https://github.com/blader/humanizer ~/.agents/skills/humanizer' "$QUESTIONS"; then t_ok "v0.25.0 fix1 F6 questions.md gives the Codex and OpenCode clone command"; else t_bad "v0.25.0 fix1 F6 questions.md gives the Codex and OpenCode clone command" "no git clone ... ~/.agents/skills/humanizer in $QUESTIONS"; fi
+
+echo "v0.25.0 fix1 F7: the humanizer suggestion is part of the step 4 batch, not a later question"
+S4_TXT="$(awk '/^4\. \*\*Ask once/ { f = 1; next } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$S4_TXT" | grep -qi 'humanizer'; then t_ok "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion"; else t_bad "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion" "step 4 [$S4_TXT]"; fi
+if printf '%s' "$S4_TXT" | grep -qiE '(then|afterwards?|after (the|that)|later|follow-?up)[^.]{0,60}humanizer'; then t_bad "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch" "step 4 [$S4_TXT]"; else t_ok "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch"; fi
+if printf '%s' "$S4_TXT" | grep -qiE 'humanizer.{0,200}(batch|same message|single message)|(batch|same message|single message).{0,200}humanizer'; then t_ok "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message"; else t_bad "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message" "step 4 [$S4_TXT]"; fi
+
 t_summary
