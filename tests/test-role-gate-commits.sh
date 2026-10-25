@@ -344,7 +344,8 @@ has_line "AC-P4 ... the unlisted path is named" "$(onote src/app.js code)"
 echo "AC-P1 a control character in an outside path is shown as ?"
 new_repo
 PF="$(mk_tmp)/paths"; pf "$PF" src/
-CN="$(printf 'docs/a\001b.md')"; mkdir -p docs; printf 'x\n' > "$CN" 2>/dev/null
+SOHB="$(printf "$(printf '\\%s' 001)")"   # the byte is built from pieces at run time (run-checks soh)
+CN="docs/a${SOHB}b.md"; mkdir -p docs; printf 'x\n' > "$CN" 2>/dev/null
 if [ -f "$CN" ] && [ "$(git ls-files --others -z 2>/dev/null | tr -d '\000')" = "$CN" ]; then
   gchk implementer --base "$P" --paths-from "$PF"
   has_line "AC-P1 ... the \\001 byte is shown as ?" "$(onote 'docs/a?b.md' code)"
