@@ -154,6 +154,7 @@ quoted_count() { git -c core.quotepath=off ls-files --others --exclude-standard 
 # exit code 1 when over, else 0; stderr gets no line v0.24.27 did not print
 cmp_q() {
   local name="$1" dfp="$2" dlp="$3" d="$4" qc F N L M B why="" extra exp erc re; shift 4
+  # CQ_XL: lines v0.24.31 adds beyond the quoted names (a symlink to a directory is counted by its link text, D2)
   if [ "$REF_OK" != 1 ]; then t_skip 1 "$name (the reference commit $PRE is not in this clone, or git archive is not available)"; return; fi
   qc="$(cd "$d" && quoted_count)"
   : > "$SHIMLOG"; oneside o "$OLDG" "$d" "$@"
@@ -162,7 +163,7 @@ cmp_q() {
   if ! [[ "$(head -n 1 "$DT/o.out")" =~ $re ]]; then
     why="the v0.24.27 run printed no size line: [$(head -c 120 "$DT/o.out" | tr '\n' '|')] [$(head -c 120 "$DT/o.err" | tr '\n' '|')]"
   else
-    F=$((BASH_REMATCH[1] + qc * dfp)); N="${BASH_REMATCH[2]}"; L=$((BASH_REMATCH[3] + qc * dlp)); M="${BASH_REMATCH[4]}"; B="${BASH_REMATCH[5]}"
+    F=$((BASH_REMATCH[1] + qc * dfp)); N="${BASH_REMATCH[2]}"; L=$((BASH_REMATCH[3] + qc * dlp + ${CQ_XL:-0})); M="${BASH_REMATCH[4]}"; B="${BASH_REMATCH[5]}"
     exp="files: $F/$N lines: $L/$M (base=$B)"; erc=0
     if [ "$F" -gt "$N" ] || [ "$L" -gt "$M" ]; then exp="$exp"$'\n'"over the Lite size limit: escalate to Full"; erc=1; fi
     printf '%s\n' "$exp" > "$DT/q.exp"
@@ -254,6 +255,8 @@ for k in $K_SAME $K_ROUTED; do
     routed-tab | routed-dquote | routed-backslash | routed-newline)
       cmp_q "AC1 kind $k (git-quoted name, 2 lines): v0.24.27 files, 2 more lines (NTFS tab: as v0.24.27)" 0 2 "$R" size $WIDE
       cmp_q "AC1 kind $k (git-quoted name, 2 lines), --baseline of a clean repo: v0.24.27 files, 2 more lines" 0 2 "$R" size $WIDE --baseline "$MF0" ;;
+    routed-symlink-dir)   # v0.24.31 D2: counted by its link text, 1 line more than v0.24.27
+      nrow "AC1 kind $k (v0.24.31 D2): 1 file, 1 line (the link text), exit 0" "$R" "files: 1/1000 lines: 1/100000 (base=HEAD)" 0 size $WIDE ;;
     routed-*) cmp_gate "AC1 kind $k (routed to the per-file command): stdout, exit code and stderr as v0.24.27" "$R" size $WIDE ;;
     *) cmp_gate "AC1 kind $k (batch): stdout, exit code and stderr as v0.24.27" "$R" size $WIDE ;;
   esac
@@ -268,9 +271,11 @@ for k in $K_SAME routed-tab routed-dquote routed-backslash routed-symlink-dir ro
   mkkind "$k" 2>/dev/null || true
 done
 GENV=(X_PB=1)
+CQ_XL=0; [ -L "$CORP/sd" ] && CQ_XL=1   # v0.24.31 D2: the directory symlink adds its link text line
 cmp_q "AC1 corpus: plain size, wide limits: v0.24.27 + 2 lines per git-quoted file (3 files: +6; NTFS +4)" 0 2 "$CORP" size $WIDE
 cmp_q "AC1 corpus: plain size, default limits (over the limit: exit 1): + 2 lines per git-quoted file" 0 2 "$CORP" size
 cmp_q "AC1 corpus: size --baseline of a clean repo (every untracked path counted): + 2 lines per git-quoted file" 0 2 "$CORP" size $WIDE --baseline "$MF0"
+CQ_XL=0
 CMF="$(mk_mf "$CORP")"
 if [ -s "$CMF" ]; then
   printf 'a\nb\nc\nd\n' > zz-new.js; printf 'more\n' >> t.js
@@ -455,7 +460,7 @@ nrow "S2 AC5 control (no shim): a size-0 file and a 2-line file: 2 files, 2 line
 echo "S2 AC8 non-regular kinds keep their count and never exit 3"
 if [ "$SYMLINKS" = 1 ]; then
   mkrepo; ln -s src sd
-  nrow "S2 AC8 untracked symlink to a directory: 1 file, 0 lines, exit 0" "$R" "files: 1/3 lines: 0/100 (base=HEAD)" 0 size
+  nrow "S2 AC8 untracked symlink to a directory: 1 file, 1 line (the link text, v0.24.31 D2), exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
   chk "S2 AC8 symlink to a directory: stderr has no cannot-count line" "0" "$(grep -c 'cannot count' "$DT/n.err" | tr -d ' ')"
   mkrepo; ln -s nowhere.js dang.js
   nrow "S2 AC8 untracked dangling symlink alone: 1 file, 1 line (the link text), exit 0" "$R" "files: 1/3 lines: 1/100 (base=HEAD)" 0 size
@@ -590,15 +595,15 @@ if [ "$SYMLINKS" = 1 ]; then
   chk "G1 AC7.2 control: the shim really failed the per-file command of src/dang.js" "1" "$(g1fired)"
   g1shim count src/dang.js 128 "G1 AC7.2 the same src/dang.js, not in the manifest (--baseline of a clean repo) is named" "$R" "$(s2_err src/dang.js)" size --baseline "$MF0"
 
-  # AC7.3 / D1: a symlink to a directory (also through another symlink) keeps its count, whatever git does
+  # AC7.3 / D1 + v0.24.31 D2: a symlink to a directory (also through another symlink) is counted by its link text (1 line each), whatever git does
   for kind in 128 none rc2; do
     mkrepo; ln -s src sd; ln -s sd sd2; printf 'ok\n' > src/ok.js
     G1_FP="sd${G1_NL}sd2"; G1_KIND="$kind"
-    g1ok "G1 AC7.3 symlinks sd and sd2 to a directory, per-file git fails ($kind): 3 files, 1 line, exit 0" "$R" "files: 3/3 lines: 1/100 (base=HEAD)" size
+    g1ok "G1 AC7.3 symlinks sd and sd2 to a directory, per-file git fails ($kind): 3 files, 3 lines, exit 0" "$R" "files: 3/3 lines: 3/100 (base=HEAD)" size
     chk "G1 AC7.3 control ($kind): the shim really failed their per-file command" "1" "$(g1fired)"
   done
   mkrepo; ln -s src sd; printf 'ok\n' > src/ok.js; G1_FP=sd; G1_KIND=128
-  g1ok "G1 AC7.3 symlink to a directory, per-file git fails, --baseline of a clean repo: 2 files, 1 line" "$R" "files: 2/3 lines: 1/100 (base=HEAD)" size --baseline "$MF0"
+  g1ok "G1 AC7.3 symlink to a directory, per-file git fails, --baseline of a clean repo: 2 files, 2 lines" "$R" "files: 2/3 lines: 2/100 (base=HEAD)" size --baseline "$MF0"
   mkrepo; git init -q nested; printf 'ok\n' > src/ok.js; G1_FP=nested; G1_KIND=128
   g1ok "G1 AC7.3 nested repo, per-file git fails: still 2 files, 1 line, exit 0" "$R" "files: 2/3 lines: 1/100 (base=HEAD)" size
 
@@ -920,7 +925,7 @@ else
   chk "S4 AC19 dangling symlink: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
   mkrepo; printf 'x\n' > f1.js; ln -s src sd
   s4_run "$R" C size $WIDE
-  chk "S4 AC19 symlink to a directory + 1 file: 2 files, 1 line (a directory link has no numstat line, as v0.24.27)" "files: 2/1000 lines: 1/100000 (base=HEAD)" "$S4_OUT"
+  chk "S4 AC19 symlink to a directory + 1 file: 2 files, 2 lines (the link text counts, v0.24.31 D2)" "files: 2/1000 lines: 2/100000 (base=HEAD)" "$S4_OUT"
   chk "S4 AC19 symlink to a directory: exactly one per-file diff --no-index call (it is not in the batch)" "1" "$S4_PF"
   chk "S4 AC19 symlink to a directory: the regular file still rides the batch (one update-index call)" "1" "$S4_UI"
 fi
