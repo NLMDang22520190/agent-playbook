@@ -91,6 +91,13 @@ pbh_arm_settings() {
   ex="$(pbh_json_str "$cm")"
   phys="$(pbh_phys "$cm")"
   [ "$phys" = "$cm" ] || ex="$ex, $(pbh_json_str "$phys")"
+  # Git Bash: claude.exe matches a native path (C:/Users/...), not the MSYS /c/Users/... form
+  if command -v cygpath >/dev/null 2>&1; then
+    for p in "$cm" "$phys"; do
+      f="$(cygpath -m "$p" 2>/dev/null)" || continue
+      case ", $ex," in *", $(pbh_json_str "$f"),"*) ;; *) [ -n "$f" ] && ex="$ex, $(pbh_json_str "$f")" ;; esac
+    done
+  fi
   for f in "$repo"/skills/*/SKILL.md; do
     [ -f "$f" ] || continue
     n="${f%/SKILL.md}"
