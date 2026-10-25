@@ -17,7 +17,6 @@ change only what your role allows; no evidence, no claim.
 - the functions or sections involved
 - short excerpts of the code that matters
 - the commands to run (focused tests, lint)>
-Facts only: paths with line ranges, verbatim excerpts, commands; no diagnosis, proposed fix or opinion.
 Read the pack first. Open other files only when the pack is not enough.
 
 ## 2c. Project checklist

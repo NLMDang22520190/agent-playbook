@@ -7,7 +7,6 @@
 export LC_ALL=C
 REF="$PB_ROOT/skills/playbook-tdd/references"
 SK="$PB_ROOT/skills/playbook-tdd/SKILL.md"
-WRONGREF="$REF/wrong.md"   # lane C (v0.26.3) S2: the four "When the user says it is wrong" steps moved here with the clause
 AG="$PB_ROOT/AGENTS.global.md"
 WB="$PB_ROOT/evals/word-budgets"
 
@@ -67,12 +66,12 @@ CL='Do not defend the result and do not patch at once; in a production incident,
 if grep -Fxq -e "$CL" "$SK"; then t_ok "AC4 SKILL.md has the incident clause verbatim"; else t_bad "AC4 SKILL.md has the incident clause verbatim" "no line [$CL]"; fi
 if grep -Fxq -e 'Do not defend the result and do not patch at once.' "$SK"; then t_bad "AC4 the old sentence is replaced" "old line still there"
 else t_ok "AC4 the old sentence is replaced"; fi
-NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$WRONGREF")"
+NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$SK")"
 assert_eq "AC4 step 1 follows the clause unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
 for s in '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' \
          '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
          '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
-  if grep -Fxq -e "$s" "$WRONGREF"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+  if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
 done
 
 U="$REF/upgrade.md"
@@ -155,15 +154,17 @@ echo "AC16 SKILL.md word budget, the two Why lines cut, one Why line left; AGENT
 # words as evals/run-checks.sh counts them (the caller's locale, not this suite's LC_ALL=C: wc -w differs on UTF-8 symbols)
 w="$(env -u LC_ALL wc -w < "$SK" | tr -d ' ')"
 if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; else t_bad "AC16 SKILL.md at or under 3700 words" "$w words"; fi
-# (the AC16 arithmetic pin that stood here is retired, see below)
-# lane C (v0.26.3) RETIRED: 'AC16 SKILL.md is 3 words shorter than at 0927bde (3697)' (the split changes the count by design;
-# superseded by spec A3, core <= 1500 words, tests/test-skill-split.sh)
+# the arithmetic of AC16 (+7 +23 -33 = -3; the pinned AC4 clause is 18 words vs 11 before) against the lane base 0927bde (feat/v0.26.1, 3700 words in a UTF-8 locale), same locale
+W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
+if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
+  assert_eq "AC16 SKILL.md is 3 words shorter than at 0927bde (3700 + 7 + 23 - 33 = 3697)" "$((W0 - 3))" "$w"
+else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
 else t_ok "AC16 the slice-size Why line is cut"; fi
 if grep -q '^\*\*Why:\*\*' "$SK"; then t_ok "AC16 at least one **Why:** line remains (run-checks.sh)"; else t_bad "AC16 at least one **Why:** line remains (run-checks.sh)" "none"; fi
-# lane C (v0.26.3) RETIRED: 'AC16 evals/word-budgets keeps playbook-tdd at 3700' (superseded by A1, budgets only go down, and A3, the budget follows the core; tests/test-budgets-down.sh, tests/test-skill-split.sh)
+if grep -Eq '^skills/playbook-tdd/SKILL\.md 3700 ' "$WB"; then t_ok "AC16 evals/word-budgets keeps playbook-tdd at 3700"; else t_bad "AC16 evals/word-budgets keeps playbook-tdd at 3700" "line changed"; fi
 # characterization: AGENTS.global.md stays as it is (rule freeze); these pass before and after
 if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook." "$AG"; then
   t_ok "AC16 AGENTS.global.md keeps the precedence sentence verbatim"; else t_bad "AC16 AGENTS.global.md keeps the precedence sentence verbatim" "missing"; fi

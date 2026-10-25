@@ -13,7 +13,7 @@ The global playbook stays generic. Project-specific lessons go into one local fi
 so it stays small. Script: `~/.agents/playbook/scripts/learn.sh`.
 
 ## At the start of a task
-Read `.agents/LEARNINGS.md` first if present. Apply the active entries whose `Scope` matches the files you will touch.
+If the file exists, read it. Apply the active entries whose `Scope` matches the files you will touch.
 
 ## When to propose an entry
 | Trigger | `--source` |
@@ -63,8 +63,8 @@ into section 2c of the role prompt (the playbook-tdd role prompt template), so a
 
 ## Promoting a lesson to the global playbook
 If a lesson clearly applies to every project, tell the user and suggest adding it to the playbook
-repo themselves (or in a separate session working on that repo). Never edit the global skills,
-the always-on block or the playbook repo from a project session.
+repo themselves (or in a separate session working on that repo). Never edit the global skills or
+the always-on block from a project session.
 
 ## Wiring a project (ask first)
 `bash $L init --link-agents` adds a short pointer section to `AGENTS.md`. Codex and OpenCode read

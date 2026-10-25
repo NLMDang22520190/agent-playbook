@@ -61,11 +61,6 @@ Findings:
 Re-run evidence: <proof-run block>
 ```
 
-## Introduced or pre-existing (AC3.2)
-The reviewer marks each finding `introduced` (this change caused it) or `pre-existing` (also present at the base sha, checked with `git show <base sha>:<path>`). Pre-existing findings go to the queue, "Found, not fixed". A pre-existing security MAJOR is raised to the user in one line (fix now or queue), and never fixed silently.
-
-**Why:** fixing old problems inside a new change grows the diff and hides what the change really did. The user still hears about a security risk at once.
-
 ## Check the executable bit
 In the diff, run `git diff --raw <BASE_SHA>..HEAD` and look for a mode change `100755 -> 100644`: an editor or write
 tool can drop the executable bit of a script it rewrites. Report each one as a finding (`major`) unless the change is

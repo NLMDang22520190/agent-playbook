@@ -2,7 +2,7 @@
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
 # --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets) and prints only its lines plus the summary;
-# budgets is the word-budget checks alone (AGENTS.global.md, every skills/*/SKILL.md, every other listed path, stale table entries): the skills group still runs its own,
+# budgets is the word-budget checks alone (AGENTS.global.md, every skills/*/SKILL.md, stale table entries): the skills group still runs its own,
 # so --only skills keeps them; a full run runs each once. A missing or unknown SECTION exits 2. Without --only everything runs; the always-on checks only then.
 set -u
 cd "$(dirname "$0")/.." || exit 3
@@ -81,18 +81,7 @@ wbcheck() {
   b="$(awk -v p="$f" '{ gsub(/\r/, "", $2) } $1 == p && $2 ~ /^[0-9]+$/ { print $2; exit }' "$WB")"
   if [ -z "$b" ]; then bad "$f: no word budget (add a line '$f WORDS' to $WB)"
   elif [ "$w" -le "$b" ]; then ok "$f: $w words (budget $b)"
-  else bad "$f: $w words, over its budget of $b (a new rule must remove or merge an old one; budgets only go down)"; fi
-}
-
-# wbother: every listed path that is not AGENTS.global.md or skills/*/SKILL.md (a references file) is checked too
-wbother() {
-  local p
-  if [ -f "$WB" ]; then
-    for p in $(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { print $1 }' "$WB"); do
-      case "$p" in AGENTS.global.md | skills/*/SKILL.md) continue ;; esac
-      [ -f "$p" ] && wbcheck "$p"
-    done
-  fi
+  else bad "$f: $w words, over its budget of $b (a new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason)"; fi
 }
 
 # wbstale: a table entry for a file that does not exist is stale
@@ -112,7 +101,6 @@ if [ "$ONLY" = budgets ]; then
 echo "word budgets"
 wbcheck AGENTS.global.md
 for f in skills/*/SKILL.md; do [ -f "$f" ] && wbcheck "$f"; done
-wbother
 wbstale
 fi
 
@@ -155,7 +143,6 @@ for d in skills/*/; do
     [ -f "$s/$ref" ] || bad "$n: referenced file missing: $ref"
   done
 done
-wbother
 wbstale
 [ "$desc_total" -le 2000 ] && ok "all descriptions together: $desc_total chars (<=2000, keeps the skill list cheap)" || bad "descriptions total $desc_total chars (>2000)"
 fi

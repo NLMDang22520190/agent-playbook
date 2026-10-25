@@ -9,14 +9,13 @@
 . "$(dirname "$0")/lib.sh"
 SKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
 FINAL="$PB_ROOT/skills/playbook-tdd/templates/final-report.md"
-FULLREF="$PB_ROOT/skills/playbook-tdd/references/full.md"   # lane C (v0.26.3) S2: Phase 4 moved here with its heading
 LINE='**Playbook feedback:** <captured fb- ids or none>'
 
 assert_file "the playbook-tdd SKILL.md exists" "$SKILL"
 assert_file "the final-report template exists" "$FINAL"
 
 LITE5="$(awk '/^5\. Final report with/ { on = 1 } on && /^### / { exit } on { print }' "$SKILL" 2>/dev/null)"
-FULL4="$(awk '/^### Phase 4/ { on = 1; next } on && /^## / { exit } on { print }' "$FULLREF" 2>/dev/null)"
+FULL4="$(awk '/^### Phase 4/ { on = 1; next } on && /^## / { exit } on { print }' "$SKILL" 2>/dev/null)"
 [ -n "$LITE5" ] && t_ok "fixture: found the Lite step 5 text" || t_bad "fixture: found the Lite step 5 text" "no line starting '5. Final report with'"
 [ -n "$FULL4" ] && t_ok "fixture: found the Phase 4 text" || t_bad "fixture: found the Phase 4 text" "no '### Phase 4' section"
 

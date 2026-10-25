@@ -394,20 +394,19 @@ assert_eq "AC3.1 model_reviewer alone: one warning, not two (reviewer_light is n
 
 echo "role-model.sh v0.22.3 AC3.2/AC3.3: instructions route the two roles"
 RMSKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
-RMHARN="$PB_ROOT/skills/playbook-tdd/references/harnesses.md"   # lane C (v0.26.3) S2: the task-type routing moved here
 RMSETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 rm_flat_has() { # NAME FILE PATTERN
   if tr '\n' ' ' < "$2" 2>/dev/null | tr -s ' ' | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in the flattened $2"; fi
 }
 rm_flat_has "AC3.2 SKILL.md names the mechanical model" "$RMSKILL" 'mechanical'
-rm_flat_has "AC3.2 references/harnesses.md: mechanical work uses the mechanical model (role-model.sh mechanical or the word model)" "$RMHARN" 'mechanical[^.]{0,200}(model|role-model)|(model|role-model)[^.]{0,120}mechanical'
-rm_flat_has "AC3.2 references/harnesses.md: release prep is mechanical work" "$RMHARN" 'mechanical[^.]{0,250}release|release[^.]{0,250}mechanical'
-rm_flat_has "AC3.2 references/harnesses.md: counts are mechanical work" "$RMHARN" 'mechanical[^.]{0,250}counts|counts[^.]{0,250}mechanical'
-rm_flat_has "AC3.2 references/harnesses.md: weights are mechanical work" "$RMHARN" 'mechanical[^.]{0,250}weights|weights[^.]{0,250}mechanical'
-rm_flat_has "AC3.2 references/harnesses.md: formatting is mechanical work" "$RMHARN" 'mechanical[^.]{0,250}formatting|formatting[^.]{0,250}mechanical'
-rm_flat_has "AC3.2 references/harnesses.md names reviewer_light" "$RMHARN" 'reviewer_light'
-rm_flat_has "AC3.2 references/harnesses.md: reviewer_light is for a diff that only touches tests, docs or skill text" "$RMHARN" 'reviewer_light[^.]{0,250}(only|just)[^.]{0,120}(tests?|docs?|skill)|(only|just)[^.]{0,120}(tests?)[^.]{0,80}(docs?)[^.]{0,80}skill[^.]{0,200}reviewer_light'
-rm_flat_has "AC3.2 references/harnesses.md: code changes keep the reviewer model" "$RMHARN" 'code[^.]{0,120}(keep|keeps|use|uses|stay|stays)[^.]{0,80}`?reviewer`?|`?reviewer`?[^.]{0,80}code (change|diff)'
+rm_flat_has "AC3.2 SKILL.md: mechanical work uses the mechanical model (role-model.sh mechanical or the word model)" "$RMSKILL" 'mechanical[^.]{0,200}(model|role-model)|(model|role-model)[^.]{0,120}mechanical'
+rm_flat_has "AC3.2 SKILL.md: release prep is mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}release|release[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: counts are mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}counts|counts[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: weights are mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}weights|weights[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md: formatting is mechanical work" "$RMSKILL" 'mechanical[^.]{0,250}formatting|formatting[^.]{0,250}mechanical'
+rm_flat_has "AC3.2 SKILL.md names reviewer_light" "$RMSKILL" 'reviewer_light'
+rm_flat_has "AC3.2 SKILL.md: reviewer_light is for a diff that only touches tests, docs or skill text" "$RMSKILL" 'reviewer_light[^.]{0,250}(only|just)[^.]{0,120}(tests?|docs?|skill)|(only|just)[^.]{0,120}(tests?)[^.]{0,80}(docs?)[^.]{0,80}skill[^.]{0,200}reviewer_light'
+rm_flat_has "AC3.2 SKILL.md: code changes keep the reviewer model" "$RMSKILL" 'code[^.]{0,120}(keep|keeps|use|uses|stay|stays)[^.]{0,80}`?reviewer`?|`?reviewer`?[^.]{0,80}code (change|diff)'
 rm_flat_has "AC3.3 playbook-setup SKILL.md lists reviewer_light" "$RMSETUP" 'reviewer_light'
 rm_flat_has "AC3.3 playbook-setup SKILL.md lists mechanical" "$RMSETUP" 'mechanical'
 rm_flat_has "AC3.3 playbook-setup lists the keys with the per-harness form (model_reviewer_light_<harness>)" "$RMSETUP" 'model_reviewer_light_<harness>|model_reviewer_light_<h>|reviewer_light[^.]{0,80}<harness>'
