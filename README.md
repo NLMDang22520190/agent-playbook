@@ -197,7 +197,7 @@ agent-playbook/
 ├── install.sh / install.ps1
 ├── tests/                  14591 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E30) · RUBRIC.md · make-fixture.sh
-├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag) · release-pr-check.sh (check-release on a PR that changes VERSION) · readme-count.sh (README test count) · pre-commit + install-hooks.sh (opt-in exec-bit hook)
+├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag) · release-pr-check.sh (check-release on a PR that changes VERSION) · readme-count.sh (README test count) · pre-commit + install-hooks.sh (opt-in exec-bit hook) · clean-pbtest.sh (manual: removes stale `pbtest.*` temp dirs a killed suite left; dry run unless `--yes`)
 └── docs/                   flow.svg · architecture.svg · roles.svg · ask-or-decide.svg · feedback-loop.svg · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md
 ```
 
