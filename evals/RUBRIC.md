@@ -44,6 +44,12 @@ Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the ha
 When a scenario fails, change the skill text (or add a gate) and re-run that scenario. Do not
 change the scenario to make it pass.
 
+Gate for keeping a rule (v0.26.0): run the rule's scenario with `evals/run-evals.sh --arm both`, a `--repeat` of at
+least 3 and a pinned `--model M`, then read the JSON results with `tools/eval-delta.sh`. A rule is kept or added only
+when its scenario shows Δ > 0 there (the with arm passes its checks more often than the without arm). A check that
+`tools/eval-delta.sh` flags non-discriminating (both arms pass at least 2/3 of their runs, or both pass none) is marked
+to drop or rewrite. An isolation FAIL in the without arm makes the Δ of that scenario invalid.
+
 Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 
 ## Running evals automatically
