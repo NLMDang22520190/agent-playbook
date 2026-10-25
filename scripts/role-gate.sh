@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mechanical enforcement of role separation in the TDD workflow.
-#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE] [--scope FILE]
+#   role-gate.sh check <tester|implementer|reviewer|infra> [--base REF] [--baseline FILE] [--scope FILE] [--commits A..B] [--paths-from FILE]
 #   role-gate.sh snapshot [--out FILE]  records the work-tree and index state of every changed path (a baseline)
 #   role-gate.sh classify <path>        prints "infra", "test" or "code"
 #   role-gate.sh size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]
@@ -88,7 +88,15 @@
 # Two scope errors exit 3 with no verdict: "error: cannot classify the changed paths" (the path classifier failed: run the gate again)
 # and "error: the scope file changed while it was read: FILE" (FILE was edited during the run: stop the writer, then run the gate again).
 # Residual risk: the gate cannot tell two writers apart on one path, so an other path or prefix is exempt for every writer.
-# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope file; size: an untracked file it cannot count) | 130 / 143 interrupted
+# Commit range (v0.26.1, roles sharing one worktree): check ROLE --commits A..B judges only the changes of the commits on B's
+# first-parent chain after A (each against its first parent); the work tree, the index and untracked files are not read. It
+# cannot be combined with --base, --baseline, --scope or --paths-from (exit 2).
+# Paths list (v0.26.1): check ROLE [--base REF] [--baseline FILE] --paths-from FILE judges only the changed paths in FILE (one
+# entry per line, an exact path or a dir/ prefix, byte match, no globs, empty lines skipped). Every other changed path is named,
+# not judged: "note: outside the paths-from list, not checked: PATH [KIND]", after "note: paths-from FILE (N entries, digest D): K
+# changed path(s) outside the list not checked". The mode check exempts nothing. Not with --scope or --commits (exit 2); an
+# unreadable, tracked, empty or malformed (CR, BOM, NUL) FILE exits 3, no verdict.
+# Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope or paths-from file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -383,7 +391,7 @@ case "$cmd" in
     role="${1:-}"
     [ $# -gt 0 ] && shift
     case "$role" in tester|implementer|reviewer|infra) ;; *) pb_die "role must be tester|implementer|reviewer|infra" 2 ;; esac
-    base="HEAD"; bl=""; sc=""; base_given=0; cm=""; cm_given=0
+    base="HEAD"; bl=""; sc=""; base_given=0; cm=""; cm_given=0; pf=""; pf_given=0
     CM_RERR="--commits needs a range A..B (two dots, both ends given)"
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -393,10 +401,18 @@ case "$cmd" in
         --baseline) { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--baseline needs a file" 2; bl="$2"; shift ;;
         --scope) [ -z "$sc" ] || pb_die "--scope given twice" 2
                  { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--scope needs a file" 2; sc="$2"; shift ;;
+        --paths-from) [ "$pf_given" -eq 0 ] || pb_die "--paths-from given twice" 2
+                      { [ $# -ge 2 ] && [ -n "$2" ]; } || pb_die "--paths-from needs a file" 2; pf="$2"; pf_given=1; shift ;;
         *) pb_die "unknown option: $1" 2 ;;
       esac
       shift
     done
+    # DECISION[D17]: under --commits every judged change is the role's own commit, so a list could only hide a forbidden write.
+    # DECISION[D8]: --scope and --paths-from are two path-scoping rules; one at a time.
+    if [ "$pf_given" -eq 1 ]; then
+      [ "$cm_given" -eq 0 ] || pb_die "--paths-from cannot be combined with --commits" 2
+      [ -z "$sc" ] || pb_die "--paths-from cannot be combined with --scope" 2
+    fi
     # --commits A..B (v0.26.1): judge only the changes made by the commits on B's first-parent chain after A (A exclusive,
     # B inclusive); the work tree, the index and untracked files are not read. DECISION[D4]: --base and --baseline describe
     # work-tree state and --scope has its own base, so none of them combines with it (exit 2).
@@ -426,6 +442,7 @@ case "$cmd" in
     # a relative manifest path is the caller's: resolve it before the gate moves to the top of the work tree
     if [ -n "$bl" ]; then case "$bl" in /* | [A-Za-z]:[/\\]*) ;; *) bl="$PWD/$bl" ;; esac; fi
     if [ -n "$sc" ]; then case "$sc" in /* | [A-Za-z]:[/\\]*) ;; *) sc="$PWD/$sc" ;; esac; fi
+    if [ -n "$pf" ]; then case "$pf" in /* | [A-Za-z]:[/\\]*) ;; *) pf="$PWD/$pf" ;; esac; fi
     top="$(git rev-parse --show-toplevel)"
     cd "$top" || pb_die "cannot enter $top" 3
     # a config file can move the gate: show where the regexes come from, before the verdict
@@ -444,6 +461,26 @@ case "$cmd" in
       sc_digest2="$(git hash-object -- "$sc" 2>/dev/null)" || sc_digest2=""
       [ "$sc_digest2" = "$sc_digest" ] || pb_die "the scope file changed while it was read: $sc" 3
     fi
+    # --paths-from: validate the file and load its entries as "own" entries, so pb_scope_classify matches them (exact path or dir/
+    # prefix, byte for byte). DECISION[D6]: empty lines skipped, no comment syntax. DECISION[D10]: no re-hash guard, the digest is shown.
+    if [ -n "$pf" ]; then
+      { [ -f "$pf" ] && [ -r "$pf" ]; } || pb_die "paths-from file not readable: $pf" 3
+      pf_tr="$(git --literal-pathspecs ls-files -- "$pf" 2>/dev/null)" || pf_tr=""
+      [ -z "$pf_tr" ] || pb_die "the paths-from file is a tracked file of this repository: $pf" 3
+      pf_bad="$(LC_ALL=C awk 'NR == 1 { if (substr($0, 1, 3) == "\357\273\277") print "starts with a UTF-8 BOM (save the file as UTF-8 without BOM)"; exit }' "$pf")"
+      [ -z "$pf_bad" ] || pb_die "malformed paths-from file $pf: line 1: $pf_bad" 3
+      # awk cannot see a NUL, and Git Bash's awk drops a CR before LF: map them to N and C (every other byte to x) first
+      pf_bad="$(LC_ALL=C tr -c '\000\r\n' 'x' < "$pf" | LC_ALL=C tr '\000\r' 'NC' |
+        LC_ALL=C awk '/N/ { print NR ": a NUL byte in the line"; exit } /C/ { print NR ": CR in the line (CRLF line ends? save the file with LF)"; exit }')"
+      [ -z "$pf_bad" ] || pb_die "malformed paths-from file $pf: line $pf_bad" 3
+      SC_ENTRIES=""; pf_n=0
+      while IFS= read -r pf_l || [ -n "$pf_l" ]; do
+        [ -n "$pf_l" ] || continue
+        SC_ENTRIES+="own"$'\t'"$pf_l"$'\n'; pf_n=$((pf_n + 1))
+      done < "$pf"
+      [ "$pf_n" -gt 0 ] || pb_die "paths-from file has no entries: $pf" 3
+      pf_digest="$(git hash-object -- "$pf" 2>/dev/null)" || pb_die "cannot hash the paths-from file: $pf" 3
+    fi
 
     # -z: a path with a double quote or a tab is read as it is (git would quote it); a path with a newline is not supported
     # union: REF..work tree, untracked, REF..index, REF..HEAD (a committed change a role restored in the tree still ships)
@@ -454,7 +491,7 @@ case "$cmd" in
       # still judged. DECISION[D5]: the mode check reads each commit's raw list on its own (CM_LOST, CM_RAW, CM_NLBAD).
       cm_revs="$(git rev-list --reverse --first-parent --parents "$cm_as..$cm_bs" --)" || pb_die "git rev-list failed" 3
       cm_n=0; cm_notes=""; changed=""; CM_RAW=""; CM_LOST=""; CM_NLBAD=0
-      while read -r cm_c cm_p1 cm_p2 cm_rest; do
+      while read -r cm_c cm_p1 cm_p2 _; do
         [ -n "$cm_c" ] || continue
         [ -n "$cm_p1" ] || pb_die "commit $cm_c in $cm has no parent" 3
         cm_n=$((cm_n + 1))
@@ -630,6 +667,35 @@ $(pb_scope_counts)
 EOF
       printf 'note: scope %s (%s own, %s other entries, digest %s): %s path(s) outside the scope not checked\n' "$sc" "$sc_nown" "$sc_noth" "$sc_digest" "$nother"
       printf '%s' "$sc_notes"
+    fi
+    if [ -n "$pf" ]; then
+      # DECISION[D7]: a changed path outside the list is not judged; each one is named with its kind, after the summary note
+      pfl=""
+      if [ -n "$plist" ]; then pfl="$(printf '%s\n' "$plist" | pb_scope_classify)" || pb_die "cannot classify the changed paths" 3; fi
+      jlist=""; jkinds=""; pf_notes=""; nout=0
+      exec 4<<EOF
+$KINDS
+EOF
+      exec 5<<EOF
+$pfl
+EOF
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        IFS= read -r kind <&4
+        IFS= read -r cls <&5
+        if [ "$cls" = own ]; then
+          jlist+="$f"$'\n'; jkinds+="$kind"$'\n'
+        else
+          nout=$((nout + 1))
+          pf_notes+="note: outside the paths-from list, not checked: $(shown_t "$f") [$kind]"$'\n'
+        fi
+      done <<EOF
+$plist
+EOF
+      exec 4<&- 5<&-
+      changed="${jlist%$'\n'}"; KINDS="${jkinds%$'\n'}"
+      printf 'note: paths-from %s (%d entries, digest %s): %d changed path(s) outside the list not checked\n' "$pf" "$pf_n" "$pf_digest" "$nout"
+      printf '%s' "$pf_notes"
     fi
     # sc_e4 PATH: with --scope, a path that is neither own nor other (rule 4) gets the hint
     sc_e4() {
@@ -808,7 +874,7 @@ EOF
         --max-files) [ $# -ge 2 ] || pb_die "--max-files needs a number" 2; max_files="$2"; shift ;;
         --max-lines) [ $# -ge 2 ] || pb_die "--max-lines needs a number" 2; max_lines="$2"; shift ;;
         *) pb_die "unknown option: $1
-usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
+usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [--commits A..B] [--paths-from FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2 ;;
       esac
       shift
     done
@@ -1036,6 +1102,6 @@ EOF
     fi
     ;;
   *)
-    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
+    pb_die "usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [--commits A..B] [--paths-from FILE] | snapshot [--out FILE] | classify <path> | size [--base REF] [--max-files N] [--max-lines M] [--baseline FILE]" 2
     ;;
 esac
