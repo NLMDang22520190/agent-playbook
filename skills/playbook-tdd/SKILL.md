@@ -105,7 +105,7 @@ Native roles get the full role file plus the allowed input paths, never your con
 ## Stop and ask the user when
 Start questions go in one opening batch: hard-to-reverse ambiguities, commit permission, a model change.
 The AC-list OK (ambiguous requests only) comes at the end of Phase 1, after the spec exists.
-Mid-task stops are only: a dispute or spec review still open after 2 rounds; the first-slice checkpoint; a new Full criterion after an override; quick work past the size limit; a test that seems to need weakening; baseline failures that make RED/GREEN unreadable.
+Mid-task stops are only: a dispute or spec review still open after 2 rounds; the first-slice checkpoint; a new Full criterion after an override; quick work past the size limit; a test that seems to need weakening; baseline failures that make RED/GREEN unreadable; a new dependency; unrelated code.
 End-of-task questions (learn approval, feedback send, humanizer) go in one closing message.
 
 In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report.

@@ -10,7 +10,7 @@
 # v0.24.10 lowered the budgets of playbook-proof and playbook-tdd to their new counts rounded up to the next 50.
 # v0.24.13 moved the harness and model plumbing of playbook-tdd to references/harnesses.md and lowered its budget the same way.
 # v0.24.13 review round 1 raised it to 3600 to restore the binding none-mode rule moved out in lane R (see CHANGELOG).
-AGENTS.global.md 590   # v0.26.3 lane C Part B: 589 words after the Run 25 slimming (718 before; 730 at v0.25.0)
+AGENTS.global.md 620   # v0.26.3 lane C Part B: 615 words after the review fixes (589 after the Run 25 slimming; 718 before; 730 at v0.25.0)
 skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
 skills/playbook-proof/SKILL.md 740   # v0.26.3 lane C Part B: 733 words with the writing and pushback sentences from the block (675 before)
