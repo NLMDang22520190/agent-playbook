@@ -9,6 +9,7 @@
 # v0.24.30 estimate (not CI-measured; Linux WSL seconds x 28, L-0009): test-pre-commit.sh 56.
 # v0.24.30 estimate (not CI-measured; local Windows Git Bash time, replace with a CI time, L-0009): test-scope-classify.sh 205
 # (new suite, lane G slice G2; 203 and 205 s in two runs after the cmp shim stopped recursing; one file, not split).
+# v0.25.0 estimates (not CI-measured; one local Windows Git Bash run, L-0009): test-evals-grade10.sh 181, test-evals-grade10b.sh 175.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 512
 test-role-gate-scope.sh 530
@@ -110,3 +111,5 @@ test-bsd-check.sh 1
 test-get-bash32.sh 1
 test-lib-tmp.sh 1
 test-scope-classify.sh 205
+test-evals-grade10.sh 181
+test-evals-grade10b.sh 175
