@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reads one eval transcript and prints the facts that the v0.26.0 graders grade_E2, grade_E13 and grade_E6 need, as KEY=VALUE lines.
+// Reads one eval transcript and prints the facts that the v0.26.0 graders grade_E2, E13, E6, E14, E33 and E34 need, as KEY=VALUE lines.
 // DECISION[D4]: a new file, so evals/transcript.js (shared with other lanes) stays as it is. Newlines inside a value become spaces.
 //   json=1|0                  the log has stream-json lines
 //   reply=1|0                 the log has a stream-json result text (the last one is the final reply)
@@ -12,6 +12,9 @@
 //   inspect_change=pass|fail  an inspection comes before the first file change; with no file change, an inspection anywhere
 //   inspect_ask=pass|fail     the same with the first AskUserQuestion call as the bound (no call: as inspect_change)
 //   fetch=TEXT                the input (JSON) of a tool call whose name contains fetch, or of a Bash call running curl, wget or fetch
+//   tool=NAME                 the name of every tool call, in order
+//   cmd=COMMAND               the command of every Bash call
+//   read=PATH                 the file_path of every Read call
 // An inspection is a Read, Grep or Glob call, or a Bash command that matches the INSPECT regex (any case; none given: no Bash command
 // counts) and writes no file. A file change is a Write, Edit, MultiEdit or NotebookEdit call, or a Bash command that writes under src/ or
 // tests/ (a redirect, tee, cp, mv, touch, rm, mkdir, ln, install or sed -i naming such a path).
@@ -34,7 +37,7 @@ const WRITE_RES = [
 const bashWrites = c => WRITE_RES.some(r => r.test(c));
 
 let json = false, reply = null, asks = 0, firstAsk = -1, firstChange = -1, idx = 0;
-const inspections = [], askq = [], askall = [], fetches = [];
+const inspections = [], askq = [], askall = [], fetches = [], tools = [], cmds = [], reads = [];
 for (const l of text.split(/\r?\n/)) {
   let o;
   try { o = JSON.parse(l); } catch (e) { continue; }
@@ -47,6 +50,9 @@ for (const l of text.split(/\r?\n/)) {
     const name = String(b.name || ""), input = b.input && typeof b.input === "object" ? b.input : {};
     const cmd = name === "Bash" && typeof input.command === "string" ? input.command : "";
     idx++;
+    tools.push(one(name));
+    if (cmd !== "") cmds.push(one(cmd));
+    if (name === "Read" && typeof input.file_path === "string") reads.push(one(input.file_path));
     if (name === "AskUserQuestion") {
       asks++;
       if (firstAsk < 0) firstAsk = idx;
@@ -93,4 +99,7 @@ for (const q of askall) out.push("askall=" + q);
 for (const l of rq) out.push("rq=" + l);
 for (const l of rl) out.push("rl=" + l);
 for (const f of fetches) out.push("fetch=" + f);
+for (const t of tools) out.push("tool=" + t);
+for (const c of cmds) out.push("cmd=" + c);
+for (const r of reads) out.push("read=" + r);
 process.stdout.write(out.join("\n") + "\n");
