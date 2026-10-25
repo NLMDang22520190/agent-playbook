@@ -493,4 +493,29 @@ assert_rc "AC-D2 size with an unknown option: exit 2" 2
 assert_contains "AC-D2 ... the usage names --commits A..B" "$OUT" "--commits A..B"
 assert_contains "AC-D2 ... the usage names --paths-from FILE" "$OUT" "--paths-from FILE"
 
+echo "review fix 6: --paths-from entries: a leading ./ is normalised; an absolute or .. entry exits 3"
+new_repo
+printf 'module.exports = 2;\n' > src/app.js; printf 'test("y", () => {});\n' > tests/app.test.js
+PF="$(mk_tmp)/paths"; pf "$PF" ./src/app.js tests/app.test.js
+gchk tester --base "$P" --paths-from "$PF"
+assert_rc "fix6 ./src/app.js names src/app.js: the tester's code edit is judged: exit 1" 1
+has_line "fix6 ... the listed code path is a violation" "VIOLATION (tester): src/app.js [code]"
+no_line "fix6 ... it is not an outside note" "$(onote src/app.js code)"
+pf "$PF" ./src/ tests/app.test.js
+gchk tester --base "$P" --paths-from "$PF"
+assert_rc "fix6 ./src/ is the prefix src/: exit 1" 1
+has_line "fix6 ... the code path under ./src/ is a violation" "VIOLATION (tester): src/app.js [code]"
+# pnp NAME ENTRY -> line 2 of the list is ENTRY: exit 3, "malformed paths-from file FILE: line 2: ", no verdict
+pnp() {
+  printf 'tests/app.test.js\n%s\n' "$2" > "$PF"
+  gchk tester --base "$P" --paths-from "$PF"
+  assert_rc "fix6 $1: exit 3" 3
+  assert_contains "fix6 $1: malformed, line 2" "$OUT" "error: malformed paths-from file $PF: line 2: "
+  no_verdict "fix6 $1"
+}
+pnp "an absolute entry (the repo path)" "$R/src/app.js"
+pnp "an entry ../src/app.js" "../src/app.js"
+pnp "an entry with a .. segment inside" "src/../src/app.js"
+pnp "the entry .." ".."
+
 t_summary

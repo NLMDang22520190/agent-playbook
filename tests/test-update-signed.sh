@@ -241,6 +241,10 @@ echo "S3 usage text (AC15)"
 run bash "$C/install.sh" help
 assert_contains "AC15 help lists --allow-unsigned" "$OUT" "--allow-unsigned"
 assert_contains "AC15 help names require_signed_tags" "$OUT" "require_signed_tags"
+SIGSEC="$(printf '%s\n' "$OUT" | awk '/^Release tag signatures/ { f = 1 } f')"
+assert_contains "fix3 S-D4 help: the signatures section names PGP (a failing PGP/x509 signature warns)" "$SIGSEC" "PGP"
+assert_contains "fix3 S-D4 help: the signatures section names SSH (stops with an allowed signers file)" "$SIGSEC" "SSH"
+assert_not_contains "fix3 S-D4 help: no claim that a signature that does not verify always stops" "$OUT" "always stops the update"
 conf_unset; base
 run UPD --no-such-option
 assert_rc "AC15 an unknown option still exits 2 (characterization)" 2
@@ -248,7 +252,7 @@ assert_rc "AC15 an unknown option still exits 2 (characterization)" 2
 # =====================================================================================================
 # S2 + S3 rows that need SSH signing (probe above; skipped as one block with the same count, AC16)
 # =====================================================================================================
-SSH_ASSERTS=39   # the assertions in the else branch below; keep in step when adding one
+SSH_ASSERTS=44   # the assertions in the else branch below; keep in step when adding one
 if [ "$SSH_OK" != 1 ]; then
   t_skip "$SSH_ASSERTS" "SSH-signed tag cases: git SSH signing or ssh-keygen -Y not usable here (AC16, L-0004)"
 else
@@ -336,6 +340,24 @@ else
   assert_rc "AC9 verified tag under require_signed_tags=yes: exit 0" 0
   assert_contains "AC9 says signature verified" "$OUT" "signature verified"
   head_is "AC9 HEAD is the commit of v0.3.0" v0.3.0
+
+  echo "S2 a relative gpg.ssh.allowedSignersFile is read from the top of the work tree, as git does (review fix 4)"
+  # git-config(1), gpg.ssh.allowedSignersFile: a repository can store the file "using a path relative to the top-level of
+  # the working tree" (https://git-scm.com/docs/git-config, page for git 2.56.0). The update runs from another directory.
+  cp "$KD/allowed" "$C/.git/pb-allowed-rel" || { echo "relative allowed signers setup failed"; exit 3; }
+  git -C "$C" config gpg.ssh.allowedSignersFile .git/pb-allowed-rel || { echo "relative allowed signers config failed"; exit 3; }
+  git -C "$C" verify-tag v0.3.0 > /dev/null 2>&1 || { echo "fixture: git does not resolve the relative allowed signers file"; exit 3; }
+  OD="$(mk_tmp)"
+  conf_unset; base
+  run_in "$OD" UPD --to v0.3.2 --yes
+  assert_rc "fix4 relative allowedSignersFile, signer not in it, run from another directory: exit 1" 1
+  assert_contains "fix4 ... the 'does not verify' message names v0.3.2" "$(line_with 'does not verify' 'v0.3.2')" "v0.3.2"
+  unchanged "fix4 ... HEAD unchanged"
+  base
+  run_in "$OD" UPD --to v0.3.0 --yes
+  assert_rc "fix4 relative allowedSignersFile, trusted signer, run from another directory: exit 0" 0
+  assert_contains "fix4 ... the 'signature verified' line names v0.3.0" "$(line_with 'signature verified' 'v0.3.0')" "v0.3.0"
+  git -C "$C" config gpg.ssh.allowedSignersFile "$KD/allowed"
 fi
 
 t_summary

@@ -2105,4 +2105,12 @@ sec_flat_has "v0.26.1 T AC3 tester.md: a Why line on value equal to label hiding
 flat_has "v0.26.1 T AC4 spec-reviewer.md: a spec for outside data names the source of its sample data" "$SPEC_REV" '(outside|external) data[^.]{0,200}names? the source of its sample data'
 if grep -rqiE 'options_json|printup' "$TDD" 2>/dev/null; then t_bad "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)" "leak found"; else t_ok "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)"; fi
 
+echo "v0.26.1 review fix 3 (S-D4): the README update paragraph says a failing PGP/x509 signature warns, SSH with allowed signers stops"
+UPAR="$(grep -m1 '^`update` checks the release tag' "$PB_ROOT/README.md")"
+assert_contains "fix3 README: the update signature paragraph exists" "$UPAR" "git verify-tag"
+assert_contains "fix3 README: the paragraph names PGP (warn only, decision S-D4)" "$UPAR" "PGP"
+assert_contains "fix3 README: the paragraph names SSH (the case that stops)" "$UPAR" "SSH"
+assert_contains "fix3 README: the paragraph names the allowed signers setting" "$UPAR" "gpg.ssh.allowedSignersFile"
+assert_not_contains "fix3 README: no claim that any signature that does not verify stops the update" "$UPAR" "a signature that does not verify stops the update"
+
 t_summary
