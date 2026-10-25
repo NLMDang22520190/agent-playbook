@@ -50,7 +50,7 @@ assert_eq "AC3.2 without: other-skill is not overridden" "absent" "$(jget "$SW" 
 for p in 'Skill(playbook-proof)' 'Skill(playbook-proof *)' 'Skill(playbook-extra *)' 'Read(~/.agents/**)' 'Read(~/.claude/skills/playbook-*/**)'; do
   assert_eq "AC3.2 without: permissions.deny holds $p" "true" "$(jget "$SW" '((j.permissions||{}).deny||[]).includes("'"$p"'")')"
 done
-assert_eq "fix7 without: permissions.deny has no Skill(skill:NAME) rule (not a documented form)" "false" "$(jget "$SW" '((j.permissions||{}).deny||[]).some(x => /^Skill\(skill:/.test(x))')"
+assert_eq "fix7 without: permissions.deny has a Skill(skill:NAME) rule (documented form, matches any name)" "true" "$(jget "$SW" '((j.permissions||{}).deny||[]).some(x => /^Skill[(]skill:/.test(x))')"
 assert_eq "AC3.1 without: PLAYBOOK_HOME holds no file (no conf copy, no settings file)" "" "$(rec_of "$FR/claude.E8.without.1.phfiles")"
 assert_contains "AC3.1 with: PLAYBOOK_HOME keeps today's conf copy" "$(cat "$FR/claude.E8.with.1.phfiles" 2>/dev/null)" ".agents/playbook.conf"
 assert_eq "AC3.1 HOME is unchanged (listing before = after)" "$GH_BEFORE" "$(home_listing "$GH")"

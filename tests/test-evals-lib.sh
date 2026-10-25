@@ -148,7 +148,7 @@ done
 for p in 'Read(~/.agents/**)' 'Read(~/.claude/skills/playbook-*/**)'; do
   assert_eq "AC3.2 permissions.deny holds $p" "true" "$(jget "$F" "$DENY"'.includes("'"$p"'")')"
 done
-assert_eq "fix7 permissions.deny has no Skill(skill:NAME) rule (not a documented form)" "false" "$(jget "$F" "$DENY"'.some(x => /^Skill\(skill:/.test(x))')"
+assert_eq "fix7 permissions.deny has a Skill(skill:NAME) rule (documented form, matches any name)" "true" "$(jget "$F" "$DENY"'.some(x => /^Skill[(]skill:/.test(x))')"
 assert_eq "AC3.2 permissions.deny has no Skill rule for other-skill" "false" "$(jget "$F" "$DENY"'.some(x => /other-skill/.test(x))')"
 assert_eq "AC3.2 autoMemoryEnabled is false in the without file" "false" "$(jget "$F" 'j.autoMemoryEnabled')"
 assert_eq "AC3.1 no credential content in the settings file" "0" "$(grep -c SECRET-TOKEN-XYZ "$F" 2>/dev/null || true)"
