@@ -244,16 +244,19 @@ if [ "$SYMLINKS" = 1 ]; then
   else t_skip 3 "AC10 (e) symlink (git stores no 120000 entry here)"; fi
 else t_skip 3 "AC10 (e) symlink (no symlinks on this file system)"; fi
 
+# git_sees_byte HEX: an untracked path in the current repo holds the byte HEX as git reads it. Git Bash on NTFS lets
+# mkdir take a newline or ESC but stores it as U+F00A / U+F01B, so the name git sees has no control byte.
+git_sees_byte() { git ls-files -z --others | od -An -tx1 | tr -s ' \n' '  ' | grep -q " $1 "; }
 echo "AC10 (f) a lockfile whose directory name holds a newline, manifest and lockfile beside it at the base: counted"
 lrepo; NLD="n${NL}l"
-if mkdir "$NLD" 2>/dev/null && printf '{}\n' > "$NLD/package.json" 2>/dev/null; then
+if mkdir "$NLD" 2>/dev/null && printf '{}\n' > "$NLD/package.json" 2>/dev/null && git_sees_byte 0a; then
   printf '{\n' > "$NLD/package-lock.json"; commit_all m; base
   gen 120 >> "$NLD/package-lock.json"
   sz
   assert_contains "AC10 (f) counted (1 file, 120 lines)" "$OUT" "files: 1/3 lines: 120/100 (base=$B)"
   assert_eq "AC10 (f) no note" "" "$(notes)"
   same_as_old "AC10 (f) same bytes as before"
-else t_skip 3 "AC10 (f) (no newline in names on this file system)"; fi
+else t_skip 3 "AC10 (f) (no newline in names that git sees on this file system)"; fi
 
 # ================= AC11 the note
 echo "AC11 six exempt lockfiles: the note counts 6 and names the first 5"
@@ -266,7 +269,7 @@ assert_eq "AC11 one note line" 1 "$(notes | wc -l | tr -d ' ')"
 
 echo "AC11 a control character in an exempt path is shown as ?"
 lrepo; ESCD="e$(printf '\033')x"
-if mkdir "$ESCD" 2>/dev/null && printf '{}\n' > "$ESCD/package.json" 2>/dev/null; then
+if mkdir "$ESCD" 2>/dev/null && printf '{}\n' > "$ESCD/package.json" 2>/dev/null && git_sees_byte 1b; then
   printf '{\n' > "$ESCD/yarn.lock"; commit_all m; base
   gen 3 >> "$ESCD/yarn.lock"
   sz
@@ -278,7 +281,7 @@ if mkdir "$ESCD" 2>/dev/null && printf '{}\n' > "$ESCD/package.json" 2>/dev/null
     assert_contains "AC11 not exempt: counted (1 file, 3 lines)" "$OUT" "files: 1/3 lines: 3/100 (base=$B)"
   fi
   assert_not_contains "AC11 no raw ESC byte in the output" "$OUT" "$(printf '\033')"
-else t_skip 2 "AC11 control character (no ESC in names on this file system)"; fi
+else t_skip 2 "AC11 control character (no ESC in names that git sees on this file system)"; fi
 
 echo "AC11 nothing exempt: stdout, stderr and exit code equal the gate before this slice"
 lrepo; base
