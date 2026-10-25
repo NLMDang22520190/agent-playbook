@@ -166,7 +166,7 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 ./install.sh update --to v0.2.0 --yes   # roll back
 ```
 
-`update` checks the release tag with `git verify-tag` before it changes anything: a signature that does not verify stops the update, an unsigned tag (or one whose signature cannot be checked) prints a `WARN:` line and continues. `scripts/conf.sh set require_signed_tags yes` (global conf) makes an unsigned tag fatal; `--allow-unsigned` lets one through.
+`update` checks the release tag with `git verify-tag` before it changes anything. An SSH signature that does not verify against a configured `gpg.ssh.allowedSignersFile` stops the update, even with `--allow-unsigned`. An unsigned tag, an SSH signature while no allowed signers file is set, or a PGP/x509 signature that does not verify (no key, no gpg, or a bad signature) prints a `WARN:` line and the update continues. `scripts/conf.sh set require_signed_tags yes` (global conf) makes those fatal; `--allow-unsigned` lets one through.
 
 `feedback.sh submit` refuses to post to a public repository (or one whose visibility it cannot read) unless you pass `--allow-public`. Details: [`docs/update-lifecycle.md`](docs/update-lifecycle.md).
 

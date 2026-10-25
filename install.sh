@@ -46,13 +46,16 @@ Options
   --to TAG         update: release to check out (rollback: --to v0.1.0)
   --check          update: only report whether a newer release exists
   --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
-                   checked) although require_signed_tags=yes; a signature that does not verify
-                   always stops the update
+                   checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
+                   an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
 
 Release tag signatures (update)
   The tag is checked with `git verify-tag` before anything changes. Verified: reported.
-  Unsigned, or signed but cannot be checked (e.g. gpg.ssh.allowedSignersFile not set): a WARN
-  line and the update continues. Signed but does not verify: the update stops (exit 1).
+  Unsigned, or signed but cannot be checked: a WARN line and the update continues. That covers
+  an SSH signature while gpg.ssh.allowedSignersFile is not set, and a PGP/x509 signature that
+  does not verify (no key, no gpg, or a bad signature). An SSH signature that does not verify
+  against a configured gpg.ssh.allowedSignersFile stops the update (exit 1), even with
+  --allow-unsigned.
   require_signed_tags=yes in ~/.agents/playbook.conf (global conf only; set it with
   scripts/conf.sh set require_signed_tags yes) makes an unsigned or unchecked tag fatal.
   Values: yes | no (default no); any other value stops the update (exit 2).
@@ -584,6 +587,11 @@ verify_release_tag() {
     state=unsigned
   elif git -C "$REPO" cat-file tag "$oid" | LC_ALL=C grep -q -e '^-----BEGIN SSH SIGNATURE-----'; then
     asf="$(git -C "$REPO" config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null)"
+    # git reads a relative path from the top of the work tree (git-config(1), gpg.ssh.allowedSignersFile), not from the cwd.
+    case "$asf" in
+      '' | /* | [A-Za-z]:/* | [A-Za-z]:\\*) ;;
+      *) asf="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO")/$asf" ;;
+    esac
     if [ -z "$asf" ] || [ ! -s "$asf" ]; then
       # DECISION[S2]: no trust anchor configured -> the signature proves nothing; treat like unsigned.
       state=untrusted; why=" (SSH signature; gpg.ssh.allowedSignersFile is not set, or names a missing or empty file)"

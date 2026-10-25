@@ -92,10 +92,11 @@
 # first-parent chain after A (each against its first parent); the work tree, the index and untracked files are not read. It
 # cannot be combined with --base, --baseline, --scope or --paths-from (exit 2).
 # Paths list (v0.26.1): check ROLE [--base REF] [--baseline FILE] --paths-from FILE judges only the changed paths in FILE (one
-# entry per line, an exact path or a dir/ prefix, byte match, no globs, empty lines skipped). Every other changed path is named,
+# entry per line, an exact path or a dir/ prefix relative to the repository top, byte match, no globs, empty lines skipped,
+# a leading ./ dropped). Every other changed path is named,
 # not judged: "note: outside the paths-from list, not checked: PATH [KIND]", after "note: paths-from FILE (N entries, digest D): K
 # changed path(s) outside the list not checked". The mode check exempts nothing. Not with --scope or --commits (exit 2); an
-# unreadable, tracked, empty or malformed (CR, BOM, NUL) FILE exits 3, no verdict.
+# unreadable, tracked, empty or malformed (CR, BOM, NUL, an absolute entry, a .. segment) FILE exits 3, no verdict.
 # Exit: 0 ok | 1 violation | 2 usage | 3 environment (not a git repo, bad ref, bad baseline manifest, bad scope or paths-from file; size: an untracked file it cannot count) | 130 / 143 interrupted
 # (INT / TERM)
 set -u
@@ -473,9 +474,19 @@ case "$cmd" in
       pf_bad="$(LC_ALL=C tr -c '\000\r\n' 'x' < "$pf" | LC_ALL=C tr '\000\r' 'NC' |
         LC_ALL=C awk '/N/ { print NR ": a NUL byte in the line"; exit } /C/ { print NR ": CR in the line (CRLF line ends? save the file with LF)"; exit }')"
       [ -z "$pf_bad" ] || pb_die "malformed paths-from file $pf: line $pf_bad" 3
-      SC_ENTRIES=""; pf_n=0
+      # An entry is relative to the repository top: a leading ./ is dropped; an absolute entry or a .. segment exits 3.
+      SC_ENTRIES=""; pf_n=0; pf_ln=0
       while IFS= read -r pf_l || [ -n "$pf_l" ]; do
+        pf_ln=$((pf_ln + 1))
         [ -n "$pf_l" ] || continue
+        while [ "${pf_l#./}" != "$pf_l" ]; do pf_l="${pf_l#./}"; done
+        case "$pf_l" in
+          /* | [A-Za-z]:/* | [A-Za-z]:\\*) pb_die "malformed paths-from file $pf: line $pf_ln: an absolute path (entries are relative to the repository top)" 3 ;;
+        esac
+        case "/$pf_l/" in
+          */../*) pb_die "malformed paths-from file $pf: line $pf_ln: a .. segment (entries are relative to the repository top)" 3 ;;
+        esac
+        [ -n "$pf_l" ] || pb_die "malformed paths-from file $pf: line $pf_ln: an entry that names no path (./)" 3
         SC_ENTRIES+="own"$'\t'"$pf_l"$'\n'; pf_n=$((pf_n + 1))
       done < "$pf"
       [ "$pf_n" -gt 0 ] || pb_die "paths-from file has no entries: $pf" 3

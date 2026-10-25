@@ -4,7 +4,11 @@
 #   proof-check.sh --tree  print the current fingerprint (proof-run.sh writes it as "- tree: ...")
 # Fingerprint: git write-tree of a temporary index (a copy of the real one, then git add -A), so it covers tracked and
 # untracked-not-ignored content, staged or not; .agents/handoff (reports, evidence logs) is left out. The real index is
-# never written. Outside a git repo: none. Lines inside ``` fences (command output) are not parsed.
+# never written, and no object is added to the repository: blobs and the tree go to a temporary object directory that
+# reads the repository's objects as an alternate, removed on exit. Outside a git repo: none.
+# Lines inside ``` fences (command output) are not parsed. As in CommonMark, a fence opens with a line of three or more
+# backticks and closes only with a line of at least as many backticks and nothing else but blanks, so a log line such as
+# ```diff does not close it.
 # Exit: 0 every block fresh | 1 a block stale or missing, or no block | 2 usage | 3 environment
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -18,9 +22,16 @@ tree_fp() (
   gd="$(git rev-parse --git-dir)" || exit 3
   # Inside the git dir: git prints it in its own path syntax, so the temp index needs no conversion on Git Bash.
   tmp="$(mktemp "$gd/pbtree.XXXXXX" 2>/dev/null)" || tmp="$(mktemp "${TMPDIR:-/tmp}/pbtree.XXXXXX")" || exit 3
-  trap 'rm -f "$tmp" "$tmp.lock"' EXIT
+  tobj=""
+  trap 'rm -f "$tmp" "$tmp.lock"; [ -z "$tobj" ] || rm -rf "$tobj"' EXIT
   if [ -f "$real" ]; then cp "$real" "$tmp" || exit 3; else rm -f "$tmp"; fi
   GIT_INDEX_FILE="$tmp"; export GIT_INDEX_FILE
+  # A temporary object directory inside the repository's own one, so its alternates entry ".." (relative to it) is that
+  # directory, in git's path syntax on every platform; git add -A and write-tree store their new objects there only.
+  objs="$(git rev-parse --git-path objects)" || exit 3
+  tobj="$(mktemp -d "$objs/pbtree.XXXXXX")" || { tobj=""; exit 3; }
+  { mkdir "$tobj/info" && printf '..\n' > "$tobj/info/alternates"; } || exit 3
+  GIT_OBJECT_DIRECTORY="$tobj"; export GIT_OBJECT_DIRECTORY
   git add -A -- . >/dev/null 2>&1 || exit 3
   git rm -r -q --cached --ignore-unmatch -- .agents/handoff >/dev/null 2>&1 || exit 3
   git write-tree
@@ -35,7 +46,7 @@ f="$1"
 { [ -f "$f" ] && [ -r "$f" ]; } || pb_die "cannot read $f" 2
 now="$(tree_fp)" || pb_die "cannot fingerprint the working tree" 3
 
-n=0; bad=0; inblk=0; label=""; rec=""; fence=0
+n=0; bad=0; inblk=0; label=""; rec=""; fence=0; bt='`'; ws=" $(printf '\t')"
 emit() { # label recorded-tree
   n=$((n + 1))
   if [ -z "$2" ] || [ "$2" = none ]; then printf 'missing: %s\n' "$1"; bad=1
@@ -44,7 +55,13 @@ emit() { # label recorded-tree
 }
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%$'\r'}"
-  case "$line" in '```'*) fence=$((1 - fence)); continue ;; esac
+  case "$line" in
+    '```'*) # fence = the opening fence's backtick count while inside one
+      ticks="${line%%[!$bt]*}"; rest="${line#"$ticks"}"
+      if [ "$fence" = 0 ]; then fence=${#ticks}
+      else case "$rest" in *[!"$ws"]*) ;; *) [ "${#ticks}" -lt "$fence" ] || fence=0 ;; esac; fi
+      continue ;;
+  esac
   [ "$fence" = 0 ] || continue
   case "$line" in
     '### Evidence: '*)
