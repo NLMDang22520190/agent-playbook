@@ -21,7 +21,7 @@ tree_fp() (
   trap 'rm -f "$tmp" "$tmp.lock"' EXIT
   if [ -f "$real" ]; then cp "$real" "$tmp" || exit 3; else rm -f "$tmp"; fi
   GIT_INDEX_FILE="$tmp"; export GIT_INDEX_FILE
-  git add -A -- . ':(exclude).agents/handoff' >/dev/null 2>&1 || exit 3
+  git add -A -- . >/dev/null 2>&1 || exit 3
   git rm -r -q --cached --ignore-unmatch -- .agents/handoff >/dev/null 2>&1 || exit 3
   git write-tree
 )
