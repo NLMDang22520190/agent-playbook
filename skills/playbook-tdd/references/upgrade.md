@@ -1,7 +1,7 @@
 # Dependency upgrade
 
 ## When it applies
-Bumping a library, framework, runtime or tool version, by hand or from a bot pull request. Weight: Lite when the change stays within the Lite limits as `role-gate.sh size` counts it (a lockfile beside its manifest at the base is left out) and no Full item applies; Full when the project's own exported API or critical code changes behaviour. State the weight with its reason.
+Bumping a library, framework, runtime or tool version, by hand or from a bot pull request. Weight: Lite when the change stays within the Lite limits as `role-gate.sh size` counts it (an update of a lockfile that exists beside its manifest at the base is left out; a new lockfile counts) and no Full item applies; Full when the project's own exported API or critical code changes behaviour. State the weight with its reason.
 
 ## Breaking-changes checklist
 1. Baseline: run the tests on the old version and see them green. Keep the run as evidence.
@@ -16,3 +16,4 @@ Bumping a library, framework, runtime or tool version, by hand or from a bot pul
 ## Notes
 - A characterization test that fails after the bump points to a breaking change missed in step 3: go back to that step.
 - A vendored copy has no lockfile; its files count toward the size limit like any code.
+- When the new version ships a generated lockfile (a vendored release, say), copy it unchanged; that is not a hand edit.

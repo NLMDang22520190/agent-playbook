@@ -6,6 +6,8 @@ Users are affected now in production: wrong results, errors, an outage, wrong ch
 ## 1. Mitigate first
 - Mitigate first: revert the suspect commit(s) or turn the feature flag off. Put no new logic in the mitigation.
 - A revert restores code that was tested before, so it is not the "patch at once" that SKILL.md forbids under "When the user says it is wrong".
+- A revert is not safe when the bad deploy carries a schema or data migration: the old code meets the new schema, or data dropped by a contract stays lost.
+- When the suspect change includes a migration, mitigate with the feature flag or a forward fix instead, and follow migration.md.
 - Pushing or deploying needs the user's go-ahead or `autonomy=full`. In a headless run, prepare the revert or flag change and report it; do not push.
 - With no revert or flag available, a forward hotfix may go first. Label it `[UNTESTED]` in the report, and write its test the same day as below.
 

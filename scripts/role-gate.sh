@@ -79,14 +79,16 @@
 # Cargo.lock (Cargo.toml), Gemfile.lock (Gemfile), poetry.lock, pdm.lock or uv.lock (pyproject.toml), Pipfile.lock (Pipfile),
 # composer.lock (composer.json), go.sum (go.mod), mix.lock (mix.exs), pubspec.lock (pubspec.yaml), Podfile.lock (Podfile),
 # Package.resolved (Package.swift), gradle.lockfile (build.gradle, build.gradle.kts) or flake.lock (flake.nix) adds 0 files and
-# 0 lines ONLY when one of its manifests sits in the same directory as a regular file (blob, mode 100644 or 100755) in the REF
-# commit; a manifest added after REF, in another directory, a directory or a symlink does not count, and the lockfile is counted.
-# A path with a newline, or one git prints quoted, is never exempt. Tracked, staged, untracked and --baseline paths alike.
+# 0 lines ONLY when the lockfile itself AND one of its manifests in the same directory are regular files (blob, mode 100644 or
+# 100755) in the REF commit, so only an update of an existing lockfile is left out (v0.26.3 review fix: a NEW lockfile-named file,
+# which could hold any code, is counted). A manifest or lockfile added after REF, a manifest in another directory, a directory or a
+# symlink does not count, and the lockfile is counted. A path with a newline, or one git prints quoted, is never exempt (such a
+# path never matches a REF blob). Tracked, staged, untracked and --baseline paths alike.
 # With at least one exempt path, one stdout line comes before the "files:" line:
 # "note: not counted (lockfile beside its manifest at the base): N file(s), L line(s): <first 5 paths, comma separated>"
 # (control characters but TAB shown as ?);
-# with none, the output is as before. An untracked exempt lockfile that cannot be read is no error (0 lines); a non-exempt one
-# keeps the v0.24.29 error. Test paths are untouched, and check is unchanged (a lockfile is still production for the tester).
+# with none, the output is as before. An untracked lockfile is absent from the REF tree unless it was removed from the index after
+# REF; one that cannot be read keeps the v0.24.29 error unless it is exempt. Test paths are untouched, and check is unchanged (a lockfile is still production for the tester).
 # Residual risk: a Lite agent whose base is its own RED commit could add a manifest in that RED commit to exempt a lockfile.
 #
 # Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
@@ -938,10 +940,12 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [
       done
     fi
 
-    # lock_exempt PATH: 0 when the basename of PATH is exactly a lockfile of the table in the header and one of its manifests is a
-    # regular file (100644 or 100755 blob) in the same directory at $base (v0.26.3); a newline or git-quoted path never is
+    # lock_exempt PATH: 0 when the basename of PATH is exactly a lockfile of the table in the header, PATH itself is a regular file
+    # (100644 or 100755 blob) at $base (an update, not a new file), and one of its manifests is a regular file in the same directory
+    # at $base (v0.26.3); a newline or git-quoted path never is
     lock_exempt() {
       local p="$1" b dir mans m mp ent
+      # defence only: callers already route newline names elsewhere, and a git-quoted path never matches a $base blob below
       case "$p" in *$'\n'* | \"*) return 1 ;; esac
       b="${p##*/}"
       case "$p" in */*) dir="${p%/*}/" ;; *) dir="" ;; esac
@@ -961,6 +965,11 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [
         gradle.lockfile) mans="build.gradle build.gradle.kts" ;;
         flake.lock) mans="flake.nix" ;;
         *) return 1 ;;
+      esac
+      ent="$(git --literal-pathspecs ls-tree -z "$base" -- "$p" 2>/dev/null | tr '\000' '\n')"
+      case "$ent" in
+        "100644 blob "*$'\t'"$p" | "100755 blob "*$'\t'"$p") ;;
+        *) return 1 ;;   # a new lockfile-named file is counted like any code
       esac
       for m in $mans; do
         mp="$dir$m"

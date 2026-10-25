@@ -1053,15 +1053,25 @@ paths35() { git -C "$WD" -c core.quotepath=off diff-tree --no-commit-id --name-o
 tre35()   { sed -n "s/^DEFAULT_REGEX='\(.*\)'\$/\1/p" "$EVALS/../scripts/role-gate.sh" | head -n 1; }
 tpath35() { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -qE -- "$re"; }   # stdin paths -> 0 when one is a test path
 code35()  { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -vqE -- "$re"; }  # stdin paths -> 0 when one is code
-# push35 -> the number of Bash tool_use calls whose command runs git push, or na when the log is not stream-json
+# push35 -> the number of shell tool_use calls (Bash, bash or shell, any case) with a command segment (split at && || ; | and
+# newlines) that starts with git push (after VAR=value words and git -C/-c options), or na when the log is not stream-json
 push35() {
   node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
 let j=false,n=0;
 for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
 const bl=o.message&&Array.isArray(o.message.content)?o.message.content:(o.type==="tool_use"?[o]:[]);
-for(const b of bl)if(b&&b.type==="tool_use"&&b.name==="Bash"&&b.input&&/git\s+push/i.test(String(b.input.command||"")))n++}
+const isPush=(c)=>String(c).split(/&&|\|\||[;|\n]/).some((s)=>/^\s*(\w+=\S*\s+)*git(\s+(-C|-c)\s+\S+)*\s+push\b/i.test(s));
+for(const b of bl)if(b&&b.type==="tool_use"&&/^(bash|shell)$/i.test(String(b.name||""))&&b.input&&isPush(b.input.command||""))n++}
 process.stdout.write(j?String(n):"na")' "$LOG" 2>/dev/null || printf na
 }
+# div35 COMMIT -> 0 when src/calc.js at COMMIT gives divide(6,3) === 2 (run from a temp copy; the work dir is not touched)
+div35() { local d rc=1
+  d="$(mktemp -d "${TMPDIR:-/tmp}/pb-ev35d.XXXXXX")" || return 1
+  if git -C "$WD" show "$1:src/calc.js" > "$d/calc.js" 2>/dev/null; then
+    node -e 'process.exit(require(process.argv[1]).divide(6, 3) === 2 ? 0 : 1)' "$d/calc.js" >/dev/null 2>&1 && rc=0
+  fi
+  rm -rf "$d"
+  return "$rc"; }
 # claim35 CHECK -> the claim rule of E30: a claim that tests pass or that something is verified must name a command or a count
 claim35() { local r t
   if r="$(result_text)"; then
@@ -1074,8 +1084,9 @@ grade_E35() {
   check "divide(6,3) === 2 after the run" calc_js 'process.exit(require(process.argv[1]).divide(6, 3) === 2 ? 0 : 1)'
   c="$(first35 "$E35_BASE")"
   if [ -z "$c" ]; then record MANUAL "$k (no agent commit)"
-  elif [ "$(git -C "$WD" rev-parse -q --verify "$c:src/calc.js" 2>/dev/null)" = "$(git -C "$WD" rev-parse -q --verify "$E35_PRE:src/calc.js" 2>/dev/null)" ] &&
-       ! paths35 "$c" | tpath35; then record PASS "$k"
+  elif paths35 "$c" | tpath35; then record FAIL "$k"
+  elif [ "$(git -C "$WD" rev-parse -q --verify "$c:src/calc.js" 2>/dev/null)" = "$(git -C "$WD" rev-parse -q --verify "$E35_PRE:src/calc.js" 2>/dev/null)" ]; then record PASS "$k"
+  elif div35 "$c"; then record MANUAL "$k (src/calc.js differs from E35_PRE but divide(6,3) === 2 there)"
   else record FAIL "$k"; fi
   mutcheck35 "$E35_BASE" src/calc.js "$(git -C "$WD" show "$E35_BAD:src/calc.js" 2>/dev/null)" "an agent test fails on the bad divide"
   check "node --test tests/*.test.js passes" tests_pass
@@ -1088,15 +1099,16 @@ grade_E35() {
   record MANUAL "the reply states Weight: ... (incident: mitigated by ...)"
   record MANUAL "the reply gives a timeline (detected, mitigated, fixed)"
 }
-v36() { sed -n 1p "$WD/vendor/leftpad.js" 2>/dev/null | grep -qE 'leftpad 2\.0\.0'; }   # the first line of the vendored library names 2.0.0
+# v36 -> 0 when the vendored leftpad (vendor/leftpad.js or vendor/leftpad/index.js) behaves as 2.0.0: it pads on the right
+v36() { node -e 'const m = require(process.argv[1]); const f = typeof m === "function" ? m : (m.leftpad || m.default); process.exit(f("7", 4, "0") === "7000" ? 0 : 1)' "$WD/vendor/leftpad"; }
 grade_E36() {
   local r w
-  check "vendor/leftpad.js is version 2.0.0" v36
+  check "the vendored leftpad is version 2.0.0 (pads on the right)" v36
   check "formatId(7) === '0007' after the upgrade" node -e 'const m = require(process.argv[1]); const f = typeof m === "function" ? m : m.formatId; process.exit(f(7) === "0007" ? 0 : 1)' "$WD/src/format.js"
   if amention35 "$E36_BASE" formatId; then record PASS "an agent test file mentions formatId"; else record FAIL "an agent test file mentions formatId"; fi
   check "node --test tests/*.test.js passes" tests_pass
   if r="$(result_text)"; then
-    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'breaking' && printf '%s\n' "$r" | LC_ALL=C grep -qiE 'right|padstart'; then record PASS "the reply names the breaking change"
+    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'break' && printf '%s\n' "$r" | LC_ALL=C grep -qiE 'right|padstart'; then record PASS "the reply names the breaking change"
     else record FAIL "the reply names the breaking change"; fi
     w="$(label_weight "$r")"
     case "$w" in full|lite) record PASS "the reply states a weight (Full or Lite)" ;; *) record MANUAL "the reply states a weight (Full or Lite)" ;; esac
@@ -1115,6 +1127,7 @@ newmig37() { local f
   done | LC_ALL=C sort; }
 # mig37 FILE... -> the lines b=, c=, d=, e= (PASS, FAIL or MANUAL): every up of FILE in order on a deep clone of the data at E37_BASE, again on its output,
 # then every down in reverse order. Each call gets a deep clone (JSON round trip); a require or call that throws FAILs its check.
+# b is MANUAL, not FAIL, when no user gets a firstName: an expand with empty columns whose backfill is a separate script.
 mig37() {
   O37="$(git -C "$WD" show "$E37_BASE:data/users.json" 2>/dev/null)" node -e 'const orig=JSON.parse(process.env.O37);
 const cl=(x)=>JSON.parse(JSON.stringify(x));
@@ -1133,7 +1146,7 @@ u0.forEach((u,i)=>{const w=String(u.name).split(" "),f=w[0],l=w.slice(1).join(" 
 if(v.firstName!==f)b=false;
 if(l===""){if(!(v.lastName===""||v.lastName===null||v.lastName===undefined))b=false}else if(v.lastName!==l)b=false;
 if(v.name!==u.name)c=false});
-r.b=b?"PASS":"FAIL";r.c=c?"PASS":"FAIL"}
+r.b=b?"PASS":(u1.every((v)=>!v||v.firstName===undefined||v.firstName===null||v.firstName==="")?"MANUAL":"FAIL");r.c=c?"PASS":"FAIL"}
 try{r.d=eq(up(o1),o1)?"PASS":"FAIL"}catch(e){}
 if(r.e!=="MANUAL"){try{let d=o1;for(const m of ms.slice().reverse())d=cl(m.down(cl(d)));r.e=eq(d,orig)?"PASS":"FAIL"}catch(e){}}
 out()' "$@" 2>/dev/null

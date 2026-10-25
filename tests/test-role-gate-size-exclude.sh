@@ -2,6 +2,8 @@
 # Tests for v0.26.3 lane W slice S1 (.agents/handoff/01-spec.md AC9-AC12): `role-gate.sh size --base REF` leaves a changed lockfile
 # out of the Lite count when its basename is exactly one of the AC9 table and a sibling manifest of that lockfile (same directory)
 # exists as a blob in the REF commit; it then prints one note line before the `files:` line. Everything else counts as before.
+# Review fix (263w-review.md finding 1): the lockfile itself must also exist at the same path in the REF commit (an update);
+# a NEW lockfile-named file is counted like any code (W1).
 #   AC9   all 23 lockfile/manifest pairs of the table; untracked, staged, committed and modified tracked lockfiles
 #   AC10  adversarial rows a-f are counted and print the same bytes as the gate before this slice; exempt rows g-j
 #   AC11  the note line (count, lines, first 5 paths, control characters shown as ?); nothing exempt: no note, same bytes as before
@@ -48,20 +50,31 @@ same_as_old_cmd() {
 line_before_files() { printf '%s\n' "$SOUT" | awk '/^files: /{ print prev; exit } { prev = $0 }'; }
 
 # ================= AC9 the table
-echo "AC9 every lockfile of the table beside one of its manifests at the base adds 0 files and 0 lines"
+echo "AC9 every lockfile of the table that exists at the base beside one of its manifests, changed after the base, adds 0 files and 0 lines"
 PAIRS="package-lock.json:package.json npm-shrinkwrap.json:package.json yarn.lock:package.json pnpm-lock.yaml:package.json
 bun.lock:package.json bun.lockb:package.json deno.lock:deno.json deno.lock:deno.jsonc Cargo.lock:Cargo.toml Gemfile.lock:Gemfile
 poetry.lock:pyproject.toml pdm.lock:pyproject.toml uv.lock:pyproject.toml Pipfile.lock:Pipfile composer.lock:composer.json
 go.sum:go.mod mix.lock:mix.exs pubspec.lock:pubspec.yaml Podfile.lock:Podfile Package.resolved:Package.swift
 gradle.lockfile:build.gradle gradle.lockfile:build.gradle.kts flake.lock:flake.nix"
 lrepo; i=0
+for p in $PAIRS; do i=$((i + 1)); man "p$i" "${p#*:}"; printf '{\n' > "p$i/${p%%:*}"; done
+commit_all manifests; base; i=0
+for p in $PAIRS; do i=$((i + 1)); gen 40 >> "p$i/${p%%:*}"; done
+sz
+assert_rc "AC9 23 changed tracked lockfiles (920 added lines) beside their manifests: within the Lite limits, exit 0" 0
+assert_contains "AC9 ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
+assert_contains "AC9 ... one note names 23 file(s) and 920 line(s)" "$OUT" "$NOTE 23 file(s), 920 line(s): "
+
+echo "W1 the same 23 lockfiles NEW (absent at the base, untracked) beside their manifests at the base are counted"
+lrepo; i=0
 for p in $PAIRS; do i=$((i + 1)); man "p$i" "${p#*:}"; done
 commit_all manifests; base; i=0
 for p in $PAIRS; do i=$((i + 1)); gen 40 > "p$i/${p%%:*}"; done
 sz
-assert_rc "AC9 23 untracked lockfiles (920 lines) beside their manifests: within the Lite limits, exit 0" 0
-assert_contains "AC9 ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
-assert_contains "AC9 ... one note names 23 file(s) and 920 line(s)" "$OUT" "$NOTE 23 file(s), 920 line(s): "
+assert_contains "W1 23 new lockfiles: all counted (23 files, 920 lines)" "$OUT" "files: 23/3 lines: 920/100 (base=$B)"
+assert_rc "W1 23 new lockfiles: over the limit, exit 1" 1
+assert_eq "W1 23 new lockfiles: no not-counted note" "" "$(notes)"
+same_as_old "W1 23 new lockfiles: stdout, stderr and exit code equal the gate before this slice"
 
 echo "AC9 a lockfile beside a manifest of another ecosystem (not one of its own) is counted"
 lrepo
@@ -76,19 +89,54 @@ assert_rc "AC9 crossed pairs: over the limit, exit 1" 1
 assert_eq "AC9 crossed pairs: no not-counted note" "" "$(notes)"
 same_as_old "AC9 crossed pairs: stdout, stderr and exit code equal the gate before this slice"
 
-echo "AC9 a staged lockfile and a lockfile committed after the base are exempt too"
+echo "AC9 a staged change and a committed change of a lockfile that exists at the base are exempt too"
+lrepo; man . Cargo.toml; printf '{\n' > Cargo.lock; commit_all m; base
+gen 130 >> Cargo.lock; git add Cargo.lock
+sz
+assert_rc "AC9 staged Cargo.lock change (130 lines) beside Cargo.toml: exit 0" 0
+assert_contains "AC9 staged ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
+assert_contains "AC9 staged ... note" "$OUT" "$NOTE 1 file(s), 130 line(s): Cargo.lock"
+lrepo; man . Gemfile; printf '{\n' > Gemfile.lock; commit_all m; base
+gen 110 >> Gemfile.lock; commit_all lock
+sz
+assert_rc "AC9 committed Gemfile.lock change (110 lines) after the base, Gemfile and Gemfile.lock at the base: exit 0" 0
+assert_contains "AC9 committed ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
+assert_contains "AC9 committed ... note" "$OUT" "$NOTE 1 file(s), 110 line(s): Gemfile.lock"
+
+echo "W1 a NEW lockfile staged, or committed after the base, beside a manifest at the base is counted"
 lrepo; man . Cargo.toml; commit_all m; base
 gen 130 > Cargo.lock; git add Cargo.lock
 sz
-assert_rc "AC9 staged Cargo.lock (130 lines) beside Cargo.toml: exit 0" 0
-assert_contains "AC9 staged ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
-assert_contains "AC9 staged ... note" "$OUT" "$NOTE 1 file(s), 130 line(s): Cargo.lock"
+assert_contains "W1 staged new Cargo.lock: counted (1 file, 130 lines)" "$OUT" "files: 1/3 lines: 130/100 (base=$B)"
+assert_rc "W1 staged new Cargo.lock: exit 1" 1
+assert_eq "W1 staged new Cargo.lock: no note" "" "$(notes)"
 lrepo; man . Gemfile; commit_all m; base
 gen 110 > Gemfile.lock; commit_all lock
 sz
-assert_rc "AC9 committed Gemfile.lock (110 lines) after the base, Gemfile at the base: exit 0" 0
-assert_contains "AC9 committed ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
-assert_contains "AC9 committed ... note" "$OUT" "$NOTE 1 file(s), 110 line(s): Gemfile.lock"
+assert_contains "W1 new Gemfile.lock committed after the base: counted (1 file, 110 lines)" "$OUT" "files: 1/3 lines: 110/100 (base=$B)"
+assert_rc "W1 new Gemfile.lock committed after the base: exit 1" 1
+assert_eq "W1 new Gemfile.lock committed after the base: no note" "" "$(notes)"
+same_as_old "W1 new Gemfile.lock committed after the base: same bytes as before"
+
+echo "W1 (review rv1) a new root yarn.lock holding JavaScript, required by index.js, beside package.json at the base: counted"
+lrepo; printf '{"name":"x"}\n' > package.json; printf 'module.exports = 1;\n' > index.js; commit_all m; base
+{ echo 'module.exports = function () {'; genjs 300; echo '  return 42; };'; } > yarn.lock
+printf "module.exports = require('./yarn.lock')();\n" > index.js
+commit_all work
+sz
+assert_contains "W1 rv1: yarn.lock and index.js both counted (2 files)" "$OUT" "files: 2/3 lines: "
+assert_rc "W1 rv1: over the line limit, exit 1" 1
+assert_eq "W1 rv1: no not-counted note" "" "$(notes)"
+assert_not_contains "W1 rv1: the output does not report 2 lines for the work" "$OUT" "lines: 2/100"
+same_as_old "W1 rv1: stdout, stderr and exit code equal the gate before this slice"
+
+echo "W1 a lockfile at the base in another directory does not make a new one exempt (same path only)"
+lrepo; man . package.json; man web package.json; printf '{\n' > yarn.lock; commit_all m; base
+gen 120 > web/yarn.lock
+sz
+assert_contains "W1 root yarn.lock at the base, new web/yarn.lock: counted (1 file, 120 lines)" "$OUT" "files: 1/3 lines: 120/100 (base=$B)"
+assert_eq "W1 ... no note" "" "$(notes)"
+same_as_old "W1 ... same bytes as before"
 
 # ================= AC10 exempt rows g-j
 echo "AC10 (g) package-lock.json changed beside package.json at the base; the other production change still counts"
@@ -102,27 +150,35 @@ assert_contains "AC11 (g) the note names the lockfile and its 150 lines" "$OUT" 
 assert_eq "AC11 (g) the note is the stdout line right before the files: line" "$NOTE 1 file(s), 150 line(s): package-lock.json" "$(line_before_files)"
 assert_eq "AC11 (g) exactly one note line" 1 "$(notes | wc -l | tr -d ' ')"
 
-echo "AC10 (h) a new go.sum beside go.mod at the base"
+echo "W1 (h) a new go.sum beside go.mod at the base is counted (it is not at the base)"
 lrepo; man . go.mod; commit_all m; base
 gen 120 > go.sum
+sz
+assert_rc "W1 (h) new go.sum: exit 1" 1
+assert_contains "W1 (h) new go.sum: counted (1 file, 120 lines)" "$OUT" "files: 1/3 lines: 120/100 (base=$B)"
+assert_eq "W1 (h) new go.sum: no note" "" "$(notes)"
+same_as_old "W1 (h) new go.sum: same bytes as before"
+echo "AC10 (h) a go.sum that exists at the base beside go.mod, changed"
+lrepo; man . go.mod; printf 'x v1 h1:a=\n' > go.sum; commit_all m; base
+gen 120 >> go.sum
 sz
 assert_rc "AC10 (h) exit 0" 0
 assert_contains "AC10 (h) files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
 assert_contains "AC10 (h) note" "$OUT" "$NOTE 1 file(s), 120 line(s): go.sum"
 
-echo "AC10 (i) a nested web/pnpm-lock.yaml beside web/package.json at the base"
-lrepo; man web package.json; commit_all m; base
-gen 200 > web/pnpm-lock.yaml
+echo "AC10 (i) a nested web/pnpm-lock.yaml that exists at the base beside web/package.json, changed"
+lrepo; man web package.json; printf 'lockfileVersion: 9\n' > web/pnpm-lock.yaml; commit_all m; base
+gen 200 >> web/pnpm-lock.yaml
 sz
 assert_rc "AC10 (i) exit 0" 0
 assert_contains "AC10 (i) files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
 assert_contains "AC10 (i) note" "$OUT" "$NOTE 1 file(s), 200 line(s): web/pnpm-lock.yaml"
 
-echo "AC10 (j) under --baseline: a lockfile written after the snapshot, beside package.json at the base"
-lrepo; man . package.json; commit_all m; base
+echo "AC10 (j) under --baseline: a lockfile at the base changed after the snapshot, beside package.json at the base"
+lrepo; man . package.json; printf '{\n' > yarn.lock; commit_all m; base
 printf 'module.exports = 9;\n' > src/app.js
 MF="$(mk_tmp)/baseline"; bash "$GATE" snapshot --out "$MF" >/dev/null 2>&1
-gen 150 > yarn.lock
+gen 150 >> yarn.lock
 sz --baseline "$MF"
 assert_rc "AC10 (j) exit 0" 0
 assert_contains "AC10 (j) files: 0 lines: 0 (src/app.js unchanged since the baseline, yarn.lock exempt)" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
@@ -188,11 +244,11 @@ if [ "$SYMLINKS" = 1 ]; then
   else t_skip 3 "AC10 (e) symlink (git stores no 120000 entry here)"; fi
 else t_skip 3 "AC10 (e) symlink (no symlinks on this file system)"; fi
 
-echo "AC10 (f) a lockfile whose directory name holds a newline, manifest beside it at the base: counted"
+echo "AC10 (f) a lockfile whose directory name holds a newline, manifest and lockfile beside it at the base: counted"
 lrepo; NLD="n${NL}l"
 if mkdir "$NLD" 2>/dev/null && printf '{}\n' > "$NLD/package.json" 2>/dev/null; then
-  commit_all m; base
-  gen 120 > "$NLD/package-lock.json"
+  printf '{\n' > "$NLD/package-lock.json"; commit_all m; base
+  gen 120 >> "$NLD/package-lock.json"
   sz
   assert_contains "AC10 (f) counted (1 file, 120 lines)" "$OUT" "files: 1/3 lines: 120/100 (base=$B)"
   assert_eq "AC10 (f) no note" "" "$(notes)"
@@ -201,8 +257,8 @@ else t_skip 3 "AC10 (f) (no newline in names on this file system)"; fi
 
 # ================= AC11 the note
 echo "AC11 six exempt lockfiles: the note counts 6 and names the first 5"
-lrepo; for d in a1 a2 a3 a4 a5 a6; do man "$d" package.json; done; commit_all m; base
-for d in a1 a2 a3 a4 a5 a6; do gen 5 > "$d/yarn.lock"; done
+lrepo; for d in a1 a2 a3 a4 a5 a6; do man "$d" package.json; printf '{\n' > "$d/yarn.lock"; done; commit_all m; base
+for d in a1 a2 a3 a4 a5 a6; do gen 5 >> "$d/yarn.lock"; done
 sz
 assert_contains "AC11 note: 6 file(s), 30 line(s)" "$OUT" "$NOTE 6 file(s), 30 line(s): "
 assert_eq "AC11 the note names exactly 5 of the 6 paths" 5 "$(notes | grep -o 'a[1-6]/yarn\.lock' | wc -l | tr -d ' ')"
@@ -211,10 +267,16 @@ assert_eq "AC11 one note line" 1 "$(notes | wc -l | tr -d ' ')"
 echo "AC11 a control character in an exempt path is shown as ?"
 lrepo; ESCD="e$(printf '\033')x"
 if mkdir "$ESCD" 2>/dev/null && printf '{}\n' > "$ESCD/package.json" 2>/dev/null; then
-  commit_all m; base
-  gen 3 > "$ESCD/yarn.lock"
+  printf '{\n' > "$ESCD/yarn.lock"; commit_all m; base
+  gen 3 >> "$ESCD/yarn.lock"
   sz
-  assert_contains "AC11 ESC shown as ?" "$OUT" "$NOTE 1 file(s), 3 line(s): e?x/yarn.lock"
+  # W1/W11: the lockfile must now be tracked at the base, and git C-quotes a tracked path with a control character, so the gate
+  # may either exempt it (the note shows ESC as ?) or count it (no note); both are sound, a raw ESC never is
+  if printf '%s\n' "$OUT" | grep -qF "$NOTE"; then
+    assert_contains "AC11 exempt: ESC shown as ?" "$OUT" "$NOTE 1 file(s), 3 line(s): e?x/yarn.lock"
+  else
+    assert_contains "AC11 not exempt: counted (1 file, 3 lines)" "$OUT" "files: 1/3 lines: 3/100 (base=$B)"
+  fi
   assert_not_contains "AC11 no raw ESC byte in the output" "$OUT" "$(printf '\033')"
 else t_skip 2 "AC11 control character (no ESC in names on this file system)"; fi
 
@@ -235,14 +297,14 @@ assert_contains "AC12 tests/fixtures/yarn.lock: files: 0 lines: 0" "$OUT" "files
 assert_eq "AC12 test path: no note" "" "$(notes)"
 same_as_old "AC12 test path: same bytes as before"
 
-echo "AC12 an unreadable untracked lockfile: exempt is no error, non-exempt keeps exit 3"
+echo "AC12 W1 an unreadable untracked lockfile is never exempt (it is not at the base): exit 3 as before"
 lrepo; man . go.mod; commit_all m; base
 gen 120 > go.sum; chmod 000 go.sum 2>/dev/null
 if [ ! -r go.sum ]; then
   sz
-  assert_rc "AC12 unreadable exempt go.sum: exit 0, not 3" 0
-  assert_not_contains "AC12 ... no cannot-count error" "$OUT" "error: cannot count"
-  assert_contains "AC12 ... files: 0 lines: 0" "$OUT" "files: 0/3 lines: 0/100 (base=$B)"
+  assert_rc "W1 unreadable new go.sum beside go.mod: exit 3 (counted, cannot be read)" 3
+  assert_contains "W1 ... the cannot-count error" "$OUT" "error: cannot count the lines of untracked file go.sum"
+  same_as_old "W1 ... same bytes as before"
   chmod 644 go.sum
   lrepo; base
   gen 120 > src/yarn.lock; chmod 000 src/yarn.lock
