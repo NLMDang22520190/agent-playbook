@@ -58,3 +58,12 @@ A separate worktree gives the same isolation without that blind spot.
 ## Honest limit
 
 The same model in fresh contexts still shares blind spots. A different reviewer model, the mutation spot-check, and the user's own review of the AC table reduce this but do not remove it.
+
+## Routing and dirty trees
+
+Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
+sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREEN step
+(gate, then the test command as evidence, optional checkpoint commit) use
+`bash ~/.agents/playbook/scripts/tdd-step.sh red|green` (`--base` red, `--baseline` both).
+
+With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand.

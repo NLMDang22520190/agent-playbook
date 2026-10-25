@@ -45,3 +45,5 @@ Two old measurements, kept for scale. Neither is a benchmark.
 ## Maintainer tools
 
 `tools/` holds the release and CI helpers: `release.sh`, `ship.sh`, `check-release.sh` (VERSION and CHANGELOG per tag), `release-pr-check.sh` (check-release on a PR that changes VERSION), `readme-count.sh` (README test count), `docs-only.sh`, `ci-tree-tested.sh`, `shard-weights.sh`, `eval-guard.sh`, `bsd-check.sh`, `get-bash32.sh`, `setup-labels.sh` (feedback issue labels), and `pre-commit` with `install-hooks.sh` (the opt-in hook above), and `clean-pbtest.sh` (manual: removes stale `pbtest.*` temp dirs a killed suite left; dry run unless `--yes`).
+
+Release speed rules for maintainers (weight per item, slow platforms, release size): [release-speed.md](release-speed.md).
