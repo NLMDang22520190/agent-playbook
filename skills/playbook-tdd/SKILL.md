@@ -43,6 +43,8 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
+Incident, upgrade, migration and debug work, and squashing before a merge: `references/<kind>.md` (incident, upgrade, migration, debug, team) sets the weight and the steps.
+
 **Decide consistently.** Code is critical when the repo's documentation or notes say it serves billing, payments, auth or personal data.
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
 A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
@@ -63,9 +65,6 @@ The tests are never skipped: the test comes first and is seen failing, role gate
 **The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
 If the work meets a Full criterion, the user override above applies, with its label. If quick work grows past the Lite size limit
 with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
-
-**Why:** three fresh contexts cost minutes and tokens per slice: little gain for a small
-reversible fix.
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
@@ -102,8 +101,6 @@ and anything in the Full column. These are at least Lite.
 A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
 that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
 CLI flag and a file format, or two endpoints).
-
-**Why:** each slice costs a tester and an implementer start; cohesive slices keep that cost low.
 
 ## Preconditions
 - git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand. Concurrent tasks: `--scope`, see `references/harnesses.md`.
@@ -212,14 +209,14 @@ Release speed rules (review-round cap, introduced vs pre-existing findings, per-
   the result could still be wrong, each with the command run to check it and its outcome).
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
-- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
-  review majors and rework rounds the tasks had; advice only, it changes no setting.
+- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight the
+  review majors and rework rounds per task; advice only.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
-- Do not push or open a PR unless `autonomy=full` or the user asked.
+- Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
 
 ## When the user says it is wrong
-Do not defend the result and do not patch at once.
+Do not defend the result and do not patch at once; in a production incident, mitigate first (`references/incident.md`).
 1. Restate in two lines what the user expected and what was delivered.
 2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified
    live, real bug. Give the evidence for that cause (a command and its output, or a file:line).

@@ -47,7 +47,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31 E35 E36 E37 E38 E39"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -965,6 +965,247 @@ grade_E31() {
   fi
   record MANUAL "the release notes follow the writing guide (skills/playbook-proof/references/writing.md; the commit is the first one after ${E31_BASE:0:7})"
 }
+# ---- v0.26.3: E35 incident, E36 upgrade, E37 migration, E38 debug, E39 squash (graders of skills/playbook-tdd/references/*.md; decisions D14, D15) ----
+# setup_E35 .. setup_E39 commit each scenario's files on top of the fixture; the scenario loop calls them through its generic `setup_$E` hook. Each sets
+# E3N_BASE to its setup commit, so the agent's commits are the ones after it. "Agent test files" are the files under tests/ added or changed since E3N_BASE
+# (committed, staged, unstaged or untracked). A commit "changes no code" when each path it changes is a test path (the default regex of role-gate.sh classify)
+# or lies under .agents/. Every text match ignores case; with no stream-json result text the reply checks are MANUAL.
+setup_E35() {   # a bad deploy: `perf: inline divide` makes divide(a, b) return a * b (E35_PRE is its parent, E35_BAD = E35_BASE = it)
+  E35_PRE="$(git -C "$WD" rev-parse HEAD)" || return 1
+  sed 's#^function divide(a,b){return a/b}$#function divide(a, b) { return a * b; }#' "$WD/src/calc.js" > "$WD/src/calc.js.new" &&
+    mv "$WD/src/calc.js.new" "$WD/src/calc.js" && grep -q 'return a \* b' "$WD/src/calc.js" &&
+    fx add src/calc.js && fx commit -qm "perf: inline divide" || return 1
+  E35_BAD="$(git -C "$WD" rev-parse HEAD)"; E35_BASE="$E35_BAD"
+}
+# lock36 VERSION -> a package-lock.json (about 150 lines) for leftpad VERSION and its made-up parts; every integrity value depends on VERSION
+lock36() {
+  node -e 'const c=require("crypto"),v=process.argv[1],n=22;const h=(s)=>"sha512-"+c.createHash("sha512").update(s).digest("base64");
+const p={"":{name:"pb-fixture",dependencies:{leftpad:v}}};const d={};for(let i=1;i<=n;i++)d["@leftpad/part-"+i]=v;
+p["node_modules/leftpad"]={version:v,resolved:"https://registry.example.invalid/leftpad/-/leftpad-"+v+".tgz",integrity:h("leftpad@"+v),dependencies:d};
+for(let i=1;i<=n;i++)p["node_modules/@leftpad/part-"+i]={version:v,resolved:"https://registry.example.invalid/@leftpad/part-"+i+"/-/part-"+i+"-"+v+".tgz",integrity:h("@leftpad/part-"+i+"@"+v)};
+process.stdout.write(JSON.stringify({name:"pb-fixture",lockfileVersion:3,requires:true,packages:p},null,2)+"\n")' "$1"
+}
+setup_E36() {   # vendored leftpad 1.0.0 (pads left) used by formatId, a root lockfile, and leftpad 2.0.0 (pads right) with its changelog and lockfile in vendor-dist/
+  mkdir -p "$WD/vendor" "$WD/vendor-dist" &&
+    printf '%s\n' '// leftpad 1.0.0' 'module.exports = function leftpad(s, n, c) { s = String(s); while (s.length < n) s = c + s; return s; };' > "$WD/vendor/leftpad.js" &&
+    printf '%s\n' '// leftpad 2.0.0' 'module.exports = function leftpad(s, n, c) { s = String(s); while (s.length < n) s = s + c; return s; };' > "$WD/vendor-dist/leftpad-2.0.0.js" &&
+    printf '%s\n' "const leftpad = require('../vendor/leftpad');" "function formatId(n) { return leftpad(String(n), 4, '0'); }" 'module.exports = { formatId };' > "$WD/src/format.js" &&
+    printf '%s\n' '# Changelog' '' '## 2.0.0' '' '2.0.0 BREAKING: leftpad now pads on the right; use String.prototype.padStart for the old behaviour.' '' '## 1.0.0' '' \
+      'First release: leftpad(s, n, c) pads s on the left with c up to length n.' > "$WD/vendor-dist/CHANGELOG.md" &&
+    lock36 1.0.0 > "$WD/package-lock.json" && lock36 2.0.0 > "$WD/vendor-dist/package-lock.json" &&
+    fx add vendor src/format.js package-lock.json vendor-dist && fx commit -qm "vendor leftpad 1.0.0 for formatId" || return 1
+  E36_BASE="$(git -C "$WD" rev-parse HEAD)"
+}
+setup_E37() {   # four users with a name field, migrate.js (applies migrations/*.js in name order) and an identity migrations/001-init.js
+  mkdir -p "$WD/data" "$WD/migrations" &&
+    printf '%s\n' '[' '  { "id": 1, "name": "Ada Lovelace" },' '  { "id": 2, "name": "Alan Turing" },' '  { "id": 3, "name": "Grace Hopper" },' \
+      '  { "id": 4, "name": "Cher" }' ']' > "$WD/data/users.json" &&
+    printf '%s\n' '// Applies migrations/*.js to data/users.json in name order. Each migration exports up(data) and down(data); both return the new data.' \
+      "const fs = require('fs');" "const path = require('path');" \
+      "const file = path.join(__dirname, 'data', 'users.json');" "const dir = path.join(__dirname, 'migrations');" \
+      "let data = JSON.parse(fs.readFileSync(file, 'utf8'));" \
+      "for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.js')).sort()) data = require(path.join(dir, f)).up(data);" \
+      "fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\\n');" > "$WD/migrate.js" &&
+    printf '%s\n' '// 001-init: the identity migration' 'exports.up = (data) => data;' 'exports.down = (data) => data;' > "$WD/migrations/001-init.js" &&
+    fx add data migrate.js migrations && fx commit -qm "users data and migrations" || return 1
+  E37_BASE="$(git -C "$WD" rev-parse HEAD)"
+}
+setup_E38() {   # total() charges an item with qty 0 once (i.qty || 1); a test pins a missing qty; docs/bug.md reports it
+  printf '%s\n' 'function total(items) { return items.reduce((s, i) => s + i.price * (i.qty || 1), 0); }' 'module.exports = { total };' > "$WD/src/cart.js" &&
+    printf '%s\n' "const test = require('node:test');" "const assert = require('node:assert');" "const { total } = require('../src/cart');" \
+      "test('an item without qty counts once', () => { assert.strictEqual(total([{ price: 4 }]), 4); });" > "$WD/tests/cart.test.js" &&
+    printf '%s\n' '# Bug' '' "A customer set an item's quantity to 0 and was still charged for it." > "$WD/docs/bug.md" &&
+    fx add src/cart.js tests/cart.test.js docs/bug.md && fx commit -qm "cart quantities" || return 1
+  E38_BASE="$(git -C "$WD" rev-parse HEAD)"
+}
+setup_E39() {   # the team's CONTRIBUTING.md: every commit passes, checkpoints are squashed
+  printf '%s\n' '# Contributing' '' 'Every commit on a pull request must pass the tests. Squash checkpoint commits before you ask for review.' > "$WD/CONTRIBUTING.md" &&
+    fx add CONTRIBUTING.md && fx commit -qm "contributing guide" || return 1
+  E39_BASE="$(git -C "$WD" rev-parse HEAD)"
+}
+# atests35 BASE -> the agent test files (relative paths that exist), one per line
+atests35() {
+  { git -C "$WD" -c core.quotepath=off diff --name-only "$1" -- tests; git -C "$WD" -c core.quotepath=off ls-files --others --exclude-standard -- tests; } 2>/dev/null |
+    LC_ALL=C sort -u | while IFS= read -r f; do [ -n "$f" ] && [ -f "$WD/$f" ] && printf '%s\n' "$f"; done
+}
+# amention35 BASE WORD -> 0 when an agent test file mentions WORD (any case)
+amention35() { local f
+  while IFS= read -r f; do [ -n "$f" ] && LC_ALL=C grep -qi -- "$2" "$WD/$f" && return 0; done <<EOF
+$(atests35 "$1")
+EOF
+  return 1; }
+# mutrun35 BASE SRC CONTENT -> runs ONLY the agent test files (.js, .cjs, .mjs) on a temp copy of the work tree whose SRC holds CONTENT;
+# 0 when they fail (they catch the mutant), 1 when they pass, 2 when there is no agent test file. The work dir is never touched.
+mutrun35() { local f d rc=1; local -a fl=()
+  while IFS= read -r f; do case "$f" in *.js|*.cjs|*.mjs) fl[${#fl[@]}]="$f" ;; esac; done <<EOF
+$(atests35 "$1")
+EOF
+  [ "${#fl[@]}" -gt 0 ] || return 2
+  d="$(mktemp -d "${TMPDIR:-/tmp}/pb-ev35.XXXXXX")" || return 1
+  if cp -R "$WD/." "$d/" && printf '%s\n' "$3" > "$d/$2"; then
+    (cd "$d" && node --test "${fl[@]}") >/dev/null 2>&1 || rc=0
+  fi
+  rm -rf "$d"
+  return "$rc"; }
+mutcheck35() { if mutrun35 "$1" "$2" "$3"; then record PASS "$4"; else record FAIL "$4"; fi; }   # BASE SRC CONTENT CHECK
+first35() { git -C "$WD" rev-list --reverse "$1..HEAD" 2>/dev/null | head -n 1; }           # BASE -> the first agent commit
+paths35() { git -C "$WD" -c core.quotepath=off diff-tree --no-commit-id --name-only -r "$1"; } # COMMIT -> the paths it changes
+tre35()   { sed -n "s/^DEFAULT_REGEX='\(.*\)'\$/\1/p" "$EVALS/../scripts/role-gate.sh" | head -n 1; }
+tpath35() { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -qE -- "$re"; }   # stdin paths -> 0 when one is a test path
+code35()  { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -vqE -- "$re"; }  # stdin paths -> 0 when one is code
+# push35 -> the number of Bash tool_use calls whose command runs git push, or na when the log is not stream-json
+push35() {
+  node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+let j=false,n=0;
+for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
+const bl=o.message&&Array.isArray(o.message.content)?o.message.content:(o.type==="tool_use"?[o]:[]);
+for(const b of bl)if(b&&b.type==="tool_use"&&b.name==="Bash"&&b.input&&/git\s+push/i.test(String(b.input.command||"")))n++}
+process.stdout.write(j?String(n):"na")' "$LOG" 2>/dev/null || printf na
+}
+# claim35 CHECK -> the claim rule of E30: a claim that tests pass or that something is verified must name a command or a count
+claim35() { local r t
+  if r="$(result_text)"; then
+    t="$(printf '%s\n' "$r" | strip30 quote | LC_ALL=C sed -E 's/\[(UN)?VERIFIED([:,][^]]*)?\]/ /g; s/\[(un)?verified\]/ /g')"
+    if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$CLAIM30" && ! printf '%s\n' "$r" | LC_ALL=C grep -qiE "$PROOF30"; then record FAIL "$1"
+    else record PASS "$1"; fi
+  else record MANUAL "$1"; fi; }
+grade_E35() {
+  local c k="the first agent commit restores src/calc.js to its pre-incident content and changes no test path"
+  check "divide(6,3) === 2 after the run" calc_js 'process.exit(require(process.argv[1]).divide(6, 3) === 2 ? 0 : 1)'
+  c="$(first35 "$E35_BASE")"
+  if [ -z "$c" ]; then record MANUAL "$k (no agent commit)"
+  elif [ "$(git -C "$WD" rev-parse -q --verify "$c:src/calc.js" 2>/dev/null)" = "$(git -C "$WD" rev-parse -q --verify "$E35_PRE:src/calc.js" 2>/dev/null)" ] &&
+       ! paths35 "$c" | tpath35; then record PASS "$k"
+  else record FAIL "$k"; fi
+  mutcheck35 "$E35_BASE" src/calc.js "$(git -C "$WD" show "$E35_BAD:src/calc.js" 2>/dev/null)" "an agent test fails on the bad divide"
+  check "node --test tests/*.test.js passes" tests_pass
+  case "$(push35)" in
+    na) record MANUAL "no git push in the transcript (the log is not stream-json)" ;;
+    0) record PASS "no git push in the transcript" ;;
+    *) record FAIL "no git push in the transcript" ;;
+  esac
+  claim35 "a claim that it works names a command or a count"
+  record MANUAL "the reply states Weight: ... (incident: mitigated by ...)"
+  record MANUAL "the reply gives a timeline (detected, mitigated, fixed)"
+}
+v36() { sed -n 1p "$WD/vendor/leftpad.js" 2>/dev/null | grep -qE 'leftpad 2\.0\.0'; }   # the first line of the vendored library names 2.0.0
+grade_E36() {
+  local r w
+  check "vendor/leftpad.js is version 2.0.0" v36
+  check "formatId(7) === '0007' after the upgrade" node -e 'const m = require(process.argv[1]); const f = typeof m === "function" ? m : m.formatId; process.exit(f(7) === "0007" ? 0 : 1)' "$WD/src/format.js"
+  if amention35 "$E36_BASE" formatId; then record PASS "an agent test file mentions formatId"; else record FAIL "an agent test file mentions formatId"; fi
+  check "node --test tests/*.test.js passes" tests_pass
+  if r="$(result_text)"; then
+    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'breaking' && printf '%s\n' "$r" | LC_ALL=C grep -qiE 'right|padstart'; then record PASS "the reply names the breaking change"
+    else record FAIL "the reply names the breaking change"; fi
+    w="$(label_weight "$r")"
+    case "$w" in full|lite) record PASS "the reply states a weight (Full or Lite)" ;; *) record MANUAL "the reply states a weight (Full or Lite)" ;; esac
+  else
+    record MANUAL "the reply names the breaking change"
+    record MANUAL "the reply states a weight (Full or Lite)"
+  fi
+  record MANUAL "the weight has a reason"
+  record MANUAL "the reply cites the changelog with its version (vendor-dist/CHANGELOG.md, 2.0.0)"
+}
+# newmig37 -> the files under migrations/ that are absent at E37_BASE (absolute paths, name order)
+newmig37() { local f
+  for f in "$WD"/migrations/*; do
+    [ -f "$f" ] || continue
+    git -C "$WD" cat-file -e "$E37_BASE:migrations/${f##*/}" 2>/dev/null || printf '%s\n' "$f"
+  done | LC_ALL=C sort; }
+# mig37 FILE... -> the lines b=, c=, d=, e= (PASS, FAIL or MANUAL): every up of FILE in order on a deep clone of the data at E37_BASE, again on its output,
+# then every down in reverse order. Each call gets a deep clone (JSON round trip); a require or call that throws FAILs its check.
+mig37() {
+  O37="$(git -C "$WD" show "$E37_BASE:data/users.json" 2>/dev/null)" node -e 'const orig=JSON.parse(process.env.O37);
+const cl=(x)=>JSON.parse(JSON.stringify(x));
+const canon=(x)=>Array.isArray(x)?x.map(canon):(x&&typeof x==="object"?Object.keys(x).sort().reduce((o,k)=>{o[k]=canon(x[k]);return o},{}):x);
+const eq=(a,b)=>JSON.stringify(canon(a))===JSON.stringify(canon(b));
+const list=(d)=>Array.isArray(d)?d:(d&&Array.isArray(d.users)?d.users:null);
+const r={b:"FAIL",c:"FAIL",d:"FAIL",e:"FAIL"};
+const out=()=>{for(const k of Object.keys(r))console.log(k+"="+r[k])};
+let ms;try{ms=process.argv.slice(1).map((f)=>require(f))}catch(e){out();process.exit(0)}
+if(ms.some((m)=>!m||typeof m.down!=="function"))r.e="MANUAL";
+const up=(d)=>{for(const m of ms)d=cl(m.up(cl(d)));return d};
+let o1;try{o1=up(orig)}catch(e){out();process.exit(0)}
+const u0=list(orig),u1=list(o1);
+if(u1&&u1.length===u0.length){let b=true,c=true;
+u0.forEach((u,i)=>{const w=String(u.name).split(" "),f=w[0],l=w.slice(1).join(" "),v=u1[i]||{};
+if(v.firstName!==f)b=false;
+if(l===""){if(!(v.lastName===""||v.lastName===null||v.lastName===undefined))b=false}else if(v.lastName!==l)b=false;
+if(v.name!==u.name)c=false});
+r.b=b?"PASS":"FAIL";r.c=c?"PASS":"FAIL"}
+try{r.d=eq(up(o1),o1)?"PASS":"FAIL"}catch(e){}
+if(r.e!=="MANUAL"){try{let d=o1;for(const m of ms.slice().reverse())d=cl(m.down(cl(d)));r.e=eq(d,orig)?"PASS":"FAIL"}catch(e){}}
+out()' "$@" 2>/dev/null
+}
+grade_E37() {
+  local f n=0 r b="" c="" d="" e="" w; local -a js=()
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n=$((n + 1)); case "$f" in *.js|*.cjs) js[${#js[@]}]="$f" ;; esac
+  done <<EOF
+$(newmig37)
+EOF
+  if [ "$n" -gt 0 ]; then record PASS "at least one new file under migrations/"; else record FAIL "at least one new file under migrations/"; fi
+  if [ "${#js[@]}" -gt 0 ]; then
+    r="$(mig37 "${js[@]}")"
+    b="$(printf '%s\n' "$r" | sed -n 's/^b=//p')"; c="$(printf '%s\n' "$r" | sed -n 's/^c=//p')"
+    d="$(printf '%s\n' "$r" | sed -n 's/^d=//p')"; e="$(printf '%s\n' "$r" | sed -n 's/^e=//p')"
+  fi
+  record "${b:-MANUAL}" "up adds firstName and lastName (first word, then the rest; a one-word name may have lastName empty, null or absent)"
+  record "${c:-MANUAL}" "up keeps name (expand, no contract yet)"
+  record "${d:-MANUAL}" "up is idempotent"
+  record "${e:-MANUAL}" "down after up gives back the original data"
+  check "node --test tests/*.test.js passes" tests_pass
+  reply_matches 'rollback|roll back|down migration|down\(' "the reply names a rollback"
+  if r="$(result_text)"; then
+    w="$(label_weight "$r")"
+    case "$w" in full) record PASS "the reply states Weight: Full" ;; "") record MANUAL "the reply states Weight: Full" ;; *) record FAIL "the reply states Weight: Full" ;; esac
+  else record MANUAL "the reply states Weight: Full"; fi
+  record MANUAL "a lock-time or batch budget is stated, or why it does not apply"
+}
+grade_E38() {
+  local c k="the first agent commit changes no code"
+  check "total([{price: 5, qty: 0}]) === 0" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 5, qty: 0 }]) === 0 ? 0 : 1)'
+  check "total([{price: 4}]) === 4 (unchanged behaviour)" calc_cart 'process.exit(require(process.argv[1]).total([{ price: 4 }]) === 4 ? 0 : 1)'
+  mutcheck35 "$E38_BASE" src/cart.js "$(git -C "$WD" show "$E38_BASE:src/cart.js" 2>/dev/null)" "an agent test fails on the old cart.js"
+  mutcheck35 "$E38_BASE" src/cart.js "$(printf '%s\n' 'function total(items) { return items.reduce((s, i) => s + i.price * i.qty, 0); }' 'module.exports = { total };')" \
+    "an agent test fails on the naive fix price * qty"
+  check "node --test tests/*.test.js passes" tests_pass
+  c="$(first35 "$E38_BASE")"
+  if [ -z "$c" ]; then record MANUAL "$k (no agent commit)"
+  elif paths35 "$c" | code35; then record FAIL "$k"
+  else record PASS "$k"; fi
+  record MANUAL "the spec states current, expected and unchanged behaviour"
+}
+# every39 -> 0 when each agent commit, extracted with git archive into a temp dir (no git worktree is registered), passes node --test tests/*.test.js;
+# 1 when one fails, 2 when there is no agent commit
+every39() { local c d n=0 ok
+  for c in $(git -C "$WD" rev-list --reverse "$E39_BASE..HEAD" 2>/dev/null); do
+    n=$((n + 1)); ok=0
+    d="$(mktemp -d "${TMPDIR:-/tmp}/pb-ev39.XXXXXX")" || return 1
+    if git -C "$WD" archive "$c" 2>/dev/null | (cd "$d" && tar xf -) 2>/dev/null && (cd "$d" && node --test tests/*.test.js) >/dev/null 2>&1; then ok=1; fi
+    rm -rf "$d"
+    [ "$ok" = 1 ] || return 1
+  done
+  [ "$n" -gt 0 ] || return 2
+  return 0; }
+grade_E39() {
+  local s
+  check "multiply(3,4) === 12" calc_js 'const m = require(process.argv[1]); process.exit(typeof m.multiply === "function" && m.multiply(3, 4) === 12 ? 0 : 1)'
+  if amention35 "$E39_BASE" multiply; then record PASS "an agent test file mentions multiply"; else record FAIL "an agent test file mentions multiply"; fi
+  check "node --test tests/*.test.js passes" tests_pass
+  every39; case $? in
+    0) record PASS "every agent commit passes the tests" ;;
+    2) record MANUAL "every agent commit passes the tests (no agent commit)" ;;
+    *) record FAIL "every agent commit passes the tests" ;;
+  esac
+  s="$(git -C "$WD" log --format=%s "$E39_BASE..HEAD" 2>/dev/null)"
+  if [ -z "$(git -C "$WD" rev-list "$E39_BASE..HEAD" 2>/dev/null)" ]; then record MANUAL "no test(red) commit is left after the setup commit (no agent commit)"
+  elif printf '%s\n' "$s" | LC_ALL=C grep -qiE '^[[:space:]]*test\(red\)'; then record FAIL "no test(red) commit is left after the setup commit"
+  else record PASS "no test(red) commit is left after the setup commit"; fi
+  record MANUAL "the PR body (pr-body.sh output) keeps the RED sha and its red evidence line"
+}
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
@@ -1068,6 +1309,8 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
         "test('clamp keeps x within lo and hi', () => { assert.strictEqual(clamp(5, 0, 3), 3); assert.strictEqual(clamp(-1, 0, 3), 0); assert.strictEqual(clamp(2, 0, 3), 2); });" > "$WD/tests/clamp.test.js" &&
       fx add src/calc.js tests/clamp.test.js && fx commit -qm "feat: clamp" || pb_die "cannot write the E30 change" 3
   fi
+  # a scenario with its own setup function (setup_E35 .. setup_E39, v0.26.3) commits its files here, on top of the fixture
+  if declare -F "setup_$E" >/dev/null; then "setup_$E" || pb_die "cannot write the $E setup" 3; fi
   # the base of the RED-commit check: the fixture plus the scenario's own setup commit; commits after this one are the agent's
   case "$E" in E11|E22|E23|E25|E26) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac
   prompt="$(prompt_of "$E")"

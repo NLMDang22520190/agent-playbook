@@ -8,6 +8,9 @@
 #   ## Not checked       copied from 06-final-report.md
 #   ## Review            copied from 06-final-report.md
 #   ## Weight            the report's Weight line
+#   ## Decisions         from decisions.md: the table's ID, Decision, How to undo and Status columns
+#                        (a file without a table is copied minus its title); left out when there is none
+#   ## Unverified        every report line with [UNVERIFIED], headings excepted; left out when there is none
 # It adds no harness or vendor text; the caller appends any footer its harness requires.
 # Exit: 0 ok, 1 01-spec.md or 06-final-report.md missing (names the file), 2 usage.
 set -u
@@ -75,5 +78,43 @@ if [ -n "$weight" ]; then
   echo "## Weight"
   echo
   printf '%s\n' "$weight"
+fi
+decisions=""
+[ -f "$dir/decisions.md" ] && decisions="$(tr -d '\r' < "$dir/decisions.md" | awk '
+  function trim(t) { sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t); return t }
+  function row(l,   c, n, i, o) {
+    n = split(l, c, "|"); o = "|"
+    for (i = 1; i <= nk; i++) o = o " " trim(c[k[i]]) " |"
+    return o
+  }
+  intable && /^\|/ { if ($0 !~ /^\|[ \t:|-]*$/) rows[++nr] = row($0); next }
+  intable { intable = 0 }
+  !table && /^\|/ {
+    n = split($0, c, "|"); nk = 0
+    for (i = 2; i < n; i++) {
+      t = trim(c[i])
+      if (t == "ID" || index(t, "Decision") == 1 || index(t, "How to undo") == 1 || t == "Status") k[++nk] = i
+    }
+    if (nk) { table = 1; intable = 1; head = row($0); next }
+  }
+  !/^# / { free[++nf] = $0 }
+  END {
+    if (table) {
+      if (!nr) exit
+      print head; sep = "|"; for (i = 1; i <= nk; i++) sep = sep "---|"; print sep
+      for (i = 1; i <= nr; i++) print rows[i]
+      exit
+    }
+    a = 1; while (a <= nf && free[a] ~ /^[ \t]*$/) a++
+    b = nf; while (b >= a && free[b] ~ /^[ \t]*$/) b--
+    for (i = a; i <= b; i++) print free[i]
+  }')"
+if [ -n "$decisions" ]; then
+  printf '\n## Decisions\n\n%s\n' "$decisions"
+fi
+unverified="$(tr -d '\r' < "$report" | awk 'index($0, "[UNVERIFIED]") && !/^#/ {
+  if ($0 ~ /^[ \t]*[-*] /) print; else print "- " $0 }')"
+if [ -n "$unverified" ]; then
+  printf '\n## Unverified\n\n%s\n' "$unverified"
 fi
 exit 0

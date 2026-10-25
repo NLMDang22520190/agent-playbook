@@ -2088,4 +2088,14 @@ echo "v0.25.1 lane S: step 4 cap of 8 questions and the humanizer line are consi
 S4_ALL="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_ALL" | grep -qiE 'humanizer[^.;]{0,80}(extra|optional line|not count|on top)|(plus|besides|beyond|on top of)[^.;]{0,60}humanizer'; then t_ok "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap"; else t_bad "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap" "step 4 [$S4_TXT]"; fi
 
+echo "v0.26.1 lane T: outside data needs a real-shaped sample (PLAN-v0.26 proposal 4)"
+OUTSEC='^## Data from outside'
+sec_flat_has "v0.26.1 T AC1 tester.md: parsing or mapping outside data (DB rows, API payloads, user input, config)" "$TESTER" "$OUTSEC" '(pars|map)[^.]{0,120}(outside|external)[^.]{0,200}DB rows[^.]{0,80}API payloads[^.]{0,80}user input[^.]{0,40}config'
+sec_flat_has "v0.26.1 T AC1 tester.md: at least one test uses a real anonymised sample" "$TESTER" "$OUTSEC" 'at least one test[^.]{0,80}real[^.]{0,20}anonymi[sz]ed[^.]{0,20}sample'
+sec_flat_has "v0.26.1 T AC1 tester.md: or a sample whose values differ from their labels or keys" "$TESTER" "$OUTSEC" 'values? (differ|differs) from (their|its) labels?( or |/)keys?'
+sec_flat_has "v0.26.1 T AC2 tester.md: the report names where the sample came from" "$TESTER" "$OUTSEC" 'report[^.]{0,80}names?[^.]{0,40}(where the sample came from|the sample.s source|source of the sample)'
+sec_flat_has "v0.26.1 T AC3 tester.md: a Why line on value equal to label hiding a bug" "$TESTER" "$OUTSEC" '\*\*Why:\*\*[^.]{0,200}(equal|==|same as)[^.]{0,40}label[^.]{0,120}hid'
+flat_has "v0.26.1 T AC4 spec-reviewer.md: a spec for outside data names the source of its sample data" "$SPEC_REV" '(outside|external) data[^.]{0,200}names? the source of its sample data'
+if grep -rqiE 'options_json|printup' "$TDD" 2>/dev/null; then t_bad "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)" "leak found"; else t_ok "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)"; fi
+
 t_summary
