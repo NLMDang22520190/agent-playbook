@@ -45,6 +45,8 @@ git clone -q "$W/origin.git" "$W/client" 2>/dev/null
 C="$W/client"
 ( cd "$C" && git checkout -q v0.1.0 )
 export PLAYBOOK_REGISTRY="$W/registry"
+# a developer's real ~/.agents/playbook.conf (e.g. require_signed_tags=yes) must not change these flows (v0.26.1 lane S)
+PLAYBOOK_HOME="$(mk_tmp)"; export PLAYBOOK_HOME
 INST() { bash "$C/install.sh" "$@" $MODEFLAG; }   # --copy where symlinks are unavailable
 hdr() { grep -o 'BEGIN agent-playbook v[0-9.]*' "$1" | head -n 1; }
 
