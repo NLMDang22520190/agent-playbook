@@ -170,7 +170,7 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 
 ## Behaviour evals
 
-Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 30 scenarios, E1 to E30. `evals/run-evals.sh` runs the 22 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
+Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 31 scenarios, E1 to E31. `evals/run-evals.sh` runs the 23 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
 
 ```bash
 evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-evals-$(date +%s)" --max-cost 5
@@ -216,7 +216,7 @@ agent-playbook/
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
 ├── tests/                  14753 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E30) · RUBRIC.md · make-fixture.sh
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E31) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
 ```
