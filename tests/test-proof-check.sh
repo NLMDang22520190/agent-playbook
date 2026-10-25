@@ -96,4 +96,21 @@ run_in "$N" bash "$CHECK" "$REP/now.md"
 assert_rc "recorded hash, no repo now: exit 1" 1
 assert_contains "recorded hash, no repo now: stale" "$OUT" "stale: now"
 
+echo "repo that gitignores .agents/handoff (the usual setup)"
+G="$(mk_tmp)"; mk_repo "$G"
+( cd "$G" && printf '.agents/handoff/\n' > .gitignore && mkdir -p .agents/handoff &&
+  printf 'kept\n' > .agents/handoff/tracked.md && git add .gitignore && git add -f .agents/handoff/tracked.md &&
+  git commit -q -m ignore-handoff )
+run_in "$G" bash "$CHECK" --tree
+assert_rc "ignored handoff dir: --tree exits 0" 0
+assert_eq "ignored handoff dir: fingerprint is the HEAD tree minus .agents/handoff" \
+  "$( cd "$G" && git rm -q -r --cached .agents/handoff && git write-tree; git reset -q )" "$OUT"
+( cd "$G" && bash "$PROOF" --label ign -- true > "$REP/ign.md" )
+run_in "$G" bash "$CHECK" "$REP/ign.md"
+assert_rc "ignored handoff dir: fresh block exits 0" 0
+assert_contains "ignored handoff dir: block reported fresh" "$OUT" "fresh: ign"
+printf 'edited\n' > "$G/.agents/handoff/tracked.md"
+run_in "$G" bash "$CHECK" "$REP/ign.md"
+assert_rc "editing a tracked file under .agents/handoff keeps the block fresh" 0
+
 t_summary
