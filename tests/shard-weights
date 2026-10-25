@@ -3,13 +3,11 @@
 # test-release-stale-count.sh come from run 39891830540 (v0.24.28) alone; the suites new or changed in v0.24.29
 # (role-gate-size, role-gate-scope, tdd-step-scope, role-gate-batch, content, skill-rules, evals-grade7c, evals-grade8,
 # 8b, 8c, 8d, 9, 9b) come from run 39931483719 (v0.24.29) alone.
+# test-evals-grade10.sh, test-evals-grade10b.sh, test-pre-commit.sh and test-scope-classify.sh (estimates until v0.25.0)
+# come from run 40174690191 (v0.25.0) alone.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-# v0.24.30 estimate (not CI-measured; Linux WSL seconds x 28, L-0009): test-pre-commit.sh 56.
-# v0.24.30 estimate (not CI-measured; local Windows Git Bash time, replace with a CI time, L-0009): test-scope-classify.sh 205
-# (new suite, lane G slice G2; 203 and 205 s in two runs after the cmp shim stopped recursing; one file, not split).
-# v0.25.0 estimates (not CI-measured; one local Windows Git Bash run, L-0009): test-evals-grade10.sh 181, test-evals-grade10b.sh 175.
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 512
 test-role-gate-scope.sh 530
@@ -92,7 +90,7 @@ test-release-stale-count.sh 67
 test-conf.sh 64
 test-cost.sh 60
 test-tdd-step-z.sh 58
-test-pre-commit.sh 56
+test-pre-commit.sh 54
 test-docs-only.sh 54
 test-install.sh 50
 test-tdd-step-j.sh 49
@@ -110,6 +108,6 @@ test-docs-rules.sh 2
 test-bsd-check.sh 1
 test-get-bash32.sh 1
 test-lib-tmp.sh 1
-test-scope-classify.sh 205
-test-evals-grade10.sh 181
-test-evals-grade10b.sh 175
+test-scope-classify.sh 164
+test-evals-grade10.sh 163
+test-evals-grade10b.sh 207
