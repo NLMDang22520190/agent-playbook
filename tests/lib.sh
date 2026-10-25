@@ -81,6 +81,7 @@ PB_TMPBASE="${TMPDIR:-/tmp}"
 case "$PB_TMPBASE" in /*) ;; ./*) PB_TMPBASE="$PWD/${PB_TMPBASE#./}" ;; *) PB_TMPBASE="$PWD/$PB_TMPBASE" ;; esac   # a relative TMPDIR is made absolute
 t_squeeze "$PB_TMPBASE"; PB_TMPBASE="${T_SQ%/}"   # macOS TMPDIR ends with "/": avoid "//" paths that differ from normalised ones
 PB_TMPLIST="$(mktemp "$PB_TMPBASE/pblist.XXXXXX")" || exit 3
+PB_OWNER="${BASHPID:-}"   # the process that made the list; a forked child (f &, ( ... ) &) is not the owner
 mk_tmp() {
   local d
   d="$(mktemp -d "$PB_TMPBASE/pbtest.XXXXXX")" || exit 3
@@ -99,6 +100,9 @@ t_rm_ok() {
 }
 t_cleanup() {
   local d line noglob=""
+  # A child forked while the trap below is set runs it too when a trapped signal reaches it before bash resets its handlers
+  # (bash >= 4: TERM right after `f &` deleted the parent's dirs in 290 of 300 tries). Only the owner cleans. No BASHPID (bash 3.2): no guard.
+  if [ -n "${BASHPID:-}" ] && [ "$BASHPID" != "$PB_OWNER" ]; then return 0; fi
   if [ -f "$PB_TMPLIST" ]; then
     while IFS= read -r line; do if t_rm_ok "$line"; then rm -rf "$line"; fi; done < "$PB_TMPLIST"
   fi
