@@ -16,8 +16,13 @@ Ask only what inspection could not settle. Every question has a default; "defaul
 
 Optional, only when relevant:
 - `confirm_models` (global): `always` / `on-change` / `never`; default `on-change`. When the agent asks before starting roles: always every time, on-change only when it wants a different model or a role resolves to session on a Full task, never not at all. An unknown value counts as on-change.
+- `humanizer` (global): `ask` / `always` / `never`; default `ask`. `ask` offers to run the humanizer skill in full on text others will read; `always` runs it in full without asking (no question); `never` follows only `references/writing.md` of playbook-proof and never asks. An unknown value counts as ask.
 - `learnings_path` (project): default `.agents/LEARNINGS.md`.
 - `learn_max_entries` (project): default `40`.
+
+## Humanizer suggestion
+
+Optional, default no. Reason: more human-sounding reports and conclusions. Check the detected harness: Claude Code looks for `~/.claude/skills/humanizer/SKILL.md`, Codex and OpenCode look for `~/.agents/skills/humanizer/SKILL.md`. If the skill is missing, offer to install it and never install without a yes: `git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer`. If the skill is installed, ask the `humanizer` key question (default ask).
 
 ## Example (single numbered message for harnesses without a question tool)
 

@@ -53,6 +53,8 @@ Verdict: ... (model: ...). Findings resolved: ... Open: ...
 - ...
 - <if a killed mutant sits on a test built on an unconfirmed oracle: say it pins the assumed reading, not that it caught a bug>
 
+<before sending, follow skills/playbook-proof/references/writing.md for tone; required lines stay as they are>
+
 **Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)
 
 ## Learnings proposed
