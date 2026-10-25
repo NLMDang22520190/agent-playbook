@@ -679,7 +679,7 @@ assert_contains "A1c the failure names the reference file, its count and its bud
 C="$(mk_wb_copy)"; wb_table "$C"
 mkdir -p "$C/skills/playbook-tdd/references"; words_of 30 > "$C/skills/playbook-tdd/references/full.md"
 printf 'skills/playbook-tdd/references/full.md 30\n' >> "$C/evals/word-budgets"
-checks "$C" budgets
+run bash "$C/evals/run-checks.sh" --only budgets
 assert_rc "A1c a listed reference file at its budget: exit 0" 0
 assert_contains "A1c the reference file gets its ok budget line" "$OUT" "  ok   skills/playbook-tdd/references/full.md: 30 words (budget 30)"
 

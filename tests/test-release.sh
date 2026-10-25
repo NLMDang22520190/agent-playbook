@@ -647,7 +647,33 @@ skills/b/SKILL.md 500
 skills/playbook-tdd/references/full.md 20
 ' tag-head)"
 run bash "$D/tools/check-release.sh" v1.2.3
-assert_rc "A1b the sum of budgets rose (a new budgeted path), HEAD tagged v1.2.3: exit 1 against v1.2.2" 1
+assert_rc "A1b a new references file with a budget is outside the always-loaded sum: exit 0 against v1.2.2" 0
+assert_not_contains "A1b a new references file does not raise the sum" "$OUT" "sum"
+WB_REF_OLD='# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 20
+'
+D="$(mk_rel_wb "$WB_REF_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 30
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a references budget raised since v1.2.2 (20 -> 30): exit 1" 1
+assert_contains "A1b the references failure names the path" "$OUT" "skills/playbook-tdd/references/full.md"
+assert_contains "A1b the references failure names the old and new values" "$OUT" "20"
+assert_contains "A1b the references failure shows the new value" "$OUT" "30"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/c/SKILL.md 20
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b the always-loaded sum rose (a new skill budget), HEAD tagged v1.2.3: exit 1 against v1.2.2" 1
 if printf '%s' "$OUT" | grep -qi 'sum'; then t_ok "A1b the sum failure says sum"; else t_bad "A1b the sum failure says sum" "$OUT"; fi
 assert_contains "A1b the sum failure shows the old sum" "$OUT" "1930"
 assert_contains "A1b the sum failure shows the new sum" "$OUT" "1950"
