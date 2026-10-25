@@ -212,11 +212,16 @@ fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
 # command in the system init line, or a tool_use path or Bash command (Agent/Task prompts excluded) that names HOME/.agents,
 # .claude/skills/playbook-*, <NAME>/SKILL.md or HOME/.claude/CLAUDE.md. The OK paths (the workdir, the temp PLAYBOOK_HOME, the runner's
 # settings dir) are not playbook files (AC4.2); empty ones are ignored.
+# HOME and the allowed dirs also come on stdin, one per line: Git Bash converts a /tmp/... or /c/... argument to C:/... (argv and environment
+# only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI)
 pbh_iso_check() {
-  node -e '
-const fs = require("fs"), a = process.argv.slice(1), home = a[1], ok = a.slice(2, 5).filter(Boolean), names = a.slice(5);
+  printf '%s\n' "${2:-}" "${3:-}" "${4:-}" "${5:-}" | node -e '
+const fs = require("fs"), a = process.argv.slice(1);
+let raw = ""; try { raw = fs.readFileSync(0, "utf8"); } catch (e) {}
+const sl = raw.split("\n"), homes = [...new Set([a[1], sl[0]].filter(Boolean))];
+const ok = [...new Set(a.slice(2, 5).concat(sl.slice(1, 4)).filter(Boolean))], names = a.slice(5);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + (home ? "|" + esc(home) : "") + ")";
+const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + homes.map(h => "|" + esc(h)).join("") + ")";
 const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
 if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
 const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);

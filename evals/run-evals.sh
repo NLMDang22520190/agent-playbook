@@ -1386,16 +1386,21 @@ grade_E14() {
   else record FAIL "Your cart is empty is in public/ (a file under public/ has the literal)"; fi
   # (b) the literal inside a <button> or <a> element of an html file under public/ (across lines); elsewhere in public/ or src/, in any case,
   # MANUAL (DECISION[D9]: built in JS or another tag may still be right); nowhere FAIL
-  b=fail
+  # the paths go to node as arguments: Git Bash converts /tmp/... to C:/... in argv only, never in stdin (Windows CI)
+  local f hf
+  b=fail; hf=()
   html="$(find "$WD/public" -type f -name '*.html' 2>/dev/null)"
-  if [ -n "$html" ] && printf '%s\n' "$html" | node -e '
+  while IFS= read -r f; do [ -n "$f" ] && hf=("${hf[@]+"${hf[@]}"}" "$f"); done <<EOF
+$html
+EOF
+  if [ -n "$html" ] && node -e '
 const fs = require("fs"); let ok = false;
-for (const f of fs.readFileSync(0, "utf8").split("\n")) {
+for (const f of process.argv.slice(1)) {
   if (!f) continue;
   const t = fs.readFileSync(f, "utf8").replace(/<\/?(button|a)\b/gi, (m) => m.toLowerCase());
   if (/<(button|a)\b[^>]*>(?:(?!<\/(?:button|a)\s*>)[\s\S])*?Continue shopping/.test(t)) ok = true;
 }
-process.exit(ok ? 0 : 1)' 2>/dev/null; then b=pass
+process.exit(ok ? 0 : 1)' "${hf[@]}" 2>/dev/null; then b=pass
   elif grep -rqi 'Continue shopping' "$WD/public" "$WD/src" 2>/dev/null; then b=manual; fi
   case "$b" in
     pass) record PASS "Continue shopping is a button or link (detail: inside a <button> or <a> element under public/)" ;;
