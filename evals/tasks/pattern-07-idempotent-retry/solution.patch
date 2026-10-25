@@ -1,0 +1,23 @@
+diff --git a/src/webhook.js b/src/webhook.js
+index 5f2e2e1..fcb5962 100644
+--- a/src/webhook.js
++++ b/src/webhook.js
+@@ -1,13 +1,16 @@
+ 'use strict';
+ 
+-// The wallet store: balance per account.
++// The wallet store: balance per account, and the ids of the events already applied to it.
+ function createStore() {
+-  return { balance: {} };
++  return { balance: {}, seen: new Set() };
+ }
+ 
+ // Applies one payment event delivered by the provider's webhook: credits event.amount to event.account.
++// The provider retries deliveries, so an event id this store has already applied is ignored.
+ function handlePayment(store, event) {
+   if (!event || !event.id) throw new Error('payment event without id');
++  if (store.seen.has(event.id)) return;
++  store.seen.add(event.id);
+   store.balance[event.account] = (store.balance[event.account] || 0) + event.amount;
+ }
+ 

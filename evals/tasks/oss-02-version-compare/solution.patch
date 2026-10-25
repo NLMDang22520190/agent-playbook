@@ -1,0 +1,21 @@
+diff --git a/src/semver.js b/src/semver.js
+index 662c975..b55c1b9 100644
+--- a/src/semver.js
++++ b/src/semver.js
+@@ -1,9 +1,14 @@
+ 'use strict';
+ 
+ // Compares two MAJOR.MINOR.PATCH versions: -1 when a is older than b, 0 when equal, 1 when a is newer.
++// Each part is compared as a number, so 1.10.0 is newer than 1.9.0.
+ function compare(a, b) {
+-  if (a === b) return 0;
+-  return a < b ? -1 : 1;
++  const pa = a.split('.').map(Number);
++  const pb = b.split('.').map(Number);
++  for (let i = 0; i < 3; i++) {
++    if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
++  }
++  return 0;
+ }
+ 
+ module.exports = { compare };

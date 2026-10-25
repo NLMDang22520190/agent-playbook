@@ -74,6 +74,22 @@
 # Test and .agents/handoff/ paths are not affected; a symlink is counted by its link text, as git does (also when its target is
 # unreadable), so a symlink to a directory is 1 file and 1 line too (v0.24.31; it was 0 lines, git cannot read it); only a nested repo and
 # a symlink that git counts keep their count.
+# size leaves lockfiles out (v0.26.3): a changed production path whose basename is exactly (case-sensitive) package-lock.json,
+# npm-shrinkwrap.json, yarn.lock, pnpm-lock.yaml, bun.lock or bun.lockb (manifest package.json), deno.lock (deno.json, deno.jsonc),
+# Cargo.lock (Cargo.toml), Gemfile.lock (Gemfile), poetry.lock, pdm.lock or uv.lock (pyproject.toml), Pipfile.lock (Pipfile),
+# composer.lock (composer.json), go.sum (go.mod), mix.lock (mix.exs), pubspec.lock (pubspec.yaml), Podfile.lock (Podfile),
+# Package.resolved (Package.swift), gradle.lockfile (build.gradle, build.gradle.kts) or flake.lock (flake.nix) adds 0 files and
+# 0 lines ONLY when the lockfile itself AND one of its manifests in the same directory are regular files (blob, mode 100644 or
+# 100755) in the REF commit, so only an update of an existing lockfile is left out (v0.26.3 review fix: a NEW lockfile-named file,
+# which could hold any code, is counted). A manifest or lockfile added after REF, a manifest in another directory, a directory or a
+# symlink does not count, and the lockfile is counted. A path with a newline, or one git prints quoted, is never exempt (such a
+# path never matches a REF blob). Tracked, staged, untracked and --baseline paths alike.
+# With at least one exempt path, one stdout line comes before the "files:" line:
+# "note: not counted (lockfile beside its manifest at the base): N file(s), L line(s): <first 5 paths, comma separated>"
+# (control characters but TAB shown as ?);
+# with none, the output is as before. An untracked lockfile is absent from the REF tree unless it was removed from the index after
+# REF; one that cannot be read keeps the v0.24.29 error unless it is exempt. Test paths are untouched, and check is unchanged (a lockfile is still production for the tester).
+# Residual risk: a Lite agent whose base is its own RED commit could add a manifest in that RED commit to exempt a lockfile.
 #
 # Task scope (v0.24.29, check only; several tasks in one checkout): check ROLE --base REF --scope FILE judges only what the task owns.
 # --scope needs --base (the sha recorded before the role; a base that moves with HEAD hides the role's own commits), else exit 2.
@@ -924,6 +940,47 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [
       done
     fi
 
+    # lock_exempt PATH: 0 when the basename of PATH is exactly a lockfile of the table in the header, PATH itself is a regular file
+    # (100644 or 100755 blob) at $base (an update, not a new file), and one of its manifests is a regular file in the same directory
+    # at $base (v0.26.3); a newline or git-quoted path never is
+    lock_exempt() {
+      local p="$1" b dir mans m mp ent
+      # defence only: callers already route newline names elsewhere, and a git-quoted path never matches a $base blob below
+      case "$p" in *$'\n'* | \"*) return 1 ;; esac
+      b="${p##*/}"
+      case "$p" in */*) dir="${p%/*}/" ;; *) dir="" ;; esac
+      case "$b" in
+        package-lock.json | npm-shrinkwrap.json | yarn.lock | pnpm-lock.yaml | bun.lock | bun.lockb) mans="package.json" ;;
+        deno.lock) mans="deno.json deno.jsonc" ;;
+        Cargo.lock) mans="Cargo.toml" ;;
+        Gemfile.lock) mans="Gemfile" ;;
+        poetry.lock | pdm.lock | uv.lock) mans="pyproject.toml" ;;
+        Pipfile.lock) mans="Pipfile" ;;
+        composer.lock) mans="composer.json" ;;
+        go.sum) mans="go.mod" ;;
+        mix.lock) mans="mix.exs" ;;
+        pubspec.lock) mans="pubspec.yaml" ;;
+        Podfile.lock) mans="Podfile" ;;
+        Package.resolved) mans="Package.swift" ;;
+        gradle.lockfile) mans="build.gradle build.gradle.kts" ;;
+        flake.lock) mans="flake.nix" ;;
+        *) return 1 ;;
+      esac
+      ent="$(git --literal-pathspecs ls-tree -z "$base" -- "$p" 2>/dev/null | tr '\000' '\n')"
+      case "$ent" in
+        "100644 blob "*$'\t'"$p" | "100755 blob "*$'\t'"$p") ;;
+        *) return 1 ;;   # a new lockfile-named file is counted like any code
+      esac
+      for m in $mans; do
+        mp="$dir$m"
+        ent="$(git --literal-pathspecs ls-tree -z "$base" -- "$mp" 2>/dev/null | tr '\000' '\n')"
+        case "$ent" in
+          "100644 blob "*$'\t'"$mp" | "100755 blob "*$'\t'"$mp") return 0 ;;
+        esac
+      done
+      return 1
+    }
+
     # one "added<TAB>deleted<TAB>path" line per file; untracked files diffed against /dev/null
     # untracked files: the names come from ONE `ls-files -z` (v0.24.29), so every name is the RAW path (classified, counted and
     # matched against a --baseline manifest as `check` does); no `read` with a tab IFS touches a name field (it would strip a
@@ -967,7 +1024,8 @@ usage: role-gate.sh check <role> [--base REF] [--baseline FILE] [--scope FILE] [
             *$'\n'*) ;;
             .agents/handoff/*) return 0 ;;
             *) case "$BL_UNCH" in *"$NL$u$NL"*) return 0 ;; esac
-               [ "$(classify "$u")" != test ] || return 0 ;;
+               [ "$(classify "$u")" != test ] || return 0
+               if lock_exempt "$u"; then printf '0\t0\t%s\n' "$u"; return 0; fi ;;
           esac
           disp="$(printf '%s' "$u" | LC_ALL=C tr '\000-\010\012-\037\177' '?')"
           printf 'E\t%s\t%s\n' "$ix" "$disp"
@@ -1085,10 +1143,21 @@ EOF
     exec 3<<EOF
 $KINDS
 EOF
+    exec 4<<EOF
+$plist
+EOF
+    lk_n=0; lk_l=0; lk_p=""
     while IFS=' ' read -r added deleted; do
       [ -n "$added" ] || continue
       IFS= read -r kind <&3
+      IFS= read -r pf <&4
       [ "$kind" != "test" ] || continue   # code and infra count
+      if lock_exempt "$pf"; then   # a lockfile beside its manifest at the base (v0.26.3)
+        lk_n=$((lk_n + 1))
+        if [ "$added" = "-" ]; then lk_l=$((lk_l + 1)); else lk_l=$((lk_l + added + deleted)); fi
+        [ "$lk_n" -gt 5 ] || lk_p+="${lk_p:+, }$pf"
+        continue
+      fi
       files=$((files + 1))
       if [ "$added" = "-" ]; then
         lines=$((lines + 1))
@@ -1098,7 +1167,7 @@ EOF
     done <<EOF
 $metas
 EOF
-    exec 3<&-
+    exec 3<&- 4<&-
     if [ -n "$errs" ]; then
       printf '%s' "$errs" | LC_ALL=C sort -n -t $'\t' -k1,1 | while IFS= read -r el; do
         printf 'error: cannot count the lines of untracked file %s (unreadable, or gone since the listing); fix it and run size again\n' "${el#*$'\t'}"
@@ -1106,6 +1175,10 @@ EOF
       exit 3
     fi
     files=$((files + nlfiles)); lines=$((lines + nllines))
+    if [ "$lk_n" -gt 0 ]; then
+      printf 'note: not counted (lockfile beside its manifest at the base): %d file(s), %d line(s): %s\n' "$lk_n" "$lk_l" \
+        "$(printf '%s' "$lk_p" | LC_ALL=C tr '\000-\010\012-\037\177' '?')"
+    fi
     printf 'files: %d/%d lines: %d/%d (base=%s)\n' "$files" "$max_files" "$lines" "$max_lines" "$base"
     if [ "$files" -gt "$max_files" ] || [ "$lines" -gt "$max_lines" ]; then
       printf 'over the Lite size limit: escalate to Full\n'

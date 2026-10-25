@@ -1,0 +1,14 @@
+diff --git a/src/pricing.js b/src/pricing.js
+index f5e0dea..99297a9 100644
+--- a/src/pricing.js
++++ b/src/pricing.js
+@@ -8,7 +8,8 @@ function priceOrder(product, selections) {
+   for (const option of product.options || []) {
+     const picked = selections[option.name];
+     if (picked === undefined) continue;
+-    const choice = option.choices.find((c) => c.label === picked);
++    // the form sends the choice's value; the label is only what the customer sees
++    const choice = option.choices.find((c) => c.value === picked);
+     if (!choice) return { manual: true, total: null };
+     total += choice.surcharge;
+   }
