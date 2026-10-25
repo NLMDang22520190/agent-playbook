@@ -6,6 +6,7 @@
 # test-evals-grade10.sh, test-evals-grade10b.sh, test-pre-commit.sh and test-scope-classify.sh (estimates until v0.25.0)
 # come from run 40174690191 (v0.25.0) alone. v0.25.1 estimates until a CI run measures them (L-0009): test-clean-pbtest.sh 2,
 # v0.26 estimates until a CI run measures them (L-0009): test-outcome-selfcheck.sh 90, test-outcome-corpus.sh 100, test-report-usage.sh 3, test-rubric-table.sh 5, test-evals-grade12.sh 160, test-evals-grade12c.sh 150, test-evals-grade12b.sh 220, test-evals-grade13.sh 90, test-evals-grade13b.sh 140, test-evals-lib.sh 40, test-evals-arms.sh 240, test-evals-arms-b.sh 200, test-evals-isolation.sh 90, test-evals-json.sh 80, test-eval-delta.sh 80.
+# v0.27 estimates until a CI run measures them (L-0009): test-outcome-runner.sh 120, test-outcome-isolation.sh 60, test-outcome-report.sh 150.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -116,6 +117,9 @@ test-clean-pbtest.sh 2
 test-evals-grade11.sh 150
 test-outcome-selfcheck.sh 90
 test-outcome-corpus.sh 100
+test-outcome-runner.sh 120
+test-outcome-isolation.sh 60
+test-outcome-report.sh 150
 test-report-usage.sh 3
 test-rubric-table.sh 5
 test-evals-grade12.sh 160
