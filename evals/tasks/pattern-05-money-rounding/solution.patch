@@ -1,0 +1,25 @@
+diff --git a/src/invoice.py b/src/invoice.py
+index d30ebab..fb0c94b 100644
+--- a/src/invoice.py
++++ b/src/invoice.py
+@@ -1,11 +1,16 @@
+ """Invoice amounts. Inputs are decimal strings; results are strings with 2 decimals."""
++from decimal import ROUND_HALF_UP, Decimal
++
++CENT = Decimal('0.01')
+ 
+ 
+ def line_total(qty, unit_price):
+-    """Amount of one invoice line: quantity times unit price, rounded to 2 decimals."""
+-    return '%.2f' % round(float(qty) * float(unit_price), 2)
++    """Amount of one invoice line: quantity times unit price, rounded half up to 2 decimals."""
++    amount = Decimal(qty) * Decimal(unit_price)
++    return str(amount.quantize(CENT, rounding=ROUND_HALF_UP))
+ 
+ 
+ def invoice_total(lines):
+-    """Sum of the line totals of [(qty, unit_price), ...]."""
+-    return '%.2f' % sum(float(line_total(qty, price)) for qty, price in lines)
++    """Sum of the rounded line totals of [(qty, unit_price), ...]."""
++    total = sum((Decimal(line_total(qty, price)) for qty, price in lines), Decimal('0'))
++    return str(total.quantize(CENT))

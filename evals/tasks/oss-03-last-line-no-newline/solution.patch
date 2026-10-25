@@ -1,0 +1,14 @@
+diff --git a/sum.sh b/sum.sh
+index dfd8eb6..1f7eaa2 100644
+--- a/sum.sh
++++ b/sum.sh
+@@ -2,7 +2,8 @@
+ # Prints the sum of the integers in FILE (one per line).
+ file="${1:?usage: sum.sh FILE}"
+ total=0
+-while read -r n; do
++# read fails on a last line without a final newline but still fills n: count that line too
++while read -r n || [ -n "$n" ]; do
+   total=$((total + n))
+ done < "$file"
+ echo "$total"

@@ -1,0 +1,18 @@
+diff --git a/src/orders.py b/src/orders.py
+index ebe773a..6b936e7 100644
+--- a/src/orders.py
++++ b/src/orders.py
+@@ -1,8 +1,11 @@
+ """Order status changes. See docs/orders.md."""
+ 
++# statuses an order can be cancelled from: only before it is shipped
++CANCELLABLE = ('new', 'paid', 'printing')
++
+ 
+ def cancel(order):
+     """Cancels the order (a dict with a 'status' key). Raises ValueError when it cannot be cancelled."""
+-    if order['status'] == 'cancelled':
+-        raise ValueError('order %s is already cancelled' % order.get('id'))
++    if order['status'] not in CANCELLABLE:
++        raise ValueError('order %s cannot be cancelled from status %s' % (order.get('id'), order['status']))
+     order['status'] = 'cancelled'

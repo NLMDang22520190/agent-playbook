@@ -1,0 +1,20 @@
+diff --git a/src/report.js b/src/report.js
+index ee7cf06..f81cabf 100644
+--- a/src/report.js
++++ b/src/report.js
+@@ -1,10 +1,13 @@
+ 'use strict';
+ 
+-// Total order amount per day: { 'YYYY-MM-DD': amount }. See docs/report.md.
++// The shop day is the calendar day at UTC+7, no daylight saving time (docs/report.md).
++const SHOP_OFFSET_MS = 7 * 60 * 60 * 1000;
++
++// Total order amount per shop day: { 'YYYY-MM-DD': amount }. See docs/report.md.
+ function dailyTotals(orders) {
+   const totals = {};
+   for (const order of orders) {
+-    const day = order.at.slice(0, 10);
++    const day = new Date(Date.parse(order.at) + SHOP_OFFSET_MS).toISOString().slice(0, 10);
+     totals[day] = (totals[day] || 0) + order.amount;
+   }
+   return totals;
