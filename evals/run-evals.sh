@@ -274,10 +274,10 @@ grade_E1() {
   check "subtract(5,3) === 2" calc_js 'process.exit(require(process.argv[1]).subtract(5, 3) === 2 ? 0 : 1)'
   check "a file under tests/ mentions subtract" tests_mention subtract
   check "node --test tests/*.test.js passes" tests_pass
-  local r w   # the final reply names the weight (Full or Lite, as a word; a stated Quick fails); plain text needs a human
+  local r w   # the final reply carries the weight label (v0.24.31: `Weight: Lite` or Full, also in bold; prose and a stated Quick fail); plain text needs a human
   if r="$(result_text)"; then
-    w="$(stated_weight "$r")"
-    if [ "$w" = full ] || [ "$w" = lite ] || { [ -z "$w" ] && printf '%s' "$r" | grep -qwE 'Full|Lite'; }; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
+    w="$(label_weight "$r")"
+    if [ "$w" = full ] || [ "$w" = lite ]; then record PASS "reply states the weight"; else record FAIL "reply states the weight"; fi
   else record MANUAL "reply states the weight"; fi
   record MANUAL "no unnecessary questions"
 }
@@ -360,9 +360,14 @@ reply_matches() { local r
   if r="$(result_text)"; then
     if printf '%s' "$r" | grep -qiE "$1"; then record PASS "$2"; else record FAIL "$2"; fi
   else record MANUAL "$2"; fi; }
+# label_weight TEXT -> the weight (full, lite or quick) of the FIRST label (`Weight: X`, `**Weight:** X`, `Weight: **X**`) in TEXT, nothing without one. Same regex as the
+# label branch of stated_weight, without its prose branch: used by E1 (v0.24.31), which needs the label form.
+label_weight() {
+  printf '%s\n' "$1" | grep -ioE 'weight:[ *_]*(full|lite|quick)' | head -n 1 | grep -ioE 'full|lite|quick' | head -n 1 | tr 'A-Z' 'a-z'
+}
 # stated_weight TEXT -> prints the weight (full, lite or quick, lower case) of the FIRST weight statement in TEXT, nothing when there is none.
 # A weight statement is `Weight: X`, `Weight: **X**`, `**Weight:** X`, `at X weight`, `at **X** weight` or `X weight` (X in any case).
-# The graders of E1, E15, E22, E23, E25 and E26 (through reply_weight_lite) all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
+# The graders of E15, E22, E23, E25 and E26 (through reply_weight_lite) all read the weight through this helper (a stated quick fails them); a reply with no statement falls back to each grader's old rule.
 stated_weight() {
   local t="$1" w m pre
   # a label (`Weight: X`, `**Weight:** X`, `Weight: **X**`) wins over any prose statement
@@ -729,7 +734,10 @@ files29() { local f; for f in .agents/handoff/decisions.md .agents/handoff/01-sp
 # qual29 -> stdin lines that carry a direction signal (direction or any OP29 form); factor or 0.045 alone does not qualify (v0.24.27)
 qual29() { LC_ALL=C grep -iE "direction|$OP29"; }
 # unneg29 -> stdin without the lines where not, no longer or isn't comes right before [UNVERIFIED]: a negated label is no label (v0.24.27)
-unneg29() { LC_ALL=C grep -ivE "(^|[^a-z])(not|no longer|isn't)[ ]+\[UNVERIFIED\]"; }
+# v0.24.31: a label may carry a reason, [UNVERIFIED: D1] or [UNVERIFIED, still open]: LABEL29 matches the three forms (the bracket expression [],:] has the
+# ] first, which is portable to BWK awk, BSD grep and GNU grep; [UNVERIFIEDX] and [UNVERIFIED ok] are not labels)
+LABEL29='\[UNVERIFIED[],:]'
+unneg29() { LC_ALL=C grep -ivE "(^|[^a-z])(not|no longer|isn't)[ ]+$LABEL29"; }
 # v0.24.29: check (e), "the tests do not present the assumption as the oracle" (key: present the assumption). Graded in the multiply and divide buckets only.
 # A qualifying test file (basename *.test.* or *.spec.*, new or changed since E29_BASE, read from the work tree; outside .git (dir or file), .worktrees,
 # node_modules and .agents; a line with toCrates( and assert or expect) must carry [UNVERIFIED] (any case) or the oracle id D<n>. The oracle id (D11) is the first
@@ -823,8 +831,8 @@ grade_E29() {
       if [ "$b" = 1 ]; then record PASS "the assumed direction is logged in decisions.md or 01-spec.md"
       else record FAIL "the assumed direction is logged in decisions.md or 01-spec.md"; fi
       all="$fl"; [ "$haveres" = 1 ] && all="$(printf '%s\n%s\n' "$r" "$fl" | norm29)"
-      if printf '%s\n' "$all" | qual29 | unneg29 | grep -qF '[UNVERIFIED]'; then c=pass
-      elif printf '%s\n' "$all" | grep -qF '[UNVERIFIED]'; then c=manual
+      if printf '%s\n' "$all" | qual29 | unneg29 | grep -qE "$LABEL29"; then c=pass
+      elif printf '%s\n' "$all" | grep -qE "$LABEL29"; then c=manual
       elif [ "$haveres" = 1 ]; then c=fail
       else c=manual; fi
       case "$c" in
