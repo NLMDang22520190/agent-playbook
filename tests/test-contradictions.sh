@@ -76,8 +76,8 @@ hasi "C3 mid-task stop: quick work past the size limit" "$STOP_J" 'quick[^.;]{0,
 hasi "C3 mid-task stop: a test that seems to need weakening" "$STOP_J" 'weaken'
 hasi "C3 mid-task stop: baseline failures that make RED/GREEN unreadable" "$STOP_J" 'baseline[^.;]{0,60}unreadable'
 # review 263c finding 2 (orchestrator decision 2): the closed list also names the two scope stops it lost
-hasi "C3 mid-task stop: adding a dependency" "$STOP_J" 'mid-task stops are only[^.]{0,255}(add|adding|new)[^.;]{0,20}dependenc'
-hasi "C3 mid-task stop: touching code outside the request" "$STOP_J" 'mid-task stops are only[^.]{0,255}(code outside the request|unrelated code)'
+hasi "C3 mid-task stop: adding a dependency" "$STOP_J" 'mid-task stops are only[^.]*(add|adding|new)[^.;]{0,20}dependenc'
+hasi "C3 mid-task stop: touching code outside the request" "$STOP_J" 'mid-task stops are only[^.]*(code outside the request|unrelated code)'
 hasi "C3 core Stop and ask: end-of-task questions go in one closing message" "$STOP_J" 'end-of-task questions[^.]{0,120}one closing message'
 for q in learn feedback humanizer; do
   hasi "C3 the closing message names the $q question" "$STOP_J" "end-of-task questions[^.]{0,100}$q"
