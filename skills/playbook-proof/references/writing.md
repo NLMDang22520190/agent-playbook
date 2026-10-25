@@ -32,6 +32,6 @@ Editing may cut or reorder, but never add a fact, name, number or promise that i
 
 ## Humanizer
 
-If the task has no other question, ask about humanizer only when the main deliverable is text others will read. Otherwise use these rules without asking, and never ask in a headless run. If a humanizer skill is installed, you may offer to run it in full.
+If the task has no other question, ask about humanizer only when the main deliverable is text others will read. Otherwise use these rules without asking, and never ask in a headless run. If a humanizer skill is installed, you may offer to run it in full. The `humanizer` config key sets this: `ask` (default) offers as above; `always` runs humanizer in full without asking; `never` uses only these rules and never asks; an unknown value counts as `ask`.
 
 Credit: these rules are condensed from humanizer (https://github.com/blader/humanizer, MIT license).
