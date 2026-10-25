@@ -13,7 +13,9 @@ You triage (monthly)
                  └─ CI on the tag re-runs the tests; the release job creates the GitHub Release
 Each machine
   └─ install.sh update --check  (cron / Task Scheduler / by hand)
-       └─ install.sh update --yes → check out the tag → re-install every target recorded in .install-targets → doctor
+       └─ install.sh update --yes → git verify-tag → check out the tag → re-install every target recorded in .install-targets → doctor
+            (signature does not verify: stop; unsigned or cannot be checked: WARN, fatal with require_signed_tags=yes
+             in the global conf unless --allow-unsigned)
             (roll back: install.sh update --to vX.Y.Z --yes)
 Quarterly: re-check docs/harness-notes.md against the official docs, run E1–E18 in full on each harness
 ```
