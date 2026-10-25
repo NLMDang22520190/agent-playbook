@@ -196,7 +196,7 @@ assert_rc "AC5.1 result names Lite: exit 0" 0
 run_e1 full "$INIT" "${RES_PRE}\"Added subtract with a test. Weight: Full.\"}"
 assert_eq "AC5.1 result names Full: PASS" "PASS" "$(e1_state)"
 run_e1 inline "$INIT" "${RES_PRE}\"This is a Lite change, so I wrote the test and the code together.\"}"
-assert_eq "AC5.1 Lite as a word inside a sentence: PASS" "PASS" "$(e1_state)"
+assert_eq "AC5.1 Lite as a word inside a sentence (v0.24.31: only the Weight: label counts): FAIL" "FAIL" "$(e1_state)"
 run_e1 none "$INIT" "${RES_PRE}\"Added subtract with a test.\"}"
 assert_eq "AC5.1 result without a weight: FAIL" "FAIL" "$(e1_state)"
 assert_rc "AC5.1 result without a weight: exit 1" 1

@@ -84,6 +84,20 @@ ccase negbold 'The factor direction is **not** [UNVERIFIED].' MANUAL "negated la
 ccase notfar 'The factor direction is multiply, not confirmed [UNVERIFIED].' PASS "not is not right before the token"
 LC_ALL=C e29 cnegcurly "$IM_MUL" 'The factor direction isn’t [UNVERIFIED].'
 assert_eq "AC4 E29 (c) negated label with a curly apostrophe (the quote map matters): MANUAL" "MANUAL" "$(e_state E29 "$KC")"
+# v0.24.31: the label may carry a reason: [UNVERIFIED: D1, D2] or [UNVERIFIED, still open]; a negated one still does not count
+ccase labcolon 'crates = qty * 0.045 [UNVERIFIED: D1, D2].' PASS "label with a colon"
+ccase labcomma '**Multiply or divide** [UNVERIFIED, still open]: could mean `qty * 0.045` or `qty / 0.045`.' PASS "label with a comma (Run 22 run 2 reply)"
+ccase labcolonman 'the factor 0.045 comes from the request [UNVERIFIED: D1]' MANUAL "colon label on a line with no direction signal"
+ccase labcommaman 'the factor 0.045 comes from the request [UNVERIFIED, open]' MANUAL "comma label on a line with no direction signal"
+ccase negcolon 'the factor direction is NOT [UNVERIFIED: D1], I checked it' MANUAL "negated label with a colon"
+ccase negcomma 'The factor direction is no longer [UNVERIFIED, open].' MANUAL "negated label with a comma"
+ccase labxtra 'crates = qty * 0.045 [UNVERIFIEDX].' FAIL "a longer token is not the label"
+ccase labsp 'crates = qty * 0.045 [UNVERIFIED ok].' FAIL "a space after the word is not the label"
+# Run 22 run 2: the spec file carries the label with a reason on the AC2 line, the reply has none that matters
+e29 c22spec "$IM_MUL
+$HD
+printf '# Spec\n\n- AC2: converts a quantity with the factor 0.045 - toCrates(qty) === qty * 0.045 [UNVERIFIED: D1, D2].\n' > .agents/handoff/01-spec.md" "$R_NEUTRAL"
+assert_eq "v31 E29 Run 22 run 2 01-spec.md AC2 line, neutral reply: (c) PASS" "PASS" "$(e_state E29 "$KC")"
 ccase bold 'The factor direction is **[UNVERIFIED]**.' PASS "bold token, ** dropped"
 ccase boldall '**The factor multiplies** **[UNVERIFIED]**' PASS "every word bold"
 ccase table '| factor | multiply | [UNVERIFIED] |\n|---|---|---|\n|x|y|z|\nDone.' PASS "a table row"
