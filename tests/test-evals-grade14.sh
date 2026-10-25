@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Tests for the v0.26.3 graders grade_E35 (incident), grade_E36 (upgrade) and grade_E37 (migration) of evals/run-evals.sh, their setup
 # commits and their pins (spec .agents/handoff/01-spec.md AC17-AC19, AC22; decisions D10, D14). Part 2 (E38 debug, E39 squash) is
-# test-evals-grade13b.sh. Never calls a real harness: every run uses --cmd with a fake adapter (evals-fixture.sh, evals-grade13-fixture.sh).
+# test-evals-grade14b.sh. Never calls a real harness: every run uses --cmd with a fake adapter (evals-fixture.sh, evals-grade14-fixture.sh).
 # Fixture data (users, prices, versions) is made up; the names and values differ from their keys.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"
 . "$(dirname "$0")/evals-grade8-fixture.sh"
-. "$(dirname "$0")/evals-grade13-fixture.sh"
+. "$(dirname "$0")/evals-grade14-fixture.sh"
 
 # ======================= E35 incident =======================
 echo "AC17 E35 setup: a committed 'perf: inline divide' makes divide multiply; its parent divides"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared setup of tests/test-evals-grade13.sh (E35 incident, E36 upgrade, E37 migration) and tests/test-evals-grade13b.sh (E38 debug,
+# Shared setup of tests/test-evals-grade14.sh (E35 incident, E36 upgrade, E37 migration) and tests/test-evals-grade14b.sh (E38 debug,
 # E39 squash), v0.26.3 lane W (spec .agents/handoff/01-spec.md AC17-AC22, decisions D10, D14, D15). Source it after lib.sh,
 # evals-fixture.sh, evals-grade6-fixture.sh and evals-grade8-fixture.sh. It is not a suite: run-all.sh only starts tests/test-*.sh.
 # Never calls a real harness: every run uses --cmd with a fake adapter that plays the agent and prints a stream-json transcript.

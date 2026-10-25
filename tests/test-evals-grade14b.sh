@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Tests for the v0.26.3 graders grade_E38 (debug) and grade_E39 (squash) of evals/run-evals.sh, their setup commits and their pins
 # (spec .agents/handoff/01-spec.md AC20, AC21, AC22; decisions D10, D14, D15: E39 grades the squash only, no PR-template check).
-# Part 1 (E35-E37) is test-evals-grade13.sh. Never calls a real harness: every run uses --cmd with a fake adapter.
+# Part 1 (E35-E37) is test-evals-grade14.sh. Never calls a real harness: every run uses --cmd with a fake adapter.
 # Fixture data is made up.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"
 . "$(dirname "$0")/evals-grade8-fixture.sh"
-. "$(dirname "$0")/evals-grade13-fixture.sh"
+. "$(dirname "$0")/evals-grade14-fixture.sh"
 
 # ======================= E38 debug =======================
 echo "AC20 E38 setup: src/cart.js charges qty 0 once (i.qty || 1), tests/cart.test.js pins a missing qty, docs/bug.md"
