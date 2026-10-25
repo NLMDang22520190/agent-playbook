@@ -107,11 +107,11 @@ if [ "$FR2" -ge 1 ]; then t_ok "AC5 results show failed scenarios as passed < to
 
 echo "AC5 usage errors exit 2"
 W7="$(mk_tmp)"
-rm -f "$REC/E2.args"
-run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E2 --workroot "$W7" --out "$W7/results.md"
-assert_rc "AC5 unknown scenario E2 exits 2" 2
-assert_contains "AC5 E2 reported as not auto-gradable" "$OUT" "not auto-gradable"
-assert_no_path "AC5 adapter not called for E2" "$REC/E2.args"
+rm -f "$REC/E7.args"
+run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E7 --workroot "$W7" --out "$W7/results.md"
+assert_rc "AC5 unknown scenario E7 exits 2" 2
+assert_contains "AC5 E7 reported as not auto-gradable" "$OUT" "not auto-gradable"
+assert_no_path "AC5 adapter not called for E7" "$REC/E7.args"
 run bash "$RUNNER" --cmd "bash $A/good.sh" --bogus --workroot "$W7" --out "$W7/results.md"
 assert_rc "AC5 unknown option exits 2" 2
 run bash "$RUNNER" --scenarios E1 --workroot "$W7" --out "$W7/results.md"
@@ -471,9 +471,9 @@ assert_not_contains "AC3.x E16/E19 are not rejected as not auto-gradable" "$OUT"
 assert_contains "AC3.x the idle run graded E16" "$OUT" "E16 "
 assert_contains "AC3.x the idle run graded E19" "$OUT" "E19 "
 W="$(mk_tmp)"
-run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E6 --workroot "$W" --out "$W/results.md"
-assert_rc "AC3.x E6 (not auto-gradable) is still refused (exit 2)" 2
-assert_contains "AC3.x the refusal lists the full auto-gradable list" "$OUT" "(auto-gradable: E1,E3,E4,E5,E8,E10,E11,E15,E16,E17,E19,E20,E21,E22,E23,E24,E25,E26,E27,E28,E29,E30,E31)"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E9 --workroot "$W" --out "$W/results.md"
+assert_rc "AC3.x E9 (not auto-gradable) is still refused (exit 2)" 2
+assert_contains "AC3.x the refusal lists the full auto-gradable list (v0.26.0 lane N S2-S4: E2, E6, E13 added)" "$OUT" "(auto-gradable: E1,E2,E3,E4,E5,E6,E8,E10,E11,E13,E15,E16,E17,E19,E20,E21,E22,E23,E24,E25,E26,E27,E28,E29,E30,E31)"
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
 assert_eq "AC3.x the default scenarios stay E1,E3,E8,E15 (no E16 line)" "0" "$(printf '%s\n' "$OUT" | grep -c '^E16 ')"
@@ -489,7 +489,7 @@ if [ "$(printf '%s\n' "$OUT" | grep -c '^E20 ')" -ge 3 ]; then t_ok "AC5.1 the i
 assert_eq "AC5.1 the idle run: the typo check FAILs" "FAIL" "$(printf '%s\n' "$OUT" | grep '^E20 ' | grep -F 'typo' | awk '{print $2}' | head -n 1)"
 assert_eq "AC5.1 the idle run leaves the project conf alone: the gate config check PASSes" "PASS" "$(printf '%s\n' "$OUT" | grep '^E20 ' | grep -F 'gate config' | awk '{print $2}' | head -n 1)"
 W="$(mk_tmp)"
-run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E6 --workroot "$W" --out "$W/results.md"
+run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E9 --workroot "$W" --out "$W/results.md"
 assert_contains "AC5.1 the refusal lists E20 among the auto-gradable scenarios" "$OUT" "E20"
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --workroot "$W" --out "$W/results.md"
