@@ -170,4 +170,28 @@ if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGE
 if grep -Eq '(incident|upgrade|migration|debug|team)\.md' "$AG"; then t_bad "AC16 AGENTS.global.md names none of the five reference files" "found one"
 else t_ok "AC16 AGENTS.global.md names none of the five reference files"; fi
 
+
+# ======================= review fixes (263w-review.md findings 2, 3, 9) =======================
+# pinl ID FILE LABEL ERE... -> one line of FILE matches every ERE (case-insensitive)
+pinl() { local id="$1" f="$2" lab="$3" l k ok; shift 3
+  while IFS= read -r l; do
+    ok=1; for k in "$@"; do printf '%s\n' "$l" | grep -Eiq -e "$k" || { ok=0; break; }; done
+    [ "$ok" = 1 ] && { t_ok "$id $(basename "$f") $lab"; return; }
+  done < "$f"
+  t_bad "$id $(basename "$f") $lab" "no single line matching all of [$*] in $f"; }
+
+echo "W2 migration: in a headless (non-interactive) run the contract/drop step never runs; it is left pending and reported"
+pinl W2 "$M" "one line: headless or non-interactive, never the contract or drop" '(headless|non-interactive)' '(never|do not|don.t)' '(contract|drop)'
+pinl W2 "$M" "one line: headless or non-interactive, the step is left pending" '(headless|non-interactive)' 'pending'
+pinl W2 "$M" "one line: headless or non-interactive, the pending step is reported" '(headless|non-interactive)' 'report'
+
+echo "W3 migration: expand/contract writes both shapes (dual-write) before the reads switch"
+pin W3 "$M" "dual-write named" 'dual.?writ|write[s]? (to )?both'
+pinl W3 "$M" "one line: expand, then dual-write, then the read switch, then contract" 'expand.*(dual.?writ|write[s]? (to )?both).*switch.*contract'
+
+echo "W9 incident: a revert is not called safe when the bad deploy carries a migration"
+pinl W9 "$I" "one line: revert with a schema or data migration caveat" 'revert' 'migration'
+pinf W9 "$I" "points to migration.md" 'migration.md'
+pinl W9 "$I" "one line: with a migration, use the flag or a forward fix" 'migration' '(flag|forward fix)'
+
 t_summary
