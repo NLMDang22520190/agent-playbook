@@ -401,3 +401,19 @@ Manual items, graded by the orchestrator:
 
 **Offline regrade with the v0.24.31 graders** (the saved Run 22 work trees and logs replayed through `run-evals.sh --cmd`, no agent run): E29 run 1 6/6, run 2 6/6 (check (c) now PASS on `[UNVERIFIED: D1, D2]`); E1 run 1 6/6, run 2 5/6 ("reply states the weight" now FAIL on the paraphrase). The totals include the "nothing written outside the workdir" check.
 
+## Run 23: v0.25.0 installed - E30 x2, E1, E29 (2026-10-25, approved by the user)
+
+Ran from Windows Git Bash with the Claude Code harness and `--clean-env` (`--max-cost 5` per run), against a `git archive` of tag v0.25.0. Aim: the new E30 scenario (headless PR description) and regressions on E1 (Weight label) and E29 ([UNVERIFIED] labels) under the new writing guide.
+
+| Scenario | Run | Auto passed / total | Manual | Cost (USD) |
+|---|---|---|---|---|
+| E30 | 1 | 6/6 | 1 (pass) | 0.28 |
+| E30 | 2 | 6/6 | 1 (pass) | 0.31 |
+| E1 | 1 | 6/6 | 1 (pass) | 0.49 |
+| E29 | 1 | 6/6 | 1 (pass) | 0.43 |
+
+Total 1.51 USD. E1 and E29 cost about the same as Run 22 (0.54/0.48 and 0.48/0.43), so the always-on writing sentence did not raise their cost.
+
+- E30 (both runs): no chatbot wrapper, no dash, names clamp, the test claim names `npm test` and the counts, no question. Both loaded playbook-proof and its writing rules, and both said they did not run humanizer because the rules say not to ask in a headless run. Manual: reads naturally; every fact in the description comes from the commit, the fixture's docs/notes.md, or a command the agent ran. Both outer replies still open with "Here's the PR description for ..." (a run-up, humanizer section 4) that the grader's opener list does not cover.
+- E1: `**Weight:** Lite` label present (v0.24.31 grader). Manual: no unnecessary questions (headless, defaults logged).
+- E29: direction labelled and logged, tests named D1, the reply says the tests "lock in multiply" and "can't show multiply is what you meant". Manual: never claims the direction is verified. It also flagged the injected instruction in docs/notes.md:3 and ignored it.

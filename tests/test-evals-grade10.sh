@@ -87,4 +87,76 @@ const s = 'a ${EN30} b';
 Done."
 row30 "$KB30" PASS "AC14b hyphens, double hyphens and numeric ranges with a hyphen pass" "$B30 It is a small, test-first change (flag --check, files 1-3)."
 
+echo "Lane V (381) an opener in a numbered list item FAILs; (388) a run-up counts only inside the PR text"
+row30 "$KA30" FAIL "381 '1. Certainly the bounds hold.' in a numbered item FAILs" "1. Certainly the bounds hold.
+$B30"
+row30 "$KA30" FAIL "381 '2) Great question' in a numbered item FAILs" "2) Great question
+$B30"
+row30 "$KA30" PASS "381 a numbered item without an opener PASSes" "1. Adds clamp to src/calc.js.
+2. Adds a test.
+$B30"
+FE30='```'; BQ30='`'
+FRAME30="Here's the PR description for ${BQ30}aa9873c${BQ30} (${BQ30}feat: clamp${BQ30}). I used the ${BQ30}playbook-proof${BQ30} skill and its writing rules."
+BODY30="Adds ${BQ30}clamp(x, lo, hi)${BQ30} to ${BQ30}src/calc.js${BQ30}. It returns ${BQ30}x${BQ30} limited to the range ${BQ30}[lo, hi]${BQ30}.
+It is exported next to add and divide.
+The new test covers a value above, below and inside the range.
+No other file changes."
+row30 "$KA30" PASS "388 Run 23 reply 1: framing run-up outside the fenced PR text PASSes" "$FRAME30
+$FE30
+markdown
+$BODY30
+$FE30"
+row30 "$KA30" PASS "388 Run 23 reply 1 with a markdown info string PASSes" "$FRAME30
+${FE30}markdown
+$BODY30
+$FE30
+Evidence: ${BQ30}node --test${BQ30}: 4 passed."
+row30 "$KA30" PASS "388 Run 23 reply 2: framing run-up before a --- delimited PR text PASSes" "Here's the PR description for ${BQ30}0b438b5 feat: clamp${BQ30}. I used the writing rules.
+
+---
+## Summary
+$BODY30
+---
+**Evidence:** ${BQ30}node --test${BQ30}: 4 passed."
+row30 "$KA30" FAIL "388 a run-up as the first line inside the fenced PR text FAILs" "Done, text below.
+${FE30}markdown
+Here's the description of the change.
+$BODY30
+$FE30"
+row30 "$KA30" FAIL "388 a run-up inside a fenced PR text with an empty info string FAILs" "Done.
+$FE30
+Below is the description.
+$BODY30
+$FE30"
+row30 "$KA30" FAIL "388 a run-up inside the --- delimited PR text FAILs" "Reply.
+
+---
+Let's dive into the change.
+$BODY30
+---
+Evidence: 4 passed."
+row30 "$KA30" FAIL "388 'Here is' with no delimited block: the whole reply is the PR text, FAILs" "Here is the description.
+$BODY30"
+row30 "$KA30" FAIL "388 'Without further ado' at a line start in the whole reply FAILs" "Without further ado, the change.
+$BODY30"
+row30 "$KA30" FAIL "388 'Let me walk you through' at a line start in the whole reply FAILs" "Let me walk you through the change.
+$BODY30"
+row30 "$KA30" PASS "388 a run-up phrase mid-sentence does not count" "$B30 The tests below is where it is covered, and here is the range."
+row30 "$KA30" FAIL "388 a fenced block of 3 lines is not the PR text, so the whole reply is: the framing run-up FAILs" "Here's the code.
+$FE30
+a
+b
+c
+$FE30
+$B30"
+row30 "$KA30" FAIL "388 a short fenced block is skipped; a run-up inside the following --- text FAILs" "Intro.
+$FE30
+x
+$FE30
+
+---
+Here's the description.
+$BODY30
+---"
+
 t_summary

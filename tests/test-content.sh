@@ -429,11 +429,20 @@ assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEED
 # wf_if ID -> the job-level `if:` line (single line), "" when none
 wf_if() { wf_block "$1" | grep -m1 '^    if:'; }
 # not_tag LINE -> 0 when the condition excludes tag refs: !startsWith(github.ref, 'refs/tags/..') or ref_type != 'tag'
-not_tag() { printf '%s\n' "$1" | grep -Eq "![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"; }
+# The exclusion must be a top-level conjunct: it follows "${{" or "&&" and runs to the next "&&" or "}}" without a "|" (so always() || !startsWith(..) and !startsWith(..) || always() fail; v0.25.1 lane T).
+not_tag() { printf '%s\n' "$1" | grep -Eq '([$][{][{]|&&)[[:space:]]*('"![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"')[^&|}]*(&&|[}][}])'; }
 for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}" "macos-shard:${MACSHARD:-__none__}" "test (macos-latest) aggregator:${MACAGG:-__none__}"; do
   label="${pair%:*}"; id="${pair##*:}"
   IFL="$(wf_if "$id")"
   if [ -n "$IFL" ] && not_tag "$IFL"; then t_ok "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes"; else t_bad "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes" "if line: [$IFL]"; fi
+done
+# the anchored not_tag rejects the two disjunction forms of every job if: (no ${v/p/r}: cut at the first match)
+for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}" "macos-shard:${MACSHARD:-__none__}" "test (macos-latest) aggregator:${MACAGG:-__none__}" "reuse:reuse"; do
+  label="${pair%:*}"; id="${pair##*:}"; NTL="$(wf_if "$id")"
+  NTM1="$NTL"; case "$NTL" in *"&& !startsWith"*) NTM1="${NTL%%"&& !startsWith"*}|| !startsWith${NTL#*"&& !startsWith"}" ;; esac
+  NTM2="$NTL"; case "$NTL" in *"!startsWith(github.ref, 'refs/tags/')"*) NTM2="${NTL%%"!startsWith(github.ref, 'refs/tags/')"*}!startsWith(github.ref, 'refs/tags/') || always()${NTL#*"!startsWith(github.ref, 'refs/tags/')"}" ;; esac
+  if [ "$NTM1" != "$NTL" ] && ! not_tag "$NTM1"; then t_ok "v0.25.1 T not_tag rejects [|| !startsWith] on job $label"; else t_bad "v0.25.1 T not_tag rejects [|| !startsWith] on job $label" "line: [$NTM1]"; fi
+  if [ "$NTM2" != "$NTL" ] && ! not_tag "$NTM2"; then t_ok "v0.25.1 T not_tag rejects [!startsWith || always()] on job $label"; else t_bad "v0.25.1 T not_tag rejects [!startsWith || always()] on job $label" "line: [$NTM2]"; fi
 done
 AGGIF="$(wf_if "${AGG:-__none__}")"
 case "$AGGIF" in *always\(\)*) t_ok "v15 AC5.1 the aggregator keeps always() next to the tag exclusion (still fails instead of skipping on PRs)" ;; *) t_bad "v15 AC5.1 the aggregator keeps always() next to the tag exclusion" "if line: [$AGGIF]" ;; esac
@@ -655,6 +664,7 @@ flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$
 # --- v0.22.1 AC1: one real observation of the user-visible behaviour (Phase 4, Lite step 4, playbook-proof)
 PROOF="$PB_ROOT/skills/playbook-proof/SKILL.md"
 README="$PB_ROOT/README.md"
+DEVDOC="$PB_ROOT/docs/development.md"
 FB="$PB_ROOT/skills/playbook-feedback/SKILL.md"
 REAL='real[- ](behaviou?r|observation|run)|observ[a-z]* (of )?the real'
 UVIS='user[- ]visible'
@@ -724,8 +734,8 @@ sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
-# --- v0.22.1 AC5.2: how to install shellcheck is in the README
-flat_has 'v22.1 AC5.2 README says how to install shellcheck (apt install shellcheck)' "$README" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
+# --- v0.22.1 AC5.2: how to install shellcheck is in docs/development.md
+flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt install shellcheck)' "$DEVDOC" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
 
 
 # --- v0.22.1 review findings: content
@@ -735,9 +745,9 @@ sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$
 sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
 sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
 sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
-SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$README")"
-if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
-if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"'; fi
+SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"'; fi
 
 
 # --- v0.22.2 AC1: process rules (named-line assertions: each check names the line or phrase it needs)
@@ -815,9 +825,9 @@ flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" '
 flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
 flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
 
-# --- v0.22.2 AC7: README
-if grep -i 'concurrency' "$README" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts' 'no README line has both words'; fi
-sec_flat_has 'v22.2 AC7.1 README Development section mentions tools/bsd-check.sh' "$README" '^## Development' 'tools/bsd-check\.sh'
+# --- v0.22.2 AC7: docs/development.md (moved from the README in v0.25.1)
+if grep -i 'concurrency' "$DEVDOC" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts' 'no docs/development.md line has both words'; fi
+sec_flat_has 'v22.2 AC7.1 docs/development.md Development checks section mentions tools/bsd-check.sh' "$DEVDOC" '^## Development checks' 'tools/bsd-check\.sh'
 
 
 # --- v0.22.3 AC2: context packs
@@ -1046,12 +1056,12 @@ assert_eq 'v22.3 AC6.2 main-ci still runs on v* tags only (unchanged if:)' "    
 assert_not_contains 'v22.3 AC6.2 main-ci does not depend on reuse' "$(wf_needs main-ci)" "reuse"
 assert_not_contains 'v22.3 AC6.2 only release has contents: write (reuse has none)' "$RB" 'contents: write'
 
-# --- v0.22.3 AC6.4: README
-echo "v22.3 AC6.4 README"
-flat_has 'v22.3 AC6.4 README: a main push reuses a green PR run' "$README" 'main push[^.]{0,250}reus|reus[^.]{0,250}main push'
-flat_has 'v22.3 AC6.4 README: the reused run is a same-repo PR run' "$README" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
-flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tree|same tree|tree[^.]{0,60}identical'
-flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
+# --- v0.22.3 AC6.4: docs/development.md
+echo "v22.3 AC6.4 docs/development.md"
+flat_has 'v22.3 AC6.4 docs/development.md: a main push reuses a green PR run' "$DEVDOC" 'main push[^.]{0,250}reus|reus[^.]{0,250}main push'
+flat_has 'v22.3 AC6.4 docs/development.md: the reused run is a same-repo PR run' "$DEVDOC" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
+flat_has 'v22.3 AC6.4 docs/development.md: ... of the identical tree' "$DEVDOC" 'identical tree|same tree|tree[^.]{0,60}identical'
+flat_has 'v22.3 AC6.4 docs/development.md: ... that was green' "$DEVDOC" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
@@ -1099,9 +1109,9 @@ WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
 if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
-if flat "$README" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 README no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 README no longer says rebase merges always run the tests'; fi
-flat_has 'v22.3 review Low-2 README: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
-flat_has 'v22.3 review Low-2 README: ... and the PR head parent P' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
+if flat "$DEVDOC" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests'; fi
+flat_has 'v22.3 review Low-2 docs/development.md: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
+flat_has 'v22.3 review Low-2 docs/development.md: ... and the PR head parent P' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
 echo "v22.3 review Low-4: the reuse step validates the run id before writing the output"
 RSTEP="$(wf_block reuse | awk '/id: tree/ { f = 1 } f { print }')"
 assert_contains 'v22.3 review Low-4 the reuse step has a numeric-only guard' "$RSTEP" '[!0-9]'
@@ -1232,8 +1242,8 @@ for nm in $ENVNAMES; do
   case "$CH_RUN" in *"\$$nm"*|*"\${$nm}"*) t_ok "v23.0 review changes uses \$$nm in its script" ;; *) t_bad "v23.0 review changes uses \$$nm in its script" "run text: $CH_RUN" ;; esac
 done
 
-# --- v0.23.0 review: the README does not oversell the reduced path
-if flat "$README" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review README does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review README does not say the reduced checks run in "every required job"'; fi
+# --- v0.23.0 review: docs/development.md does not oversell the reduced path
+if flat "$DEVDOC" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review docs/development.md does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review docs/development.md does not say the reduced checks run in "every required job"'; fi
 
 # --- v0.23.2 AC8.1 / E1: the reduced docs-only set is the grep result plus tests/test-update.sh (D4)
 echo "v23.2 AC8.1 workflow: the reduced docs-only set is pinned"
@@ -1611,7 +1621,7 @@ RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { e
 qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
-qchk "v25 AC3 README names scenarios (E1–E30)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E30\)'
+qchk "v25 AC3 README names scenarios (E1–E31)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E31\)'
 RUNEV="$PB_ROOT/evals/run-evals.sh"
 if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
 qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'
@@ -2072,5 +2082,10 @@ S4_TXT="$(awk '/^4\. \*\*Ask once/ { f = 1; next } f && /\*\*Models per role\*\*
 if printf '%s' "$S4_TXT" | grep -qi 'humanizer'; then t_ok "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion"; else t_bad "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion" "step 4 [$S4_TXT]"; fi
 if printf '%s' "$S4_TXT" | grep -qiE '(then|afterwards?|after (the|that)|later|follow-?up)[^.]{0,60}humanizer'; then t_bad "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch" "step 4 [$S4_TXT]"; else t_ok "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch"; fi
 if printf '%s' "$S4_TXT" | grep -qiE 'humanizer.{0,200}(batch|same message|single message)|(batch|same message|single message).{0,200}humanizer'; then t_ok "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message"; else t_bad "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message" "step 4 [$S4_TXT]"; fi
+
+
+echo "v0.25.1 lane S: step 4 cap of 8 questions and the humanizer line are consistent"
+S4_ALL="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_ALL" | grep -qiE 'humanizer[^.;]{0,80}(extra|optional line|not count|on top)|(plus|besides|beyond|on top of)[^.;]{0,60}humanizer'; then t_ok "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap"; else t_bad "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap" "step 4 [$S4_TXT]"; fi
 
 t_summary

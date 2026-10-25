@@ -70,7 +70,7 @@ reversible fix.
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`,
    with short `## Understanding` and `## Impact` sections (as in Phase 1) written before any test or code.
-   An ambiguous, hard-to-reverse reading (or a missing oracle, a confirmed worked example, Phase 1) is asked before any code, in one
+   An ambiguous, hard-to-reverse reading (or a missing confirmed worked example, the oracle of Phase 1) is asked before any code, in one
    batched question; else a logged default.
 2. Write the test (unconfirmed oracle Dn: the test's name or a comment carries `Dn` or `[UNVERIFIED]`), run it with
    `proof-run.sh --label red`, and see it fail for the right reason.

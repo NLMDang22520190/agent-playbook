@@ -32,7 +32,7 @@ Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 ## Running evals automatically
 
 `evals/run-evals.sh` runs E1, E3, E8 and E15 by default (E4, E5, E10, E11, E16, E17, E19, E20, E21, E22,
-E23, E24, E25, E26, E27, E28, E29 and E30 are also auto-gradable, with `--scenarios`) headless and grades the mechanical part. Limit: E27 and E28 use a single prompt, which only approximates pushback (the agent never made the earlier conclusion in this session): the E27 keep-the-conclusion check and the E28 conclusion-was-wrong check are keyword-graded, so a reply with both a concession and a keep signal, or with neither, is graded MANUAL instead of guessed (v0.24.25):
+E23, E24, E25, E26, E27, E28, E29, E30 and E31 are also auto-gradable, with `--scenarios`) headless and grades the mechanical part. Limit: E27 and E28 use a single prompt, which only approximates pushback (the agent never made the earlier conclusion in this session): the E27 keep-the-conclusion check and the E28 conclusion-was-wrong check are keyword-graded, so a reply with both a concession and a keep signal, or with neither, is graded MANUAL instead of guessed (v0.24.25):
 
     evals/run-evals.sh --harness opencode [--scenarios E1,E8] [--workroot DIR] [--out FILE] [--timeout 900]
     evals/run-evals.sh --cmd "bash /path/adapter.sh"
