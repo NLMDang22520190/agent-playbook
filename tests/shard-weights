@@ -6,7 +6,7 @@
 # test-evals-grade10.sh, test-evals-grade10b.sh, test-pre-commit.sh and test-scope-classify.sh (estimates until v0.25.0)
 # come from run 40174690191 (v0.25.0) alone. v0.25.1 estimates until a CI run measures them (L-0009): test-clean-pbtest.sh 2,
 # test-evals-grade11.sh 150.
-# v0.26 estimates until a CI run measures them (L-0009): test-proof-check.sh 12, test-update-signed.sh 45.
+# v0.26 estimates until a CI run measures them (L-0009): test-proof-check.sh 12, test-update-signed.sh 45, test-role-gate-commits.sh 180.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -79,6 +79,7 @@ test-tdd-step-v.sh 145
 test-role-model.sh 144
 test-tdd-step-o.sh 142
 test-role-gate-committed.sh 133
+test-role-gate-commits.sh 180
 test-tdd-step-w.sh 126
 test-update.sh 118
 test-tdd-step-m.sh 108

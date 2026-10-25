@@ -1074,6 +1074,13 @@ sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "
 sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
 sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
 sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+# v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
+# `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
+echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
+NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
+assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
 echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
