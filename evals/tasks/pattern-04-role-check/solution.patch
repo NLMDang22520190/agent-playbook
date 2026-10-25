@@ -1,0 +1,22 @@
+diff --git a/src/auth.js b/src/auth.js
+index 181442b..9f08916 100644
+--- a/src/auth.js
++++ b/src/auth.js
+@@ -1,9 +1,14 @@
+ 'use strict';
+ 
+-// May this user cancel this order? Customers may only cancel their own orders.
+-// user: { id, role } of the signed-in user; order: { ownerId }.
++// Roles that may cancel any order. Every other role (viewer, unknown roles) may not cancel.
++const CANCEL_ANY = ['admin', 'staff'];
++
++// May this user cancel this order? Admin and staff may cancel any order, a customer only their own.
++// user: { id, role } of the signed-in user, or null; order: { ownerId }.
+ function canCancel(user, order) {
+-  return user.role !== 'customer' || user.id === order.ownerId;
++  if (!user) return false;
++  if (CANCEL_ANY.includes(user.role)) return true;
++  return user.role === 'customer' && user.id === order.ownerId;
+ }
+ 
+ module.exports = { canCancel };

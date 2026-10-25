@@ -1,0 +1,29 @@
+diff --git a/src/static.js b/src/static.js
+index ac335a4..1749e62 100644
+--- a/src/static.js
++++ b/src/static.js
+@@ -3,10 +3,21 @@ const path = require('path');
+ 
+ // Maps a request URL path (e.g. '/css/site.css', still URL-encoded) to a file under the public root.
+ // Returns the absolute file path, or null when the request must be refused.
++// The path is decoded first and the containment check runs on the final path, so encoded dots or slashes
++// and sibling directories that share the root's name prefix cannot leave the root.
+ function resolvePublic(root, urlPath) {
+-  const full = path.join(root, urlPath === '/' ? 'index.html' : urlPath);
+-  if (!full.startsWith(root)) return null;
+-  return decodeURIComponent(full);
++  let decoded;
++  try {
++    decoded = decodeURIComponent(urlPath);
++  } catch (e) {
++    return null;   // malformed encoding
++  }
++  if (decoded.includes('\0')) return null;
++  const base = path.resolve(root);
++  const full = path.join(base, decoded === '/' ? 'index.html' : decoded);
++  const rel = path.relative(base, full);
++  if (rel === '' || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return null;
++  return full;
+ }
+ 
+ module.exports = { resolvePublic };

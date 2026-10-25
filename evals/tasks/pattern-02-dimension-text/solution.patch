@@ -1,0 +1,19 @@
+diff --git a/src/dims.js b/src/dims.js
+index 7169ace..5c84f52 100644
+--- a/src/dims.js
++++ b/src/dims.js
+@@ -1,11 +1,13 @@
+ 'use strict';
+ 
+ const SIZE = /^\d+(\.\d+)?$/;
++// customers type x, X or the multiplication sign, with or without spaces around it
++const SEPARATOR = /\s*[xX×]\s*/;
+ 
+ // Parses a box size typed by the customer, e.g. "150x100x50" (mm), into { l, w, h }.
+ // Returns null when the text is not three sizes greater than 0.
+ function parseDims(text) {
+-  const parts = String(text).split('x');
++  const parts = String(text).trim().split(SEPARATOR);
+   if (parts.length !== 3) return null;
+   if (!parts.every((p) => SIZE.test(p))) return null;
+   const [l, w, h] = parts.map(Number);

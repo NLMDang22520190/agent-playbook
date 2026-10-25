@@ -1,0 +1,28 @@
+diff --git a/src/views/inbox.js b/src/views/inbox.js
+index 44da842..f92041c 100644
+--- a/src/views/inbox.js
++++ b/src/views/inbox.js
+@@ -4,7 +4,7 @@
+ function renderInboxPreview(messages) {
+   const lines = [];
+   for (const m of messages) {
+-    lines.push(m.author ? m.author.name + ': ' + m.text : '');
++    lines.push(m.author ? m.author.name + ': ' + m.text : '_' + m.text + '_');
+   }
+   return lines;
+ }
+diff --git a/src/views/orderDetail.js b/src/views/orderDetail.js
+index b84aaeb..5312076 100644
+--- a/src/views/orderDetail.js
++++ b/src/views/orderDetail.js
+@@ -3,8 +3,8 @@
+ // Lines of the message thread on the order detail page (docs/ui.md).
+ function renderOrderMessages(messages) {
+   return messages.map((m) => {
+-    const name = m.author ? m.author.name : '';
+-    return name ? `${name}: ${m.text}` : '';
++    if (!m.author) return `_${m.text}_`;   // system message
++    return `${m.author.name}: ${m.text}`;
+   });
+ }
+ 
