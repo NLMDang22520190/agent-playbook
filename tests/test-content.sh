@@ -10,6 +10,11 @@ REVIEWER="$TDD/roles/reviewer.md"
 FINAL="$TDD/templates/final-report.md"
 RPROMPT="$TDD/templates/role-prompt.md"
 HARNESSES="$TDD/references/harnesses.md"   # v0.24.13: harness and model plumbing moved here
+# lane C (v0.26.3) S2: SKILL.md is split into a core plus references/ (spec A3b). A moved section keeps its heading, so a
+# section pin moves by changing its file argument; TDDTREE is SKILL.md plus every references/*.md (location-free pins).
+REFS="$TDD/references"
+FULLREF="$REFS/full.md"; PARREF="$REFS/parallel.md"; COSTREF="$REFS/cost.md"; WEIGHTSREF="$REFS/weights.md"; WRONGREF="$REFS/wrong.md"
+TDDTREE="$(mk_tmp)/tddtree.md"; cat "$SKILL" "$REFS"/*.md > "$TDDTREE" 2>/dev/null
 SETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 QUESTIONS="$PB_ROOT/skills/playbook-setup/references/questions.md"
 
@@ -45,10 +50,10 @@ for f in "$IMPL" "$REVIEWER"; do
   check "AC5 $b says not the full/whole suite" "$f" '(not|never|instead of|rather than)[^.]{0,60}(full|whole)[^.]{0,20}suite'
   check "AC5 $b says orchestrator runs full suite at close-out" "$f" 'orchestrator[^.]{0,80}(full|whole)|(full|whole)[^.]{0,80}orchestrator'
 done
-check_sec "AC5 Phase 4 keeps one fresh full run by orchestrator" "$SKILL" '^### Phase 4' 'fresh[^.]{0,120}(full|whole)|(full|whole)[^.]{0,120}fresh'
-check_sec "AC5 Phase 4 names lint and typecheck" "$SKILL" '^### Phase 4' 'lint[^.]{0,40}type'
-check_sec "AC5 Phase 4 says a failing close-out run starts a new round" "$SKILL" '^### Phase 4' 'fail[^.]{0,160}(new (RED|round)|back to)|(new (RED|round))[^.]{0,160}fail'
-check_sec "AC5 Phase 4 says a failing close-out run means not done" "$SKILL" '^### Phase 4' 'not (reported |report(ed)? )?(as )?done|never (report|say)[^.]{0,30}done'
+check_sec "AC5 Phase 4 keeps one fresh full run by orchestrator" "$FULLREF" '^### Phase 4' 'fresh[^.]{0,120}(full|whole)|(full|whole)[^.]{0,120}fresh'
+check_sec "AC5 Phase 4 names lint and typecheck" "$FULLREF" '^### Phase 4' 'lint[^.]{0,40}type'
+check_sec "AC5 Phase 4 says a failing close-out run starts a new round" "$FULLREF" '^### Phase 4' 'fail[^.]{0,160}(new (RED|round)|back to)|(new (RED|round))[^.]{0,160}fail'
+check_sec "AC5 Phase 4 says a failing close-out run means not done" "$FULLREF" '^### Phase 4' 'not (reported |report(ed)? )?(as )?done|never (report|say)[^.]{0,30}done'
 
 # --- AC6: tester section
 SEC='^## Make every check able to fail'
@@ -89,7 +94,7 @@ if [ -n "$l1" ] && [ -n "$l2" ] && [ -n "$l3" ] && [ "$l1" -lt "$l2" ] && [ "$l2
 else t_bad 'AC8 markers ordered: 1. Fixed < 2. Spec < 3. This slice' "lines: [$l1] [$l2] [$l3]"; fi
 check_sec 'AC8 per-slice part has slice id' "$RPROMPT" '^## 3\. This slice' 'slice'
 check_sec 'AC8 per-slice part has RED sha' "$RPROMPT" '^## 3\. This slice' 'sha'
-check 'AC8 SKILL references role-prompt.md' "$SKILL" 'role-prompt\.md'
+check 'AC8 SKILL references role-prompt.md' "$TDDTREE" 'role-prompt\.md'
 check 'AC8 SKILL ties it to prompt caching / prefix' "$SKILL" 'prefix[^.]{0,80}(cach|reuse)|cach[^.]{0,80}prefix'
 
 # --- AC9: starting roles
@@ -105,8 +110,8 @@ exact_heading 'AC10 final-report has exact heading' "$FINAL" '## Cost'
 check_sec 'AC10 Cost mentions cost.sh summary' "$FINAL" '^## Cost' 'cost\.sh summary'
 check_sec 'AC10 Cost mentions weight' "$FINAL" '^## Cost' 'weight'
 check_sec 'AC10 Cost mentions wall-clock' "$FINAL" '^## Cost' 'wall.?clock'
-check_sec 'AC10 Phase 4 close-out logs runs with cost.sh add' "$SKILL" '^### Phase 4' 'cost\.sh add'
-check 'AC10 SKILL says tokens 0 if unknown' "$SKILL" 'unknown[^.]{0,40}`?0`?|`?0`?[^.]{0,40}unknown'
+check 'AC10 Phase 4 close-out logs runs with cost.sh add' "$COSTREF" 'cost\.sh add'   # lane C: references/cost.md
+check 'AC10 SKILL says tokens 0 if unknown' "$COSTREF" 'unknown[^.]{0,40}`?0`?|`?0`?[^.]{0,40}unknown'
 
 # --- AC11: setup asks models per role per harness with a recommendation
 for f in "$SETUP" "$QUESTIONS"; do
@@ -159,7 +164,7 @@ l18="$(line_of "$SCEN" '^## E18 ')"; l19="$(line_of "$SCEN" '^## E19 ')"
 if [ -n "$l18" ] && [ -n "$l19" ] && [ "$l18" -lt "$l19" ]; then t_ok 'AC2.2 E19 comes after E18'; else t_bad 'AC2.2 E19 comes after E18' "E18 line [$l18] E19 line [$l19]"; fi
 
 # --- v0.9.0 #4 AC4.6: the test-infra role is documented
-TDDALL="$(cat "$SKILL" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
+TDDALL="$(cat "$SKILL" "$FULLREF" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
 # paragraphs (blank-line separated) that talk about infra
 infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n"} tolower($0) ~ /infra/'; }
 IP="$(infra_paras)"
@@ -474,13 +479,13 @@ assert_contains "v15 AC5.1 the release if: still limits to v* tags" "$RIF" "refs
 
 # --- v0.15.0 AC11.1: close-out captures playbook misfires; the final report has a Playbook feedback line
 P4='^### Phase 4'
-check_sec 'v15 AC11.1 playbook-tdd Phase 4 mentions playbook-feedback' "$SKILL" "$P4" 'playbook-feedback'
-check_sec 'v15 AC11.1 Phase 4 says to capture a misfire' "$SKILL" "$P4" 'misfire'
-check_sec 'v15 AC11.1 Phase 4 covers rules, gates or scripts that misfired' "$SKILL" "$P4" 'rule[^.]{0,80}(gate|script)|gate[^.]{0,80}script'
-check_sec 'v15 AC11.1 Phase 4 asks for the capture before the final report' "$SKILL" "$P4" 'before[^.]{0,60}final report'
-check_sec 'v15 AC11.1 Phase 4 asks for one line per misfire with evidence' "$SKILL" "$P4" 'one line[^.]{0,60}evidence|evidence[^.]{0,60}one line'
-check_sec 'v15 AC11.1 Phase 4 still fills the final report template' "$SKILL" "$P4" 'templates/final-report\.md'
-check_sec 'v15 AC11.1 Phase 4 still proposes learnings with playbook-learn' "$SKILL" "$P4" 'playbook-learn'
+check_sec 'v15 AC11.1 playbook-tdd Phase 4 mentions playbook-feedback' "$FULLREF" "$P4" 'playbook-feedback'
+check_sec 'v15 AC11.1 Phase 4 says to capture a misfire' "$FULLREF" "$P4" 'misfire'
+check_sec 'v15 AC11.1 Phase 4 covers rules, gates or scripts that misfired' "$FULLREF" "$P4" 'rule[^.]{0,80}(gate|script)|gate[^.]{0,80}script'
+check_sec 'v15 AC11.1 Phase 4 asks for the capture before the final report' "$FULLREF" "$P4" 'before[^.]{0,60}final report'
+check_sec 'v15 AC11.1 Phase 4 asks for one line per misfire with evidence' "$FULLREF" "$P4" 'one line[^.]{0,60}evidence|evidence[^.]{0,60}one line'
+check_sec 'v15 AC11.1 Phase 4 still fills the final report template' "$FULLREF" "$P4" 'templates/final-report\.md'
+check_sec 'v15 AC11.1 Phase 4 still proposes learnings with playbook-learn' "$FULLREF" "$P4" 'playbook-learn'
 if grep -Eq '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null; then t_ok 'v15 AC11.1 final-report has a **Playbook feedback:** line'; else t_bad 'v15 AC11.1 final-report has a **Playbook feedback:** line' "no line starting with **Playbook feedback:** in $FINAL"; fi
 if grep -E '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null | grep -qi 'none'; then t_ok 'v15 AC11.1 the Playbook feedback line offers "none" as the empty value'; else t_bad 'v15 AC11.1 the Playbook feedback line offers "none"' "$(grep -i 'playbook feedback' "$FINAL" 2>/dev/null)"; fi
 if grep -E '^\*\*Playbook feedback:?\*\*' "$FINAL" 2>/dev/null | grep -qiE 'id|captured'; then t_ok 'v15 AC11.1 the Playbook feedback line says captured ids'; else t_bad 'v15 AC11.1 the Playbook feedback line says captured ids' "$(grep -i 'playbook feedback' "$FINAL" 2>/dev/null)"; fi
@@ -563,9 +568,9 @@ sec_flat_has() { # NAME FILE HEADING_REGEX PATTERN
   if section "$2" "$3" | tr '\n' ' ' | tr -s ' ' | grep -qiE -- "$4"; then t_ok "$1"; else t_bad "$1" "pattern [$4] not in section [$3] of $2"; fi
 }
 NOASK='(no need to ask|without asking|no question|do not ask|don.t ask|never ask|needs no (question|permission))'
-sec_flat_has 'v19 AC1.2 Phase 4 feedback line: capture without asking' "$SKILL" '^### Phase 4' "playbook-feedback[^.]{0,250}$NOASK|capture[^.]{0,250}$NOASK"
+sec_flat_has 'v19 AC1.2 Phase 4 feedback line: capture without asking' "$FULLREF" '^### Phase 4' "playbook-feedback[^.]{0,250}$NOASK|capture[^.]{0,250}$NOASK"
 sec_flat_has 'v19 AC1.2 Lite feedback line: capture without asking' "$SKILL" '^### Lite workflow' "capture[^.]{0,250}$NOASK"
-sec_flat_has 'v19 AC1.2 Phase 4 still names playbook-feedback' "$SKILL" '^### Phase 4' 'playbook-feedback'
+sec_flat_has 'v19 AC1.2 Phase 4 still names playbook-feedback' "$FULLREF" '^### Phase 4' 'playbook-feedback'
 sec_flat_has 'v19 AC1.2 Lite still names the Playbook feedback line' "$SKILL" '^### Lite workflow' 'Playbook feedback'
 
 # --- v0.19.0 AC3.1: every role file and the role prompt template tell sub-agents to write only inside the repository
@@ -614,10 +619,10 @@ lite_has 'v22 AC2.3 Lite step 1 requires the Impact section' 1 'Impact'
 lite_has 'v22 AC2.3 Lite step 1: a few lines each' 1 'few lines|short|brief'
 lite_has 'v22 AC2.3 Lite step 1: an ambiguous, hard-to-reverse reading is asked before any code' 1 "$ASK_FIRST"
 lite_has 'v22 AC2.3 Lite step 1: the question is one batched message' 1 'batch|one (question|message)'
-sec_flat_has 'v22 AC2.3 Phase 1 requires the Understanding section' "$SKILL" '^### Phase 1' 'Understanding'
-sec_flat_has 'v22 AC2.3 Phase 1 requires the Impact section' "$SKILL" '^### Phase 1' 'Impact'
-sec_flat_has 'v22 AC2.3 Phase 1: an ambiguous, hard-to-reverse reading is asked before any code' "$SKILL" '^### Phase 1' "$ASK_FIRST"
-sec_flat_has 'v22 AC2.3 Phase 1: that question is one batched message' "$SKILL" '^### Phase 1' 'batch'
+sec_flat_has 'v22 AC2.3 Phase 1 requires the Understanding section' "$FULLREF" '^### Phase 1' 'Understanding'
+sec_flat_has 'v22 AC2.3 Phase 1 requires the Impact section' "$FULLREF" '^### Phase 1' 'Impact'
+sec_flat_has 'v22 AC2.3 Phase 1: an ambiguous, hard-to-reverse reading is asked before any code' "$FULLREF" '^### Phase 1' "$ASK_FIRST"
+sec_flat_has 'v22 AC2.3 Phase 1: that question is one batched message' "$FULLREF" '^### Phase 1' 'batch'
 
 # --- v0.22.0 AC3: the spec reviewer role, run before the first tester
 assert_file 'v22 AC3.1 skills/playbook-tdd/roles/spec-reviewer.md exists' "$SPEC_REV"
@@ -633,10 +638,10 @@ flat_has 'v22 AC3.1 spec-reviewer lists findings' "$SPEC_REV" 'findings?'
 flat_has 'v22 AC3.1 spec-reviewer writes .agents/handoff/01b-spec-review.md' "$SPEC_REV" '\.agents/handoff/01b-spec-review\.md'
 flat_has 'v22 AC3.1 spec-reviewer gate: role-gate.sh check reviewer' "$SPEC_REV" 'role-gate\.sh check reviewer'
 flat_has 'v22 AC3.1 spec-reviewer writes only inside the repository (scratch under .agents/handoff)' "$SPEC_REV" '\.agents/handoff'
-sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer' "$SKILL" '^### Phase 1' 'spec[- ]review'
-sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer BEFORE the first tester' "$SKILL" '^### Phase 1' 'spec[- ]review.{0,200}before.{0,60}(first )?tester|before.{0,60}(first )?tester.{0,120}spec[- ]review|tester.{0,60}(only )?after.{0,80}spec[- ]review'
-sec_flat_has 'v22 AC3.2 Phase 1: a REVISE verdict goes back to the spec' "$SKILL" '^### Phase 1' 'REVISE.{0,160}(spec|back)'
-sec_flat_has 'v22 AC3.2 Phase 1 names the spec-reviewer role file or its report' "$SKILL" '^### Phase 1' 'roles/spec-reviewer|01b-spec-review|spec-reviewer'
+sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer' "$FULLREF" '^### Phase 1' 'spec[- ]review'
+sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer BEFORE the first tester' "$FULLREF" '^### Phase 1' 'spec[- ]review.{0,200}before.{0,60}(first )?tester|before.{0,60}(first )?tester.{0,120}spec[- ]review|tester.{0,60}(only )?after.{0,80}spec[- ]review'
+sec_flat_has 'v22 AC3.2 Phase 1: a REVISE verdict goes back to the spec' "$FULLREF" '^### Phase 1' 'REVISE.{0,160}(spec|back)'
+sec_flat_has 'v22 AC3.2 Phase 1 names the spec-reviewer role file or its report' "$FULLREF" '^### Phase 1' 'roles/spec-reviewer|01b-spec-review|spec-reviewer'
 
 # --- v0.22.0 AC4: request coverage before "done"
 exact_heading 'v22 AC4.1 final-report template has the exact heading ## Request coverage' "$FINAL" '## Request coverage'
@@ -644,7 +649,7 @@ sec_flat_has 'v22 AC4.1 Request coverage: each sentence of the raw request verba
 sec_flat_has 'v22 AC4.1 Request coverage: done, with where (file:line or AC)' "$FINAL" '^## Request coverage' 'done.{0,80}(file:line|AC|where)'
 sec_flat_has 'v22 AC4.1 Request coverage: read as ...' "$FINAL" '^## Request coverage' 'read as'
 sec_flat_has 'v22 AC4.1 Request coverage: not done' "$FINAL" '^## Request coverage' 'not done'
-sec_flat_has 'v22 AC4.1 Phase 4 requires the request coverage' "$SKILL" '^### Phase 4' 'request coverage'
+sec_flat_has 'v22 AC4.1 Phase 4 requires the request coverage' "$FULLREF" '^### Phase 4' 'request coverage'
 lite_has 'v22 AC4.1 Lite step 5 requires the request coverage' 5 'request coverage'
 
 
@@ -654,8 +659,8 @@ if grep -qiE 'report\.js' "$SPEC_REV" 2>/dev/null; then t_bad 'RV10 spec-reviewe
 assert_file 'RV10 spec-reviewer.md still exists (the leak checks above are not vacuous)' "$SPEC_REV"
 flat_has 'RV10 spec-reviewer.md: the report is its only output' "$SPEC_REV" 'only output'
 flat_has 'RV10 spec-reviewer.md: the orchestrator saves the report to 01b-spec-review.md' "$SPEC_REV" 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|01b-spec-review.{0,160}(saved|written|stored) by the orchestrator'
-sec_flat_has 'RV10 SKILL.md Phase 1: the orchestrator saves the spec reviewer report to .agents/handoff/01b-spec-review.md' "$SKILL" '^### Phase 1' 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|(save|saves|saved|writes?|stor).{0,80}01b-spec-review.{0,120}orchestrator|01b-spec-review.{0,120}(saved|written|stored) by the orchestrator'
-sec_flat_has 'RV10 SKILL.md Phase 1: it is the reviewer report that is saved (its only output)' "$SKILL" '^### Phase 1' 'report.{0,120}01b-spec-review|01b-spec-review.{0,120}report'
+sec_flat_has 'RV10 SKILL.md Phase 1: the orchestrator saves the spec reviewer report to .agents/handoff/01b-spec-review.md' "$FULLREF" '^### Phase 1' 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|(save|saves|saved|writes?|stor).{0,80}01b-spec-review.{0,120}orchestrator|01b-spec-review.{0,120}(saved|written|stored) by the orchestrator'
+sec_flat_has 'RV10 SKILL.md Phase 1: it is the reviewer report that is saved (its only output)' "$FULLREF" '^### Phase 1' 'report.{0,120}01b-spec-review|01b-spec-review.{0,120}report'
 flat_has 'RV10 playbook-setup: leak_literals only in the project conf are not read in linked git worktrees' "$SETUP" 'worktree.{0,250}(project|leak_literals)|leak_literals.{0,250}worktree'
 flat_has 'RV10 playbook-setup: the project conf is git-excluded' "$SETUP" 'worktree.{0,250}(exclude|ignored)|(exclude|ignored).{0,250}worktree'
 flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$SETUP" 'worktree.{0,250}global|global.{0,250}worktree'
@@ -670,14 +675,14 @@ REAL='real[- ](behaviou?r|observation|run)|observ[a-z]* (of )?the real'
 UVIS='user[- ]visible'
 NOTENOUGH='unit tests?[^.]{0,80}(not|never) enough|(not|never) enough[^.]{0,80}unit tests?|unit tests? alone'
 NOTCHK_IMPOSSIBLE='(cannot|can.t|could not|not possible|unable)[^.]{0,120}Not checked|Not checked[^.]{0,120}(cannot|can.t|could not|not possible|unable)'
-sec_flat_has 'v22.1 AC1.1 Phase 4: user-visible changes' "$SKILL" '^### Phase 4' "$UVIS"
-sec_flat_has 'v22.1 AC1.1 Phase 4: one real observation of the behaviour' "$SKILL" '^### Phase 4' "$REAL"
-sec_flat_has 'v22.1 AC1.1 Phase 4: in this session' "$SKILL" '^### Phase 4' 'in this session|this session'
-sec_flat_has 'v22.1 AC1.1 Phase 4: screenshot or browser read for a UI' "$SKILL" '^### Phase 4' 'screenshot|browser'
-sec_flat_has 'v22.1 AC1.1 Phase 4: curl for an API' "$SKILL" '^### Phase 4' 'curl'
-sec_flat_has 'v22.1 AC1.1 Phase 4: the CLI command for a CLI' "$SKILL" '^### Phase 4' 'CLI'
-sec_flat_has 'v22.1 AC1.1 Phase 4: unit tests alone are not enough' "$SKILL" '^### Phase 4' "$NOTENOUGH"
-sec_flat_has 'v22.1 AC1.1 Phase 4: when it cannot be run it goes under Not checked' "$SKILL" '^### Phase 4' "$NOTCHK_IMPOSSIBLE"
+sec_flat_has 'v22.1 AC1.1 Phase 4: user-visible changes' "$FULLREF" '^### Phase 4' "$UVIS"
+sec_flat_has 'v22.1 AC1.1 Phase 4: one real observation of the behaviour' "$FULLREF" '^### Phase 4' "$REAL"
+sec_flat_has 'v22.1 AC1.1 Phase 4: in this session' "$FULLREF" '^### Phase 4' 'in this session|this session'
+sec_flat_has 'v22.1 AC1.1 Phase 4: screenshot or browser read for a UI' "$FULLREF" '^### Phase 4' 'screenshot|browser'
+sec_flat_has 'v22.1 AC1.1 Phase 4: curl for an API' "$FULLREF" '^### Phase 4' 'curl'
+sec_flat_has 'v22.1 AC1.1 Phase 4: the CLI command for a CLI' "$FULLREF" '^### Phase 4' 'CLI'
+sec_flat_has 'v22.1 AC1.1 Phase 4: unit tests alone are not enough' "$FULLREF" '^### Phase 4' "$NOTENOUGH"
+sec_flat_has 'v22.1 AC1.1 Phase 4: when it cannot be run it goes under Not checked' "$FULLREF" '^### Phase 4' "$NOTCHK_IMPOSSIBLE"
 lite_has 'v22.1 AC1.1 Lite step 4: user-visible changes' 4 "$UVIS"
 lite_has 'v22.1 AC1.1 Lite step 4: one real observation of the behaviour' 4 "$REAL"
 lite_has 'v22.1 AC1.1 Lite step 4: screenshot or browser read for a UI' 4 'screenshot|browser'
@@ -701,36 +706,36 @@ exact_heading 'v22.1 AC2.1 final-report template has the exact heading ## Pre-mo
 sec_flat_has 'v22.1 AC2.1 Pre-mortem: three ways the result could still be wrong' "$FINAL" '^## Pre-mortem' 'three[^.]{0,80}(wrong|fail|break)|3[^.]{0,40}(ways|risks)'
 sec_flat_has 'v22.1 AC2.1 Pre-mortem: each with the command run to check it' "$FINAL" '^## Pre-mortem' 'command'
 sec_flat_has 'v22.1 AC2.1 Pre-mortem: and its outcome' "$FINAL" '^## Pre-mortem' 'outcome|result of'
-sec_flat_has 'v22.1 AC2.2 Phase 4 requires Not checked' "$SKILL" '^### Phase 4' 'Not checked'
-sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Confidence column' "$SKILL" '^### Phase 4' 'confidence'
-sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Pre-mortem' "$SKILL" '^### Phase 4' 'pre-mortem'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires Not checked' "$FULLREF" '^### Phase 4' 'Not checked'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Confidence column' "$FULLREF" '^### Phase 4' 'confidence'
+sec_flat_has 'v22.1 AC2.2 Phase 4 requires the Pre-mortem' "$FULLREF" '^### Phase 4' 'pre-mortem'
 lite_has 'v22.1 AC2.2 Lite step 5 requires Not checked' 5 'Not checked'
 lite_has 'v22.1 AC2.2 Lite step 5 requires the Confidence column' 5 'confidence'
 lite_has 'v22.1 AC2.2 Lite step 5 requires the Pre-mortem' 5 'pre-mortem'
 lite_has 'v22.1 AC2.2 Lite step 5: the pre-mortem may be one line per risk' 5 'one line (per|for each|each)[^.]{0,40}risk|one-line'
 
 # --- v0.22.1 AC3: first-slice checkpoint (Phase 2)
-sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$SKILL" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
-sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$SKILL" '^### Phase 2' 'screens?|endpoints?'
-sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$SKILL" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
-sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$SKILL" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$SKILL" '^### Phase 2' 'interactive'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
+sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$FULLREF" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
+sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$FULLREF" '^### Phase 2' 'screens?|endpoints?'
+sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$FULLREF" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
+sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$FULLREF" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$FULLREF" '^### Phase 2' 'interactive'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$FULLREF" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$FULLREF" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
 
 # --- v0.22.1 AC4: when the user says the result is wrong
 exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
 WRONG='^## When the user says it is wrong'
-sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$SKILL" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
-sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$SKILL" "$WRONG" 'misread'
-sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$SKILL" "$WRONG" 'missed[^.]{0,30}(place|scan)'
-sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$SKILL" "$WRONG" 'wrong assumption'
-sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$SKILL" "$WRONG" 'not verified live'
-sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SKILL" "$WRONG" 'real bug'
-sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SKILL" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
-sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SKILL" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
-sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SKILL" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
-sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL" "$WRONG" 'regression eval'
+sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$WRONGREF" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
+sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$WRONGREF" "$WRONG" 'misread'
+sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$WRONGREF" "$WRONG" 'missed[^.]{0,30}(place|scan)'
+sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$WRONGREF" "$WRONG" 'wrong assumption'
+sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$WRONGREF" "$WRONG" 'not verified live'
+sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$WRONGREF" "$WRONG" 'real bug'
+sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$WRONGREF" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
+sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$WRONGREF" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
+sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$WRONGREF" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
+sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$WRONGREF" "$WRONG" 'regression eval'
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
@@ -739,12 +744,12 @@ flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt in
 
 
 # --- v0.22.1 review findings: content
-sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SKILL" "$WRONG" 'playbook-learn'
-sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SKILL" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
-sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$WRONG" 'docs-only|exempt'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
-sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
+sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$WRONGREF" "$WRONG" 'playbook-learn'
+sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$WRONGREF" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
+sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$WRONGREF" "$WRONG" 'docs-only|exempt'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$WRONGREF" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$WRONGREF" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
+sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$FULLREF" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
 SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"'; fi
@@ -755,10 +760,10 @@ exact_heading 'v22.2 AC1.1 spec template has ## Regression corpus' "$SPEC_T" '##
 sec_flat_has 'v22.2 AC1.1 template: the corpus lists old inputs' "$SPEC_T" '^## Regression corpus' 'old inputs?|existing inputs?|inputs?'
 sec_flat_has 'v22.2 AC1.1 template: the corpus lists earlier bugs' "$SPEC_T" '^## Regression corpus' 'earlier bugs?|past bugs?|previous bugs?|bugs?'
 sec_flat_has 'v22.2 AC1.1 template: each entry has an expected result' "$SPEC_T" '^## Regression corpus' 'expected'
-sec_flat_has 'v22.2 AC1.1 Phase 1 names the regression corpus' "$SKILL" '^### Phase 1' 'regression corpus'
-sec_flat_has 'v22.2 AC1.1 Phase 1: it applies when a change replaces or rewrites existing logic' "$SKILL" '^### Phase 1' 'replac.{0,200}corpus|rewrit.{0,200}corpus|corpus.{0,200}(replac|rewrit)'
-sec_flat_has 'v22.2 AC1.1 Phase 1: the corpus holds old inputs and earlier bugs with the expected result' "$SKILL" '^### Phase 1' 'corpus.{0,250}(old inputs?|earlier bugs?)|(old inputs?|earlier bugs?).{0,250}corpus'
-sec_flat_has 'v22.2 AC1.1 Phase 1: the first RED covers the whole corpus' "$SKILL" '^### Phase 1' 'corpus.{0,250}first RED|first RED.{0,250}corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1 names the regression corpus' "$FULLREF" '^### Phase 1' 'regression corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: it applies when a change replaces or rewrites existing logic' "$FULLREF" '^### Phase 1' 'replac.{0,200}corpus|rewrit.{0,200}corpus|corpus.{0,200}(replac|rewrit)'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the corpus holds old inputs and earlier bugs with the expected result' "$FULLREF" '^### Phase 1' 'corpus.{0,250}(old inputs?|earlier bugs?)|(old inputs?|earlier bugs?).{0,250}corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the first RED covers the whole corpus' "$FULLREF" '^### Phase 1' 'corpus.{0,250}first RED|first RED.{0,250}corpus'
 flat_has 'v22.2 AC1.2 implementer: never hide a construct from a gate' "$IMPL" 'never hide|not hide|do not hide|don.t hide|hid(e|ing)[^.]{0,80}(from|inside)[^.]{0,40}(gate|rule|check)'
 flat_has 'v22.2 AC1.2 implementer: a flagged construct is reported (Dispute or note)' "$IMPL" '(gate|rule)[^.]{0,200}flag[^.]{0,250}report|report[^.]{0,200}(dispute|note)|(dispute|note)[^.]{0,200}report'
 flat_has 'v22.2 AC1.2 implementer: the hiding tricks are named (variable, disabling, renaming)' "$IMPL" 'variable|disabl|renam'
@@ -820,10 +825,10 @@ flat_has 'v22.2 AC6.1 state template: the last sha per role (reviewer)' "$STATE_
 flat_has 'v22.2 AC6.1 state template: sha' "$STATE_T" 'sha'
 flat_has 'v22.2 AC6.1 state template: the next step' "$STATE_T" 'next step'
 flat_has 'v22.2 AC6.1 state template: open questions' "$STATE_T" 'open questions?'
-flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$SKILL" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
-flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
+flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$FULLREF" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$FULLREF" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$FULLREF" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
+flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$FULLREF" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
 
 # --- v0.22.2 AC7: docs/development.md (moved from the README in v0.25.1)
 if grep -i 'concurrency' "$DEVDOC" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts' 'no docs/development.md line has both words'; fi
@@ -842,9 +847,9 @@ sec_flat_has 'v22.3 AC2.1 pack: short excerpts' "$RPROMPT" "$PK" 'excerpts?'
 sec_flat_has 'v22.3 AC2.1 pack: the commands to run' "$RPROMPT" "$PK" 'commands?[^.]{0,30}run|run[^.]{0,30}commands?'
 sec_flat_has 'v22.3 AC2.1 pack: the role reads the pack first' "$RPROMPT" "$PK" 'read[^.]{0,40}pack first|pack first|first[^.]{0,40}read[^.]{0,40}pack'
 sec_flat_has 'v22.3 AC2.1 pack: other files only when the pack is not enough' "$RPROMPT" "$PK" 'not enough|insufficient|does not (cover|answer|contain)'
-flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$SKILL" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
-flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$SKILL" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
-flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$SKILL" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$FULLREF" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
+flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$FULLREF" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$FULLREF" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
 
 # --- v0.22.3 AC6.2: the reuse job of .github/workflows/test.yml (static checks)
 echo "v22.3 AC6.2 workflow: reuse job"
@@ -1065,22 +1070,22 @@ flat_has 'v22.3 AC6.4 docs/development.md: ... that was green' "$DEVDOC" 'green[
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
-sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILL" "$P2" 'parallel'
-sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
-sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
-sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
-sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
-sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
-sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
-sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
-sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$PARREF" 'parallel'
+flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$PARREF" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
+flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$PARREF" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
+flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$PARREF" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
+flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$PARREF" '(own|each)[^.]{0,200}(role[- ])?gates?'
+flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$PARREF" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
+flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$PARREF" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
+flat_has 'v22.4 AC4.1 one review of the merged feature' "$PARREF" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
+flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$PARREF" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
 # v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
 # `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
 echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
-PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$PARREF" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
-NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
-assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
+NCM="$(grep -o -- '--commits' "$TDDTREE" | wc -l | tr -d ' ')"
+assert_eq 'v0.26.1 AC-D1 / lane C SKILL.md plus references/*.md name --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
 echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
@@ -1095,10 +1100,10 @@ flat_has 'v22.4 AC5.2 playbook-learn says the Role line counts toward the line b
 
 # --- v0.22.4 AC6.3: wording lows
 echo "v22.4 AC6.3 SKILL.md, state.md, bsd-check"
-flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$SKILL" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
+flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$FULLREF" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
 check 'v22.4 AC6.3 state.md: the reviewer line is "the sha it reviewed"' "$TDD/templates/state.md" 'reviewer:.*the sha it reviewed'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}show'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$FULLREF" "$P2" 'autonomy=full[^.]{0,200}show'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$FULLREF" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
 BSD_USAGE="$(sed -n '1,12p' "$PB_ROOT/tools/bsd-check.sh" | tr '\n' ' ' | tr -s ' ')"
 case "$BSD_USAGE" in
   *[Rr]elative\ to\ the\ repo*root*) t_ok 'v22.4 AC6.3 bsd-check usage: suite paths are relative to the repo root' ;;
@@ -1110,12 +1115,12 @@ case "$BSD_USAGE" in
 esac
 
 echo "v22.4 review: the first-slice checkpoint keeps its Why line directly after it"
-CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$SKILL" | cut -d: -f1)"
-PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$SKILL" | cut -d: -f1)"
-WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
-if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
-if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
-if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
+CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$FULLREF" | cut -d: -f1)"
+PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$PARREF" | cut -d: -f1)"
+WHY_L="$(grep -n 'wrong pattern copied' "$FULLREF" | head -n 1 | cut -d: -f1)"
+if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review / lane C full.md has the checkpoint and its Why line, parallel.md the Parallel slices paragraph'; else t_bad 'v22.4 review / lane C full.md has the checkpoint and its Why line, parallel.md the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
+# lane C (v0.26.3) RETIRED: 'v22.4 review the Why line comes before the Parallel slices paragraph' (the two now live in different files, references/full.md and references/parallel.md; the Why line still directly follows the checkpoint, next pin)
+if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$FULLREF" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
 if flat "$DEVDOC" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests'; fi
 flat_has 'v22.3 review Low-2 docs/development.md: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
 flat_has 'v22.3 review Low-2 docs/development.md: ... and the PR head parent P' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
@@ -1493,7 +1498,14 @@ E25R1='removing or renaming an exported symbol is a public API change: Full'
 E25R2='changes no existing public API'
 if printf '%s' "$E25S" | grep -qF -- "$E25R1"; then t_ok "v24.13 R1 F1 E25 quotes the rule: removing or renaming an exported symbol is a public API change: Full"; else t_bad "v24.13 R1 F1 E25 quotes the rule: removing or renaming an exported symbol is a public API change: Full" "[$E25R1] not in the E25 section"; fi
 qchk "v24.13 R1 F1 E25 quotes the rule: changes no existing public API" "$E25S" 'changes no existing public API'
-qchk "v24.13 R1 F1 E25 cites SKILL.md:49 (or SKILL.md:48-49)" "$E25S" 'SKILL\.md:4[89]'
+# lane C (v0.26.3) S2 EDITED: 'v24.13 R1 F1 E25 cites SKILL.md:49 (or SKILL.md:48-49)' pinned a line number, which the split moves
+# (and which was already stale: the rule sat on line 51 at the lane base). The pin now follows the rule: every SKILL.md:N
+# that E25 cites is a line of the core SKILL.md that holds the quoted rule.
+E25NS="$(printf '%s' "$E25S" | grep -oE 'SKILL\.md:[0-9]+' | sed 's/.*://' | sort -u | tr '\n' ' ')"
+E25BAD=""
+for n in $E25NS; do sed -n "${n}p" "$SKILL" | grep -qF -- "$E25R1" || E25BAD="$E25BAD $n"; done
+if [ -n "$E25NS" ] && [ -z "$E25BAD" ]; then t_ok "v24.13 R1 F1 / lane C E25 cites SKILL.md:N where line N holds the rename rule ($E25NS)"
+else t_bad "v24.13 R1 F1 / lane C E25 cites SKILL.md:N where line N holds the rename rule" "cited [$E25NS], not on the rule line: [$E25BAD]"; fi
 if printf '%s' "$E25S" | tr '[:upper:]' '[:lower:]' | grep -qF -- 'a change to a name that other files use'; then t_bad "v24.13 R1 F1 E25 no longer paraphrases 'a change to a name that other files use'" "paraphrase still in the E25 section"; else t_ok "v24.13 R1 F1 E25 no longer paraphrases 'a change to a name that other files use'"; fi
 if grep -qF -- "$E25R1" "$SKILL"; then t_ok "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (1)"; else t_bad "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (1)" "[$E25R1] not in $SKILL"; fi
 if grep -qF -- "$E25R2" "$SKILL"; then t_ok "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (2)"; else t_bad "v24.13 R1 F1 the quoted E25 rule text is really in skills/playbook-tdd/SKILL.md (2)" "[$E25R2] not in $SKILL"; fi
@@ -1559,16 +1571,17 @@ if [ "${#TDDDESC}" -ge 1 ] && [ "${#TDDDESC}" -le 450 ]; then t_ok "v24.6 the pl
 
 echo "v0.24.8: a user override from Full to Lite (ask once, label it, never drop the tests)"
 PICKW="$(awk '/^## Pick the weight/ { f = 1; next } f && /^## / { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+WEIGHTSW="$(tr '\n' ' ' < "$WEIGHTSREF" 2>/dev/null)"   # lane C: user override and "quick" moved to references/weights.md
 qchk "v24.8 Pick the weight has the user override rule" "$PICKW" 'user override'
-qchk "v24.8 the override asks once" "$PICKW" '[Aa]sks? once'
-qchk "v24.8 the question names the Full trigger (file:line or rule)" "$PICKW" 'ask[^.]{0,40}once[^.]{0,200}(file:line|rule)'
-qchk "v24.8 the question names what is lost: no independent reviewer, no separate contexts" "$PICKW" 'no independent reviewer[^.]{0,60}no separate contexts'
-qchk "v24.8 the override is labelled Weight: Lite (user override; Full criteria: <x>)" "$PICKW" 'Weight: Lite \(user override; Full criteria: <x>\)'
-qchk "v24.8 the label goes to decisions.md and the final report" "$PICKW" 'user override[^.]{0,200}decisions\.md[^.]{0,60}final report'
-qchk "v24.8 the tests are never skipped" "$PICKW" 'tests? (are|is) never skipped|never skips? (the )?tests?'
-qchk "v24.8 the override still runs test first, seen failing, role gates and evidence" "$PICKW" 'seen failing[^.]{0,80}role gates[^.]{0,40}evidence'
-qchk "v24.8 a headless run follows the user with no question" "$PICKW" 'headless[^.]{0,120}(no question|without (a )?question)'
-qchk "v24.8 the skip-tests rule is unchanged" "$PICKW" 'skip-tests rule is unchanged'
+qchk "v24.8 the override asks once" "$WEIGHTSW" '[Aa]sks? once'
+qchk "v24.8 the question names the Full trigger (file:line or rule)" "$WEIGHTSW" 'ask[^.]{0,40}once[^.]{0,200}(file:line|rule)'
+qchk "v24.8 the question names what is lost: no independent reviewer, no separate contexts" "$WEIGHTSW" 'no independent reviewer[^.]{0,60}no separate contexts'
+qchk "v24.8 the override is labelled Weight: Lite (user override; Full criteria: <x>)" "$WEIGHTSW" 'Weight: Lite \(user override; Full criteria: <x>\)'
+qchk "v24.8 the label goes to decisions.md and the final report" "$WEIGHTSW" 'user override[^.]{0,200}decisions\.md[^.]{0,60}final report'
+qchk "v24.8 the tests are never skipped" "$WEIGHTSW" 'tests? (are|is) never skipped|never skips? (the )?tests?'
+qchk "v24.8 the override still runs test first, seen failing, role gates and evidence" "$WEIGHTSW" 'seen failing[^.]{0,80}role gates[^.]{0,40}evidence'
+qchk "v24.8 a headless run follows the user with no question" "$WEIGHTSW" 'headless[^.]{0,120}(no question|without (a )?question)'
+qchk "v24.8 the skip-tests rule is unchanged" "$WEIGHTSW" 'skip-tests rule is unchanged'
 qchk "v24.8 the final-report template shows the user override weight line" "$(tr '\n' ' ' < "$FINAL")" 'Lite \(user override; Full criteria: <x>\)'
 echo "v0.24.8 E26 scenario definition (auto-graded since v0.24.13)"
 exact_heading "v24.8 scenarios has the E26 heading" "$SCEN" '## E26 A user override from Full to Lite asks once and keeps the tests'
@@ -1636,8 +1649,8 @@ E11BASELINE="$(grep -E 'E11_BASE="\$\(git' "$RUNEV" | head -n 1)"
 if [ -n "$E11BASELINE" ] && ! printf '%s' "$E11BASELINE" | grep -qE '(^|[ |])E28([ |)]|$)'; then t_ok "v24.24 AC2 E28 is not in the E11_BASE list (no RED commit is graded)"; else t_bad "v24.24 AC2 E28 is not in the E11_BASE list (no RED commit is graded)" "line: [$E11BASELINE]"; fi
 
 echo "v0.24.8 review 1: the override clause, and the AUTO list stays gradable"
-qchk "v24.8 r1 the override covers only the Full criteria named in the question" "$PICKW" 'override covers only the Full criteria named in the question'
-qchk "v24.8 r1 a new Full criterion, the size limit or a test that looks wrong still escalates (ask again)" "$PICKW" 'a new Full criterion[^.;]{0,80}size limit[^.;]{0,80}test that looks wrong[^.;]{0,40}escalates[^.;]{0,20}ask again'
+qchk "v24.8 r1 the override covers only the Full criteria named in the question" "$WEIGHTSW" 'override covers only the Full criteria named in the question'
+qchk "v24.8 r1 a new Full criterion, the size limit or a test that looks wrong still escalates (ask again)" "$WEIGHTSW" 'a new Full criterion[^.;]{0,80}size limit[^.;]{0,80}test that looks wrong[^.;]{0,40}escalates[^.;]{0,20}ask again'
 RUNEVALS="$PB_ROOT/evals/run-evals.sh"
 AUTOS="$(sed -n 's/^AUTO="\(.*\)"/\1/p' "$RUNEVALS" | head -n 1)"
 if [ -n "$AUTOS" ]; then t_ok "v24.8 r1 the AUTO list is readable"; else t_bad "v24.8 r1 the AUTO list is readable" "no AUTO=\"...\" line in $RUNEVALS"; fi
@@ -1660,37 +1673,34 @@ if [ "$PROOF_WORDS" -le 700 ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 playbook-proo
 TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
 if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
 if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -eq 700 ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count"; else t_bad "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count" "budget [$PB] count $PROOF_WORDS"; fi
-EXPECT_HEADS="$(cat <<'HEADS'
-## Pick the weight (before Phase 1)
-### Lite workflow
-### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")
-## Slice size
-## Preconditions
-## Workflow
-### Phase 1: Spec (orchestrator)
-### Phase 2: Loop per slice (vertical slices, never "all tests first")
-### Phase 3: Review (reviewer, read-only)
-### Phase 4: Close-out (orchestrator)
-## When the user says it is wrong
-## Starting roles per harness (`conf.sh get subagents`)
-## Stop and ask the user when
-## Resuming
-## Hand-off files (`.agents/handoff/`, git-ignored)
-HEADS
-)"
-GOT_HEADS="$(grep -E '^###? ' "$SKILL")"
-if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order"; else t_bad "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order" "headings differ: $(diff <(printf '%s\n' "$EXPECT_HEADS") <(printf '%s\n' "$GOT_HEADS") | head -6 | tr '\n' '|')"; fi
+# lane C (v0.26.3) S2 EDITED: the exact heading list of v0.24.10 R2-4 became named headings in order. The Workflow phases and
+# Resuming moved to references/full.md with their headings (A3b); the core keeps its own headings in this order (A3c).
+heads_in_order() { # NAME FILE HEADING...
+  local name="$1" file="$2" prev=0 h n bad=""; shift 2
+  for h in "$@"; do
+    n="$(grep -nxF -- "$h" "$file" 2>/dev/null | head -n 1 | cut -d: -f1)"
+    if [ -z "$n" ]; then bad="$bad [missing: $h]"; elif [ "$n" -le "$prev" ]; then bad="$bad [out of order: $h]"; else prev="$n"; fi
+  done
+  if [ -z "$bad" ]; then t_ok "$name"; else t_bad "$name" "$bad"; fi
+}
+heads_in_order "v24.10 R2-4 / lane C playbook-tdd SKILL.md keeps its core ## and ### headings in order" "$SKILL" \
+  '## Pick the weight (before Phase 1)' '### Lite workflow' '### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")' \
+  '## Slice size' '## Preconditions' '## Starting roles per harness (`conf.sh get subagents`)' '## Stop and ask the user when' \
+  '## Hand-off files (`.agents/handoff/`, git-ignored)'
+heads_in_order "v24.10 R2-4 / lane C references/full.md keeps the Workflow phase headings in order" "$FULLREF" \
+  '### Phase 1: Spec (orchestrator)' '### Phase 2: Loop per slice (vertical slices, never "all tests first")' \
+  '### Phase 3: Review (reviewer, read-only)' '### Phase 4: Close-out (orchestrator)'
 
 
 echo "v0.24.10 review 1: minors (quick past the size limit, Phase 1 ask-first, proof search scope, first-slice checkpoint)"
-qchk "v24.10 r1 quick work past the Lite size limit with no Full criterion asks once before going to Full" "$PICKW" 'quick[^.;]{0,40}grows past the Lite size limit[^.;]{0,40}no Full criterion[^.;]{0,20}ask once[^.;]{0,30}Full'
-qchk "v24.10 r1 headless quick work past the size limit stays Lite and is labelled" "$PICKW" 'headless[^.;]{0,20}stay Lite[^.;]{0,20}label'
-PH1="$(awk '/^### Phase 1/ { f = 1; next } f && /^###? / { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+qchk "v24.10 r1 quick work past the Lite size limit with no Full criterion asks once before going to Full" "$WEIGHTSW" 'quick[^.;]{0,40}grows past the Lite size limit[^.;]{0,40}no Full criterion[^.;]{0,20}ask once[^.;]{0,30}Full'
+qchk "v24.10 r1 headless quick work past the size limit stays Lite and is labelled" "$WEIGHTSW" 'headless[^.;]{0,20}stay Lite[^.;]{0,20}label'
+PH1="$(awk '/^### Phase 1/ { f = 1; next } f && /^###? / { exit } f { print }' "$FULLREF" | tr '\n' ' ')"
 qchk "v24.10 r1 Phase 1 asks before any code on a reading that is ambiguous and hard to reverse" "$PH1" 'ambiguous and hard to reverse is asked before any code'
 if printf '%s' "$PH1" | grep -qiE 'changes assertions AND is hard to reverse'; then t_bad "v24.10 r1 Phase 1 does not narrow the ask to assertion changes" "found 'changes assertions AND is hard to reverse'"; else t_ok "v24.10 r1 Phase 1 does not narrow the ask to assertion changes"; fi
 PROW="$(grep -E '^\| "nothing else uses X"' "$PROOF_MD")"
 qchk "v24.10 r1 playbook-proof: the nothing-else-uses row names what was searched" "$PROW" 'naming what was searched'
-CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILL" | tr '\n' ' ')"
+CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$FULLREF" | tr '\n' ' ')"
 qchk "v24.10 r1 the first-slice checkpoint covers more than one slice (2 slices included)" "$CHKP" 'more than one slice[^.]{0,20}repeats? a pattern'
 if printf '%s' "$CHKP" | grep -qi 'several slices'; then t_bad "v24.10 r1 the checkpoint does not say several slices" "found 'several slices'"; else t_ok "v24.10 r1 the checkpoint does not say several slices"; fi
 
@@ -1712,13 +1722,13 @@ GUIDE="$TDD/references/tdd-guide.md"
 DECT="$TDD/templates/decisions.md"
 assert_file "v25 AC1 references/tdd-guide.md exists" "$GUIDE"
 assert_file "v25 AC3 templates/decisions.md exists" "$DECT"
-sec_flat_has "v25 AC1 Phase 1 points to references/tdd-guide.md#oracle" "$SKILL" '^### Phase 1' 'references/tdd-guide\.md#oracle'
-sec_flat_has "v25 AC1 Phase 1: the trigger (direction, unit, sign or convention) and the pointer are in one binding sentence (within 500 characters)" "$SKILL" '^### Phase 1' 'direction,? unit,? sign,? or convention(.{0,250}){2}tdd-guide\.md#oracle'
-sec_flat_has "v25 AC1 Phase 1 names the worked example" "$SKILL" '^### Phase 1' 'worked example'
-sec_flat_has "v25 AC1 Phase 1: the example is confirmed by the user or a source document" "$SKILL" '^### Phase 1' 'by the user or (a |the )?source (document|doc)'
-sec_flat_has "v25 AC1 Phase 1: the example is recorded as an AC that the tests use" "$SKILL" '^### Phase 1' 'as an AC.{0,80}tests? (must |should )?(use|uses|assert|include)'
-sec_flat_has "v25 AC1 Phase 1: without the example, ask" "$SKILL" '^### Phase 1' 'worked example(.{0,200}){2}[^a-z]ask'
-sec_flat_has "v25 AC1 Phase 1: headless, log in decisions.md and label [UNVERIFIED]" "$SKILL" '^### Phase 1' 'headless.{0,160}decisions\.md.{0,120}\[UNVERIFIED\]'
+sec_flat_has "v25 AC1 Phase 1 points to references/tdd-guide.md#oracle" "$FULLREF" '^### Phase 1' 'references/tdd-guide\.md#oracle'
+sec_flat_has "v25 AC1 Phase 1: the trigger (direction, unit, sign or convention) and the pointer are in one binding sentence (within 500 characters)" "$FULLREF" '^### Phase 1' 'direction,? unit,? sign,? or convention(.{0,250}){2}tdd-guide\.md#oracle'
+sec_flat_has "v25 AC1 Phase 1 names the worked example" "$FULLREF" '^### Phase 1' 'worked example'
+sec_flat_has "v25 AC1 Phase 1: the example is confirmed by the user or a source document" "$FULLREF" '^### Phase 1' 'by the user or (a |the )?source (document|doc)'
+sec_flat_has "v25 AC1 Phase 1: the example is recorded as an AC that the tests use" "$FULLREF" '^### Phase 1' 'as an AC.{0,80}tests? (must |should )?(use|uses|assert|include)'
+sec_flat_has "v25 AC1 Phase 1: without the example, ask" "$FULLREF" '^### Phase 1' 'worked example(.{0,200}){2}[^a-z]ask'
+sec_flat_has "v25 AC1 Phase 1: headless, log in decisions.md and label [UNVERIFIED]" "$FULLREF" '^### Phase 1' 'headless.{0,160}decisions\.md.{0,120}\[UNVERIFIED\]'
 lite_has "v25 AC1 Lite step 1 names the oracle rule and points to Phase 1" 1 'oracle.{0,100}Phase 1|Phase 1.{0,100}oracle'
 lite_has "v25 AC1 R2-1 Lite step 1 still asks an ambiguous, hard-to-reverse reading before any code" 1 "$ASK_FIRST"
 SKW="$(wc -w < "$SKILL" | tr -d ' ')"; SKB="$(budget_of skills/playbook-tdd/SKILL.md)"
@@ -1817,12 +1827,12 @@ if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |
 
 echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
 # AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
-if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
+# lane C (v0.26.3) RETIRED: 'v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700' (superseded by spec A1, budgets only go down, tests/test-budgets-down.sh, and A3, core <= 1500, tests/test-skill-split.sh)
 # AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
-sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
-sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
+sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$FULLREF" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
+sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$FULLREF" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
 CLAIMDN='claim that depends on it.{0,12}\[UNVERIFIED\] or Dn'
-if section "$SKILL" '^### Phase 1' | tr '\n' ' ' | grep -qiE -- "$CLAIMDN"; then t_bad "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)" "claim clause allows Dn"; else t_ok "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)"; fi
+if section "$FULLREF" '^### Phase 1' | tr '\n' ' ' | grep -qiE -- "$CLAIMDN"; then t_bad "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)" "claim clause allows Dn"; else t_ok "v0.24.29 AC1 F1 claims keep the literal [UNVERIFIED] only (no Dn for claims)"; fi
 # AC2: Lite step 4, one sentence.
 lite_has "v0.24.29 AC2 Lite step 4: on a test built on an unconfirmed oracle, a killed mutant pins the assumed reading" 4 'unconfirmed oracle.{0,60}killed mutant pins the assumed reading'
 lite_has "v0.24.29 AC2 Lite step 4: it does not catch a bug" 4 'pins the assumed reading.{0,40}(does not|not) catch a bug'

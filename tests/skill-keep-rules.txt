@@ -1,0 +1,73 @@
+# Key rules of playbook-tdd (lane C spec A2c): one case-insensitive ERE per line, each found at least once in the flat text
+# of skills/playbook-tdd/**/*.md (tests/skill-keep-rows.sh flat: markup stripped, "|" is a space, whitespace collapsed).
+# They check meaning across the split; the sentence list in tests/skill-keep.tsv checks completeness. A C-fix (S3) that
+# rewords one of these edits its line here in the tester's RED commit.
+# -- the role table and the gate
+Tester tests only production code
+Implementer production code only any test file \(edit, delete, skip, rename\)
+Reviewer the review report only any file in the repo
+Spec reviewer \(Full\) the spec review report only any file in the repo
+role-gate\.sh check <role> \[--base REF\]
+record .git rev-parse HEAD. as the role's .--base.
+The gate runs after every hand-back
+neither the tester nor the implementer may change
+a test nobody saw fail proves nothing
+# -- the weight
+Full when the change alters or removes existing behaviou?r of critical code
+purely additive change inside critical code[^.]*is Lite unless another Full item applies
+removing or renaming an exported symbol is a public API change: Full
+not parsed, matched or sent as data
+The weight line quotes the file:line or rule that decided it
+unsure.{0,200}Full
+Escalate to Full as soon as Lite work meets any Full criterion
+The tests are never skipped
+skip-tests rule (is )?unchanged
+that counts as asking for Lite
+# -- Lite and Exempt
+see it fail for the right reason
+Do not touch the test
+if it exits 1, escalate to Full
+the line "no independent review"
+ENDS with exactly this line, copied verbatim, never paraphrased
+user-visible change[^.]{0,80}one real observation
+docs-only: README, comments, guides; no executable or configuration change
+Not exempt: configuration that changes behaviou?r
+Avoid one-test slices
+Record tests that already fail, so nobody gets blamed for them
+# -- Full workflow
+Nothing goes into the spec that the source did not say
+The first RED covers the whole corpus
+Search for every place the request touches before you fix the scope
+Only an OK lets the first tester start
+after 2 rounds ask the user
+Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention
+label every claim that depends on it \[UNVERIFIED\]
+never "all tests first"
+The role reads the pack first
+they must fail for the right reason
+Never let the implementer resolve a dispute itself
+At most 2 rounds, then ask the user
+Only on green, with tests untouched
+continue without waiting and log in .decisions\.md. that the checkpoint was skipped
+A merge conflict makes those slices serial
+Slices that share a file stay serial from the start
+One reviewer per feature, not per slice
+findings without evidence are dropped
+capped at 2 per lane or slice
+A pre-existing security MAJOR is raised to the user in one line
+tokens as the harness reports them \(.0. if unknown, never a guess\)
+unit tests alone are not enough
+do not report done
+Do not push or open a PR unless .autonomy=full. or the user asked
+read .state\.md. first
+# -- when it is wrong
+Do not defend the result and do not patch at once
+Fix it test-first: a failing test or eval for the miss, seen failing, then the fix
+# -- roles, models, stops
+A configured model is binding: the agent never upgrades or downgrades it on its own judgement
+Headless: use the conf, never upgrade, never block
+never falls back to another role's model
+In .none. mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates
+Native roles get the full role file plus the allowed input paths, never your conversation or opinions
+making a test pass seems to need weakening it, touching unrelated code, or adding a dependency
+the orchestrator never stops to ask

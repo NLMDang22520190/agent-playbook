@@ -610,4 +610,65 @@ rpc "$D" "$B"
 assert_rc "AC5 README version badge left at 1.2.3 after the bump: exit 1" 1
 assert_contains "AC5 stale badge output names README.md" "$OUT" "README.md"
 
+
+echo "lane C (v0.26.3) A1b: check-release.sh refuses a word budget that rose since the previous release tag"
+# mk_rel_wb OLD_TABLE NEW_TABLE [tag-head] -> a git release root: OLD_TABLE committed and tagged v1.2.2, then NEW_TABLE
+# committed (and tagged v1.2.3 with tag-head, the tag the release checks). The previous release is the newest v* tag reachable
+# from HEAD that does not point at HEAD (spec A1, D6).
+mk_rel_wb() {
+  local d; d="$(mk_rel 1.2.3 "$CL")"
+  mkdir -p "$d/evals"
+  printf '%s' "$1" > "$d/evals/word-budgets"
+  ( cd "$d" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+    git config commit.gpgsign false && git config tag.gpgsign false && git add -A && git commit -q -m old && git tag v1.2.2 &&
+    printf '%s' "$2" > evals/word-budgets && git add -A && git commit -q -m new &&
+    if [ "${3:-}" = tag-head ]; then git tag v1.2.3; fi ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+WB_OLD='# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+'
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 750
+skills/b/SKILL.md 400
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a budget raised since v1.2.2 (sum lower): exit 1" 1
+assert_contains "A1b the failure names the path" "$OUT" "skills/a/SKILL.md"
+assert_contains "A1b the failure names the old value" "$OUT" "700"
+assert_contains "A1b the failure names the new value" "$OUT" "750"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 20
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b the sum of budgets rose (a new budgeted path), HEAD tagged v1.2.3: exit 1 against v1.2.2" 1
+if printf '%s' "$OUT" | grep -qi 'sum'; then t_ok "A1b the sum failure says sum"; else t_bad "A1b the sum failure says sum" "$OUT"; fi
+assert_contains "A1b the sum failure shows the old sum" "$OUT" "1930"
+assert_contains "A1b the sum failure shows the new sum" "$OUT" "1950"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 700
+skills/a/SKILL.md 650
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b lower budgets since v1.2.2: exit 0" 0
+D="$(mk_rel 1.2.3 "$CL")"; mkdir -p "$D/evals"; printf 'skills/a/SKILL.md 9999\n' > "$D/evals/word-budgets"
+( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+  git config commit.gpgsign false && git add -A && git commit -q -m only ) >/dev/null 2>&1
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a repo with no previous release tag: the comparison is skipped, exit 0" 0
+D="$(mk_rel 1.2.3 "$CL")"
+( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+  git config commit.gpgsign false && git add -A && git commit -q -m old && git tag v1.2.2 && printf '\n' >> CHANGELOG.md &&
+  git commit -qam new ) >/dev/null 2>&1
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a tagged repo with no evals/word-budgets: the comparison is skipped, exit 0" 0
+assert_not_contains "A1b no raw git error leaks when the table is missing" "$OUT" "fatal:"
+
 t_summary

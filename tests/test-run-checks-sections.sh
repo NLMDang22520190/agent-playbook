@@ -525,6 +525,10 @@ cp "$MASTER/AGENTS.global.md" "$WBMASTER/"
 for f in "$MASTER"/skills/*/SKILL.md; do
   d="$WBMASTER/skills/$(basename "$(dirname "$f")")"; mkdir -p "$d"; cp -a "$f" "$d/"
 done
+# lane C (v0.26.3) A1c: the real table also budgets reference files; copy every path it lists so the real table is whole in the copy
+for p in $(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { print $1 }' "$MASTER/evals/word-budgets"); do
+  if [ -f "$MASTER/$p" ] && [ ! -f "$WBMASTER/$p" ]; then mkdir -p "$WBMASTER/$(dirname "$p")"; cp -a "$MASTER/$p" "$WBMASTER/$p"; fi
+done
 mk_wb_copy() { local d; d="$(mk_tmp)"; cp -a "$WBMASTER/." "$d/"; printf '%s\n' "$d"; }
 wcw() { wc -w < "$1" | tr -d ' '; }
 # wb_table DIR -> evals/word-budgets in DIR: AGENTS.global.md and every skills/*/SKILL.md at its current words + WB_SLACK
@@ -546,19 +550,20 @@ for f in AGENTS.global.md "$PB_ROOT"/skills/*/SKILL.md; do
   f="${f#"$PB_ROOT"/}"
   if grep -Eq "^${f}[[:space:]]+[0-9]+" "$PB_ROOT/evals/word-budgets" 2>/dev/null; then t_ok "AC1 evals/word-budgets has an entry for $f"; else t_bad "AC1 evals/word-budgets has an entry for $f"; fi
 done
-if grep -qi 'raising a budget needs a CHANGELOG line' "$PB_ROOT/evals/word-budgets" 2>/dev/null; then t_ok "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; else t_bad "AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)"; fi
+# lane C (v0.26.3) RETIRED: 'AC1 the table header carries the rule (a budget raise needs a CHANGELOG line)'; spec A1b reverses it: budgets only go down, the header names tests/test-budgets-down.sh (pinned there)
 
 
 # --only budgets prints only budget lines (v0.24.12): the heading, one ok line per budgeted file, the summary
 C="$(mk_wb_copy)"
 run bash "$C/evals/run-checks.sh" --only budgets
 nskills="$(ls "$C"/skills/*/SKILL.md | wc -l | tr -d ' ')"
+nwb="$(awk '{ gsub(/\r/, "", $2) } $1 !~ /^#/ && $2 ~ /^[0-9]+$/ { n++ } END { print n + 0 }' "$C/evals/word-budgets")"   # lane C A1c: every listed path
 assert_rc "AC2 --only budgets on the real table: exit 0" 0
 assert_contains "AC2 --only budgets: run-checks: all ok" "$OUT" "run-checks: all ok"
 assert_contains "AC2 --only budgets: the AGENTS.global.md budget line" "$OUT" "  ok   AGENTS.global.md: "
 assert_contains "AC2 --only budgets: a skill budget line" "$OUT" "  ok   $SKILL: "
-assert_eq "AC2 --only budgets: one ok line per budgeted file" "$((nskills + 1))" "$(printf '%s\n' "$OUT" | grep -c '^  ok   ')"
-assert_eq "AC2 --only budgets: every ok line is a budget line" "$((nskills + 1))" "$(printf '%s\n' "$OUT" | grep -c '^  ok   .* words (budget [0-9]*)$')"
+assert_eq "AC2 --only budgets: one ok line per budgeted file" "$nwb" "$(printf '%s\n' "$OUT" | grep -c '^  ok   ')"
+assert_eq "AC2 --only budgets: every ok line is a budget line" "$nwb" "$(printf '%s\n' "$OUT" | grep -c '^  ok   .* words (budget [0-9]*)$')"
 assert_not_contains "AC2 --only budgets: no skills line (name matches directory)" "$OUT" "name matches directory"
 assert_not_contains "AC2 --only budgets: no always-on block heading" "$OUT" "always-on block"
 assert_not_contains "AC2 --only budgets: no clarify-sentence line" "$OUT" "clarify sentence"
@@ -663,5 +668,19 @@ assert_contains "R1 a stale entry names the path and says in evals/word-budgets 
 C="$(mk_wb_copy)"; wb_table "$C"
 checks "$C" budgets
 assert_not_contains "R1 no stale entry in a table of existing files" "$OUT" "in evals/word-budgets but missing"
+
+echo "lane C (v0.26.3) A1c: the budgets group checks every path the table lists, not only AGENTS.global.md and skills/*/SKILL.md"
+C="$(mk_wb_copy)"; wb_table "$C"
+mkdir -p "$C/skills/playbook-tdd/references"; words_of 30 > "$C/skills/playbook-tdd/references/full.md"
+printf 'skills/playbook-tdd/references/full.md 29\n' >> "$C/evals/word-budgets"
+checks "$C" budgets
+assert_rc "A1c a listed reference file 1 word over its budget: exit 1" 1
+assert_contains "A1c the failure names the reference file, its count and its budget" "$OUT" "skills/playbook-tdd/references/full.md: 30 words, over its budget of 29"
+C="$(mk_wb_copy)"; wb_table "$C"
+mkdir -p "$C/skills/playbook-tdd/references"; words_of 30 > "$C/skills/playbook-tdd/references/full.md"
+printf 'skills/playbook-tdd/references/full.md 30\n' >> "$C/evals/word-budgets"
+checks "$C" budgets
+assert_rc "A1c a listed reference file at its budget: exit 0" 0
+assert_contains "A1c the reference file gets its ok budget line" "$OUT" "  ok   skills/playbook-tdd/references/full.md: 30 words (budget 30)"
 
 t_summary
