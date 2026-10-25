@@ -11,6 +11,10 @@
 #                                     writes the Claude Code --settings JSON of ARM to FILE and prints the number of
 #                                     non-playbook lines of HOME/.claude/CLAUDE.md that the without arm also drops (0 for with)
 #   pbh_check_key NAME                NAME without a trailing " (...)" group that carries a run-specific value (DECISION[D8])
+#   pbh_results_json NDJSON OUT       writes the pb-evals/1 document OUT from NDJSON: line 1 = the top-level fields (no runs,
+#                                     no summary), every next line = one run (kept in order); adds schema and summary (node)
+#   pbh_stats FILE                    prints the summary (a JSON array) of the pb-evals/1 document FILE (node)
+#   pbh_stats_js                      prints the JavaScript function pbhStats(doc) behind both
 #   pbh_phys PATH                     PATH with its symbolic links resolved (PATH itself when its directory does not exist)
 #   pbh_json_str TEXT                 TEXT as a JSON string literal (control characters dropped)
 
@@ -125,4 +129,62 @@ pbh_check_key() {
       case "$g" in *")"*) ;; *=* | *": "* | *"bucket "* | *"first one after"*) printf '%s\n' "${n% (*}"; return 0 ;; esac ;;
   esac
   printf '%s\n' "$n"
+}
+
+# pbh_stats_js: prints the JavaScript function pbhStats(doc) shared by pbh_stats and pbh_results_json (AC5.4).
+# Per (scenario, arm, key): n (PASS + FAIL results of graded runs), passes, pass_at_1, pass_all (pass^K), complete (n = repeat),
+# errors, skipped, manual. Per (scenario, arm), one item with key null: errors, skipped and the mean and sample sd of cost_usd
+# and seconds over the graded runs with a known value (DECISION[D14]: ERROR runs are not in the means; sd null below 2 values).
+pbh_stats_js() {
+  cat <<'EOF'
+function pbhStats(j) {
+  const K = j.repeat || 1, sa = new Map(), out = [];
+  const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+  const sd = a => { if (a.length < 2) return null; const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) * (x - m), 0) / (a.length - 1)); };
+  for (const r of (Array.isArray(j.runs) ? j.runs : [])) {
+    const id = r.scenario + "\u0000" + r.arm;
+    if (!sa.has(id)) sa.set(id, { scenario: r.scenario, arm: r.arm, errors: 0, skipped: 0, cost: [], secs: [], keys: new Map() });
+    const s = sa.get(id);
+    if (r.status === "error") { s.errors++; continue; }
+    if (r.status === "skipped") { s.skipped++; continue; }
+    if (typeof r.cost_usd === "number") s.cost.push(r.cost_usd);
+    if (typeof r.seconds === "number") s.secs.push(r.seconds);
+    for (const c of (Array.isArray(r.checks) ? r.checks : [])) {
+      if (!s.keys.has(c.key)) s.keys.set(c.key, { n: 0, passes: 0, manual: 0 });
+      const e = s.keys.get(c.key);
+      if (c.result === "PASS") { e.n++; e.passes++; } else if (c.result === "FAIL") e.n++; else if (c.result === "MANUAL") e.manual++;
+    }
+  }
+  for (const s of sa.values()) {
+    for (const [key, e] of s.keys) {
+      out.push({ scenario: s.scenario, arm: s.arm, key: key, n: e.n, passes: e.passes, pass_at_1: e.n ? e.passes / e.n : null,
+        pass_all: e.n ? e.passes === e.n : null, complete: e.n === K, errors: s.errors, skipped: s.skipped, manual: e.manual });
+    }
+    out.push({ scenario: s.scenario, arm: s.arm, key: null, errors: s.errors, skipped: s.skipped,
+      cost_mean: mean(s.cost), cost_sd: sd(s.cost), seconds_mean: mean(s.secs), seconds_sd: sd(s.secs) });
+  }
+  return out;
+}
+EOF
+}
+
+pbh_stats() {
+  [ -f "${1:-}" ] || return 2
+  node -e "$(pbh_stats_js)"'
+const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+process.stdout.write(JSON.stringify(pbhStats(j)) + "\n");' "$1"
+}
+
+# line 1 of NDJSON = the top-level fields (no runs, no summary); every next non-empty line = one run, kept in order
+pbh_results_json() {
+  [ -f "${1:-}" ] && [ -n "${2:-}" ] || return 2
+  node -e "$(pbh_stats_js)"'
+const fs = require("fs");
+const L = fs.readFileSync(process.argv[1], "utf8").split("\n").filter(l => l.trim() !== "");
+if (!L.length) { process.stderr.write("pbh_results_json: empty input\n"); process.exit(1); }
+const top = JSON.parse(L[0]), d = { schema: "pb-evals/1" };
+for (const k of Object.keys(top)) if (k !== "schema" && k !== "runs" && k !== "summary") d[k] = top[k];
+d.runs = L.slice(1).map(l => JSON.parse(l));
+d.summary = pbhStats(d);
+fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
 }

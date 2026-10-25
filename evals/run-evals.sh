@@ -32,17 +32,6 @@
 # A dir the agent made unreadable (chmod 000) is made accessible again (chmod -R u+rwx on that dir only) and removed; if it
 # still exists the runner prints "<E> NOTE could not remove the scenario TMPDIR `<path>`; remove it by hand" (never a FAIL).
 # On macOS a bare `mktemp -d` may ignore TMPDIR, so the per-scenario TMPDIR cleanup may not catch those leftovers.
-# Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
-# (and E20.home).
-# Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
-# (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
-# Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
-# <workroot>/<E> is only cleared when that marker exists or <E> is a previous fixture (.git/pb-fixture).
-# Harness errors: an adapter that exits non-zero (timeout 124, not found 127, ...) or whose transcript shows an
-# auth failure (invalid API key, unauthorized, 401) makes the scenario ERROR; it is not graded (a dead agent
-# must not "pass" E8 by changing nothing).
-# Exit: 0 every auto check passed, 1 any FAIL, 2 usage or a workroot/<E> the runner does not own,
-#       3 environment (node, git, fixture), 4 any scenario ERROR (harness failure: the run is unreliable).
 # --model M pins the model (claude --model M, codex -m M, opencode --model M; --cmd adapters get PB_EVAL_MODEL) and the results
 # record it ("Model: not pinned (CLI default)" without it; a --harness run without --model warns on stderr). --arm runs every
 # scenario with the playbook (with, the default), without it, or both; --repeat K (1..99) runs each (scenario, arm) K times.
@@ -56,6 +45,22 @@
 # PB_EVAL_SETTINGS and do their own isolation. Codex, OpenCode and --real-home cannot run the without arm (exit 2), nor can
 # a workroot under a directory whose CLAUDE.md, AGENTS.md or rules file holds the playbook block, or a user rules file
 # (~/.claude/rules) that holds it. The helpers live in evals/lib-harness.sh (also sourced by run-outcome.sh).
+# Every run also writes ${OUT%.md}.json (schema pb-evals/1: model, arms, repeat, each run with its checks, fixture tree,
+# prompt hash, cost and seconds, and a summary with pass@1 and pass^K per check) and prints "json: <path>" after "results:";
+# with --arm or --repeat the md also gets a "## pass@1 and pass^K" section. Every graded without run gets the check
+# "without arm: no playbook file read and no playbook Skill call" from its stream-json transcript (MANUAL for plain text).
+# tools/eval-delta.sh reads the JSON of a pinned run with both arms and prints the delta per check.
+# Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
+# (and E20.home).
+# Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
+# (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
+# Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
+# <workroot>/<E> is only cleared when that marker exists or <E> is a previous fixture (.git/pb-fixture).
+# Harness errors: an adapter that exits non-zero (timeout 124, not found 127, ...) or whose transcript shows an
+# auth failure (invalid API key, unauthorized, 401) makes the scenario ERROR; it is not graded (a dead agent
+# must not "pass" E8 by changing nothing).
+# Exit: 0 every auto check passed, 1 any FAIL, 2 usage or a workroot/<E> the runner does not own,
+#       3 environment (node, git, fixture), 4 any scenario ERROR (harness failure: the run is unreliable).
 # Bash 3.2 compatible. Needs node >= 18 and git.
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
@@ -296,7 +301,34 @@ for r in $RUNS; do
     pb_die "refusing to delete $WORKROOT/$e: not a previous fixture (.git/pb-fixture) and the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
   fi
 done
-NOW="$(date '+%Y-%m-%d %H%M%S')"
+NOW="$(date '+%Y-%m-%d %H%M%S')"; STARTED="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+# isolation of each run, as the md and JSON record it (AC3.3)
+case "$HARNESS" in
+  "") ISO_MODE=adapter ;;
+  claude) if [ "$SET_MODE" = 1 ]; then ISO_MODE=claude-settings; else ISO_MODE=none; fi ;;
+  *) ISO_MODE=none ;;
+esac
+# the playbook skill names the isolation check looks for: the runner repo's skills and the playbook-* skills of HOME
+ISO_NAMES=""
+for f in "$EVALS"/../skills/*/SKILL.md "$HOME"/.claude/skills/playbook-*; do
+  { [ -e "$f" ] || [ -L "$f" ]; } || continue
+  case "$f" in */SKILL.md) f="${f%/SKILL.md}" ;; esac
+  ISO_NAMES="$ISO_NAMES ${f##*/}"
+done
+# the JSON results: one line per run (pbh_results_json); run_json STATUS ERROR-TEXT COST SECONDS
+ND_RUNS=""
+run_json() {
+  local err=null cst=null sec=null ft=null ps=null dr=0
+  [ -n "$2" ] && err="$(pbh_json_str "$2")"
+  case "$3" in "" | *[!0-9.eE+-]*) ;; *) cst="$3" ;; esac
+  case "$4" in "" | *[!0-9]*) ;; *) sec="$4" ;; esac
+  [ -n "$FTREE" ] && ft="$(pbh_json_str "$FTREE")"
+  [ -n "$PSHA" ] && ps="$(pbh_json_str "$PSHA")"
+  [ "$ARM" = without ] && dr="$DROPPED"
+  ND_RUNS="$ND_RUNS$(printf '{"scenario":"%s","arm":"%s","k":%s,"label":"%s","status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s]}' \
+    "$E" "$ARM" "$K" "$RL" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS")
+"
+}
 [ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
 # the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
@@ -321,9 +353,10 @@ prompt_of() {
 }
 
 # Grading state of the current scenario ($E, $WD, $LOG).
-ANY_FAIL=0; S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
+ANY_FAIL=0; S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""; S_CHECKS=""
 record() { # STATUS CHECK
   printf '%s %s %s\n' "$RL" "$1" "$2"
+  S_CHECKS="$S_CHECKS${S_CHECKS:+,}{\"name\":$(pbh_json_str "$2"),\"key\":$(pbh_json_str "$(pbh_check_key "$2")"),\"result\":\"$1\"}"
   case "$1" in
     PASS) S_PASS=$((S_PASS + 1)); S_TOTAL=$((S_TOTAL + 1)) ;;
     FAIL) S_TOTAL=$((S_TOTAL + 1)); ANY_FAIL=1 ;;
@@ -380,6 +413,39 @@ EOF
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { [ -n "$T_cost" ] || return 3; printf '%s' "$T_cost"; }
 loaded_tdd()    { grep -qE 'Skill\(playbook-tdd\)|"skill" *: *"playbook-tdd"|playbook-tdd/SKILL\.md' "$LOG"; }
+
+# iso_check -> PASS or FAIL: the without-arm isolation check of $LOG (AC4.1). FAIL on a Skill call of a playbook skill, a
+# playbook skill or slash command in the system init line, or a tool_use path or Bash command (Agent/Task prompts excluded)
+# that names ~/.agents, .claude/skills/playbook-*, <playbook skill>/SKILL.md or ~/.claude/CLAUDE.md. The workdir, the temp
+# PLAYBOOK_HOME and the runner's settings dir are not playbook files (AC4.2).
+iso_check() {
+  # shellcheck disable=SC2086   # ISO_NAMES is a list of skill names
+  node -e '
+const fs = require("fs"), a = process.argv.slice(1), home = a[1], ok = a.slice(2, 5).filter(Boolean), names = a.slice(5);
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + (home ? "|" + esc(home) : "") + ")";
+const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
+if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
+const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
+const bad = s => { if (typeof s !== "string") return false; for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
+let fail = false;
+for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
+  let o; try { o = JSON.parse(line); } catch (e) { continue; }
+  if (!o || typeof o !== "object") continue;
+  if (o.type === "system" && o.subtype === "init") for (const l of [o.skills, o.slash_commands]) if (Array.isArray(l) && l.some(isPb)) fail = true;
+  const bl = o.message && Array.isArray(o.message.content) ? o.message.content : (o.type === "tool_use" ? [o] : []);
+  for (const b of bl) {
+    if (!b || b.type !== "tool_use") continue;
+    const i = b.input || {};
+    if (b.name === "Skill") { if (isPb(i.skill) || isPb(i.command)) fail = true; continue; }
+    if (b.name === "Agent" || b.name === "Task") continue;
+    const v = [i.file_path, i.path, i.notebook_path, i.command];
+    if (b.name === "Glob") v.push(i.pattern);
+    if (v.some(bad)) fail = true;
+  }
+}
+process.stdout.write(fail ? "FAIL" : "PASS");' "$LOG" "$HOME" "$WD" "${SC_HOME:-}" "${SET_DIR:-}" $ISO_NAMES
+}
 
 grade_E1() {
   check "subtract exported from src/calc.js" calc_js 'process.exit(typeof require(process.argv[1]).subtract === "function" ? 0 : 1)'
@@ -1085,6 +1151,7 @@ spent_of() { printf '%s
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 for RUN in $RUNS; do
   E="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$(run_label "$E" "$ARM" "$K")"
+  FTREE=""; PSHA=""; NOTES_J=""; S_CHECKS=""
   if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
     # reached = spent >= USD; else the estimate rule: spent + the largest single cost so far >= USD (v0.23.2 AC13).
     # A tiny tolerance keeps 0.6 + 0.6 >= 1.2 exact despite float rounding.
@@ -1103,11 +1170,12 @@ for RUN in $RUNS; do
 
 SKIPPED: $skip_why; not run.
 "
+      run_json skipped "" "" ""
       continue
     fi
   fi
   WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
-  S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
+  S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""; S_CHECKS=""
   # DECISION[D4]: the runner clears <abs workroot>/<whitelisted E> (ownership checked above, D6); make-fixture stays strict.
   rm -rf "$WD" || pb_die "cannot remove $WD" 3
   bash "$EVALS/make-fixture.sh" "$WD" >/dev/null || pb_die "could not create the fixture $WD" 3
@@ -1187,6 +1255,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   [ -n "$prompt" ] || pb_die "no **Prompt:** found for $E in scenarios.md" 3
   if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$prompt" > "$PF"
   else printf '%s\n%s\n' "$prompt" "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)" > "$PF"; fi
+  FTREE="$(git -C "$WD" rev-parse 'HEAD^{tree}' 2>/dev/null)"; PSHA="$(git hash-object "$PF" 2>/dev/null)"
   # E20 gets a throw-away playbook home (with a copy of the real conf), so a capture does not reach the real store
   # v0.24.3: every other scenario gets its own temp playbook home (removed after it); --real-home turns that off
   SC_HOME=""
@@ -1244,9 +1313,9 @@ EOF
       exec bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1
     fi
   ) &
-  ADPID=$!
+  ADPID=$!; T0=$SECONDS
   wait "$ADPID"
-  rc=$?; ADPID=""
+  rc=$?; ADPID=""; SECS=$((SECONDS - T0))
   # anything new in the workroot besides this scenario's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
     grep -vxF -e "$RL" -e "$RL.log" -e "$RL.prompt" -e "$( [ "$E" = E20 ] && echo "$RL.home" || echo "$RL" )" | tr '\n' ' ')"
@@ -1264,10 +1333,12 @@ EOF
     if [ "$NLEFT" -gt 0 ]; then
       TMPNOTE="NOTE the agent left $NLEFT $( [ "$NLEFT" = 1 ] && echo entry || echo entries ) in its own TMPDIR$( [ -z "$STUCK_TMP" ] && echo ' (removed)'):$LEFTN$( [ "$NLEFT" -gt 5 ] && echo ' ...')"
       printf '%s %s\n' "$RL" "$TMPNOTE"
+      NOTES_J="$NOTES_J${NOTES_J:+,}$(pbh_json_str "$TMPNOTE")"
     fi
     if [ -n "$STUCK_TMP" ]; then
       STUCKNOTE="NOTE could not remove the scenario TMPDIR \`$(clean_name "$STUCK_TMP")\`; remove it by hand"
       printf '%s %s\n' "$RL" "$STUCKNOTE"
+      NOTES_J="$NOTES_J${NOTES_J:+,}$(pbh_json_str "$STUCKNOTE")"
       TMPNOTE="${TMPNOTE:+$TMPNOTE
 
 }$STUCKNOTE"
@@ -1278,6 +1349,7 @@ EOF
   if [ "$ARM" = without ] && [ "$DROPPED" -gt 0 ]; then
     DNOTE="NOTE the without arm also drops $DROPPED non-playbook lines of ~/.claude/CLAUDE.md"
     printf '%s %s\n' "$RL" "$DNOTE"
+    NOTES_J="$NOTES_J${NOTES_J:+,}$(pbh_json_str "$DNOTE")"
     TMPNOTE="${TMPNOTE:+$TMPNOTE
 
 }$DNOTE"
@@ -1309,7 +1381,8 @@ EOF
     printf '%s ERROR harness: %s (see %s)\n' "$RL" "$herr" "$LOG"
     ANY_ERROR=1
     # a cost the transcript reported still counts towards spent and the estimate
-    if c="$(cost_of)"; then printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"; fi
+    c=""; if c="$(cost_of)"; then printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"; fi
+    run_json error "$herr" "$c" "$SECS"
     SUMMARY="$SUMMARY| $RL | ERROR | - | - |
 "
     DETAILS="$DETAILS
@@ -1326,11 +1399,16 @@ $TMPNOTE
   "grade_$E"
   if [ -z "${STRAY// /}" ]; then record PASS "nothing written outside the workdir"
   else record FAIL "nothing written outside the workdir (new in the workroot: ${STRAY% })"; fi
-  cost="-"
+  if [ "$ARM" = without ]; then   # AC4.1: the without arm must show no playbook file read and no playbook Skill call
+    if [ "$T_json" = 1 ]; then record "$(iso_check)" "without arm: no playbook file read and no playbook Skill call"
+    else record MANUAL "without arm: no playbook file read and no playbook Skill call"; fi
+  fi
+  cost="-"; c=""
   if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"
   elif [ "$MAX_COST_SET" = 1 ] && [ "$NOTE_UNKNOWN" = 0 ]; then
     NOTE_UNKNOWN=1; printf 'note: cost unknown for %s; the budget counts known costs only\n' "$RL"
   fi
+  run_json graded "" "$c" "$SECS"
   SUMMARY="$SUMMARY| $RL | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |
 "
   DETAILS="$DETAILS
@@ -1350,6 +1428,33 @@ MANUAL (score with RUBRIC.md):
 $S_MANUAL"
 done
 
+# the JSON results (AC5.1): top-level fields, then one line per run, through pbh_results_json
+JF="${OUT%.md}.json"
+jnum() { awk -v v="$1" 'BEGIN { printf "%.10g", v + 0 }'; }
+PCOMMIT="$(git -C "$EVALS/.." rev-parse HEAD 2>/dev/null)" && PCOMMIT="$(pbh_json_str "$PCOMMIT")" || PCOMMIT=null
+PVER=null; [ -f "$EVALS/../VERSION" ] && PVER="$(pbh_json_str "$(tr -d ' \r\n' < "$EVALS/../VERSION")")"
+JMODEL=null; [ "$MODEL_SET" = 1 ] && JMODEL="$(pbh_json_str "$MODEL")"
+JMAX=null; [ "$MAX_COST_SET" = 1 ] && JMAX="$(jnum "$MAX_COST")"
+JARMS=""; for a in $ARMS; do JARMS="$JARMS${JARMS:+,}\"$a\""; done
+JINT=false; [ "$INTERACTIVE" = 1 ] && JINT=true
+ND_FILE="$(mktemp "${TMPDIR:-/tmp}/pb-evnd.XXXXXX")" || pb_die "mktemp failed" 3
+{ printf '{"playbook_commit":%s,"playbook_version":%s,"harness":%s,"model":%s,"arms":[%s],"repeat":%s,"max_cost":%s,"interactive":%s,"started":"%s","workroot":%s}\n' \
+    "$PCOMMIT" "$PVER" "$(pbh_json_str "$LABEL")" "$JMODEL" "$JARMS" "$REPEAT" "$JMAX" "$JINT" "$STARTED" "$(pbh_json_str "$WORKROOT")"
+  printf '%s' "$ND_RUNS"
+} > "$ND_FILE" && pbh_results_json "$ND_FILE" "$JF"
+jrc=$?; rm -f "$ND_FILE"
+[ "$jrc" = 0 ] || pb_die "cannot write $JF" 3
+# md_stats -> the "## pass@1 and pass^K" section (AC5.5), from the summary of the JSON file
+md_stats() {
+  node -e '
+const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const f = (v, d) => (v === null || v === undefined) ? "-" : String(Number(v.toFixed(d)));
+let o = "\n## pass@1 and pass^K\n\n| Scenario | Arm | Check | pass@1 | pass^K | n |\n|---|---|---|---|---|---|\n";
+for (const e of j.summary) if (e.key !== null) o += "| " + e.scenario + " | " + e.arm + " | " + String(e.key).replace(/\|/g, "\\|") + " | " + f(e.pass_at_1, 2) + " | " + (e.pass_all === null ? "-" : e.pass_all ? "yes" : "no") + " | " + e.n + " |\n";
+o += "\n| Scenario | Arm | Cost mean \u00b1 sd (USD) | Time mean \u00b1 sd (s) |\n|---|---|---|---|\n";
+for (const e of j.summary) if (e.key === null) o += "| " + e.scenario + " | " + e.arm + " | " + f(e.cost_mean, 4) + " \u00b1 " + f(e.cost_sd, 4) + " | " + f(e.seconds_mean, 1) + " \u00b1 " + f(e.seconds_sd, 1) + " |\n";
+process.stdout.write(o);' "$JF"
+}
 {
   printf '# Behaviour evals: %s, %s\n\n' "$LABEL" "$(date +%Y-%m-%d)"
   printf 'Workroot: `%s`\n\n' "$WORKROOT"
@@ -1362,8 +1467,10 @@ done
   if [ -n "$COST_SUM" ]; then
     printf '\nTotal cost (USD, scenarios that reported it): %s\n' "$(printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.2f", s }')"
   fi
+  if [ "$SET_MODE" = 1 ]; then md_stats || pb_die "cannot write the pass@1 section of $OUT" 3; fi
   printf '%s' "$DETAILS"
 } > "$OUT" || pb_die "cannot write $OUT" 3
 printf 'results: %s\n' "$OUT"
+printf 'json: %s\n' "$JF"
 [ "$ANY_ERROR" = 1 ] && exit 4
 exit "$ANY_FAIL"
