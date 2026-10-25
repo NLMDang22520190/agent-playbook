@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 470" width="1280" height="470" role="img" aria-labelledby="t d">
+  <title id="t">Ask or decide?</title>
+  <desc id="d">An ambiguity is found. If the repo can answer it, read it and proceed. If not, and it is not material, proceed. If it is material and hard to reverse (public API, data shape, migration, security, money, anything sent outside), ask once, batched, each question with a proposed default. If it is material but reversible, choose a default, log it in decisions.md, mark the code DECISION[Dn], and list it in the final summary for one batched review.</desc>
+  <defs>
+    <style>
+      :root {
+        --bg: #F7F8FC; --card: #FFFFFF; --ink: #1C2333; --muted: #5B6478; --line: #DDE2EE;
+        --q: #4F5BD5; --soft-q: #ECEEFC; --go: #1F9D63; --soft-go: #E5F6EE;
+        --ask: #D64545; --soft-ask: #FCEAEA; --log: #C98A00; --soft-log: #FBF2DC;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0F131C; --card: #171D2A; --ink: #E8ECF6; --muted: #A3ACC2; --line: #2A3347;
+          --q: #8C95FF; --soft-q: #1E2445; --go: #4FD39A; --soft-go: #12301F;
+          --ask: #FF7B7B; --soft-ask: #3A1C1F; --log: #F2C04D; --soft-log: #352A0E;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: var(--ink); }
+      .bg { fill: var(--bg); }
+      .h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+      .sub { font-size: 14.5px; fill: var(--muted); }
+      .box { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+      .dia { fill: var(--soft-q); stroke: var(--q); stroke-width: 2; }
+      .go { fill: var(--soft-go); stroke: var(--go); stroke-width: 2; }
+      .ask { fill: var(--soft-ask); stroke: var(--ask); stroke-width: 2.5; }
+      .log { fill: var(--soft-log); stroke: var(--log); stroke-width: 2; }
+      .t { font-size: 15px; font-weight: 700; }
+      .s { font-size: 12.5px; fill: var(--muted); }
+      .yes { font-size: 13px; font-weight: 800; fill: var(--go); }
+      .no { font-size: 13px; font-weight: 800; fill: var(--ask); }
+      .arrow { fill: none; stroke: var(--muted); stroke-width: 2; }
+      .ah { fill: var(--muted); }
+      code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path class="ah" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="470" rx="18"/>
+  <text class="h1" x="40" y="48">Ask or decide?</text>
+  <text class="sub" x="40" y="74">Questions cost the user's time; wrong guesses on hard-to-reverse ground cost more. Everything else gets a logged default.</text>
+
+  <!-- start -->
+  <rect class="box" x="40" y="236" width="170" height="56" rx="12"/>
+  <text class="t" x="125" y="269" text-anchor="middle">Ambiguity found</text>
+  <path class="arrow" d="M210,264 H262" marker-end="url(#a)"/>
+
+  <!-- D1 -->
+  <polygon class="dia" points="365,204 465,264 365,324 265,264"/>
+  <text class="t" x="365" y="259" text-anchor="middle">Can the repo</text>
+  <text class="t" x="365" y="278" text-anchor="middle">answer it?</text>
+  <path class="arrow" d="M365,204 V160" marker-end="url(#a)"/>
+  <text class="yes" x="375" y="188">yes</text>
+  <rect class="go" x="285" y="104" width="160" height="52" rx="12"/>
+  <text class="t" x="365" y="135" text-anchor="middle">Read it, proceed</text>
+  <path class="arrow" d="M465,264 H517" marker-end="url(#a)"/>
+  <text class="no" x="478" y="254">no</text>
+
+  <!-- D2 -->
+  <polygon class="dia" points="610,214 700,264 610,314 520,264"/>
+  <text class="t" x="610" y="269" text-anchor="middle">Material?</text>
+  <path class="arrow" d="M610,214 V160" marker-end="url(#a)"/>
+  <text class="no" x="620" y="192">no</text>
+  <rect class="go" x="550" y="104" width="120" height="52" rx="12"/>
+  <text class="t" x="610" y="135" text-anchor="middle">Proceed</text>
+  <path class="arrow" d="M700,264 H752" marker-end="url(#a)"/>
+  <text class="yes" x="712" y="254">yes</text>
+
+  <!-- D3 -->
+  <polygon class="dia" points="885,184 1015,264 885,344 755,264"/>
+  <text class="t" x="885" y="246" text-anchor="middle">Hard to reverse?</text>
+  <text class="s" x="885" y="268" text-anchor="middle">API · data shape · migration</text>
+  <text class="s" x="885" y="286" text-anchor="middle">security · money · outward</text>
+  <path class="arrow" d="M1015,264 H1047" marker-end="url(#a)"/>
+  <text class="yes" x="1020" y="254">yes</text>
+  <rect class="ask" x="1050" y="222" width="200" height="84" rx="12"/>
+  <text class="t" x="1150" y="254" text-anchor="middle">Ask once, batched</text>
+  <text class="s" x="1150" y="276" text-anchor="middle">each question with</text>
+  <text class="s" x="1150" y="294" text-anchor="middle">your proposed default</text>
+
+  <path class="arrow" d="M885,344 V376" marker-end="url(#a)"/>
+  <text class="no" x="895" y="366">no</text>
+  <rect class="log" x="755" y="380" width="260" height="66" rx="12"/>
+  <text class="t" x="885" y="406" text-anchor="middle">Choose a default</text>
+  <text class="s" x="885" y="428" text-anchor="middle">log it in <tspan class="mono">decisions.md</tspan>, mark <tspan class="mono">DECISION[Dn]</tspan></text>
+  <path class="arrow" d="M1015,413 H1047" marker-end="url(#a)"/>
+  <rect class="box" x="1050" y="380" width="200" height="66" rx="12"/>
+  <text class="t" x="1150" y="406" text-anchor="middle">Final summary</text>
+  <text class="s" x="1150" y="428" text-anchor="middle">all defaults, one review</text>
+</svg>

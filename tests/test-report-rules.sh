@@ -101,4 +101,27 @@ case "$LITE5" in *'`Weight: Lite`'*) t_ok "v0.24.30 AC7 characterization: Lite s
 case "$LITE5" in "5. Final report with"*) t_ok "v0.24.30 AC7 characterization: Lite step 5 still starts 5. Final report with" ;; *) t_bad "v0.24.30 AC7 characterization: Lite step 5 still starts 5. Final report with" "[$LITE5]" ;; esac
 if printf '%s\n' "$LITE5" | tr '\n' ' ' | grep -qiE 'Weight: Lite`?.{0,20}verbatim'; then t_bad "v0.24.30 AC7 characterization: Lite step 5 adds no verbatim after Weight: Lite" "verbatim found within 20 characters"; else t_ok "v0.24.30 AC7 characterization: Lite step 5 adds no verbatim after Weight: Lite"; fi
 
+# ---- v0.25.0 lane H (S1) AC7: the template gets one placeholder line that points to writing.md ----
+echo "v0.25.0 AC7 final-report.md: one angle-bracket line pointing to writing.md; the feedback line stays last, the Models line keeps its place"
+WPTR="$(grep -E '^<[^>]*writing\.md[^>]*>[[:space:]]*$' "$FINAL" 2>/dev/null)"
+WPTR_N="$(printf '%s' "$WPTR" | grep -c .)"
+assert_eq "v0.25.0 AC7 exactly one angle-bracket line of the template names writing.md" "1" "$WPTR_N"
+WPTR_W="$(printf '%s\n' "$WPTR" | head -n 1 | wc -w | tr -d ' ')"
+if [ "$WPTR_N" = "1" ] && [ "$WPTR_W" -ge 5 ] && [ "$WPTR_W" -le 20 ]; then t_ok "v0.25.0 AC7 the line has 5..20 words (spec: about 10) ($WPTR_W)"; else t_bad "v0.25.0 AC7 the line has 5..20 words (spec: about 10)" "words [$WPTR_W], lines [$WPTR_N]"; fi
+case "$WPTR" in *'references/writing.md'*|*playbook-proof*) t_ok "v0.25.0 AC7 the line names the file by its path under the skill or the skill name" ;; *) t_bad "v0.25.0 AC7 the line names the file by its path under the skill or the skill name" "line [$WPTR]" ;; esac
+# the line sits before the fixed tail: after the Request coverage heading it must come before the Models line and the feedback line
+WP="$(grep -n -m1 -E '^<[^>]*writing\.md[^>]*>[[:space:]]*$' "$FINAL" 2>/dev/null | cut -d: -f1)"
+WRC="$(grep -nxF '## Request coverage' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+WMOD="$(grep -nF '**Models used:**' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$WP" ] && [ -n "$WMOD" ] && [ "$WP" -lt "$WMOD" ]; then t_ok "v0.25.0 AC7 the writing.md line comes before the Models used line"; else t_bad "v0.25.0 AC7 the writing.md line comes before the Models used line" "line [$WP], models line [$WMOD]"; fi
+# regression with the new line present: feedback line last; Models line still before ## Learnings proposed
+assert_eq "v0.25.0 AC7 the last non-empty line is still the Playbook feedback line" "$LINE" "$(grep -v '^[[:space:]]*$' "$FINAL" 2>/dev/null | tail -n 1)"
+LMX="$(grep -nF '**Models used:**' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+LLX="$(grep -nxF '## Learnings proposed' "$FINAL" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$LMX" ] && [ -n "$LLX" ] && [ "$LMX" -lt "$LLX" ]; then t_ok "v0.25.0 AC7 the Models used line is still before ## Learnings proposed"; else t_bad "v0.25.0 AC7 the Models used line is still before ## Learnings proposed" "models [$LMX], learnings [$LLX]"; fi
+# the required fixed lines are still there byte for byte (AC3 of writing.md never touches them)
+for fx in '**Result:** <one sentence>' '**Mode:** native | manual | none (degraded: roles shared one context)'; do
+  if grep -qxF -- "$fx" "$FINAL" 2>/dev/null; then t_ok "v0.25.0 AC7 regression: the template still has the line [$fx]"; else t_bad "v0.25.0 AC7 regression: the template still has the line [$fx]" "missing"; fi
+done
+
 t_summary

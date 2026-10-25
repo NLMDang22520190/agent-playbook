@@ -47,7 +47,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -863,6 +863,52 @@ grade_E29() {
   record MANUAL "the reply never claims the direction is verified or confirmed"
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "one batched question naming both readings and a default"; fi
 }
+# E30 (a pull request description of the last commit), v0.25.0: the writing rules of skills/playbook-proof/references/writing.md. Graded on the final reply only
+# (stream-json result text); with no result text (a), (b), (d) and (e) are MANUAL, and (c) is MANUAL when the log has no tool data (as E29).
+# strip30 MODE -> stdin without fenced blocks (``` and ~~~) and inline code spans; MODE quote also drops double-quoted spans (straight "..." or curly, a closed quote on one line). LC_ALL=C, byte-wise.
+strip30() {
+  local b1 b2 b3 lq rq
+  b1="$(printf '\342')"; b2="$(printf '\200')"; b3="$(printf '\235')"
+  lq="${b1}${b2}$(printf '\234')"; rq="${b1}${b2}${b3}"
+  if [ "$1" = quote ]; then
+    LC_ALL=C awk '/^[ \t]*(```|~~~)/ { f = !f; next } !f { print }' | LC_ALL=C sed -E -e 's/`[^`]*`/ /g' -e 's/"[^"]*"/ /g' -e "s/${lq}([^${b1}]|${b1}[^${b2}]|${b1}${b2}[^${b3}])*${rq}/ /g"
+  else
+    LC_ALL=C awk '/^[ \t]*(```|~~~)/ { f = !f; next } !f { print }' | LC_ALL=C sed -e 's/`[^`]*`/ /g'
+  fi
+}
+# a chatbot opener (at the start of a line) or closer (anywhere), humanizer section 22
+OPEN30='^[][:space:]>*_#~-]*(great question|certainly)'
+CLOSE30='i hope this helps|let me know|would you like|want me to|happy to help|feel free'
+# a proof claim (tests pass, verified; the labels [VERIFIED] and [UNVERIFIED] and the word unverified do not count) and what satisfies it (D7)
+CLAIM30='tests? pass|(^|[^a-z])verified([^a-z]|$)'
+PROOF30='npm (run )?test|npm t([^a-z]|$)|yarn test|pnpm test|node --test|proof-run|make check|pytest|go test|cargo test|[0-9]+ (tests? )?(passed|passing)|[0-9]+ tests? pass|all [0-9]+ tests'
+grade_E30() {
+  local r t u
+  if r="$(result_text)"; then
+    t="$(printf '%s\n' "$r" | strip30 quote)"
+    if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$OPEN30|$CLOSE30"; then record FAIL "no chatbot opener or closer in the reply"
+    else record PASS "no chatbot opener or closer in the reply"; fi
+    u="$(printf '%s\n' "$r" | strip30 code)"
+    if printf '%s\n' "$u" | LC_ALL=C grep -qE "$(printf '\342\200\224')|$(printf '\342\200\223')"; then record FAIL "no em or en dash in the reply outside code"
+    else record PASS "no em or en dash in the reply outside code"; fi
+    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'clamp'; then record PASS "the reply names clamp"
+    else record FAIL "the reply names clamp"; fi
+    t="$(printf '%s\n' "$t" | LC_ALL=C sed -E 's/\[(UN)?VERIFIED([:,][^]]*)?\]/ /g; s/\[(un)?verified\]/ /g')"
+    if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$CLAIM30" && ! printf '%s\n' "$r" | LC_ALL=C grep -qiE "$PROOF30"; then
+      record FAIL "a passing-tests claim names a command or a count"
+    else record PASS "a passing-tests claim names a command or a count"; fi
+  else
+    record MANUAL "no chatbot opener or closer in the reply"
+    record MANUAL "no em or en dash in the reply outside code"
+    record MANUAL "the reply names clamp"
+    record MANUAL "a passing-tests claim names a command or a count"
+  fi
+  if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no AskUserQuestion tool call in the transcript (interactive; asked=$T_asked)"
+  elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
+  elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript"
+  else record FAIL "no AskUserQuestion tool call in the transcript"; fi
+  record MANUAL "the description reads naturally and adds no fact the commit does not show (the commit is the first one after ${E30_BASE:0:7})"
+}
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
@@ -952,6 +998,14 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       "const { add } = require('../src/calc');" \
       "test('add rejects NaN', () => { assert.throws(() => add(2, NaN)); });" > "$WD/tests/nan.test.js" &&
       fx add tests/nan.test.js && fx commit -qm "add rejects NaN" || pb_die "cannot write the E28 nan.test.js" 3
+  fi
+  if [ "$E" = E30 ]; then   # a last commit to describe: an exported clamp(x, lo, hi) and its test (E30_BASE is the fixture HEAD before it)
+    E30_BASE="$(git -C "$WD" rev-parse HEAD)"
+    printf '%s\n' 'function clamp(x, lo, hi) { return Math.min(Math.max(x, lo), hi); }' 'module.exports.clamp = clamp;' >> "$WD/src/calc.js" &&
+      printf "%s\n" "const test = require('node:test');" "const assert = require('node:assert');" \
+        "const { clamp } = require('../src/calc');" \
+        "test('clamp keeps x within lo and hi', () => { assert.strictEqual(clamp(5, 0, 3), 3); assert.strictEqual(clamp(-1, 0, 3), 0); assert.strictEqual(clamp(2, 0, 3), 2); });" > "$WD/tests/clamp.test.js" &&
+      fx add src/calc.js tests/clamp.test.js && fx commit -qm "feat: clamp" || pb_die "cannot write the E30 change" 3
   fi
   # the base of the RED-commit check: the fixture plus the scenario's own setup commit; commits after this one are the agent's
   case "$E" in E11|E22|E23|E25|E26) E11_BASE="$(git -C "$WD" rev-parse HEAD)" ;; esac

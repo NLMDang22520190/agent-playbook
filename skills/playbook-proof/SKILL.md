@@ -64,3 +64,4 @@ It prints a markdown block to paste verbatim and stores the full redacted log un
 - [ ] Assumptions and anything [UNVERIFIED] are listed.
 
 Answer format and examples: `references/evidence-formats.md`.
+Text others will read (final report, PR description, docs): follow `references/writing.md`.

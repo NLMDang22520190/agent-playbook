@@ -258,7 +258,7 @@ if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.m
 
 # --- v0.24.1: a shorter always-on block with the same rules
 # <= 4500 bytes (v0.24.10: the Quick line is gone; v0.24.24: raised from 4400 for the pushback sentence, decision D3-prime)
-if [ "$BLOCK_BYTES" -le 4500 ]; then t_ok "v24.1 AGENTS.global.md is <= 4500 bytes ($BLOCK_BYTES)"; else t_bad "v24.1 AGENTS.global.md is <= 4500 bytes" "$BLOCK_BYTES bytes"; fi
+if [ "$BLOCK_BYTES" -le 4750 ]; then t_ok "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25) ($BLOCK_BYTES)"; else t_bad "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25)" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
 for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
          '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
@@ -294,7 +294,7 @@ jchk 'v24.24 AC1 Proof: the exact sentence (round 3)' "$BLOCK" "$PROOF" 'On push
 PB_AGL="$(wc -l < "$BLOCK" | tr -d ' ')"; PB_AGW="$(wc -w < "$BLOCK" | tr -d ' ')"
 # characterization: these hold today and must keep holding (line 17 grows, no line is added)
 if [ "$PB_AGL" -le 39 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps its 39 lines ($PB_AGL)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps its 39 lines" "$PB_AGL lines"; fi
-if [ "$PB_AGW" -le 700 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps the 700-word budget ($PB_AGW)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps the 700-word budget" "$PB_AGW words"; fi
+if [ "$PB_AGW" -le 730 ]; then t_ok "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25) ($PB_AGW)"; else t_bad "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25)" "$PB_AGW words"; fi
 jchk 'v24.1 Scope: never weaken, skip or delete a test or gate' "$BLOCK" "$SCOPE" 'Never weaken, skip or delete a test or gate to make it pass'
 jchk 'v24.1 Scope: no new dependency without asking' "$BLOCK" "$SCOPE" 'no new dependency without asking'
 jchk 'v24.1 Scope: the playbook ~/.agents files are the write exception' "$BLOCK" "$SCOPE" '~/\.agents files'
@@ -1433,7 +1433,7 @@ assert_eq "v24.10 AC1 AGENTS.global.md never names a Quick weight (capital Q)" "
 AGL="$(wc -l < "$AGLOBAL" | tr -d ' ')"; AGB="$(wc -c < "$AGLOBAL" | tr -d ' ')"
 if [ "$AGL" -le 60 ]; then t_ok "AC1.7 AGENTS.global.md stays within 60 lines ($AGL)"; else t_bad "AC1.7 AGENTS.global.md stays within 60 lines" "$AGL lines"; fi
 if [ "$AGB" -le 5000 ]; then t_ok "AC1.7 AGENTS.global.md stays within 5000 bytes ($AGB)"; else t_bad "AC1.7 AGENTS.global.md stays within 5000 bytes" "$AGB bytes"; fi
-if [ "$AGB" -le 4500 ]; then t_ok "AC6.1 AGENTS.global.md stays within 4500 bytes ($AGB)"; else t_bad "AC6.1 AGENTS.global.md stays within 4500 bytes" "$AGB bytes"; fi
+if [ "$AGB" -le 4750 ]; then t_ok "AC6.1 / v0.25.0 AC9b AGENTS.global.md stays within 4750 bytes (raised from 4500 by user decision 2026-10-25) ($AGB)"; else t_bad "AC6.1 / v0.25.0 AC9b AGENTS.global.md stays within 4750 bytes (raised from 4500 by user decision 2026-10-25)" "$AGB bytes"; fi
 
 TDDSEC="$(awk '/^### TDD with separated roles/ { f = 1; next } f && /^### / { exit } f { print }' "$AGLOBAL")"
 qchk "AC1.7 regression: the TDD section still names Full and Lite" "$TDDSEC" '\*\*Full\*\*[^*]{0,200}\*\*Lite\*\*'
@@ -1611,7 +1611,7 @@ RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { e
 qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
-qchk "v25 AC3 README names scenarios (E1–E29)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E29\)'
+qchk "v25 AC3 README names scenarios (E1–E30)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E30\)'
 RUNEV="$PB_ROOT/evals/run-evals.sh"
 if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
 qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'
@@ -1639,10 +1639,10 @@ TDD_WORDS="$(wc -w < "$SKILL" | tr -d ' ')"
 PROOF_MD="$PB_ROOT/skills/playbook-proof/SKILL.md"
 PROOF_WORDS="$(wc -w < "$PROOF_MD" | tr -d ' ')"
 if [ "$TDD_WORDS" -le 3793 ]; then t_ok "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)"; else t_bad "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)" "$TDD_WORDS words"; fi
-if [ "$PROOF_WORDS" -le 647 ]; then t_ok "v24.10 AC8 playbook-proof SKILL.md is at most 647 words"; else t_bad "v24.10 AC8 playbook-proof SKILL.md is at most 647 words" "$PROOF_WORDS words"; fi
+if [ "$PROOF_WORDS" -le 700 ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)"; else t_bad "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)" "$PROOF_WORDS words"; fi
 TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
 if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
-if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -le $((PROOF_WORDS + 50)) ] && [ "$PB" -le 650 ]; then t_ok "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650"; else t_bad "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650" "budget [$PB] count $PROOF_WORDS"; fi
+if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -eq 700 ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count"; else t_bad "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count" "budget [$PB] count $PROOF_WORDS"; fi
 EXPECT_HEADS="$(cat <<'HEADS'
 ## Pick the weight (before Phase 1)
 ### Lite workflow
@@ -1878,5 +1878,199 @@ if lite_step 5 | tr '\n' ' ' | grep -qiE '(never|not) catch(es)? the other readi
 lite_has "v0.24.31 AC1 Lite step 2 says the test's name (lane K NIT)" 2 "the test's name or a comment"
 # AC4: the template Pre-mortem has the angle-bracket placeholder (not a literal line a report would carry over)
 sec_flat_has "v0.24.30 AC4 final-report.md Pre-mortem: placeholder <if a risk rests on a test built on an unconfirmed oracle ...> pins the assumed reading, not the other reading" "$FINAL" '^## Pre-mortem' '<if a risk rests on a test built on an unconfirmed oracle[^>]*(Dn|\[UNVERIFIED\])[^>]*pins the assumed reading[^>]*cannot tell which reading is right[^>]*>'
+
+# ---- v0.25.0 lane H (S1): skills/playbook-proof/references/writing.md, the proof pointer, the 700 pins ----
+echo "v0.25.0 lane H (S1): writing guide (AC1-AC6, AC9a sentence, AC15), proof pointer (AC8)"
+WM="$PB_ROOT/skills/playbook-proof/references/writing.md"
+# wm_has NAME PATTERN: PATTERN (case-insensitive ERE) is in the flattened writing.md; a missing file fails
+wm_has() { if [ -f "$WM" ] && flat "$WM" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in $WM (or the file is missing)"; fi; }
+# wm_has_f NAME LITERAL: the exact text is in writing.md (fixed string, case-sensitive)
+wm_has_f() { if [ -f "$WM" ] && grep -qF -- "$2" "$WM"; then t_ok "$1"; else t_bad "$1" "literal [$2] not in $WM (or the file is missing)"; fi; }
+
+# AC1: exists, at most 400 words (proposal: about 300; a stub under 120 words cannot hold the AC2 rules)
+WM_WORDS=""; [ -f "$WM" ] && WM_WORDS="$(wc -w < "$WM" | tr -d ' ')"
+if [ -n "$WM_WORDS" ] && [ "$WM_WORDS" -le 400 ] && [ "$WM_WORDS" -ge 120 ]; then t_ok "v0.25.0 AC1 writing.md exists and has 120..400 words"; else t_bad "v0.25.0 AC1 writing.md exists and has 120..400 words" "words [$WM_WORDS] (empty = file missing)"; fi
+
+# AC2: one row for each humanizer section the guide must carry
+wm_has "v0.25.0 AC2 s1 not X but Y" 'not x,? but y|not (just|only|merely) [^.]{0,40}but'
+wm_has "v0.25.0 AC2 s2 one-line closers" 'one-(line|sentence) (closer|paragraph)|closing (line|sentence)[^.]{0,60}(repeat|restat)'
+wm_has "v0.25.0 AC2 s3 sayings that sound deep" 'saying|aphorism|sounds? (deep|profound)|profound|slogan'
+wm_has "v0.25.0 AC2 s4 staged run-up" 'run-up|staged|staging|build-?up|stage-setting|setting the stage'
+wm_has "v0.25.0 AC2 s12 names the overused AI words as a group" 'overused|stock (ai )?words|ai words'
+WM_AIW=0
+for w12 in delve crucial pivotal tapestry testament landscape robust showcase underscore vibrant intricate enhance meticulous additionally; do
+  if [ -f "$WM" ] && grep -qiw -- "$w12" "$WM"; then WM_AIW=$((WM_AIW + 1)); fi
+done
+if [ "$WM_AIW" -ge 4 ]; then t_ok "v0.25.0 AC2 s12 lists at least 4 of the overused words ($WM_AIW)"; else t_bad "v0.25.0 AC2 s12 lists at least 4 of the overused words" "only $WM_AIW of the humanizer s12 words found"; fi
+wm_has "v0.25.0 AC2 s13 inflated significance" 'inflated|significance|legacy'
+wm_has "v0.25.0 AC2 s20 decorative headings" 'decorative|decoration'
+wm_has "v0.25.0 AC2 s20 emojis" 'emoji'
+wm_has "v0.25.0 AC2 s22 chatbot residue" 'chatbot'
+wm_has "v0.25.0 AC2 s22 names openers" 'opener|great question|certainly'
+wm_has "v0.25.0 AC2 s22 names offers" "offer|would you like|want me to|let me know"
+wm_has "v0.25.0 AC2 s26 lead with the answer" 'lead with the (answer|decision|point|conclusion)|answer first|(answer|decision|point) (comes )?first'
+wm_has "v0.25.0 AC2 s26 the reader already knows" 'reader[^.]{0,80}(already|knows|has the context)|already (know|has|have|agreed)|re-?explain'
+
+# AC2b: s8 dashes
+EMD="$(printf '\342\200\224')"; ENDASH="$(printf '\342\200\223')"
+wm_has "v0.25.0 AC2b s8 names em and en dashes" '(em|en)[ -]?dash|(em|en) and (em|en) dash|dashes'
+wm_has "v0.25.0 AC2b s8 gives the replacements (comma, colon, period or parentheses)" 'comma[^.]{0,60}colon[^.]{0,60}(period|parenthes)|(period|parenthes)[^.]{0,60}(comma|colon)'
+wm_has "v0.25.0 AC2b s8 exempts code spans, blocks, commands and paths" '(code (span|block)|inline code|backtick)[^.]{0,200}(command|path)|(command|path)[^.]{0,200}(code (span|block)|inline code|backtick)'
+# the guide follows its own rule: no em or en dash outside backtick spans and fenced blocks
+WM_DASH_OUT=""
+if [ -f "$WM" ]; then
+  WM_DASH_OUT="$(awk '/^```/{f=!f; next} !f{print}' "$WM" | sed 's/`[^`]*`//g' | grep -c -e "$EMD" -e "$ENDASH")"
+fi
+if [ -f "$WM" ] && [ "$WM_DASH_OUT" = "0" ]; then t_ok "v0.25.0 AC2b writing.md has no em or en dash outside code spans and blocks"; else t_bad "v0.25.0 AC2b writing.md has no em or en dash outside code spans and blocks" "lines with a dash [$WM_DASH_OUT] (empty = file missing)"; fi
+
+# AC3: what the rules never touch, each item named
+wm_has "v0.25.0 AC3 says what the rules never touch (verbatim, leave alone)" '(never|do not|must not)[^.]{0,30}(touch|change|edit|reword|rewrite|polish|alter)|leave[^.]{0,40}(alone|as (is|written))|unchanged|verbatim'
+wm_has_f "v0.25.0 AC3 never-touch: the **Weight:** line" '**Weight:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Models used:** line" '**Models used:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Playbook feedback:** line" '**Playbook feedback:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Result:** line" '**Result:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Mode:** line" '**Mode:**'
+wm_has_f "v0.25.0 AC3 never-touch: the label [VERIFIED]" '[VERIFIED]'
+wm_has_f "v0.25.0 AC3 never-touch: the label [INFERRED]" '[INFERRED]'
+wm_has_f "v0.25.0 AC3 never-touch: the label [UNVERIFIED]" '[UNVERIFIED]'
+wm_has "v0.25.0 AC3 never-touch: the user's quoted sentences in Request coverage" 'request coverage'
+wm_has "v0.25.0 AC3 never-touch: the Not checked section" 'not checked'
+wm_has "v0.25.0 AC3 never-touch: the Pre-mortem section" 'pre-mortem'
+wm_has "v0.25.0 AC3 never-touch: evidence (commands, outputs, path:line)" 'evidence[^.]{0,120}(command|output|path:line)|(command|output|path:line)[^.]{0,120}evidence'
+wm_has "v0.25.0 AC3 never-touch: path:line references" 'path:line|file:line'
+wm_has "v0.25.0 AC3 covers what scripts/pr-body.sh copies into a PR description" 'pr-body'
+wm_has "v0.25.0 AC3 pr-body.sh note names Review and Weight beside Request coverage and Not checked" '(review[^.]{0,100}weight|weight[^.]{0,100}review)[^.]{0,200}pr-body'
+
+# AC4: cut or reorder, never add
+wm_has "v0.25.0 AC4 editing may cut or reorder" '(cut|remove|delete|trim)[^.]{0,60}reorder|reorder[^.]{0,60}(cut|remove|delete|trim)'
+wm_has "v0.25.0 AC4 never add a fact" '(never|not|no|without)[^.]{0,40}(add|invent|introduce)[^.]{0,120}fact|(fact|name|number|promise)[^.]{0,80}(not in|absent from|missing from|that the source (does not|doesn.t))[^.]{0,30}(source|original|draft)'
+wm_has "v0.25.0 AC4 the ban covers a name, a number and a promise" '(add|invent|introduce)[^.]{0,120}(name|number)[^.]{0,60}(promise)|(promise)[^.]{0,60}(name|number)'
+
+# AC5: credit and license
+wm_has "v0.25.0 AC5 links github.com/blader/humanizer" 'github\.com/blader/humanizer'
+wm_has_f "v0.25.0 AC5 names the MIT license" 'MIT'
+
+# AC6: when to load it
+wm_has "v0.25.0 AC6 load for the final report" 'final report'
+wm_has "v0.25.0 AC6 load for a PR description" 'pr description|pull request'
+wm_has "v0.25.0 AC6 load for release notes or the CHANGELOG" 'release notes|changelog'
+wm_has "v0.25.0 AC6 load for README or docs" 'readme|docs'
+wm_has "v0.25.0 AC6 load for issue comments" 'issue comment|comment on an issue|issue thread'
+
+# AC9a (lives in writing.md): with no other question, ask on its own only when the main deliverable is text others will read
+wm_has "v0.25.0 AC9a names the humanizer skill" 'humanizer'
+wm_has "v0.25.0 AC9a main deliverable is text others will read, in a sentence about asking" 'main deliverable[^.]{0,200}ask|ask[^.]{0,200}main deliverable'
+wm_has "v0.25.0 AC9a it applies when the task has no other question" '(no|any|other)[^.]{0,30}question[^.]{0,200}main deliverable|main deliverable[^.]{0,200}(no|any|other)[^.]{0,30}question|task has no other question'
+wm_has "v0.25.0 AC9a otherwise: use these rules without asking" '(otherwise|else|if not|when it is not)[^.]{0,200}(do(es)? not ask|never ask|without asking|no question|silently|don.t ask|skip)'
+
+# AC15: nothing tells the agent to remove bold from the required labels (any sentence on bold that says remove/strip/drop must also say keep/never/except)
+WM_BOLD_BAD=""
+if [ -f "$WM" ]; then
+  WM_BOLD_BAD="$(flat "$WM" | tr '.' '\n' | grep -i 'bold' | grep -iE 'remov|strip|drop|delet|unbold|no bold|avoid' | grep -viE 'never|not |keep|except|leave|required|verbatim' | wc -l | tr -d ' ')"
+fi
+if [ -f "$WM" ] && [ "$WM_BOLD_BAD" = "0" ]; then t_ok "v0.25.0 AC15 writing.md never says to remove bold from required labels"; else t_bad "v0.25.0 AC15 writing.md never says to remove bold from required labels" "sentences [$WM_BOLD_BAD] (empty = file missing)"; fi
+
+# AC8: proof SKILL.md pointer (one short line) and the tdd SKILL.md stays within its budget
+PROOF_PTR="$(grep -F 'references/writing.md' "$PROOF_MD" 2>/dev/null | head -n 1)"
+if [ -n "$PROOF_PTR" ]; then t_ok "v0.25.0 AC8 playbook-proof SKILL.md points to references/writing.md"; else t_bad "v0.25.0 AC8 playbook-proof SKILL.md points to references/writing.md" "no line names it"; fi
+PTR_WORDS="$(printf '%s\n' "$PROOF_PTR" | wc -w | tr -d ' ')"
+if [ -n "$PROOF_PTR" ] && [ "$PTR_WORDS" -le 28 ]; then t_ok "v0.25.0 AC8 the proof pointer line is short (at most 28 words, spec: about 20) ($PTR_WORDS)"; else t_bad "v0.25.0 AC8 the proof pointer line is short (at most 28 words, spec: about 20)" "words [$PTR_WORDS] line [$PROOF_PTR]"; fi
+if printf '%s' "$PROOF_PTR" | grep -qiE 'others|readers?|reads?|written|write|report'; then t_ok "v0.25.0 AC8 the proof pointer says it is for text others will read"; else t_bad "v0.25.0 AC8 the proof pointer says it is for text others will read" "line [$PROOF_PTR]"; fi
+# characterization (true today by design): playbook-tdd SKILL.md gets at most a few words, so it stays within its 3700 budget
+if [ "$TDD_WORDS" -le 3700 ]; then t_ok "v0.25.0 AC8 characterization: playbook-tdd SKILL.md stays at most 3700 words ($TDD_WORDS)"; else t_bad "v0.25.0 AC8 characterization: playbook-tdd SKILL.md stays at most 3700 words" "$TDD_WORDS words"; fi
+
+# ---- v0.25.0 lane H (S2): the always-on ask rule (AC9), its budgets (AC9b), the humanizer key (AC10), the setup suggestion (AC11), the setup budget (AC12) ----
+echo "v0.25.0 lane H (S2): AC9 the ask rule is appended to the Ask once bullet of AGENTS.global.md"
+ASKB_PFX='- Ask once, batched, each with your proposed default.'
+ASKB_LINE="$(grep -F -- "$ASKB_PFX" "$BLOCK" | head -n 1)"
+ASKB_SFX=""
+if [ -n "$ASKB_LINE" ] && [ "${ASKB_LINE#"$ASKB_PFX"}" != "$ASKB_LINE" ]; then ASKB_SFX="${ASKB_LINE#"$ASKB_PFX"}"; fi
+ASKB_BYTES="$(printf '%s' "$ASKB_SFX" | wc -c | tr -d ' ')"
+# characterization (true today by design): the bullet keeps its exact opening, so the existing :276 pin and the 39 lines hold
+if [ -n "$ASKB_LINE" ] && [ "${ASKB_LINE#"$ASKB_PFX"}" != "$ASKB_LINE" ]; then t_ok "v0.25.0 AC9 the Ask once bullet starts with its exact old text (line 7 of AGENTS.global.md)"; else t_bad "v0.25.0 AC9 the Ask once bullet starts with its exact old text (line 7 of AGENTS.global.md)" "line [$ASKB_LINE]"; fi
+case "$ASKB_SFX" in " Text others will read"*) t_ok "v0.25.0 AC9 the appended text follows a single space and starts with the words Text others will read";; *) t_bad "v0.25.0 AC9 the appended text follows a single space and starts with the words Text others will read" "text after the old bullet: [$ASKB_SFX]";; esac
+if [ "$ASKB_BYTES" -ge 60 ] && [ "$ASKB_BYTES" -le 270 ]; then t_ok "v0.25.0 AC9 the appended text is 60..270 bytes including the joining space ($ASKB_BYTES)"; else t_bad "v0.25.0 AC9 the appended text is 60..270 bytes including the joining space" "bytes [$ASKB_BYTES] (0 = nothing appended)"; fi
+# the text lives on that one line: the block gets no new line, and the phrase appears nowhere else in it
+if [ "$(grep -cF -- 'Text others will read' "$BLOCK")" = "1" ] && [ "$(grep -F -- 'Text others will read' "$BLOCK")" = "$ASKB_LINE" ]; then t_ok "v0.25.0 AC9 Text others will read appears once in the block, on the Ask once bullet"; else t_bad "v0.25.0 AC9 Text others will read appears once in the block, on the Ask once bullet" "count [$(grep -cF -- 'Text others will read' "$BLOCK")]"; fi
+ask_has() { if printf '%s' "$ASKB_SFX" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the text appended to the Ask once bullet [$ASKB_SFX]"; fi; }
+if printf '%s' "$ASKB_SFX" | grep -qF -- 'references/writing.md'; then t_ok "v0.25.0 AC9 the appended text names references/writing.md"; else t_bad "v0.25.0 AC9 the appended text names references/writing.md" "text [$ASKB_SFX]"; fi
+if printf '%s' "$ASKB_SFX" | grep -qF -- 'playbook-proof'; then t_ok "v0.25.0 AC9 the appended text names the skill playbook-proof"; else t_bad "v0.25.0 AC9 the appended text names the skill playbook-proof" "text [$ASKB_SFX]"; fi
+ask_has "v0.25.0 AC9 the appended text gives examples of text others will read (PR description, release notes, docs or a report)" 'pr description|release notes|docs|report'
+ask_has "v0.25.0 AC9 the appended text mentions a humanizer skill and running it in full" 'humanizer[^.;]{0,100}in full|in full[^.;]{0,60}humanizer'
+ask_has "v0.25.0 AC9 the appended text asks about humanizer (it is a question, not an automatic run)" 'ask[^.;]{0,80}humanizer|humanizer[^.;]{0,80}ask'
+ask_has "v0.25.0 AC9 the appended text excludes chat replies" '(never|not|no|except|excluding|skip)[^.;]{0,40}chat repl|chat repl[^.;]{0,40}(never|no|not|excluded|skip)'
+ask_has "v0.25.0 AC9 the appended text says headless: no question" 'headless[^.;]{0,30}(no|not|never|without)[^.;]{0,20}(question|ask)'
+
+echo "v0.25.0 lane H (S2): AC9b the always-on budget is 730 words in evals/word-budgets"
+AGW_B="$(budget_of AGENTS.global.md)"
+if [ "$AGW_B" = "730" ]; then t_ok "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)"; else t_bad "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)" "budget [$AGW_B]"; fi
+if [ -n "$AGW_B" ] && [ "$PB_AGW" -le "$AGW_B" ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is within its word budget ($PB_AGW <= $AGW_B)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is within its word budget" "words $PB_AGW budget [$AGW_B]"; fi
+# the hard cap stays at 5000 bytes and the block stays at 39 lines (the 4750 and 730 pins moved in place above)
+if [ "$PB_AGL" -eq 39 ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line) ($PB_AGL)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line)" "$PB_AGL lines"; fi
+
+echo "v0.25.0 lane H (S2): AC10 the humanizer key is documented in setup"
+SETUP_F="$(cat "$SETUP" "$QUESTIONS" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+st_has() { if printf '%s' "$SETUP_F" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in playbook-setup SKILL.md + references/questions.md"; fi; }
+st_has_f() { if printf '%s' "$SETUP_F" | grep -qF -- "$2"; then t_ok "$1"; else t_bad "$1" "literal [$2] not in playbook-setup SKILL.md + references/questions.md"; fi; }
+QH_LINE="$(grep -E '^- `humanizer` \(global\)' "$QUESTIONS" 2>/dev/null | head -n 1)"
+qh_has() { if printf '%s' "$QH_LINE" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the humanizer line of the optional keys list [$QH_LINE]"; fi; }
+if [ -n "$QH_LINE" ]; then t_ok "v0.25.0 AC10 questions.md optional list has a - \`humanizer\` (global) entry"; else t_bad "v0.25.0 AC10 questions.md optional list has a - \`humanizer\` (global) entry" "no line starting with - \`humanizer\` (global)"; fi
+if [ -n "$QH_LINE" ] && [ "$(grep -n -F -- "$QH_LINE" "$QUESTIONS" | head -n 1 | cut -d: -f1)" -gt "$(grep -n -F 'Optional, only when relevant' "$QUESTIONS" | head -n 1 | cut -d: -f1)" ]; then t_ok "v0.25.0 AC10 the humanizer entry sits in the optional list (after Optional, only when relevant)"; else t_bad "v0.25.0 AC10 the humanizer entry sits in the optional list (after Optional, only when relevant)" "entry [$QH_LINE]"; fi
+qh_has "v0.25.0 AC10 the humanizer entry lists the values ask, always and never" 'ask.{0,80}always.{0,80}never|always.{0,80}ask.{0,80}never|never.{0,80}always.{0,80}ask'
+qh_has "v0.25.0 AC10 the humanizer entry makes ask the default" 'default[^.;]{0,12}ask'
+qh_has "v0.25.0 AC10 the humanizer entry says an unknown value counts as ask" 'unknown[^.;]{0,60}ask'
+qh_has "v0.25.0 AC10 always runs humanizer in full without asking" 'always.{0,200}(without ask|no question|do not ask|dont ask|never ask|skip the question)'
+qh_has "v0.25.0 AC10 never means writing.md only and no question" 'never.{0,200}(writing\.md|never ask|do not ask|not ask|no question)'
+# step 6 of SKILL.md forbids writing keys it does not list ("never write keys that are not documented in step 6"), so the key must be in its global keys list [INFERRED from SKILL.md step 4 and 6]
+GK="$(tr '\n' ' ' < "$SETUP" 2>/dev/null | tr -s ' ' | sed 's/.*Global keys://; s/Project keys:.*//')"
+if printf '%s' "$GK" | grep -qi -- 'humanizer'; then t_ok "v0.25.0 AC10 SKILL.md step 6 lists humanizer among the global keys"; else t_bad "v0.25.0 AC10 SKILL.md step 6 lists humanizer among the global keys" "global keys paragraph: [$GK]"; fi
+# the AC9 rule honours the key: the guide the rule points to says so [INFERRED from AC10: The AC9 rule honours it; the 270-byte text has no room for it]
+if [ -f "$WM" ] && flat "$WM" | grep -qiE -- 'humanizer[` ]{0,2} ?(key|setting|config|option)|(key|setting|config|option)[^.]{0,40}humanizer'; then t_ok "v0.25.0 AC10 writing.md names the humanizer config key"; else t_bad "v0.25.0 AC10 writing.md names the humanizer config key" "no key/setting/config next to humanizer in $WM"; fi
+if [ -f "$WM" ] && flat "$WM" | grep -qiE -- 'always[^.]{0,120}(without ask|no question|do not ask|never ask|skip the question)|(without ask|do not ask|never ask)[^.]{0,120}always'; then t_ok "v0.25.0 AC10 writing.md says always runs humanizer in full without asking"; else t_bad "v0.25.0 AC10 writing.md says always runs humanizer in full without asking" "no always + without-asking sentence in $WM"; fi
+
+echo "v0.25.0 lane H (S2): AC11 setup suggests humanizer"
+st_has_f "v0.25.0 AC11 setup names the Claude Code check path ~/.claude/skills/humanizer/SKILL.md" '~/.claude/skills/humanizer/SKILL.md'
+st_has_f "v0.25.0 AC11 setup names the Codex and OpenCode check path ~/.agents/skills/humanizer/SKILL.md" '~/.agents/skills/humanizer/SKILL.md'
+st_has_f "v0.25.0 AC11 setup gives the install command (git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer)" 'git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer'
+st_has "v0.25.0 AC11 setup offers humanizer as optional" 'humanizer.{0,255}optional|optional.{0,255}humanizer'
+st_has "v0.25.0 AC11 the humanizer offer defaults to no" 'humanizer.{0,255}default[^.;]{0,12}[^a-z]no([^a-z]|$)|default[^.;]{0,12}[^a-z]no([^a-z]|$).{0,255}humanizer'
+st_has "v0.25.0 AC11 the reason is more human-sounding reports and conclusions" 'more human[^.]{0,40}report[^.]{0,40}conclusion'
+st_has "v0.25.0 AC11 setup never installs humanizer without a yes" 'humanizer.{0,255}(never|not|n.t)[^.]{0,40}(install|clone)[^.]{0,60}(without|unless|until)[^.]{0,30}(yes|consent|agree|confirm)|(never|not|n.t)[^.]{0,40}(install|clone)[^.]{0,60}(without|unless|until)[^.]{0,30}(yes|consent|agree|confirm).{0,255}humanizer'
+st_has "v0.25.0 AC11 when humanizer is installed setup asks the humanizer key question (default ask)" 'humanizer.{0,255}(if|when)[^.]{0,40}installed[^.]{0,160}(ask|question)|(if|when)[^.]{0,40}installed[^.]{0,160}(ask|question)[^.]{0,160}humanizer'
+st_has "v0.25.0 AC11 setup says the check happens for the detected harness (Claude Code vs Codex/OpenCode)" 'humanizer.{0,255}(harness|claude code)|(harness|claude code).{0,255}humanizer'
+
+echo "v0.25.0 lane H (S2): AC12 playbook-setup word budget (at most 1150)"
+SETUP_WORDS="$(wc -w < "$SETUP" | tr -d ' ')"; SETUP_B="$(budget_of skills/playbook-setup/SKILL.md)"
+if [ "$SETUP_WORDS" -le 1150 ]; then t_ok "v0.25.0 AC12 playbook-setup SKILL.md is at most 1150 words (orchestrator default D3) ($SETUP_WORDS)"; else t_bad "v0.25.0 AC12 playbook-setup SKILL.md is at most 1150 words (orchestrator default D3)" "$SETUP_WORDS words"; fi
+if [ -n "$SETUP_B" ] && [ "$SETUP_B" -ge "$SETUP_WORDS" ] && [ "$SETUP_B" -le 1150 ]; then t_ok "v0.25.0 AC12 the playbook-setup budget in evals/word-budgets is not below the count and at most 1150 (budget $SETUP_B, count $SETUP_WORDS)"; else t_bad "v0.25.0 AC12 the playbook-setup budget in evals/word-budgets is not below the count and at most 1150" "budget [$SETUP_B] count $SETUP_WORDS"; fi
+
+# ---- v0.25.0 fix round 1 (review findings F4-F7) ----
+echo "v0.25.0 fix1 F4: writing.md does not tell the reader to remove decorative bold (humanizer s19 is not in the approved list)"
+WM_RULES=""; [ -f "$WM" ] && WM_RULES="$(awk '/^## Rules/ { f = 1; next } /^## / { f = 0 } f { print }' "$WM" | tr '\n' ' ')"
+if printf '%s' "$WM_RULES" | grep -qi 'chatbot'; then t_ok "v0.25.0 fix1 F4 writing.md has a Rules list (found by its chatbot rule)"; else t_bad "v0.25.0 fix1 F4 writing.md has a Rules list (found by its chatbot rule)" "rules [$WM_RULES]"; fi
+if [ -n "$WM_RULES" ] && ! printf '%s' "$WM_RULES" | grep -qi 'bold'; then t_ok "v0.25.0 fix1 F4 the Rules list does not mention bold"; else t_bad "v0.25.0 fix1 F4 the Rules list does not mention bold" "rules [$WM_RULES] (empty = no Rules list)"; fi
+if [ -f "$WM" ] && ! flat "$WM" | grep -qi 'decorative bold'; then t_ok "v0.25.0 fix1 F4 writing.md never says decorative bold"; else t_bad "v0.25.0 fix1 F4 writing.md never says decorative bold" "the phrase is in $WM (or the file is missing)"; fi
+if [ -f "$WM" ] && flat "$WM" | grep -qiE 'decorative headings.{0,30}emoji'; then t_ok "v0.25.0 fix1 F4 s20 stays: decorative headings and emojis are still named"; else t_bad "v0.25.0 fix1 F4 s20 stays: decorative headings and emojis are still named" "no decorative headings ... emoji in $WM"; fi
+
+echo "v0.25.0 fix1 F5: the Humanizer section conditions on an installed skill and the key first, then asks (it does not offer)"
+WM_HUM=""; [ -f "$WM" ] && WM_HUM="$(awk '/^## Humanizer/ { f = 1; next } /^## / { f = 0 } /^Credit:/ { f = 0 } f { print }' "$WM" | tr '\n' ' ' | tr -s ' ')"
+HUM_S="$(printf '%s' "$WM_HUM" | tr '.' '\n')"
+HUM_INST="$(printf '%s\n' "$HUM_S" | grep -i 'installed' | head -n 1)"
+HUM_L_INST="$(printf '%s\n' "$HUM_S" | grep -n -i 'installed' | head -n 1 | cut -d: -f1)"
+HUM_L_MAIN="$(printf '%s\n' "$HUM_S" | grep -n -i 'main deliverable' | head -n 1 | cut -d: -f1)"
+if [ -n "$HUM_L_INST" ] && [ -n "$HUM_L_MAIN" ] && [ "$HUM_L_INST" -lt "$HUM_L_MAIN" ]; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence comes before the main deliverable sentence"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence comes before the main deliverable sentence" "installed at sentence [$HUM_L_INST], main deliverable at [$HUM_L_MAIN]"; fi
+if printf '%s' "$HUM_INST" | grep -qiE 'key' && printf '%s' "$HUM_INST" | grep -qE 'ask'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence also conditions on the humanizer key being ask"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence also conditions on the humanizer key being ask" "sentence [$HUM_INST]"; fi
+if printf '%s' "$HUM_INST" | grep -qiE 'ask.{0,100}(run|use)[^.]{0,30}in full'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence asks whether to run it in full"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence asks whether to run it in full" "sentence [$HUM_INST]"; fi
+if [ -n "$HUM_INST" ] && ! printf '%s' "$HUM_INST" | grep -qiE 'offer'; then t_ok "v0.25.0 fix1 F5 the installed-skill sentence does not say offer (AGENTS.global.md says ask)"; else t_bad "v0.25.0 fix1 F5 the installed-skill sentence does not say offer (AGENTS.global.md says ask)" "sentence [$HUM_INST]"; fi
+
+echo "v0.25.0 fix1 F6: setup gives the humanizer install command for both skills dirs"
+if grep -qF -- 'git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer' "$QUESTIONS"; then t_ok "v0.25.0 fix1 F6 questions.md gives the Claude Code clone command (characterization)"; else t_bad "v0.25.0 fix1 F6 questions.md gives the Claude Code clone command (characterization)" "missing in $QUESTIONS"; fi
+if grep -qF -- 'git clone https://github.com/blader/humanizer ~/.agents/skills/humanizer' "$QUESTIONS"; then t_ok "v0.25.0 fix1 F6 questions.md gives the Codex and OpenCode clone command"; else t_bad "v0.25.0 fix1 F6 questions.md gives the Codex and OpenCode clone command" "no git clone ... ~/.agents/skills/humanizer in $QUESTIONS"; fi
+
+echo "v0.25.0 fix1 F7: the humanizer suggestion is part of the step 4 batch, not a later question"
+S4_TXT="$(awk '/^4\. \*\*Ask once/ { f = 1; next } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$S4_TXT" | grep -qi 'humanizer'; then t_ok "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion"; else t_bad "v0.25.0 fix1 F7 step 4 of SKILL.md mentions the humanizer suggestion" "step 4 [$S4_TXT]"; fi
+if printf '%s' "$S4_TXT" | grep -qiE '(then|afterwards?|after (the|that)|later|follow-?up)[^.]{0,60}humanizer'; then t_bad "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch" "step 4 [$S4_TXT]"; else t_ok "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch"; fi
+if printf '%s' "$S4_TXT" | grep -qiE 'humanizer.{0,200}(batch|same message|single message)|(batch|same message|single message).{0,200}humanizer'; then t_ok "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message"; else t_bad "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message" "step 4 [$S4_TXT]"; fi
 
 t_summary

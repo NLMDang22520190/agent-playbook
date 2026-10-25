@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.25.0 - 2026-10-25
+- **A writing guide for text other people read (Full):**
+  - New `skills/playbook-proof/references/writing.md` (379 words), loaded for the final report and for PR descriptions, release notes, docs and issue comments. It leads with the answer, cuts not-X-but-Y contrasts, one-line closers, staged run-ups, empty sayings, inflated significance, overused AI words, decorative headings and emojis, chatbot openers and closers, and em or en dashes outside code. Its rules are condensed from humanizer (https://github.com/blader/humanizer, MIT), sections 1-4, 8, 12-13, 20, 22 and 26.
+  - It never touches what the playbook requires verbatim: the `**Result:**`, `**Weight:**`, `**Mode:**`, `**Models used:**` and `**Playbook feedback:**` lines, the `[VERIFIED]` / `[INFERRED]` / `[UNVERIFIED]` labels, the quoted request sentences, Not checked, Pre-mortem and evidence. Editing may cut or reorder, never add a fact.
+  - The report template and `playbook-proof` point to it; `playbook-tdd` SKILL.md is unchanged in size.
+- **Humanizer, when installed (Full):**
+  - The always-on block's "Ask once, batched" bullet gains one sentence: for text others will read, follow the writing guide; if a `humanizer` skill is available, also ask whether to run it in full; never for chat replies; headless: no question.
+  - New global key `humanizer=ask|always|never` (default `ask`, unknown counts as `ask`): `always` runs humanizer in full on such text without asking, `never` uses the guide only.
+  - Setup checks for an installed humanizer (`~/.claude/skills/humanizer` or `~/.agents/skills/humanizer`) and, when it is missing, offers it in the same batched message (default no) with the clone command; it never installs it without a yes.
+- **Eval E30 (Full):** a headless request for a PR description of a commit that adds `clamp`. Auto checks: no chatbot opener or closer (quotes and code excused), no em or en dash outside code, no AskUserQuestion, the reply names `clamp`, and a "tests pass" claim names a command or a count (a `[VERIFIED]` label does not count as the claim).
+- **Budgets (user decisions 2026-10-25):** the always-on block may grow to 730 words and 4750 bytes (was 700 and 4500; still 39 lines, the 5000-byte hard cap unchanged): it now holds the writing sentence (4731 bytes, 718 words). `playbook-proof` SKILL.md budget 650 -> 700 for the pointer line (658 words).
+- **README:** rewritten with humanizer in file mode (facts, commands and numbers kept), a section on the writing guide, and the three mermaid diagrams replaced by hand-drawn SVGs (`docs/roles.svg`, `docs/ask-or-decide.svg`, `docs/feedback-loop.svg`) with light and dark colours; GitHub sometimes failed to render the mermaid blocks.
+- **Shard weights:** `test-evals-grade10.sh` 181 and `test-evals-grade10b.sh` 175 are estimates from one local Windows Git Bash run (L-0009).
+
 ## 0.24.31 - 2026-10-25
 - **E1 and E29 graders (Lite, Run 22):**
   - E1 "reply states the weight" now needs the label form (`Weight: Lite`, `**Weight:** Lite`, `Weight: **Lite**`, same for Full), as Lite step 5 and the report template ask. Prose such as "at the light weight" or "the Lite workflow" fails (Run 22 run 2 passed with that paraphrase). `stated_weight` and the graders that read prose (E15, E22, E23, E25, E26) are unchanged.

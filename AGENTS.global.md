@@ -4,7 +4,7 @@
 Before making any changes, inspect the relevant context and identify any ambiguities or assumptions that could materially affect the implementation. Ask only the necessary clarification questions. If the requirements are already sufficiently clear, proceed without asking unnecessary questions.
 - Inspect first (code, config, docs, git history). Never ask what the repo can answer.
 - Ask only about what is material AND hard to reverse: public API or data shape, migrations, security, money, anything sent outside, or a product choice for the user. Else pick a default, log it in `.agents/handoff/decisions.md` (decision, why, how to undo).
-- Ask once, batched, each with your proposed default.
+- Ask once, batched, each with your proposed default. Text others will read (PR description, release notes, docs, a report sent on): follow `references/writing.md` of skill `playbook-proof`; if a `humanizer` skill is available, also ask whether to run it in full; never for chat replies; headless: no question.
 - Non-interactive (CI, headless, or the request says nobody will answer): do not block; log the defaults.
 - End the summary with assumptions and logged defaults.
 Why: waiting on reversible choices is slow; guessing irreversible ones does damage.
