@@ -5,6 +5,10 @@
 # Never calls a real harness: every --harness run of these suites puts $FK first on PATH.
 
 FK="$(mk_tmp)"   # fake harness binaries
+# PBH: the heading of the always-on block (line 1 of AGENTS.global.md without "## "). A fake whose argv names it is the leak probe of
+# run-evals.sh: it records $FR/<binary>.probe.count, .probe.<n>.args, .probe.<n>.settings and a "probe" line in $FR/<binary>.order,
+# and answers the text of $FK/probe.answer (default NO): a stream-json result when --output-format stream-json is in argv, else plain text.
+PBH="$(sed -n 's/^## //p' "$PB_ROOT/AGENTS.global.md" | head -n 1)"
 FR="$(mk_tmp)"   # what they recorded: $FR/<binary>.<label>.<what>, label = basename of the cwd (the workdir)
 
 # mk_fakes: claude, codex and opencode in $FK. Each records its argv (one per line, plus .argc), its PB_EVAL_* variables,
@@ -13,9 +17,32 @@ FR="$(mk_tmp)"   # what they recorded: $FR/<binary>.<label>.<what>, label = base
 mk_fakes() {
   local n
   for n in claude codex opencode; do
-    { printf '#!/usr/bin/env bash\nFR=%s\nN=%s\n' "'$FR'" "$n"
+    { printf '#!/usr/bin/env bash\nFR=%s\nN=%s\nFKD=%s\nPBH=%s\n' "'$FR'" "$n" "'$FK'" "'$PBH'"
       cat <<'EOF'
+probe=0
+for a in "$@"; do case "$a" in *"$PBH"*) probe=1 ;; esac; done
+if [ "$probe" = 1 ]; then
+  pn=$(( $(cat "$FR/$N.probe.count" 2>/dev/null || echo 0) + 1 ))
+  printf '%s\n' "$pn" > "$FR/$N.probe.count"
+  printf '%s\n' "$@" > "$FR/$N.probe.$pn.args"
+  printf 'probe\n' >> "$FR/$N.order"
+  prev=""
+  for a in "$@"; do
+    if [ "$prev" = "--settings" ]; then cp "$a" "$FR/$N.probe.$pn.settings" 2>/dev/null; fi
+    prev="$a"
+  done
+  ans="$(cat "$FKD/probe.answer" 2>/dev/null)"; [ -n "$ans" ] || ans=NO
+  sj=0; for a in "$@"; do [ "$a" = stream-json ] && sj=1; done
+  if [ "$sj" = 1 ]; then
+    echo '{"type":"system","subtype":"init","session_id":"p1","skills":[],"slash_commands":[]}'
+    printf '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.001,"result":"%s"}\n' "$ans"
+  else
+    printf '%s\n' "$ans"
+  fi
+  exit 0
+fi
 l="$(basename "$PWD")"
+printf '%s\n' "$l" >> "$FR/$N.order"
 printf '%s\n' "$@" > "$FR/$N.$l.args"
 printf '%s\n' "$#" > "$FR/$N.$l.argc"
 env | grep '^PB_EVAL_' > "$FR/$N.$l.env"

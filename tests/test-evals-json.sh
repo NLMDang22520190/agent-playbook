@@ -177,6 +177,9 @@ RE='((j.runs||[]).find(r=>r.label==="E8.without.2")||{})'
 assert_eq "AC5.2 the ERROR run: status error, error names the cause, no checks" "error|true|0" "$(jget "$JF" "$RE.status+\"|\"+/adapter exited 7/.test($RE.error)+\"|\"+($RE.checks||[]).length")"
 S="$(SI E8 without "$CK")"
 assert_eq "AC5.4 E8/without/'$CK': the ERROR run is out of n (n=1 passes=1 errors=1 complete false, pass_all true)" "1 1 1 false true" "$(jget "$JF" "[$S.n,$S.passes,$S.errors,$S.complete,$S.pass_all].join(\" \")")"
+ROWI="$(tr -s ' ' < "$RES" 2>/dev/null | grep -F "| E8 | without | $CK |" | head -n 1)"
+assert_contains "fix5 the md has the row E8/without/'$CK' of the run with an ERROR (n 1 < K 2)" "$ROWI" "| E8 | without | $CK |"
+assert_eq "fix5 the pass^K cell of that incomplete row is not yes" "not yes" "$(printf '%s\n' "$ROWI" | awk -F'|' '{ c = $6; gsub(/ /, "", c); print (c == "yes" ? "yes" : "not yes") }')"
 assert_eq "AC5.1 interactive true with --interactive" "true" "$(jget "$JF" 'j.interactive')"
 mk_adapter c06j "echo '$INIT'
 echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":0.6,\"result\":\"Done.\"}'"

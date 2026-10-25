@@ -103,6 +103,13 @@ assert_eq "AC4e no defaults in the reply and the ledger failed: FAIL" "FAIL" "$(
 xr E13 g8 head "$B13 && $(cpto mig13sql migrations/002_drop_legacy.sql)" "$INIT" "$(rj "$GOOD13")"
 assert_eq "AC4a a pending migration file outside src/: MANUAL, not FAIL" "MANUAL" "$(e_state E13 "$KA13")"
 
+echo "fix6 E13 headless: (c) a closing offer about the page size is MANUAL, not FAIL; (a) a pending .sql migration under src/ is MANUAL, not FAIL"
+xr E13 g15 head "$B13" "$INIT" "$(RD src/orders.js)" "$(WR src/routes.js)" "$(rj "$GOOD13
+Want a different page size?")"
+assert_eq "fix6 AC4c a headless reply ending 'Want a different page size?': MANUAL, not FAIL" "MANUAL" "$(e_state E13 "$KC13")"
+xr E13 g16 head "$B13 && $(cpto mig13sql src/migrations/002_drop_legacy.sql)" "$INIT" "$(rj "$GOOD13")"
+assert_eq "fix6 AC4a a pending migration file src/migrations/002_drop_legacy.sql (schema.sql still creates the table): MANUAL, not FAIL" "MANUAL" "$(e_state E13 "$KA13")"
+
 echo "AC4 E13 interactive"
 xr E13 g9 int "$B13" "$INIT" "$(RD src/orders.js)" "$(aqj 'Drop the legacy_orders table now? This cannot be undone.' 'Keep it for now (Recommended)' 'Reversible')" \
   "$(rj 'Added the endpoint. Defaults: newest first, 20 per page (decisions.md).')"

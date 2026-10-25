@@ -47,9 +47,10 @@ for s in playbook-tdd playbook-proof playbook-feedback playbook-learn playbook-s
   assert_eq "AC3.2 without: skillOverrides turns off $s" "off" "$(jget "$SW" '(j.skillOverrides||{})["'"$s"'"]')"
 done
 assert_eq "AC3.2 without: other-skill is not overridden" "absent" "$(jget "$SW" '(j.skillOverrides||{})["other-skill"] === undefined ? "absent" : "present"')"
-for p in 'Skill(playbook-proof)' 'Skill(playbook-proof *)' 'Skill(skill:playbook-proof)' 'Skill(playbook-extra *)' 'Read(~/.agents/**)' 'Read(~/.claude/skills/playbook-*/**)'; do
+for p in 'Skill(playbook-proof)' 'Skill(playbook-proof *)' 'Skill(playbook-extra *)' 'Read(~/.agents/**)' 'Read(~/.claude/skills/playbook-*/**)'; do
   assert_eq "AC3.2 without: permissions.deny holds $p" "true" "$(jget "$SW" '((j.permissions||{}).deny||[]).includes("'"$p"'")')"
 done
+assert_eq "fix7 without: permissions.deny has no Skill(skill:NAME) rule (not a documented form)" "false" "$(jget "$SW" '((j.permissions||{}).deny||[]).some(x => /^Skill\(skill:/.test(x))')"
 assert_eq "AC3.1 without: PLAYBOOK_HOME holds no file (no conf copy, no settings file)" "" "$(rec_of "$FR/claude.E8.without.1.phfiles")"
 assert_contains "AC3.1 with: PLAYBOOK_HOME keeps today's conf copy" "$(cat "$FR/claude.E8.with.1.phfiles" 2>/dev/null)" ".agents/playbook.conf"
 assert_eq "AC3.1 HOME is unchanged (listing before = after)" "$GH_BEFORE" "$(home_listing "$GH")"
@@ -135,6 +136,48 @@ else
   t_bad "AC3.2 SIGTERM: the settings file is gone" "not reached"
   kill -KILL "$RP" 2>/dev/null; wait "$RP" 2>/dev/null
 fi
+
+# ================= fix3 the leak probe (--harness claude, without arm) =================
+# The fake claude is the probe when its argv names the heading of AGENTS.global.md; it answers $FK/probe.answer (evals-arms-fixture.sh).
+echo "fix3 --harness claude --arm both: one leak probe with the without settings before the first without run; no leak -> 'leak probe: none'"
+PBH_T="$(sed -n 's/^## //p' "$PB_ROOT/AGENTS.global.md" | head -n 1)"
+assert_eq "fix3 setup: the heading read from AGENTS.global.md" "Agent Playbook (always on)" "$PBH_T"
+probes() { cat "$FR/claude.probe.count" 2>/dev/null || echo 0; }
+GH="$(mk_home)"; printf 'NO\n' > "$FK/probe.answer"
+go --harness claude --model m-claude-1 --arm both --repeat 2 --scenarios E8
+assert_rc "fix3 the probe says no: exit 0" 0
+assert_eq "fix3 the probe says no: exactly one probe for the whole invocation (both arms, repeat 2)" "1" "$(probes)"
+ORD="$(tr '\n' ' ' < "$FR/claude.order" 2>/dev/null)"
+case " $ORD" in *" probe "*"E8.without.1 "*) t_ok "fix3 the probe runs before the first without run" ;; *) t_bad "fix3 the probe runs before the first without run" "order: [$ORD]" ;; esac
+assert_eq "fix3 the probe says no: every scenario run still ran (4)" "4" "$(grep -c '^E8\.' "$FR/claude.order" 2>/dev/null)"
+assert_file "fix3 the probe got a --settings file" "$FR/claude.probe.1.settings"
+if [ -f "$FR/claude.probe.1.settings" ] && cmp -s "$FR/claude.probe.1.settings" "$FR/claude.E8.without.1.settings"; then t_ok "fix3 the probe ran with the without settings (byte-equal to E8.without.1's file)"
+else t_bad "fix3 the probe ran with the without settings (byte-equal to E8.without.1's file)" "$(cat "$FR/claude.probe.1.settings" 2>/dev/null | tr '\n' ' ')"; fi
+assert_contains "fix3 the probe says no: the md records 'leak probe: none'" "$(cat "$RES" 2>/dev/null)" "leak probe: none"
+
+echo "fix3 the probe says yes: exit 3, a message naming the leak, no scenario runs"
+printf 'YES\n' > "$FK/probe.answer"
+go --harness claude --model m-claude-1 --arm both --scenarios E8
+assert_rc "fix3 the probe says yes: exit 3" 3
+assert_eq "fix3 the probe says yes: one probe" "1" "$(probes)"
+assert_contains "fix3 the probe says yes: the message names the heading that leaked" "$OUT" "$PBH_T"
+if printf '%s\n' "$OUT" | grep -qi 'leak'; then t_ok "fix3 the probe says yes: the message says leak"; else t_bad "fix3 the probe says yes: the message says leak" "$OUT"; fi
+assert_eq "fix3 the probe says yes: no scenario run reached claude" "" "$(ls "$FR" 2>/dev/null | grep '^claude\.E8' | tr '\n' ' ')"
+assert_no_path "fix3 the probe says yes: no workdir E8.with.1" "$WR/E8.with.1"
+assert_no_path "fix3 the probe says yes: no workdir E8.without.1" "$WR/E8.without.1"
+rm -f "$FK/probe.answer"
+
+echo "fix3 no probe for --cmd adapters ('leak probe: n/a'), for --arm with, or in the default mode"
+go --cmd "bash $A/idle.sh" --arm both --scenarios E8
+assert_rc "fix3 --cmd --arm both: exit 0" 0
+assert_eq "fix3 --cmd: the adapter ran once per run and never for a probe" "E8.with.1 E8.without.1" "$(cd "$REC" && ls *.args 2>/dev/null | sed 's/\.args$//' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+assert_contains "fix3 --cmd: the md records 'leak probe: n/a'" "$(cat "$RES" 2>/dev/null)" "leak probe: n/a"
+go --harness claude --model m-claude-1 --arm with --scenarios E8
+assert_eq "fix3 --harness claude --arm with: no probe" "0" "$(probes)"
+assert_file "fix3 --harness claude --arm with: the with run ran (label E8, as today)" "$FR/claude.E8.args"
+go --harness claude --model m-claude-1 --scenarios E8
+assert_eq "fix3 default mode: no probe" "0" "$(probes)"
+assert_file "fix3 default mode: the run ran" "$FR/claude.E8.args"
 
 # ================= S3b refusals =================
 echo "S3b AC3.5 codex and opencode refuse the without arm before any workdir; --arm with still works"

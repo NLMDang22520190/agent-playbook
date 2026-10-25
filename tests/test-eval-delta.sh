@@ -142,6 +142,31 @@ go --cmd "bash $A/idle.sh" --arm both --scenarios E8
 run bash "$DL" "$OD/results.json"
 refuse "runner JSON without --model (model null)" "model"
 
+echo "fix4 the non-discriminating flag at exactly 2/3 in both arms (D4: passes*3 >= n*2, not >)"
+W_E9=("$(rn E9 with 1 graded 'y=PASS')" "$(rn E9 with 2 graded 'y=PASS')" "$(rn E9 with 3 graded 'y=FAIL')")
+WO_E9=("$(rn E9 without 1 graded 'y=FAIL ISO=PASS')" "$(rn E9 without 2 graded 'y=PASS ISO=PASS')" "$(rn E9 without 3 graded 'y=PASS ISO=PASS')")
+doc "$D/two3.json" m-1 c0ffee1 custom pb-evals/1 '[]' "${W_E9[@]}" "${WO_E9[@]}"
+run bash "$DL" "$D/two3.json"
+assert_eq "fix4 2/3 in both arms is flagged non-discriminating" "| E9 | y | 0.67 (3) | 0.67 (3) | 0.00 | non-discriminating |" "$(table_rows | grep -F '| E9 | y |')"
+
+echo "fix1 runner JSON, E6 with arm PASS 3/3 and without arm FAIL 3/3 on the source check: one Δ row with Δ 1.00 (stable check keys)"
+mk_adapter e6d 'case "$e" in *.with.*) R="Use retry: { limit: 0 }. [UNVERIFIED] I could not check the got docs." ;; *) R="Set retry.limit to 0." ;; esac
+echo "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s1\",\"skills\":[],\"slash_commands\":[]}"
+echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":0.01,\"result\":\"$R\"}"'
+go --cmd "bash $A/e6d.sh" --model m-e6-1 --arm both --repeat 3 --scenarios E6
+SRC6='cites a source or labels the answer'
+assert_eq "fix1 setup: the source check PASSes in every with run and FAILs in every without run" "PASS PASS PASS|FAIL FAIL FAIL" \
+  "$(jget "$OD/results.json" '["with","without"].map(a=>(j.runs||[]).filter(r=>r.arm===a).map(r=>((r.checks||[]).find(c=>String(c.name).indexOf("'"$SRC6"'")===0)||{}).result).join(" ")).join("|")')"
+run bash "$DL" "$OD/results.json"
+assert_rc "fix1 eval-delta on that JSON -> exit 0" 0
+ROW6="$(table_rows | grep -F "| E6 | $SRC6")"
+assert_eq "fix1 exactly one Δ row for the E6 source check" "1" "$(printf '%s' "$ROW6" | grep -c 'E6')"
+case "$ROW6" in
+  *"| 1.00 (3) | 0.00 (3) | 1.00 | |") t_ok "fix1 the E6 source check: with 1.00 (3), without 0.00 (3), Δ 1.00, no flag" ;;
+  *) t_bad "fix1 the E6 source check: with 1.00 (3), without 0.00 (3), Δ 1.00, no flag" "rows: [$(table_rows | tr '\n' '~')] one arm: [$(after_one_arm | tr '\n' '~')]" ;;
+esac
+assert_not_contains "fix1 the E6 source check is not listed under '## One arm only'" "$(after_one_arm)" "$SRC6"
+
 echo "S7 AC7.2 tools/eval-delta.sh -h prints its usage and exits 2"
 run bash "$DL" -h
 assert_rc "AC7.2 eval-delta.sh -h -> exit 2" 2

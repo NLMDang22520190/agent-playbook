@@ -141,13 +141,14 @@ assert_eq "AC3.2 skillOverrides leaves the non-playbook home skill other-skill a
 assert_eq "AC3.2 skillOverrides skips a repo skills dir without SKILL.md" "absent" "$(jget "$F" '(j.skillOverrides||{})["zz-nofile"] === undefined ? "absent" : "present"')"
 DENY='((j.permissions||{}).deny||[])'
 for s in playbook-alpha playbook-extra; do
-  for p in "Skill($s)" "Skill($s *)" "Skill(skill:$s)"; do
+  for p in "Skill($s)" "Skill($s *)"; do
     assert_eq "AC3.2 permissions.deny holds $p" "true" "$(jget "$F" "$DENY"'.includes("'"$p"'")')"
   done
 done
 for p in 'Read(~/.agents/**)' 'Read(~/.claude/skills/playbook-*/**)'; do
   assert_eq "AC3.2 permissions.deny holds $p" "true" "$(jget "$F" "$DENY"'.includes("'"$p"'")')"
 done
+assert_eq "fix7 permissions.deny has no Skill(skill:NAME) rule (not a documented form)" "false" "$(jget "$F" "$DENY"'.some(x => /^Skill\(skill:/.test(x))')"
 assert_eq "AC3.2 permissions.deny has no Skill rule for other-skill" "false" "$(jget "$F" "$DENY"'.some(x => /other-skill/.test(x))')"
 assert_eq "AC3.2 autoMemoryEnabled is false in the without file" "false" "$(jget "$F" 'j.autoMemoryEnabled')"
 assert_eq "AC3.1 no credential content in the settings file" "0" "$(grep -c SECRET-TOKEN-XYZ "$F" 2>/dev/null || true)"
@@ -182,8 +183,14 @@ if [ "$SYMLINKS" = 1 ]; then
   assert_eq "AC3.2 linked CLAUDE.md: claudeMdExcludes holds HOME/.claude/CLAUDE.md" "true" "$(jget "$SD/l.json" '(j.claudeMdExcludes||[]).includes("'"$HL"'/.claude/CLAUDE.md")')"
   assert_eq "AC3.2 linked CLAUDE.md: claudeMdExcludes also holds its physical path" "true" "$(jget "$SD/l.json" '(j.claudeMdExcludes||[]).includes("'"$XP"'/real-claude.md")')"
   assert_eq "AC3.2 a playbook-* link in the home skills dir is turned off" "off" "$(jget "$SD/l.json" '(j.skillOverrides||{})["playbook-linked"]')"
+  DENYL='((j.permissions||{}).deny||[])'
+  assert_eq "AC3.2 a linked playbook skill: deny Read(/<physical path>/**)" "true" "$(jget "$SD/l.json" "$DENYL"'.includes("Read(/'"$XP"'/pl-dir/**)")')"
+  OUT="$(PATH="$CYGB:$PATH" bash -c '. "$1"; pbh_arm_settings "$2" without "$3" "$4"' _ "$PB_ROOT/evals/lib-harness.sh" "$SD/lc.json" "$HL" "$R" 2>&1)"
+  assert_eq "fix7 cygpath: deny also holds a Read(...) rule with the cygpath -m form of the linked skill's physical path" "true" \
+    "$(jget "$SD/lc.json" "$DENYL"'.some(x => x.indexOf("Read(") === 0 && x.indexOf("C:/fake'"$XP"'/pl-dir") >= 0 && x.slice(-4) === "/**)")')"
+  assert_eq "fix7 cygpath: the plain physical-path rule stays" "true" "$(jget "$SD/lc.json" "$DENYL"'.includes("Read(/'"$XP"'/pl-dir/**)")')"
 else
-  t_skip 3 "ln -s makes a copy here (L-0004)"
+  t_skip 6 "ln -s makes a copy here (L-0004)"
 fi
 
 t_summary
