@@ -877,16 +877,36 @@ strip30() {
   fi
 }
 # a chatbot opener (at the start of a line) or closer (anywhere), humanizer section 22
-OPEN30='^[][:space:]>*_#~-]*(great question|certainly)'
+# v0.25.1: the prefix set also has digits, . and ) so an opener in a numbered item ("1. Certainly ...", "2) Great question") counts
+OPEN30='^[][:space:]>*_#~0-9.)-]*(great question|certainly)'
+# a run-up (humanizer section 4) at the start of a line, graded only inside the PR text (pr30), not in the chat framing around it
+RUNUP30='^[][:space:]>*_#~0-9.)-]*(here[^a-z]{1,3}s([^a-z]|$)|here is|below is|let[^a-z]{1,3}s dive|let me walk you through|without further ado)'
+# pr30 -> the PR text of a reply on stdin: the body of the first fenced block whose info string is empty, markdown or md and that holds more than 3 lines;
+# else the lines between the first line that is exactly --- and the next such line (or the end); else the whole reply. LC_ALL=C.
+pr30() {
+  LC_ALL=C awk '{ L[NR] = $0 }
+  END {
+    inf = 0
+    for (i = 1; i <= NR; i++) {
+      if (L[i] ~ /^[ \t]*(```|~~~)/) {
+        if (!inf) { inf = 1; st = i; info = L[i]; sub(/^[ \t]*(```|~~~)[`~]*[ \t]*/, "", info); sub(/[ \t]+$/, "", info); info = tolower(info) }
+        else { inf = 0; if ((info == "" || info == "markdown" || info == "md") && i - st - 1 > 3) { for (j = st + 1; j < i; j++) print L[j]; exit } }
+      }
+    }
+    for (i = 1; i <= NR; i++) if (L[i] == "---") { for (j = i + 1; j <= NR && L[j] != "---"; j++) print L[j]; exit }
+    for (i = 1; i <= NR; i++) print L[i]
+  }'
+}
 CLOSE30='i hope this helps|let me know|would you like|want me to|happy to help|feel free'
 # a proof claim (tests pass, verified; the labels [VERIFIED] and [UNVERIFIED] and the word unverified do not count) and what satisfies it (D7)
 CLAIM30='tests? pass|(^|[^a-z])verified([^a-z]|$)'
 PROOF30='npm (run )?test|npm t([^a-z]|$)|yarn test|pnpm test|node --test|proof-run|make check|pytest|go test|cargo test|[0-9]+ (tests? )?(passed|passing)|[0-9]+ tests? pass|all [0-9]+ tests'
 grade_E30() {
-  local r t u
+  local r t u pt
   if r="$(result_text)"; then
     t="$(printf '%s\n' "$r" | strip30 quote)"
-    if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$OPEN30|$CLOSE30"; then record FAIL "no chatbot opener or closer in the reply"
+    pt="$(printf '%s\n' "$r" | pr30 | strip30 quote)"
+    if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$OPEN30|$CLOSE30" || printf '%s\n' "$pt" | LC_ALL=C grep -qiE "$RUNUP30"; then record FAIL "no chatbot opener or closer in the reply"
     else record PASS "no chatbot opener or closer in the reply"; fi
     u="$(printf '%s\n' "$r" | strip30 code)"
     if printf '%s\n' "$u" | LC_ALL=C grep -qE "$(printf '\342\200\224')|$(printf '\342\200\223')"; then record FAIL "no em or en dash in the reply outside code"
