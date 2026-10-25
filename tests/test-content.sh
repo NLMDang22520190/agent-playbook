@@ -655,6 +655,7 @@ flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$
 # --- v0.22.1 AC1: one real observation of the user-visible behaviour (Phase 4, Lite step 4, playbook-proof)
 PROOF="$PB_ROOT/skills/playbook-proof/SKILL.md"
 README="$PB_ROOT/README.md"
+DEVDOC="$PB_ROOT/docs/development.md"
 FB="$PB_ROOT/skills/playbook-feedback/SKILL.md"
 REAL='real[- ](behaviou?r|observation|run)|observ[a-z]* (of )?the real'
 UVIS='user[- ]visible'
@@ -724,8 +725,8 @@ sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
-# --- v0.22.1 AC5.2: how to install shellcheck is in the README
-flat_has 'v22.1 AC5.2 README says how to install shellcheck (apt install shellcheck)' "$README" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
+# --- v0.22.1 AC5.2: how to install shellcheck is in docs/development.md
+flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt install shellcheck)' "$DEVDOC" 'apt(-get)? install[^.]{0,60}shellcheck|shellcheck[^.]{0,120}apt(-get)? install'
 
 
 # --- v0.22.1 review findings: content
@@ -735,9 +736,9 @@ sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$
 sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
 sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
 sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
-SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$README")"
-if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV README: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
-if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV README: the shellcheck note is not inside "Quality, measured"'; fi
+SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
+if printf '%s\n' "$SC_HEAD" | grep -qiE 'quality, measured'; then t_bad 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"' "heading: [$SC_HEAD]"; else t_ok 'v22.1 RV docs/development.md: the shellcheck note is not inside "Quality, measured"'; fi
 
 
 # --- v0.22.2 AC1: process rules (named-line assertions: each check names the line or phrase it needs)
@@ -815,9 +816,9 @@ flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" '
 flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
 flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
 
-# --- v0.22.2 AC7: README
-if grep -i 'concurrency' "$README" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 README: one line mentions CI concurrency and timeouts' 'no README line has both words'; fi
-sec_flat_has 'v22.2 AC7.1 README Development section mentions tools/bsd-check.sh' "$README" '^## Development' 'tools/bsd-check\.sh'
+# --- v0.22.2 AC7: docs/development.md (moved from the README in v0.25.1)
+if grep -i 'concurrency' "$DEVDOC" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts' 'no docs/development.md line has both words'; fi
+sec_flat_has 'v22.2 AC7.1 docs/development.md Development checks section mentions tools/bsd-check.sh' "$DEVDOC" '^## Development checks' 'tools/bsd-check\.sh'
 
 
 # --- v0.22.3 AC2: context packs
@@ -1046,12 +1047,12 @@ assert_eq 'v22.3 AC6.2 main-ci still runs on v* tags only (unchanged if:)' "    
 assert_not_contains 'v22.3 AC6.2 main-ci does not depend on reuse' "$(wf_needs main-ci)" "reuse"
 assert_not_contains 'v22.3 AC6.2 only release has contents: write (reuse has none)' "$RB" 'contents: write'
 
-# --- v0.22.3 AC6.4: README
-echo "v22.3 AC6.4 README"
-flat_has 'v22.3 AC6.4 README: a main push reuses a green PR run' "$README" 'main push[^.]{0,250}reus|reus[^.]{0,250}main push'
-flat_has 'v22.3 AC6.4 README: the reused run is a same-repo PR run' "$README" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
-flat_has 'v22.3 AC6.4 README: ... of the identical tree' "$README" 'identical tree|same tree|tree[^.]{0,60}identical'
-flat_has 'v22.3 AC6.4 README: ... that was green' "$README" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
+# --- v0.22.3 AC6.4: docs/development.md
+echo "v22.3 AC6.4 docs/development.md"
+flat_has 'v22.3 AC6.4 docs/development.md: a main push reuses a green PR run' "$DEVDOC" 'main push[^.]{0,250}reus|reus[^.]{0,250}main push'
+flat_has 'v22.3 AC6.4 docs/development.md: the reused run is a same-repo PR run' "$DEVDOC" 'same[- ]repo(sitory)?[^.]{0,120}(PR|pull request)|(PR|pull request)[^.]{0,120}same[- ]repo'
+flat_has 'v22.3 AC6.4 docs/development.md: ... of the identical tree' "$DEVDOC" 'identical tree|same tree|tree[^.]{0,60}identical'
+flat_has 'v22.3 AC6.4 docs/development.md: ... that was green' "$DEVDOC" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
@@ -1099,9 +1100,9 @@ WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
 if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
-if flat "$README" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 README no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 README no longer says rebase merges always run the tests'; fi
-flat_has 'v22.3 review Low-2 README: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
-flat_has 'v22.3 review Low-2 README: ... and the PR head parent P' "$README" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
+if flat "$DEVDOC" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests'; fi
+flat_has 'v22.3 review Low-2 docs/development.md: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
+flat_has 'v22.3 review Low-2 docs/development.md: ... and the PR head parent P' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
 echo "v22.3 review Low-4: the reuse step validates the run id before writing the output"
 RSTEP="$(wf_block reuse | awk '/id: tree/ { f = 1 } f { print }')"
 assert_contains 'v22.3 review Low-4 the reuse step has a numeric-only guard' "$RSTEP" '[!0-9]'
@@ -1232,8 +1233,8 @@ for nm in $ENVNAMES; do
   case "$CH_RUN" in *"\$$nm"*|*"\${$nm}"*) t_ok "v23.0 review changes uses \$$nm in its script" ;; *) t_bad "v23.0 review changes uses \$$nm in its script" "run text: $CH_RUN" ;; esac
 done
 
-# --- v0.23.0 review: the README does not oversell the reduced path
-if flat "$README" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review README does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review README does not say the reduced checks run in "every required job"'; fi
+# --- v0.23.0 review: docs/development.md does not oversell the reduced path
+if flat "$DEVDOC" | grep -qiE -- 'docs-only[^.]{0,250}every required job|every required job[^.]{0,250}docs-only'; then t_bad 'v23.0 review docs/development.md does not say the reduced checks run in "every required job"' 'the phrase is still next to Docs-only'; else t_ok 'v23.0 review docs/development.md does not say the reduced checks run in "every required job"'; fi
 
 # --- v0.23.2 AC8.1 / E1: the reduced docs-only set is the grep result plus tests/test-update.sh (D4)
 echo "v23.2 AC8.1 workflow: the reduced docs-only set is pinned"
