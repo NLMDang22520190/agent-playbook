@@ -13,7 +13,7 @@ REF="$TDD/references"
 WB="$PB_ROOT/evals/word-budgets"
 ROWS="$PB_ROOT/tests/skill-keep-rows.sh"
 DOCS="$PB_ROOT/docs/release-speed.md"
-BASE_SHA=4694b1c
+BASE_SHA=ced2206   # the lane merge point (lane W references + v0.26.0 merged); the split itself must add no words after it
 
 # tpin TARGET PHRASE: TARGET (path under the repo) holds PHRASE in its flat text
 tpin() {
@@ -103,7 +103,7 @@ for r in full parallel cost weights wrong harnesses; do
   else t_bad "A1c $p has a budget line at its size rounded up to the next 10" "budget [$b] words [$w]"; fi
 done
 
-echo "A3e the split saves words: SKILL.md + references/*.md now <= at the base + 150 (release.md left out on both sides)"
+echo "A3e the split adds no words: SKILL.md + references/*.md now <= the tree at the lane merge point + 200 for the S3 contradiction fixes (release.md left out on both sides)"
 tree_words() { # REF: words of SKILL.md plus references/*.md except release.md, at git REF (or the work tree when REF is empty)
   local f n=0 w
   if [ -z "$1" ]; then
@@ -118,7 +118,7 @@ tree_words() { # REF: words of SKILL.md plus references/*.md except release.md, 
 }
 if git -C "$PB_ROOT" cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
   B0="$(tree_words "$BASE_SHA")"; B1="$(tree_words "")"
-  if [ "$B1" -le $((B0 + 150)) ]; then t_ok "A3e tree words $B1 <= $B0 + 150 at $BASE_SHA"; else t_bad "A3e tree words at most the base + 150" "$B1 words, base $B0"; fi
+  if [ "$B1" -le $((B0 + 200)) ]; then t_ok "A3e tree words $B1 <= $B0 + 200 at $BASE_SHA"; else t_bad "A3e tree words at most the merge point + 200" "$B1 words, merge point $B0"; fi
 else t_skip 1 "A3e the base commit $BASE_SHA is not in this clone"; fi
 
 echo "A7 characterization: evals/scenario-map still sends a change to a new reference file to the playbook-tdd scenarios"
