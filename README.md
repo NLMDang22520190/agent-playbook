@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.27.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-16359-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.27.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-17729-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-31%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -184,9 +184,9 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **16359 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **17729 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 31 / 60 lines · 3,926 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
 | Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 23 on v0.25.0 (2026-10-25): E30 6/6 auto checks in two runs, E1 6/6, E29 6/6, 1.51 USD in total. Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 24](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
@@ -217,7 +217,7 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  16359 tests, run in sandboxes, never touch the real HOME
+├── tests/                  17729 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E39) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
