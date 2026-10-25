@@ -164,7 +164,7 @@ The presets do not sandbox the agent, and the opencode preset auto-approves its 
 |---|---|---|
 | Script, installer and tool tests | **14380 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 39 / 60 lines · 4,474 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck) + macOS (bash 3.2, BSD tools) + Windows (Git Bash, copy mode) on every push and PR; release job on `v*` tags | `.github/workflows/test.yml` |
 | Behaviour scenarios E1–E20 | Claude Code 2.1.296, three rounds with v0.13.0 wording: E3 3/3 and E8 3/3 auto checks every round (E8 names the injected instruction), E1 4/4 when graded; playbook-tdd loaded in every E1 ([results](evals/results/2026-10-10-claude-code-2.1.296.md)). Other scenarios and harnesses not run yet | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
@@ -172,6 +172,12 @@ The presets do not sandbox the agent, and the opencode preset auto-approves its 
 ## Alongside Superpowers or other skill packs
 
 The always-on block has a *When other skills overlap* section. When it conflicts with `test-driven-development`, `subagent-driven-development` or `brainstorming`, these rules win: separate tester / implementer / reviewer, the reviewer re-runs the tests, and questions are batched in one message with defaults. Scenario E11 checks this.
+
+## Text other people read
+
+Reports, PR descriptions, release notes and docs follow a short writing guide, [`references/writing.md`](skills/playbook-proof/references/writing.md) in `playbook-proof`. It leads with the answer, cuts chatbot openers and closers, inflated words, decorative bold and em dashes, and never touches the lines and labels the playbook requires (`**Weight:**`, `[VERIFIED]`, Not checked and the rest). Editing may cut or reorder; it never adds a fact.
+
+The rules are condensed from [humanizer](https://github.com/blader/humanizer). For a fuller pass, install that skill. Setup offers it (default no) and records `humanizer=ask|always|never`. With `ask`, the agent asks once whether to run humanizer in full, only when the task produces text other people will read and never in a headless run. Scenario E30 checks a headless PR description for chatbot wrappers and dashes.
 
 ## Limitations
 
@@ -190,7 +196,7 @@ agent-playbook/
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
 ├── tests/                  14380 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E29) · RUBRIC.md · make-fixture.sh
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E30) · RUBRIC.md · make-fixture.sh
 ├── tools/                  setup-labels.sh (feedback issue labels) · check-release.sh (VERSION + CHANGELOG per tag) · release-pr-check.sh (check-release on a PR that changes VERSION) · readme-count.sh (README test count) · pre-commit + install-hooks.sh (opt-in exec-bit hook)
 └── docs/                   flow.svg · architecture.svg · roles.svg · ask-or-decide.svg · feedback-loop.svg · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md
 ```
@@ -219,6 +225,7 @@ The content is written for this repo. Ideas were learned from:
 - [Agent Skills](https://agentskills.io) and [AGENTS.md](https://agents.md): the open formats that let one skill pack run across harnesses.
 - [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills): surgical changes, stated assumptions.
 - [mattpocock/skills](https://github.com/mattpocock/skills): concise skill writing.
+- [blader/humanizer](https://github.com/blader/humanizer) (MIT): the writing guide condenses its patterns.
 - An internal B2B delivery playbook: decide by reversibility, a why for every rule, verbatim AC with anchors, and looking at the UI.
 
 ## License

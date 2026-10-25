@@ -1611,7 +1611,7 @@ RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { e
 qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
-qchk "v25 AC3 README names scenarios (E1–E29)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E29\)'
+qchk "v25 AC3 README names scenarios (E1–E30)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E30\)'
 RUNEV="$PB_ROOT/evals/run-evals.sh"
 if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
 qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'
