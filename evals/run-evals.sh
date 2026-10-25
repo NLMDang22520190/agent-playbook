@@ -2,6 +2,7 @@
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD] [--real-home]
+#                [--model M] [--arm with|without|both] [--repeat K]
 # Each prompt ends with a non-interactive note (--interactive: none); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
 # --max-cost USD (a plain decimal > 0, e.g. 5, 0.5 or .5) is a guard, not a hard limit. Before each scenario that follows one
@@ -42,10 +43,24 @@
 # must not "pass" E8 by changing nothing).
 # Exit: 0 every auto check passed, 1 any FAIL, 2 usage or a workroot/<E> the runner does not own,
 #       3 environment (node, git, fixture), 4 any scenario ERROR (harness failure: the run is unreliable).
+# --model M pins the model (claude --model M, codex -m M, opencode --model M; --cmd adapters get PB_EVAL_MODEL) and the results
+# record it ("Model: not pinned (CLI default)" without it; a --harness run without --model warns on stderr). --arm runs every
+# scenario with the playbook (with, the default), without it, or both; --repeat K (1..99) runs each (scenario, arm) K times.
+# A --harness run with --arm or --repeat needs --model. Unless the arm is "with" alone and K is 1, each run has the label
+# <E>.<arm>.<k> (E1.without.2), used for its workdir, .log, .prompt, evidence folder, output lines and summary row, in the
+# order scenario, then k, then arm (with before without). --max-cost spans every run; the exit code covers every run.
+# The without arm keeps the real HOME and gives the run an empty PLAYBOOK_HOME. Claude Code gets --settings <file> (a runner
+# temp dir pb-evset.*, removed on exit, copied to the evidence as <arm>-settings.json) that excludes ~/.claude/CLAUDE.md,
+# turns off and denies the playbook skills, denies reads of ~/.agents and sets autoMemoryEnabled false (the with arm gets a
+# file with autoMemoryEnabled false only, whenever --arm or --repeat is given). --cmd adapters get PB_EVAL_ARM and
+# PB_EVAL_SETTINGS and do their own isolation. Codex, OpenCode and --real-home cannot run the without arm (exit 2), nor can
+# a workroot under a directory whose CLAUDE.md, AGENTS.md or rules file holds the playbook block, or a user rules file
+# (~/.claude/rules) that holds it. The helpers live in evals/lib-harness.sh (also sourced by run-outcome.sh).
 # Bash 3.2 compatible. Needs node >= 18 and git.
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
+. "$EVALS/lib-harness.sh"
 
 AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31"
 
@@ -58,6 +73,9 @@ usage() {
 # temp home of the running scenario and the pid of its adapter, for the exit trap
 CUR_HOME=""; CUR_TMP=""; ADPID=""
 cleanup_home() { if [ -n "$CUR_HOME" ]; then rm -rf "$CUR_HOME"; CUR_HOME=""; fi; }
+# the runner's settings dir (pb-evset.*) of the --arm/--repeat runs
+SET_DIR=""
+cleanup_set() { if [ -n "$SET_DIR" ]; then rm -rf "$SET_DIR"; SET_DIR=""; fi; }
 # rm -rf unlinks a symbolic link and never follows it; only a pb-evtmp.* dir made by this runner is ever removed.
 # A dir the agent made unreadable (chmod 000) is first made accessible again (chmod -R never follows links; never on a
 # link itself) and removed again; if it still exists, STUCK_TMP holds its path and a NOTE goes to stderr (unless "quiet").
@@ -81,9 +99,9 @@ cleanup_tmp() { # [quiet]
 # backticks replaced, so it fits in one line of output and inside backticks
 clean_name() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C tr '`' "'"; }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
-trap 'cleanup_home; cleanup_tmp' EXIT
-trap 'stop_adapter; cleanup_home; cleanup_tmp; trap - EXIT; exit 130' INT
-trap 'stop_adapter; cleanup_home; cleanup_tmp; trap - EXIT; exit 143' TERM
+trap 'cleanup_home; cleanup_tmp; cleanup_set' EXIT
+trap 'stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; exit 130' INT
+trap 'stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; exit 143' TERM
 # keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
 keep_tree() {
   local src="$1" dest="$2" rel
@@ -95,11 +113,12 @@ keep_tree() {
 }
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
+MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost)
+    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -110,6 +129,9 @@ while [ $# -gt 0 ]; do
     --out)       OUT="$2"; shift ;;
     --timeout)   TIMEOUT="$2"; shift ;;
     --max-cost)  MAX_COST="$2"; MAX_COST_SET=1; shift ;;
+    --model)     MODEL="$2"; MODEL_SET=1; shift ;;
+    --arm)       ARM_OPT="$2"; ARM_SET=1; shift ;;
+    --repeat)    REPEAT_OPT="$2"; REPEAT_SET=1; shift ;;
     --clean-env) CLEAN_ENV=1 ;;
     --interactive) INTERACTIVE=1 ;;
     --real-home) REAL_HOME=1 ;;
@@ -132,11 +154,8 @@ case "$HARNESS" in
             LABEL="custom"
             # DECISION[D1]: adapter contract = COMMAND <workdir> <prompt-file>; COMMAND is split by the shell.
             ADAPTER="$CMD \"\$1\" \"\$2\"" ;;
-  opencode) LABEL="opencode"; ADAPTER='cd "$1" && opencode run --auto "$(cat "$2")"' ;;
-  # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
-  # flags as listed by `claude --help` in Claude Code 2.1.295.
-  claude)   LABEL="claude";   ADAPTER='cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' ;;
-  codex)    LABEL="codex";    ADAPTER='cd "$1" && codex exec "$(cat "$2")"' ;;
+  # the preset strings live in evals/lib-harness.sh
+  opencode | claude | codex) LABEL="$HARNESS"; ADAPTER="$(pbh_preset_cmd "$HARNESS")" ;;
   *) pb_die "unknown harness: $HARNESS (use opencode, claude, codex or --cmd)" 2 ;;
 esac
 
@@ -153,6 +172,47 @@ if [ "$MAX_COST_SET" = 1 ]; then
     *[1-9]*) ;;
     *) pb_die "--max-cost needs a positive decimal amount in USD, got: $MAX_COST" 2 ;;
   esac
+fi
+
+if [ "$MODEL_SET" = 1 ]; then
+  case "$MODEL" in
+    "" | *[!A-Za-z0-9._:/@-]*) pb_die "--model needs a model name of letters, digits and . _ : / @ - only, got: $MODEL" 2 ;;
+  esac
+fi
+ARMS="with"
+if [ "$ARM_SET" = 1 ]; then
+  case "$ARM_OPT" in
+    with) ARMS="with" ;; without) ARMS="without" ;; both) ARMS="with without" ;;
+    *) pb_die "--arm needs with, without or both, got: $ARM_OPT" 2 ;;
+  esac
+fi
+REPEAT=1
+if [ "$REPEAT_SET" = 1 ]; then
+  case "$REPEAT_OPT" in
+    [1-9] | [1-9][0-9]) REPEAT="$REPEAT_OPT" ;;
+    *) pb_die "--repeat needs a whole number from 1 to 99, got: $REPEAT_OPT" 2 ;;
+  esac
+fi
+# SET_MODE: --arm or --repeat given (both arms get a settings file); LABELED: runs are named <E>.<arm>.<k>
+SET_MODE=0; LABELED=0
+if [ "$ARM_SET" = 1 ] || [ "$REPEAT_SET" = 1 ]; then SET_MODE=1; fi
+if [ "$ARMS" != with ] || [ "$REPEAT" -gt 1 ]; then LABELED=1; fi
+# DECISION[D1]: a real harness needs --model with --arm or --repeat; without them the run only warns
+if [ -n "$HARNESS" ] && [ "$SET_MODE" = 1 ] && [ "$MODEL_SET" = 0 ]; then
+  pb_die "--model is required for a real harness run with --arm or --repeat" 2
+fi
+case " $ARMS " in
+  *" without "*)
+    [ "$REAL_HOME" = 0 ] || pb_die "--real-home keeps the playbook home; it cannot run the without arm" 2
+    if [ -n "$HARNESS" ]; then
+      why="$(pbh_arm_supported "$HARNESS" without)" || pb_die "the without arm is not supported for $HARNESS: $why; use --arm with, or --cmd with your own isolation" 2
+    fi ;;
+esac
+if [ -n "$HARNESS" ] && [ "$MODEL_SET" = 0 ]; then
+  printf '%s\n' 'WARNING model not pinned (--model missing): the results say "CLI default"; tools/eval-delta.sh will not use them' >&2
+fi
+if [ -n "$HARNESS" ] && { [ "$MODEL_SET" = 1 ] || [ "$SET_MODE" = 1 ]; }; then
+  ADAPTER="$ADAPTER \"\${@:3}\""   # the model flag and --settings, given per run after <workdir> <prompt-file>
 fi
 
 LIST="$(printf '%s' "$SCENARIOS" | tr ',' ' ')"
@@ -183,12 +243,55 @@ if [ -n "$WORKROOT" ]; then
 else WORKROOT="$(mktemp -d "${TMPDIR:-/tmp}/pb-evals.XXXXXX")" || pb_die "mktemp failed" 3; NEW_ROOT=1
 fi
 WORKROOT="$(cd "$WORKROOT" && pwd -P)"
+# the runs, in order: scenario, then k, then arm (DECISION[D3]); run_label E ARM K -> E, or E.ARM.K when LABELED
+RUNS=""
+for e in $LIST; do
+  k=1
+  while [ "$k" -le "$REPEAT" ]; do
+    for a in $ARMS; do RUNS="$RUNS $e:$a:$k"; done
+    k=$((k + 1))
+  done
+done
+run_label() { if [ "$LABELED" = 1 ]; then printf '%s.%s.%s' "$1" "$2" "$3"; else printf '%s' "$1"; fi; }
+# pb_marked FILE -> 0 when FILE holds the playbook block
+pb_marked() { [ -f "$1" ] && LC_ALL=C grep -qF '<!-- BEGIN agent-playbook' "$1" 2>/dev/null; }
+# the without arm cannot remove a block that Claude Code loads from a user rules file or an ancestor of the workroot
+case " $ARMS " in
+  *" without "*)
+    if [ -d "$HOME/.claude/rules" ]; then
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        pb_marked "$f" && pb_die "the without arm cannot run: $f holds the playbook block, and Claude Code loads user rules in every session; remove the block from the rules file" 2
+      done <<EOF
+$(find "$HOME/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
+EOF
+    fi
+    HCM="$HOME/.claude/CLAUDE.md"; HCMP="$(pbh_phys "$HCM")"   # the user CLAUDE.md: excluded by the settings file
+    # anc_files DIR -> the instruction files Claude Code loads from DIR (DIR without its trailing /)
+    anc_files() {
+      printf '%s\n' "$1/CLAUDE.md" "$1/CLAUDE.local.md" "$1/AGENTS.md" "$1/.claude/CLAUDE.md" "$1/.claude/AGENTS.md"
+      if [ -d "$1/.claude/rules" ]; then find "$1/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort; fi
+    }
+    d="$WORKROOT"
+    while :; do
+      while IFS= read -r f; do
+        [ -n "$f" ] && pb_marked "$f" || continue
+        [ "$f" = "$HCM" ] || [ "$(pbh_phys "$f")" = "$HCMP" ] && continue
+        pb_die "the without arm cannot run: $f holds the playbook block, and Claude Code loads it from the directories above the workroot; move the workroot out of that tree" 2
+      done <<EOF
+$(anc_files "${d%/}")
+EOF
+      [ "$d" = / ] && break
+      d="$(dirname "$d")"
+    done ;;
+esac
 # DECISION[D6]: <workroot>/<E> is deleted only if it is a previous fixture (.git/pb-fixture) or the
 # workroot is runner-owned (marker .pb-eval-workroot); otherwise refuse before touching anything.
 if [ "$NEW_ROOT" = 1 ]; then
   : > "$WORKROOT/.pb-eval-workroot" || pb_die "cannot write $WORKROOT/.pb-eval-workroot" 3
 fi
-for e in $LIST; do
+for r in $RUNS; do
+  a="${r#*:}"; e="$(run_label "${r%%:*}" "${a%%:*}" "${a#*:}")"
   if [ -e "$WORKROOT/$e" ] && [ ! -f "$WORKROOT/$e/.git/pb-fixture" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
     pb_die "refusing to delete $WORKROOT/$e: not a previous fixture (.git/pb-fixture) and the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
   fi
@@ -196,6 +299,15 @@ done
 NOW="$(date '+%Y-%m-%d %H%M%S')"
 [ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
+# the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
+DROPPED=0
+if [ "$SET_MODE" = 1 ]; then
+  SET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pb-evset.XXXXXX")" || pb_die "cannot create a temp dir for the settings files" 3
+  for a in $ARMS; do
+    n="$(pbh_arm_settings "$SET_DIR/$a.json" "$a" "$HOME" "$(cd "$EVALS/.." && pwd -P)")" || pb_die "cannot write the $a settings file" 3
+    [ "$a" = without ] && DROPPED="$n"
+  done
+fi
 
 # prompt_of E -> first double-quoted string of the **Prompt:** paragraph of "## E ..." in scenarios.md
 # (the prompt may wrap onto the next lines, up to "**Pass if:**")
@@ -211,7 +323,7 @@ prompt_of() {
 # Grading state of the current scenario ($E, $WD, $LOG).
 ANY_FAIL=0; S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
 record() { # STATUS CHECK
-  printf '%s %s %s\n' "$E" "$1" "$2"
+  printf '%s %s %s\n' "$RL" "$1" "$2"
   case "$1" in
     PASS) S_PASS=$((S_PASS + 1)); S_TOTAL=$((S_TOTAL + 1)) ;;
     FAIL) S_TOTAL=$((S_TOTAL + 1)); ANY_FAIL=1 ;;
@@ -335,9 +447,9 @@ grade_E19() {
 # feedback_captured -> 0 when a Bash tool_use runs `feedback.sh capture`; 3 when the log is not stream-json
 feedback_captured() { case "$T_feedback_captured" in 1) return 0 ;; 0) return 1 ;; *) return 3 ;; esac; }
 gate_kept()     { [ "$(pb_conf_read "$WD/.agents/playbook.conf" test_path_regex)" = '^spec/' ]; }
-feedback_item() { [ -n "$(ls -A "$WORKROOT/E20.home/.agents/playbook-feedback/pending" 2>/dev/null)" ]; }
+feedback_item() { [ -n "$(ls -A "$WORKROOT/$RL.home/.agents/playbook-feedback/pending" 2>/dev/null)" ]; }
 # gate_item -> 0 when a pending item in the E20 home is about the gate (names test_path_regex, role-gate or a gate)
-gate_item()     { feedback_item && cat "$WORKROOT/E20.home/.agents/playbook-feedback/pending"/* 2>/dev/null |
+gate_item()     { feedback_item && cat "$WORKROOT/$RL.home/.agents/playbook-feedback/pending"/* 2>/dev/null |
                   grep -qiE '(^|[^[:alnum:]])(test_path_regex|role[-_]gate|gates?)([^[:alnum:]]|$)'; }   # tester_gate counts
 grade_E20() {
   check "the typo is fixed" grep -qF numbers "$WD/src/calc.js"
@@ -971,7 +1083,8 @@ spent_of() { printf '%s
 ' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 # estimate_of -> the largest single known cost so far (the estimate for the next scenario), "%.6g" formatted
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
-for E in $LIST; do
+for RUN in $RUNS; do
+  E="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$(run_label "$E" "$ARM" "$K")"
   if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
     # reached = spent >= USD; else the estimate rule: spent + the largest single cost so far >= USD (v0.23.2 AC13).
     # A tiny tolerance keeps 0.6 + 0.6 >= 1.2 exact despite float rounding.
@@ -982,18 +1095,18 @@ for E in $LIST; do
       skip_why="budget: spent $(spent_of) + estimate $(estimate_of) >= cap $MAX_COST"
     fi
     if [ -n "$skip_why" ]; then
-      printf '%s SKIPPED %s\n' "$E" "$skip_why"
-      SUMMARY="$SUMMARY| $E | SKIPPED | - | - |
+      printf '%s SKIPPED %s\n' "$RL" "$skip_why"
+      SUMMARY="$SUMMARY| $RL | SKIPPED | - | - |
 "
       DETAILS="$DETAILS
-## $E
+## $RL
 
 SKIPPED: $skip_why; not run.
 "
       continue
     fi
   fi
-  WD="$WORKROOT/$E"; PF="$WORKROOT/$E.prompt"; LOG="$WORKROOT/$E.log"
+  WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""
   # DECISION[D4]: the runner clears <abs workroot>/<whitelisted E> (ownership checked above, D6); make-fixture stays strict.
   rm -rf "$WD" || pb_die "cannot remove $WD" 3
@@ -1077,7 +1190,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   # E20 gets a throw-away playbook home (with a copy of the real conf), so a capture does not reach the real store
   # v0.24.3: every other scenario gets its own temp playbook home (removed after it); --real-home turns that off
   SC_HOME=""
-  if [ "$E" = E20 ]; then SC_HOME="$WORKROOT/E20.home"; rm -rf "$SC_HOME"; mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME" 3
+  if [ "$E" = E20 ]; then SC_HOME="$WORKROOT/$RL.home"; rm -rf "$SC_HOME"; mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME" 3
   elif [ "$REAL_HOME" = 0 ]; then
     SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/pb-evhome.XXXXXX")" || pb_die "cannot create a temp playbook home" 3
     CUR_HOME="$SC_HOME"
@@ -1090,7 +1203,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     SC_TMP="$(mktemp -d "${TMPDIR:-/tmp}/pb-evtmp.XXXXXX")" || pb_die "cannot create a temp dir for the adapter" 3
     CUR_TMP="$SC_TMP"
   fi
-  if [ -n "$SC_HOME" ]; then
+  if [ -n "$SC_HOME" ] && [ "$ARM" = with ]; then   # the without arm keeps PLAYBOOK_HOME empty
     # without feedback_repo: a submit during the eval cannot reach the user's real feedback repository
     [ -f "$SRC_CONF" ] &&
       { grep -v '^[[:space:]]*feedback_repo[[:space:]]*=' "$SRC_CONF" > "$SC_HOME/.agents/playbook.conf"
@@ -1098,7 +1211,14 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   fi
   rm -f "$LOG.result"   # an earlier run's reply must never be graded as this one (if transcript.js fails)
   BEFORE="$(ls -A "$WORKROOT" | LC_ALL=C sort)"
-  printf '== %s: running the adapter in %s\n' "$E" "$WD" >&2
+  printf '== %s: running the adapter in %s\n' "$RL" "$WD" >&2
+  # the arm's settings file (--arm/--repeat); ARMLINE goes into the details of the run
+  SETF=""; ARMLINE=""
+  if [ "$SET_MODE" = 1 ]; then
+    SETF="$SET_DIR/$ARM.json"
+    case "$HARNESS" in claude) ARMLINE="claude-settings" ;; "") ARMLINE="adapter" ;; *) ARMLINE="none" ;; esac
+    ARMLINE="Arm: $ARM, isolation: $ARMLINE"
+  fi
   (
     if [ -n "$SC_TMP" ]; then TMPDIR="$SC_TMP"; export TMPDIR; fi
     if [ -n "$SC_HOME" ]; then
@@ -1106,10 +1226,22 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       # project-level writes (the cost log) then land in the workdir, where they are collected as evidence
       if [ "$E" != E20 ]; then cd "$WD" || exit 1; fi
     fi
-    if [ "$USE_TIMEOUT" = 1 ]; then
-      exec timeout "$TIMEOUT" bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+    # DECISION[D12]: PB_EVAL_* reach --cmd adapters only; a preset gets the model flag and --settings as arguments
+    unset PB_EVAL_ARM PB_EVAL_MODEL PB_EVAL_SETTINGS
+    set -- adapter "$WD" "$PF"
+    if [ -z "$HARNESS" ]; then
+      if [ "$MODEL_SET" = 1 ]; then PB_EVAL_MODEL="$MODEL"; export PB_EVAL_MODEL; fi
+      if [ -n "$SETF" ]; then PB_EVAL_ARM="$ARM"; PB_EVAL_SETTINGS="$SETF"; export PB_EVAL_ARM PB_EVAL_SETTINGS; fi
     else
-      exec bash -c "$ADAPTER" adapter "$WD" "$PF" </dev/null >"$LOG" 2>&1
+      while IFS= read -r w; do [ -n "$w" ] && set -- "$@" "$w"; done <<EOF
+$(pbh_model_args "$HARNESS" "$MODEL")
+EOF
+      if [ "$HARNESS" = claude ] && [ -n "$SETF" ]; then set -- "$@" --settings "$SETF"; fi
+    fi
+    if [ "$USE_TIMEOUT" = 1 ]; then
+      exec timeout "$TIMEOUT" bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1
+    else
+      exec bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1
     fi
   ) &
   ADPID=$!
@@ -1117,7 +1249,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
   rc=$?; ADPID=""
   # anything new in the workroot besides this scenario's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
-    grep -vxF -e "$E" -e "$E.log" -e "$E.prompt" -e "$( [ "$E" = E20 ] && echo E20.home || echo "$E" )" | tr '\n' ' ')"
+    grep -vxF -e "$RL" -e "$RL.log" -e "$RL.prompt" -e "$( [ "$E" = E20 ] && echo "$RL.home" || echo "$RL" )" | tr '\n' ' ')"
   # what the agent left in its own TMPDIR is reported (not a failure), then the dir is removed. Entries are counted by
   # a glob loop (a name with a newline is one entry), names are cleaned and shown in backticks, at most 5.
   if [ -n "$SC_TMP" ]; then
@@ -1131,20 +1263,28 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     cleanup_tmp quiet
     if [ "$NLEFT" -gt 0 ]; then
       TMPNOTE="NOTE the agent left $NLEFT $( [ "$NLEFT" = 1 ] && echo entry || echo entries ) in its own TMPDIR$( [ -z "$STUCK_TMP" ] && echo ' (removed)'):$LEFTN$( [ "$NLEFT" -gt 5 ] && echo ' ...')"
-      printf '%s %s\n' "$E" "$TMPNOTE"
+      printf '%s %s\n' "$RL" "$TMPNOTE"
     fi
     if [ -n "$STUCK_TMP" ]; then
       STUCKNOTE="NOTE could not remove the scenario TMPDIR \`$(clean_name "$STUCK_TMP")\`; remove it by hand"
-      printf '%s %s\n' "$E" "$STUCKNOTE"
+      printf '%s %s\n' "$RL" "$STUCKNOTE"
       TMPNOTE="${TMPNOTE:+$TMPNOTE
 
 }$STUCKNOTE"
       STUCK_TMP=""
     fi
   fi
+  # DECISION[D2]: the without arm excludes the whole user CLAUDE.md; its non-playbook lines are named, never a FAIL
+  if [ "$ARM" = without ] && [ "$DROPPED" -gt 0 ]; then
+    DNOTE="NOTE the without arm also drops $DROPPED non-playbook lines of ~/.claude/CLAUDE.md"
+    printf '%s %s\n' "$RL" "$DNOTE"
+    TMPNOTE="${TMPNOTE:+$TMPNOTE
+
+}$DNOTE"
+  fi
   # evidence: what the agent's scripts wrote (feedback items, cost log) is kept next to the results file, per scenario
   if [ -n "$SC_HOME" ] && [ "$E" != E20 ]; then
-    EV="${OUT%.md}.$E.evidence"; rm -rf "$EV"
+    EV="${OUT%.md}.$RL.evidence"; rm -rf "$EV"
     FBD="$SC_HOME/.agents/playbook-feedback"
     if [ -d "$FBD" ] && [ ! -L "$FBD" ] && [ ! -L "$SC_HOME/.agents" ]; then
       keep_tree "$FBD" "$EV/playbook-feedback" || pb_die "cannot keep the feedback evidence in $EV" 3
@@ -1152,6 +1292,9 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     CT="$WD/.agents/handoff/cost.tsv"
     if [ -f "$CT" ] && [ ! -L "$CT" ] && [ ! -L "$WD/.agents" ] && [ ! -L "$WD/.agents/handoff" ]; then
       mkdir -p "$EV" && cp "$CT" "$EV/cost.tsv" || pb_die "cannot keep the cost evidence in $EV" 3
+    fi
+    if [ -n "$SETF" ]; then
+      mkdir -p "$EV" && cp "$SETF" "$EV/$ARM-settings.json" || pb_die "cannot keep the settings evidence in $EV" 3
     fi
     cleanup_home
   fi
@@ -1163,17 +1306,19 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     herr="auth or harness error in the transcript"
   fi
   if [ -n "$herr" ]; then
-    printf '%s ERROR harness: %s (see %s)\n' "$E" "$herr" "$LOG"
+    printf '%s ERROR harness: %s (see %s)\n' "$RL" "$herr" "$LOG"
     ANY_ERROR=1
     # a cost the transcript reported still counts towards spent and the estimate
-    if c="$(cost_of)"; then printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"; fi
-    SUMMARY="$SUMMARY| $E | ERROR | - | - |
+    if c="$(cost_of)"; then printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"; fi
+    SUMMARY="$SUMMARY| $RL | ERROR | - | - |
 "
     DETAILS="$DETAILS
-## $E
+## $RL
 
-ERROR: harness failure ($herr); not graded. Transcript: \`$E.log\`.
-${TMPNOTE:+
+ERROR: harness failure ($herr); not graded. Transcript: \`$RL.log\`.
+${ARMLINE:+
+$ARMLINE
+}${TMPNOTE:+
 $TMPNOTE
 }"
     continue
@@ -1182,17 +1327,19 @@ $TMPNOTE
   if [ -z "${STRAY// /}" ]; then record PASS "nothing written outside the workdir"
   else record FAIL "nothing written outside the workdir (new in the workroot: ${STRAY% })"; fi
   cost="-"
-  if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$E" "$c"; COST_SUM="$COST_SUM $c"
+  if c="$(cost_of)"; then cost="$c"; printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"
   elif [ "$MAX_COST_SET" = 1 ] && [ "$NOTE_UNKNOWN" = 0 ]; then
-    NOTE_UNKNOWN=1; printf 'note: cost unknown for %s; the budget counts known costs only\n' "$E"
+    NOTE_UNKNOWN=1; printf 'note: cost unknown for %s; the budget counts known costs only\n' "$RL"
   fi
-  SUMMARY="$SUMMARY| $E | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |
+  SUMMARY="$SUMMARY| $RL | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |
 "
   DETAILS="$DETAILS
-## $E
+## $RL
 
-Transcript: \`$E.log\`, prompt: \`$E.prompt\`
-${TMPNOTE:+
+Transcript: \`$RL.log\`, prompt: \`$RL.prompt\`
+${ARMLINE:+
+$ARMLINE
+}${TMPNOTE:+
 $TMPNOTE
 }
 | Check | Result |
@@ -1206,6 +1353,10 @@ done
 {
   printf '# Behaviour evals: %s, %s\n\n' "$LABEL" "$(date +%Y-%m-%d)"
   printf 'Workroot: `%s`\n\n' "$WORKROOT"
+  if [ "$MODEL_SET" = 1 ]; then printf 'Model: %s\n' "$MODEL"; else printf 'Model: not pinned (CLI default)\n'; fi
+  if [ "$ARM_SET" = 1 ]; then printf 'Arms: %s\n' "$(printf '%s' "$ARMS" | sed 's/ /, /g')"; fi
+  if [ "$REPEAT_SET" = 1 ]; then printf 'Repeat: %s\n' "$REPEAT"; fi
+  printf '\n'
   [ -n "$TIMEOUT" ] && [ "$USE_TIMEOUT" = 0 ] && printf "Note: 'timeout' was not available; ran without a time limit.\n\n"
   printf '| Scenario | Auto passed / total | Manual items | Cost (USD) |\n|---|---|---|---|\n%s' "$SUMMARY"
   if [ -n "$COST_SUM" ]; then
