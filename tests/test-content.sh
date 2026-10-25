@@ -2088,4 +2088,18 @@ echo "v0.25.1 lane S: step 4 cap of 8 questions and the humanizer line are consi
 S4_ALL="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_ALL" | grep -qiE 'humanizer[^.;]{0,80}(extra|optional line|not count|on top)|(plus|besides|beyond|on top of)[^.;]{0,60}humanizer'; then t_ok "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap"; else t_bad "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap" "step 4 [$S4_TXT]"; fi
 
+
+echo "v0.26.0 lane E AC7.1 RUBRIC.md: after the gate line, a rule is kept or added only when its scenario shows Δ > 0"
+RUBF="$PB_ROOT/evals/RUBRIC.md"
+assert_eq "v26 E AC7.1 RUBRIC.md keeps the existing gate line" "1" "$(grep -c '^Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the harness you use most\.' "$RUBF")"
+# the paragraph that names tools/eval-delta.sh, between the gate line and the "Copy this table" line
+DPARA="$(awk '/^Gate before releasing a new playbook version/ { f = 1; next } f && /^Copy this table/ { exit } f && /^[[:space:]]*$/ { if (p ~ /eval-delta/) { print p; exit } p = ""; next } f { p = p " " $0 } END { if (f && p ~ /eval-delta/) print p }' "$RUBF" | head -n 1)"
+if [ -n "$DPARA" ]; then t_ok "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh"; else t_bad "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh" "none between the gate line and 'Copy this table'"; fi
+qchk "v26 E AC7.1 the gate paragraph: a rule is kept or added only when its scenario shows Δ > 0" "$DPARA" '(kept|keep)[^.]{0,30}(added|add)[^.]{0,80}only[^.]{0,80}(Δ|delta) ?> ?0'
+qchk "v26 E AC7.1 the gate paragraph names tools/eval-delta.sh" "$DPARA" 'tools/eval-delta\.sh'
+qchk "v26 E AC7.1 the gate paragraph asks for --arm both" "$DPARA" '--arm both'
+qchk "v26 E AC7.1 the gate paragraph asks for --repeat of at least 3" "$DPARA" '--repeat[^.]{0,20}(≥ ?3|>= ?3|3 or more|at least 3)'
+qchk "v26 E AC7.1 the gate paragraph asks for a pinned --model" "$DPARA" 'pinned[^.]{0,20}--model|--model[^.]{0,40}pinned'
+qchk "v26 E AC7.1 the gate paragraph: a non-discriminating check is marked to drop or rewrite" "$DPARA" 'non-discriminating[^.]{0,120}(drop|remov)[^.]{0,40}rewrit'
+
 t_summary

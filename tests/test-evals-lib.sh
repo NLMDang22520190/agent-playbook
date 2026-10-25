@@ -20,8 +20,8 @@ assert_eq "AC8.1 sourcing writes nothing in the current directory" "" "$(ls -A "
 pbh 'declare -F | sed "s/^declare -f[a-z]* //"'
 FNS="$OUT"
 assert_contains "AC8.1 the library defines pbh_preset_cmd" " $(words "$FNS") " " pbh_preset_cmd "
-# pbh_results_json and pbh_stats belong to slice S5 and are tested there
-for f in pbh_model_args pbh_arm_supported pbh_arm_settings pbh_check_key; do
+# pbh_results_json and pbh_stats (slice S5) have their direct tests in tests/test-evals-json.sh
+for f in pbh_model_args pbh_arm_supported pbh_arm_settings pbh_check_key pbh_results_json pbh_stats; do
   assert_contains "AC8.1 the library defines $f" " $(words "$FNS") " " $f "
 done
 assert_eq "AC8.1 every function the library defines starts with pbh_" "" "$(printf '%s\n' "$FNS" | grep -v '^pbh_' | grep -v '^$' | tr '\n' ' ')"
