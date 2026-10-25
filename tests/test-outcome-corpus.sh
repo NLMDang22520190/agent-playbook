@@ -141,6 +141,20 @@ else
   t_skip 1 "PB_CORPUS_DENYLIST is not set (the private name list stays local; run with it before a release)"
 fi
 
+echo "review fixes 6/7: the prompts state what the hidden tests require (hidden tests unchanged)"
+P3="$TASKS/pattern-03-second-screen/prompt.md"
+assert_eq "fix6 pattern-03 prompt puts the inbox in scope (it names the inbox; inbox-system is FAIL_TO_PASS)" "yes" \
+  "$(grep -qi 'inbox' "$P3" 2>/dev/null && echo yes || echo no)"
+P1="$TASKS/pattern-01-option-value-label/prompt.md"
+P1T="$(tr '\n' ' ' < "$P1" 2>/dev/null)"
+assert_eq "fix7 pattern-01 prompt says the API accepts option values only" "yes" \
+  "$(printf '%s\n' "$P1T" | grep -Eiq 'only (the |option |the option )?values?|values? only' && echo yes || echo no)"
+assert_eq "fix7 pattern-01 prompt says a label is not accepted" "yes" \
+  "$(printf '%s\n' "$P1T" | grep -Eiq "not (the |a |an |by )?(option |choice )?labels?|labels? (are|is) (not|never)|never (the |a )?labels?" && echo yes || echo no)"
+# characterization (passes today on purpose): review fix 7 keeps this hidden case
+assert_contains "fix7 pattern-01 keeps the hidden case 'a label sent in place of a value is not a known choice'" \
+  "$(cat "$TASKS/pattern-01-option-value-label/hidden/tests/pricing-value.f2p.test.js" 2>/dev/null)" "a label sent in place of a value is not a known choice"
+
 echo "AC23 evals/tasks/README.md"
 R="$TASKS/README.md"
 assert_file "AC23 README exists" "$R"

@@ -86,7 +86,8 @@ printf '#!/usr/bin/env bash\necho "setup: cannot build" >&2\nexit 1\n' > "$TB/t-
 printf '#!/usr/bin/env bash\n# %s:t-bad\nexit 1\n' "$CAN" > "$TB/t-bad/hidden/tests/x.f2p.sh"
 
 # mk_stub NAME BODY -> $SA/NAME.sh, run as `bash $SA/NAME.sh <workdir> <prompt-file>`. The prelude records the arguments, the
-# hidden destination paths that exist in the workdir at start ($SR/<label>.hidden, empty = none), TMPDIR, PLAYBOOK_HOME (and
+# hidden destination paths that exist in the workdir at start ($SR/<label>.hidden, empty = none), a copy of the prompt file
+# ($SR/<label>.prompt), the workdir's HEAD at start ($SR/<label>.head), TMPDIR, PLAYBOOK_HOME (and
 # its files and conf), HOME and the PB_EVAL_* variables, prints STUB-OUT-<label> / STUB-ERR-<label>, then cds into the
 # workdir. `solve` applies the task's solution.patch. l = label, id = task id.
 mk_stub() {
@@ -94,6 +95,8 @@ mk_stub() {
     cat <<'EOF'
 wd="$1"; pf="$2"; l="$(basename "$wd")"; id="${l%%.*}"
 printf '%s\n%s\n' "$wd" "$pf" > "$SR/$l.args"
+cp "$pf" "$SR/$l.prompt" 2>/dev/null
+git -C "$wd" rev-parse HEAD > "$SR/$l.head" 2>/dev/null
 for f in $(sed -n 's/^fail_to_pass=//p; s/^pass_to_pass=//p' "$TASKS/$id/task.conf" 2>/dev/null); do
   if [ -e "$wd/$f" ]; then printf '%s\n' "$f"; fi
 done > "$SR/$l.hidden"
@@ -149,12 +152,31 @@ if grep -q -- "$c" "$SR/$l.dump"; then echo HIT > "$SR/$l.snoop"; else echo CLEA
 if env | grep -qF -- "$TASKS"; then echo ENVHIT >> "$SR/$l.snoop"; fi
 solve'
 
+# peek (review fix 4: no leak between runs): before it solves, it records what of OTHER runs it can reach from its workdir:
+# $SR/<label>.sib = workroot entries besides its own <label>, <label>.log, <label>.prompt and the marker (sibling workdirs,
+# earlier transcripts or prompts), $SR/<label>.tr = STUB-OUT-<other label> lines found under the workroot's parent (an
+# earlier run's transcript), $SR/<label>.fix = files under the workroot's parent holding t-add's fix (an earlier run's
+# solution). Empty files = nothing reachable.
+mk_stub peek 'wr="$(dirname "$wd")"; par="$(dirname "$wr")"
+(cd "$wr" && ls -A) | grep -vxF -e "$l" -e "$l.log" -e "$l.prompt" -e .pb-eval-workroot > "$SR/$l.sib"
+grep -rhos -- "STUB-OUT-[A-Za-z0-9.-]*" "$par" | grep -vxF "STUB-OUT-$l" | LC_ALL=C sort -u > "$SR/$l.tr"
+grep -rlsF -- "\$1 + \$2" "$par" > "$SR/$l.fix"
+solve'
+# python3 stubs for the t-py task of test-outcome-isolation.sh (review fix 5): pysolve fixes m.py; pyshadow and pyshadowmod
+# do not fix anything but leave a stdlib shadow in the repo root (a unittest/ package, a unittest.py module) whose
+# entry point exits 0, so `python3 -m unittest F` run from the repo root would "pass" every hidden test.
+mk_stub pysolve 'sed "s/a - b/a + b/" m.py > m.py.new && mv m.py.new m.py'
+mk_stub pyshadow 'mkdir -p unittest; : > unittest/__init__.py; printf "%s\n" "import sys" "sys.exit(0)" > unittest/__main__.py'
+mk_stub pyshadowmod 'printf "%s\n" "import sys" "sys.exit(0)" > unittest.py'
+
 # ro [ARGS...] -> run evals/run-outcome.sh on the tasks dir $T with HOME=$GH, $FK first on PATH, TMPDIR=$RT (a fresh dir, so a
 # suite can see what the runner leaves there) and a fresh runner-owned workroot WR = $WP/wr (its parent WP is a dir of the
-# suite, so a depth-1 snoop of the parent stays inside it). Results in OD: RES (md) and JF (json). Clears $SR, $GR and $FR.
+# suite, so a depth-1 snoop of the parent stays inside it). Results in OD: RES (md) and JF (json); EV = ${RES%.md}.runs, the
+# evidence dir next to --out where each run's transcript (<label>.log) and diff (<label>.diff) are kept outside the workroot
+# (review fix 4, DECISION in .agents/handoff/decisions.md). Clears $SR, $GR and $FR.
 ro() {
   WP="$(mk_tmp)"; WR="$WP/wr"; mkdir -p "$WR"; : > "$WR/.pb-eval-workroot"
-  OD="$(mk_tmp)"; RES="$OD/results.md"; JF="$OD/results.json"; RT="$(mk_tmp)"
+  OD="$(mk_tmp)"; RES="$OD/results.md"; JF="$OD/results.json"; EV="$OD/results.runs"; RT="$(mk_tmp)"
   rm -f "$SR"/* "$GR"/* "$FR"/*
   run env -u PLAYBOOK_HOME -u PB_EVAL_ARM -u PB_EVAL_MODEL -u PB_EVAL_SETTINGS HOME="$GH" PATH="$FK:$PATH" TMPDIR="$RT" \
     bash "$OUTCOME" --tasks-dir "$T" --workroot "$WR" --out "$RES" "$@"

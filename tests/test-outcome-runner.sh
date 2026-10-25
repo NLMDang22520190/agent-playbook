@@ -18,25 +18,26 @@ ro --cmd "bash $SA/solve.sh"
 assert_rc "AC5 every graded run PASS -> exit 0" 0
 for id in t-add t-two t-node; do
   L="$id.with.1"
-  assert_dir "AC1 label <id>.<arm>.<k> even without --arm/--repeat: $L is the workdir" "$WR/$L"
+  assert_eq "AC1 label <id>.<arm>.<k> even without --arm/--repeat: the adapter ran in <workroot>/$L" \
+    "$(physdir "$WR")/$L" "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
   assert_eq "AC1/AC3 $L: hidden tests pass = PASS" "PASS" "$(chk "$L" 'hidden tests pass')"
 done
 L=t-add.with.1
 F="$(mk_tmp)/fresh"; bash "$T/t-add/setup.sh" "$F" >/dev/null 2>&1
 assert_eq "AC1 the workdir is a fresh repo made by the task's setup.sh (same HEAD as a direct setup run)" \
-  "$(git -C "$F" rev-parse HEAD 2>/dev/null)" "$(git -C "$WR/$L" rev-parse HEAD 2>/dev/null)"
-assert_eq "AC1 <workroot>/<label>.prompt = prompt.md plus run-evals' non-interactive line" \
+  "$(git -C "$F" rev-parse HEAD 2>/dev/null)" "$(rec_of "$SR/$L.head")"
+assert_eq "AC1 the prompt file = prompt.md plus run-evals' non-interactive line" \
   "$(cat "$T/t-add/prompt.md")
-$NONINT" "$(cat "$WR/$L.prompt" 2>/dev/null)"
-assert_eq "AC1 the adapter gets <workdir> <prompt-file> (physical paths compared)" \
-  "$(physdir "$WR/$L") $(physdir "$WR")/$L.prompt" \
-  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s %s/%s' "$(physdir "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
-LOGT="$(cat "$WR/$L.log" 2>/dev/null)"
-assert_contains "AC1 the adapter's stdout goes to <workroot>/<label>.log" "$LOGT" "STUB-OUT-$L"
-assert_contains "AC1 the adapter's stderr goes to <workroot>/<label>.log" "$LOGT" "STUB-ERR-$L"
+$NONINT" "$(rec_of "$SR/$L.prompt")"
+assert_eq "AC1 the adapter gets <workdir> <workroot>/<label>.prompt (physical paths compared)" \
+  "$(physdir "$WR")/$L $(physdir "$WR")/$L.prompt" \
+  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s %s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
+LOGT="$(cat "$EV/$L.log" 2>/dev/null)"
+assert_contains "AC1/fix4 the adapter's stdout is kept in <out>.runs/<label>.log" "$LOGT" "STUB-OUT-$L"
+assert_contains "AC1/fix4 the adapter's stderr is kept in <out>.runs/<label>.log" "$LOGT" "STUB-ERR-$L"
 assert_eq "AC8 no hidden destination path exists in the workdir when the adapter starts" "" "$(rec_of "$SR/$L.hidden")"
-assert_no_path "AC2 the hidden F2P file is not left in the workdir after grading" "$WR/$L/tests/add.f2p.sh"
-assert_no_path "AC2 the hidden P2P file is not left in the workdir after grading" "$WR/$L/tests/mul.p2p.sh"
+assert_file "fix4 the run's diff is kept in <out>.runs/<label>.diff" "$EV/$L.diff"
+assert_eq "AC2/AC8 the kept diff holds no hidden test content" "0" "$(cat "$EV/$L.diff" 2>/dev/null | grep -c "$CAN")"
 # where the hidden tests ran: one line per run of tests/add.f2p.sh
 GD="$(head -n 1 "$GR/t-add.add.f2p.sh" 2>/dev/null)"
 assert_eq "AC2 the hidden F2P test of t-add ran exactly once" "1" "$({ wc -l < "$GR/t-add.add.f2p.sh"; } 2>/dev/null | tr -d ' ')"
@@ -54,7 +55,7 @@ assert_eq "AC8 no canary anywhere under the workroot" "" "$(grep -rl "$CAN:" "$W
 echo "S1 AC1 --interactive: the prompt file is prompt.md alone"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --interactive
 assert_rc "AC1 --interactive run -> exit 0" 0
-assert_eq "AC1 --interactive: <label>.prompt = prompt.md" "$(cat "$T/t-add/prompt.md")" "$(cat "$WR/t-add.with.1.prompt" 2>/dev/null)"
+assert_eq "AC1 --interactive: <label>.prompt = prompt.md" "$(cat "$T/t-add/prompt.md")" "$(rec_of "$SR/t-add.with.1.prompt")"
 
 echo "S1 AC3 a stub that changes nothing: FAIL with every F2P file named"
 ro --cmd "bash $SA/idle.sh" --tasks t-add,t-two,t-node
@@ -110,7 +111,7 @@ fi
 echo "S1 AC5 usage and environment exit codes"
 ro --cmd "bash $SA/solve.sh" --tasks t-add,t-nope
 assert_rc "AC5 an unknown task id -> exit 2" 2
-assert_no_path "AC5 unknown task id: nothing run" "$WR/t-add.with.1"
+assert_eq "AC5 unknown task id: nothing run" "NO-RECORD" "$(rec_of "$SR/t-add.with.1.args")"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --repeat 0
 assert_rc "AC5/AC11 --repeat 0 (lane E refusal) -> exit 2" 2
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm sideways

@@ -49,7 +49,7 @@ assert_eq "AC17 schema pb-evals/1, model m-out-1, arms [with,without], repeat 1"
 assert_eq "AC17 scenario = the task id, status graded" '"t-add" "graded"' "$(rfield t-add.with.1 scenario) $(rfield t-add.with.1 status)"
 assert_eq "AC17 fixture_tree = the tree of the setup repo (before the adapter), same in both arms" \
   "$(git -C "$FS/t-add" rev-parse 'HEAD^{tree}' 2>/dev/null)" "$(jget "$JF" '[...new Set((j.runs||[]).map(r=>r.fixture_tree))].join(" ")')"
-assert_eq "AC17 prompt_sha = git hash-object of the .prompt file" "$(git hash-object "$WR/t-add.with.1.prompt" 2>/dev/null)" "$(jget "$JF" '[...new Set((j.runs||[]).map(r=>r.prompt_sha))].join(" ")')"
+assert_eq "AC17 prompt_sha = git hash-object of the .prompt file" "$(git hash-object "$SR/t-add.with.1.prompt" 2>/dev/null)" "$(jget "$JF" '[...new Set((j.runs||[]).map(r=>r.prompt_sha))].join(" ")')"
 NOTES="$(jget "$JF" '(((j.runs||[])[0]||{}).notes||[]).join("|")')"
 for n in language=bash source=oss:fixture expected_weight=Lite; do assert_contains "AC17 notes carry $n" "$NOTES" "$n"; done
 assert_eq "AC17 the md task table header" "1" "$(mdsq | grep -cxF '| Task | Arm | pass@1 | pass^K | n | Cost mean ± sd | Time mean ± sd |')"
@@ -82,7 +82,7 @@ echo "S3 AC13 refusals: codex/opencode cannot run the without arm; a playbook bl
 for h in codex opencode; do
   ro --harness "$h" --model m-out-2 --tasks t-add --arm without
   assert_rc "AC13 --harness $h --arm without -> exit 2" 2
-  assert_no_path "AC13 --harness $h --arm without: nothing run" "$WR/t-add.without.1"
+  assert_eq "AC13 --harness $h --arm without: nothing run" "" "$(ls "$FR" 2>/dev/null | grep "^$h\.t-add" | tr '\n' ' ')"
 done
 P="$(mk_tmp)"; printf '%s\n' '# project notes' "$PB_BLOCK_BEGIN" 'rule' > "$P/CLAUDE.md"
 rm -f "$SR"/*
@@ -96,10 +96,50 @@ assert_rc "AC13 isolation FAIL -> exit 1" 1
 assert_eq "AC13 the without run FAILs the isolation check, hidden tests still PASS" "FAIL PASS" "$(chk t-add.without.1 "$ISO") $(chk t-add.without.1 "$HP")"
 assert_eq "AC13 the md flags t-add's without arm result as invalid" "1" "$(grep -i 'invalid' "$RES" 2>/dev/null | grep -F 't-add' | grep -c 'without')"
 
+echo "review fix 3: the leak probe of run-evals.sh before any --harness claude without-arm run (lane E's fake answers $FK/probe.answer)"
+probes() { cat "$FR/claude.probe.count" 2>/dev/null || echo 0; }
+printf 'NO\n' > "$FK/probe.answer"
+ro --harness claude --model m-out-3 --tasks t-add --arm both --repeat 2
+assert_rc "fix3 the probe says no: the runs go on (the fake changes nothing -> FAIL -> exit 1)" 1
+assert_eq "fix3 the probe says no: exactly one probe for the whole invocation" "1" "$(probes)"
+assert_eq "fix3 the probe runs before any task run" "probe" "$(sed -n 1p "$FR/claude.order" 2>/dev/null)"
+assert_eq "fix3 the probe says no: every task run still ran (4)" "4" "$(grep -c '^t-add\.' "$FR/claude.order" 2>/dev/null)"
+if [ -f "$FR/claude.probe.1.settings" ] && cmp -s "$FR/claude.probe.1.settings" "$FR/claude.t-add.without.1.settings"; then t_ok "fix3 the probe ran with the without settings (byte-equal to t-add.without.1's file)"
+else t_bad "fix3 the probe ran with the without settings (byte-equal to t-add.without.1's file)" "$(cat "$FR/claude.probe.1.settings" 2>/dev/null | tr '\n' ' ')"; fi
+assert_contains "fix3 the probe says no: the md records 'leak probe: none'" "$(cat "$RES" 2>/dev/null)" "leak probe: none"
+printf 'YES\n' > "$FK/probe.answer"
+ro --harness claude --model m-out-3 --tasks t-add --arm both
+assert_rc "fix3 the probe says yes: exit 3" 3
+assert_eq "fix3 the probe says yes: one probe" "1" "$(probes)"
+assert_contains "fix3 the probe says yes: the message names the heading that leaked" "$OUT" "$(sed -n 's/^## //p' "$PB_ROOT/AGENTS.global.md" | head -n 1)"
+if printf '%s\n' "$OUT" | grep -qi 'leak'; then t_ok "fix3 the probe says yes: the message says leak"; else t_bad "fix3 the probe says yes: the message says leak" "$OUT"; fi
+assert_eq "fix3 the probe says yes: no task run reached claude (with arm included)" "" "$(grep '^t-add\.' "$FR/claude.order" 2>/dev/null | tr '\n' ' ')"
+rm -f "$FK/probe.answer"
+ro --cmd "bash $SA/idle.sh" --tasks t-add --arm both
+assert_contains "fix3 --cmd adapters: the md records 'leak probe: n/a'" "$(cat "$RES" 2>/dev/null)" "leak probe: n/a"
+assert_eq "fix3 --cmd: the adapter ran once per run and never for a probe" "t-add.with.1 t-add.without.1" "$(cd "$SR" && ls *.args 2>/dev/null | sed 's/\.args$//' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+ro --harness claude --model m-out-3 --tasks t-add --arm with
+assert_eq "fix3 --harness claude --arm with: no probe" "0" "$(probes)"
+
+echo "review fixes 1+2 AC18: run-outcome.sh calls lib-harness's isolation check and without-arm refusal instead of copies"
+LIBH="$PB_ROOT/evals/lib-harness.sh"
+for fn in iso_check pb_marked anc_check; do
+  assert_eq "AC18 run-outcome.sh defines no $fn() of its own" "0" "$(grep -cE "^[[:space:]]*(function[[:space:]]+)?$fn[[:space:]]*\(\)" "$OUTCOME")"
+done
+for fn in pbh_iso_check pbh_without_refusal; do
+  assert_eq "AC18 run-outcome.sh calls $fn" "yes" "$(grep -v '^[[:space:]]*#' "$OUTCOME" | grep -qE "(^|[^A-Za-z0-9_])$fn([^A-Za-z0-9_(]|$)" && echo yes || echo no)"
+done
+# every non-comment line of 30+ characters in the bodies of pbh_iso_check .. pbh_without_refusal (lib-harness.sh); none of
+# them may appear (trimmed) in run-outcome.sh
+DUPS="$(sed -n '/^pbh_iso_check()/,/^pbh_leak_prompt()/p' "$LIBH" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^#' | awk 'length($0) >= 30' | LC_ALL=C sort -u > "$OD/libbody"
+  sed 's/^[[:space:]]*//; s/[[:space:]]*$//' "$OUTCOME" | LC_ALL=C sort -u | LC_ALL=C comm -12 - "$OD/libbody" | head -n 3)"
+assert_eq "AC18 lib-harness setup: the bodies of pbh_iso_check .. pbh_without_refusal were read (some long lines)" "yes" "$([ -s "$OD/libbody" ] && echo yes || echo no)"
+assert_eq "AC18 run-outcome.sh holds no line copied from pbh_iso_check/pbh_pb_marked/pbh_without_refusal" "" "$DUPS"
+
 echo "S3 AC14 --model"
 ro --harness claude --tasks t-add --arm both
 assert_rc "AC14 --harness with --arm and no --model -> exit 2" 2
-assert_no_path "AC14 no --model: nothing run" "$WR/t-add.with.1"
+assert_eq "AC14 no --model: nothing run" "" "$(ls "$FR" 2>/dev/null | grep '^claude\.t-add' | tr '\n' ' ')"
 ro --cmd "bash $SA/solve.sh" --tasks t-add
 assert_eq "AC14 --cmd without --model: JSON model null" "null" "$(jget "$JF" 'JSON.stringify(j.model)')"
 assert_contains "AC14 --cmd without --model: md 'Model: not pinned (CLI default)'" "$(cat "$RES" 2>/dev/null)" "Model: not pinned (CLI default)"
