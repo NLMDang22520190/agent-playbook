@@ -8,3 +8,8 @@ skills/playbook-proof/* E5 E30 E31
 skills/playbook-learn/* E19
 skills/playbook-setup/* E19
 skills/playbook-feedback/* E20
+skills/playbook-tdd/references/incident.md E35
+skills/playbook-tdd/references/upgrade.md E36
+skills/playbook-tdd/references/migration.md E37
+skills/playbook-tdd/references/debug.md E38
+skills/playbook-tdd/references/team.md E39
