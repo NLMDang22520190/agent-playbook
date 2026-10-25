@@ -865,16 +865,19 @@ grade_E29() {
 }
 # E30 (a pull request description of the last commit), v0.25.0: the writing rules of skills/playbook-proof/references/writing.md. Graded on the final reply only
 # (stream-json result text); with no result text (a), (b), (d) and (e) are MANUAL, and (c) is MANUAL when the log has no tool data (as E29).
-# strip30 MODE -> stdin without fenced blocks and inline code spans; MODE quote also drops double-quoted spans (a closed quote on one line). LC_ALL=C.
+# strip30 MODE -> stdin without fenced blocks (``` and ~~~) and inline code spans; MODE quote also drops double-quoted spans (straight "..." or curly, a closed quote on one line). LC_ALL=C, byte-wise.
 strip30() {
+  local b1 b2 b3 lq rq
+  b1="$(printf '\342')"; b2="$(printf '\200')"; b3="$(printf '\235')"
+  lq="${b1}${b2}$(printf '\234')"; rq="${b1}${b2}${b3}"
   if [ "$1" = quote ]; then
-    LC_ALL=C awk '/^[ \t]*```/ { f = !f; next } !f { print }' | LC_ALL=C sed -e 's/`[^`]*`/ /g' -e 's/"[^"]*"/ /g'
+    LC_ALL=C awk '/^[ \t]*(```|~~~)/ { f = !f; next } !f { print }' | LC_ALL=C sed -E -e 's/`[^`]*`/ /g' -e 's/"[^"]*"/ /g' -e "s/${lq}([^${b1}]|${b1}[^${b2}]|${b1}${b2}[^${b3}])*${rq}/ /g"
   else
-    LC_ALL=C awk '/^[ \t]*```/ { f = !f; next } !f { print }' | LC_ALL=C sed -e 's/`[^`]*`/ /g'
+    LC_ALL=C awk '/^[ \t]*(```|~~~)/ { f = !f; next } !f { print }' | LC_ALL=C sed -e 's/`[^`]*`/ /g'
   fi
 }
 # a chatbot opener (at the start of a line) or closer (anywhere), humanizer section 22
-OPEN30='^[[:space:]]*(great question|certainly)'
+OPEN30='^[][:space:]>*_#~-]*(great question|certainly)'
 CLOSE30='i hope this helps|let me know|would you like|want me to|happy to help|feel free'
 # a proof claim (tests pass, verified; the labels [VERIFIED] and [UNVERIFIED] and the word unverified do not count) and what satisfies it (D7)
 CLAIM30='tests? pass|(^|[^a-z])verified([^a-z]|$)'
@@ -890,7 +893,7 @@ grade_E30() {
     else record PASS "no em or en dash in the reply outside code"; fi
     if printf '%s\n' "$r" | LC_ALL=C grep -qi 'clamp'; then record PASS "the reply names clamp"
     else record FAIL "the reply names clamp"; fi
-    t="$(printf '%s\n' "$t" | LC_ALL=C sed -E 's/\[(UN)?VERIFIED[],:][^]]*\]|\[(UN)?VERIFIED\]/ /g; s/\[(un)?verified\]/ /g')"
+    t="$(printf '%s\n' "$t" | LC_ALL=C sed -E 's/\[(UN)?VERIFIED([:,][^]]*)?\]/ /g; s/\[(un)?verified\]/ /g')"
     if printf '%s\n' "$t" | LC_ALL=C grep -qiE "$CLAIM30" && ! printf '%s\n' "$r" | LC_ALL=C grep -qiE "$PROOF30"; then
       record FAIL "a passing-tests claim names a command or a count"
     else record PASS "a passing-tests claim names a command or a count"; fi

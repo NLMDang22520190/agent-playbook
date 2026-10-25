@@ -22,7 +22,7 @@ Optional, only when relevant:
 
 ## Humanizer suggestion
 
-Optional, default no. Reason: more human-sounding reports and conclusions. Check the detected harness: Claude Code looks for `~/.claude/skills/humanizer/SKILL.md`, Codex and OpenCode look for `~/.agents/skills/humanizer/SKILL.md`. If the skill is missing, offer to install it and never install without a yes: `git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer`. If the skill is installed, ask the `humanizer` key question (default ask).
+Optional, default no. Reason: more human-sounding reports and conclusions. Check the detected harness: Claude Code looks for `~/.claude/skills/humanizer/SKILL.md`, Codex and OpenCode look for `~/.agents/skills/humanizer/SKILL.md`. If the skill is missing, offer to install it and never install without a yes: `git clone https://github.com/blader/humanizer ~/.claude/skills/humanizer` (Claude Code) or `git clone https://github.com/blader/humanizer ~/.agents/skills/humanizer` (Codex, OpenCode). If the skill is installed, ask the `humanizer` key question (default ask).
 
 ## Example (single numbered message for harnesses without a question tool)
 

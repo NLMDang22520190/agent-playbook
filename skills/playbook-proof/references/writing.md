@@ -10,7 +10,7 @@ Load this when you write the final report or any text others will read: a PR des
 - Cut sayings that sound deep but say nothing.
 - Cut inflated significance (a pivotal moment, a lasting legacy). Say what changed.
 - Watch for overused AI words: delve, crucial, pivotal, tapestry, testament, landscape, robust, showcase, underscore, vibrant, intricate. Use the plain word.
-- No decorative headings, decorative bold or emojis.
+- No decorative headings or emojis.
 - No chatbot residue: openers like "Great question" or "Certainly", closers, and offers such as "Let me know" or "Would you like".
 - Use no em or en dashes outside code spans, code blocks, commands and paths. Use a comma, a colon, a period or parentheses.
 
@@ -32,6 +32,6 @@ Editing may cut or reorder, but never add a fact, name, number or promise that i
 
 ## Humanizer
 
-If the task has no other question, ask about humanizer only when the main deliverable is text others will read. Otherwise use these rules without asking, and never ask in a headless run. If a humanizer skill is installed, you may offer to run it in full. The `humanizer` config key sets this: `ask` (default) offers as above; `always` runs humanizer in full without asking; `never` uses only these rules and never asks; an unknown value counts as `ask`.
+If a humanizer skill is installed and the `humanizer` key is `ask`, ask whether to run it in full on text others will read. If the task has no other question, ask about humanizer only when the main deliverable is text others will read. Otherwise use these rules without asking, and never ask in a headless run. The `humanizer` config key sets this: `ask` (default) asks as above; `always` runs humanizer in full without asking; `never` uses only these rules and never asks; an unknown value counts as `ask`.
 
 Credit: these rules are condensed from humanizer (https://github.com/blader/humanizer, MIT license).

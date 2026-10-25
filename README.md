@@ -175,7 +175,7 @@ The always-on block has a *When other skills overlap* section. When it conflicts
 
 ## Text other people read
 
-Reports, PR descriptions, release notes and docs follow a short writing guide, [`references/writing.md`](skills/playbook-proof/references/writing.md) in `playbook-proof`. It leads with the answer, cuts chatbot openers and closers, inflated words, decorative bold and em dashes, and never touches the lines and labels the playbook requires (`**Weight:**`, `[VERIFIED]`, Not checked and the rest). Editing may cut or reorder; it never adds a fact.
+Reports, PR descriptions, release notes and docs follow a short writing guide, [`references/writing.md`](skills/playbook-proof/references/writing.md) in `playbook-proof`. It leads with the answer, cuts chatbot openers and closers, inflated words, decorative headings and emojis, and em dashes, and never touches the lines and labels the playbook requires (`**Weight:**`, `[VERIFIED]`, Not checked and the rest). Editing may cut or reorder; it never adds a fact.
 
 The rules are condensed from [humanizer](https://github.com/blader/humanizer). For a fuller pass, install that skill. Setup offers it (default no) and records `humanizer=ask|always|never`. With `ask`, the agent asks once whether to run humanizer in full, only when the task produces text other people will read and never in a headless run. Scenario E30 checks a headless PR description for chatbot wrappers and dashes.
 

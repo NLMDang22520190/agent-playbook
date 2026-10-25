@@ -50,7 +50,7 @@ agent-playbook repo. Do not improvise an installation.
 4. **Ask once, batched.** Use `references/questions.md`: at most 8 questions, each with a
    default and why it matters. Use the harness's structured question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
-   accept "defaults" as an answer. Skip any question the inspection already answered beyond doubt. Then make the optional humanizer suggestion from `references/questions.md`.
+   accept "defaults" as an answer. Skip any question the inspection already answered beyond doubt. Add the humanizer suggestion from `references/questions.md` to that same message.
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
