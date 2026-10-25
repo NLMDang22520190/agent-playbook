@@ -2,6 +2,9 @@
 
 The binding rules are in the `SKILL.md` section "Starting roles per harness": resolve each role's model with `role-model.sh <role> --harness <h>`, never upgrade or downgrade a configured model on your own judgement, print `role-model.sh plan`, and ask once as `confirm_models` says. This file holds the plumbing: how to start a role in each harness, how to pass its model and effort, and how to keep the prompt prefix cacheable.
 
+**Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
+never saw your reasoning cannot inherit its mistakes.
+
 ## Spawn mode (`conf.sh get subagents`)
 
 - **native**: spawn a sub-agent per role, each with a fresh context. Pass the full text of the role file plus paths of the allowed inputs, not your conversation or opinions about the solution.

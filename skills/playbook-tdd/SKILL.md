@@ -31,11 +31,11 @@ Incident, upgrade, migration and debug work, and squashing before a merge: `refe
 **Decide consistently.** Code is critical when the repo's documentation or notes say it serves billing, payments, auth or personal data.
 Full when the change alters or removes existing behaviour of critical code, or meets any item in the Full column.
 A purely additive change inside critical code, such as a new internal helper or a new function beside existing ones that leaves existing behaviour untouched, changes no existing public API or data shape and moves no money, is Lite unless another Full item applies.
-A new exported function is additive and changes no existing public API; removing or renaming an exported symbol is a public API change: Full.
+A new exported function is additive and changes no existing public API; removing or renaming an exported symbol is a public API change: Full. This applies when it has a caller outside its file or module, or is published; an Impact scan with 0 hits is Lite with a risk line.
 The weight line quotes the file:line or rule that decided it.
 
-State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
-choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
+State the weight and its reason in one line (in `decisions.md` and the final report). When unsure (a Full criterion may apply but the repo cannot confirm it),
+choose Full; the weight line names that criterion and why it is unconfirmed. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
 limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
 continue with separate roles from there.
 
@@ -69,9 +69,7 @@ User override, "quick" and message-text changes: `references/weights.md`.
 - **throwaway spike**: on a branch that will be deleted, to learn something; the real change is
   then redone at Lite or Full.
 
-**Not exempt:** configuration that changes behaviour (feature flags, environment defaults, routing,
-permissions, build or deploy settings), generated code that ships, "small" fixes in business logic,
-and anything in the Full column. These are at least Lite.
+Not exempt: `references/weights.md`.
 
 ## Slice size
 A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
@@ -82,8 +80,6 @@ CLI flag and a file format, or two endpoints).
 - git repo with a clean tree or a known baseline (`git status`). Dirty tree: `references/harnesses.md`. Concurrent tasks: `--scope`, see `references/harnesses.md`.
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
   already fail, so nobody gets blamed for them and nobody "fixes" them in passing.
-- `autonomy=ask-before-commit` (default): ask once at the start, "I will create local checkpoint
-  commits (test(red) / feat(green)) on branch X. OK?"
 
 ## Workflow
 
@@ -104,18 +100,16 @@ confirm_models=on-change is the default (an unknown value counts as on-change); 
 How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.
 Native roles get the full role file plus the allowed input paths, never your conversation or opinions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
 
-**Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
-never saw your reasoning cannot inherit its mistakes.
+**Why:** a role that never saw your reasoning cannot inherit its mistakes.
 
 ## Stop and ask the user when
-- an ambiguity changes assertions and is hard to reverse (reversible ones: log a default instead);
-- a dispute is still open after 2 rounds;
-- making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
-- baseline failures make the RED/GREEN signal unreadable.
+Start questions go in one opening batch: hard-to-reverse ambiguities, commit permission, a model change.
+The AC-list OK (ambiguous requests only) comes at the end of Phase 1, after the spec exists.
+Mid-task stops are only: a dispute or spec review still open after 2 rounds; the first-slice checkpoint; a new Full criterion after an override; quick work past the size limit; a test that seems to need weakening; baseline failures that make RED/GREEN unreadable.
+End-of-task questions (learn approval, feedback send, humanizer) go in one closing message.
 
 In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report.
 
 
 ## Hand-off files (`.agents/handoff/`, git-ignored)
-`state.md` · `01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
-· `evidence/*.log`. Templates are in `templates/`.
+Templates are in `templates/`. File list: `references/full.md` (Resuming).

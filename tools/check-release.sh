@@ -5,7 +5,9 @@
 # Reads VERSION and CHANGELOG.md from the repository root (the parent of this script's directory).
 # Word budgets only go down: evals/word-budgets is compared with the previous release (the newest v* tag reachable from HEAD
 # that does not point at HEAD), as tests/test-budgets-down.sh does: a path whose budget rose, or a higher sum over
-# AGENTS.global.md and skills/*/SKILL.md, fails. Skipped when there is no such tag or no table at either point.
+# AGENTS.global.md and skills/*/SKILL.md, fails. A "# moved-in: PATH WORDS from AGENTS.global.md" line new since that tag
+# lets PATH rise by at most WORDS, and the AGENTS.global.md budget must fall by at least the total moved in.
+# Skipped when there is no such tag or no table at either point.
 # Exit codes: 0 ok, 1 VERSION mismatch, README version badge mismatch, a word budget that rose or missing "## X.Y.Z " entry,
 #             2 usage (tag not vX.Y.Z), 3 environment (VERSION or CHANGELOG.md unreadable).
 set -u
@@ -78,11 +80,24 @@ if [ -f evals/word-budgets ] && git rev-parse --git-dir >/dev/null 2>&1; then
   if [ -n "$prev" ] && old_wb="$(git show "$prev:evals/word-budgets" 2>/dev/null)"; then
     if ! cmp_out="$(printf '%s\n' "$old_wb" | awk '
       { sub(/\r$/, "") }
+      FNR == NR && /^# moved-in: / { seen[$0] = 1; next }
+      FNR != NR && /^# moved-in: / {
+        if (!($0 in seen) && $4 ~ /^[0-9]+$/ && $5 == "from" && $6 == "AGENTS.global.md") { cr[$3] += $4; tot += $4 }
+        next }
       /^#/ || NF < 2 || $2 !~ /^[0-9]+$/ { next }
       function loaded(p) { return p == "AGENTS.global.md" || p ~ /^skills\/[^\/]+\/SKILL\.md$/ }
       FNR == NR { old[$1] = $2; if (loaded($1)) so += $2; next }
-      { if (loaded($1)) sn += $2; if (($1 in old) && $2 + 0 > old[$1] + 0) { print "word budget of " $1 " rose since " tag ": " old[$1] " -> " $2; bad = 1 } }
-      END { if (sn > so) { print "sum of the always-loaded word budgets rose since " tag ": " so + 0 " -> " sn + 0; bad = 1 }; exit bad }
+      { if (loaded($1)) sn += $2; nw[$1] = $2; if (($1 in old) && $2 + 0 > old[$1] + 0) rose[++n] = $1 }
+      END {
+        for (i = 1; i <= n; i++) {
+          p = rose[i]
+          if (nw[p] - old[p] > cr[p] + 0) { print "word budget of " p " rose since " tag ": " old[p] " -> " nw[p] " (moved-in credit " cr[p] + 0 ")"; bad = 1 }
+        }
+        if (tot > 0 && old["AGENTS.global.md"] - nw["AGENTS.global.md"] < tot) {
+          print "moved-in total " tot " is more than the AGENTS.global.md budget drop since " tag ": " old["AGENTS.global.md"] + 0 " -> " nw["AGENTS.global.md"] + 0; bad = 1
+        }
+        if (sn > so) { print "sum of the always-loaded word budgets rose since " tag ": " so + 0 " -> " sn + 0; bad = 1 }
+        exit bad }
     ' tag="$prev" - evals/word-budgets)"; then
       printf '%s\n' "$cmp_out" >&2
       echo "evals/word-budgets: budgets only go down (tests/test-budgets-down.sh)" >&2

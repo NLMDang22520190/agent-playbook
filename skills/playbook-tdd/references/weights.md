@@ -10,3 +10,7 @@ The tests are never skipped: the test comes first and is seen failing, role gate
 **The user says "quick"** (or "quick one", "do it quick"): that counts as asking for Lite; run Lite at once with the label `Weight: Lite (user said quick)`, test first and seen failing, the skip-tests rule unchanged.
 If the work meets a Full criterion, the user override above applies, with its label. If quick work grows past the Lite size limit
 with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
+
+**Not exempt:** configuration that changes behaviour (feature flags, environment defaults, routing,
+permissions, build or deploy settings), generated code that ships, "small" fixes in business logic,
+and anything in the Full column. These are at least Lite.

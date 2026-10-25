@@ -11,6 +11,8 @@ If a generic TDD or sub-agent skill applies (for example Superpowers `test-drive
 or `subagent-driven-development`), borrow its techniques but keep these roles, gates and the
 reviewer's re-run, not their "implementer writes and runs its own tests" model.
 
+**Scope.** Change only what was asked: no drive-by refactors, no new dependency without asking. Write only in the project you were asked to work in, plus ~/.agents files.
+
 ## Test infrastructure role
 
 Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
@@ -20,6 +22,9 @@ them fail (`check tester --base <sha before the role>`, commit RED); then a diff
 `role-gate.sh check infra --base $RED`. Without the key, infra files count as tests.
 
 ## Workflow
+
+`autonomy=ask-before-commit` (default): ask once at the start, "I will create local checkpoint
+commits (test(red) / feat(green)) on branch X. OK?"
 
 ### Phase 1: Spec (orchestrator)
 Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
@@ -53,7 +58,7 @@ the request was ambiguous. Re-read the AC table before each commit.
 Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention, the spec needs a worked example with a concrete expected result, confirmed by the user or a source document and recorded as an AC that the tests use verbatim; without one, ask (headless: log it in decisions.md as open and label every claim that depends on it [UNVERIFIED] (a test on it: [UNVERIFIED] or Dn)); details: `references/tdd-guide.md#oracle`.
 
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
-**Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. The role reads the pack first and opens other files only when it is not enough.
+**Context pack.** The orchestrator builds a context pack once per slice from the spec's Impact section and scan log, and puts it into section 2b of the role prompt (`templates/role-prompt.md`): the files to read with line ranges (path:line-line), the functions or sections involved, short excerpts and the commands to run. Facts only: paths with line ranges, verbatim excerpts, commands; no diagnosis, proposed fix or opinion. The role reads the pack first and opens other files only when it is not enough.
 
 For slice S:
 1. **RED (tester).** Start a fresh tester with `roles/tester.md` and the inputs it lists. When it
@@ -121,3 +126,6 @@ The orchestrator updates `.agents/handoff/state.md` (from `templates/state.md`)
 after each phase (spec, each RED, each GREEN, review, close-out) with the phase, the slice, the last sha per role,
 the next step and the open questions. When a session resumes or a context was lost, read `state.md` first, then
 the other hand-off files.
+
+`state.md` · `01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
+· `evidence/*.log`.
