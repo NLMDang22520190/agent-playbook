@@ -30,7 +30,7 @@ bash $F capture --skill playbook-tdd --kind bug --source failure --harness codex
   --expected "Snapshot files count as tests, so the implementer gate fails" \
   --evidence "role-gate.sh classify src/__snapshots__/cart.snap printed: code" \
   --proposal "Add __snapshots__ to the default test_path_regex" \
-  --eval "new: E12 implementer edits a snapshot file"
+  --eval "new: implementer edits a snapshot file"
 ```
 When the user says the result is wrong and the cause is a playbook gap, capture it right away (kind `gap`,
 source `user`) and propose a regression eval scenario in the item (`--eval "new: ..."`), so the same miss is caught next time.

@@ -8,6 +8,9 @@
 # text joined into one line (so a sentence wrapped over several lines still matches).
 . "$(dirname "$0")/lib.sh"
 SKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+# lane C (v0.26.3) S2: SKILL.md is split into a core plus references/ (spec A3b); a moved pin reads its target file.
+TDDREF="$PB_ROOT/skills/playbook-tdd/references"
+FULLREF="$TDDREF/full.md"; WEIGHTSREF="$TDDREF/weights.md"; RELDOCS="$PB_ROOT/docs/release-speed.md"
 
 # flat FILE HEADING_REGEX [LEVEL] -> the text from the matching heading to the next heading of level <= LEVEL (default:
 # any ##/### heading), on one line
@@ -19,17 +22,19 @@ flat() {
 }
 # chk NAME TEXT REGEX
 chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not found in the section"; fi; }
+WEIGHTS_ONE="$(tr '\n' ' ' < "$WEIGHTSREF" 2>/dev/null)"   # lane C: the message-text clause, override and "quick" (weights.md)
+TDDTREE_ONE="$(cat "$SKILL" "$TDDREF"/*.md 2>/dev/null | tr '\n' ' ')"   # lane C: SKILL.md plus every references/*.md
 
 WEIGHT="$(flat "$SKILL" '^## Pick the weight' 3)"
 if [ -n "$WEIGHT" ]; then t_ok "the Pick the weight section exists"; else t_bad "the Pick the weight section exists" "no heading matched in $SKILL"; fi
 
 echo "AC15.1 a string-literal or message-text change is Lite, even in a sensitive module"
-chk "AC15.1 names a string literal or message text change" "$WEIGHT" 'string literal|message text|comment text'
-chk "AC15.1 limits it to no control flow" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text|comment text)'
-chk "AC15.1 limits it to no data shape" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text|comment text)'
-chk "AC15.1 says such a change is Lite" "$WEIGHT" '(string literal|message text|comment text).{0,250}Lite|Lite.{0,200}(string literal|message text|comment text)'
-chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHT" '(string literal|message text|comment text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text|comment text)[^.]{0,120}Lite'
-chk "AC15.1 the sensitivity is stated as a risk line" "$WEIGHT" '(sensitiv|critical)[^.]{0,200}risk line|risk line[^.]{0,200}(sensitiv|critical)'
+chk "AC15.1 names a string literal or message text change" "$WEIGHTS_ONE" 'string literal|message text|comment text'
+chk "AC15.1 limits it to no control flow" "$WEIGHTS_ONE" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 limits it to no data shape" "$WEIGHTS_ONE" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 says such a change is Lite" "$WEIGHTS_ONE" '(string literal|message text|comment text).{0,250}Lite|Lite.{0,200}(string literal|message text|comment text)'
+chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHTS_ONE" '(string literal|message text|comment text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text|comment text)[^.]{0,120}Lite'
+chk "AC15.1 the sensitivity is stated as a risk line" "$WEIGHTS_ONE" '(sensitiv|critical)[^.]{0,200}risk line|risk line[^.]{0,200}(sensitiv|critical)'
 # the existing rules stay: critical code that changes behaviour is still Full
 chk "AC15.1 regression: altering or removing existing behaviour of critical code is still Full" "$WEIGHT" 'alters or removes existing behaviour of critical code'
 chk "AC15.1 regression: a purely additive change in critical code is still Lite" "$WEIGHT" 'purely additive change inside critical code'
@@ -46,21 +51,22 @@ chk "AC15.2 the orchestrator never stops to ask" "$RULE_SECS" 'non-interactive.{
 chk "AC15.2 it continues at Lite in its own context" "$RULE_SECS" 'continu[a-z]*[^.]{0,120}Lite[^.]{0,120}(own|its) context|Lite[^.]{0,80}(in|within) (its|the orchestrator.s) own context'
 chk "AC15.2 it reports that (the fallback)" "$RULE_SECS" 'non-interactive.{0,250}(fail|interrupt|time[ -]?out).{0,250}Lite.{0,250}(report|log)'
 # the interactive rule keeps asking
-chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(flat "$SKILL" '^## Stop and ask the user when' 2)" 'dispute is still open after 2 rounds'
+# lane C S3 EDITED (C3): the stop is now one item of the closed mid-task list ("a dispute or spec review still open after 2 rounds")
+chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(flat "$SKILL" '^## Stop and ask the user when' 2)" 'dispute[^.;]{0,40}open after 2 rounds'
 
 
 # ---- v0.23.0 review: the Lite exception is about user-visible message or comment text that is not parsed, matched or sent as data ----
 echo "AC15.1 review: the exception is worded by what the text is used for, not by 'string literal' alone"
-chk "AC15.1 review: names user-visible message or comment text" "$WEIGHT" 'user-visible[^.]{0,60}(message|comment)|(message|comment)[^.]{0,40}text[^.]{0,60}user-visible'
-chk "AC15.1 review: only provided the string is not parsed, matched or sent as data" "$WEIGHT" '(provided|only if|as long as|unless|when)[^.]{0,120}(not|never|no)[^.]{0,60}(parsed|matched|sent)[^.]{0,60}(parsed|matched|sent)?[^.]{0,60}(as )?data'
-chk "AC15.1 review: all three uses are named (parsed, matched, sent)" "$WEIGHT" 'parsed[^.]{0,40}matched[^.]{0,40}sent|sent[^.]{0,40}parsed[^.]{0,40}matched|matched[^.]{0,40}parsed[^.]{0,40}sent'
-chk "AC15.1 review: the rule is still Lite" "$WEIGHT" 'user-visible[^.]{0,250}Lite|Lite[^.]{0,200}user-visible'
-if printf '%s' "$WEIGHT" | grep -qi 'string literal'; then
-  chk "AC15.1 review: where 'string literal' appears, user-visible or parsed/matched/sent qualifies it nearby" "$WEIGHT" 'string literal.{0,250}(user-visible|parsed|matched|sent as data)|(user-visible|parsed|matched|sent as data).{0,250}string literal'
+chk "AC15.1 review: names user-visible message or comment text" "$WEIGHTS_ONE" 'user-visible[^.]{0,60}(message|comment)|(message|comment)[^.]{0,40}text[^.]{0,60}user-visible'
+chk "AC15.1 review: only provided the string is not parsed, matched or sent as data" "$WEIGHTS_ONE" '(provided|only if|as long as|unless|when)[^.]{0,120}(not|never|no)[^.]{0,60}(parsed|matched|sent)[^.]{0,60}(parsed|matched|sent)?[^.]{0,60}(as )?data'
+chk "AC15.1 review: all three uses are named (parsed, matched, sent)" "$WEIGHTS_ONE" 'parsed[^.]{0,40}matched[^.]{0,40}sent|sent[^.]{0,40}parsed[^.]{0,40}matched|matched[^.]{0,40}parsed[^.]{0,40}sent'
+chk "AC15.1 review: the rule is still Lite" "$WEIGHTS_ONE" 'user-visible[^.]{0,250}Lite|Lite[^.]{0,200}user-visible'
+if printf '%s' "$WEIGHTS_ONE" | grep -qi 'string literal'; then
+  chk "AC15.1 review: where 'string literal' appears, user-visible or parsed/matched/sent qualifies it nearby" "$WEIGHTS_ONE" 'string literal.{0,250}(user-visible|parsed|matched|sent as data)|(user-visible|parsed|matched|sent as data).{0,250}string literal'
 else
   t_ok "AC15.1 review: 'string literal' is not used as the rule"
 fi
-if printf '%s' "$WEIGHT" | grep -qiE 'limited to a string literal|only a string literal|just a string literal'; then
+if printf '%s' "$WEIGHTS_ONE" | grep -qiE 'limited to a string literal|only a string literal|just a string literal'; then
   t_bad "AC15.1 review: 'string literal' alone is not the rule" "the section still says the change is limited to a string literal"
 else
   t_ok "AC15.1 review: 'string literal' alone is not the rule"
@@ -77,12 +83,12 @@ echo "v0.24.10 AC1 SKILL.md: no Quick row in Pick the weight, and the Models lin
 assert_eq "v24.10 AC1 the Pick the weight table has no Quick row" "0" "$(grep -cE '^\| \*\*Quick\*\*' "$SKILL")"
 assert_eq "v24.10 AC1 SKILL.md has no /Quick (the Models line says Lite only)" "0" "$(grep -c '/Quick' "$SKILL")"
 SKILL_ONE="$(tr '\n' ' ' < "$SKILL")"
-chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$SKILL_ONE" '\(Lite: session, one context\)'
+chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$TDDTREE_ONE" '\(Lite: session, one context\)'
 
 echo "v0.24.10 AC2 SKILL.md: the user's word quick runs Lite with its own label; a Full criterion goes through the override"
-chk "v24.10 AC2 the label Weight: Lite (user said quick)" "$WEIGHT" 'Weight: Lite \(user said quick\)'
-chk "v24.10 AC2 the word quick counts as the user asking for Lite" "$WEIGHT" 'quick[^.]{0,200}(counts? as|means|maps? to|treated as)[^.]{0,80}Lite|"quick"[^.]{0,160}(run|runs|use|uses)[^.]{0,40}Lite'
-chk "v24.10 AC2 a Full criterion with quick goes through the user override" "$WEIGHT" 'quick.{0,250}Full criteri(on|a)[^.]{0,120}(user[- ]override|override (rule|label))'
+chk "v24.10 AC2 the label Weight: Lite (user said quick)" "$WEIGHTS_ONE" 'Weight: Lite \(user said quick\)'
+chk "v24.10 AC2 the word quick counts as the user asking for Lite" "$WEIGHTS_ONE" 'quick[^.]{0,200}(counts? as|means|maps? to|treated as)[^.]{0,80}Lite|"quick"[^.]{0,160}(run|runs|use|uses)[^.]{0,40}Lite'
+chk "v24.10 AC2 a Full criterion with quick goes through the user override" "$WEIGHTS_ONE" 'quick.{0,250}Full criteri(on|a)[^.]{0,120}(user[- ]override|override (rule|label))'
 if [ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ]; then t_ok "v24.2 AC6.2 SKILL.md stays within 296 lines"; else t_bad "v24.2 AC6.2 SKILL.md stays within 296 lines" "$(wc -l < "$SKILL") lines"; fi
 LROW="$(grep -E '^\| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1)"
 chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '≤ 3 production files'
@@ -97,11 +103,12 @@ chk "AC1.1 the Pick the weight section still says Full when unsure" "$WEIGHT" 'W
 
 echo "v0.24.0 AC3 SKILL.md points to references/release.md and stays within its line budget (v0.24.10: references/quick.md is gone)"
 assert_eq "v24.10 AC1 SKILL.md no longer points to references/quick.md" "0" "$(grep -c 'references/quick\.md' "$SKILL")"
-if grep -q 'references/release\.md' "$SKILL"; then t_ok "AC3 SKILL.md points to references/release.md"; else t_bad "AC3 SKILL.md points to references/release.md" "not found"; fi
-NREL="$(grep -c 'release\.md' "$SKILL")"
-if [ "$NREL" -ge 1 ] && [ "$NREL" -le 4 ]; then t_ok "AC3 SKILL.md has at most 4 lines pointing to release.md ($NREL)"; else t_bad "AC3 SKILL.md has 1-4 lines pointing to release.md" "$NREL lines"; fi
+# lane C (v0.26.3) RETIRED: 'AC3 SKILL.md points to references/release.md' and 'AC3 SKILL.md has 1-4 lines pointing to release.md'
+# (spec A4: release.md left the user skill; maintainer rules in docs/release-speed.md, AC3.1 in references/full.md, AC3.2 in roles/reviewer.md).
+assert_eq "lane C A4 SKILL.md no longer names release.md" "0" "$(grep -c 'release\.md' "$SKILL")"
 assert_no_path "v24.10 AC1 references/quick.md is deleted" "$QUICKMD"
-assert_file "references/release.md exists" "$RELEASE"
+# lane C (v0.26.3) RETIRED: 'references/release.md exists' (A4 moves it).
+assert_no_path "lane C A4 skills/playbook-tdd/references/release.md is gone" "$RELEASE"
 NL="$(wc -l < "$SKILL" | tr -d ' ')"
 if [ "$NL" -le 296 ]; then t_ok "R9 SKILL.md has at most 296 lines ($NL)"; else t_bad "R9 SKILL.md has at most 296 lines" "$NL lines"; fi
 MAXLEN="$(awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }' "$SKILL")"
@@ -133,20 +140,23 @@ chk "AC2.5 on-change is the default" "$ROLES" 'on-change[^.]{0,60}default|defaul
 chk "AC2.5 regression: the resolve-each-role-model rule stays" "$ROLES" 'role-model\.sh <role> --harness <h>'
 
 echo "v0.24.0 AC3.1-AC3.5 (R10, R11) references/release.md holds the release speed rules"
-REL="$(tr '\n' ' ' < "$RELEASE" 2>/dev/null)"
-if [ -n "$REL" ]; then t_ok "release.md is readable"; else t_bad "release.md is readable" "missing or empty"; fi
-chk "AC3.1 review rounds are capped at 2" "$REL" '(capped at|cap of|at most|max(imum)?( of)?) (2|two)[^.]{0,60}(review )?rounds?|(review )?rounds? (are |is )?capped at (2|two)'
-chk "AC3.1 per lane or slice" "$REL" 'per lane or slice|per lane or per slice'
-chk "AC3.1/R10 round 3 or later: only a MAJOR introduced by this change is fixed" "$REL" '(round 3|3rd round|third round)[^.]{0,200}MAJOR[^.]{0,80}introduced|MAJOR[^.]{0,80}introduced[^.]{0,200}(round 3|3rd round|third round)'
-chk "R10 that MAJOR gets one more round" "$REL" 'one more round'
-chk "AC3.1 every other finding goes to Found, not fixed" "$REL" 'Found, not fixed'
-chk "R10 the cap is for Phase 3 code-review rounds" "$REL" 'Phase 3'
-chk "R10 spec-review and dispute limits are unchanged" "$REL" 'spec-review[^.]{0,80}dispute[^.]{0,60}unchanged|dispute[^.]{0,80}spec-review[^.]{0,60}unchanged|(spec review|spec-review) and dispute limits are unchanged'
-chk "AC3.2 the reviewer marks findings introduced or pre-existing" "$REL" 'introduced[^.]{0,60}pre-existing|pre-existing[^.]{0,60}introduced'
-chk "AC3.2 pre-existing means also present at the base sha" "$REL" 'pre-existing[^.]{0,160}base sha|base sha[^.]{0,160}pre-existing'
-chk "AC3.2 pre-existing findings go to the queue" "$REL" 'pre-existing[^.]{0,120}(queue|Found, not fixed)'
-chk "AC3.2 a pre-existing security MAJOR is raised to the user in one line" "$REL" 'pre-existing[^.]{0,60}security[^.]{0,60}MAJOR[^.]{0,200}(one line|one-line)'
-chk "AC3.2 fix now or queue, not fixed silently" "$REL" 'fix now or queue|fix now[^.]{0,20}queue'
+# lane C (v0.26.3) MOVED (D3): AC3.1 to references/full.md Phase 3, AC3.2 to roles/reviewer.md, AC3.3-AC3.5 to docs/release-speed.md
+REL31="$(tr '\n' ' ' < "$FULLREF" 2>/dev/null)"   # Phase 3 there may give the cap its own sub-heading: the whole file
+REL32="$(tr '\n' ' ' < "$REVIEWER" 2>/dev/null)"
+REL="$(tr '\n' ' ' < "$RELDOCS" 2>/dev/null)"
+if [ -n "$REL" ]; then t_ok "docs/release-speed.md is readable"; else t_bad "docs/release-speed.md is readable" "missing or empty"; fi
+chk "AC3.1 review rounds are capped at 2" "$REL31" '(capped at|cap of|at most|max(imum)?( of)?) (2|two)[^.]{0,60}(review )?rounds?|(review )?rounds? (are |is )?capped at (2|two)'
+chk "AC3.1 per lane or slice" "$REL31" 'per lane or slice|per lane or per slice'
+chk "AC3.1/R10 round 3 or later: only a MAJOR introduced by this change is fixed" "$REL31" '(round 3|3rd round|third round)[^.]{0,200}MAJOR[^.]{0,80}introduced|MAJOR[^.]{0,80}introduced[^.]{0,200}(round 3|3rd round|third round)'
+chk "R10 that MAJOR gets one more round" "$REL31" 'one more round'
+chk "AC3.1 every other finding goes to Found, not fixed" "$REL31" 'Found, not fixed'
+chk "R10 the cap is for Phase 3 code-review rounds" "$REL31" 'Phase 3'
+chk "R10 spec-review and dispute limits are unchanged" "$REL31" 'spec-review[^.]{0,80}dispute[^.]{0,60}unchanged|dispute[^.]{0,80}spec-review[^.]{0,60}unchanged|(spec review|spec-review) and dispute limits are unchanged'
+chk "AC3.2 the reviewer marks findings introduced or pre-existing" "$REL32" 'introduced[^.]{0,60}pre-existing|pre-existing[^.]{0,60}introduced'
+chk "AC3.2 pre-existing means also present at the base sha" "$REL32" 'pre-existing[^.]{0,160}base sha|base sha[^.]{0,160}pre-existing'
+chk "AC3.2 pre-existing findings go to the queue" "$REL32" 'pre-existing[^.]{0,120}(queue|Found, not fixed)'
+chk "AC3.2 a pre-existing security MAJOR is raised to the user in one line" "$REL32" 'pre-existing[^.]{0,60}security[^.]{0,60}MAJOR[^.]{0,200}(one line|one-line)'
+chk "AC3.2 fix now or queue, not fixed silently" "$REL32" 'fix now or queue|fix now[^.]{0,20}queue'
 chk "AC3.3 the weight is chosen per item or slice, not per release" "$REL" 'per item or (per )?slice[^.]{0,80}not per release|not per release'
 chk "AC3.3 one release may hold Full and Lite items" "$REL" 'Full and Lite items|Full and Lite'
 chk "AC3.3/R11 Full for security and core logic" "$REL" 'Full for[^.;]{0,40}security[^.;]{0,40}core logic'
@@ -171,8 +181,8 @@ chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$HAR
 
 echo "v0.24.2 AC2.1 SKILL.md resolves the reviewer model with role-model.sh, not the generic conf key"
 SKTEXT="$(tr '\n' ' ' < "$SKILL" 2>/dev/null)"
-chk "AC2.1 'Prefer a different model' is followed (or preceded) by role-model.sh reviewer --harness <h>" "$SKTEXT" 'Prefer a different model.{0,200}role-model\.sh reviewer --harness <h>|role-model\.sh reviewer --harness <h>.{0,200}Prefer a different model'
-if printf '%s' "$SKTEXT" | grep -qF 'conf.sh get model_reviewer'; then
+chk "AC2.1 'Prefer a different model' is followed (or preceded) by role-model.sh reviewer --harness <h>" "$TDDTREE_ONE" 'Prefer a different model.{0,200}role-model\.sh reviewer --harness <h>|role-model\.sh reviewer --harness <h>.{0,200}Prefer a different model'
+if printf '%s' "$TDDTREE_ONE" | grep -qF 'conf.sh get model_reviewer'; then
   t_bad "AC2.1 SKILL.md no longer says conf.sh get model_reviewer" "the generic key is still named in $SKILL"
 else
   t_ok "AC2.1 SKILL.md no longer says conf.sh get model_reviewer"
@@ -196,9 +206,9 @@ chk "R13 harnesses.md: the honest limit on shared blind spots" "$HARN" 'same mod
 for p in 'opencode.json' 'codex exec -m' 'model_reasoning_effort' 'claude -p' 'shares blind spots' 'Agent`/`Task` tool' 'never your earlier reasoning'; do
   if grep -qF -- "$p" "$SKILL"; then t_bad "R13 moved, not copied: SKILL.md no longer says [$p]" "still in $SKILL"; else t_ok "R13 moved, not copied: SKILL.md no longer says [$p]"; fi
 done
-chk "R13 stays in SKILL.md: the mechanical model routing" "$ROLES" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
-chk "R13 stays in SKILL.md: reviewer_light for tests, docs or skill text" "$ROLES" '`reviewer_light` for a review of a diff that only touches tests, docs or skill text'
-chk "R13 stays in SKILL.md: build role prompts from templates/role-prompt.md" "$ROLES" 'Build every sub-agent prompt from `templates/role-prompt\.md`'
+chk "R13 / lane C moved to references/harnesses.md: the mechanical model routing" "$HARN" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
+chk "R13 / lane C moved to references/harnesses.md: reviewer_light for tests, docs or skill text" "$HARN" '`reviewer_light` for a review of a diff that only touches tests, docs or skill text'
+chk "R13 / lane C moved to references/harnesses.md: build role prompts from templates/role-prompt.md" "$HARN" 'Build every sub-agent prompt from `templates/role-prompt\.md`'
 echo "v0.24.13 review round 1: the binding none-mode rule and the native isolation clause stay in SKILL.md (the mechanics stay moved)"
 chk "R13 stays in SKILL.md: native roles get the role file and input paths, never your conversation" "$ROLES" 'Native roles[^.]{0,80}full role file[^.]{0,80}input paths[^.]{0,40}never your conversation'
 chk "R13 stays in SKILL.md: none mode plays the roles one after another" "$ROLES" '`none` mode[^.]{0,40}play[s]? the roles one after another'
@@ -217,16 +227,16 @@ echo "AC9 (v0.24.17) Preconditions: a dirty start uses role-gate.sh snapshot and
 PRE="$(flat "$SKILL" '^## Preconditions' 3)"
 if [ -n "$PRE" ]; then t_ok "AC9 the Preconditions section exists"; else t_bad "AC9 the Preconditions section exists" "no heading matched in $SKILL"; fi
 chk "AC9 the clean-tree bullet still mentions a clean tree" "$PRE" 'clean tree'
-chk "AC9 names the snapshot command: role-gate.sh snapshot" "$PRE" 'role-gate\.sh`? snapshot'
-chk "AC9 says to run the snapshot before the first role" "$PRE" 'snapshot[^.]{0,80}before the first role|before the first role[^.]{0,80}snapshot'
-chk "AC9 names the --baseline option" "$PRE" '\-\-baseline'
-chk "AC9 says --baseline goes to every gate" "$PRE" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
+chk "AC9 names the snapshot command: role-gate.sh snapshot" "$PRE $HARN" 'role-gate\.sh`? snapshot'
+chk "AC9 says to run the snapshot before the first role" "$PRE $HARN" 'snapshot[^.]{0,80}before the first role|before the first role[^.]{0,80}snapshot'
+chk "AC9 names the --baseline option" "$PRE $HARN" '\-\-baseline'
+chk "AC9 says --baseline goes to every gate" "$PRE $HARN" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
 chk "AC9 ties it to a dirty tree" "$PRE" 'dirty|pre-existing|already (changed|modified)'
 # v0.24.21: tdd-step.sh learns --baseline, so the dirty-tree clause changes from "do not use tdd-step.sh" to "pass --baseline to it too"
-chk "v0.24.21 AC1 (was AC9 v0.24.17) says to pass --baseline to tdd-step.sh as well" "$PRE" '(pass|give)[^.]{0,30}--baseline[^.]{0,40}tdd-step\.sh|tdd-step\.sh[^.]{0,40}--baseline'
+chk "v0.24.21 AC1 (was AC9 v0.24.17) says to pass --baseline to tdd-step.sh as well" "$PRE $HARN" '(pass|give)[^.]{0,30}--baseline[^.]{0,40}tdd-step\.sh|tdd-step\.sh[^.]{0,40}--baseline'
 if printf '%s' "$PRE" | grep -qiE -- "(do not|don.t|never) use[^.]{0,30}tdd-step\.sh"; then t_bad "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone" "still in the Preconditions section"; else t_ok "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone"; fi
-chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
-chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
+chk "AC9 says to commit only the role's paths by hand" "$PRE $HARN" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
+chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE $HARN" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
 echo "v0.24.21 AC1: every role's gate gets the sha recorded before the role"
 chk "v0.24.21 AC1 SKILL.md tells to record git rev-parse HEAD" "$SKILL_ONE" 'git rev-parse HEAD'
 chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforcement)" "$SKILL_ONE" 'Mechanical enforcement.{0,250}rev-parse HEAD|rev-parse HEAD.{0,250}Mechanical enforcement'
@@ -234,7 +244,7 @@ chk "v0.24.21 AC1 the rule: record before each role, pass it as --base to that r
 chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,250}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
 chk "v0.24.21 r2 the rule near Mechanical enforcement says every pass as well as each role" "$SKILL_ONE" 'Mechanical enforcement.{0,250}(every|each) pass'
 echo "v0.24.22 the tdd-step line names --base and --baseline; shared checkouts"
-chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKILL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
+chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$TDDTREE_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
 HARN="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
 # v0.24.29 lane C (D-0, S3): the v0.24.22 sentence "never share one work tree between tasks" is softened ON PURPOSE (user decision U1, 2026-10-23); this pin keeps its intent
 # (worktrees stay first; git worktree add is still the way) and adds the other half (sharing one checkout only with a scope file per task).
@@ -279,14 +289,15 @@ chk "v0.24.29 D-0 harnesses.md: a separate worktree gives the isolation without 
 chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$SKILL_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
 SKW3="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$SKW3" -le 3700 ]; then t_ok "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer ($SKW3)"; else t_bad "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer" "$SKW3 words"; fi
-NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
-NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
+# lane C (v0.26.3) MOVED: the gate calls of Phases 1-3 moved to references/full.md; the counts read SKILL.md plus references/*.md
+NGOOD="$(printf '%s' "$TDDTREE_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
+NALL="$(printf '%s' "$TDDTREE_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
 if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
-chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
-chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
+chk "v0.24.21 AC1 the tester gate call shows --base" "$TDDTREE_ONE" 'role-gate\.sh`? check tester --base'
+chk "v0.24.21 AC1 the reviewer gate call shows --base" "$TDDTREE_ONE" 'role-gate\.sh`? check reviewer --base'
 # fix round 1: the reviewer/tester gates read --base <sha before the role> (the role files' wording), not a bare <sha>
-NSHA="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
+NSHA="$(printf '%s' "$TDDTREE_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 (fix 6) every 'check tester|reviewer' in SKILL.md reads --base <sha before the role>" "$NALL" "$NSHA"
 
 echo "v0.24.21 AC2: role files, README and the beginners doc show the gates with --base"

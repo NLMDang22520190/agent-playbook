@@ -328,7 +328,7 @@ run_in "$P" bash "$PRB" --handoff "$HD3"
 assert_not_contains "v0.26.1 R no [UNVERIFIED] line in the report: no Unverified heading" "$OUT" "## Unverified"
 
 echo "playbook-tdd Phase 4: the PR description is the pr-body.sh output"
-TDD_SK="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+TDD_SK="$PB_ROOT/skills/playbook-tdd/references/full.md"   # lane C (v0.26.3) S2: Phase 4 moved to references/full.md
 P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$TDD_SK" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$P4" | grep -qiE 'PR[^.]{0,80}description[^.]{0,40}pr-body\.sh[^.]{0,20}output'; then t_ok "v0.26.1 R Phase 4 says the PR description is the pr-body.sh output"; else t_bad "v0.26.1 R Phase 4 says the PR description is the pr-body.sh output" "Phase 4 [$P4]"; fi
 

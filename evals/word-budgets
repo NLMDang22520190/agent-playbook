@@ -1,14 +1,26 @@
-# Word budgets (checked by evals/run-checks.sh: AGENTS.global.md in the always-on block, each skills/*/SKILL.md in the skills group).
+# Word budgets (checked by evals/run-checks.sh: AGENTS.global.md in the always-on block, each skills/*/SKILL.md in the skills group, every other listed path in the budgets check).
 # One line per file: PATH WORDS. Words are counted with `wc -w` over the whole file, nothing excluded.
-# A new rule must remove or merge an old one; raising a budget needs a CHANGELOG line with the reason.
+# A new rule must remove or merge an old one. Budgets only go down: tests/test-budgets-down.sh and tools/check-release.sh fail when
+# a budget, or the sum over AGENTS.global.md and skills/*/SKILL.md, is higher than at the previous release tag.
+# A references file is loaded on demand: it gets its own line at its size rounded up to the next 10, outside that sum.
+# A skill that receives text moved out of AGENTS.global.md may rise by at most the words it received, recorded on a
+# "# moved-in: PATH WORDS from AGENTS.global.md" line; the AGENTS.global.md budget falls by at least the total.
 # A skill with no line here fails the check: a new skill declares its budget.
 # Each budget is the file's size at v0.24.8 rounded up to the next 50 words (count in the comment).
 # v0.24.10 lowered the budgets of playbook-proof and playbook-tdd to their new counts rounded up to the next 50.
 # v0.24.13 moved the harness and model plumbing of playbook-tdd to references/harnesses.md and lowered its budget the same way.
 # v0.24.13 review round 1 raised it to 3600 to restore the binding none-mode rule moved out in lane R (see CHANGELOG).
-AGENTS.global.md 730   # user decision 2026-10-25, v0.25.0 writing line (660 words at v0.24.8)
+AGENTS.global.md 620   # v0.26.3 lane C Part B: 615 words after the review fixes (589 after the Run 25 slimming; 718 before; 730 at v0.25.0)
 skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
-skills/playbook-proof/SKILL.md 700   # raised 650 -> 700 by user decision 2026-10-25 (v0.25.0 writing guide pointer); 647 words at v0.24.10 (697 at v0.24.8)
-skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
-skills/playbook-tdd/SKILL.md 3700   # raised 3650 -> 3700 by user decision 2026-10-23 (v0.24.29 lane O); 3639 words at v0.24.25 (oracle rule, +50 allowed by D3), 3577 words at v0.24.13 (3525 after lane R, 3791 at v0.24.10, 4044 at v0.24.8)
+skills/playbook-proof/SKILL.md 740   # v0.26.3 lane C Part B: 733 words with the writing and pushback sentences from the block (675 before)
+# moved-in: skills/playbook-proof/SKILL.md 56 from AGENTS.global.md
+skills/playbook-setup/SKILL.md 1107   # v0.26.3 lane C Part B: 1107 words with the setup decline sentence from the block (1081 at v0.24.8)
+# moved-in: skills/playbook-setup/SKILL.md 7 from AGENTS.global.md
+skills/playbook-tdd/SKILL.md 1500   # v0.26.3 lane C: core 1495 words after S3 (1489 after the split; 3697 before; 3700 at v0.24.29)
+skills/playbook-tdd/references/cost.md 100   # v0.26.3 lane C: 93 words
+skills/playbook-tdd/references/full.md 1650   # v0.26.3 lane C: 1641 words after S3 (1561 at the split)
+skills/playbook-tdd/references/harnesses.md 1280   # v0.26.3 lane C: 1279 words after S3 (1255 at the split)
+skills/playbook-tdd/references/parallel.md 130   # v0.26.3 lane C: 129 words
+skills/playbook-tdd/references/weights.md 330   # v0.26.3 lane C: 325 words after S3 (289 at the split)
+skills/playbook-tdd/references/wrong.md 160   # v0.26.3 lane C: 160 words

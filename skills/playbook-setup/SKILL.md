@@ -11,6 +11,7 @@ gates run the wrong thing silently.
 Goal: one short round of questions that produces `~/.agents/playbook.conf` (global) and, inside a
 project, `<project>/.agents/playbook.conf`. The other playbook skills read these values. Detect
 what you can, propose defaults, guess nothing silently.
+If declined, run `~/.agents/playbook/scripts/conf.sh set setup declined`.
 
 Scripts live at `~/.agents/playbook/scripts/` (installed by the playbook's `install.sh`).
 If that directory is missing, stop and tell the user to run `install.sh install` from their

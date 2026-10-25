@@ -610,4 +610,147 @@ rpc "$D" "$B"
 assert_rc "AC5 README version badge left at 1.2.3 after the bump: exit 1" 1
 assert_contains "AC5 stale badge output names README.md" "$OUT" "README.md"
 
+
+echo "lane C (v0.26.3) A1b: check-release.sh refuses a word budget that rose since the previous release tag"
+# mk_rel_wb OLD_TABLE NEW_TABLE [tag-head] -> a git release root: OLD_TABLE committed and tagged v1.2.2, then NEW_TABLE
+# committed (and tagged v1.2.3 with tag-head, the tag the release checks). The previous release is the newest v* tag reachable
+# from HEAD that does not point at HEAD (spec A1, D6).
+mk_rel_wb() {
+  local d; d="$(mk_rel 1.2.3 "$CL")"
+  mkdir -p "$d/evals"
+  printf '%s' "$1" > "$d/evals/word-budgets"
+  ( cd "$d" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+    git config commit.gpgsign false && git config tag.gpgsign false && git add -A && git commit -q -m old && git tag v1.2.2 &&
+    printf '%s' "$2" > evals/word-budgets && git add -A && git commit -q -m new &&
+    if [ "${3:-}" = tag-head ]; then git tag v1.2.3; fi ) >/dev/null 2>&1
+  printf '%s\n' "$d"
+}
+WB_OLD='# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+'
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 750
+skills/b/SKILL.md 400
+')"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a budget raised since v1.2.2 (sum lower): exit 1" 1
+assert_contains "A1b the failure names the path" "$OUT" "skills/a/SKILL.md"
+assert_contains "A1b the failure names the old value" "$OUT" "700"
+assert_contains "A1b the failure names the new value" "$OUT" "750"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 20
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a new references file with a budget is outside the always-loaded sum: exit 0 against v1.2.2" 0
+assert_not_contains "A1b a new references file does not raise the sum" "$OUT" "sum"
+WB_REF_OLD='# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 20
+'
+D="$(mk_rel_wb "$WB_REF_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/playbook-tdd/references/full.md 30
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a references budget raised since v1.2.2 (20 -> 30): exit 1" 1
+assert_contains "A1b the references failure names the path" "$OUT" "skills/playbook-tdd/references/full.md"
+assert_contains "A1b the references failure names the old and new values" "$OUT" "20"
+assert_contains "A1b the references failure shows the new value" "$OUT" "30"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 730
+skills/a/SKILL.md 700
+skills/b/SKILL.md 500
+skills/c/SKILL.md 20
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b the always-loaded sum rose (a new skill budget), HEAD tagged v1.2.3: exit 1 against v1.2.2" 1
+if printf '%s' "$OUT" | grep -qi 'sum'; then t_ok "A1b the sum failure says sum"; else t_bad "A1b the sum failure says sum" "$OUT"; fi
+assert_contains "A1b the sum failure shows the old sum" "$OUT" "1930"
+assert_contains "A1b the sum failure shows the new sum" "$OUT" "1950"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 700
+skills/a/SKILL.md 650
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b lower budgets since v1.2.2: exit 0" 0
+# lane C S4 (spec B3b): a rise covered by a "# moved-in: PATH WORDS from AGENTS.global.md" line, with the block budget
+# falling by at least those words, passes; a rise past the credit, or a credit the block did not pay for, fails
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a rise covered by its moved-in line (block 730 -> 590): exit 0" 0
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 770
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a rise past its moved-in credit (700 -> 770, credit 60): exit 1" 1
+assert_contains "B3b check-release: the uncovered rise names the path" "$OUT" "skills/a/SKILL.md"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 700
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 400
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in credit of 60 with the block falling only 30: exit 1" 1
+assert_contains "B3b check-release: the failure names moved-in" "$OUT" "moved-in"
+# review 263c finding 4: the moved-in credit only counts a NEW line whose source is the block's budget at the previous tag
+# (kills mutants M1 "drop the not-already-at-the-tag guard" and M2 "accept any source" at tools/check-release.sh:85)
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from docs/gone.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in line whose source (docs/gone.md) has no budget at v1.2.2 gives no credit: exit 1" 1
+assert_contains "B3b check-release: the refused rise names the path" "$OUT" "word budget of skills/a/SKILL.md rose"
+assert_contains "B3b check-release: the refused rise shows a moved-in credit of 0" "$OUT" "moved-in credit 0"
+WB_MI_OLD='# budgets
+AGENTS.global.md 650
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+'
+D="$(mk_rel_wb "$WB_MI_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 820
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in line already at v1.2.2 is not credited again (760 -> 820, block 650 -> 590): exit 1" 1
+assert_contains "B3b check-release: the re-used line's rise names the path" "$OUT" "word budget of skills/a/SKILL.md rose"
+assert_contains "B3b check-release: the re-used line gives a moved-in credit of 0" "$OUT" "moved-in credit 0"
+D="$(mk_rel 1.2.3 "$CL")"; mkdir -p "$D/evals"; printf 'skills/a/SKILL.md 9999\n' > "$D/evals/word-budgets"
+( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+  git config commit.gpgsign false && git add -A && git commit -q -m only ) >/dev/null 2>&1
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a repo with no previous release tag: the comparison is skipped, exit 0" 0
+D="$(mk_rel 1.2.3 "$CL")"
+( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
+  git config commit.gpgsign false && git add -A && git commit -q -m old && git tag v1.2.2 && printf '\n' >> CHANGELOG.md &&
+  git commit -qam new ) >/dev/null 2>&1
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "A1b a tagged repo with no evals/word-budgets: the comparison is skipped, exit 0" 0
+assert_not_contains "A1b no raw git error leaks when the table is missing" "$OUT" "fatal:"
+
 t_summary

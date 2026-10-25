@@ -51,5 +51,5 @@ Run them on changed files only; whole-repo runs are slow.
 - [ ] Test names describe behaviour.
 
 ## Flaky tests
-A flaky test is a failing test. Quarantine it with an issue link, and fix the cause (time, order,
-shared state, network). Never "retry until green" inside the evidence run.
+A flaky test is a failing test. Quarantining it is a skip: only with the user's explicit OK, an issue link
+and a line under "Not checked". Fix the cause (time, order, shared state, network). Never "retry until green" inside the evidence run.

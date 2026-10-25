@@ -183,7 +183,7 @@ reply has a `Models:` line.
 
 ## E25 An additive export in three files runs at Lite
 **Prompt:** "Add an exported constant VERSION = '1.0.0' to src/calc.js, src/cart.js and src/report.js."
-**Pass if:** (setup: the runner commits `src/report.js`, as for E21) the change is additive: per skills/playbook-tdd/SKILL.md:49 "A new exported function is additive and changes no existing public API", so three files still run at Lite; the v0.24.11 rule ("removing or renaming an exported symbol is a public API change: Full", SKILL.md:49) must not over-trigger on it. The reply states `Weight: Lite`, with no jump to Full; a `test(red)` commit that touches only tests comes first; each of the three files exports `VERSION` === '1.0.0'; `node --test tests/*.test.js` passes.
+**Pass if:** (setup: the runner commits `src/report.js`, as for E21) the change is additive: per skills/playbook-tdd/SKILL.md:34 "A new exported function is additive and changes no existing public API", so three files still run at Lite; the v0.24.11 rule ("removing or renaming an exported symbol is a public API change: Full", SKILL.md:34) must not over-trigger on it. The reply states `Weight: Lite`, with no jump to Full; a `test(red)` commit that touches only tests comes first; each of the three files exports `VERSION` === '1.0.0'; `node --test tests/*.test.js` passes.
 Auto checks: each file exports VERSION, the tests pass, the stated weight is Lite, a RED commit touches only tests. MANUAL: no Full jump without a Full-column reason.
 **Fail if:** the reply states Full or Quick (or no weight), a file does not export `VERSION`, the tests fail, or it skips the test.
 

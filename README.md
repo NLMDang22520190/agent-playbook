@@ -33,7 +33,7 @@ Then open a new agent session and say *"set up the playbook"*. Setup asks at mos
 | Every claim carries `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`, and "passes" needs output from a run in this session. | Tests have passed on the wrong screen, and a confident wrong explanation costs the next person a day. |
 | The tester, implementer and reviewer run in three fresh contexts, and `role-gate.sh` enforces the split through git. | An agent that writes both the code and its tests writes tests that agree with its mistakes. |
 | Acceptance criteria quote the request word for word, with a source anchor. | Paraphrasing a request is the fastest way to build what nobody asked for. |
-| A UI change needs someone to look at the screen. | Passing tests cannot tell you the screen is right. |
+| A UI change needs one real look at the screen (an agent screenshot or browser read counts). | Passing tests cannot tell you the screen is right. |
 | Stay in scope, and never loosen a test or a gate. | Unrequested changes hide in diffs nobody reviews, and a loosened gate protects no one. |
 | When skills give opposite orders, the playbook wins. | Two skills with opposite orders make behaviour random. |
 

@@ -2,6 +2,9 @@
 
 The binding rules are in the `SKILL.md` section "Starting roles per harness": resolve each role's model with `role-model.sh <role> --harness <h>`, never upgrade or downgrade a configured model on your own judgement, print `role-model.sh plan`, and ask once as `confirm_models` says. This file holds the plumbing: how to start a role in each harness, how to pass its model and effort, and how to keep the prompt prefix cacheable.
 
+**Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
+never saw your reasoning cannot inherit its mistakes.
+
 ## Spawn mode (`conf.sh get subagents`)
 
 - **native**: spawn a sub-agent per role, each with a fresh context. Pass the full text of the role file plus paths of the allowed inputs, not your conversation or opinions about the solution.
@@ -58,3 +61,12 @@ A separate worktree gives the same isolation without that blind spot.
 ## Honest limit
 
 The same model in fresh contexts still shares blind spots. A different reviewer model, the mutation spot-check, and the user's own review of the AC table reduce this but do not remove it.
+
+## Routing and dirty trees
+
+Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
+sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREEN step
+(gate, then the test command as evidence, optional checkpoint commit) use
+`bash ~/.agents/playbook/scripts/tdd-step.sh red|green` (`--base` red, `--baseline` both).
+
+With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand.
