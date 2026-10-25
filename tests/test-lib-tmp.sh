@@ -234,4 +234,26 @@ assert_file "AC3.2 review: and its content" "$P/pbtest.other/keep"
 GA="$(printf '%s\n' "$OUT" | sed -n 's/^a=//p')"
 assert_no_path "AC3.2 review: the dir the suite did create is gone" "$GA"
 
+echo "AC3.4 a forked child that inherited the trap must not run the owner's cleanup (BASHPID shells)"
+P="$(priv)"
+stub childclean 'a=$(mk_tmp); touch "$a/f"
+if [ -z "${BASHPID:-}" ]; then echo "nobashpid"; t_summary; exit $?; fi
+( t_cleanup ); [ -d "$a" ] && echo "sub-kept" || echo "sub-wiped"
+f() { while :; do :; done; }
+w=0; i=0
+while [ $i -lt 12 ]; do f & p=$!; kill -TERM $p 2>/dev/null; wait $p 2>/dev/null; [ -d "$a" ] || { w=$((w + 1)); a=$(mk_tmp); }; i=$((i + 1)); done
+echo "race-wiped=$w"
+t_summary'
+for BB in $BASHES; do
+  run env TMPDIR="$P" "$BB" "$STUB"
+  case "$OUT" in
+    *nobashpid*) t_skip 3 "AC3.4 under $(basename "$BB"): no BASHPID, the inherited-trap race does not exist there" ;;
+    *)
+      assert_contains "AC3.4 under $(basename "$BB"): t_cleanup in a subshell keeps the owner's dir" "$OUT" "sub-kept"
+      assert_contains "AC3.4 under $(basename "$BB"): TERM right after a fork never wipes the owner's dir" "$OUT" "race-wiped=0"
+      assert_eq "AC3.4 under $(basename "$BB"): the private TMPDIR is empty afterwards" "" "$(left "$P")" ;;
+  esac
+done
+if [ -z "$B32" ]; then t_skip 3 "AC3.4 under bash 3.2 (no bash 3.2: set PB_BASH32 or build ~/.local/bin/bash3.2 with tools/get-bash32.sh)"; fi
+
 t_summary

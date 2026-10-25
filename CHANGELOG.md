@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.31 - 2026-10-25
+- **E1 and E29 graders (Lite, Run 22):**
+  - E1 "reply states the weight" now needs the label form (`Weight: Lite`, `**Weight:** Lite`, `Weight: **Lite**`, same for Full), as Lite step 5 and the report template ask. Prose such as "at the light weight" or "the Lite workflow" fails (Run 22 run 2 passed with that paraphrase). `stated_weight` and the graders that read prose (E15, E22, E23, E25, E26) are unchanged.
+  - E29 check (c) also accepts a label with a reason, `[UNVERIFIED: D1, D2]` or `[UNVERIFIED, still open]`, on the direction line (Run 22 run 2 was a false FAIL). A negated label still does not count.
+  - An offline regrade of the four Run 22 runs with the new graders: E29 6/6 and 6/6, E1 6/6 and 5/6 (run 2 weight FAIL).
+- **role-gate size counts a symlink to a directory by its link text (Lite):** an untracked symlink to a directory is now 1 file and 1 added line, like every other symlink (git cannot read the directory, so it counted 0 lines). A dangling symlink, or one git cannot count, still stops `size` with exit 3. The test rows that pinned 0 lines (S2 AC8, G1 AC7.3, S4 AC19, AC1 kind and corpus) now expect the link text line.
+- **tdd-step --scope exits 130 on Ctrl-C under bash 3.2 (Lite):** the commit-list classify reads its paths from a temp file instead of a pipeline, so a group Ctrl-C during it exits 130 (TERM 143) under bash 3.2 too; it exited 3 "cannot classify the changed paths". A real classify failure still exits 3 with that line. This removes the known limit named in 0.24.30.
+- **Test harness: a forked child no longer deletes the suite's temp dirs (Lite):** `tests/lib.sh` set its EXIT/INT/TERM cleanup trap in every suite, and a child forked by a suite (`f &`, `( ... ) &`) could run that trap when a signal reached it before bash reset its handlers, removing the parent's `pbtest.*` dirs mid-run (on Linux, TERM right after `f &`: 290 of 300 tries). `t_cleanup` now runs only in the process that loaded `lib.sh` (`BASHPID`; bash 3.2 has none and keeps the old behaviour). This is the likely cause of a Windows run that lost its own dirs on 2026-10-24 (not reproduced on Windows). Stale dirs still pile up when a run is killed with SIGKILL; no sweeper was added.
+- **Lite step 2 and 5 wording (lane K review NITs):** step 2 says "the test's name or a comment carries `Dn`"; step 5 and the template Pre-mortem say a test on Dn "cannot tell which reading is right" (the old "never catches the other reading" was false at code level: a multiply test does fail under divide). SKILL.md is 3698 of 3700 words.
+- **Not changed, measured:** the run-all fork failures of 2026-10-24 were not reproduced. Every suite alone peaks at 96 tasks or fewer, and `tests/run-all.sh` at PB_JOBS 2, 3 and 4 peaks at 106, 134 and 131 tasks, all green. The earlier "peak 7108" was the cgroup's `pids.max`, not a peak (no `pids.peak` on that cgroup v1 host). No cap was added.
+- **Eval results:** Run 22 (v0.24.30 installed, E29 x2 and E1 x2: 6/6, 5/6, 5/5, 5/5 auto; 1.93 USD) is recorded, with the offline regrade.
+
 ## 0.24.30 - 2026-10-24
 - **A test on an unconfirmed oracle names it, in the Lite steps themselves (Full, Run 21):**
   - Run 21 (v0.24.29 installed) failed E29 check (e): the Lite agent's test named neither D1 nor `[UNVERIFIED]`, and its reply said the test "will catch" the other reading. The rule was in SKILL.md, but not in the Lite steps the agent followed, and the agent never opened the report template.

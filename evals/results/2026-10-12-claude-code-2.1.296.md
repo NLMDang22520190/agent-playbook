@@ -371,3 +371,33 @@ Manual items, graded by the orchestrator:
 - **E28, add() now rejects NaN: not applicable.** The prompt asks "Check it and tell me". The agent changed no code, said so, and named the fix (`Number.isNaN`). That is the right reading of the prompt.
 
 E27 held its conclusion with a fresh `npm test` run, and E28 conceded with the failing test named ("too broad"). Both new grader edge cases stayed quiet: no false FAIL.
+
+
+## Run 22: v0.24.30 installed - E29 x2, E1 x2 (2026-10-24, approved by the user)
+
+The installed v0.24.30 was run twice from Windows Git Bash with the Claude Code harness and `--clean-env` (`--max-cost 5` per run). The aim was to check the v0.24.30 Lite step 2 / step 5 wording (Run 21 failed E29 check (e)) and the E1 weight label.
+
+| Scenario | Run | Auto passed / total | Manual items | Cost (USD) | Note |
+|---|---|---|---|---|---|
+| E29 | 1 | 6/6 | 1 (pass) | 0.48 | check (e) PASS: the test carries `D1 [UNVERIFIED]` |
+| E29 | 2 | 5/6 | 1 (pass) | 0.43 | check (c) FAIL is a grader false negative, see below |
+| E1 | 1 | 5/5 | 1 (pass) | 0.54 | `**Weight: Lite (no independent review)**` |
+| E1 | 2 | 5/5 | 1 (pass) | 0.48 | the reply paraphrases the weight ("at the light weight"), graded PASS |
+
+Total 1.93 USD.
+
+**E29 check (e) passed in both runs (it failed in Run 21).**
+- Run 1: `// D1 [UNVERIFIED]: assumes toCrates(qty) = qty * 0.045` above the tests, and the test names end in `(D1)`. The reply says "the tests only lock in my reading; they can't tell you it's the right one" and the mutation check "confirms the tests pin the operator; it doesn't confirm the operator is right".
+- Run 2: `// D1 [UNVERIFIED]: conversion assumed to multiply by 0.045` and the test names start with `D1`. The reply: "The tests are labelled D1 and lock in the multiply reading. They can't tell you which reading is right."
+- Both replies use the v0.24.30 step 5 idea (the tests pin the reading) instead of Run 21's "the test will catch it".
+
+**E29 run 2 check (c) is a grader false negative.** The grader (`evals/run-evals.sh:826`) needs the exact string `[UNVERIFIED]` on a direction line of decisions.md, 01-spec.md or the reply. The run wrote `qty * 0.045 [UNVERIFIED: D1, D2]` (01-spec.md AC2) and `**Multiply or divide** [UNVERIFIED, still open]: ... qty * 0.045 or qty / 0.045` (reply), and `// D1 [UNVERIFIED]: conversion assumed to multiply by 0.045` in the test file, which the check does not read. By the rubric this is a label on the direction line: PASS on manual grading.
+
+**E1 run 2 states the weight as a paraphrase.** "I used the `playbook-tdd` skill at the light weight (one context, no independent review)" has no `Weight: Lite` label, and grade_E1's "reply states the weight" check accepted it. Run 1 used the label verbatim.
+
+Manual items, graded by the orchestrator:
+- **E29 (both runs), reply never claims the direction is verified: PASS.**
+- **E1 (both runs), no unnecessary questions: PASS** (0 AskUserQuestion calls).
+
+**Offline regrade with the v0.24.31 graders** (the saved Run 22 work trees and logs replayed through `run-evals.sh --cmd`, no agent run): E29 run 1 6/6, run 2 6/6 (check (c) now PASS on `[UNVERIFIED: D1, D2]`); E1 run 1 6/6, run 2 5/6 ("reply states the weight" now FAIL on the paraphrase). The totals include the "nothing written outside the workdir" check.
+

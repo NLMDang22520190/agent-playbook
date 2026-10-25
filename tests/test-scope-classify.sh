@@ -3,7 +3,7 @@
 #   AC6.4 a  normal and failure returns leave no pb-scope.* file (status as before)           [passes before and after: characterization]
 #   AC6.4 b  a GROUP INT / TERM while the classify awk runs: no pb-scope.* file left, and the callers end as before
 #            (tdd-step scope_cmd_diff 130/143, own_notes 130, role-gate 130/143, a main-shell caller; the commit-list classify
-#            at tdd-step.sh:664 is 130/143 under bash 5 and 3 under bash 3.2, D8)                [RED before the change: the file is left]
+#            is 130/143 under bash 5 and bash 3.2, v0.24.31)            [RED before the change: the file is left]
 #   AC6.4 c  a caller's EXIT trap is the same after a call in its main shell                  [characterization]
 #   AC6.4 d  the template ${TMPDIR:-/tmp}/pb-scope.XXXXXX and exactly one mktemp per call     [characterization]
 #   AC6.1    the scope re-hash guard of role-gate check: a scope file that changes between the two hashes is refused (cmp shim)
@@ -293,31 +293,28 @@ if gs_go INT 4 4 "AC6.4b tdd-step own_notes group INT" "${SCN[@]}"; then
 fi
 scn_own_notes; ctl "AC6.4b own_notes scenario" 7 4 src/app.js
 
-echo "AC6.4 (b) tdd-step green --scope --commit, a group signal while the commit-list classify awk runs (tdd-step.sh:664, a pipeline member): bash 5 exit 130 / 143, bash 3.2 exit 3 as today (D8); nothing left"
+echo "AC6.4 (b) tdd-step green --scope --commit, a group signal while the commit-list classify awk runs (tdd-step.sh, classified from a file, not a pipeline member): exit 130 / 143 under the running bash and under bash 3.2 (v0.24.31); nothing left"
 CLAT=3
-case "${BASH_VERSINFO[0]}" in
-  3) CLI=3; CLT="" ;;
-  [5-9]|[1-9][0-9]) CLI=130; CLT=143 ;;
-  *) CLI=""; CLT="" ;;
-esac
-if [ -z "$CLI" ]; then t_skip 8 "AC6.4b tdd-step commit-list group INT / TERM (bash $BASH_VERSION: the row is pinned for bash 5 and bash 3.2 only)"
-else
-  scn_commit_list
-  if gs_go INT "$CLAT" 4 "AC6.4b tdd-step commit-list group INT (bash ${BASH_VERSINFO[0]})" "${SCN[@]}"; then
-    gs_check "AC6.4b tdd-step commit-list group INT (bash ${BASH_VERSINFO[0]})" "$CLI"
-    if [ "$CLI" = 3 ]; then has_cc=1; else has_cc=0; fi
-    assert_eq "AC6.4b tdd-step commit-list group INT: the 'cannot classify' line appears only where the exit is 3 (bash 3.2)" "$has_cc" "$(grep -c 'cannot classify' "$GS/o" || true)"
+B32="${HOME:-/nonexistent}/.local/bin/bash3.2"
+# cl_rows LABEL SHELL: the INT row and the TERM row of the commit-list classify, the step run by SHELL (8 assertions, skips included)
+cl_rows() {
+  local lb="$1" sh="$2"
+  scn_commit_list; SCN[0]="$sh"
+  if gs_go INT "$CLAT" 4 "AC6.4b tdd-step commit-list group INT ($lb)" "${SCN[@]}"; then
+    gs_check "AC6.4b tdd-step commit-list group INT ($lb)" 130
+    no_cc "AC6.4b tdd-step commit-list group INT ($lb)"
     gs_end "AC6.4b tdd-step commit-list group INT" 4
   fi
-  if [ -n "$CLT" ]; then
-    scn_commit_list
-    if gs_go TERM "$CLAT" 4 "AC6.4b tdd-step commit-list group TERM (bash 5)" "${SCN[@]}"; then
-      gs_check "AC6.4b tdd-step commit-list group TERM (bash 5)" "$CLT"
-      no_cc "AC6.4b tdd-step commit-list group TERM (bash 5)"
-      gs_end "AC6.4b tdd-step commit-list group TERM" 4
-    fi
-  else t_skip 4 "AC6.4b tdd-step commit-list group TERM (bash 3.2: the TERM exit is not pinned, D8)"; fi
-fi
+  scn_commit_list; SCN[0]="$sh"
+  if gs_go TERM "$CLAT" 4 "AC6.4b tdd-step commit-list group TERM ($lb)" "${SCN[@]}"; then
+    gs_check "AC6.4b tdd-step commit-list group TERM ($lb)" 143
+    no_cc "AC6.4b tdd-step commit-list group TERM ($lb)"
+    gs_end "AC6.4b tdd-step commit-list group TERM" 4
+  fi
+}
+cl_rows "bash ${BASH_VERSINFO[0]}" "$BASH"
+if [ -x "$B32" ]; then cl_rows "bash 3.2" "$B32"
+else t_skip 8 "AC6.4b tdd-step commit-list group INT / TERM under bash 3.2 (no $B32 here)"; fi
 scn_commit_list; ctl "AC6.4b commit-list scenario" 3 3 src/app.js
 
 # ================= AC6.1: the scope re-hash guard of role-gate check =================

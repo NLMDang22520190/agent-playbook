@@ -1872,8 +1872,11 @@ lite_has "v0.24.30 AC2 Lite step 2 still runs proof-run.sh --label red" 2 'proof
 lite_has "v0.24.30 AC2 Lite step 2 still says see it fail for the right reason" 2 'right reason'
 lite_has "v0.24.30 AC2 Lite step 2 still commits test(red)" 2 'test\(red\)'
 # AC3: Lite step 5 Pre-mortem clause
-lite_has "v0.24.30 AC3 Lite step 5 Pre-mortem: a test on Dn pins the assumed reading, never catches the other reading" 5 'pre-mortem[^.]{0,80}Dn[^.]{0,40}pins the assumed reading[^.]{0,30}(never|not) catch(es)? the other reading'
+lite_has "v0.24.31 AC3 Lite step 5 Pre-mortem: a test on Dn pins the assumed reading and cannot tell which is right (lane K NIT)" 5 'pre-mortem[^.]{0,80}Dn[^.]{0,40}pins the assumed reading[^.]{0,30}cannot tell which[^.]{0,10} is right'
+# the old clause was false at code level (a multiply test does fail under divide)
+if lite_step 5 | tr '\n' ' ' | grep -qiE '(never|not) catch(es)? the other reading'; then t_bad "v0.24.31 AC3 Lite step 5 no longer says the test never catches the other reading" "old clause still there"; else t_ok "v0.24.31 AC3 Lite step 5 no longer says the test never catches the other reading"; fi
+lite_has "v0.24.31 AC1 Lite step 2 says the test's name (lane K NIT)" 2 "the test's name or a comment"
 # AC4: the template Pre-mortem has the angle-bracket placeholder (not a literal line a report would carry over)
-sec_flat_has "v0.24.30 AC4 final-report.md Pre-mortem: placeholder <if a risk rests on a test built on an unconfirmed oracle ...> pins the assumed reading, not the other reading" "$FINAL" '^## Pre-mortem' '<if a risk rests on a test built on an unconfirmed oracle[^>]*(Dn|\[UNVERIFIED\])[^>]*pins the assumed reading[^>]*not catch the other reading[^>]*>'
+sec_flat_has "v0.24.30 AC4 final-report.md Pre-mortem: placeholder <if a risk rests on a test built on an unconfirmed oracle ...> pins the assumed reading, not the other reading" "$FINAL" '^## Pre-mortem' '<if a risk rests on a test built on an unconfirmed oracle[^>]*(Dn|\[UNVERIFIED\])[^>]*pins the assumed reading[^>]*cannot tell which reading is right[^>]*>'
 
 t_summary
