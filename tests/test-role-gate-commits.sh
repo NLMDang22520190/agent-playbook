@@ -89,6 +89,7 @@ assert_contains "AC-C3 ... only the committed path is checked" "$OUT" "OK: role 
 assert_eq "AC-C3 the first note after the conf notes" "$(cnote "$P..$B" 1)" "$(first_note)"
 assert_not_contains "AC-C3 ... the untracked file is not named" "$OUT" "src/untracked.js"
 assert_not_contains "AC-C3 ... the staged file is not named" "$OUT" "src/staged.js"
+git reset -q -- src/staged.js   # isolate the commit: cmt commits the whole index, the staged file must not ride along
 cmt src/added.js 'module.exports = "added";' "tester adds a production file"
 gchk tester --commits "$P..HEAD"
 assert_rc "AC-C3 fb #11/#12 a tester commit adding a production file: exit 1" 1
