@@ -74,6 +74,15 @@ if can_exec; then
   assert_eq "$T: the fake exists with the step subject and a parent that is not the pre-run HEAD (the case is real)" "test(red): m $E0" "$(git -C "$R" log -1 --format='%s %P' "$X" 2>/dev/null)"
   assert_not_contains "$T: the fake commit is never named" "$OUT" "$(s7 "$X")"
 
+  # a MERGE commit (first parent = the pre-run HEAD, second = another commit) with the step subject: report_c accepts only a SINGLE-parent commit (rev-list --parents), not "HEAD^ is the pre-run HEAD"
+  T="B F2 reflogs off, the report names a merge commit with the step subject whose first parent is the pre-run HEAD"
+  gprep default "$ROFF; git commit-tree 'HEAD^{tree}' -p HEAD -p existing -m 'test(red): m' > .git/xsha"; D="$(stubdir git "$GITSHIM_REPORT")"
+  X="$(cat "$R/.git/xsha")"
+  run_red_p "$D" --commit sh -c "$(hookcmd "$HK_RESET" post-commit)"
+  lost_unknown "$T"; a2_end "$T"
+  assert_eq "$T: the fake is a merge with the step subject, the pre-run HEAD first and another commit second (the case is real)" "test(red): m $H0 $E0" "$(git -C "$R" log -1 --format='%s %P' "$X" 2>/dev/null)"
+  assert_not_contains "$T: the merge commit is never named" "$OUT" "$(s7 "$X")"
+
   T="B F2 reflog on, the same report: the reflog finds the real C"
   gprep default "git commit-tree 'HEAD^{tree}' -p existing -m 'test(red): m' > .git/xsha"; D="$(stubdir git "$GITSHIM_REPORT")"
   X="$(cat "$R/.git/xsha")"
@@ -81,7 +90,7 @@ if can_exec; then
   a2_lost "$T"; a2_end "$T"
   assert_not_contains "$T: the fake commit is never named" "$OUT" "$(s7 "$X")"
 else
-  t_skip 28 "B F2 wrong-parent report cases (the file system cannot make a hook executable)"
+  t_skip 42 "B F2 wrong-parent report cases (the file system cannot make a hook executable)"
 fi
 
 echo "C F4 git commit fails with nothing to commit: git's own line is shown, exit 3"

@@ -429,11 +429,20 @@ assert_contains "v14 AC8.2 the release job still needs the main test job" "$NEED
 # wf_if ID -> the job-level `if:` line (single line), "" when none
 wf_if() { wf_block "$1" | grep -m1 '^    if:'; }
 # not_tag LINE -> 0 when the condition excludes tag refs: !startsWith(github.ref, 'refs/tags/..') or ref_type != 'tag'
-not_tag() { printf '%s\n' "$1" | grep -Eq "![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"; }
+# The exclusion must be a top-level conjunct: it follows "${{" or "&&" and runs to the next "&&" or "}}" without a "|" (so always() || !startsWith(..) and !startsWith(..) || always() fail; v0.25.1 lane T).
+not_tag() { printf '%s\n' "$1" | grep -Eq '([$][{][{]|&&)[[:space:]]*('"![[:space:]]*startsWith\([[:space:]]*github\.ref[[:space:]]*,[[:space:]]*'refs/tags/|github\.ref_type[[:space:]]*!=[[:space:]]*'tag'|!\(?[[:space:]]*startsWith\([[:space:]]*github\.ref"')[^&|}]*(&&|[}][}])'; }
 for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}" "macos-shard:${MACSHARD:-__none__}" "test (macos-latest) aggregator:${MACAGG:-__none__}"; do
   label="${pair%:*}"; id="${pair##*:}"
   IFL="$(wf_if "$id")"
   if [ -n "$IFL" ] && not_tag "$IFL"; then t_ok "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes"; else t_bad "v15 AC5.1 job $label ($id) has an if: that excludes tag pushes" "if line: [$IFL]"; fi
+done
+# the anchored not_tag rejects the two disjunction forms of every job if: (no ${v/p/r}: cut at the first match)
+for pair in "test:${MAIN:-__none__}" "windows-shard:${SHARD:-__none__}" "test (windows-latest) aggregator:${AGG:-__none__}" "macos-shard:${MACSHARD:-__none__}" "test (macos-latest) aggregator:${MACAGG:-__none__}" "reuse:reuse"; do
+  label="${pair%:*}"; id="${pair##*:}"; NTL="$(wf_if "$id")"
+  NTM1="$NTL"; case "$NTL" in *"&& !startsWith"*) NTM1="${NTL%%"&& !startsWith"*}|| !startsWith${NTL#*"&& !startsWith"}" ;; esac
+  NTM2="$NTL"; case "$NTL" in *"!startsWith(github.ref, 'refs/tags/')"*) NTM2="${NTL%%"!startsWith(github.ref, 'refs/tags/')"*}!startsWith(github.ref, 'refs/tags/') || always()${NTL#*"!startsWith(github.ref, 'refs/tags/')"}" ;; esac
+  if [ "$NTM1" != "$NTL" ] && ! not_tag "$NTM1"; then t_ok "v0.25.1 T not_tag rejects [|| !startsWith] on job $label"; else t_bad "v0.25.1 T not_tag rejects [|| !startsWith] on job $label" "line: [$NTM1]"; fi
+  if [ "$NTM2" != "$NTL" ] && ! not_tag "$NTM2"; then t_ok "v0.25.1 T not_tag rejects [!startsWith || always()] on job $label"; else t_bad "v0.25.1 T not_tag rejects [!startsWith || always()] on job $label" "line: [$NTM2]"; fi
 done
 AGGIF="$(wf_if "${AGG:-__none__}")"
 case "$AGGIF" in *always\(\)*) t_ok "v15 AC5.1 the aggregator keeps always() next to the tag exclusion (still fails instead of skipping on PRs)" ;; *) t_bad "v15 AC5.1 the aggregator keeps always() next to the tag exclusion" "if line: [$AGGIF]" ;; esac
