@@ -62,7 +62,8 @@ echo "AC2/AC3 a normal RED or GREEN run prints and commits exactly what v0.24.21
 OLDD="$(mk_tmp)"
 if git -C "$PB_ROOT" cat-file -e f1d6bce 2>/dev/null && git -C "$PB_ROOT" archive f1d6bce scripts 2>/dev/null | tar -x -C "$OLDD" 2>/dev/null && [ -f "$OLDD/scripts/tdd-step.sh" ]; then
   # same_as_old LABEL KIND MODE FLAG -> 4 assertions. KIND red|green, MODE default|baseline; fixed commit dates make equal runs give equal shas
-  norm() { printf '%s' "$1" | sed -E "s/[0-9]{8}T[0-9]{6}Z/<ts>/g; s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/<time>/g"; }
+  # v0.26.0: proof-run adds a "- tree: <hash>" line (lane P) that the v0.24.22 script cannot print; it is left out of the comparison
+  norm() { printf '%s' "$1" | sed -E -e "s/[0-9]{8}T[0-9]{6}Z/<ts>/g; s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/<time>/g" -e '/^- tree: ([0-9a-f]+|none)$/d'; }
   same_as_old() {
     local label="$1" kind="$2" mode="$3" flag="$4" a b ba bb oa ob ra rb
     export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
