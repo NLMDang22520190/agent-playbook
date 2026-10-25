@@ -1639,10 +1639,10 @@ TDD_WORDS="$(wc -w < "$SKILL" | tr -d ' ')"
 PROOF_MD="$PB_ROOT/skills/playbook-proof/SKILL.md"
 PROOF_WORDS="$(wc -w < "$PROOF_MD" | tr -d ' ')"
 if [ "$TDD_WORDS" -le 3793 ]; then t_ok "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)"; else t_bad "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)" "$TDD_WORDS words"; fi
-if [ "$PROOF_WORDS" -le 647 ]; then t_ok "v24.10 AC8 playbook-proof SKILL.md is at most 647 words"; else t_bad "v24.10 AC8 playbook-proof SKILL.md is at most 647 words" "$PROOF_WORDS words"; fi
+if [ "$PROOF_WORDS" -le 700 ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)"; else t_bad "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)" "$PROOF_WORDS words"; fi
 TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
 if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
-if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -le $((PROOF_WORDS + 50)) ] && [ "$PB" -le 650 ]; then t_ok "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650"; else t_bad "v24.10 AC9 playbook-proof budget is count..count+50 and at most 650" "budget [$PB] count $PROOF_WORDS"; fi
+if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -eq 700 ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count"; else t_bad "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count" "budget [$PB] count $PROOF_WORDS"; fi
 EXPECT_HEADS="$(cat <<'HEADS'
 ## Pick the weight (before Phase 1)
 ### Lite workflow
@@ -1878,5 +1878,105 @@ if lite_step 5 | tr '\n' ' ' | grep -qiE '(never|not) catch(es)? the other readi
 lite_has "v0.24.31 AC1 Lite step 2 says the test's name (lane K NIT)" 2 "the test's name or a comment"
 # AC4: the template Pre-mortem has the angle-bracket placeholder (not a literal line a report would carry over)
 sec_flat_has "v0.24.30 AC4 final-report.md Pre-mortem: placeholder <if a risk rests on a test built on an unconfirmed oracle ...> pins the assumed reading, not the other reading" "$FINAL" '^## Pre-mortem' '<if a risk rests on a test built on an unconfirmed oracle[^>]*(Dn|\[UNVERIFIED\])[^>]*pins the assumed reading[^>]*cannot tell which reading is right[^>]*>'
+
+# ---- v0.25.0 lane H (S1): skills/playbook-proof/references/writing.md, the proof pointer, the 700 pins ----
+echo "v0.25.0 lane H (S1): writing guide (AC1-AC6, AC9a sentence, AC15), proof pointer (AC8)"
+WM="$PB_ROOT/skills/playbook-proof/references/writing.md"
+# wm_has NAME PATTERN: PATTERN (case-insensitive ERE) is in the flattened writing.md; a missing file fails
+wm_has() { if [ -f "$WM" ] && flat "$WM" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in $WM (or the file is missing)"; fi; }
+# wm_has_f NAME LITERAL: the exact text is in writing.md (fixed string, case-sensitive)
+wm_has_f() { if [ -f "$WM" ] && grep -qF -- "$2" "$WM"; then t_ok "$1"; else t_bad "$1" "literal [$2] not in $WM (or the file is missing)"; fi; }
+
+# AC1: exists, at most 400 words (proposal: about 300; a stub under 120 words cannot hold the AC2 rules)
+WM_WORDS=""; [ -f "$WM" ] && WM_WORDS="$(wc -w < "$WM" | tr -d ' ')"
+if [ -n "$WM_WORDS" ] && [ "$WM_WORDS" -le 400 ] && [ "$WM_WORDS" -ge 120 ]; then t_ok "v0.25.0 AC1 writing.md exists and has 120..400 words"; else t_bad "v0.25.0 AC1 writing.md exists and has 120..400 words" "words [$WM_WORDS] (empty = file missing)"; fi
+
+# AC2: one row for each humanizer section the guide must carry
+wm_has "v0.25.0 AC2 s1 not X but Y" 'not x,? but y|not (just|only|merely) [^.]{0,40}but'
+wm_has "v0.25.0 AC2 s2 one-line closers" 'one-(line|sentence) (closer|paragraph)|closing (line|sentence)[^.]{0,60}(repeat|restat)'
+wm_has "v0.25.0 AC2 s3 sayings that sound deep" 'saying|aphorism|sounds? (deep|profound)|profound|slogan'
+wm_has "v0.25.0 AC2 s4 staged run-up" 'run-up|staged|staging|build-?up|stage-setting|setting the stage'
+wm_has "v0.25.0 AC2 s12 names the overused AI words as a group" 'overused|stock (ai )?words|ai words'
+WM_AIW=0
+for w12 in delve crucial pivotal tapestry testament landscape robust showcase underscore vibrant intricate enhance meticulous additionally; do
+  if [ -f "$WM" ] && grep -qiw -- "$w12" "$WM"; then WM_AIW=$((WM_AIW + 1)); fi
+done
+if [ "$WM_AIW" -ge 4 ]; then t_ok "v0.25.0 AC2 s12 lists at least 4 of the overused words ($WM_AIW)"; else t_bad "v0.25.0 AC2 s12 lists at least 4 of the overused words" "only $WM_AIW of the humanizer s12 words found"; fi
+wm_has "v0.25.0 AC2 s13 inflated significance" 'inflated|significance|legacy'
+wm_has "v0.25.0 AC2 s20 decorative headings" 'decorative|decoration'
+wm_has "v0.25.0 AC2 s20 emojis" 'emoji'
+wm_has "v0.25.0 AC2 s22 chatbot residue" 'chatbot'
+wm_has "v0.25.0 AC2 s22 names openers" 'opener|great question|certainly'
+wm_has "v0.25.0 AC2 s22 names offers" "offer|would you like|want me to|let me know"
+wm_has "v0.25.0 AC2 s26 lead with the answer" 'lead with the (answer|decision|point|conclusion)|answer first|(answer|decision|point) (comes )?first'
+wm_has "v0.25.0 AC2 s26 the reader already knows" 'reader[^.]{0,80}(already|knows|has the context)|already (know|has|have|agreed)|re-?explain'
+
+# AC2b: s8 dashes
+EMD="$(printf '\342\200\224')"; ENDASH="$(printf '\342\200\223')"
+wm_has "v0.25.0 AC2b s8 names em and en dashes" '(em|en)[ -]?dash|(em|en) and (em|en) dash|dashes'
+wm_has "v0.25.0 AC2b s8 gives the replacements (comma, colon, period or parentheses)" 'comma[^.]{0,60}colon[^.]{0,60}(period|parenthes)|(period|parenthes)[^.]{0,60}(comma|colon)'
+wm_has "v0.25.0 AC2b s8 exempts code spans, blocks, commands and paths" '(code (span|block)|inline code|backtick)[^.]{0,200}(command|path)|(command|path)[^.]{0,200}(code (span|block)|inline code|backtick)'
+# the guide follows its own rule: no em or en dash outside backtick spans and fenced blocks
+WM_DASH_OUT=""
+if [ -f "$WM" ]; then
+  WM_DASH_OUT="$(awk '/^```/{f=!f; next} !f{print}' "$WM" | sed 's/`[^`]*`//g' | grep -c -e "$EMD" -e "$ENDASH")"
+fi
+if [ -f "$WM" ] && [ "$WM_DASH_OUT" = "0" ]; then t_ok "v0.25.0 AC2b writing.md has no em or en dash outside code spans and blocks"; else t_bad "v0.25.0 AC2b writing.md has no em or en dash outside code spans and blocks" "lines with a dash [$WM_DASH_OUT] (empty = file missing)"; fi
+
+# AC3: what the rules never touch, each item named
+wm_has "v0.25.0 AC3 says what the rules never touch (verbatim, leave alone)" '(never|do not|must not)[^.]{0,30}(touch|change|edit|reword|rewrite|polish|alter)|leave[^.]{0,40}(alone|as (is|written))|unchanged|verbatim'
+wm_has_f "v0.25.0 AC3 never-touch: the **Weight:** line" '**Weight:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Models used:** line" '**Models used:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Playbook feedback:** line" '**Playbook feedback:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Result:** line" '**Result:**'
+wm_has_f "v0.25.0 AC3 never-touch: the **Mode:** line" '**Mode:**'
+wm_has_f "v0.25.0 AC3 never-touch: the label [VERIFIED]" '[VERIFIED]'
+wm_has_f "v0.25.0 AC3 never-touch: the label [INFERRED]" '[INFERRED]'
+wm_has_f "v0.25.0 AC3 never-touch: the label [UNVERIFIED]" '[UNVERIFIED]'
+wm_has "v0.25.0 AC3 never-touch: the user's quoted sentences in Request coverage" 'request coverage'
+wm_has "v0.25.0 AC3 never-touch: the Not checked section" 'not checked'
+wm_has "v0.25.0 AC3 never-touch: the Pre-mortem section" 'pre-mortem'
+wm_has "v0.25.0 AC3 never-touch: evidence (commands, outputs, path:line)" 'evidence[^.]{0,120}(command|output|path:line)|(command|output|path:line)[^.]{0,120}evidence'
+wm_has "v0.25.0 AC3 never-touch: path:line references" 'path:line|file:line'
+wm_has "v0.25.0 AC3 covers what scripts/pr-body.sh copies into a PR description" 'pr-body'
+wm_has "v0.25.0 AC3 pr-body.sh note names Review and Weight beside Request coverage and Not checked" 'pr-body[^.]{0,400}(review|weight)|(review|weight)[^.]{0,200}pr-body'
+
+# AC4: cut or reorder, never add
+wm_has "v0.25.0 AC4 editing may cut or reorder" '(cut|remove|delete|trim)[^.]{0,60}reorder|reorder[^.]{0,60}(cut|remove|delete|trim)'
+wm_has "v0.25.0 AC4 never add a fact" '(never|not|no|without)[^.]{0,40}(add|invent|introduce)[^.]{0,120}fact|(fact|name|number|promise)[^.]{0,80}(not in|absent from|missing from|that the source (does not|doesn.t))[^.]{0,30}(source|original|draft)'
+wm_has "v0.25.0 AC4 the ban covers a name, a number and a promise" '(add|invent|introduce)[^.]{0,120}(name|number)[^.]{0,60}(promise)|(promise)[^.]{0,60}(name|number)'
+
+# AC5: credit and license
+wm_has "v0.25.0 AC5 links github.com/blader/humanizer" 'github\.com/blader/humanizer'
+wm_has_f "v0.25.0 AC5 names the MIT license" 'MIT'
+
+# AC6: when to load it
+wm_has "v0.25.0 AC6 load for the final report" 'final report'
+wm_has "v0.25.0 AC6 load for a PR description" 'pr description|pull request'
+wm_has "v0.25.0 AC6 load for release notes or the CHANGELOG" 'release notes|changelog'
+wm_has "v0.25.0 AC6 load for README or docs" 'readme|docs'
+wm_has "v0.25.0 AC6 load for issue comments" 'issue comment|comment on an issue|issue thread'
+
+# AC9a (lives in writing.md): with no other question, ask on its own only when the main deliverable is text others will read
+wm_has "v0.25.0 AC9a names the humanizer skill" 'humanizer'
+wm_has "v0.25.0 AC9a main deliverable is text others will read, in a sentence about asking" 'main deliverable[^.]{0,200}ask|ask[^.]{0,200}main deliverable'
+wm_has "v0.25.0 AC9a it applies when the task has no other question" '(no|any|other)[^.]{0,30}question[^.]{0,200}main deliverable|main deliverable[^.]{0,200}(no|any|other)[^.]{0,30}question|task has no other question'
+wm_has "v0.25.0 AC9a otherwise: use these rules without asking" '(otherwise|else|if not|when it is not)[^.]{0,200}(do(es)? not ask|never ask|without asking|no question|silently|don.t ask|skip)'
+
+# AC15: nothing tells the agent to remove bold from the required labels (any sentence on bold that says remove/strip/drop must also say keep/never/except)
+WM_BOLD_BAD=""
+if [ -f "$WM" ]; then
+  WM_BOLD_BAD="$(flat "$WM" | tr '.' '\n' | grep -i 'bold' | grep -iE 'remov|strip|drop|delet|unbold|no bold|avoid' | grep -viE 'never|not |keep|except|leave|required|verbatim' | wc -l | tr -d ' ')"
+fi
+if [ -f "$WM" ] && [ "$WM_BOLD_BAD" = "0" ]; then t_ok "v0.25.0 AC15 writing.md never says to remove bold from required labels"; else t_bad "v0.25.0 AC15 writing.md never says to remove bold from required labels" "sentences [$WM_BOLD_BAD] (empty = file missing)"; fi
+
+# AC8: proof SKILL.md pointer (one short line) and the tdd SKILL.md stays within its budget
+PROOF_PTR="$(grep -F 'references/writing.md' "$PROOF_MD" 2>/dev/null | head -n 1)"
+if [ -n "$PROOF_PTR" ]; then t_ok "v0.25.0 AC8 playbook-proof SKILL.md points to references/writing.md"; else t_bad "v0.25.0 AC8 playbook-proof SKILL.md points to references/writing.md" "no line names it"; fi
+PTR_WORDS="$(printf '%s\n' "$PROOF_PTR" | wc -w | tr -d ' ')"
+if [ -n "$PROOF_PTR" ] && [ "$PTR_WORDS" -le 28 ]; then t_ok "v0.25.0 AC8 the proof pointer line is short (at most 28 words, spec: about 20) ($PTR_WORDS)"; else t_bad "v0.25.0 AC8 the proof pointer line is short (at most 28 words, spec: about 20)" "words [$PTR_WORDS] line [$PROOF_PTR]"; fi
+if printf '%s' "$PROOF_PTR" | grep -qiE 'others|readers?|reads?|written|write|report'; then t_ok "v0.25.0 AC8 the proof pointer says it is for text others will read"; else t_bad "v0.25.0 AC8 the proof pointer says it is for text others will read" "line [$PROOF_PTR]"; fi
+# characterization (true today by design): playbook-tdd SKILL.md gets at most a few words, so it stays within its 3700 budget
+if [ "$TDD_WORDS" -le 3700 ]; then t_ok "v0.25.0 AC8 characterization: playbook-tdd SKILL.md stays at most 3700 words ($TDD_WORDS)"; else t_bad "v0.25.0 AC8 characterization: playbook-tdd SKILL.md stays at most 3700 words" "$TDD_WORDS words"; fi
 
 t_summary
