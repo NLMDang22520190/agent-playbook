@@ -14,7 +14,7 @@
 //   fetch=TEXT                the input (JSON) of a tool call whose name contains fetch, or of a Bash call running curl, wget or fetch
 //   tool=NAME                 the name of every tool call, in order
 //   cmd=COMMAND               the command of every Bash call
-//   read=PATH                 the file_path of every Read call
+//   read=PATH                 the file_path of every Read call and the path of every Grep call
 // An inspection is a Read, Grep or Glob call, or a Bash command that matches the INSPECT regex (any case; none given: no Bash command
 // counts) and writes no file. A file change is a Write, Edit, MultiEdit or NotebookEdit call, or a Bash command that writes under src/ or
 // tests/ (a redirect, tee, cp, mv, touch, rm, mkdir, ln, install or sed -i naming such a path).
@@ -53,6 +53,7 @@ for (const l of text.split(/\r?\n/)) {
     tools.push(one(name));
     if (cmd !== "") cmds.push(one(cmd));
     if (name === "Read" && typeof input.file_path === "string") reads.push(one(input.file_path));
+    if (name === "Grep" && typeof input.path === "string") reads.push(one(input.path));
     if (name === "AskUserQuestion") {
       asks++;
       if (firstAsk < 0) firstAsk = idx;

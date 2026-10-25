@@ -17,6 +17,13 @@
 #   pbh_stats_js                      prints the JavaScript function pbhStats(doc) behind both
 #   pbh_phys PATH                     PATH with its symbolic links resolved (PATH itself when its directory does not exist)
 #   pbh_json_str TEXT                 TEXT as a JSON string literal (control characters dropped)
+#   pbh_iso_check LOG HOME OK1 OK2 OK3 [NAME...]
+#                                     PASS or FAIL: the without-arm isolation check of the stream-json transcript LOG (OKn: paths
+#                                     that are not playbook files, such as the workdir; NAME: the playbook skill names) (node)
+#   pbh_without_refusal WORKROOT HOME 0 when the without arm can run in WORKROOT; else prints why (a user rules file or an
+#                                     instruction file above WORKROOT holds the playbook block) and returns 2
+#   pbh_leak_prompt HEADING           prints the prompt of the leak probe: is the block headed HEADING in the agent's context?
+#   pbh_probe_answer FILE             YES, NO or UNKNOWN: the first word of the last stream-json result text of FILE, else of its text
 
 # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
 # flags as listed by `claude --help` in Claude Code 2.1.295. DECISION[D3]: the claude and codex presets are best guesses.
@@ -108,7 +115,12 @@ pbh_arm_settings() {
     { [ -e "$p" ] || [ -L "$p" ]; } || continue
     names="$names${p##*/}
 "
-    if [ -L "$p" ]; then dn="$dn, $(pbh_json_str "Read(/$(pbh_phys "$p")/**)")"; fi
+    if [ -L "$p" ]; then
+      f="$(pbh_phys "$p")"
+      dn="$dn, $(pbh_json_str "Read(/$f/**)")"
+      # Git Bash: also the native form (C:/...) of the physical path, as claudeMdExcludes above
+      if command -v cygpath >/dev/null 2>&1 && f="$(cygpath -m "$f" 2>/dev/null)" && [ -n "$f" ]; then dn="$dn, $(pbh_json_str "Read(//$f/**)")"; fi
+    fi
   done
   while IFS= read -r n; do
     [ -n "$n" ] || continue
@@ -194,4 +206,94 @@ for (const k of Object.keys(top)) if (k !== "schema" && k !== "runs" && k !== "s
 d.runs = L.slice(1).map(l => JSON.parse(l));
 d.summary = pbhStats(d);
 fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
+}
+
+# pbh_iso_check LOG HOME OK1 OK2 OK3 [NAME...] -> PASS or FAIL (AC4.1). FAIL on a Skill call of a playbook skill, a playbook skill or slash
+# command in the system init line, or a tool_use path or Bash command (Agent/Task prompts excluded) that names HOME/.agents,
+# .claude/skills/playbook-*, <NAME>/SKILL.md or HOME/.claude/CLAUDE.md. The OK paths (the workdir, the temp PLAYBOOK_HOME, the runner's
+# settings dir) are not playbook files (AC4.2); empty ones are ignored.
+pbh_iso_check() {
+  node -e '
+const fs = require("fs"), a = process.argv.slice(1), home = a[1], ok = a.slice(2, 5).filter(Boolean), names = a.slice(5);
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + (home ? "|" + esc(home) : "") + ")";
+const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
+if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
+const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
+const bad = s => { if (typeof s !== "string") return false; for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
+let fail = false;
+for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
+  let o; try { o = JSON.parse(line); } catch (e) { continue; }
+  if (!o || typeof o !== "object") continue;
+  if (o.type === "system" && o.subtype === "init") for (const l of [o.skills, o.slash_commands]) if (Array.isArray(l) && l.some(isPb)) fail = true;
+  const bl = o.message && Array.isArray(o.message.content) ? o.message.content : (o.type === "tool_use" ? [o] : []);
+  for (const b of bl) {
+    if (!b || b.type !== "tool_use") continue;
+    const i = b.input || {};
+    if (b.name === "Skill") { if (isPb(i.skill) || isPb(i.command)) fail = true; continue; }
+    if (b.name === "Agent" || b.name === "Task") continue;
+    const v = [i.file_path, i.path, i.notebook_path, i.command];
+    if (b.name === "Glob") v.push(i.pattern);
+    if (v.some(bad)) fail = true;
+  }
+}
+process.stdout.write(fail ? "FAIL" : "PASS");' "$@"
+}
+
+# pbh_pb_marked FILE -> 0 when FILE holds the playbook block
+pbh_pb_marked() { [ -f "$1" ] && LC_ALL=C grep -qF '<!-- BEGIN agent-playbook' "$1" 2>/dev/null; }
+# pbh_anc_files DIR -> the instruction files Claude Code loads from DIR (DIR without its trailing /)
+pbh_anc_files() {
+  printf '%s\n' "$1/CLAUDE.md" "$1/CLAUDE.local.md" "$1/AGENTS.md" "$1/.claude/CLAUDE.md" "$1/.claude/AGENTS.md"
+  if [ -d "$1/.claude/rules" ]; then find "$1/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort; fi
+}
+# the without arm cannot remove a block that Claude Code loads from a user rules file or an ancestor of WORKROOT; HOME/.claude/CLAUDE.md
+# (also by its physical path) is excluded by the settings file, so it does not count
+pbh_without_refusal() {
+  local root="$1" home="$2" f d hcm hcmp
+  if [ -d "$home/.claude/rules" ]; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if pbh_pb_marked "$f"; then
+        printf '%s\n' "$f holds the playbook block, and Claude Code loads user rules in every session; remove the block from the rules file"
+        return 2
+      fi
+    done <<EOF
+$(find "$home/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
+EOF
+  fi
+  hcm="$home/.claude/CLAUDE.md"; hcmp="$(pbh_phys "$hcm")"
+  d="$root"
+  while :; do
+    while IFS= read -r f; do
+      [ -n "$f" ] && pbh_pb_marked "$f" || continue
+      [ "$f" = "$hcm" ] || [ "$(pbh_phys "$f")" = "$hcmp" ] && continue
+      printf '%s\n' "$f holds the playbook block, and Claude Code loads it from the directories above the workroot; move the workroot out of that tree"
+      return 2
+    done <<EOF
+$(pbh_anc_files "${d%/}")
+EOF
+    [ "$d" = / ] && break
+    d="$(dirname "$d")"
+  done
+  return 0
+}
+
+# the leak probe (review fix 3): the heading names the always-on block, so the prompt (and the argv of the preset) carries it
+pbh_leak_prompt() {
+  printf '%s\n' "Answer with one word, YES or NO, and use no tools. Is a section headed \"$1\" in the instructions, memory or CLAUDE.md files loaded in this session?"
+}
+
+pbh_probe_answer() {
+  node -e '
+const fs = require("fs");
+let raw = "", t = null;
+try { raw = fs.readFileSync(process.argv[1], "utf8"); } catch (e) {}
+for (const l of raw.split("\n")) {
+  let o; try { o = JSON.parse(l); } catch (e) { continue; }
+  if (o && o.type === "result" && typeof o.result === "string") t = o.result;
+}
+if (t === null) t = raw;
+const m = /^[^A-Za-z]*(yes|no)\b/i.exec(t);
+process.stdout.write(m ? m[1].toUpperCase() : "UNKNOWN");' "$1" 2>/dev/null || printf 'UNKNOWN'
 }
