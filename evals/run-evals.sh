@@ -47,7 +47,7 @@ set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 
-AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30"
+AUTO="E1 E3 E4 E5 E8 E10 E11 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -929,6 +929,42 @@ grade_E30() {
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   record MANUAL "the description reads naturally and adds no fact the commit does not show (the commit is the first one after ${E30_BASE:0:7})"
 }
+# E31 (release notes with a humanizer skill available), v0.25.1: the playbook asks once whether to run humanizer on text others will read, in an interactive run only
+# (headless: no question). h31_count -> the number of questions that mention humanizer, or na when the log is not stream-json: the larger of the AskUserQuestion
+# tool calls whose input names humanizer and the lines of the final reply (outside fenced blocks and > quotes) that hold a "?" and the word, any case, so a question
+# asked by tool and restated in the reply is one question.
+h31_count() {
+  node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+let j=false,n=0,res="";
+for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
+if(o.type==="result"&&typeof o.result==="string")res=o.result;
+const bl=o.message&&Array.isArray(o.message.content)?o.message.content:(o.type==="tool_use"?[o]:[]);
+for(const b of bl)if(b&&b.type==="tool_use"&&b.name==="AskUserQuestion"&&/humanizer/i.test(JSON.stringify(b.input||{})))n++}
+if(!j){process.stdout.write("na");process.exit(0)}
+let f=false,p=0;for(const l of res.split(/\r?\n/)){if(/^\s*(```|~~~)/.test(l)){f=!f;continue}if(f||/^\s*>/.test(l))continue;if(/humanizer/i.test(l)&&l.indexOf("?")>=0)p++}
+process.stdout.write(String(Math.max(n,p)))' "$LOG" 2>/dev/null || printf na
+}
+# write_stub31 DIR: the fixture skill (not the real humanizer text): a name and a one-line description
+write_stub31() {
+  mkdir -p "$1" && printf '%s\n' '---' 'name: humanizer' 'description: Rewrite AI-sounding text so it reads like the writer' '---' '' 'Stub skill of eval E31: rewrite the given text so it reads like the writer.' > "$1/SKILL.md"
+}
+grade_E31() {
+  local n
+  n="$(h31_count)"
+  if [ "$INTERACTIVE" != 1 ]; then
+    record MANUAL "at least one question to the user mentions humanizer (needs --interactive; a headless run asks nothing)"
+    record MANUAL "at most one question mentions humanizer (needs --interactive)"
+  elif [ "$n" = na ]; then
+    record MANUAL "at least one question to the user mentions humanizer (no tool data: the log is not stream-json)"
+    record MANUAL "at most one question mentions humanizer (no tool data: the log is not stream-json)"
+  else
+    if [ "$n" -ge 1 ]; then record PASS "at least one question to the user mentions humanizer (asked=$n)"
+    else record FAIL "at least one question to the user mentions humanizer (asked=$n)"; fi
+    if [ "$n" -le 1 ]; then record PASS "at most one question mentions humanizer (asked=$n)"
+    else record FAIL "at most one question mentions humanizer (asked=$n)"; fi
+  fi
+  record MANUAL "the release notes follow the writing guide (skills/playbook-proof/references/writing.md; the commit is the first one after ${E31_BASE:0:7})"
+}
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
@@ -1019,8 +1055,13 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
       "test('add rejects NaN', () => { assert.throws(() => add(2, NaN)); });" > "$WD/tests/nan.test.js" &&
       fx add tests/nan.test.js && fx commit -qm "add rejects NaN" || pb_die "cannot write the E28 nan.test.js" 3
   fi
-  if [ "$E" = E30 ]; then   # a last commit to describe: an exported clamp(x, lo, hi) and its test (E30_BASE is the fixture HEAD before it)
+  if [ "$E" = E31 ]; then   # a stub humanizer skill at project level (committed first, so the last commit is the clamp one)
+    write_stub31 "$WD/.claude/skills/humanizer" && fx add .claude/skills/humanizer/SKILL.md && fx commit -qm "stub humanizer skill" ||
+      pb_die "cannot write the E31 stub skill" 3
+  fi
+  if [ "$E" = E30 ] || [ "$E" = E31 ]; then   # a last commit to describe: an exported clamp(x, lo, hi) and its test (E30_BASE is the fixture HEAD before it; E31 the same)
     E30_BASE="$(git -C "$WD" rev-parse HEAD)"
+    if [ "$E" = E31 ]; then E31_BASE="$E30_BASE"; fi
     printf '%s\n' 'function clamp(x, lo, hi) { return Math.min(Math.max(x, lo), hi); }' 'module.exports.clamp = clamp;' >> "$WD/src/calc.js" &&
       printf "%s\n" "const test = require('node:test');" "const assert = require('node:assert');" \
         "const { clamp } = require('../src/calc');" \
@@ -1042,6 +1083,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
     CUR_HOME="$SC_HOME"
     mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME/.agents" 3
   fi
+  if [ "$E" = E31 ] && [ -n "$SC_HOME" ]; then write_stub31 "$SC_HOME/.claude/skills/humanizer" || pb_die "cannot write the E31 stub skill home" 3; fi
   # v0.24.7: and its own TMPDIR, so the agent's `mktemp -d` leftovers do not land in the runner's TMPDIR (--real-home: no)
   SC_TMP=""; TMPNOTE=""
   if [ "$REAL_HOME" = 0 ]; then
