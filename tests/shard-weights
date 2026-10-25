@@ -4,7 +4,7 @@
 # (role-gate-size, role-gate-scope, tdd-step-scope, role-gate-batch, content, skill-rules, evals-grade7c, evals-grade8,
 # 8b, 8c, 8d, 9, 9b) come from run 39931483719 (v0.24.29) alone.
 # test-evals-grade10.sh, test-evals-grade10b.sh, test-pre-commit.sh and test-scope-classify.sh (estimates until v0.25.0)
-# come from run 40174690191 (v0.25.0) alone.
+# come from run 40174690191 (v0.25.0) alone. test-clean-pbtest.sh (v0.25.1) is an estimate (2 s) until a CI run measures it.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -111,3 +111,4 @@ test-lib-tmp.sh 1
 test-scope-classify.sh 164
 test-evals-grade10.sh 163
 test-evals-grade10b.sh 207
+test-clean-pbtest.sh 2
