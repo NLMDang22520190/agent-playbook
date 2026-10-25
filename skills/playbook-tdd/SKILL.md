@@ -212,11 +212,11 @@ Release speed rules (review-round cap, introduced vs pre-existing findings, per-
   the result could still be wrong, each with the command run to check it and its outcome).
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
-- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight how many
-  review majors and rework rounds the tasks had; advice only, it changes no setting.
+- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight the
+  review majors and rework rounds per task; advice only.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
-- Do not push or open a PR unless `autonomy=full` or the user asked.
+- Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
 
 ## When the user says it is wrong
 Do not defend the result and do not patch at once.
