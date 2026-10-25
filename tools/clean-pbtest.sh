@@ -19,7 +19,7 @@ hours=24; yes=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes) yes=1 ;;
-    --help|-h) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; echo "usage: tools/clean-pbtest.sh [--hours N] [--yes]"; exit 0 ;;
+    --help|-h) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; echo "usage: tools/clean-pbtest.sh [--hours N] [--yes]"; exit 0 ;;
     --hours)
       [ $# -ge 2 ] || { echo "clean-pbtest: --hours needs a value" >&2; usage; }
       shift; hours="$1" ;;
