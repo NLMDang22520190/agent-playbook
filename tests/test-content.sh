@@ -2073,4 +2073,9 @@ if printf '%s' "$S4_TXT" | grep -qi 'humanizer'; then t_ok "v0.25.0 fix1 F7 step
 if printf '%s' "$S4_TXT" | grep -qiE '(then|afterwards?|after (the|that)|later|follow-?up)[^.]{0,60}humanizer'; then t_bad "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch" "step 4 [$S4_TXT]"; else t_ok "v0.25.0 fix1 F7 no sentence asks the humanizer question after the batch"; fi
 if printf '%s' "$S4_TXT" | grep -qiE 'humanizer.{0,200}(batch|same message|single message)|(batch|same message|single message).{0,200}humanizer'; then t_ok "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message"; else t_bad "v0.25.0 fix1 F7 the humanizer suggestion goes into the same batched message" "step 4 [$S4_TXT]"; fi
 
+
+echo "v0.25.1 lane S: step 4 cap of 8 questions and the humanizer line are consistent"
+S4_ALL="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_ALL" | grep -qiE 'humanizer[^.;]{0,80}(extra|optional line|not count|on top)|(plus|besides|beyond|on top of)[^.;]{0,60}humanizer'; then t_ok "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap"; else t_bad "v0.25.1 S step 4 states the humanizer line is an extra on top of the 8-question cap" "step 4 [$S4_TXT]"; fi
+
 t_summary
