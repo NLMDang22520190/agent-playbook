@@ -55,7 +55,7 @@ if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1
   fx_setup "$TP/t-py/setup.sh" "printf '%s\n' 'def add(a, b):' '    return a - b' '' 'def mul(a, b):' '    return a * b' > m.py"
   for pf in "test_add.py:self.assertEqual(add(2, 3), 5)" "test_mul.py:self.assertEqual(mul(2, 3), 6)"; do
     printf '# %s:t-py\nimport os\nimport unittest\nwith open(%s, "a") as f:\n    f.write(os.getcwd() + "\\n")\nfrom m import add, mul\n\n\nclass T(unittest.TestCase):\n    def test_it(self):\n        %s\n' \
-      "$CAN" "'$GR/t-py.${pf%%:*}'" "${pf#*:}" > "$TP/t-py/hidden/tests/${pf%%:*}"
+      "$CAN" "'$GRN/t-py.${pf%%:*}'" "${pf#*:}" > "$TP/t-py/hidden/tests/${pf%%:*}"
   done
   ro --tasks-dir "$TP" --cmd "bash $SA/pysolve.sh" --tasks t-py
   assert_rc "fix5 a real python fix still passes (the hidden tests can import the repo's module) -> exit 0" 0

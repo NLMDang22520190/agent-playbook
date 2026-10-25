@@ -18,6 +18,9 @@ ISO='without arm: no playbook file read and no playbook Skill call'
 T="$(mk_tmp)"    # fixture tasks dir
 TB="$(mk_tmp)"   # tasks dir with a task whose setup fails
 GR="$(mk_tmp)"   # where hidden tests record the dir they ran in
+# GRN: $GR as a native program reads it from a file (node/python sources). Git Bash converts /tmp paths only in
+# arguments and env, never in file contents, so on Windows use the mixed C:/... form; elsewhere GRN = GR.
+GRN="$GR"; if command -v cygpath >/dev/null 2>&1; then GRN="$(cygpath -m "$GR")"; fi
 SA="$(mk_tmp)"   # stub adapters
 SR="$(mk_tmp)"   # what the stubs recorded: $SR/<label>.<what>
 FS="$(mk_tmp)"   # scratch: base repos for the patches
@@ -54,7 +57,7 @@ h_bash() { # ID FILE SCRIPT ASSERTION
 }
 h_node() { # ID FILE ASSERTION
   printf "// %s:%s\nrequire('fs').appendFileSync(%s, process.cwd() + '\\\\n');\nconst test = require('node:test');\nconst assert = require('node:assert/strict');\nconst m = require('../src/m');\ntest('t', () => { %s; });\n" \
-    "$CAN" "$1" "'$GR/$1.${2##*/}'" "$3" > "$T/$1/hidden/$2"
+    "$CAN" "$1" "'$GRN/$1.${2##*/}'" "$3" > "$T/$1/hidden/$2"
 }
 
 fx_task "$T" t-add bash tests/add.f2p.sh tests/mul.p2p.sh \
