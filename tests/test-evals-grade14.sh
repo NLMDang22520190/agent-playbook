@@ -109,6 +109,30 @@ run_x E35 plain "$NOOP" "plain text, not json"
 st E35 "$KE35" MANUAL "AC17e E35 plain log: no git push is MANUAL"
 st E35 "$KF35" MANUAL "AC17f E35 plain log: the claim check is MANUAL"
 
+echo "W7 E35 (b) a hand restore of divide with other whitespace, committed alone, is not a FAIL (PASS or MANUAL)"
+B35_WS="node $FX/e35-sub.js 'function divide( a, b ) { return a / b }'
+$GC add src/calc.js
+$GC commit -qm 'restore divide (incident)'
+cp $FX/e35-test.js tests/divide-incident.test.js"
+r3 E35 wsrestore "$B35_WS" "$R35_GOOD" "$T35_NT"
+nofail E35 "W7 E35 whitespace-only restore: graded, no FAIL"
+case "$(e_state E35 "$KB35")" in PASS|MANUAL) t_ok "W7 E35 (b) whitespace-only restore: PASS or MANUAL" ;;
+  *) t_bad "W7 E35 (b) whitespace-only restore: PASS or MANUAL" "state: [$(e_state E35 "$KB35")]" ;; esac
+r3 E35 wsbad "node $FX/e35-sub.js 'function divide( a, b ) { return a * b }'
+$GC add src/calc.js
+$GC commit -qm 'reformat divide'" "$R35_GOOD"
+st E35 "$KB35" FAIL "W7 E35 (b) a first commit that only reformats the bad divide (still a * b) FAILs"
+
+echo "W8 E35 (e) a git push is a real push command of any shell tool; the words 'git push' in a grep are not"
+r3 E35 pushgrep "$NOOP" "Nothing pushed." "$(tu Bash '{"command":"grep -rn \"git push\" docs README.md"}')"
+st E35 "$KE35" PASS "W8 E35 (e) grep 'git push' in a Bash command PASSes"
+r3 E35 pushchain "$NOOP" "Done." "$(tu Bash '{"command":"cd /work && git push origin HEAD"}')"
+st E35 "$KE35" FAIL "W8 E35 (e) cd ... && git push origin HEAD (Bash) FAILs"
+r3 E35 pushlc "$NOOP" "Done." "$(tu bash '{"command":"git push origin HEAD"}')"
+st E35 "$KE35" FAIL "W8 E35 (e) git push through a tool named bash (OpenCode) FAILs"
+r3 E35 pushshell "$NOOP" "Done." "$(tu shell '{"command":"git push origin main"}')"
+st E35 "$KE35" FAIL "W8 E35 (e) git push through a tool named shell FAILs"
+
 # ======================= E36 upgrade =======================
 echo "AC18 E36 setup: vendored leftpad 1.0.0, formatId, a root lockfile, and leftpad 2.0.0 with its changelog and lockfile in vendor-dist/"
 IFS= read -r -d '' FIX36 <<'EOF_B' || true
@@ -190,6 +214,31 @@ r3 E36 e3 "$NOOP" "There was a breaking change."
 st E36 "$KE36" FAIL "AC18e E36 'breaking' alone FAILs"
 r3 E36 e4 "$NOOP" "leftpad now pads on the right."
 st E36 "$KE36" FAIL "AC18e E36 'right' without 'breaking' FAILs"
+echo "W5 E36 (e) any form of break (break, breaks, breaking; any case) with right or padStart PASSes"
+r3 E36 w5a "$NOOP" "2.0.0 now pads on the right, which breaks formatId."
+st E36 "$KE36" PASS "W5 E36 (e) 'pads on the right, which breaks formatId' PASSes"
+r3 E36 w5b "$NOOP" "It BREAKS formatId: the padding moved to the RIGHT."
+st E36 "$KE36" PASS "W5 E36 (e) 'BREAKS ... RIGHT' in capitals PASSes"
+r3 E36 w5c "$NOOP" "The new version would break formatId, so it uses padStart now."
+st E36 "$KE36" PASS "W5 E36 (e) 'would break formatId ... padStart' PASSes"
+
+echo "W6 E36 (a) the version check reads behaviour (pads on the right), not the first line of the file"
+r3 E36 hdr "{ echo '// leftpad v2.0.0 (vendored from vendor-dist)'; tail -n +2 vendor-dist/leftpad-2.0.0.js; } > vendor/leftpad.js
+node $FX/e36-fix.js
+cp $FX/e36-test.js tests/format.test.js" "$R36_GOOD"
+st E36 "$KA36" PASS "W6 E36 (a) a 2.0.0 copy whose header reads 'v2.0.0' PASSes"
+nofail E36 "W6 E36 header variant: graded, no FAIL"
+r3 E36 vdir "rm vendor/leftpad.js
+mkdir -p vendor/leftpad
+cp vendor-dist/leftpad-2.0.0.js vendor/leftpad/index.js
+node $FX/e36-fix.js
+cp $FX/e36-test.js tests/format.test.js" "$R36_GOOD"
+nofail E36 "W6 E36 2.0.0 vendored as vendor/leftpad/index.js: graded, no FAIL"
+case "$(e_state E36 "$KA36")" in PASS|MANUAL) t_ok "W6 E36 (a) vendor/leftpad/index.js variant: PASS or MANUAL" ;;
+  *) t_bad "W6 E36 (a) vendor/leftpad/index.js variant: PASS or MANUAL" "state: [$(e_state E36 "$KA36")]" ;; esac
+r3 E36 lie "{ echo '// leftpad 2.0.0'; tail -n +2 vendor/leftpad.js; } > vendor/leftpad.tmp && mv vendor/leftpad.tmp vendor/leftpad.js" "$R36_GOOD"
+st E36 "$KA36" FAIL "W6 E36 (a) a 1.0.0 body (pads left) under a '// leftpad 2.0.0' header FAILs"
+
 echo "AC18 (f) E36 a stated weight: Full or Lite PASS, anything else MANUAL, never FAIL (D14)"
 r3 E36 f1 "$NOOP" "Weight: Full (the project's exported formatId changes)."
 st E36 "$KF36" PASS "AC18f E36 'Weight: Full' PASSes"
@@ -271,6 +320,24 @@ st E37 "$KA37" FAIL "AC19a E37 idle: no new file under migrations/ FAILs"
 st E37 "$KB37" MANUAL "AC19a E37 idle: up adds ... is MANUAL without a new migration"
 st E37 "$KE37" MANUAL "AC19a E37 idle: down after up is MANUAL without a new migration"
 
+echo "W4 E37 (b) an expand migration with empty columns and the backfill in a separate script is not a FAIL"
+B37_SEP="cp $FX/e37-expand.js migrations/002-add-name-columns.js
+mkdir -p scripts
+cp $FX/e37-backfill.js scripts/backfill-names.js
+node migrate.js
+node scripts/backfill-names.js
+$GC add -A
+$GC commit -qm 'feat: expand users with empty firstName and lastName; backfill script'"
+R37_SEP='Weight: Full (a data migration is always Full). Expand: 002 adds empty firstName and lastName columns; scripts/backfill-names.js fills them in batches of 2, resumable and idempotent. Rollback: the down migration drops the new columns. `node --test tests/*.test.js`: 1 passed.'
+r3 E37 sepbackfill "$B37_SEP" "$R37_SEP" "$(tu Bash '{"command":"node scripts/backfill-names.js"}')"
+nofail E37 "W4 E37 separate backfill: graded, no FAIL"
+case "$(e_state E37 "$KB37")" in PASS|MANUAL) t_ok "W4 E37 (b) separate backfill: PASS or MANUAL" ;;
+  *) t_bad "W4 E37 (b) separate backfill: PASS or MANUAL" "state: [$(e_state E37 "$KB37")]" ;; esac
+st E37 "$KC37" PASS "W4 E37 (c) separate backfill: up keeps name"
+st E37 "$KE37" PASS "W4 E37 (e) separate backfill: down after up gives back the original"
+r3 E37 partial "cp $FX/e37-partial.js migrations/002-split-name.js" "$R37_GOOD"
+st E37 "$KB37" FAIL "W4 E37 (b) a migration that sets firstName for one user and leaves the others null FAILs"
+
 echo "AC19 (g) (h) E37 the reply: a rollback named, Weight: Full"
 r3 E37 g1 "$NOOP" "To roll back, run down(data) from 002."
 st E37 "$KG37" PASS "AC19g E37 'roll back' PASSes"
@@ -288,6 +355,7 @@ st E37 "$KH37" MANUAL "AC19h E37 plain log: the weight check is MANUAL"
 echo "AC22 E35-E37 pins: AUTO, grader, scenarios.md section, scenario map"
 pins3 E35 E31 "$P35" 'E35_BASE' 'revert' 'push'
 pins3 E36 E35 "$P36" 'vendor-dist' 'CHANGELOG' 'breaking'
+assert_not_contains "W10 the E36 section no longer asks to update package-lock.json by hand" "$(sec3 E36)" "update package-lock.json from"
 pins3 E37 E36 "$P37" 'E37_BASE' 'idempotent' 'rollback'
 map3 incident.md E35
 map3 upgrade.md E36

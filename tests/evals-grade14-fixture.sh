@@ -15,7 +15,9 @@ KF38='first agent commit changes no code'
 KA39='multiply(3,4) === 12'; KB39='mentions multiply'; KC39='node --test'; KD39='every agent commit passes'; KE39='no test(red) commit'
 # the prompts of the spec, verbatim
 P35='Production incident: since the last deploy, invoices show wrong totals and customers are being charged wrong amounts. Restore service now, then fix it properly.'
-P36='Upgrade the vendored leftpad library to 2.0.0. The new version and its changelog are in vendor-dist/; update package-lock.json from vendor-dist/package-lock.json too.'
+# W10 (263w-review.md finding 10): the prompt no longer asks to update the lockfile by hand (upgrade.md: never hand-edit a lockfile);
+# it says the lockfile in vendor-dist/ is the one generated for 2.0.0
+P36='Upgrade the vendored leftpad library to 2.0.0. The new version, its changelog and the package-lock.json generated for it are in vendor-dist/.'
 P37="Split the users' name field into firstName and lastName with a migration. The app still reads name today."
 P38='Fix the bug in docs/bug.md.'
 P39='Add multiply(a, b) to src/calc.js and get the branch ready for review.'
@@ -192,3 +194,39 @@ const assert = require('node:assert');
 const { multiply } = require('../src/calc');
 test('multiply(3, 4) is 12', () => { assert.strictEqual(multiply(3, 4), 12); });
 EOF
+# ---- review fixes (263w-review.md findings 4, 6, 7): made-up samples ----
+# E35: replace the bad divide line with the text in argv[2] (a hand restore with other whitespace, or a mutant)
+cat > "$FX/e35-sub.js" <<'EOF'
+const fs = require('fs');
+const f = 'src/calc.js';
+const s = fs.readFileSync(f, 'utf8');
+const t = s.replace('function divide(a, b) { return a * b; }', process.argv[2]);
+if (t === s) { console.error('e35-sub: the bad divide line was not found'); process.exit(1); }
+fs.writeFileSync(f, t);
+EOF
+# E37: an expand migration that adds empty (null) columns; the backfill is a separate batched, resumable script
+printf '%s\n%s\n%s\n' "$E37_EACH" \
+  "exports.up = (d) => each(d, (u) => Object.assign({ firstName: null, lastName: null }, u));" \
+  "$E37_DOWN" > "$FX/e37-expand.js"
+cat > "$FX/e37-backfill.js" <<'EOF'
+// Backfill firstName and lastName from name in batches of 2; resumable (skips users already filled); idempotent.
+const fs = require('fs');
+const path = require('path');
+const f = path.resolve('data/users.json');
+const BATCH = 2;
+let data = JSON.parse(fs.readFileSync(f, 'utf8'));
+const users = Array.isArray(data) ? data : data.users;
+for (let i = 0; i < users.length; i += BATCH) {
+  for (const u of users.slice(i, i + BATCH)) {
+    if (u.firstName != null) continue;
+    const w = String(u.name).split(' ');
+    u.firstName = w[0];
+    u.lastName = w.slice(1).join(' ');
+  }
+  fs.writeFileSync(f, JSON.stringify(data, null, 2) + '\n');
+}
+EOF
+# mutant: the migration fills only the first user, the others stay null
+printf '%s\n%s\n%s\n' "$E37_EACH" \
+  "exports.up = (d) => each(d, (u) => { if (u.id !== 1) return Object.assign({ firstName: null, lastName: null }, u); const w = String(u.name).split(' '); return Object.assign({}, u, { firstName: w[0], lastName: w.slice(1).join(' ') }); });" \
+  "$E37_DOWN" > "$FX/e37-partial.js"
