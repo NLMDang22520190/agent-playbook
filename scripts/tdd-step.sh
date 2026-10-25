@@ -664,7 +664,9 @@ EOF
       LC_ALL=C awk 'NR > 1 { r = substr($0, index($0, "\t") + 1); print substr(r, index(r, "\t") + 1) }' "$baseline" > "$tmpd/blpaths" || pb_die "cannot read the baseline manifest" 3
       while IFS= read -r nl; do recorded+="$nl$NL"; done < "$tmpd/blpaths"
     fi
-    printf '%s\n' "${cand[@]}" | pb_scope_classify > "$tmpd/ccls" || pb_die "cannot classify the changed paths" 3
+    # from a file, not a pipeline member: bash 3.2 turns a group INT during a pipeline-member function into a plain failure (exit 3)
+    printf '%s\n' "${cand[@]}" > "$tmpd/cpaths" || pb_die "cannot classify the changed paths" 3
+    pb_scope_classify < "$tmpd/cpaths" > "$tmpd/ccls" || pb_die "cannot classify the changed paths" 3
     ci=0
     while IFS= read -r c; do
       p="${cand[ci]}"
