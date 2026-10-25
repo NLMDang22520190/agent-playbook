@@ -36,6 +36,16 @@ unless the hidden file is meant to replace one.
 5. Run `bash tests/test-outcome-corpus.sh` (with `PB_CORPUS_DENYLIST=word1,word2` set locally to check for private
    names) and `scripts/leak-check.sh scan` over the new files before committing.
 
+## Running the tasks
+
+`evals/run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks id1,id2]` runs an agent on each
+task with the flags of `evals/run-evals.sh` (`--model`, `--arm`, `--repeat`, `--max-cost`, `--timeout`) and the same
+isolation (a temp `PLAYBOOK_HOME` and `TMPDIR` per run). The hidden tests never enter the workroot: they are copied over
+a private copy of the workdir after the agent exits, and a transcript that shows the canary makes the run
+CONTAMINATED (not passed). It writes a markdown file with pass@1 and pass^K per arm and per task, and a `pb-evals/1`
+JSON file that `tools/eval-delta.sh` reads. Each run costs real money with a real harness; the header of the script
+has the details.
+
 ## Process
 
 From v0.26.0 on, every real bug met while using the playbook is added here as a synthetic task (same failure pattern,
