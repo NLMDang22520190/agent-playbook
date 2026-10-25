@@ -1621,7 +1621,34 @@ RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { e
 qchk "v24.24 AC2 RUBRIC.md lists E27 as auto-gradable" "$RUBTXT" 'E27[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md lists E28 as auto-gradable" "$RUBTXT" 'E28[^.]{0,200}auto-gradable'
 qchk "v24.24 AC2 RUBRIC.md states that a single prompt only approximates pushback" "$(tr '\n' ' ' < "$PB_ROOT/evals/RUBRIC.md")" 'single prompt[^.]{0,120}approximat|approximat[^.]{0,120}pushback'
-qchk "v25 AC3 README names scenarios (E1–E31)" "$(tr '\n' ' ' < "$PB_ROOT/README.md")" 'scenarios\.md \(E1–E31\)'
+# v0.26.0 lane N S8 (AC13, D17): the README scenario counts are derived from the ## E headings of scenarios.md and the AUTO line, never literals
+SCN26="$PB_ROOT/evals/scenarios.md"
+NH26="$(grep -c '^## E[0-9]' "$SCN26")"
+MAX26="$(sed -n 's/^## E\([0-9][0-9]*\) .*/\1/p' "$SCN26" | sort -n | tail -n 1)"
+NAUTO26="$(sed -n 's/^AUTO="\(.*\)"$/\1/p' "$PB_ROOT/evals/run-evals.sh" | head -n 1 | wc -w | tr -d ' ')"
+README26="$(tr '\n' ' ' < "$PB_ROOT/README.md")"
+qchk "v25 AC3 v26 N AC13 README names scenarios.md (E1–E$MAX26) (derived from the ## E headings)" "$README26" "scenarios\.md \(E1–E$MAX26\)"
+qchk "v26 N AC13 README says $NH26 scenarios, E1 to E$MAX26 (derived)" "$README26" "(^|[^0-9])$NH26 scenarios, E1 to E$MAX26([^0-9]|$)"
+qchk "v26 N AC13 README says run-evals.sh runs the $NAUTO26 that have automatic checks (derived from AUTO)" "$README26" "runs the $NAUTO26 that have automatic checks"
+for e in E2 E6 E13 E14 E32 E33 E34; do
+  qchk "v26 N AC12 RUBRIC.md lists $e as auto-gradable" "$RUBTXT" "$e[^0-9][^.]{0,250}auto-gradable"
+done
+echo "v0.26.0 lane N S8 AC13 (Q2): the harness badge and the Behaviour evals row say Codex and OpenCode are installable, not evaluated"
+BADGE26="$(grep -o 'img\.shields\.io/badge/harness-[^)]*' "$PB_ROOT/README.md" | head -n 1)"
+qchk "v26 N AC13 the harness badge says Claude Code is evaluated" "$BADGE26" 'Claude_Code[_ (:%0-9a-f]{0,12}evaluated'
+qchk "v26 N AC13 the harness badge says Codex is install only or not evaluated" "$BADGE26" 'Codex[^)]{0,80}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
+qchk "v26 N AC13 the harness badge says OpenCode is install only or not evaluated" "$BADGE26" 'OpenCode[^)]{0,60}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
+assert_not_contains "v26 N AC13 the old harness badge text is gone" "$BADGE26" "harness-Claude_Code_·_Codex_·_OpenCode-"
+ROW26="$(grep '^| Behaviour evals |' "$PB_ROOT/README.md" | head -n 1)"
+qchk "v26 N AC13 the Behaviour evals row says Codex and OpenCode are installable, not evaluated" "$ROW26" 'Codex and OpenCode[^|]{0,40}installable[^|]{0,20}not evaluated'
+qchk "v26 N AC13 the Behaviour evals row keeps Claude Code as the only evaluated harness" "$ROW26" 'Claude Code[^|;]{0,40}only'
+assert_not_contains "v26 N AC13 the Behaviour evals row no longer says not run yet" "$ROW26" "not run yet"
+echo "v0.26.0 lane N S8 AC14 (D10): the scenario map names the new auto-graded scenarios"
+AGMAP26="$(grep -E '^AGENTS\.global\.md ' "$PB_ROOT/evals/scenario-map")"
+for e in E2 E13 E33 E34; do qchk "v26 N AC14 $e is in the scenario-map line of AGENTS.global.md" "$AGMAP26" "(^| )$e( |$)"; done
+qchk "v26 N AC14 E6 is in the scenario-map line of skills/playbook-proof/*" "$(grep -E '^skills/playbook-proof/\* ' "$PB_ROOT/evals/scenario-map")" '(^| )E6( |$)'
+qchk "v26 N AC14 E14 is in the scenario-map line of skills/playbook-tdd/*" "$(grep -E '^skills/playbook-tdd/\* ' "$PB_ROOT/evals/scenario-map")" '(^| )E14( |$)'
+qchk "v26 N AC14 E32 is in the scenario-map line of skills/playbook-tdd/roles/*" "$(grep -E '^skills/playbook-tdd/roles/\* ' "$PB_ROOT/evals/scenario-map")" '(^| )E32( |$)'
 RUNEV="$PB_ROOT/evals/run-evals.sh"
 if grep -q 'nan\.test\.js' "$RUNEV"; then t_ok "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js"; else t_bad "v24.24 AC2 run-evals.sh has a setup that writes tests/nan.test.js" "no nan.test.js in run-evals.sh"; fi
 qchk "v24.24 AC2 the E28 setup names the test title add rejects NaN" "$(grep -F 'add rejects NaN' "$RUNEV" | head -n 1)" 'add rejects NaN'

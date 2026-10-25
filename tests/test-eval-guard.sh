@@ -34,6 +34,10 @@ assert_eq "AC2.1 every scenario named in the map is in run-evals.sh's AUTO list 
 if [ "$NMAPPED" -gt 0 ]; then t_ok "AC2.1 the map names at least one scenario"; else t_bad "AC2.1 the map names at least one scenario" "empty or missing map"; fi
 assert_contains "AC2.1 the map covers AGENTS.global.md" "$(cat "$MAP" 2>/dev/null)" "AGENTS.global.md"
 assert_contains "AC2.1 the map covers skill files" "$(cat "$MAP" 2>/dev/null)" "skills/"
+MAPIDS="$(grep -v '^#' "$MAP" 2>/dev/null | cut -d' ' -f2- | tr '\n' ' ')"
+for sc in E2 E6 E13 E14 E32 E33 E34; do   # v0.26.0 lane N AC14: mapped, so a wording change prints them (and AUTO membership is checked above)
+  case " $MAPIDS " in *" $sc "*) t_ok "v26 N AC14 the real map names $sc" ;; *) t_bad "v26 N AC14 the real map names $sc" "ids: $MAPIDS" ;; esac
+done
 
 echo "AC2.2 the tool exists"
 assert_file "AC2.2 tools/eval-guard.sh exists" "$GUARD"
