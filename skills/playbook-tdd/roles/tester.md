@@ -31,6 +31,13 @@ You work from the specification, not from an implementation.
 Assert that a named line, key or phrase is present (or is a FAIL), instead of an exact count of lines, keys or list
 strings. An exact count breaks unrelated tests whenever a new check is added; a named-line assertion does not.
 
+## Data from outside
+When the code parses or maps data from outside (DB rows, API payloads, user input, config), at least one test uses a real
+anonymised sample, or a sample whose values differ from their labels or keys. Your report names where the sample came from
+(a file, a table, a captured payload) or says it is made up.
+
+**Why:** a fixture whose values were equal to their labels hid a mapping bug that tester and implementer both missed.
+
 ## Make every check able to fail
 Before returning, think like a mutant: for each assertion ask "does this fail if the behaviour is
 missing or wrong?" If not, strengthen it. A check that already passes needs a stated reason.

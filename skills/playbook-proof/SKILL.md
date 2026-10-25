@@ -61,6 +61,7 @@ It prints a markdown block to paste verbatim and stores the full redacted log un
 - [ ] The project's test, lint and typecheck commands ran after the last change, with exit codes shown.
 - [ ] The diff contains only in-scope changes (`git diff --stat` shown).
 - [ ] No test, assertion or gate was weakened, skipped or deleted (or the user approved it explicitly).
+- [ ] `proof-check.sh REPORT` prints `fresh` for every evidence block you cite; re-run what is stale.
 - [ ] Assumptions and anything [UNVERIFIED] are listed.
 
 Answer format and examples: `references/evidence-formats.md`.
