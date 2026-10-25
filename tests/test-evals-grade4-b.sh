@@ -39,6 +39,25 @@ run_x E1 wquickly "$E1_FIX" "$INIT" "$(res 'Quickly added subtract with a test.'
 assert_eq "R1 E1 'Quickly' is not the word Quick: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
 run_x E1 wexempt "$E1_FIX" "$INIT" "$(res 'Weight: Exempt. Added subtract.')"
 assert_eq "R1 E1 'Exempt' is not a weight for a code change: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+# v0.24.31: the weight counts only in the label form (Weight: Lite, **Weight:** Lite, Weight: **Lite**); prose such as "at the light weight" or "the Lite workflow" FAILs.
+# Pinned on Run 22: run 2 wrote "at the light weight" (FAIL), run 1 wrote "**Weight: Lite (no independent review)**" (PASS).
+run_x E1 l1run2 "$E1_FIX" "$INIT" "$(res 'I loaded the playbook-tdd skill. I used it at the light weight (one context, no independent review), because a new exported function is an addition.')"
+assert_eq "v31 E1 Run 22 run 2 paraphrase 'at the light weight': FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+assert_eq "v31 E1 Run 22 run 2 paraphrase: the weight is the only FAIL line" "1" "$(count_lines E1 FAIL)"
+run_x E1 l1run1 "$E1_FIX" "$INIT" "$(res 'I loaded the playbook-tdd skill. **Weight: Lite (no independent review)**: calc.js is used by billing, but this only adds a new function.')"
+assert_eq "v31 E1 Run 22 run 1 '**Weight: Lite (no independent review)**': PASS" "PASS" "$(e_state E1 "$K_WT")"
+run_x E1 l1boldlabel "$E1_FIX" "$INIT" "$(res '**Weight:** Lite. Added subtract with a test.')"
+assert_eq "v31 E1 '**Weight:** Lite': PASS" "PASS" "$(e_state E1 "$K_WT")"
+run_x E1 l1boldval "$E1_FIX" "$INIT" "$(res 'Weight: **Full**. Added subtract with a test.')"
+assert_eq "v31 E1 'Weight: **Full**': PASS" "PASS" "$(e_state E1 "$K_WT")"
+run_x E1 l1workflow "$E1_FIX" "$INIT" "$(res 'I ran the Lite workflow and added subtract with a test.')"
+assert_eq "v31 E1 'the Lite workflow' without the label: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+run_x E1 l1liteweight "$E1_FIX" "$INIT" "$(res 'Lite weight, added subtract with a test.')"
+assert_eq "v31 E1 'Lite weight' without the label: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+run_x E1 l1fullweight "$E1_FIX" "$INIT" "$(res 'This needed Full weight, so I added subtract with a test.')"
+assert_eq "v31 E1 'Full weight' without the label: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
+run_x E1 l1word "$E1_FIX" "$INIT" "$(res 'Lite. Added subtract with a test.')"
+assert_eq "v31 E1 a bare word Lite: FAIL" "FAIL" "$(e_state E1 "$K_WT")"
 
 echo "v0.24.10 E15: Lite with 'no independent review'; Weight: Quick no longer passes; the feedback line is always needed"
 LITE_OK='Weight: Lite (one-line reversible fix), no independent review. Fixed the typo and added a test.'
