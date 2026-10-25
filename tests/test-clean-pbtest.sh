@@ -18,11 +18,14 @@ mkbase() {
   touch "$B/pbtest.old1/f" "$B/pbtest.old2/f"
   : > "$B/pblist.old"; : > "$B/pblist.fresh"; : > "$B/notes.old"
   mkdir "$B/elsewhere"; touch "$B/elsewhere/keep"
-  ln -s "$B/elsewhere" "$B/pbtest.link"
+  # Git Bash without symlink rights makes ln -s a copy (a real dir): probe it, drop the copy, and skip the symlink rows
+  ln -s "$B/elsewhere" "$B/pbtest.link" 2>/dev/null
+  if [ -L "$B/pbtest.link" ]; then SYML=1; else SYML=0; rm -rf "$B/pbtest.link"; fi
   # a pbtest.* regular file and a pblist.* dir are not candidates either
   : > "$B/pbtest.afile"; mkdir "$B/pblist.adir"
   age "$B/pbtest.old1/f" "$B/pbtest.old2/f" "$B/pbtest.old1" "$B/pbtest.old2" "$B/pblist.old" "$B/other.old" "$B/pbtestx.old" "$B/notes.old" "$B/pbtest.afile" "$B/pblist.adir" "$B/elsewhere/keep" "$B/elsewhere"
-  touch -h -t "$OLD" "$B/pbtest.link" 2>/dev/null || true
+  [ "$SYML" = 1 ] && { touch -h -t "$OLD" "$B/pbtest.link" 2>/dev/null || true; }
+  BP="$(cd "$B" && pwd -P)"   # the tool prints physical paths (Git Bash: /c/Users/.../Temp, not /tmp)
 }
 tool() { run env TMPDIR="$B" bash "$TOOL" "$@"; }
 
@@ -30,14 +33,15 @@ echo "AC1 dry run"
 mkbase
 tool
 assert_rc "AC1 dry run exits 0" 0
-assert_contains "AC1 lists the old dir" "$OUT" "$B/pbtest.old1"
-assert_contains "AC1 lists the second old dir" "$OUT" "$B/pbtest.old2"
-assert_contains "AC1 lists the old list file" "$OUT" "$B/pblist.old"
+assert_contains "AC1 lists the old dir" "$OUT" "$BP/pbtest.old1"
+assert_contains "AC1 lists the second old dir" "$OUT" "$BP/pbtest.old2"
+assert_contains "AC1 lists the old list file" "$OUT" "$BP/pblist.old"
 assert_not_contains "AC1 does not list the fresh dir" "$OUT" "pbtest.fresh"
 assert_not_contains "AC1 does not list the fresh list file" "$OUT" "pblist.fresh"
 assert_not_contains "AC1 does not list other names" "$OUT" "other.old"
 assert_not_contains "AC1 does not list pbtestx.*" "$OUT" "pbtestx.old"
-assert_not_contains "AC1 does not list a symlink named pbtest.*" "$OUT" "pbtest.link"
+if [ "$SYML" = 1 ]; then assert_not_contains "AC1 does not list a symlink named pbtest.*" "$OUT" "pbtest.link"
+else t_skip 1 "AC1 symlink row: ln -s makes a copy here (no symlink rights)"; fi
 assert_not_contains "AC1 does not list a pbtest.* regular file" "$OUT" "pbtest.afile"
 assert_not_contains "AC1 does not list a pblist.* dir" "$OUT" "pblist.adir"
 assert_contains "AC1 prints the count" "$OUT" "3 stale"
@@ -58,7 +62,8 @@ assert_dir "AC2 pbtestx.* kept" "$B/pbtestx.old"
 assert_file "AC2 notes.old kept" "$B/notes.old"
 assert_file "AC2 pbtest.* regular file kept" "$B/pbtest.afile"
 assert_dir "AC2 pblist.* dir kept" "$B/pblist.adir"
-assert_link_to "AC2 the symlink named pbtest.link is kept, not followed" "$B/pbtest.link" "$B/elsewhere"
+if [ "$SYML" = 1 ]; then assert_link_to "AC2 the symlink named pbtest.link is kept, not followed" "$B/pbtest.link" "$B/elsewhere"
+else t_skip 1 "AC2 symlink row: ln -s makes a copy here (no symlink rights)"; fi
 assert_file "AC2 the symlink target content is kept" "$B/elsewhere/keep"
 assert_contains "AC2 reports the removal" "$OUT" "removed 3"
 tool --yes
