@@ -2080,8 +2080,8 @@ ask_has "v0.25.0 AC9 the appended text says headless: no question" 'headless[^.;
 
 echo "v0.25.0 lane H (S2): AC9b the always-on budget is 730 words in evals/word-budgets"
 AGW_B="$(budget_of AGENTS.global.md)"
-# lane C S4 EDITED (B3): the always-on budget falls to the Part B count rounded up to 10 (planned 589 -> 590, D14)
-if [ -n "$AGW_B" ] && [ "$AGW_B" -le 590 ]; then t_ok "lane C B3 evals/word-budgets gives AGENTS.global.md at most 590 ($AGW_B)"; else t_bad "lane C B3 evals/word-budgets gives AGENTS.global.md at most 590" "budget [$AGW_B]"; fi
+# lane C S4 EDITED (B3): the always-on budget falls to the Part B count rounded up to 10 (planned 589 -> 590, D14); review fix: 630, the ceiling test-block-slim pins
+if [ -n "$AGW_B" ] && [ "$AGW_B" -le 630 ]; then t_ok "lane C B3 evals/word-budgets gives AGENTS.global.md at most 630 ($AGW_B)"; else t_bad "lane C B3 evals/word-budgets gives AGENTS.global.md at most 630" "budget [$AGW_B]"; fi
 if [ -n "$AGW_B" ] && [ "$PB_AGW" -le "$AGW_B" ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is within its word budget ($PB_AGW <= $AGW_B)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is within its word budget" "words $PB_AGW budget [$AGW_B]"; fi
 # the hard cap stays at 5000 bytes and the block stays at 39 lines (the 4750 and 730 pins moved in place above)
 # lane C S4 EDITED (B3): sections merge, so the block may get shorter; it never grows past 39 lines
