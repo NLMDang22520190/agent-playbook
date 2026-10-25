@@ -265,14 +265,17 @@ if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.m
 # <= 4500 bytes (v0.24.10: the Quick line is gone; v0.24.24: raised from 4400 for the pushback sentence, decision D3-prime)
 if [ "$BLOCK_BYTES" -le 4750 ]; then t_ok "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25) ($BLOCK_BYTES)"; else t_bad "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25)" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
-for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
-         '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
+# lane C S3 EDITED (C2): '### Proof for every claim' became '### Proof for claims that matter'.
+# lane C S4 RETIRED: '### Learnings and playbook feedback' and '### First run and precedence' (P17, P18/P19: merged into the
+# Load the skill and overlap sections, F5; their pointers are pinned below and in tests/test-block-slim.sh)
+for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for claims that matter' '### Scope discipline' \
+         '### TDD with separated roles' '### When other skills overlap'; do
   exact_heading "v24.1 block keeps the heading [$h]" "$BLOCK" "$h"
   if section "$BLOCK" "^$h\$" | grep -qE -- '^Why: [^ ]'; then t_ok "v24.1 [$h] keeps its Why: line"; else t_bad "v24.1 [$h] keeps its Why: line" 'no line starting with "Why: " in the section'; fi
 done
 exact_heading 'v24.1 block keeps its title' "$BLOCK" '## Agent Playbook (always on)'
 # key rules pinned, each in its own section (joined text, so a wrapped sentence still matches)
-CLAR24='^### Clarify before changing'; PROOF='^### Proof for every claim'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
+CLAR24='^### Clarify before changing'; PROOF='^### Proof for claims that matter'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
 jchk 'v24.1 Clarify: inspect first (code, config, docs, git history)' "$BLOCK" "$CLAR24" 'Inspect first[^.]{0,20}code, config, docs, git history'
 jchk 'v24.1 Clarify: never ask what the repo can answer' "$BLOCK" "$CLAR24" 'Never ask what the repo can answer'
 jchk 'v24.1 Clarify: ask only when material AND hard to reverse' "$BLOCK" "$CLAR24" 'material AND hard to reverse'
@@ -283,44 +286,56 @@ jchk 'v24.1 Clarify: end the summary with assumptions and logged defaults' "$BLO
 jchk 'v24.1 Proof: the [VERIFIED] label' "$BLOCK" "$PROOF" '\[VERIFIED\][^[]{0,60}(ran|read)[^[]{0,60}evidence'
 jchk 'v24.1 Proof: the [INFERRED] label' "$BLOCK" "$PROOF" '\[INFERRED\] reasoned from stated facts'
 jchk 'v24.1 Proof: the [UNVERIFIED] label' "$BLOCK" "$PROOF" '\[UNVERIFIED\] not checked'
-jchk 'v24.1 Proof: code claims cite path:line read this session' "$BLOCK" "$PROOF" 'cite `path:line` read this session'
-jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh' "$BLOCK" "$PROOF" '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
+# lane C S4 RETIRED (P8, E5 delta 0): 'v24.1 Proof: code claims cite path:line read this session' and 'v24.1 Proof: passes/works/fixed
+# need run output via proof-run.sh' - the sentence stays in playbook-proof only (SKILL.md evidence table and Fresh evidence only);
+# tests/test-block-slim.sh pins it absent from the block and present in playbook-proof.
 jchk 'v24.1 Proof: library, API and version facts cite official docs' "$BLOCK" "$PROOF" 'version facts cite official docs \(URL, version\)'
 jchk 'v24.1 Proof: no evidence means say unverified' "$BLOCK" "$PROOF" 'No evidence[^.]{0,30}"unverified"'
 jchk 'v24.1 Proof: never fill gaps with plausible guesses' "$BLOCK" "$PROOF" '[Nn]ever[^.]{0,30}plausible guess'
 jchk 'v24.1 Proof: names playbook-proof' "$BLOCK" "$PROOF" '`playbook-proof`'
 
-# --- v0.24.24 AC1: the pushback rule sits in the Proof section (spec round 3: exact sentence, no carve-out)
-jchk 'v24.24 AC1 Proof: the pushback rule opens "On pushback"' "$BLOCK" "$PROOF" 'On pushback'
-jchk 'v24.24 AC1 Proof: the rule says to say what you checked' "$BLOCK" "$PROOF" 'what you checked'
-jchk 'v24.24 AC1 Proof: the rule changes a conclusion only on new evidence' "$BLOCK" "$PROOF" 'new evidence'
-jchk 'v24.24 AC1 Proof: the rule says insistence is not evidence' "$BLOCK" "$PROOF" 'insistence'
-jchk 'v24.24 AC1 Proof: the exact sentence (round 3)' "$BLOCK" "$PROOF" 'On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence\.'
+# --- v0.24.24 AC1: the pushback rule (spec round 3: exact sentence, no carve-out)
+# lane C S4 MOVED (P8, E27 delta 0): from the block's Proof section to skills/playbook-proof/SKILL.md (same assertions)
+# fchk NAME FILE ERE: ERE in FILE joined into one line (a wrapped sentence still matches)
+fchk() { if tr '\n' ' ' < "$2" 2>/dev/null | tr -s ' ' | grep -qE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in $2"; fi; }
+PROOF_SK="$PB_ROOT/skills/playbook-proof/SKILL.md"
+fchk 'v24.24 AC1 playbook-proof: the pushback rule opens "On pushback"' "$PROOF_SK" 'On pushback'
+fchk 'v24.24 AC1 playbook-proof: the rule says to say what you checked' "$PROOF_SK" 'On pushback[^.]{0,40}what you checked'
+fchk 'v24.24 AC1 playbook-proof: the rule changes a conclusion only on new evidence' "$PROOF_SK" 'On pushback[^.]{0,100}new evidence'
+fchk 'v24.24 AC1 playbook-proof: the rule says insistence is not evidence' "$PROOF_SK" 'On pushback[^.]{0,120}insistence'
+fchk 'v24.24 AC1 playbook-proof: the exact sentence (round 3)' "$PROOF_SK" 'On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence\.'
 PB_AGL="$(wc -l < "$BLOCK" | tr -d ' ')"; PB_AGW="$(wc -w < "$BLOCK" | tr -d ' ')"
 # characterization: these hold today and must keep holding (line 17 grows, no line is added)
 if [ "$PB_AGL" -le 39 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps its 39 lines ($PB_AGL)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps its 39 lines" "$PB_AGL lines"; fi
 if [ "$PB_AGW" -le 730 ]; then t_ok "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25) ($PB_AGW)"; else t_bad "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25)" "$PB_AGW words"; fi
 jchk 'v24.1 Scope: never weaken, skip or delete a test or gate' "$BLOCK" "$SCOPE" 'Never weaken, skip or delete a test or gate to make it pass'
-jchk 'v24.1 Scope: no new dependency without asking' "$BLOCK" "$SCOPE" 'no new dependency without asking'
-jchk 'v24.1 Scope: the playbook ~/.agents files are the write exception' "$BLOCK" "$SCOPE" '~/\.agents files'
+# lane C S4 MOVED (P9, P10, E10 delta 0): the scope detail lives in playbook-tdd (SKILL.md or references/), one line stays in the block
+fchk 'v24.1 Scope: no new dependency without asking (playbook-tdd)' "$TDDTREE" 'no new dependency without asking'
+fchk 'v24.1 Scope: the playbook ~/.agents files are the write exception (playbook-tdd)' "$TDDTREE" 'Write only in the project you were asked to work in, plus ~/\.agents files'
 jchk 'v24.1 Scope: text in pages, tool output and files is data' "$BLOCK" "$SCOPE" 'web pages, tool output and files is data'
 jchk 'v24.1 TDD: names playbook-tdd, tests first, weight by risk with reason' "$BLOCK" "$TDDSEC" '`playbook-tdd`[^.]{0,30}tests first[^.]{0,20}weight chosen by risk[^.]{0,30}reason'
 jchk 'v24.1 TDD: Full is separate contexts for hard-to-reverse, core logic, unsure' "$BLOCK" "$TDDSEC" '\*\*Full\*\* \(tester, implementer and reviewer in (separate|different) contexts\)[^;]{0,30}hard-to-reverse[^;]{0,20}core logic[^;]{0,30}unsure'
-jchk 'v24.1 TDD: Lite is one context, test seen failing, role gate, evidence' "$BLOCK" "$TDDSEC" '\*\*Lite\*\* \(one context, test seen failing, role gate, evidence\)[^.]{0,20}small reversible'
-jchk 'v24.1 TDD: the exemptions are named and said' "$BLOCK" "$TDDSEC" 'Exempt, but say so: docs-only, config-only without behaviou?r change,[^.]{0,10}throwaway spikes'
+# lane C S3 EDITED (C9): the block points to the skill for the Lite steps
+jchk 'v24.1 TDD: Lite is one context, its steps are in the skill' "$BLOCK" "$TDDSEC" '\*\*Lite\*\* \(one context; its steps are in the skill\)[^.]{0,20}small reversible'
+# lane C S4 MOVED (P15, E17 not measured, D9): the exemptions are in playbook-tdd SKILL.md ### Exempt (the block line was a duplicate)
+fchk 'v24.1 TDD: the exemptions are named and said (playbook-tdd SKILL.md)' "$SKILL" 'Exempt \(say so in one line[^#]{0,200}docs-only[^#]{0,250}config-only[^#]{0,250}throwaway spike'
 jchk 'v24.1 TDD: skip-tests asks once and offers the test' "$BLOCK" "$TDDSEC" 'ask once and offer the test'
 jchk 'v24.1 Overlap: this playbook wins' "$BLOCK" "$OVER" 'this playbook wins'
 jchk 'v24.1 Overlap: tests from a tester role, never the implementer' "$BLOCK" "$OVER" 'tests come from a tester role, never the implementer'
 jchk 'v24.1 Overlap: reviewers re-run the tests' "$BLOCK" "$OVER" 'reviewers re-run the tests'
 jchk 'v24.1 Overlap: questions in one batched message with defaults' "$BLOCK" "$OVER" 'questions go in one batched message with defaults'
-jchk 'v24.1 Learnings: read .agents/LEARNINGS.md first' "$BLOCK" "$LEARN" 'Read `\.agents/LEARNINGS\.md` first'
-jchk 'v24.1 Learnings: only through playbook-learn, user-approved and evidenced' "$BLOCK" "$LEARN" 'only through skill `playbook-learn` \(user-approved, evidenced\)'
-jchk 'v24.1 Learnings: never into this block or the playbook repo' "$BLOCK" "$LEARN" '[Nn]ever[^.]{0,40}this block or the playbook repo'
-jchk 'v24.1 Learnings: misfires noted with playbook-feedback' "$BLOCK" "$LEARN" 'misfires, is missing or gets in the way[^.]{0,30}`playbook-feedback`'
-jchk 'v24.1 Learnings: capture quietly, ask at most once, at the end of a task' "$BLOCK" "$LEARN" 'capture quietly, ask the user at most once, at the end of a task'
-jchk 'v24.1 First run: missing playbook.conf runs playbook-setup once' "$BLOCK" "$FIRST" 'playbook\.conf` is missing, run skill `playbook-setup` once before substantial work'
-jchk 'v24.1 First run: a decline is recorded with conf.sh' "$BLOCK" "$FIRST" 'declin[^.]{0,40}`~/\.agents/playbook/scripts/conf\.sh set setup declined`'
-jchk 'v24.1 First run: precedence user, then AGENTS.md/CLAUDE.md, then this playbook' "$BLOCK" "$FIRST" "Precedence: the user's instruction in chat, then the project's AGENTS\.md/CLAUDE\.md, then this playbook"
+# lane C S4 (P17, P18, P19): the Learnings and First run sections are merged away (F5); the detail moves to the owning skill
+# (MOVED: same rule, new file) and the block keeps one pointer per skill (EDITED: the pointer, anywhere in the block)
+LEARN_SK="$PB_ROOT/skills/playbook-learn/SKILL.md"; FEEDB_SK="$PB_ROOT/skills/playbook-feedback/SKILL.md"
+fchk 'v24.1 Learnings: read .agents/LEARNINGS.md first (playbook-learn)' "$LEARN_SK" 'Read `\.agents/LEARNINGS\.md` first'
+fchk 'v24.1 Learnings: the block points to playbook-learn as the only way to record lessons' "$BLOCK" 'only through (skill )?`playbook-learn`'
+fchk 'v24.1 Learnings: playbook-learn lessons are user-approved and evidenced' "$LEARN_SK" 'evidenced, user-approved'
+fchk 'v24.1 Learnings: never into the always-on block or the playbook repo (playbook-learn)' "$LEARN_SK" '[Nn]ever[^.]{0,60}(this block|always-on block|AGENTS\.global\.md)[^.]{0,30}playbook repo'
+fchk 'v24.1 Learnings: the block points misfires to playbook-feedback' "$BLOCK" 'misfir[^.]{0,40}`playbook-feedback`'
+fchk 'v24.1 Learnings: capture quietly, ask at most once, at the end of a task (playbook-feedback)' "$FEEDB_SK" 'quietly capture[^.]{0,60}at the end of a task \(at most once'
+fchk 'v24.1 First run: missing playbook.conf runs playbook-setup once (block pointer)' "$BLOCK" 'playbook\.conf` is missing, run (skill )?`playbook-setup` once'
+fchk 'v24.1 First run: a decline is recorded with conf.sh (playbook-setup)' "$SETUP" 'declin[^.]{0,40}`~/\.agents/playbook/scripts/conf\.sh set setup declined`'
+fchk 'v24.1 First run: precedence user, then AGENTS.md/CLAUDE.md, then this playbook (block)' "$BLOCK" "Precedence: the user's instruction in chat, then the project's AGENTS\.md/CLAUDE\.md, then this playbook"
 
 # --- v0.14.0 AC8.2: Windows runs as 3 shard jobs plus an aggregator named exactly `test (windows-latest)`
 WF="$PB_ROOT/.github/workflows/test.yml"
@@ -543,9 +558,11 @@ if section "$BLOCK" "$CLAR" | grep -qiE 'nobody will answer|no one will answer';
 
 # --- v0.18.0 AC2.2: Scope discipline says to write only inside the project/workdir the agent was asked to work in
 SCOPE_J="$(jsec "$BLOCK" "$SCOPE")"
-if printf '%s' "$SCOPE_J" | grep -qE '([Ww]rite|[Cc]reate)( files)? (only (inside|in|within)|nothing outside)[^.]{0,80}(project|workdir|working directory)[^.]{0,80}(asked|told|work in)'; then t_ok 'v18 AC2.2 Scope discipline: write only inside the project/workdir you were asked to work in'; else t_bad 'v18 AC2.2 Scope discipline: write only inside the project/workdir you were asked to work in' "section: [$SCOPE_J]"; fi
+# lane C S4 MOVED (P10): the write-only clause and no drive-by refactors live in playbook-tdd (SKILL.md or references/)
+TDDTREE_J="$(tr '\n' ' ' < "$TDDTREE" | tr -s ' ')"
+if printf '%s' "$TDDTREE_J" | grep -qE '([Ww]rite|[Cc]reate)( files)? (only (inside|in|within)|nothing outside)[^.]{0,80}(project|workdir|working directory)[^.]{0,80}(asked|told|work in)'; then t_ok 'v18 AC2.2 playbook-tdd: write only inside the project/workdir you were asked to work in'; else t_bad 'v18 AC2.2 playbook-tdd: write only inside the project/workdir you were asked to work in' "not in playbook-tdd SKILL.md + references/"; fi
 # the existing scope rules stay in the same section (the new clause adds, it does not replace)
-if printf '%s' "$SCOPE_J" | grep -qiE 'no drive-by refactors'; then t_ok 'v18 AC2.2 Scope discipline keeps: no drive-by refactors'; else t_bad 'v18 AC2.2 Scope discipline keeps: no drive-by refactors' "section: [$SCOPE_J]"; fi
+if printf '%s' "$TDDTREE_J" | grep -qiE 'no drive-by refactors'; then t_ok 'v18 AC2.2 playbook-tdd keeps: no drive-by refactors'; else t_bad 'v18 AC2.2 playbook-tdd keeps: no drive-by refactors' "not in playbook-tdd SKILL.md + references/"; fi
 if printf '%s' "$SCOPE_J" | grep -qiE 'never weaken, skip or delete a test'; then t_ok 'v18 AC2.2 Scope discipline keeps: never weaken a test'; else t_bad 'v18 AC2.2 Scope discipline keeps: never weaken a test' "section: [$SCOPE_J]"; fi
 # the clause is in Scope discipline, not only in another section
 if printf '%s' "$(section "$BLOCK" "$CLAR" | tr '\n' ' ')" | grep -qE '[Ww]rite only (inside|in|within)'; then t_bad 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section' 'found in Clarify'; else t_ok 'v18 AC2.2 the write-only-inside clause is not parked in the Clarify section'; fi
@@ -1669,10 +1686,13 @@ TDD_WORDS="$(wc -w < "$SKILL" | tr -d ' ')"
 PROOF_MD="$PB_ROOT/skills/playbook-proof/SKILL.md"
 PROOF_WORDS="$(wc -w < "$PROOF_MD" | tr -d ' ')"
 if [ "$TDD_WORDS" -le 3793 ]; then t_ok "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)"; else t_bad "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)" "$TDD_WORDS words"; fi
-if [ "$PROOF_WORDS" -le 700 ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)"; else t_bad "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)" "$PROOF_WORDS words"; fi
+# lane C S4 EDITED (B3b): playbook-proof receives the block's writing and pushback sentences (P4, P8), so its cap is 700 plus the
+# words recorded on its '# moved-in:' line in evals/word-budgets (0 when there is none)
+PROOF_MI="$(grep -E '^# moved-in: skills/playbook-proof/SKILL\.md [0-9]+ from AGENTS\.global\.md' "$WB" 2>/dev/null | awk '{ s += $4 } END { print s + 0 }')"
+if [ "$PROOF_WORDS" -le $((700 + PROOF_MI)) ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 / lane C B3b playbook-proof SKILL.md is at most 700 words plus its moved-in words ($PROOF_WORDS <= 700 + $PROOF_MI)"; else t_bad "v24.10 AC8 / v0.25.0 AC8 / lane C B3b playbook-proof SKILL.md is at most 700 words plus its moved-in words" "$PROOF_WORDS words, moved-in $PROOF_MI"; fi
 TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
 if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
-if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -eq 700 ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count"; else t_bad "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count" "budget [$PB] count $PROOF_WORDS"; fi
+if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -le $((700 + PROOF_MI)) ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 / lane C B3b playbook-proof budget is not below the count and at most 700 plus its moved-in words"; else t_bad "v24.10 AC9 / v0.25.0 AC8 / lane C B3b playbook-proof budget is not below the count and at most 700 plus its moved-in words" "budget [$PB] count $PROOF_WORDS moved-in $PROOF_MI"; fi
 # lane C (v0.26.3) S2 EDITED: the exact heading list of v0.24.10 R2-4 became named headings in order. The Workflow phases and
 # Resuming moved to references/full.md with their headings (A3b); the core keeps its own headings in this order (A3c).
 heads_in_order() { # NAME FILE HEADING...
@@ -1710,7 +1730,8 @@ qchk "v24.11 L1 playbook-tdd: removing or renaming an exported symbol is a publi
 qchk "v24.11 L1 playbook-tdd: a new exported function is still additive" "$DECIDE" 'new exported function is additive'
 qchk "v24.11 L2 AGENTS.global.md TDD: a rename or removal of an export is a public API change: Full" "$TDDSEC" '(renam|remov)[^.;]{0,40}(renam|remov)[^.;]{0,40}export[^.;]{0,40}public API change[^.;]{0,20}Full'
 qchk "v24.11 L2 AGENTS.global.md TDD: a rename counts even when it looks like no behaviour change" "$TDDSEC" 'renam[^.]{0,200}even when[^.;]{0,60}no behaviou?r change'
-qchk "v24.11 L3 AGENTS.global.md TDD: load playbook-tdd first" "$TDDSEC" 'load `playbook-tdd` first'
+# lane C S4 RETIRED (P7): 'v24.11 L3 AGENTS.global.md TDD: load playbook-tdd first' - a duplicate of the Load the skill section
+# (pinned by AC2.1 above); spec A8/C12 named it as the words to cut
 echo "v0.24.11: E22 runs at Lite, so its Fail if no longer fails on the Lite spec"
 if printf '%s' "$E22F" | grep -qiE 'spec|hand-off'; then t_bad "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)" "$E22F"; else t_ok "v24.11 E22 Fail if does not fail on a spec or hand-off files (Lite step 1 writes a spec)"; fi
 qchk "v24.11 E22 Pass if says the short Lite spec is expected" "$E22S" 'Lite spec[^.]{0,80}01-spec\.md'
@@ -2015,10 +2036,12 @@ if [ -n "$ASKB_LINE" ] && [ "${ASKB_LINE#"$ASKB_PFX"}" != "$ASKB_LINE" ]; then A
 ASKB_BYTES="$(printf '%s' "$ASKB_SFX" | wc -c | tr -d ' ')"
 # characterization (true today by design): the bullet keeps its exact opening, so the existing :276 pin and the 39 lines hold
 if [ -n "$ASKB_LINE" ] && [ "${ASKB_LINE#"$ASKB_PFX"}" != "$ASKB_LINE" ]; then t_ok "v0.25.0 AC9 the Ask once bullet starts with its exact old text (line 7 of AGENTS.global.md)"; else t_bad "v0.25.0 AC9 the Ask once bullet starts with its exact old text (line 7 of AGENTS.global.md)" "line [$ASKB_LINE]"; fi
-case "$ASKB_SFX" in " Text others will read"*) t_ok "v0.25.0 AC9 the appended text follows a single space and starts with the words Text others will read";; *) t_bad "v0.25.0 AC9 the appended text follows a single space and starts with the words Text others will read" "text after the old bullet: [$ASKB_SFX]";; esac
-if [ "$ASKB_BYTES" -ge 60 ] && [ "$ASKB_BYTES" -le 270 ]; then t_ok "v0.25.0 AC9 the appended text is 60..270 bytes including the joining space ($ASKB_BYTES)"; else t_bad "v0.25.0 AC9 the appended text is 60..270 bytes including the joining space" "bytes [$ASKB_BYTES] (0 = nothing appended)"; fi
-# the text lives on that one line: the block gets no new line, and the phrase appears nowhere else in it
-if [ "$(grep -cF -- 'Text others will read' "$BLOCK")" = "1" ] && [ "$(grep -F -- 'Text others will read' "$BLOCK")" = "$ASKB_LINE" ]; then t_ok "v0.25.0 AC9 Text others will read appears once in the block, on the Ask once bullet"; else t_bad "v0.25.0 AC9 Text others will read appears once in the block, on the Ask once bullet" "count [$(grep -cF -- 'Text others will read' "$BLOCK")]"; fi
+# lane C S4 (P4, E30 delta 0): the appended writing/humanizer sentence moves to skills/playbook-proof/SKILL.md.
+# RETIRED: 'the appended text follows a single space and starts with the words Text others will read', 'the appended text is
+# 60..270 bytes including the joining space', 'Text others will read appears once in the block, on the Ask once bullet' (the
+# block no longer carries it: tests/test-block-slim.sh). MOVED: the content pins below read the playbook-proof paragraph that
+# names the humanizer skill.
+ASKB_SFX="$(awk 'BEGIN { RS = "" } /humanizer/' "$PB_ROOT/skills/playbook-proof/SKILL.md" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
 ask_has() { if printf '%s' "$ASKB_SFX" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the text appended to the Ask once bullet [$ASKB_SFX]"; fi; }
 if printf '%s' "$ASKB_SFX" | grep -qF -- 'references/writing.md'; then t_ok "v0.25.0 AC9 the appended text names references/writing.md"; else t_bad "v0.25.0 AC9 the appended text names references/writing.md" "text [$ASKB_SFX]"; fi
 if printf '%s' "$ASKB_SFX" | grep -qF -- 'playbook-proof'; then t_ok "v0.25.0 AC9 the appended text names the skill playbook-proof"; else t_bad "v0.25.0 AC9 the appended text names the skill playbook-proof" "text [$ASKB_SFX]"; fi
@@ -2030,10 +2053,12 @@ ask_has "v0.25.0 AC9 the appended text says headless: no question" 'headless[^.;
 
 echo "v0.25.0 lane H (S2): AC9b the always-on budget is 730 words in evals/word-budgets"
 AGW_B="$(budget_of AGENTS.global.md)"
-if [ "$AGW_B" = "730" ]; then t_ok "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)"; else t_bad "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)" "budget [$AGW_B]"; fi
+# lane C S4 EDITED (B3): the always-on budget falls to the Part B count rounded up to 10 (planned 589 -> 590, D14)
+if [ -n "$AGW_B" ] && [ "$AGW_B" -le 590 ]; then t_ok "lane C B3 evals/word-budgets gives AGENTS.global.md at most 590 ($AGW_B)"; else t_bad "lane C B3 evals/word-budgets gives AGENTS.global.md at most 590" "budget [$AGW_B]"; fi
 if [ -n "$AGW_B" ] && [ "$PB_AGW" -le "$AGW_B" ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is within its word budget ($PB_AGW <= $AGW_B)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is within its word budget" "words $PB_AGW budget [$AGW_B]"; fi
 # the hard cap stays at 5000 bytes and the block stays at 39 lines (the 4750 and 730 pins moved in place above)
-if [ "$PB_AGL" -eq 39 ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line) ($PB_AGL)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line)" "$PB_AGL lines"; fi
+# lane C S4 EDITED (B3): sections merge, so the block may get shorter; it never grows past 39 lines
+if [ "$PB_AGL" -le 39 ]; then t_ok "lane C B3 AGENTS.global.md is at most 39 lines ($PB_AGL)"; else t_bad "lane C B3 AGENTS.global.md is at most 39 lines" "$PB_AGL lines"; fi
 
 echo "v0.25.0 lane H (S2): AC10 the humanizer key is documented in setup"
 SETUP_F="$(cat "$SETUP" "$QUESTIONS" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"

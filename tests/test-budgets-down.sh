@@ -16,14 +16,32 @@ WB="$PB_ROOT/evals/word-budgets"
 # wb_cmp OLD NEW -> one line per risen path "RISE PATH OLD -> NEW", then "SUM OLD -> NEW" over the always-loaded paths only
 # (AGENTS.global.md and skills/<name>/SKILL.md); exit 1 on any rise or a higher sum.
 # A table line is "PATH WORDS [# comment]"; lines starting with # are comments; a CR at the end is ignored.
+# Lane C S4 (spec B3b, D8): a comment line "# moved-in: PATH WORDS from AGENTS.global.md" in NEW (and not already in OLD)
+# lets PATH rise by at most WORDS ("MOVED-IN PATH OLD -> NEW (credit WORDS)" instead of RISE), and the AGENTS.global.md budget
+# must fall by at least the total moved-in words ("MOVED-IN total N > AGENTS.global.md drop D" fails). The sum rule still holds.
 wb_cmp() {
   awk '
     { sub(/\r$/, "") }
+    FNR == NR && /^# moved-in: / { seen[$0] = 1; next }
+    FNR != NR && /^# moved-in: / {
+      if (!($0 in seen) && $4 ~ /^[0-9]+$/ && $5 == "from" && $6 == "AGENTS.global.md") { cr[$3] += $4; tot += $4 }
+      next }
     /^#/ || NF < 2 || $2 !~ /^[0-9]+$/ { next }
     function loaded(p) { return p == "AGENTS.global.md" || p ~ /^skills\/[^\/]+\/SKILL\.md$/ }
     FNR == NR { old[$1] = $2; if (loaded($1)) so += $2; next }
-    { if (loaded($1)) sn += $2; if (($1 in old) && $2 + 0 > old[$1] + 0) { print "RISE " $1 " " old[$1] " -> " $2; bad = 1 } }
-    END { print "SUM " so + 0 " -> " sn + 0; if (sn > so) bad = 1; exit bad }' "$1" "$2"
+    { if (loaded($1)) sn += $2; nw[$1] = $2; ord[++n] = $1 }
+    END {
+      for (i = 1; i <= n; i++) {
+        p = ord[i]
+        if (!(p in old) || nw[p] + 0 <= old[p] + 0) continue
+        if (nw[p] - old[p] <= cr[p] + 0) print "MOVED-IN " p " " old[p] " -> " nw[p] " (credit " cr[p] ")"
+        else { print "RISE " p " " old[p] " -> " nw[p]; bad = 1 }
+      }
+      if (tot > 0) {
+        d = old["AGENTS.global.md"] - nw["AGENTS.global.md"]
+        if (d < tot) { print "MOVED-IN total " tot " > AGENTS.global.md drop " d; bad = 1 }
+      }
+      print "SUM " so + 0 " -> " sn + 0; if (sn > so) bad = 1; exit bad }' "$1" "$2"
 }
 # prev_tag DIR -> the newest v* tag reachable from HEAD that does not point at HEAD (empty when none)
 prev_tag() {
@@ -87,6 +105,31 @@ assert_contains "A1 a CRLF table: the rise is named" "$OUT" "RISE skills/a/SKILL
 printf 'AGENTS.global.md 730\nskills/a/SKILL.md 700\n' > "$F/removed"
 OUT="$(wb_cmp "$F/old" "$F/removed")"; RC=$?
 assert_eq "A1 a removed path is not a rise: exit 0" "0" "$RC"
+
+echo "B3b (S4) moved-in credit: a skill that received block text may rise by exactly the words it received"
+printf '# header\nAGENTS.global.md 590\nskills/a/SKILL.md 760\n# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md\nskills/b/SKILL.md 500\n' > "$F/mi-ok"
+OUT="$(wb_cmp "$F/old" "$F/mi-ok")"; RC=$?
+assert_eq "B3b a rise covered by its moved-in line, the block fell more: exit 0" "0" "$RC"
+assert_contains "B3b the covered rise is reported as MOVED-IN with its credit" "$OUT" "MOVED-IN skills/a/SKILL.md 700 -> 760 (credit 60)"
+assert_not_contains "B3b a covered rise is not a RISE" "$OUT" "RISE"
+assert_contains "B3b the sum still falls" "$OUT" "SUM 1930 -> 1850"
+printf 'AGENTS.global.md 590\nskills/a/SKILL.md 770\n# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md\nskills/b/SKILL.md 500\n' > "$F/mi-over"
+OUT="$(wb_cmp "$F/old" "$F/mi-over")"; RC=$?
+assert_eq "B3b a rise of 70 with a moved-in credit of 60 fails" "1" "$RC"
+assert_contains "B3b the uncovered rise is named" "$OUT" "RISE skills/a/SKILL.md 700 -> 770"
+printf 'AGENTS.global.md 700\nskills/a/SKILL.md 760\n# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md\nskills/b/SKILL.md 400\n' > "$F/mi-nodrop"
+OUT="$(wb_cmp "$F/old" "$F/mi-nodrop")"; RC=$?
+assert_eq "B3b a moved-in credit of 60 while the block budget fell only 30 fails (sum lower)" "1" "$RC"
+assert_contains "B3b the failure names the total and the block drop" "$OUT" "MOVED-IN total 60 > AGENTS.global.md drop 30"
+printf 'AGENTS.global.md 730\nskills/a/SKILL.md 700\n# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md\nskills/b/SKILL.md 500\n' > "$F/mi-old"
+printf 'AGENTS.global.md 590\nskills/a/SKILL.md 760\n# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md\nskills/b/SKILL.md 500\n' > "$F/mi-same"
+OUT="$(wb_cmp "$F/mi-old" "$F/mi-same")"; RC=$?
+assert_eq "B3b a moved-in line already there at the previous release gives no new credit" "1" "$RC"
+assert_contains "B3b the stale credit rise is named" "$OUT" "RISE skills/a/SKILL.md 700 -> 760"
+printf 'AGENTS.global.md 590\nskills/a/SKILL.md 760\n# moved-in: skills/a/SKILL.md 60 from README.md\nskills/b/SKILL.md 500\n' > "$F/mi-src"
+OUT="$(wb_cmp "$F/old" "$F/mi-src")"; RC=$?
+assert_eq "B3b a moved-in line from another source than AGENTS.global.md gives no credit" "1" "$RC"
+assert_contains "B3b the rise is named" "$OUT" "RISE skills/a/SKILL.md 700 -> 760"
 
 echo "A1 the previous release tag is the newest v* tag that does not point at HEAD"
 R="$(mk_tmp)/r"; mk_repo "$R"

@@ -14,8 +14,8 @@
 # TSV rows: KIND<TAB>SOURCE<TAB>COUNT<TAB>TEXT<TAB>REASON; lines starting with # are comments.
 #   KEEP   TEXT occurs at least COUNT times in the flat text of ROOT/skills/**/*.md plus ROOT/AGENTS.global.md
 #   DOCS   TEXT is in ROOT/docs/release-speed.md (or, before the move, still COUNT times in that tree)
-#   EDIT   TEXT is an ERE found in that tree; REASON names a contradiction id (C1-C12) or "pointer"
-#   RETIRE REASON names a contradiction id (C1-C12) or "pointer"
+#   EDIT   TEXT is an ERE found in that tree; REASON names a contradiction id (C1-C12), a Part B paragraph (P1-P19) or "pointer"
+#   RETIRE REASON names a contradiction id (C1-C12), a Part B paragraph (P1-P19) or "pointer"
 # Bash 3.2 and BWK awk compatible; LC_ALL=C (byte matching).
 set -u
 LC_ALL=C
@@ -104,7 +104,7 @@ function occ(h, t,   n, p) { n = 0; while ((p = index(h, t)) > 0) { n++; h = sub
 function tree(t,   i, n) { n = 0; for (i = 1; i <= NH; i++) n += occ(H[i], t); return n }
 function tree_re(re,   i) { for (i = 1; i <= NH; i++) if (H[i] ~ re) return 1; return 0 }
 function bad(m) { print "FAIL tsv line " TL ": " m; NBAD++ }
-function reason_ok(r) { return (r ~ /(^|[^A-Za-z0-9])C([1-9]|1[0-2])([^0-9]|$)/ || r ~ /pointer/) }
+function reason_ok(r) { return (r ~ /(^|[^A-Za-z0-9])C([1-9]|1[0-2])([^0-9]|$)/ || r ~ /(^|[^A-Za-z0-9])P([1-9]|1[0-9])([^0-9]|$)/ || r ~ /pointer/) }
 $0 == "@@DOCS" { part = 1; next }
 $0 == "@@TSV" { part = 2; TL = 0; next }
 part == 0 { H[++NH] = $0; next }
@@ -122,10 +122,10 @@ part == 1 { D = D $0; next }
   } else if (k == "DOCS") {
     if (index(D, txt) == 0 && tree(txt) < cnt) bad("DOCS (" src ") not in docs/release-speed.md: " txt)
   } else if (k == "EDIT") {
-    if (!reason_ok(why)) bad("EDIT without a reason naming C1-C12 or pointer: " txt)
+    if (!reason_ok(why)) bad("EDIT without a reason naming C1-C12, P1-P19 or pointer: " txt)
     else if (!tree_re(txt)) bad("EDIT (" src ") pattern not found in the skill tree: " txt)
   } else if (k == "RETIRE") {
-    if (!reason_ok(why)) bad("RETIRE without a reason naming C1-C12 or pointer: " txt)
+    if (!reason_ok(why)) bad("RETIRE without a reason naming C1-C12, P1-P19 or pointer: " txt)
   } else bad("unknown kind [" k "]")
 }
 END {

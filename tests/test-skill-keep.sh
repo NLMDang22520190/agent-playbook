@@ -90,6 +90,15 @@ assert_rc "A2 a RETIRE row with an empty reason: FAIL" 1
 mk_tsv "RETIRE${TAB}skills/x/SKILL.md${TAB}0${TAB}Gone sentence of four words.${TAB}C12 the rename rule is conditional"
 run bash "$ROWS" check "$T" "$T/k.tsv"
 assert_rc "A2 a RETIRE row with a Cn reason: ok" 0
+mk_tsv "RETIRE${TAB}AGENTS.global.md${TAB}0${TAB}Gone sentence of four words.${TAB}P17 sections merged (F5)"
+run bash "$ROWS" check "$T" "$T/k.tsv"
+assert_rc "S4 a RETIRE row with a Part B reason (P17): ok" 0
+mk_tsv "EDIT${TAB}AGENTS.global.md${TAB}0${TAB}Alpha [a-z]+ gamma${TAB}P8 pointer kept"
+run bash "$ROWS" check "$T" "$T/k.tsv"
+assert_rc "S4 an EDIT row with a Part B reason (P8) whose pattern is found: ok" 0
+mk_tsv "RETIRE${TAB}AGENTS.global.md${TAB}0${TAB}Gone sentence of four words.${TAB}P99 is no paragraph"
+run bash "$ROWS" check "$T" "$T/k.tsv"
+assert_rc "S4 a RETIRE row whose reason names P99 (no such paragraph): FAIL" 1
 mk_tsv "MOVE${TAB}skills/x/SKILL.md${TAB}1${TAB}Alpha beta gamma delta.${TAB}"
 run bash "$ROWS" check "$T" "$T/k.tsv"
 assert_rc "A2 an unknown kind: FAIL" 1

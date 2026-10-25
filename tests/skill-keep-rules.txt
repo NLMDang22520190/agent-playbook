@@ -69,5 +69,7 @@ Headless: use the conf, never upgrade, never block
 never falls back to another role's model
 In .none. mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates
 Native roles get the full role file plus the allowed input paths, never your conversation or opinions
-making a test pass seems to need weakening it, touching unrelated code, or adding a dependency
+# lane C S3 EDITED (C3): the stop list became one closed list; the weakening stop stays, dependency/unrelated code live in the scope detail (P9)
+Mid-task stops are only.{0,250}weaken
+no new dependency without asking
 the orchestrator never stops to ask

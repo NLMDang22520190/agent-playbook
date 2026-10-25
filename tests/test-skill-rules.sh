@@ -51,7 +51,8 @@ chk "AC15.2 the orchestrator never stops to ask" "$RULE_SECS" 'non-interactive.{
 chk "AC15.2 it continues at Lite in its own context" "$RULE_SECS" 'continu[a-z]*[^.]{0,120}Lite[^.]{0,120}(own|its) context|Lite[^.]{0,80}(in|within) (its|the orchestrator.s) own context'
 chk "AC15.2 it reports that (the fallback)" "$RULE_SECS" 'non-interactive.{0,250}(fail|interrupt|time[ -]?out).{0,250}Lite.{0,250}(report|log)'
 # the interactive rule keeps asking
-chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(flat "$SKILL" '^## Stop and ask the user when' 2)" 'dispute is still open after 2 rounds'
+# lane C S3 EDITED (C3): the stop is now one item of the closed mid-task list ("a dispute or spec review still open after 2 rounds")
+chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(flat "$SKILL" '^## Stop and ask the user when' 2)" 'dispute[^.;]{0,40}open after 2 rounds'
 
 
 # ---- v0.23.0 review: the Lite exception is about user-visible message or comment text that is not parsed, matched or sent as data ----

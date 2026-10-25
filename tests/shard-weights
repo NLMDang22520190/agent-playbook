@@ -9,7 +9,8 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
-# lane C (v0.26.3) estimates until a CI run measures them (L-0009): test-budgets-down.sh 5, test-skill-keep.sh 15, test-skill-split.sh 5.
+# lane C (v0.26.3) estimates until a CI run measures them (L-0009): test-budgets-down.sh 5, test-skill-keep.sh 15, test-skill-split.sh 5,
+# test-contradictions.sh 5, test-block-slim.sh 5 (S3-S4).
 test-tdd-step-f.sh 524
 test-role-gate-batch.sh 512
 test-role-gate-scope.sh 530
@@ -125,3 +126,5 @@ test-update-signed.sh 45
 test-budgets-down.sh 5
 test-skill-keep.sh 15
 test-skill-split.sh 5
+test-contradictions.sh 5
+test-block-slim.sh 5

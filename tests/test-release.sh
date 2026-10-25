@@ -684,6 +684,34 @@ skills/b/SKILL.md 500
 ' tag-head)"
 run bash "$D/tools/check-release.sh" v1.2.3
 assert_rc "A1b lower budgets since v1.2.2: exit 0" 0
+# lane C S4 (spec B3b): a rise covered by a "# moved-in: PATH WORDS from AGENTS.global.md" line, with the block budget
+# falling by at least those words, passes; a rise past the credit, or a credit the block did not pay for, fails
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a rise covered by its moved-in line (block 730 -> 590): exit 0" 0
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 770
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a rise past its moved-in credit (700 -> 770, credit 60): exit 1" 1
+assert_contains "B3b check-release: the uncovered rise names the path" "$OUT" "skills/a/SKILL.md"
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 700
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 400
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in credit of 60 with the block falling only 30: exit 1" 1
+assert_contains "B3b check-release: the failure names moved-in" "$OUT" "moved-in"
 D="$(mk_rel 1.2.3 "$CL")"; mkdir -p "$D/evals"; printf 'skills/a/SKILL.md 9999\n' > "$D/evals/word-budgets"
 ( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
   git config commit.gpgsign false && git add -A && git commit -q -m only ) >/dev/null 2>&1
