@@ -121,6 +121,16 @@ process.stdout.write(typeof r==="string"?r:String(JSON.stringify(r)))' "$1" "$2"
 }
 assert_eq "AC3.2 the without file is a JSON object" "object" "$(jget "$F" 'typeof j')"
 assert_eq "AC3.2 claudeMdExcludes holds the absolute HOME/.claude/CLAUDE.md" "true" "$(jget "$F" 'Array.isArray(j.claudeMdExcludes) && j.claudeMdExcludes.includes("'"$H"'/.claude/CLAUDE.md")')"
+# Windows (Git Bash): claude.exe matches claudeMdExcludes against a native path, so the MSYS form /c/Users/... is not enough;
+# with cygpath on PATH the entry also holds the `cygpath -m` form (C:/Users/...), the form a real run showed to work (Run 25 smoke)
+CYGB="$(mk_tmp)"
+printf '#!/bin/sh\n[ "$1" = -m ] || exit 2\nprintf "C:/fake%%s\\n" "$2"\n' > "$CYGB/cygpath"; chmod +x "$CYGB/cygpath"
+F2="$SD/without-cyg.json"
+OUT="$(PATH="$CYGB:$PATH" bash -c '. "$1"; pbh_arm_settings "$2" without "$3" "$4"' _ "$PB_ROOT/evals/lib-harness.sh" "$F2" "$H" "$R" 2>&1)"; RC=$?
+assert_rc "cygpath: pbh_arm_settings without -> 0" 0
+assert_eq "cygpath: claudeMdExcludes also holds the cygpath -m form of HOME/.claude/CLAUDE.md" "true" "$(jget "$F2" '(j.claudeMdExcludes||[]).includes("C:/fake'"$H"'/.claude/CLAUDE.md")')"
+assert_eq "cygpath: claudeMdExcludes still holds the plain form" "true" "$(jget "$F2" '(j.claudeMdExcludes||[]).includes("'"$H"'/.claude/CLAUDE.md")')"
+assert_eq "no cygpath: claudeMdExcludes has no C:/fake entry" "false" "$(jget "$F" 'JSON.stringify(j.claudeMdExcludes||[]).includes("C:/fake")')"
 for s in playbook-alpha playbook-beta helper-x; do
   assert_eq "AC3.2 skillOverrides turns off the repo skill $s" "off" "$(jget "$F" '(j.skillOverrides||{})["'"$s"'"]')"
 done
