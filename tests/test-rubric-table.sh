@@ -28,6 +28,10 @@ NH="$(grep -c '^## E[0-9]' "$PB_ROOT/evals/scenarios.md")"
 assert_eq "AC12 RUBRIC.md has one scenario row per '## E' heading of scenarios.md (derived count, D17)" "$NH" "$(table_of "$PB_ROOT/evals/RUBRIC.md" | grep -c .)"
 assert_eq "AC11 the real RUBRIC.md rows are exactly the rows built from the headings, in file order" "$(rows_of "$PB_ROOT/evals/scenarios.md")" "$(table_of "$PB_ROOT/evals/RUBRIC.md")"
 
+for e in E32 E33 E34; do   # v0.26.0 lane N S8: the scenarios this lane adds have a row (regenerated table)
+  if grep -q "^| $e " "$PB_ROOT/evals/RUBRIC.md"; then t_ok "AC12 S8 RUBRIC.md has a row for $e"; else t_bad "AC12 S8 RUBRIC.md has a row for $e" "no '| $e ' row"; fi
+done
+
 echo "AC11 printing the table writes nothing"
 T="$(mk_copy)"
 cp "$T/evals/RUBRIC.md" "$T/rubric.before"
