@@ -220,9 +220,12 @@ assert_rc "H the hook also guards commits made in the worktree" 1
 
 echo "documentation"
 RD="$(cat "$PB_ROOT/README.md")"
-assert_contains "H README names tools/install-hooks.sh" "$RD" "tools/install-hooks.sh"
+HD="$(cat "$PB_ROOT/docs/development.md")"
+assert_contains "H docs/development.md names tools/install-hooks.sh" "$HD" "tools/install-hooks.sh"
 assert_contains "H README says it is opt-in" "$RD" "opt-in"
-assert_contains "H README: the leak guard takes priority" "$RD" "leak guard takes priority"
-assert_contains "H README: manual mode check" "$RD" "evals/run-checks.sh --only modes"
+assert_contains "H docs/development.md says the hook is opt-in" "$HD" "opt-in"
+assert_contains "H README links to docs/development.md" "$RD" "](docs/development.md"
+assert_contains "H docs/development.md: the leak guard takes priority" "$HD" "leak guard takes priority"
+assert_contains "H docs/development.md: manual mode check" "$HD" "evals/run-checks.sh --only modes"
 
 t_summary
