@@ -11,12 +11,16 @@
 # stdout+stderr in <workroot>/<label>.log. The hidden tests never enter the workroot: after the adapter exits, the workdir
 # is copied to a runner-private temp dir (outside the workroot and outside the agent's TMPDIR), hidden/ is copied over the
 # copy (same relative paths, replacing the agent's files there), each hidden file runs alone from the copy's root
-# (node --test F, python3 -m unittest F or bash F, under `timeout 120` when it exists), and the copy is deleted.
+# (node --test F, python3 -m unittest F with stdlib unittest loaded before the repo root joins sys.path, or bash F, under
+# `timeout 120` when it exists), and the copy is deleted. After each run (graded or ERROR) the transcript moves to
+# ${OUT%.md}.runs/<label>.log, the agent's change against the setup commit is saved as ${OUT%.md}.runs/<label>.diff, and
+# the workdir and prompt file leave the workroot, so no later run can read an earlier run's work.
 # Checks per graded run: "hidden tests pass", "FAIL_TO_PASS <file>" and "PASS_TO_PASS <file>" per hidden file, "hidden
 # tests not seen by the agent" (FAIL when the transcript holds the hidden-test canary: the run is CONTAMINATED and not
 # passed), "nothing written outside the workdir", and in the without arm "without arm: no playbook file read and no
 # playbook Skill call" (stream-json transcripts; MANUAL for plain text).
-# --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details); the
+# --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so
+# does its leak probe (--harness claude with the without arm: exit 3 when claude still sees the playbook block); the
 # presets, model flags, arm settings files, the pb-evals/1 JSON and its statistics come from evals/lib-harness.sh. Every
 # run gets its own temp PLAYBOOK_HOME (with arm: a copy of the playbook conf without feedback_repo; without arm: empty)
 # and its own TMPDIR, removed after the run; HOME stays the real one. --cmd adapters get PB_EVAL_MODEL and, with --arm or
@@ -44,7 +48,7 @@ HP="hidden tests pass"; SEEN="hidden tests not seen by the agent"; STRAYC="nothi
 ISO="without arm: no playbook file read and no playbook Skill call"
 
 # runner temp dirs of the running task and the pid of its adapter, for the traps
-CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; SET_DIR=""; ND_FILE=""; ADPID=""
+CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; SET_DIR=""; ND_FILE=""; ADPID=""
 # rm_dir DIR: remove a runner temp dir (never following a link), also one the agent made unreadable
 rm_dir() {
   [ -n "$1" ] || return 0
@@ -53,9 +57,9 @@ rm_dir() {
   return 0
 }
 cleanup() {
-  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$SET_DIR"
+  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$SET_DIR"
   if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
-  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; SET_DIR=""; ND_FILE=""
+  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; SET_DIR=""; ND_FILE=""
 }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 trap cleanup EXIT
@@ -195,41 +199,17 @@ GTIMEOUT=""   # DECISION[D8]: each hidden file runs under a 120 s limit when `ti
 if command -v timeout >/dev/null 2>&1; then GTIMEOUT="timeout 120"; fi
 
 # the without arm cannot remove a block that Claude Code loads from a user rules file or an ancestor of the workroot
-pb_marked() { [ -f "$1" ] && LC_ALL=C grep -qF '<!-- BEGIN agent-playbook' "$1" 2>/dev/null; }
-anc_check() { # DIR: refuse (exit 2) when DIR or a directory above it holds the playbook block
-  local d="$1" f hcm hcmp
-  hcm="$HOME/.claude/CLAUDE.md"; hcmp="$(pbh_phys "$hcm")"   # the user CLAUDE.md: excluded by the settings file
-  if [ -d "$HOME/.claude/rules" ]; then
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      pb_marked "$f" && pb_die "the without arm cannot run: $f holds the playbook block, and Claude Code loads user rules in every session; remove the block from the rules file" 2
-    done <<EOF
-$(find "$HOME/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort)
-EOF
-  fi
-  while :; do
-    while IFS= read -r f; do
-      [ -n "$f" ] && pb_marked "$f" || continue
-      [ "$f" = "$hcm" ] || [ "$(pbh_phys "$f")" = "$hcmp" ] && continue
-      pb_die "the without arm cannot run: $f holds the playbook block, and Claude Code loads it from the directories above the workroot; move the workroot out of that tree" 2
-    done <<EOF
-$(printf '%s\n' "${d%/}/CLAUDE.md" "${d%/}/CLAUDE.local.md" "${d%/}/AGENTS.md" "${d%/}/.claude/CLAUDE.md" "${d%/}/.claude/AGENTS.md"
-  if [ -d "${d%/}/.claude/rules" ]; then find "${d%/}/.claude/rules" -type f -name '*.md' 2>/dev/null | LC_ALL=C sort; fi)
-EOF
-    [ "$d" = / ] && break
-    d="$(dirname "$d")"
-  done
-}
+anc_refuse() { local why; why="$(pbh_without_refusal "$1" "$HOME")" || pb_die "the without arm cannot run: $why" 2; }
 
 NEW_ROOT=0   # 1 when the runner creates the workroot or finds it empty
 if [ -n "$WORKROOT" ]; then
-  case " $ARMS " in *" without "*) anc_check "$WABS" ;; esac
+  case " $ARMS " in *" without "*) anc_refuse "$WABS" ;; esac
   if [ ! -e "$WORKROOT" ]; then NEW_ROOT=1
   elif [ -d "$WORKROOT" ] && [ -z "$(ls -A "$WORKROOT")" ]; then NEW_ROOT=1; fi
   mkdir -p "$WORKROOT" || pb_die "cannot create $WORKROOT" 3
 else
   WORKROOT="$(mktemp -d "${TMPDIR:-/tmp}/pb-outcome.XXXXXX")" || pb_die "mktemp failed" 3; NEW_ROOT=1
-  case " $ARMS " in *" without "*) anc_check "$(cd "$WORKROOT" && pwd -P)" ;; esac
+  case " $ARMS " in *" without "*) anc_refuse "$(cd "$WORKROOT" && pwd -P)" ;; esac
 fi
 WORKROOT="$(cd "$WORKROOT" && pwd -P)"
 # the runs, in order: task, then k, then arm
@@ -272,6 +252,45 @@ if [ "$SET_MODE" = 1 ]; then
     [ "$a" = without ] && DROPPED="$n"
   done
 fi
+# the leak probe, as in evals/run-evals.sh (--harness claude with the without arm): one claude call with the without settings,
+# before any run and any workdir, asks whether the heading of the always-on block is in its context. YES: exit 3, nothing
+# runs. The md records "leak probe: none", "inconclusive" (the isolation check of each run still applies) or "n/a" (--cmd).
+LEAK_MD=""
+case " $ARMS " in
+  *" without "*)
+    if [ "$HARNESS" = claude ]; then
+      PBH_HEAD="$(sed -n 's/^## //p' "$REPO/AGENTS.global.md" 2>/dev/null | head -n 1)"
+      [ -n "$PBH_HEAD" ] || pb_die "cannot read the heading of AGENTS.global.md for the leak probe" 3
+      PDIR="$(mktemp -d "$WORKROOT/.pb-leak-probe.XXXXXX")" || pb_die "cannot create a temp dir for the leak probe" 3
+      mkdir -p "$SET_DIR/probe-home" && pbh_leak_prompt "$PBH_HEAD" > "$SET_DIR/probe.prompt" || pb_die "cannot write the leak probe prompt" 3
+      printf '== leak probe: asking claude whether the without arm still sees the playbook block\n' >&2
+      (
+        PLAYBOOK_HOME="$SET_DIR/probe-home"; export PLAYBOOK_HOME
+        unset PB_EVAL_ARM PB_EVAL_MODEL PB_EVAL_SETTINGS
+        cd "$PDIR" || exit 1
+        set -- adapter "$PDIR" "$SET_DIR/probe.prompt"
+        while IFS= read -r w; do [ -n "$w" ] && set -- "$@" "$w"; done <<EOF
+$(pbh_model_args "$HARNESS" "$MODEL")
+EOF
+        set -- "$@" --settings "$SET_DIR/without.json"
+        if [ "$USE_TIMEOUT" = 1 ]; then exec timeout "$TIMEOUT" bash -c "$ADAPTER" "$@" </dev/null >"$SET_DIR/probe.log" 2>&1
+        else exec bash -c "$ADAPTER" "$@" </dev/null >"$SET_DIR/probe.log" 2>&1; fi
+      )
+      prc=$?
+      LEAK="$(pbh_probe_answer "$SET_DIR/probe.log")"
+      rm_dir "$PDIR"
+      if [ "$LEAK" = YES ]; then
+        pb_die "leak probe: the without arm still sees the playbook block (claude says the heading \"$PBH_HEAD\" is in its context); check claudeMdExcludes and the without settings before running the without arm" 3
+      elif [ "$prc" = 0 ] && [ "$LEAK" = NO ]; then LEAK_MD="none"
+      else
+        LEAK_MD="inconclusive"
+        printf 'WARNING leak probe inconclusive (exit %s, answer %s); the isolation check of each without run still applies\n' "$prc" "$LEAK" >&2
+      fi
+    else LEAK_MD="n/a"; fi ;;
+esac
+# each run's transcript and diff, kept outside the workroot (next to --out)
+EV="${OUT%.md}.runs"
+mkdir -p "$EV" || pb_die "cannot create $EV" 3
 
 # Per-run state: ID, ARM, K, RL (label), TD (task dir), WD, PF, LOG
 ANY_FAIL=0; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0; ND_RUNS=""; S_CHECKS=""; NOTES_J=""
@@ -306,35 +325,6 @@ EOF
 }
 # auth_lines -> the log lines to search for auth errors (an api_retry the run recovered from is not one)
 auth_lines() { if [ "$T_result_ok" = 1 ]; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
-# iso_check -> PASS or FAIL: the without-arm isolation check of $LOG, as in evals/run-evals.sh (lane E AC4.1-AC4.2)
-iso_check() {
-  # shellcheck disable=SC2086   # ISO_NAMES is a list of skill names
-  node -e '
-const fs = require("fs"), a = process.argv.slice(1), home = a[1], ok = a.slice(2, 5).filter(Boolean), names = a.slice(5);
-const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + (home ? "|" + esc(home) : "") + ")";
-const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
-if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
-const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
-const bad = s => { if (typeof s !== "string") return false; for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
-let fail = false;
-for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
-  let o; try { o = JSON.parse(line); } catch (e) { continue; }
-  if (!o || typeof o !== "object") continue;
-  if (o.type === "system" && o.subtype === "init") for (const l of [o.skills, o.slash_commands]) if (Array.isArray(l) && l.some(isPb)) fail = true;
-  const bl = o.message && Array.isArray(o.message.content) ? o.message.content : (o.type === "tool_use" ? [o] : []);
-  for (const b of bl) {
-    if (!b || b.type !== "tool_use") continue;
-    const i = b.input || {};
-    if (b.name === "Skill") { if (isPb(i.skill) || isPb(i.command)) fail = true; continue; }
-    if (b.name === "Agent" || b.name === "Task") continue;
-    const v = [i.file_path, i.path, i.notebook_path, i.command];
-    if (b.name === "Glob") v.push(i.pattern);
-    if (v.some(bad)) fail = true;
-  }
-}
-process.stdout.write(fail ? "FAIL" : "PASS");' "$LOG" "$HOME" "$WD" "${SC_HOME:-}" "${SET_DIR:-}" $ISO_NAMES
-}
 # unlink_on_path ROOT REL -> removes every symbolic link among ROOT/REL and its parent dirs below ROOT, so a copy to
 # ROOT/REL cannot be redirected outside ROOT
 unlink_on_path() {
@@ -346,14 +336,16 @@ unlink_on_path() {
     if [ -L "$p" ]; then rm -f "$p"; fi
   done
 }
-# run_hidden GRADEDIR FILE -> exit status of the hidden test FILE run alone from the root of the grading copy
+# run_hidden GRADEDIR FILE -> exit status of the hidden test FILE run alone from the root of the grading copy. Python: -I
+# keeps the repo root off sys.path until the stdlib unittest is loaded, so a unittest/ or unittest.py the agent left in the
+# repo cannot stand in for the runner; then the root is added so the test can import the repo's modules.
 run_hidden() {
   # shellcheck disable=SC2086   # GTIMEOUT is "timeout 120" or empty
   ( cd "$1/repo" || exit 1
     TMPDIR="$1/tmp"; PYTHONDONTWRITEBYTECODE=1; export TMPDIR PYTHONDONTWRITEBYTECODE
     case "$TLANG" in
       node) exec $GTIMEOUT node --test "$2" ;;
-      python3) exec $GTIMEOUT python3 -m unittest "$2" ;;
+      python3) exec $GTIMEOUT python3 -I -c 'import sys, unittest; sys.path.insert(0, ""); unittest.main(module=None, argv=["python3 -m unittest"] + sys.argv[1:])' "$2" ;;
       bash) exec $GTIMEOUT bash "$2" ;;
     esac
     exit 126 ) </dev/null >/dev/null 2>&1
@@ -383,6 +375,22 @@ EOF
   rm_dir "$g"; CUR_GRADE=""
   return "$rc"
 }
+# save_diff -> $EV/$RL.diff: the agent's change against the setup commit $SHEAD, new files included (a temp index, so the
+# agent's own index is not used; no external diff or textconv command of the repo config runs)
+save_diff() {
+  local ix
+  ix="$(mktemp -d "${TMPDIR:-/tmp}/pb-evidx.XXXXXX")" || pb_die "cannot create a temp dir for the diff of $RL" 3
+  CUR_IDX="$ix"
+  if ! ( cd "$WD" && export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_INDEX_FILE="$ix/index" &&
+         git -c core.fsmonitor=false add -A . >/dev/null 2>&1 &&
+         git -c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv --binary "$SHEAD" ) > "$EV/$RL.diff" 2>/dev/null; then
+    printf 'note: no diff for %s (git add/diff failed in the workdir)\n' "$RL" >&2
+    printf '# no diff: git add/diff failed in the workdir\n' > "$EV/$RL.diff"
+  fi
+  rm_dir "$ix"; CUR_IDX=""
+}
+# drop_run -> the run's workdir and prompt file leave the workroot (its transcript and diff are already in $EV)
+drop_run() { rm_dir "$WD"; rm -f "$PF"; }
 spent_of() { printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 
@@ -416,6 +424,7 @@ for RUN in $RUNS; do
   fi
   if [ "$INTERACTIVE" = 1 ]; then printf '%s\n' "$(cat "$TD/prompt.md")" > "$PF"
   else printf '%s\n%s\n' "$(cat "$TD/prompt.md")" "$NONINT" > "$PF"; fi
+  SHEAD="$(git -C "$WD" rev-parse HEAD 2>/dev/null)"
   FTREE="$(git -C "$WD" rev-parse 'HEAD^{tree}' 2>/dev/null)"; PSHA="$(git hash-object "$PF" 2>/dev/null)"
   SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/pb-evhome.XXXXXX")" || pb_die "cannot create a temp playbook home" 3
   CUR_HOME="$SC_HOME"
@@ -453,6 +462,9 @@ EOF
   # anything new in the workroot besides this run's own entries was written outside the workdir
   STRAY="$(printf '%s\n' "$(ls -A "$WORKROOT" | LC_ALL=C sort)" | LC_ALL=C comm -23 - <(printf '%s\n' "$BEFORE") |
     grep -vxF -e "$RL" -e "$RL.log" -e "$RL.prompt" | tr '\n' ' ')"
+  mv -f "$LOG" "$EV/$RL.log" || pb_die "cannot move $LOG to $EV" 3
+  LOG="$EV/$RL.log"
+  save_diff
   rm_dir "$SC_TMP"; CUR_TMP=""
   rm_dir "$SC_HOME"; CUR_HOME=""
   if [ "$ARM" = without ] && [ "$DROPPED" -gt 0 ]; then
@@ -475,6 +487,7 @@ EOF
     printf '%s ERROR harness: %s (see %s)\n' "$RL" "$herr" "$LOG"
     ANY_ERROR=1
     run_json error "$herr" "$c" "$SECS"
+    drop_run
     continue
   fi
   CONT=0
@@ -491,9 +504,12 @@ EOF
     printf '%s NOTE new in the workroot: %s\n' "$RL" "${STRAY% }"; note "STRAY new in the workroot: ${STRAY% }"
   fi
   if [ "$ARM" = without ]; then
-    if [ "$T_json" = 1 ]; then record "$(iso_check)" "$ISO"; else record MANUAL "$ISO"; fi
+    # shellcheck disable=SC2086   # ISO_NAMES is a list of skill names
+    if [ "$T_json" = 1 ]; then record "$(pbh_iso_check "$LOG" "$HOME" "$WD" "${SC_HOME:-}" "${SET_DIR:-}" $ISO_NAMES)" "$ISO"
+    else record MANUAL "$ISO"; fi
   fi
   run_json graded "" "$c" "$SECS"
+  drop_run
 done
 
 # the JSON results: top-level fields, then one line per run, through pbh_results_json
@@ -555,6 +571,7 @@ process.stdout.write(o);' "$JF" "$HP" "$SEEN" "$ISO"
   if [ "$MODEL_SET" = 1 ]; then printf 'Model: %s\n' "$MODEL"; else printf 'Model: not pinned (CLI default)\n'; fi
   if [ "$ARM_SET" = 1 ]; then printf 'Arms: %s\n' "$(printf '%s' "$ARMS" | sed 's/ /, /g')"; fi
   if [ "$REPEAT_SET" = 1 ]; then printf 'Repeat: %s\n' "$REPEAT"; fi
+  if [ -n "$LEAK_MD" ]; then printf 'Without arm, leak probe: %s\n' "$LEAK_MD"; fi
   printf '\n'
   [ -n "$TIMEOUT" ] && [ "$USE_TIMEOUT" = 0 ] && printf "Note: 'timeout' was not available; ran without a time limit.\n\n"
   md_body || pb_die "cannot write the summary of $OUT" 3
