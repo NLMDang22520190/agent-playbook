@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.1 - 2026-10-25
+- **README rewritten for readers (Exempt, humanizer in file mode):** Quick start right after the opening, one table of rules with their reasons, a full script list, a short "When you do not need it" section and an example final report. Stale facts fixed: 30 scenarios (22 with automatic checks), current eval results (Runs 1-23, Claude Code only), the cost figure labelled by version. Maintainer detail (CI reuse, the docs-only path, the opt-in pre-commit hook, leak-guard internals, BSD and shellcheck checks) moved to the new `docs/development.md`; the WSL idle notes moved to `docs/harness-notes.md`. The pinned paragraphs moved word for word and their test rows now read the new files.
+- **Eval E31 (Lite):** an interactive run with a humanizer skill installed asks for release notes; auto checks: one question that mentions humanizer, asked once (MANUAL without tool data). New suite `tests/test-evals-grade11.sh`.
+- **E30 grader (Lite):** an opener in a numbered list item now fails check (a), and a run-up ("Here's", "Below is", ...) at the start of a line fails it only inside the PR text itself (a markdown fence or a `---` block), not in the chat framing around it (user decision 2026-10-25). Both Run 23 replies still pass.
+- **`tools/clean-pbtest.sh` (Lite, user decision):** lists `pbtest.*` dirs and `pblist.*` files older than 24 hours under `$TMPDIR` that a killed suite left; dry run by default, `--yes` removes them, `--hours N`; never follows symlinks, never automatic.
+- **Setup:** the optional humanizer suggestion is an extra line in the same batched message, outside the 8-question cap.
+- **Docs:** SKILL.md names the oracle at its first mention; the tdd-guide oracle example uses a temperature step instead of the E29 domain.
+- **Tests:** `not_tag()` is anchored to a top-level `&&` conjunct, so `always() || !startsWith(...)` on a job `if:` fails; a merge-commit case in `test-tdd-step-v.sh` kills the surviving `report_c` single-parent mutant.
+- **Shard weights:** `test-evals-grade10.sh` 163, `test-evals-grade10b.sh` 207, `test-pre-commit.sh` 54 and `test-scope-classify.sh` 164 now come from CI run 40174690191; `test-clean-pbtest.sh` and `test-evals-grade11.sh` are estimates named in the header (L-0009).
+- **Queue triage:** 24 of 29 old queue items were already fixed or stale; the `mutate.sh` no-TTY report and two tdd-step lost-work gaps did not reproduce (covered by `test-tdd-step-s.sh`).
+- **Eval results:** Run 23 (v0.25.0 installed, E30 x2, E1, E29: all 6/6 auto; 1.51 USD) is recorded.
+
 ## 0.25.0 - 2026-10-25
 - **A writing guide for text other people read (Full):**
   - New `skills/playbook-proof/references/writing.md` (379 words), loaded for the final report and for PR descriptions, release notes, docs and issue comments. It leads with the answer, cuts not-X-but-Y contrasts, one-line closers, staged run-ups, empty sayings, inflated significance, overused AI words, decorative headings and emojis, chatbot openers and closers, and em or en dashes outside code. Its rules are condensed from humanizer (https://github.com/blader/humanizer, MIT), sections 1-4, 8, 12-13, 20, 22 and 26.
