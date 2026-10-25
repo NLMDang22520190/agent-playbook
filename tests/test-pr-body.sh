@@ -260,6 +260,39 @@ assert_contains "v0.26.1 R free-form decision one copied verbatim" "$DS" "- FREE
 assert_contains "v0.26.1 R free-form decision two copied verbatim" "$DS" "- FREE-DEC-TWO: retry 3 times; undo: set RETRIES=0"
 assert_not_contains "v0.26.1 R free-form: the file title is not copied" "$DS" "# Decisions"
 
+echo "pr-body.sh: Decisions keeps exactly the ID, Decision, How to undo and Status columns (review fix 2)"
+# line_is NAME TEXT LINE -> TEXT has exactly this line
+line_is() { if printf '%s\n' "$2" | grep -Fx -- "$3" >/dev/null 2>&1; then t_ok "$1"; else t_bad "$1" "no line [$3] in: $2"; fi; }
+DS="$(sec "$BODY2" '## Decisions')"
+line_is "fix2 the header row is exactly ID, Decision, How to undo, Status (cells copied from the source header)" "$DS" '| ID | Decision (the default taken) | How to undo | Status |'
+line_is "fix2 the separator row has four columns" "$DS" '|---|---|---|---|'
+line_is "fix2 row D1 is exactly its four cells" "$DS" '| D1 | DEC-ONE comma as separator | UNDO-ONE set SEP in src/export.js | open |'
+line_is "fix2 row D2 is exactly its four cells" "$DS" '| D2 | DEC-TWO UTF-8 with BOM | UNDO-TWO drop the BOM write | confirmed |'
+assert_not_contains "fix2 the Why column header is left out" "$DS" "Why this default"
+assert_not_contains "fix2 a Why cell value is left out" "$DS" "WHY-ONE-MARKER"
+assert_not_contains "fix2 the Alternatives column is left out" "$DS" "Alternatives"
+assert_not_contains "fix2 the Where column is left out" "$DS" "src/export.js:4"
+P="$(mk_tmp)"; HD7="$(mk_tmp)/h"; mkh "$HD7"
+cat > "$HD7/decisions.md" <<'EOD'
+# Decisions: two tables
+
+| ID | Decision (the default taken) | Why this default | Alternatives | How to undo | Where | Status |
+|---|---|---|---|---|---|---|
+| D1 | DEC-T1 keep it | WHY-T1 | other | UNDO-T1 revert | `a.js:1` | open |
+
+Notes:
+
+| Note | Status |
+|---|---|
+| NOTE-ROW-MARKER | later |
+EOD
+run_in "$P" bash "$PRB" --handoff "$HD7"
+DS="$(sec "$OUT" '## Decisions')"
+line_is "fix2 a later table does not replace the header" "$DS" '| ID | Decision (the default taken) | How to undo | Status |'
+line_is "fix2 ... the decision row is kept" "$DS" '| D1 | DEC-T1 keep it | UNDO-T1 revert | open |'
+line_is "fix2 ... the separator row still has four columns" "$DS" '|---|---|---|---|'
+assert_not_contains "fix2 ... the later table's rows are not copied" "$DS" "NOTE-ROW-MARKER"
+
 echo "pr-body.sh: Not checked copied verbatim, inner blank lines and sub-items kept"
 P="$(mk_tmp)"; HD5="$(mk_tmp)/h"; mkh "$HD5"
 awk '{ print } /^- NOTCHECKED-TWO/ { print "  - NOTCHECKED-SUB: only Linux ran"; print ""; print "NOTCHECKED-PARA after a blank line." }' "$HD5/06-final-report.md" > "$HD5/r.tmp" && mv "$HD5/r.tmp" "$HD5/06-final-report.md"

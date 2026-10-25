@@ -1074,6 +1074,13 @@ sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "
 sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
 sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
 sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+# v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
+# `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
+echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
+NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
+assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
 echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
@@ -2097,5 +2104,13 @@ sec_flat_has "v0.26.1 T AC2 tester.md: the report names where the sample came fr
 sec_flat_has "v0.26.1 T AC3 tester.md: a Why line on value equal to label hiding a bug" "$TESTER" "$OUTSEC" '\*\*Why:\*\*[^.]{0,200}(equal|==|same as)[^.]{0,40}label[^.]{0,120}hid'
 flat_has "v0.26.1 T AC4 spec-reviewer.md: a spec for outside data names the source of its sample data" "$SPEC_REV" '(outside|external) data[^.]{0,200}names? the source of its sample data'
 if grep -rqiE 'options_json|printup' "$TDD" 2>/dev/null; then t_bad "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)" "leak found"; else t_ok "v0.26.1 T AC5 no project names (options_json, PrintUp) under skills/playbook-tdd (passes today by design)"; fi
+
+echo "v0.26.1 review fix 3 (S-D4): the README update paragraph says a failing PGP/x509 signature warns, SSH with allowed signers stops"
+UPAR="$(grep -m1 '^`update` checks the release tag' "$PB_ROOT/README.md")"
+assert_contains "fix3 README: the update signature paragraph exists" "$UPAR" "git verify-tag"
+assert_contains "fix3 README: the paragraph names PGP (warn only, decision S-D4)" "$UPAR" "PGP"
+assert_contains "fix3 README: the paragraph names SSH (the case that stops)" "$UPAR" "SSH"
+assert_contains "fix3 README: the paragraph names the allowed signers setting" "$UPAR" "gpg.ssh.allowedSignersFile"
+assert_not_contains "fix3 README: no claim that any signature that does not verify stops the update" "$UPAR" "a signature that does not verify stops the update"
 
 t_summary

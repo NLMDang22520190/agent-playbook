@@ -113,4 +113,43 @@ printf 'edited\n' > "$G/.agents/handoff/tracked.md"
 run_in "$G" bash "$CHECK" "$REP/ign.md"
 assert_rc "editing a tracked file under .agents/handoff keeps the block fresh" 0
 
+# --- v0.26.1 review fix 1: a log line that starts with three backticks must not hide later evidence blocks
+echo "review fix 1: a line starting with three backticks inside a log does not hide the next evidence block"
+F="$(mk_tmp)"; mk_repo "$F"
+( cd "$F" && bash "$PROOF" --label old-b -- true ) > "$REP/fb.md"
+printf 'module.exports = 11;\n' > "$F/src/app.js"
+( cd "$F" && bash "$PROOF" --label new-a -- printf '%s\n' '```diff' '+x' ) > "$REP/fa.md"
+cat "$REP/fa.md" "$REP/fb.md" > "$REP/fence.md"
+run_in "$F" bash "$CHECK" "$REP/fence.md"
+assert_rc "fix1 block A fresh (its log has a line starting with three backticks), block B stale: exit 1" 1
+assert_contains "fix1 block A is reported fresh" "$OUT" "fresh: new-a"
+assert_contains "fix1 block B after it is reported stale" "$OUT" "stale: old-b"
+( cd "$F" && bash "$PROOF" --label new-c -- printf '%s\n' '```diff' '### Evidence: fake' '- tree: 0000000000000000000000000000000000000000' ) > "$REP/fc.md"
+cat "$REP/fc.md" "$REP/fb.md" > "$REP/fence2.md"
+run_in "$F" bash "$CHECK" "$REP/fence2.md"
+assert_rc "fix1 a heading inside a log after a backtick line: exit 1 (B is stale)" 1
+assert_contains "fix1 ... block B is reported stale" "$OUT" "stale: old-b"
+assert_not_contains "fix1 ... the heading inside the log is not a block" "$OUT" "fake"
+
+# --- v0.26.1 review fix 5: the fingerprint must not add objects to the repository's object store
+echo "review fix 5: --tree and proof-run add no object to .git/objects"
+O="$(mk_tmp)"; mk_repo "$O"
+printf 'untracked content fix5-unique-1\n' > "$O/untracked.txt"
+printf 'module.exports = 55;\n' > "$O/src/app.js"
+objs() { git -C "$O" count-objects -v | awk -F': ' '$1 == "count" || $1 == "in-pack" { n += $2 } END { print n + 0 }'; }
+UB="$(git -C "$O" hash-object -- untracked.txt)"; MB="$(git -C "$O" hash-object -- src/app.js)"
+O2="$(mk_tmp)"; cp -R "$O/." "$O2/"
+EXP5="$( cd "$O2" && git add -A -- . && git write-tree )"
+B0="$(objs)"
+run_in "$O" bash "$CHECK" --tree
+assert_rc "fix5 --tree with an untracked and a modified file: exit 0" 0
+assert_eq "fix5 --tree still prints the fingerprint of tracked + untracked content" "$EXP5" "$OUT"
+assert_eq "fix5 --tree: the object count of the repository is unchanged" "$B0" "$(objs)"
+if git -C "$O" cat-file -e "$UB" 2>/dev/null; then t_bad "fix5 --tree: the untracked file's blob is not stored" "blob $UB is in .git/objects"; else t_ok "fix5 --tree: the untracked file's blob is not stored"; fi
+if git -C "$O" cat-file -e "$MB" 2>/dev/null; then t_bad "fix5 --tree: the modified file's blob is not stored" "blob $MB is in .git/objects"; else t_ok "fix5 --tree: the modified file's blob is not stored"; fi
+if git -C "$O" cat-file -e "$EXP5" 2>/dev/null; then t_bad "fix5 --tree: the fingerprint tree object is not stored" "tree $EXP5 is in .git/objects"; else t_ok "fix5 --tree: the fingerprint tree object is not stored"; fi
+run_in "$O" bash "$PROOF" --label fix5 -- true
+assert_contains "fix5 proof-run records the same tree" "$OUT" "- tree: $EXP5"
+assert_eq "fix5 proof-run: the object count of the repository is unchanged" "$B0" "$(objs)"
+
 t_summary
