@@ -16,7 +16,9 @@
 
 KG="$(mk_tmp)"
 # kx GROUP E NAME MODE BODY [TRANSCRIPT-LINE...]: one xr run; its results JSON joins GROUP
-kx() { local g="$1"; shift; xr "$@"; printf '%s\n' "$XW/results.json" >> "$KG/$g"; }
+# the list holds the cygpath -m form (C:/...) when cygpath exists: on Windows Git Bash node gets a path from a file unconverted, and /tmp/... is
+# not a Windows path (only argv and the environment are converted)
+kx() { local g="$1" p; shift; xr "$@"; p="$XW/results.json"; if command -v cygpath >/dev/null 2>&1; then p="$(cygpath -m "$p")"; fi; printf '%s\n' "$p" >> "$KG/$g"; }
 # fam GROUP PHRASE -> "OUTCOMES|1 key" (OUTCOMES sorted, comma-separated) over every check of GROUP whose name contains PHRASE; more than one key:
 # "N keys: K1 | K2 ...", an empty key: "empty key"
 fam() {
