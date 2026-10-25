@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **role-gate size counts a symlink to a directory by its link text (Lite):** an untracked symlink to a directory is now 1 file and 1 added line, like every other symlink (git cannot read the directory, so it counted 0 lines). A dangling symlink, or one git cannot count, still stops `size` with exit 3. The test rows that pinned 0 lines (S2 AC8, G1 AC7.3, S4 AC19, AC1 kind and corpus) now expect the link text line.
+
 ## 0.24.30 - 2026-10-24
 - **A test on an unconfirmed oracle names it, in the Lite steps themselves (Full, Run 21):**
   - Run 21 (v0.24.29 installed) failed E29 check (e): the Lite agent's test named neither D1 nor `[UNVERIFIED]`, and its reply said the test "will catch" the other reading. The rule was in SKILL.md, but not in the Lite steps the agent followed, and the agent never opened the report template.
