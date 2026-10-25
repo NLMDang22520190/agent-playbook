@@ -254,5 +254,6 @@ for BB in $BASHES; do
       assert_eq "AC3.4 under $(basename "$BB"): the private TMPDIR is empty afterwards" "" "$(left "$P")" ;;
   esac
 done
+if [ -z "$B32" ]; then t_skip 3 "AC3.4 under bash 3.2 (no bash 3.2: set PB_BASH32 or build ~/.local/bin/bash3.2 with tools/get-bash32.sh)"; fi
 
 t_summary
