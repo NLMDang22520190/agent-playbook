@@ -40,6 +40,7 @@ case "$k" in
   12) tu Skill "{\"skill\":\"other-skill\"}"
       tu Read "{\"file_path\":\"$HOME/notes/todo.md\"}"
       tu Read "{\"file_path\":\"$HOME/.agents-old/x.md\"}" ;;
+  14) tu Read "{\"file_path\":\"/opt/team/.claude/skills/playbook-tdd/roles/tester.md\"}" ;;
 esac
 if [ "$k" != 13 ]; then
   if [ "$k" = 11 ]; then echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"total_cost_usd\":0.01,\"result\":\"I did not open ~/.agents/playbook.\"}"
@@ -47,8 +48,8 @@ if [ "$k" != 13 ]; then
 fi
 true'
 
-echo "S4 AC4.1/AC4.2 --arm without --repeat 13: one transcript case per run"
-go --cmd "bash $A/isot.sh" --arm without --repeat 13 --scenarios E8
+echo "S4 AC4.1/AC4.2 --arm without --repeat 14: one transcript case per run"
+go --cmd "bash $A/isot.sh" --arm without --repeat 14 --scenarios E8
 # k -> expected result and what the transcript holds
 iso_case() { # K EXPECTED WHAT
   local L="E8.without.$1"
@@ -67,6 +68,7 @@ iso_case 10 PASS "AC4.2 reads of the temp PLAYBOOK_HOME and of the runner's sett
 iso_case 11 PASS "AC4.1 an Agent prompt naming ~/.agents and a playbook SKILL.md (Agent prompt excluded) and a reply text naming ~/.agents"
 iso_case 12 PASS "AC4.1 a non-playbook Skill call and reads under HOME outside .agents/ (\$HOME/notes, \$HOME/.agents-old)"
 iso_case 13 MANUAL "AC4.1 a log that is not stream-json"
+iso_case 14 FAIL "fix4 a Read under another .claude/skills/playbook-tdd/ (not SKILL.md, outside HOME): the .claude/skills/playbook- path"
 assert_eq "AC4.1 each without run gets the isolation check once (E8.without.1)" "1" "$(printf '%s\n' "$OUT" | grep '^E8\.without\.1 ' | grep -cF "$ISO")"
 assert_eq "AC4.1 each without run gets the isolation check once (E8.without.12)" "1" "$(printf '%s\n' "$OUT" | grep '^E8\.without\.12 ' | grep -cF "$ISO")"
 assert_rc "AC4.1 an isolation FAIL is a FAIL: exit 1 (AC2.6)" 1

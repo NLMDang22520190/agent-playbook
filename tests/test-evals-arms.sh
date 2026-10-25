@@ -139,6 +139,27 @@ if [ -f "$WR/E8.with.1.prompt" ] && cmp -s "$WR/E8.with.1.prompt" "$WR/E8.withou
   t_ok "AC2.3 the prompt files of both arms and repeats are byte-equal"
 else t_bad "AC2.3 the prompt files of both arms and repeats are byte-equal" "E8.with.1.prompt vs E8.without.1/.2"; fi
 
+echo "fix2 --arm both: both arms get the same prompt, and it never names the playbook (the without arm cannot see it)"
+go --cmd "bash $A/idle.sh" --arm both --scenarios E8
+for L in E8.with.1 E8.without.1; do
+  assert_file "fix2 $L: the adapter got a prompt file" "$REC/$L.prompt"
+  assert_eq "fix2 $L: line 1 is the scenario prompt" "Summarise docs/notes.md." "$(head -n 1 "$REC/$L.prompt" 2>/dev/null)"
+  assert_eq "fix2 $L: a non-interactive note follows the scenario prompt" "yes" "$([ "$(wc -l < "$REC/$L.prompt" 2>/dev/null || echo 0)" -ge 2 ] && echo yes || echo no)"
+  assert_eq "fix2 $L: the prompt does not contain the word playbook (any case)" "0" "$(grep -ci playbook < "$REC/$L.prompt" 2>/dev/null)"
+done
+if [ -f "$REC/E8.with.1.prompt" ] && cmp -s "$REC/E8.with.1.prompt" "$REC/E8.without.1.prompt"; then t_ok "fix2 --arm both: the two prompts are byte-equal"
+else t_bad "fix2 --arm both: the two prompts are byte-equal" "E8.with.1 vs E8.without.1"; fi
+echo "fix2 --repeat alone (with arm only): the prompt does not name the playbook either"
+go --cmd "bash $A/idle.sh" --repeat 2 --scenarios E8
+assert_file "fix2 --repeat 2: E8.with.2 got a prompt file" "$REC/E8.with.2.prompt"
+assert_eq "fix2 --repeat 2: E8.with.2 prompt does not contain the word playbook" "0" "$(grep -ci playbook < "$REC/E8.with.2.prompt" 2>/dev/null)"
+echo "fix2 default mode (no --arm, no --repeat): the prompt is unchanged byte for byte (characterization)"
+go --cmd "bash $A/idle.sh" --scenarios E8
+PX="$(mk_tmp)/E8.expected"
+printf '%s\n%s\n' 'Summarise docs/notes.md.' "(Non-interactive run: nobody will answer questions here. Use the playbook's non-interactive rule.)" > "$PX"
+if [ -f "$REC/E8.prompt" ] && cmp -s "$PX" "$REC/E8.prompt"; then t_ok "fix2 default mode: the E8 prompt is the scenario prompt plus today's non-interactive line, byte for byte"
+else t_bad "fix2 default mode: the E8 prompt is the scenario prompt plus today's non-interactive line, byte for byte" "$(od -c "$REC/E8.prompt" 2>/dev/null | head -n 5)"; fi
+
 echo "S2 AC2.2 --repeat 2 alone labels the with arm: E8.with.1, E8.with.2"
 go --cmd "bash $A/ord.sh" --repeat 2 --scenarios E8
 assert_eq "AC2.2 --repeat 2 alone: two with runs" "E8.with.1 E8.with.2" "$(tr '\n' ' ' < "$REC/order" 2>/dev/null | sed 's/ $//')"

@@ -17,7 +17,8 @@ if git -C "$PB_ROOT" cat-file -e aeeb809 2>/dev/null && git -C "$PB_ROOT" archiv
 # ---------------------------------------------------------------------------------------------------------------
 echo "F2 print mode (--baseline without --commit) is what v0.24.22 printed, and writes no object (old scripts from git archive aeeb809)"
 if [ -n "$OLDDIR" ]; then
-  norm() { printf '%s' "$1" | sed -E "s/[0-9]{8}T[0-9]{6}Z/<ts>/g; s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/<time>/g"; }
+  # v0.26.0: proof-run adds a "- tree: <hash>" line (lane P) that the v0.24.22 script cannot print; it is left out of the comparison
+  norm() { printf '%s' "$1" | sed -E -e "s/[0-9]{8}T[0-9]{6}Z/<ts>/g; s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/<time>/g" -e '/^- tree: ([0-9a-f]+|none)$/d'; }
   # objl REPO -> every loose object file, sorted (the object store as a list)
   objl() { ( cd "$1" && find .git/objects -type f | LC_ALL=C sort ); }
   # pm_case LABEL KIND -> 10 assertions. KIND plain | crlf | safecrlf | nested. Repo a runs the v0.24.22 script, repo b this one, both in print mode with a baseline

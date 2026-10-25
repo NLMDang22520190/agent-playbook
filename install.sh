@@ -12,7 +12,7 @@ BEGIN_PREFIX='<!-- BEGIN agent-playbook'
 END_LINE='<!-- END agent-playbook -->'
 MARKER='.playbook-managed'
 
-CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0
+CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0
 # Every successful install is recorded here so `update` can refresh all targets
 # (WSL home, Windows home in copy mode, ...). Tests point it elsewhere.
 REGISTRY="${PLAYBOOK_REGISTRY:-$REPO/.install-targets}"
@@ -32,8 +32,8 @@ Commands
   uninstall   remove only what this installer created
   status      one line per harness: installed | partial | not installed
   doctor      verify links, copies, blocks and known pitfalls (exit 1 on problems)
-  update      fetch release tags, show the changelog, check out the newest (or --to TAG)
-              and re-install every recorded target; --check only reports
+  update      fetch release tags, verify the tag's signature, show the changelog, check out
+              the newest (or --to TAG) and re-install every recorded target; --check only reports
 
 Options
   --harness LIST   claude,codex,opencode | all   (install: auto-detected from ~/.claude,
@@ -45,6 +45,20 @@ Options
   --yes            do not ask for confirmation (required when stdin is not a terminal)
   --to TAG         update: release to check out (rollback: --to v0.1.0)
   --check          update: only report whether a newer release exists
+  --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
+                   checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
+                   an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
+
+Release tag signatures (update)
+  The tag is checked with `git verify-tag` before anything changes. Verified: reported.
+  Unsigned, or signed but cannot be checked: a WARN line and the update continues. That covers
+  an SSH signature while gpg.ssh.allowedSignersFile is not set, and a PGP/x509 signature that
+  does not verify (no key, no gpg, or a bad signature). An SSH signature that does not verify
+  against a configured gpg.ssh.allowedSignersFile stops the update (exit 1), even with
+  --allow-unsigned.
+  require_signed_tags=yes in ~/.agents/playbook.conf (global conf only; set it with
+  scripts/conf.sh set require_signed_tags yes) makes an unsigned or unchecked tag fatal.
+  Values: yes | no (default no); any other value stops the update (exit 2).
 EOF
 }
 
@@ -73,6 +87,7 @@ while [ $# -gt 0 ]; do
     --yes|-y) YES=1 ;;
     --to) [ $# -ge 2 ] || die "--to needs a tag" 2; TO="$2"; shift ;;
     --check) CHECK=1 ;;
+    --allow-unsigned) ALLOW_UNSIGNED=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" 2 ;;
   esac
@@ -550,8 +565,70 @@ EOF
   [ "$fails" -eq 0 ] || die "$fails target(s) failed after the update; see the output above" 1
 }
 
+# require_signed_tags from the GLOBAL conf only -> yes | no; another value exits 2.
+# DECISION[S5]: a project conf comes from whatever repo the user stands in, so it cannot switch the check off.
+require_signed_tags() {
+  local v
+  # shellcheck source=scripts/lib.sh
+  . "$REPO/scripts/lib.sh" || die "cannot load $REPO/scripts/lib.sh" 3
+  v="$(pb_conf_read "$(pb_conf_global)" require_signed_tags)" || v=no
+  case "$v" in
+    yes|no) printf '%s' "$v" ;;
+    *) die "invalid value require_signed_tags=$v in $(pb_conf_global) (use yes or no)" 2 ;;
+  esac
+}
+
+# verify_release_tag TAG OID: classify the tag object and act on it before anything changes.
+# DECISION[S1]: classify by the tag object (lightweight / signature marker), never by git's localized messages.
+verify_release_tag() {
+  local t="$1" oid="$2" req state="" why="" asf
+  req="$(require_signed_tags)" || exit $?
+  if [ "$(git -C "$REPO" cat-file -t "$oid")" != tag ]; then
+    state=unsigned
+  elif git -C "$REPO" cat-file tag "$oid" | LC_ALL=C grep -q -e '^-----BEGIN SSH SIGNATURE-----'; then
+    asf="$(git -C "$REPO" config --type=path --get gpg.ssh.allowedSignersFile 2>/dev/null)"
+    # git reads a relative path from the top of the work tree (git-config(1), gpg.ssh.allowedSignersFile), not from the cwd.
+    case "$asf" in
+      '' | /* | [A-Za-z]:/* | [A-Za-z]:\\*) ;;
+      *) asf="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO")/$asf" ;;
+    esac
+    if [ -z "$asf" ] || [ ! -s "$asf" ]; then
+      # DECISION[S2]: no trust anchor configured -> the signature proves nothing; treat like unsigned.
+      state=untrusted; why=" (SSH signature; gpg.ssh.allowedSignersFile is not set, or names a missing or empty file)"
+    elif git -C "$REPO" verify-tag "$oid" >/dev/null 2>&1; then
+      state=verified
+    else
+      state=bad
+    fi
+  elif git -C "$REPO" cat-file tag "$oid" | LC_ALL=C grep -q \
+         -e '^-----BEGIN PGP SIGNATURE-----' -e '^-----BEGIN PGP MESSAGE-----' -e '^-----BEGIN SIGNED MESSAGE-----'; then
+    if git -C "$REPO" verify-tag "$oid" >/dev/null 2>&1; then
+      state=verified
+    else
+      # DECISION[S4]: a failing PGP/x509 signature (no key, no gpg, or bad) is untrusted, not bad.
+      state=untrusted; why=" (PGP/x509 signature: key or gpg not available here)"
+    fi
+  else
+    state=unsigned
+  fi
+  case "$state" in
+    verified) say "release tag $t: signature verified"; return 0 ;;
+    # DECISION[S3]: --allow-unsigned never overrides a signature that does not verify.
+    bad) die "release tag $t: signature does not verify (tampered tag, or signer not in gpg.ssh.allowedSignersFile); nothing was changed" 1 ;;
+  esac
+  if [ "$req" = yes ] && [ "$ALLOW_UNSIGNED" -eq 0 ]; then
+    if [ "$state" = unsigned ]; then why=" is not signed"; else why=": signature cannot be checked$why"; fi
+    die "release tag $t$why and require_signed_tags=yes; nothing was changed (pass --allow-unsigned to update anyway)" 1
+  fi
+  if [ "$state" = unsigned ]; then
+    warn "release tag $t is not signed; continuing"
+  else
+    warn "release tag $t: signature cannot be checked$why; continuing"
+  fi
+}
+
 cmd_update() {
-  local cur latest target
+  local cur latest target oid commit
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
   cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
@@ -575,13 +652,18 @@ cmd_update() {
     return 0
   fi
   [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || die "the playbook repo $REPO has uncommitted changes; commit or stash them before updating" 1
+  # DECISION[S7]: resolve refs/tags/T once; verify and check out that object, never the bare name
+  # (a branch or refs/T of the same name could win). DECISION[S6]: verify before the changelog, confirm and dry run.
+  oid="$(git -C "$REPO" rev-parse -q --verify "refs/tags/$target")" || die "unknown release: $target" 2
+  commit="$(git -C "$REPO" rev-parse -q --verify "$oid^{commit}")" || die "unknown release: $target" 2
+  verify_release_tag "$target" "$oid"
   say "agent-playbook: $cur -> $target"
   say "---- CHANGELOG at $target ----"
-  git -C "$REPO" show "$target:CHANGELOG.md" 2>/dev/null | sed -n '1,30p'
+  git -C "$REPO" show "$commit:CHANGELOG.md" 2>/dev/null | sed -n '1,30p'
   say "------------------------------"
   confirm
   if [ "$DRY" -eq 1 ]; then say "dry run: would check out $target and re-install the recorded targets"; return 0; fi
-  git -C "$REPO" -c advice.detachedHead=false checkout -q "$target" || die "checkout of $target failed" 1
+  git -C "$REPO" -c advice.detachedHead=false checkout -q "$commit" || die "checkout of $target failed" 1
   # From here on the files on disk are the new release: run its installer, not this process.
   reinstall_targets
   say "updated to $target. Start new harness sessions to load the new skills."

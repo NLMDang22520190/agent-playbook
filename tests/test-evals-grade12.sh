@@ -71,10 +71,18 @@ assert_eq "AC2b the Write comes before the first Read: FAIL" "FAIL" "$(e_state E
 assert_eq "AC2c no decisions.md: FAIL" "FAIL" "$(e_state E2 "$KC2")"
 assert_eq "AC2d a reply without defaults is MANUAL, never FAIL" "MANUAL" "$(e_state E2 "$KD2")"
 
-echo "AC2 E2 headless: (b) a Bash write counts as a file change; a Bash ls is no inspection; (c) a ledger without discount words"
+echo "AC2 E2 headless: (b) a Bash write counts as a file change; fix6 a Bash ls before it is an inspection; (c) a ledger without discount words"
 xr E2 h4 head "$(cpto dec2none "$DEC") && $(cpto disc2 src/discount.js)" "$INIT" "$(BS 'ls')" "$(BS 'printf x > src/discount.js')" "$(rj 'Done.')"
-assert_eq "AC2b ls (no cart) then a Bash write under src/: FAIL" "FAIL" "$(e_state E2 "$KB2")"
+assert_eq "fix6 AC2b ls (exploration, no cart) then a Bash write under src/: PASS" "PASS" "$(e_state E2 "$KB2")"
 assert_eq "AC2c decisions.md without a discount, percent, fixed, stack or round line: FAIL" "FAIL" "$(e_state E2 "$KC2")"
+
+echo "fix6 E2 headless: (b) exploring with find or Glob before the first file change is an inspection; after it, it is not"
+xr E2 h8 head "$NOOP" "$INIT" "$(BS 'find . -name "*.js" -not -path "./node_modules/*"')" "$(WR src/cart.js)" "$(rj 'Done.')"
+assert_eq "fix6 AC2b a Bash find, then a Write: PASS" "PASS" "$(e_state E2 "$KB2")"
+xr E2 h9 head "$NOOP" "$INIT" "$(tu Glob '{"pattern":"src/**/*.js"}')" "$(WR src/cart.js)" "$(rj 'Done.')"
+assert_eq "fix6 AC2b a Glob call, then a Write: PASS" "PASS" "$(e_state E2 "$KB2")"
+xr E2 h10 head "$NOOP" "$INIT" "$(WR src/cart.js)" "$(BS 'ls src')" "$(rj 'Done.')"
+assert_eq "fix6 AC2b a Write, then an ls: FAIL" "FAIL" "$(e_state E2 "$KB2")"
 
 echo "AC2 E2 headless: (b) no file change and an inspection PASS; (c) a committed decisions.md counts"
 xr E2 h5 head "$(cpto dec2stack "$DEC") && $GC add $DEC && $GC commit -qm decisions" "$INIT" "$(GRP)" \
