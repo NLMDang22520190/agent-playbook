@@ -75,6 +75,9 @@ hasi "C3 mid-task stop: a new Full criterion after an override" "$STOP_J" 'new F
 hasi "C3 mid-task stop: quick work past the size limit" "$STOP_J" 'quick[^.;]{0,30}size limit'
 hasi "C3 mid-task stop: a test that seems to need weakening" "$STOP_J" 'weaken'
 hasi "C3 mid-task stop: baseline failures that make RED/GREEN unreadable" "$STOP_J" 'baseline[^.;]{0,60}unreadable'
+# review 263c finding 2 (orchestrator decision 2): the closed list also names the two scope stops it lost
+hasi "C3 mid-task stop: adding a dependency" "$STOP_J" 'mid-task stops are only[^.]{0,500}(add|adding|new)[^.;]{0,20}dependenc'
+hasi "C3 mid-task stop: touching code outside the request" "$STOP_J" 'mid-task stops are only[^.]{0,500}(code outside the request|unrelated code)'
 hasi "C3 core Stop and ask: end-of-task questions go in one closing message" "$STOP_J" 'end-of-task questions[^.]{0,120}one closing message'
 for q in learn feedback humanizer; do
   hasi "C3 the closing message names the $q question" "$STOP_J" "end-of-task questions[^.]{0,100}$q"
@@ -124,5 +127,7 @@ has "C12 core: the condition is a caller outside its own file or module" "$SK_J"
 has "C12 core: or the package is published" "$SK_J" 'This applies when[^.]{0,160}published'
 has "C12 core: an Impact scan with no outside caller (command and 0 hits) is Lite with a risk line" "$SK_J" 'Impact scan[^.]{0,80}(none|0 hits)[^.]{0,80}Lite with a risk line'
 has "C12 block: the rename rule names the outside use" "$TDD_J" '(rename|removal)[^.]{0,40}export[^.]{0,40}(used outside|caller outside|outside its)[^.]{0,60}public API change: Full'
+# review 263c finding 6: the block keeps the "or published" condition of the core rule
+has "C12 block: the rename rule also covers a published export" "$TDD_J" '(rename|removal)[^.]{0,40}export[^.]{0,120}published'
 
 t_summary

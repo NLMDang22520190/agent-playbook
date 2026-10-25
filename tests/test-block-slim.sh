@@ -18,8 +18,10 @@ PROOF="$PB_ROOT/skills/playbook-proof/SKILL.md"
 LEARN="$PB_ROOT/skills/playbook-learn/SKILL.md"
 SETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 FEEDB="$PB_ROOT/skills/playbook-feedback/SKILL.md"
-BUDGET_MAX=590
-BYTES_MAX=3800
+# review fix round (263c, orchestrator decisions 1, 3, 6): the scope line, the folded headless exception and "or published"
+# add about 35 words to the 589-word block -> the ceiling rises to 630 words and 4050 bytes (decision logged in the report)
+BUDGET_MAX=630
+BYTES_MAX=4050
 LINES_MAX=39
 
 sec() {
@@ -39,11 +41,28 @@ PROOFSEC_J="$(sec "$BLOCK" '^### Proof for claims that matter')"
 # the orchestrator's target for the scope detail: the playbook-tdd core or its references/
 TDDTREE="$(flat "$PB_ROOT/skills/playbook-tdd/SKILL.md" "$PB_ROOT"/skills/playbook-tdd/references/*.md)"
 
-echo "B (E13) the headless + hard-to-reverse rule is in the Clarify section, verbatim"
-hasF "B E13 Clarify: Headless and hard to reverse (a drop, a migration, money, anything sent outside): do not do it; leave it pending, say so in the report." \
-  "$CLAR_J" 'Headless and hard to reverse (a drop, a migration, money, anything sent outside): do not do it; leave it pending, say so in the report.'
-# the reversible headless rule stays next to it (the new rule narrows it, it does not replace it)
-has "B E13 Clarify: the non-interactive bullet still says do not block; log the defaults" "$CLAR_J" 'Non-interactive \([^)]*headless[^)]*\): do not block; log the defaults'
+echo "B (E13, review 263c finding 3) the headless rule is ONE non-interactive bullet with the hard-to-reverse exception"
+# RETIRED (orchestrator decision 3): the separate "Headless and hard to reverse (a drop, a migration, ...)" bullet, pinned
+# verbatim before; its list differed from the Ask-only list and nothing tied it to the non-interactive bullet.
+CLAR_L="$(awk '/^#+ / { if (f) exit; if ($0 ~ /^### Clarify before changing/) f = 1 } f { print }' "$BLOCK" 2>/dev/null)"
+NI_N="$(printf '%s\n' "$CLAR_L" | grep -c '^- Non-interactive')"
+assert_eq "B E13 Clarify has exactly one - Non-interactive bullet" "1" "$NI_N"
+NI_B="$(printf '%s\n' "$CLAR_L" | grep '^- Non-interactive' | head -n 1)"
+HL_ALL="$(printf '%s\n' "$CLAR_L" | grep -ci 'headless')"
+HL_OUT="$(printf '%s\n' "$CLAR_L" | grep -i 'headless' | grep -vc '^- Non-interactive')"
+if [ "$HL_ALL" -ge 1 ] && [ "$HL_OUT" -eq 0 ]; then t_ok "B E13 Clarify: the word headless appears only inside the Non-interactive bullet"
+else t_bad "B E13 Clarify: the word headless appears only inside the Non-interactive bullet" "lines with headless: $HL_ALL, outside the bullet: $HL_OUT"; fi
+has "B E13 the bullet keeps its scope: CI, headless, or the request says nobody will answer" "$NI_B" '^- Non-interactive \(CI, headless, or the request says nobody will answer\)'
+hasF "B E13 the bullet: do not block" "$NI_B" 'do not block'
+hasF "B E13 the bullet: log the defaults" "$NI_B" 'log the defaults'
+has "B E13 the bullet ties the exception to the rule with except" "$NI_B" 'log the defaults[^.]{0,20}except'
+ASK_LIST='public API or data shape, migrations, security, money, anything sent outside'
+hasF "B E13 the Ask-only bullet holds the hard-to-reverse list (the list the exception refers to)" "$(printf '%s\n' "$CLAR_L" | grep '^- Ask only about')" "$ASK_LIST"
+hasF "B E13 the exception's list is the Ask-only list: $ASK_LIST" "$NI_B" "($ASK_LIST)"
+hasntF "B E13 the exception no longer uses the old narrower list (a drop, a migration)" "$NI_B" 'a drop'
+has "B E13 the exception applies only to what the user did not ask for by name" "$NI_B" '(did not|didn.t) ask for by name'
+has "B E13 the excepted work is not done" "$NI_B" 'except[^.]{0,250}do not do it'
+has "B E13 the excepted work is left pending and reported" "$NI_B" 'do not do it[^.]{0,40}pending[^.]{0,60}report'
 
 echo "B2 kept in the block (delta > 0 in Run 25, or a floor)"
 has "B2 keep (E3, E4): tests first with a weight chosen by risk" "$TDD_J" '`playbook-tdd`: tests first, weight chosen by risk'
@@ -65,6 +84,14 @@ done
 hasF "B2 floor F4: precedence user, then project, then this playbook" "$BLK" "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook."
 hasF "B2 floor F4: the playbook wins over overlapping skills" "$BLK" 'this playbook wins'
 hasF "B2 keep: the scope line stays in the block" "$BLK" 'Change only what was asked'
+# review 263c finding 1 (orchestrator decision 1): ONE scope line in the block carries the scope detail (Lite and non-TDD
+# sessions never read references/full.md); full.md may keep its longer text
+SCOPE_L="$(awk '/^#+ / { if (f) exit; if ($0 ~ /^### Scope discipline/) f = 1 } f { print }' "$BLOCK" 2>/dev/null | grep 'Change only what was asked')"
+assert_eq "B2 P9/P10 the block has exactly one line with Change only what was asked" "1" "$(grep -c 'Change only what was asked' "$BLOCK")"
+hasi() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not found (any case)"; fi; }
+hasi "B2 P9 the scope line (Scope discipline) says no drive-by refactors" "$SCOPE_L" 'Change only what was asked[^.]{0,20}no drive-by refactors'
+hasi "B2 P9 the scope line says no new dependency without asking" "$SCOPE_L" 'Change only what was asked[^.]{0,60}no new dependency without asking'
+hasi "B2 P10 the scope line says write only in the project you were asked to work in" "$SCOPE_L" 'Change only what was asked[^.]{0,120}write only in the project you were asked to work in'
 
 echo "B2/B4 moved out of the block into the owning skill (present there, absent here)"
 PROOF_F="$(flat "$PROOF")"
@@ -82,8 +109,10 @@ hasntF "B2 P8 the block no longer carries the fresh-run detail (Passes, works, f
 hasntF "B2 P8 the block no longer names proof-run.sh" "$BLK" 'proof-run.sh'
 hasF "B4 P8 characterization: playbook-proof keeps the run in this session after the last change" "$PROOF_F" 'in this session after the last change'
 hasF "B4 P8 characterization: playbook-proof keeps Fresh evidence only" "$PROOF_F" 'Fresh evidence only.'
+# review 263c finding 5: one "Text others will read" line in playbook-proof (two lines with different scope before)
+assert_eq "B4 P4 playbook-proof SKILL.md has exactly one Text others will read line" "1" "$(grep -c 'Text others will read' "$PROOF")"
 # P9, P10: the scope detail (E10 delta 0) -> playbook-tdd
-hasntF "B2 P9 the block no longer carries no drive-by refactors" "$BLK" 'drive-by'
+# RETIRED (orchestrator decision 1): "the block no longer carries no drive-by refactors" (the scope line now holds it)
 hasntF "B2 P10 the block no longer carries the ~/.agents write exception" "$BLK" '~/.agents files'
 hasF "B4 P9 playbook-tdd holds: no drive-by refactors, no new dependency without asking" "$TDDTREE" 'Change only what was asked: no drive-by refactors, no new dependency without asking.'
 hasF "B4 P10 playbook-tdd holds: write only in the project you were asked to work in, plus ~/.agents files" "$TDDTREE" 'Write only in the project you were asked to work in, plus ~/.agents files.'

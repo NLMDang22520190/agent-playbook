@@ -333,7 +333,7 @@ KEEP	skills/playbook-proof/SKILL.md	1	[ ] No test, assertion or gate was weakene
 KEEP	skills/playbook-proof/SKILL.md	1	[ ] `proof-check.sh REPORT` prints `fresh` for every evidence block you cite; re-run what is stale.	
 KEEP	skills/playbook-proof/SKILL.md	1	[ ] Assumptions and anything [UNVERIFIED] are listed.	
 KEEP	skills/playbook-proof/SKILL.md	1	Answer format and examples: `references/evidence-formats.md`.	
-KEEP	skills/playbook-proof/SKILL.md	1	Text others will read (final report, PR description, docs): follow `references/writing.md`.	
+EDIT	skills/playbook-proof/SKILL.md	0	Text others will read[^.]{0,200}`references/writing\.md`	P4 one Text others will read line in playbook-proof (review 263c finding 5)
 KEEP	skills/playbook-feedback/SKILL.md	1	Why: the playbook only improves from real use across harnesses, but unprompted or unreviewed issues would be slop and could leak project data.	
 KEEP	skills/playbook-feedback/SKILL.md	1	This is how the global playbook improves from real use across harnesses.	
 KEEP	skills/playbook-feedback/SKILL.md	1	Project-specific lessons do not belong here; they go to `playbook-learn`.	
@@ -388,8 +388,8 @@ KEEP	AGENTS.global.md	1	Never ask what the repo can answer.
 KEEP	AGENTS.global.md	1	Ask only about what is material AND hard to reverse: public API or data shape, migrations, security, money, anything sent outside, or a product choice for the user.	
 KEEP	AGENTS.global.md	1	Else pick a default, log it in `.agents/handoff/decisions.md` (decision, why, how to undo).	
 KEEP	AGENTS.global.md	1	Ask once, batched, each with your proposed default.	
-KEEP	AGENTS.global.md	1	Text others will read (PR description, release notes, docs, a report sent on): follow `references/writing.md` of skill `playbook-proof`; if a `humanizer` skill is available, also ask whether to run it in full; never for chat replies; headless: no question.	
-KEEP	AGENTS.global.md	1	Non-interactive (CI, headless, or the request says nobody will answer): do not block; log the defaults.	
+EDIT	AGENTS.global.md	0	humanizer[^.]{0,60}ask whether to run it in full	P4 one Text others will read line in playbook-proof (review 263c finding 5)
+EDIT	AGENTS.global.md	0	Non-interactive \(CI, headless, or the request says nobody will answer\): do not block; log the defaults	P5 one non-interactive bullet with the hard-to-reverse exception (review 263c finding 3)
 KEEP	AGENTS.global.md	1	End the summary with assumptions and logged defaults.	
 KEEP	AGENTS.global.md	1	Why: waiting on reversible choices is slow; guessing irreversible ones does damage.	
 KEEP	AGENTS.global.md	1	Load the skill, not the summary	

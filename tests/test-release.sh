@@ -712,6 +712,34 @@ skills/b/SKILL.md 400
 run bash "$D/tools/check-release.sh" v1.2.3
 assert_rc "B3b check-release: a moved-in credit of 60 with the block falling only 30: exit 1" 1
 assert_contains "B3b check-release: the failure names moved-in" "$OUT" "moved-in"
+# review 263c finding 4: the moved-in credit only counts a NEW line whose source is the block's budget at the previous tag
+# (kills mutants M1 "drop the not-already-at-the-tag guard" and M2 "accept any source" at tools/check-release.sh:85)
+D="$(mk_rel_wb "$WB_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from docs/gone.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in line whose source (docs/gone.md) has no budget at v1.2.2 gives no credit: exit 1" 1
+assert_contains "B3b check-release: the refused rise names the path" "$OUT" "word budget of skills/a/SKILL.md rose"
+assert_contains "B3b check-release: the refused rise shows a moved-in credit of 0" "$OUT" "moved-in credit 0"
+WB_MI_OLD='# budgets
+AGENTS.global.md 650
+skills/a/SKILL.md 760
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+'
+D="$(mk_rel_wb "$WB_MI_OLD" '# budgets
+AGENTS.global.md 590
+skills/a/SKILL.md 820
+# moved-in: skills/a/SKILL.md 60 from AGENTS.global.md
+skills/b/SKILL.md 500
+' tag-head)"
+run bash "$D/tools/check-release.sh" v1.2.3
+assert_rc "B3b check-release: a moved-in line already at v1.2.2 is not credited again (760 -> 820, block 650 -> 590): exit 1" 1
+assert_contains "B3b check-release: the re-used line's rise names the path" "$OUT" "word budget of skills/a/SKILL.md rose"
+assert_contains "B3b check-release: the re-used line gives a moved-in credit of 0" "$OUT" "moved-in credit 0"
 D="$(mk_rel 1.2.3 "$CL")"; mkdir -p "$D/evals"; printf 'skills/a/SKILL.md 9999\n' > "$D/evals/word-budgets"
 ( cd "$D" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
   git config commit.gpgsign false && git add -A && git commit -q -m only ) >/dev/null 2>&1
