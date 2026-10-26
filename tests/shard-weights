@@ -120,6 +120,7 @@ test-role-gate-size-exclude.sh 150
 test-sdlc-refs.sh 20
 test-evals-grade14.sh 180
 test-evals-grade14b.sh 130
+test-evals-grade14c.sh 30
 test-outcome-selfcheck.sh 90
 test-outcome-corpus.sh 100
 test-outcome-runner.sh 120
