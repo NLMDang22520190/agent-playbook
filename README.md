@@ -154,6 +154,42 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 ./install.sh uninstall --harness all --yes   # removes only what the installer created; keeps config and backups
 ```
 
+## Hooks (Claude Code, opt-in)
+
+The rules ask the agent to stop before irreversible actions. In Claude Code, hooks can enforce part of that. They stay off until you say yes: say "set up the playbook" and answer yes to the hooks line (playbook-setup asks once, default no), or run
+
+```bash
+bash ~/.agents/playbook/scripts/claude-hooks.sh install     # merge into ~/.claude/settings.json (backup first)
+bash ~/.agents/playbook/scripts/claude-hooks.sh status      # one line per handler
+bash ~/.agents/playbook/scripts/claude-hooks.sh uninstall   # remove only the agent-playbook handlers
+```
+
+The merge needs node. Without it the script changes nothing and prints the JSON to add by hand. Your other settings and hooks stay as they are, `install.sh uninstall` removes ours too, and `install.sh doctor` says whether they are installed, partly installed or turned off by `disableAllHooks`.
+
+| Event | Handler | What it does |
+|---|---|---|
+| PreToolUse (`Bash`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. |
+| SessionStart | `guard-irreversible.sh --session-start` | Records the commit the session started from. |
+| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions. |
+| Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. |
+
+Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
+
+Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but v0.28.0 does not install them, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
+
+### Limits
+
+The guard reads the command text of one tool call. It does not see through:
+
+- another shell or evaluator: `bash -c`, `sh -c`, `eval`, `$(...)` and backticks, subshells and brace groups, here-docs fed to a shell;
+- interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
+- git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
+- tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
+- edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
+- projects that are not a git repository, where the Stop check has no diff to compare.
+
+For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
+
 ## Updates and feedback
 
 <p align="center">

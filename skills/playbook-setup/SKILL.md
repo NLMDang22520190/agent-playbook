@@ -9,20 +9,18 @@ description: Use once per machine or project to configure the agent playbook - w
 gates run the wrong thing silently.
 
 Goal: one short round of questions that produces `~/.agents/playbook.conf` (global) and, inside a
-project, `<project>/.agents/playbook.conf`. The other playbook skills read these values. Detect
-what you can, propose defaults, guess nothing silently.
+project, `<project>/.agents/playbook.conf`.
 
-Scripts live at `~/.agents/playbook/scripts/` (installed by the playbook's `install.sh`).
-If that directory is missing, stop and tell the user to run `install.sh install` from their
-agent-playbook repo. Do not improvise an installation.
+Scripts live at `~/.agents/playbook/scripts/`. If that directory is missing, stop and tell the
+user to run `install.sh install` from their agent-playbook repo; do not improvise an installation.
 
 ## Steps
 
 1. **Current state.** Run `bash ~/.agents/playbook/scripts/conf.sh list`. If a config exists and
    the user did not ask to reconfigure, report it and stop.
 
-2. **Identify the harness from your own tools.** Look at the tools you actually have; do not
-   guess from the model name. Hints (tool names change between versions, so treat them as hints):
+2. **Identify the harness from your own tools.** Use the tools you actually have, not the
+   model name. Tool names change, so these are hints:
 
    | Harness | Typical signals | Sub-agents |
    |---|---|---|
@@ -31,11 +29,10 @@ agent-playbook repo. Do not improvise an installation.
    | OpenCode | `task`, `skill`, `question` tools; `~/.config/opencode/` | native: the `task` tool |
    | Other | read the harness docs | ask the user |
 
-   State your conclusion. It is confirmed in step 4.
+   State your conclusion (confirmed in step 4).
 
-   On Windows, check which `bash` you get: `bash --version` must mention `msys`/`mingw` (Git Bash).
-   `C:\Windows\System32\bash.exe` is the WSL launcher and would run the playbook scripts inside WSL
-   against the wrong home. If so, call Git Bash by its full path (usually
+   On Windows, `bash --version` must say `msys`/`mingw` (Git Bash); `C:\Windows\System32\bash.exe` is
+   the WSL launcher (wrong home): call Git Bash by its full path (usually
    `"C:\Program Files\Git\bin\bash.exe"`) and say so in the summary.
 
 3. **Inspect the project before asking** (skip outside a project):
@@ -51,6 +48,11 @@ agent-playbook repo. Do not improvise an installation.
    default and why it matters. Use the harness's structured question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip questions inspection already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
+   Claude Code only: an optional line outside the 8 offers the hooks (default no): guard warns on irreversible
+   actions, blocking them headless; learnings adds project lessons at session start. Yes:
+   `bash ~/.agents/playbook/scripts/claude-hooks.sh install` (into `~/.claude/settings.json`, backup first;
+   `claude-hooks.sh uninstall` removes them), `conf.sh set hooks on --global`; no: `hooks off`.
+   Non-interactive: never install the hooks.
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
@@ -61,7 +63,7 @@ agent-playbook repo. Do not improvise an installation.
    accepts it or picks others. Store each pick with
    `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting, stored as `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`).
    Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
-   never write keys that are not documented in step 6 (no harness-specific extras).
+   never write keys that are not documented in step 6.
 
 5. **Non-interactive run** (CI, `claude -p`, `codex exec`, `opencode run`, or no reply possible):
    do not block. Write the defaults, add `setup=defaults-noninteractive`, and list every
@@ -75,7 +77,7 @@ agent-playbook repo. Do not improvise an installation.
    bash $C set setup done --global
    ```
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
-   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `humanizer` (ask | always | never, default ask), `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `humanizer` (ask | always | never, default ask), `hooks` (on/off), `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
    shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as your email address or a private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 
@@ -86,12 +88,13 @@ agent-playbook repo. Do not improvise an installation.
    - Check that the always-on block is loaded: look for the `<!-- BEGIN agent-playbook` line in the
      global file of this harness (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
      `~/.config/opencode/AGENTS.md`, which falls back to `~/.claude/CLAUDE.md`). If it is missing,
-     recommend `install.sh doctor`. Do not edit global files yourself without consent.
+     recommend `install.sh doctor`.
    - For Codex: if `~/.codex/AGENTS.override.md` is non-empty, warn that it shadows `AGENTS.md`.
 
 8. **Project bootstrap (ask first).** Offer:
    `bash ~/.agents/playbook/scripts/learn.sh init --link-agents` (creates `.agents/LEARNINGS.md`,
-   ignores `.agents/handoff/`, and adds a pointer to `AGENTS.md`). If the project has no
+   ignores `.agents/handoff/`, and adds a pointer to `AGENTS.md`). Without the learnings hook (not installed, or
+   Codex/OpenCode), the pointer is how agents learn about the file. If the project has no
    `CLAUDE.md` and the user uses Claude Code, add `--link-claude` (creates `CLAUDE.md` containing `@AGENTS.md`).
 
    Also offer the leak guard: ask for private strings the public repos must never contain and store them with
@@ -105,5 +108,4 @@ agent-playbook repo. Do not improvise an installation.
 
 ## Do not
 - install packages, change harness settings or edit global instruction files without consent;
-- run long test suites during setup (checking that the command exists is enough);
-- ask more than the necessary questions, or ask what the repo already answers.
+- run long test suites during setup (checking that the command exists is enough).
