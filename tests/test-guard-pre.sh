@@ -432,4 +432,90 @@ done
 grun PB_HEADLESS=1 TMPDIR="$GTP" CLAUDE_PROJECT_DIR="$PJ" -- "$(jbash 'rm -rf build' "$PJ")"
 expect_pass "F2-2 N2 real tree: rm -rf build inside the project"
 
+# ---- v0.28.2 lane g: destructive SQL carried by a file written earlier in the same command (spec .agents/handoff/01-spec.md) ----
+echo "G (v0.28.2 lane g) AC1-AC7 SQL carried by a file written earlier in the same command"
+# Own fixture project so the earlier sections keep their P untouched. drop.sql / db/drop.sql hold DROP, db/read.sql is harmless,
+# out/ is an existing directory (AC4b cp into a directory). The guard only reads the fixture; nothing here writes into it.
+GQ="$(mk_tmp)"
+mkdir -p "$GQ/db" "$GQ/out"
+printf 'DROP TABLE legacy_orders;\n' > "$GQ/db/drop.sql"
+printf 'DROP TABLE legacy_orders;\n' > "$GQ/drop.sql"
+printf 'SELECT 1;\n' > "$GQ/db/read.sql"
+gblock() { # gblock LABEL CMD -> headless block with BLOCKED (sql)
+  grun PB_HEADLESS=1 -- "$(jbash "$2" "$GQ")"
+  expect_block "$1 [$(printf '%s' "$2" | tr '\n' ' ')]" sql
+}
+gallow() { # gallow LABEL CMD -> headless, allowed with no output
+  grun PB_HEADLESS=1 -- "$(jbash "$2" "$GQ")"
+  expect_pass "$1 [$(printf '%s' "$2" | tr '\n' ' ')]"
+}
+# AC1 tee
+for c in "printf 'DROP TABLE t;' | tee f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | tee -a f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | tee f.sql >/dev/null; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | tee f.txt && sqlite3 db < f.txt"; do
+  gblock "G AC1 tee carries DROP to a client" "$c"
+done
+# AC2 cat >
+for c in "printf 'DROP TABLE t;' | cat > f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | cat > f.sql; sqlite3 db \".read f.sql\"" \
+  "printf 'DROP TABLE t;' | cat >> f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | cat > f.sql; psql -f f.sql"; do
+  gblock "G AC2 cat > carries DROP to a client" "$c"
+done
+# AC3 cp / mv
+for c in "cp drop.sql f.sql; sqlite3 db < f.sql" \
+  "cp db/drop.sql f.txt && sqlite3 db < f.txt" \
+  "mv db/drop.sql f.txt && sqlite3 db < f.txt" \
+  "echo 'DROP TABLE t;' > a.txt; cp a.txt b.txt; sqlite3 db < b.txt" \
+  "cp -f drop.sql f.sql; sqlite3 db < f.sql"; do
+  gblock "G AC3 cp/mv carries DROP to a client" "$c"
+done
+# AC4 group / subshell redirect
+for c in "( echo 'DROP TABLE t;' ) > f.sql; sqlite3 db < f.sql" \
+  "{ echo 'DROP TABLE t;'; } > f.sql; sqlite3 db < f.sql" \
+  "( echo 'DROP TABLE t;' ) > f.txt && psql -f f.txt"; do
+  gblock "G AC4 group redirect carries DROP to a client" "$c"
+done
+# AC4b more input classes
+for c in "printf 'DROP TABLE t;' | tee f.txt; cat f.txt | sqlite3 db" \
+  "( echo 'DROP TABLE t;' ) | tee f.sql; sqlite3 db < f.sql" \
+  "( echo 'DROP TABLE t;' ) >> f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | tee a.txt b.txt; sqlite3 db < b.txt" \
+  "> f.sql echo 'DROP TABLE t;'; sqlite3 db < f.sql" \
+  "mkdir -p out; cp db/read.sql drop.sql out/; sqlite3 db < out/drop.sql"; do
+  gblock "G AC4b more input classes" "$c"
+done
+# AC4c a file that exists on disk keeps counting (these already block today: guard against a fix that hides disk content)
+for c in "echo 'SELECT 1;' >> drop.sql; sqlite3 db < drop.sql" \
+  "printf 'SELECT 1;' | tee -a drop.sql; sqlite3 db < drop.sql" \
+  "echo 'SELECT 1;' > drop.sql; sqlite3 db < drop.sql"; do
+  gblock "G AC4c disk copy of a named .sql file still counts" "$c"
+done
+# AC5 allow cases kept (pass today too: they guard the fix against the 13d67e4 false blocks)
+for c in "echo 'SELECT 1;' | tee f.sql; sqlite3 db < f.sql" \
+  "cp db/read.sql f.sql; sqlite3 db < f.sql" \
+  "( echo 'SELECT 1;' ) > f.sql; sqlite3 db < f.sql" \
+  "echo 'DROP TABLE t;' | tee f.sql; sqlite3 db < db/read.sql" \
+  "cp drop.sql f.sql; sqlite3 db \".tables\"" \
+  "echo 'DROP TABLE t;' | cat > notes.txt; cat notes.txt | wc -l"; do
+  gallow "G AC5 stays allowed" "$c"
+done
+# AC6 interactive only warns, CI=true blocks (one shape per AC1-AC4)
+for c in "printf 'DROP TABLE t;' | tee f.sql; sqlite3 db < f.sql" \
+  "printf 'DROP TABLE t;' | cat > f.sql; sqlite3 db < f.sql" \
+  "cp drop.sql f.sql; sqlite3 db < f.sql" \
+  "( echo 'DROP TABLE t;' ) > f.sql; sqlite3 db < f.sql"; do
+  grun PB_HEADLESS=0 -- "$(jbash "$c" "$GQ")"
+  expect_warn "G AC6 interactive: only a WARN [$c]"
+  grun CI=true -- "$(jbash "$c" "$GQ")"
+  expect_block "G AC6 CI=true blocks [$c]" sql
+done
+# AC7 (P3 nit, optional S3): a keyword only in the written file's NAME does not block; the written content still counts
+for c in "echo 'SELECT 1;' > truncate.txt; sqlite3 db < truncate.txt" \
+  "echo 'SELECT 1;' > truncate.sql; sqlite3 db \".read truncate.sql\""; do
+  gallow "G AC7 keyword only in the written file's name" "$c"
+done
+gblock "G AC7 TRUNCATE in the written content still blocks" "echo 'TRUNCATE t;' > truncate.txt; sqlite3 db < truncate.txt"
+
 t_summary
