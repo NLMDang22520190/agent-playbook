@@ -1,0 +1,25 @@
+diff --git a/src/csv.js b/src/csv.js
+index 74a2ffb..6fbdc49 100644
+--- a/src/csv.js
++++ b/src/csv.js
+@@ -1,14 +1,17 @@
+ 'use strict';
+ 
+-// One CSV cell: a missing value is empty, anything else its text.
++// One CSV cell (RFC 4180): a missing value is empty; a value holding a comma, a double quote, CR or LF is enclosed in
++// double quotes, with each double quote inside written twice.
+ function cell(value) {
+   if (value === undefined || value === null) return '';
+-  return String(value);
++  const s = String(value);
++  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
++  return s;
+ }
+ 
+ // toCsv(rows, columns) -> a header line with the column names, then one line per row, each line ending in "\n".
+ function toCsv(rows, columns) {
+-  const lines = [columns.join(',')];
++  const lines = [columns.map(cell).join(',')];
+   for (const row of rows) {
+     lines.push(columns.map((c) => cell(row[c])).join(','));
+   }

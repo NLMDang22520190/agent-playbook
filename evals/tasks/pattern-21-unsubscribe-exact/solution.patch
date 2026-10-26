@@ -1,0 +1,14 @@
+diff --git a/bin/unsubscribe b/bin/unsubscribe
+index e2ad50a..e6a6c8a 100755
+--- a/bin/unsubscribe
++++ b/bin/unsubscribe
+@@ -6,7 +6,8 @@ list="${LIST:-list.txt}"
+ [ -f "$list" ] || { echo "unsubscribe: no list $list" >&2; exit 1; }
+ before="$(wc -l < "$list" | tr -d ' ')"
+ tmp="$list.tmp.$$"
+-grep -v "$addr" "$list" > "$tmp"
++# whole line, fixed string: ADDRESS is data, not a pattern; -- because an address may start with a dash
++grep -v -x -F -- "$addr" "$list" > "$tmp"
+ mv "$tmp" "$list"
+ after="$(wc -l < "$list" | tr -d ' ')"
+ echo "removed $((before - after))"
