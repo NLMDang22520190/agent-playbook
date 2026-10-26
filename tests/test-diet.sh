@@ -77,4 +77,33 @@ for keep in '\[VERIFIED\] ran or read this session' 'On pushback, re-check' 'Nev
   has "AC3 KEEP text stays in AGENTS.global.md: $keep" "$BF" "$keep"
 done
 
+echo "S3 AC4 PR report parts: the release flow builds the PR body with pr-body.sh; Pre-mortem and the feedback line are hand-off only"
+DEV="$PB_ROOT/docs/development.md"; REL="$PB_ROOT/skills/playbook-tdd/references/release.md"
+TSK="$PB_ROOT/skills/playbook-tdd/SKILL.md"; FIN="$PB_ROOT/skills/playbook-tdd/templates/final-report.md"
+DF="$(flat "$DEV")"; RLF="$(flat "$REL")"
+has "AC4 development.md: the release PR body is the pr-body.sh output" "$DF" 'release[^.]{0,120}pr-body\.sh|pr-body\.sh[^.]{0,120}release'
+has "AC4 development.md: the PR is opened with that body (gh pr create --body-file)" "$DF" 'gh pr create[^.]{0,40}--body-file'
+has "AC4 development.md: ship.sh comes after the PR" "$DF" 'pr-body\.sh[^#]{0,400}tools/ship\.sh'
+has "AC4 release.md: the release PR description is the pr-body.sh output" "$RLF" 'PR description[^.]{0,80}pr-body\.sh|pr-body\.sh[^.]{0,80}PR description'
+has "AC4 release.md: a release of several items has one block per item" "$RLF" 'one block per item'
+P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$TSK" | tr '\n' ' ' | tr -s ' ')"
+has "AC4 Phase 4: the final report is the hand-off report 06-final-report.md" "$P4" 'hand-off report[^.]{0,40}06-final-report\.md|06-final-report\.md[^.]{0,40}hand-off report'
+has "AC4 Phase 4: Pre-mortem, Models used and the feedback line belong to the hand-off report only" "$P4" 'Pre-mortem[^.]{0,80}Models used[^.]{0,80}Playbook feedback line[^.]{0,60}this report only'
+has "AC4 Phase 4: they are not PR description parts" "$P4" 'not (to|in|part of) the PR description'
+L5="$(awk '/^### Lite workflow/ { f = 1; next } f && /^###? / { exit } f { print }' "$TSK" | tr '\n' ' ' | tr -s ' ')"
+has "AC4 Lite step 5: the final report is the hand-off report" "$L5" '5\. Final report \(`06-final-report\.md`, the hand-off report\)'
+has "AC4 the template says which parts stay in the hand-off report" "$(flat "$FIN")" 'hand-off report[^>]{0,200}Pre-mortem[^>]{0,120}Playbook feedback[^>]{0,200}pr-body\.sh'
+echo "S3 AC4 pr-body.sh keeps Weight and Not checked and leaves the Pre-mortem and the feedback line out (characterization)"
+H="$(mk_tmp)"
+printf '# 01 - Spec\n\n## Understanding\nRename x to y.\n' > "$H/01-spec.md"
+sed -e 's/<one sentence>/renamed x/' "$FIN" > "$H/06-final-report.md"
+run bash "$PB_ROOT/scripts/pr-body.sh" --handoff "$H"
+assert_rc "AC4 pr-body.sh exits 0 on the template report" 0
+assert_contains "AC4 pr-body.sh prints ## Weight" "$OUT" "## Weight"
+assert_contains "AC4 pr-body.sh prints ## Not checked" "$OUT" "## Not checked"
+assert_not_contains "AC4 pr-body.sh leaves the Pre-mortem out" "$OUT" "Pre-mortem"
+assert_not_contains "AC4 pr-body.sh leaves the Playbook feedback line out" "$OUT" "Playbook feedback"
+TW="$(wc -w < "$TSK" | tr -d ' ')"
+if [ "$TW" -le 3700 ] && [ "$TW" -ge 3650 ]; then t_ok "AC3 playbook-tdd SKILL.md stays within its budget and its count+50 pin (3650..3700): $TW"; else t_bad "AC3 playbook-tdd SKILL.md stays within 3650..3700" "$TW words"; fi
+
 t_summary
