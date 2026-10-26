@@ -22,5 +22,10 @@ A slow platform run (for example the Windows Git Bash suites) runs once before t
 
 **Why:** a slow suite repeated on each fix round adds minutes to every round and finds nothing CI would not.
 
+## PR description
+The release PR description is the `pr-body.sh` output of each item's hand-off files, one block per item. The Pre-mortem, Models used and Playbook feedback lines stay in each item's hand-off report (`06-final-report.md`).
+
+**Why:** a hand-written PR body drops the parts the report already has; in real use they were missing from almost every PR.
+
 ## Release size (AC3.5)
 Prefer releases of 3-5 items: small enough to review, large enough to be worth shipping.
