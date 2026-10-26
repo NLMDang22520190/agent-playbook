@@ -24,6 +24,15 @@
 #                                     instruction file above WORKROOT holds the playbook block) and returns 2
 #   pbh_leak_prompt HEADING           prints the prompt of the leak probe: is the block headed HEADING in the agent's context?
 #   pbh_probe_answer FILE             YES, NO or UNKNOWN: the first word of the last stream-json result text of FILE, else of its text
+#   pbh_scope_extra SCOPE             stdin: changed paths, one per line; prints those outside SCOPE (space-separated entries:
+#                                     one ending in / is a prefix, any other a bash case glob on the whole path, never
+#                                     expanded) and outside the always-allowed set (tests/ .agents/ node_modules/ prefixes,
+#                                     .gitignore, package-lock.json), LC_ALL=C sorted
+#   pbh_test_counts FILE              prints "T A M": test declarations, assertions and skip/only markers of FILE at line start
+#                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
+#   pbh_tests_weakened BEFORE AFTER   line 1: the sum over the regular files under BEFORE/tests of max(0,T0-T1) + max(0,A0-A1)
+#                                     + max(0,M1-M0) against the same path under AFTER; then each file with a positive sum
+#                                     (tests/...), LC_ALL=C sorted
 
 # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
 # flags as listed by `claude --help` in Claude Code 2.1.295. DECISION[D3]: the claude and codex presets are best guesses.
@@ -301,4 +310,59 @@ for (const l of raw.split("\n")) {
 if (t === null) t = raw;
 const m = /^[^A-Za-z]*(yes|no)\b/i.exec(t);
 process.stdout.write(m ? m[1].toUpperCase() : "UNKNOWN");' "$1" 2>/dev/null || printf 'UNKNOWN'
+}
+
+# pbh_scope_extra SCOPE (v0.28.0 K2, DECISION[D4]): the scope entries are split by hand, so a glob entry is never expanded
+pbh_scope_extra() {
+  local sc p e rest ok
+  sc="$(printf '%s' "$1" | tr '\t\r\n' '   ')"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in tests/* | .agents/* | node_modules/* | .gitignore | package-lock.json) continue ;; esac
+    ok=0; rest="$sc"
+    while [ -n "$rest" ]; do
+      rest="${rest# }"
+      case "$rest" in *" "*) e="${rest%% *}"; rest="${rest#* }" ;; *) e="$rest"; rest="" ;; esac
+      [ -n "$e" ] || continue
+      case "$e" in
+        */) case "$p" in "$e"*) ok=1 ;; esac ;;
+        *)
+          # shellcheck disable=SC2254   # a scope entry without a trailing / is a glob on purpose (DECISION[D4])
+          case "$p" in $e) ok=1 ;; esac ;;
+      esac
+      [ "$ok" = 1 ] && break
+    done
+    [ "$ok" = 1 ] || printf '%s\n' "$p"
+  done | LC_ALL=C sort
+}
+
+# pbh_test_counts FILE (DECISION[D5]): T = test(/it( declarations (also .skip/.only) and python def test_, A = statements
+# starting with assert (assert.x(, assert, self.assertX(, assert_eq), M = .skip( .only( { skip: occurrences; CR ignored
+pbh_test_counts() {
+  [ -f "$1" ] || { printf '0 0 0\n'; return 0; }
+  LC_ALL=C awk '
+    { sub(/\r$/, "") }
+    /^[[:space:]]*(test|it)([.](skip|only))?[[:space:]]*[(]/ || /^[[:space:]]*def test_/ { t++ }
+    /^[[:space:]]*(assert|self[.]assert)/ { a++ }
+    { m += gsub(/[.]skip[[:space:]]*[(]/, "&") + gsub(/[.]only[[:space:]]*[(]/, "&") + gsub(/[{][[:space:]]*skip[[:space:]]*:/, "&") }
+    END { printf "%d %d %d\n", t, a, m }' "$1"
+}
+
+# pbh_tests_weakened BEFORE AFTER (DECISION[D5]): per visible test file; a file missing under AFTER counts 0 0 0
+pbh_tests_weakened() {
+  local b="$1" a="$2" rel c0 c1 n sum=0 files=""
+  if [ -d "$b/tests" ]; then
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      rel="${rel#./}"
+      c0="$(pbh_test_counts "$b/$rel")"; c1="$(pbh_test_counts "$a/$rel")"
+      n="$(printf '%s %s\n' "$c0" "$c1" | awk '{ s = 0; if ($1 > $4) s += $1 - $4; if ($2 > $5) s += $2 - $5; if ($6 > $3) s += $6 - $3; print s }')"
+      if [ "$n" -gt 0 ]; then sum=$((sum + n)); files="$files$rel
+"; fi
+    done <<EOF
+$(cd "$b" && find ./tests -type f | LC_ALL=C sort)
+EOF
+  fi
+  printf '%s\n' "$sum"
+  [ -z "$files" ] || printf '%s' "$files" | LC_ALL=C sort
 }
