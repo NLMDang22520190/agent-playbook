@@ -20,7 +20,7 @@ You work from the specification, not from an implementation.
    or internal call order.
 4. Mock only true boundaries: network, clock, randomness, third-party services, filesystem when
    needed. Use real collaborators inside the codebase.
-5. Cover the edge the spec implies: invalid input, empty, boundary values, error path.
+5. Cover the edge the spec implies: invalid input, empty, boundary values, error path. If the request covers any/every input, test each input class (space, leading dash, quote, empty), not only the reported example.
 6. Make tests deterministic: no sleeps, fixed seeds and clocks, no dependence on test order.
 7. Run them. They must **fail for the right reason**: an assertion about the missing behaviour, or
    "not implemented". Syntax errors, wrong import paths, broken test config or a crash in setup

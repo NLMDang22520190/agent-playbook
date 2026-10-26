@@ -154,10 +154,11 @@ echo "AC16 SKILL.md word budget, the two Why lines cut, one Why line left; AGENT
 # words as evals/run-checks.sh counts them (the caller's locale, not this suite's LC_ALL=C: wc -w differs on UTF-8 symbols)
 w="$(env -u LC_ALL wc -w < "$SK" | tr -d ' ')"
 if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; else t_bad "AC16 SKILL.md at or under 3700 words" "$w words"; fi
-# the arithmetic of AC16 (+7 +23 -33 = -3; the pinned AC4 clause is 18 words vs 11 before) against the lane base 0927bde (feat/v0.26.1, 3700 words in a UTF-8 locale), same locale
+# the arithmetic of AC16 (+7 +23 -33 = -3; the pinned AC4 clause is 18 words vs 11 before) against the lane base 0927bde (feat/v0.26.1, 3700 words in a UTF-8 locale), same locale;
+# then v0.28.1 lanes t and p: -9 (Lite step 4 mutation note) +12 (Lite step 2 input-class line) = +3
 W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
 if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  assert_eq "AC16 SKILL.md is 3 words shorter than at 0927bde (3700 + 7 + 23 - 33 = 3697)" "$((W0 - 3))" "$w"
+  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) words (3700 - 3 + 3 = 3700)" "$((W0 - 3 + 3))" "$w"
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi

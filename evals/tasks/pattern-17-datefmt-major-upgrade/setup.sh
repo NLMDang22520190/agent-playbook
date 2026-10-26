@@ -239,14 +239,24 @@ PB_TASK_EOF
 cat > src/report.js <<'PB_TASK_EOF'
 'use strict';
 const datefmt = require('datefmt');
-
-const STAMP = 'YYYY-MM-DD HH:mm';
+const { REPORT_STAMP } = require('./settings');
 
 function stampUtc(d) {
-  return datefmt.format(d, STAMP, { utc: true });
+  return datefmt.format(d, REPORT_STAMP.pattern, REPORT_STAMP.options);
 }
 
 module.exports = { stampUtc };
+PB_TASK_EOF
+
+cat > src/settings.js <<'PB_TASK_EOF'
+'use strict';
+
+// Display settings of the daily report.
+module.exports = {
+  REPORT_TITLE: 'Daily billing report',
+  REPORT_STAMP: { pattern: 'YYYY-MM-DD HH:mm', options: { utc: true } },
+  ROWS_PER_PAGE: 50,
+};
 PB_TASK_EOF
 
 cat > src/api.js <<'PB_TASK_EOF'
@@ -266,15 +276,10 @@ cat > tests/billing.test.js <<'PB_TASK_EOF'
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { invoiceDate } = require('../src/invoice');
-const { stampUtc } = require('../src/report');
 const { parseDueDate } = require('../src/api');
 
 test('an invoice date is DD/MM/YYYY', () => {
   assert.equal(invoiceDate(new Date('2026-03-01T12:00:00Z')), '01/03/2026');
-});
-
-test('a report stamp is YYYY-MM-DD HH:mm', () => {
-  assert.equal(stampUtc(new Date('2026-07-04T05:07:00Z')), '2026-07-04 05:07');
 });
 
 test('a due date from the API becomes a Date', () => {
