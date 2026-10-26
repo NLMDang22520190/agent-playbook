@@ -4,8 +4,11 @@
 # (role-gate-size, role-gate-scope, tdd-step-scope, role-gate-batch, content, skill-rules, evals-grade7c, evals-grade8,
 # 8b, 8c, 8d, 9, 9b) come from run 39931483719 (v0.24.29) alone.
 # test-evals-grade10.sh, test-evals-grade10b.sh, test-pre-commit.sh and test-scope-classify.sh (estimates until v0.25.0)
-# come from run 40174690191 (v0.25.0) alone. v0.25.1 estimates until a CI run measures them (L-0009): test-clean-pbtest.sh 2,
-# v0.26 estimates until a CI run measures them (L-0009): test-proof-check.sh 12, test-role-gate-size-exclude.sh 150, test-sdlc-refs.sh 20, test-evals-grade14.sh 180, test-evals-grade14b.sh 130, test-update-signed.sh 45, test-role-gate-commits.sh 180, test-report-usage.sh 3, test-rubric-table.sh 5, test-evals-grade12.sh 160, test-evals-grade12c.sh 150, test-evals-grade12b.sh 220, test-evals-grade13.sh 90, test-evals-grade13b.sh 140, test-evals-lib.sh 40, test-evals-arms.sh 240, test-evals-arms-b.sh 200, test-evals-isolation.sh 90, test-evals-json.sh 80, test-eval-delta.sh 80, test-evals-keys.sh 350, test-outcome-selfcheck.sh 90, test-outcome-corpus.sh 100, test-outcome-runner.sh 120, test-outcome-isolation.sh 60, test-outcome-report.sh 150.
+# come from run 40174690191 (v0.25.0) alone.
+# The suites estimated in v0.25.1 and v0.26 (test-clean-pbtest.sh and the v0.26 suites) are the median of CI runs 40228152123
+# and 40222727120 (v0.26.0, PR #73) and 40241642871 and 40237047478 (v0.26.3, PR #74), per L-0003; the suites new in v0.26.3
+# (role-gate-size-exclude, sdlc-refs, evals-grade14, 14b, outcome-*) come from the two v0.26.3 runs only (v0.28.0 lane h).
+# v0.28.0 estimate until a CI run measures it (L-0009): test-evals-grade14c.sh 110.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -78,7 +81,7 @@ test-tdd-step-v.sh 145
 test-role-model.sh 144
 test-tdd-step-o.sh 142
 test-role-gate-committed.sh 133
-test-role-gate-commits.sh 180
+test-role-gate-commits.sh 238
 test-tdd-step-w.sh 126
 test-update.sh 118
 test-tdd-step-m.sh 108
@@ -102,7 +105,7 @@ test-readme-count.sh 30
 test-eval-guard.sh 22
 test-skill-rules.sh 24
 test-pr-body.sh 13
-test-proof-check.sh 12
+test-proof-check.sh 45
 test-proof-run.sh 9
 test-lib.sh 7
 test-mutate-b.sh 7
@@ -114,30 +117,30 @@ test-lib-tmp.sh 1
 test-scope-classify.sh 164
 test-evals-grade10.sh 163
 test-evals-grade10b.sh 207
-test-clean-pbtest.sh 2
+test-clean-pbtest.sh 6
 test-evals-grade11.sh 150
-test-role-gate-size-exclude.sh 150
-test-sdlc-refs.sh 20
-test-evals-grade14.sh 180
-test-evals-grade14b.sh 130
-test-evals-grade14c.sh 30
-test-outcome-selfcheck.sh 90
-test-outcome-corpus.sh 100
-test-outcome-runner.sh 120
-test-outcome-isolation.sh 60
-test-outcome-report.sh 150
-test-report-usage.sh 3
-test-rubric-table.sh 5
-test-evals-grade12.sh 160
-test-evals-grade12c.sh 150
-test-evals-grade12b.sh 220
-test-evals-grade13.sh 90
-test-evals-grade13b.sh 140
-test-evals-lib.sh 40
-test-evals-arms.sh 240
-test-evals-arms-b.sh 200
-test-evals-isolation.sh 90
-test-evals-json.sh 80
-test-eval-delta.sh 80
-test-evals-keys.sh 350
-test-update-signed.sh 45
+test-role-gate-size-exclude.sh 245
+test-sdlc-refs.sh 10
+test-evals-grade14.sh 521
+test-evals-grade14b.sh 198
+test-evals-grade14c.sh 110
+test-outcome-selfcheck.sh 82
+test-outcome-corpus.sh 84
+test-outcome-runner.sh 141
+test-outcome-isolation.sh 131
+test-outcome-report.sh 209
+test-report-usage.sh 8
+test-rubric-table.sh 6
+test-evals-grade12.sh 200
+test-evals-grade12c.sh 216
+test-evals-grade12b.sh 256
+test-evals-grade13.sh 80
+test-evals-grade13b.sh 154
+test-evals-lib.sh 22
+test-evals-arms.sh 300
+test-evals-arms-b.sh 214
+test-evals-isolation.sh 124
+test-evals-json.sh 72
+test-eval-delta.sh 94
+test-evals-keys.sh 390
+test-update-signed.sh 49
