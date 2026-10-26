@@ -9,13 +9,19 @@
 # contract migration was written, not run). PASS = exit 0, no output. PB_EVAL_HOOK_LOG gets one line per non-PASS decision.
 # DECISION[D1] fail-open: malformed input, another tool or an internal error -> exit 0.
 # DECISION[D2] headless = PB_HEADLESS=1; PB_HEADLESS=0 = interactive; otherwise headless when CI is true or 1 (any case).
-# DECISION[D3] SQL in a Bash command counts only when a database client word is on the command line.
+# DECISION[D3] SQL in a Bash command counts only when it reaches a database client: the client's words, here-strings and
+#   here-docs, what earlier commands of its pipeline print, and the .sql files they name (a here-doc that writes a .sql file
+#   earlier in the same command counts as that file's text). A here-doc written to a file is data (review R2).
 # DECISION[D5] every force-push variant is irreversible (--force, -f, lease, if-includes, --mirror, +refspec).
 # DECISION[D16] Stop baseline = the session file, else merge-base with @{upstream}, else HEAD (work tree only).
 # DECISION[D17] headless Stop refuses to finish while the tree holds a schema table/column drop or a contract migration.
 # DECISION[D18] git reset --hard, checkout -- / ., restore, clean -f count only when git status shows something to lose.
 # DECISION[D19] a rename (equal column lists, or a session migration with RENAME TO) is not a drop.
-# DECISION[D23] rm targets expand HOME, PWD, TMPDIR, CLAUDE_PROJECT_DIR and same-command assignments; the rest is outside.
+# DECISION[D23] rm targets expand same-command assignments (export too), then HOME, PWD, TMPDIR, CLAUDE_PROJECT_DIR from the
+#   env; the rest is outside. The roots (project, temp dirs) come from the env only (review R4).
+# DECISION[R1] a temp dir allows rm below it, except beside a project that sits inside that same temp dir: a target in the
+#   project's own first directory under the innermost temp dir holding it is outside (the E41 tree: <workroot>/<label>.cache).
+# DECISION[R6] the project's .git and .git/pb-guard (the guard's session baselines) count as outside the project.
 # DECISION[D26] C:\x, C:/x and /c/x are one path, compared without case when a drive letter is involved.
 # DECISION[D28] after 3 Stop blocks in one session the 4th Stop gives up (exit 0 and a warning).
 # DECISION[D29] home paths come from pb_home (scripts/lib.sh) only, tilde expansion included.
@@ -51,7 +57,7 @@ G_PFX="agent-playbook guard: "
 # ---- hook JSON on stdin -> shell assignments (one awk process: JSON decode + shell tokens of a Bash command) ----
 # JSON escapes \" \\ \/ \n \t \r \b \f are decoded; \uXXXX stays as it is (a documented limit). Malformed JSON prints nothing.
 # Tokens of tool_input.command: "w<word>" (quotes removed, expansions marked with DS..US, BQ, TL), "r<word>" (a redirection
-# target) and "s" (a command separator: ; & | ( ) newline). Here-document bodies are data and give no tokens.
+# target), "h<N>" (here-doc N of this command, its body in H[N]), "s|" (a pipe) and "s" (another separator: ; & || ( ) newline).
 JP='
 function ws() { while (p <= n && (C[p] == " " || C[p] == "\t" || C[p] == "\n" || C[p] == "\r")) p++ }
 function pstr(   o, st, c, e) {
@@ -127,7 +133,7 @@ function q(v,   m, i, o, a) {
 function emit(t) { TOK = TOK " " q(t) }
 function endw() {
   if (inw) {
-    if (pend == "h") { nhd++; HD[nhd] = w; HDT[nhd] = hdtab }
+    if (pend == "h") { nhd++; HD[nhd] = w; HDT[nhd] = hdtab; hdg++; HDI[nhd] = hdg; HB[hdg] = ""; emit("h" hdg) }
     else if (pend == "r") emit("r" w)
     else emit("w" w)
     pend = ""
@@ -191,6 +197,7 @@ function heredocs(i,   h, k, ln) {
       if (HDT[h]) sub(/^\t+/, "", ln)
       sub(/\r$/, "", ln)
       if (ln == HD[h]) break
+      HB[HDI[h]] = HB[HDI[h]] ln "\n"
     }
   }
   nhd = 0
@@ -202,7 +209,9 @@ function tokenize(s,   i, c, k) {
     c = T[i]
     if (c == " " || c == "\t" || c == "\r") { endw(); i++; continue }
     if (c == "\n") { sepw(); i++; if (nhd) i = heredocs(i); continue }
-    if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")") { sepw(); i++; continue }
+    if (c == "|" && T[i + 1] != "|") { endw(); emit("s|"); i++; if (T[i] == "&") i++; continue }
+    if (c == "|") { sepw(); i += 2; continue }
+    if (c == ";" || c == "&" || c == "(" || c == ")") { sepw(); i++; continue }
     if (c == "<" || c == ">") {
       if (inw && pend == "" && w ~ /^[0-9]+$/) { w = ""; inw = 0 } else endw()
       if (c == "<" && T[i + 1] == "<" && T[i + 2] == "<") { pend = "r"; i += 3; continue }
@@ -240,12 +249,17 @@ END {
   print "J_file=" q(TI["file_path"])
   print "J_content=" q(TI["content"])
   print "J_new=" q(TI["new_string"])
-  if (TOP["tool_name"] == "Bash") { tokenize(TI["command"]); print "W=(" TOK ")" }
+  if (TOP["tool_name"] == "Bash") {
+    tokenize(TI["command"]); print "W=(" TOK ")"
+    TOK = ""; for (i = 1; i <= hdg; i++) TOK = TOK " [" i "]=" q(HB[i])
+    print "H=(" TOK ")"
+  }
   print "J_ok=1"
 }'
 
 J_ok=0; J_tool=""; J_sid=""; J_cwd=""; J_active=""; J_cmd=""; J_file=""; J_content=""; J_new=""
 W=()
+H=()
 PARSED="$(awk "$JP" 2>/dev/null)" || exit 0
 eval "$PARSED" 2>/dev/null
 [ "$J_ok" = 1 ] || exit 0
@@ -298,7 +312,6 @@ RE_TRUNC='(^|[^A-Za-z0-9_])[Tt][Rr][Uu][Nn][Cc][Aa][Tt][Ee]([^A-Za-z0-9_]|$)'
 RE_ALTDROP='[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][^;]*[[:space:]][Dd][Rr][Oo][Pp]([^A-Za-z0-9_]|$)'
 RE_DELETE='[Dd][Ee][Ll][Ee][Tt][Ee][[:space:]]+[Ff][Rr][Oo][Mm][[:space:]]+[^[:space:];]'
 RE_WHERE='(^|[^A-Za-z0-9_])[Ww][Hh][Ee][Rr][Ee]([^A-Za-z0-9_]|$)'
-RE_CLIENT='(^|[^A-Za-z0-9_.-])(sqlite3|psql|mysql|mariadb|sqlcmd|duckdb|clickhouse-client)([^A-Za-z0-9_-]|$)|wrangler[[:space:]]+d1[[:space:]]+execute|supabase[[:space:]]+db([^A-Za-z0-9_-]|$)'
 RE_SQLF="([^[:space:]\"'=<>|;&()]+[.][Ss][Qq][Ll])([^A-Za-z0-9_]|$)"
 
 # has_contract TEXT -> 0 when TEXT holds DROP TABLE|COLUMN|DATABASE|SCHEMA, TRUNCATE or ALTER TABLE ... DROP
@@ -367,16 +380,23 @@ below() {
 # var_value NAME -> VV; 1 when NAME cannot be resolved
 var_value() {
   local n f
+  case "$1" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
+  f="GS_$1"; n="GV_$1"
+  case "${!f:-}" in 1) VV="${!n:-}"; return 0 ;; 0) return 1 ;; esac
   case "$1" in
     HOME) VV="$(pb_home)"; return 0 ;;
     PWD) [ "$CWD_OK" = 1 ] || return 1; VV="$CWD"; return 0 ;;
     TMPDIR) [ -n "${TMPDIR:-}" ] || return 1; VV="$TMPDIR"; return 0 ;;
     CLAUDE_PROJECT_DIR) [ -n "${CLAUDE_PROJECT_DIR:-}" ] || return 1; VV="$CLAUDE_PROJECT_DIR"; return 0 ;;
   esac
-  case "$1" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
-  f="GS_$1"; n="GV_$1"
-  [ "${!f:-}" = 1 ] || return 1
-  VV="${!n:-}"
+  return 1
+}
+# assign NAME=VALUE -> records a same-command assignment for var_value; 1 when NAME is not a variable name
+assign() {
+  local name="${1%%=*}"
+  case "$name" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
+  if expand "${1#*=}"; then printf -v "GV_$name" '%s' "$EXP"; printf -v "GS_$name" '%s' 1
+  else printf -v "GS_$name" '%s' 0; fi
   return 0
 }
 # expand WORD -> EXP (expansions resolved); 1 when something in WORD cannot be resolved
@@ -430,9 +450,18 @@ temp_dirs() {
     done
   fi
 }
-# target_ok WORD -> 0 when the rm target resolves strictly below the project root or a temp dir; else sets RM_T and UNRES
+# state_path PATH -> 0 when PATH is the project's .git or is at or below .git/pb-guard (R6)
+state_path() {
+  local a="$1" g="${ROOTN%/}/.git"
+  if [ "$CIC" = 1 ]; then lower "$a"; a="$LW"; lower "$g"; g="$LW"; fi
+  [ "$a" = "$g" ] && return 0
+  case "$a/" in "$g/pb-guard/"*) return 0 ;; esac
+  return 1
+}
+# target_ok WORD -> 0 when the rm target resolves strictly below the project root or a temp dir (R1); else sets RM_T, UNRES
+# and RM_STATE
 target_ok() {
-  local p t
+  local p t best="" r p1
   if ! expand "$1"; then UNRES=1; RM_T="$1"; return 1; fi
   p="$EXP"
   p="${p%%[\*\?\[]*}"
@@ -444,15 +473,22 @@ target_ok() {
   [ -n "$TMPS" ] || temp_dirs
   norm_path "$p" "$CWD"
   p="$NP"
+  RM_T="$p"
+  if state_path "$p"; then RM_STATE=1; return 1; fi
   below "$p" "$ROOTN" && return 0
   while IFS= read -r t; do
     [ -n "$t" ] || continue
-    below "$p" "$t" && return 0
+    if below "$p" "$t" && [ "${#t}" -gt "${#best}" ]; then best="$t"; fi
   done <<EOF
 $TMPS
 EOF
-  RM_T="$p"
-  return 1
+  [ -n "$best" ] || return 1
+  below "$ROOTN" "$best" || return 0
+  # the project sits inside this temp dir: its own first directory there is not a temp dir of its own
+  r="$ROOTN"
+  if [ "$CIC" = 1 ]; then lower "$r"; r="$LW"; lower "$p"; p="$LW"; lower "$best"; best="$LW"; fi
+  r="${r#"${best%/}"/}"; p1="${p#"${best%/}"/}"
+  [ "${r%%/*}" != "${p1%%/*}" ]
 }
 
 # ---- git helpers ----
@@ -621,10 +657,12 @@ seg_rm() {
   done
   [ "$rec" = 1 ] && [ "${#tg[@]}" -gt 0 ] || return 1
   for t in "${tg[@]}"; do
-    UNRES=0
+    UNRES=0; RM_STATE=0
     if ! target_ok "$t"; then
       HIT=rm-outside
-      if [ "$UNRES" = 1 ]; then
+      if [ "$RM_STATE" = 1 ]; then
+        HINT=" The target $RM_T holds the guard's session baselines (.git/pb-guard): leave it in place."
+      elif [ "$UNRES" = 1 ]; then
         HINT=" A target could not be resolved to a path (an unknown variable, a command substitution or ~user): use a literal path inside the project or a temp dir."
       else
         HINT=" The target $RM_T is outside the project root ($ROOTN) and the temp dirs."
@@ -688,32 +726,28 @@ seg_run() {
 }
 # seg: one simple command in SEGW
 seg() {
-  local n="${#SEGW[@]}" i=0 w name cw
+  local n="${#SEGW[@]}" i=0 w cw pf
   local -a args
   while [ "$i" -lt "$n" ]; do
     w="${SEGW[$i]}"
-    case "$w" in r*) i=$((i + 1)); continue ;; esac
+    case "$w" in r* | h*) i=$((i + 1)); continue ;; esac
     w="${w#?}"
     case "$w" in
-      [A-Za-z_]*=*)
-        name="${w%%=*}"
-        case "$name" in
-          *[!A-Za-z0-9_]*) ;;
-          *)
-            if expand "${w#*=}"; then printf -v "GV_$name" '%s' "$EXP"; printf -v "GS_$name" '%s' 1
-            else printf -v "GS_$name" '%s' 0; fi
-            i=$((i + 1)); continue ;;
-        esac ;;
-      sudo | env | command | nice | time | nohup | exec | '{' | '!' | then | do | else | if | while | until | elif)
+      [A-Za-z_]*=*) if assign "$w"; then i=$((i + 1)); continue; fi ;;
+      sudo | env | command | nice | time | nohup | exec | timeout | '{' | '!' | then | do | else | if | while | until | elif)
+        pf="$w"
         i=$((i + 1))
+        # options with an argument per prefix (R3); time -p and command -p take none
         while [ "$i" -lt "$n" ]; do
           w="${SEGW[$i]#?}"
-          case "$w" in
-            -u | -g | -n | -p | -C | -D | -h) i=$((i + 2)) ;;
-            -* | [A-Za-z_]*=*) i=$((i + 1)) ;;
+          case "$pf:$w" in
+            sudo:-[ugpCDhrtTU] | env:-[uCS] | nice:-n | timeout:-[sk] | time:-[fo] | exec:-a) i=$((i + 2)) ;;
+            *:-* | *:[A-Za-z_]*=*) i=$((i + 1)) ;;
             *) break ;;
           esac
         done
+        # timeout DURATION COMMAND
+        if [ "$pf" = timeout ] && [ "$i" -lt "$n" ]; then i=$((i + 1)); fi
         continue ;;
     esac
     break
@@ -730,6 +764,13 @@ seg() {
   [ "$i" -lt "$n" ] || return 1
   cw="${SEGW[$i]#?}"; cw="${cw##*/}"
   case "$cw" in
+    export | declare | typeset | local | readonly)
+      i=$((i + 1))
+      while [ "$i" -lt "$n" ]; do
+        case "${SEGW[$i]}" in w[A-Za-z_]*=*) assign "${SEGW[$i]#?}" ;; esac
+        i=$((i + 1))
+      done
+      return 1 ;;
     cd) seg_cd $((i + 1)); return 1 ;;
     git) seg_git $((i + 1)); return ;;
     rm) seg_rm $((i + 1)); return ;;
@@ -742,21 +783,43 @@ seg() {
   done
   if [ "${#args[@]}" -gt 0 ]; then seg_run "$cw" "${args[@]}"; else seg_run "$cw"; fi
 }
-# sql_check: a database client on the command line with destructive SQL inline, in a here-doc or in a .sql file it names
-sql_check() {
-  local rest f fp c
-  [[ $J_cmd =~ $RE_CLIENT ]] || return 1
-  sql_destructive "$J_cmd" && return 0
-  rest="$J_cmd"
-  while [[ $rest =~ $RE_SQLF ]]; do
-    f="${BASH_REMATCH[1]}"
-    rest="${rest#*"$f"}"
-    case "$f" in /*) fp="$f" ;; *) fp="$CWD0/$f" ;; esac
-    [ -f "$fp" ] && [ -r "$fp" ] || continue
-    c="$(cat "$fp" 2>/dev/null)"
-    sql_destructive "$c" && return 0
+# seg_sql: adds what the command in SEGW feeds forward (its words, here-strings, here-doc bodies, the .sql files it names as
+# they are on disk or as a here-doc earlier in this command wrote them) to PLT, the text of the pipeline so far (D3);
+# 0 when the command is a database client and PLT holds destructive SQL. A here-doc beside a .sql name is recorded as written.
+seg_sql() {
+  local t a b txt="" cl=" " hd="" f fp k rest
+  local -a fl
+  fl=()
+  for t in "${SEGW[@]}"; do
+    a="${t#?}"
+    case "$t" in
+      h*) hd="$hd${H[$a]:-}$NL"; txt="$txt$NL${H[$a]:-}"; continue ;;
+      w*) case "$a" in *[[:space:]]*) ;; *) b="${a##*/}"; cl="$cl${b%.exe} " ;; esac ;;
+    esac
+    txt="$txt $a"
+    rest="$a"
+    while [[ $rest =~ $RE_SQLF ]]; do
+      f="${BASH_REMATCH[1]}"; rest="${rest#*"$f"}"
+      fl[${#fl[@]}]="$f"
+    done
   done
-  return 1
+  for f in "${fl[@]+"${fl[@]}"}"; do
+    norm_path "$f" "$CWD"; fp="$NP"
+    if [ -n "$hd" ]; then WF_P[${#WF_P[@]}]="$fp"; WF_T[${#WF_T[@]}]="$hd"; continue; fi
+    if [ -f "$fp" ] && [ -r "$fp" ]; then txt="$txt$NL$(cat "$fp" 2>/dev/null)"; fi
+    k=0
+    while [ "$k" -lt "${#WF_P[@]}" ]; do
+      [ "${WF_P[$k]}" = "$fp" ] && txt="$txt$NL${WF_T[$k]}"
+      k=$((k + 1))
+    done
+  done
+  PLT="$PLT$NL$txt"
+  case "$cl" in
+    *" sqlite3 "* | *" psql "* | *" mysql "* | *" mariadb "* | *" sqlcmd "* | *" duckdb "* | *" clickhouse-client "* | \
+      *" wrangler d1 execute "* | *" supabase db "*) ;;
+    *) return 1 ;;
+  esac
+  sql_destructive "$PLT"
 }
 pre_bash() {
   local t
@@ -764,19 +827,22 @@ pre_bash() {
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
-  CWD_OK=1; CWD0="$CWD"
+  CWD_OK=1
   norm_path "${CLAUDE_PROJECT_DIR:-$CWD}" /; ROOTN="$NP"
   [ "$NP_DRV" = 1 ] && CIC=1
-  SEGW=()
+  SEGW=(); PLT=""; WF_P=(); WF_T=()
   for t in "${W[@]}"; do
-    if [ "$t" = s ]; then
-      if [ "${#SEGW[@]}" -gt 0 ]; then seg && break; fi
-      SEGW=()
-    else
-      SEGW[${#SEGW[@]}]="$t"
-    fi
+    case "$t" in
+      s | 's|')
+        if [ "${#SEGW[@]}" -gt 0 ]; then
+          seg && break
+          if seg_sql; then HIT=sql; HINT=""; break; fi
+        fi
+        SEGW=()
+        [ "$t" = s ] && PLT="" ;;
+      *) SEGW[${#SEGW[@]}]="$t" ;;
+    esac
   done
-  if [ -z "$HIT" ] && sql_check; then HIT=sql; HINT=""; fi
   [ -n "$HIT" ] || exit 0
   decide "$HIT" "$J_cmd" "$HINT"
 }
@@ -854,9 +920,21 @@ function parse(side, file, t,   s, name, j, q, dep, c, body, cl, it, ni, k, w1) 
     COLS[side, name] = cl; NC[side, name] = ni
   }
 }
+# nocom LINE -> LINE without -- comments and /* */ comments (inc: inside a /* */ that began on an earlier line of the file)
+function nocom(l,   o, a, d) {
+  o = ""
+  while (l != "") {
+    if (inc) { a = index(l, "*/"); if (!a) return o; l = substr(l, a + 2); inc = 0; o = o " "; continue }
+    a = index(l, "/*"); d = index(l, "--")
+    if (d && (!a || d < a)) return o substr(l, 1, d - 1)
+    if (!a) return o l
+    o = o substr(l, 1, a - 1) " "; l = substr(l, a + 2); inc = 1
+  }
+  return o
+}
 BEGIN { DS = "\034" }
-substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; next }
-cur == "B" || cur == "N" { l = $0; c = index(l, "--"); if (c) l = substr(l, 1, c - 1); BUF[cur, f] = BUF[cur, f] " " l "\n"; next }
+substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; inc = 0; next }
+cur == "B" || cur == "N" { BUF[cur, f] = BUF[cur, f] " " nocom($0) "\n"; next }
 cur == "M" { ADD[f] = ADD[f] $0 "\n"; next }
 cur == "D" {
   if (substr($0, 1, 11) == "diff --git ") { df = ""; next }

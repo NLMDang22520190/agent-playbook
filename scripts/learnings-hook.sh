@@ -7,6 +7,9 @@
 # boundary (a line boundary for a file without entries) with a note naming the file.
 # DECISION[D15]: plain stdout, not JSON additionalContext: no JSON escaping needed and the cap stays under the
 # documented 10,000-character context limit. Undo: switch the output mode here.
+# DECISION[R8]: the file must resolve (symlinks followed, pwd -P) strictly inside the root, or nothing is printed and one
+# stderr line names learnings_path: a cloned repo must not pull a file from elsewhere into the context. Any closing tag
+# variant (</project-learnings> in any case or spacing) in the file is dropped, so only the hook's own line closes the wrapper.
 # Env: PB_EVAL_HOOKS (non-empty: exit 0 silently unless --eval), PB_EVAL_HOOK_LOG (append "learnings inject <bytes>").
 # Bash 3.2 compatible; no jq, node or python.
 set -u
@@ -47,10 +50,30 @@ ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || ROOT="$(json_cwd "$INPUT")"
 [ -n "$ROOT" ] || exit 0
 
+# real_path FILE -> RP: FILE with its symlinks followed and its directory resolved by pwd -P; 1 when that fails
+real_path() {
+  local f="$1" t d i=0
+  while [ -L "$f" ]; do
+    [ "$i" -lt 40 ] || return 1
+    t="$(readlink "$f")" || return 1
+    case "$t" in /*) f="$t" ;; *) f="$(dirname "$f")/$t" ;; esac
+    i=$((i + 1))
+  done
+  d="$(cd "$(dirname "$f")" 2>/dev/null && pwd -P)" || return 1
+  RP="$d/${f##*/}"
+}
+
 REL="$(pb_conf_read "$ROOT/.agents/playbook.conf" learnings_path)" || REL=".agents/LEARNINGS.md"
 [ -n "$REL" ] || REL=".agents/LEARNINGS.md"
-FILE="$ROOT/$REL"
+case "$REL" in /* | [A-Za-z]:*) FILE="$REL" ;; *) FILE="$ROOT/$REL" ;; esac
 [ -f "$FILE" ] && [ -r "$FILE" ] && [ -s "$FILE" ] || exit 0
+RR="$(cd "$ROOT" 2>/dev/null && pwd -P)" || exit 0
+INSIDE=0
+if real_path "$FILE"; then case "$RP" in "${RR%/}"/*) INSIDE=1 ;; esac; fi
+if [ "$INSIDE" = 0 ]; then
+  printf 'agent-playbook learnings-hook: %s (learnings_path) resolves outside the project root %s; not injected\n' "$REL" "$RR" >&2
+  exit 0
+fi
 
 ATTR="$(printf '%s' "$FILE" | sed 's/"/\&quot;/g')"
 HEAD="<project-learnings path=\"$ATTR\">
@@ -62,7 +85,7 @@ NOTE_MAX="[9999999999 more entries not shown: read $FILE]"
 BUDGET=$((CAP - ${#HEAD} - ${#TAIL} - ${#NOTE_MAX} - 3))
 
 BODY="$(awk -v budget="$BUDGET" -v file="$FILE" '
-  index($0, "</project-learnings>") { next }
+  tolower($0) ~ /<\/[[:space:]]*project-learnings[[:space:]]*>/ { next }
   /^### L-/ { n++; entries = 1 }
   n == 0 { pre[++np] = $0; next }
   { txt[n] = txt[n] $0 "\n"; if ($0 ~ /^- Status: active[[:space:]]*$/) act[n] = 1 }

@@ -186,7 +186,8 @@ The guard reads the command text of one tool call. It does not see through:
 - git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
 - tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
-- projects that are not a git repository, where the Stop check has no diff to compare.
+- projects that are not a git repository, where the Stop check has no diff to compare;
+- a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
 
 For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
 
