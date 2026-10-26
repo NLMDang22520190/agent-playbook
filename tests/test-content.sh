@@ -2206,4 +2206,9 @@ for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group'
 done
 
 
+# v0.28.1 lane t (lever 2): Lite step 4 no longer recommends a mutation spot-check; Full keeps it.
+if lite_step 4 | tr '\n' ' ' | grep -qiE -- 'mutation spot-check'; then t_bad "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check" "Lite step 4 still mentions it"; else t_ok "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check"; fi
+qchk "v0.28.1 t references/test-quality.md still covers the mutation spot-check" "$(cat "$TDD/references/test-quality.md")" 'mutation spot-check'
+qchk "v0.28.1 t Full reviewer role still does the mutation spot-check" "$(cat "$TDD/roles/reviewer.md")" 'Do the mutation spot-check'
+
 t_summary
