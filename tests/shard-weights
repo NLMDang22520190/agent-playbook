@@ -145,3 +145,5 @@ test-eval-delta.sh 94
 test-evals-keys.sh 390
 test-update-signed.sh 49
 test-learnings-hook.sh 15
+test-evals-hooks.sh 150
+test-evals-grade15.sh 420

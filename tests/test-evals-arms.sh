@@ -91,13 +91,13 @@ go_split --harness claude --model m-claude-1 --scenarios E8
 assert_rc "AC1.4 --harness claude --model M -> exit 0" 0
 if argpair "$FR/claude.E8.args" --model m-claude-1; then t_ok "AC1.4 claude gets --model M"; else t_bad "AC1.4 claude gets --model M" "argv: $(tr '\n' ' ' < "$FR/claude.E8.args" 2>/dev/null)"; fi
 assert_file "AC1.4 claude: the env record exists" "$FR/claude.E8.env"
-assert_eq "AC1.4 the claude process has no PB_EVAL_* variable" "" "$(rec_of "$FR/claude.E8.env")"
+assert_eq "AC1.4 the claude process has no PB_EVAL_* variable but PB_EVAL_HOOKS and PB_EVAL_HOOK_LOG (v0.28.0 AC-C2)" "PB_EVAL_HOOKS PB_EVAL_HOOK_LOG" "$(evnames "$FR/claude.E8.env")"
 assert_not_contains "AC1.3 --model given: no WARNING" "$ERR" "WARNING model not pinned"
 assert_eq "AC1.5 the line after Workroot: is 'Model: m-claude-1'" "Model: m-claude-1" "$(after_workroot "$RES")"
 go --harness codex --model m-codex-1 --scenarios E8
 if argpair "$FR/codex.E8.args" -m m-codex-1; then t_ok "AC1.4 codex gets -m M"; else t_bad "AC1.4 codex gets -m M" "argv: $(tr '\n' ' ' < "$FR/codex.E8.args" 2>/dev/null)"; fi
 assert_contains "AC1.4 codex: still runs codex exec" "$(head -n 1 "$FR/codex.E8.args" 2>/dev/null)" "exec"
-assert_eq "AC1.4 the codex process has no PB_EVAL_* variable" "" "$(rec_of "$FR/codex.E8.env")"
+assert_eq "AC1.4 the codex process has no PB_EVAL_* variable but PB_EVAL_HOOKS and PB_EVAL_HOOK_LOG (v0.28.0 AC-C2)" "PB_EVAL_HOOKS PB_EVAL_HOOK_LOG" "$(evnames "$FR/codex.E8.env")"
 go --harness opencode --model prov/m-oc-1 --scenarios E8
 if argpair "$FR/opencode.E8.args" --model prov/m-oc-1; then t_ok "AC1.4 D7 [UNVERIFIED flag] opencode gets --model M"; else t_bad "AC1.4 D7 [UNVERIFIED flag] opencode gets --model M" "argv: $(tr '\n' ' ' < "$FR/opencode.E8.args" 2>/dev/null)"; fi
 

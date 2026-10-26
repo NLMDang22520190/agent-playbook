@@ -7,12 +7,13 @@
 FK="$(mk_tmp)"   # fake harness binaries
 # PBH: the heading of the always-on block (line 1 of AGENTS.global.md without "## "). A fake whose argv names it is the leak probe of
 # run-evals.sh: it records $FR/<binary>.probe.count, .probe.<n>.args, .probe.<n>.settings and a "probe" line in $FR/<binary>.order,
-# and answers the text of $FK/probe.answer (default NO): a stream-json result when --output-format stream-json is in argv, else plain text.
+# and its PB_EVAL_* variables in $FR/<binary>.probe.<n>.env (v0.28.0 k1c), and answers the text of $FK/probe.answer (default NO): a stream-json result when --output-format stream-json is in argv, else plain text.
 PBH="$(sed -n 's/^## //p' "$PB_ROOT/AGENTS.global.md" | head -n 1)"
 FR="$(mk_tmp)"   # what they recorded: $FR/<binary>.<label>.<what>, label = basename of the cwd (the workdir)
 
 # mk_fakes: claude, codex and opencode in $FK. Each records its argv (one per line, plus .argc), its PB_EVAL_* variables,
-# PLAYBOOK_HOME, HOME, the regular files under PLAYBOOK_HOME, and the path and a copy of the file after --settings; then
+# PB_HEADLESS (.headless, UNSET when absent; v0.28.0 k1c), PLAYBOOK_HOME, HOME, the regular files under PLAYBOOK_HOME, and the path and a
+# copy of the file after --settings; then
 # prints a canned stream-json transcript (init line, success result with total_cost_usd 0.01) and exits 0.
 mk_fakes() {
   local n
@@ -25,6 +26,7 @@ if [ "$probe" = 1 ]; then
   pn=$(( $(cat "$FR/$N.probe.count" 2>/dev/null || echo 0) + 1 ))
   printf '%s\n' "$pn" > "$FR/$N.probe.count"
   printf '%s\n' "$@" > "$FR/$N.probe.$pn.args"
+  env | grep '^PB_EVAL_' > "$FR/$N.probe.$pn.env"
   printf 'probe\n' >> "$FR/$N.order"
   prev=""
   for a in "$@"; do
@@ -46,6 +48,7 @@ printf '%s\n' "$l" >> "$FR/$N.order"
 printf '%s\n' "$@" > "$FR/$N.$l.args"
 printf '%s\n' "$#" > "$FR/$N.$l.argc"
 env | grep '^PB_EVAL_' > "$FR/$N.$l.env"
+printf '%s\n' "${PB_HEADLESS-UNSET}" > "$FR/$N.$l.headless"
 printf '%s\n' "${PLAYBOOK_HOME-UNSET}" > "$FR/$N.$l.ph"
 printf '%s\n' "$HOME" > "$FR/$N.$l.hm"
 if [ -n "${PLAYBOOK_HOME:-}" ] && [ -d "$PLAYBOOK_HOME" ]; then (cd "$PLAYBOOK_HOME" && find . -type f) > "$FR/$N.$l.phfiles"; fi
@@ -119,4 +122,6 @@ row_of() { grep -E "^\| *$2 *\|" "$1" 2>/dev/null | head -n 1 | tr -s ' '; }
 # after_workroot RESULTS.md -> the first non-empty line after the "Workroot:" line
 after_workroot() { awk 'f && NF { print; exit } /^Workroot: / { f = 1 }' "$1" 2>/dev/null; }
 alive() { kill -0 "$1" 2>/dev/null; }
+# evnames FILE -> the variable names of an env record (NAME=value lines), sorted (LC_ALL=C), space-separated
+evnames() { if [ -f "$1" ]; then sed 's/=.*//' "$1" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'; else echo NO-RECORD; fi; }
 rec_of() { if [ -f "$1" ]; then cat "$1"; else echo NO-RECORD; fi; }   # FILE -> its content, NO-RECORD when missing
