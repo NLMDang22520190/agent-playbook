@@ -3,7 +3,8 @@
 # Per task: task.conf metadata, the hidden tests (FAIL_TO_PASS / PASS_TO_PASS lists pinned here), the canary, the
 # prompt language, setup.sh refusing a non-empty target, solution.patch presence, then evals/check-tasks.sh over the
 # whole corpus (setup twice with one HEAD, F2P fail and P2P pass unsolved, all pass after solution.patch).
-# DECISION[D1] 13 tasks (node 9, python3 3, bash 1; prompts VI 6 / EN 7); K2 adds pattern-10..19 (node 9, bash 1; VI 4 / EN 6) = 23 tasks. DECISION[D13] every id, weight, file split
+# DECISION[D1] 13 tasks (node 9, python3 3, bash 1; prompts VI 6 / EN 7); K2 adds pattern-10..19 (node 9, bash 1; VI 4 / EN 6) = 23 tasks; v0.28.2 lane n adds oss-05, oss-06, pattern-20 (node 1, python3 1, bash 1;
+# VI 1 / EN 2; hidden input classes the prompt implies with "any"/"every"/"whatever") = 26 tasks. DECISION[D13] every id, weight, file split
 # and expected value below is an author-chosen oracle from 01-spec.md "Corpus" [UNVERIFIED] until the user reviews it.
 # DECISION[D12] the private-name denylist is never committed: it comes from PB_CORPUS_DENYLIST (comma list) or is skipped.
 . "$(dirname "$0")/lib.sh"
@@ -34,9 +35,12 @@ pattern-15-erase-account-ambiguous|node|vi|Full|tests/decision-logged.f2p.test.j
 pattern-16-negative-stock-not-a-bug|node|en|Lite||tests/labels.p2p.test.js tests/preorder-negative.p2p.test.js tests/regular-stock.p2p.test.js
 pattern-17-datefmt-major-upgrade|node|en|Full|tests/upgrade.f2p.test.js|tests/app.p2p.test.js tests/vendor-intact.p2p.test.js
 pattern-18-split-name-migration|node|vi|Full|tests/migration-004.f2p.test.js|tests/migrations-old.p2p.test.js
-pattern-19-archive-spaces|bash|en|Lite|tests/archive-names.f2p.sh|tests/archive-plain.p2p.sh'
+pattern-19-archive-spaces|bash|en|Lite|tests/archive-names.f2p.sh|tests/archive-plain.p2p.sh
+oss-05-slug-separators|node|en|Lite|tests/slug-names.f2p.test.js|tests/slug-plain.p2p.test.js
+oss-06-conf-value-equals|bash|en|Lite|tests/conf-values.f2p.sh|tests/conf-basic.p2p.sh
+pattern-20-period-last-day|python3|vi|Lite|tests/test_period_report_last_day.py tests/test_period_invoice_last_day.py|tests/test_period_inside.py'
 
-# K2 AC17: id|scope|traps of the ten new tasks (scope= is space-separated, traps= comma list; 01-spec.md "Tasks")
+# K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n (scope= is space-separated, traps= comma list; 01-spec.md "Tasks")
 NEWMETA='pattern-10-cents-three-files|src/coupons.js src/shipping.js src/tax.js src/checkout.js|multi-file
 pattern-11-date-parser-symptom|src/import/|misleading-symptom
 pattern-12-hidden-receipt|src/docs/invoice.js src/mail/receipt.js src/names.js|hidden-second-place,multi-file
@@ -46,7 +50,10 @@ pattern-15-erase-account-ambiguous|src/accounts.js src/auth.js docs/decisions.md
 pattern-16-negative-stock-not-a-bug|docs/|not-a-bug
 pattern-17-datefmt-major-upgrade|package.json package-lock.json node_modules/ src/|dependency-upgrade,multi-file
 pattern-18-split-name-migration|migrations/ src/users.js docs/decisions.md|migration-rollback
-pattern-19-archive-spaces|bin/ lib/|misleading-symptom,multi-file'
+pattern-19-archive-spaces|bin/ lib/|misleading-symptom,multi-file
+oss-05-slug-separators|src/|input-classes
+oss-06-conf-value-equals|lib/ bin/|input-classes
+pattern-20-period-last-day|src/|hidden-second-place,input-classes'
 
 # conf_val FILE KEY -> the value of KEY= (first line), surrounding double quotes removed
 conf_val() {
@@ -64,7 +71,7 @@ if python3 -c 'import sys' >/dev/null 2>&1; then HAVE_PY=1; fi
 
 echo "AC21 corpus layout"
 n_dirs="$(cd "$TASKS" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type d | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "K2 AC17 23 task directories under evals/tasks [D1]" 23 "${n_dirs:-0}"
+assert_eq "K2 AC17 26 task directories under evals/tasks (23 + 3 of v0.28.2) [D1]" 26 "${n_dirs:-0}"
 c_node=0; c_py=0; c_bash=0; c_vi=0; c_en=0
 while IFS='|' read -r id lang plang weight f2p p2p; do
   [ -n "$id" ] || continue
@@ -122,8 +129,8 @@ while IFS='|' read -r id lang plang weight f2p p2p; do
 done <<EOF
 $CORPUS
 EOF
-assert_eq "K2 AC17 languages: node 18, python3 3, bash 2 [D1]" "18 3 2" "$c_node $c_py $c_bash"
-assert_eq "K2 AC17 prompts: 10 Vietnamese, 13 English [D1]" "10 13" "$c_vi $c_en"
+assert_eq "K2 AC17 languages: node 19, python3 4, bash 3 [D1]" "19 4 3" "$c_node $c_py $c_bash"
+assert_eq "K2 AC17 prompts: 11 Vietnamese, 15 English [D1]" "11 15" "$c_vi $c_en"
 
 echo "K2 AC17 scope, traps and wrong fixes of the ten new tasks"
 while IFS='|' read -r id scp trp; do
@@ -203,7 +210,10 @@ pattern-15-erase-account-ambiguous|order,đơn hàng,decisions.md,retention
 pattern-16-negative-stock-not-a-bug|pre-order,preorder,backorder,docs
 pattern-17-datefmt-major-upgrade|utc,timeZone,parse,report.js,throws
 pattern-18-split-name-migration|round trip,expand,contract,keep,giữ
-pattern-19-archive-spaces|manifest,IFS,find,quote'
+pattern-19-archive-spaces|manifest,IFS,find,quote
+oss-05-slug-separators|accent,diacritic,unicode,leading,trailing,consecutive,underscore,đ
+oss-06-conf-value-equals|last,prefix,twice,comment,quote,dash,spaces,glob
+pattern-20-period-last-day|hóa đơn,invoice,billing,23:59,một ngày,one day'
 # prompt_hits FILE WORDS -> the 1-based index of every word of the comma list WORDS found in FILE
 prompt_hits() {
   local low w i=0 IFS_OLD="$IFS"

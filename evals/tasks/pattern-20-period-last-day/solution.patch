@@ -1,0 +1,35 @@
+diff --git a/src/invoice.py b/src/invoice.py
+index 56a3e19..d42f09a 100644
+--- a/src/invoice.py
++++ b/src/invoice.py
+@@ -1,10 +1,8 @@
+ """Invoice total of one client over a period."""
+-from datetime import datetime, time
++from src.periods import in_period
+ 
+ 
+ def invoice_total(entries, client, first, last, cents_per_hour):
+     """Returns (minutes, amount in cents) billed to CLIENT for the period FIRST..LAST; cents are rounded down."""
+-    start = datetime.combine(first, time())
+-    end = datetime.combine(last, time())
+-    minutes = sum(e.minutes for e in entries if e.client == client and start <= e.when < end)
++    minutes = sum(e.minutes for e in entries if e.client == client and in_period(e.when, first, last))
+     return minutes, minutes * cents_per_hour // 60
+diff --git a/src/periods.py b/src/periods.py
+index 326ba4f..374c37a 100644
+--- a/src/periods.py
++++ b/src/periods.py
+@@ -1,10 +1,10 @@
+ """Periods: a first day and a last day (see docs/periods.md)."""
+-from datetime import datetime, time
++from datetime import datetime, time, timedelta
+ 
+ 
+ def period_bounds(first, last):
+-    """Returns the (start, end) datetimes of the period FIRST..LAST."""
+-    return datetime.combine(first, time()), datetime.combine(last, time())
++    """Returns the (start, end) datetimes of the period FIRST..LAST: end is 00:00 of the day after LAST (excluded)."""
++    return datetime.combine(first, time()), datetime.combine(last + timedelta(days=1), time())
+ 
+ 
+ def in_period(when, first, last):

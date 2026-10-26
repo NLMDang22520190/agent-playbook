@@ -1,0 +1,14 @@
+diff --git a/lib/conf.sh b/lib/conf.sh
+index 75953f4..6b1f11c 100644
+--- a/lib/conf.sh
++++ b/lib/conf.sh
+@@ -1,7 +1,7 @@
+ # conf_get KEY FILE -> prints the value of KEY in the config FILE (format: README.md); exit 1 when KEY is not set
+ conf_get() {
+   local line
+-  line="$(grep "^$1" "$2" | head -n 1)"
++  line="$(grep "^$1" "$2" | tail -n 1)"
+   [ -n "$line" ] || return 1
+-  echo $line | cut -d= -f2
++  printf '%s\n' "${line#*=}"
+ }

@@ -1,0 +1,18 @@
+diff --git a/src/periods.py b/src/periods.py
+index 326ba4f..374c37a 100644
+--- a/src/periods.py
++++ b/src/periods.py
+@@ -1,10 +1,10 @@
+ """Periods: a first day and a last day (see docs/periods.md)."""
+-from datetime import datetime, time
++from datetime import datetime, time, timedelta
+ 
+ 
+ def period_bounds(first, last):
+-    """Returns the (start, end) datetimes of the period FIRST..LAST."""
+-    return datetime.combine(first, time()), datetime.combine(last, time())
++    """Returns the (start, end) datetimes of the period FIRST..LAST: end is 00:00 of the day after LAST (excluded)."""
++    return datetime.combine(first, time()), datetime.combine(last + timedelta(days=1), time())
+ 
+ 
+ def in_period(when, first, last):
