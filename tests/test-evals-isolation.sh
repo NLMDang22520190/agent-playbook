@@ -107,8 +107,15 @@ h5 "H5 control: the workdir's own .agents in backslash form (Run 28 E4.without.1
   '{"file_path":"C:\\Users\\tester\\pbeval\\r28\\E\\E4.without.1\\.agents\\handoff\\01-spec.md"}'
 h5 "H5 control: the workdir's own .agents in mixed form (Run 28 E4.without.2 style): PASS" PASS "$HP" "$WDP" Read \
   '{"file_path":"C:\\Users\\tester\\pbeval\\r28\\E\\E4.without.1\\.agents/handoff/01-spec.md"}'
-h5 "H5 control: a playbook skill under the allowed PLAYBOOK_HOME in backslash form: PASS" PASS "$HP" "/c/Users/tester/AppData/Local/Temp/pbh" Read \
-  '{"file_path":"C:\\Users\\tester\\AppData\\Local\\Temp\\pbh\\.claude\\skills\\playbook-tdd\\SKILL.md"}'
+# OK-path form normalisation, kept apart from .claude/skills/playbook-* (that pattern is HOME-independent, case 14): an OK path
+# that lies under HOME/.agents covers its own subtree in any drive form, and a sibling under HOME/.agents still FAILs
+WTP='/c/Users/tester/.agents/wt'
+h5 "H5 control: the OK path /c/Users/tester/.agents/wt read as C:\\Users\\tester\\.agents\\wt\\src\\a.js: PASS" PASS "$HP" "$WTP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents\\wt\\src\\a.js"}'
+h5 "H5 control: OK path given as C:/Users/tester/.agents/wt, read as c:\\Users\\tester\\.agents\\wt\\src\\a.js: PASS" PASS "$HP" "C:/Users/tester/.agents/wt" Read \
+  '{"file_path":"c:\\Users\\tester\\.agents\\wt\\src\\a.js"}'
+h5 "H5 sibling of that OK path: C:\\Users\\tester\\.agents\\playbook\\x (OK1 /c/Users/tester/.agents/wt): FAIL" FAIL "$HP" "$WTP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents\\playbook\\x"}'
 h5 "H5 control: C:\\Users\\tester\\.agents-old\\x.md is not .agents: PASS" PASS "$HP" "$WDP" Read \
   '{"file_path":"C:\\Users\\tester\\.agents-old\\x.md"}'
 
