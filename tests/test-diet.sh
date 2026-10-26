@@ -83,7 +83,7 @@ TSK="$PB_ROOT/skills/playbook-tdd/SKILL.md"; FIN="$PB_ROOT/skills/playbook-tdd/t
 DF="$(flat "$DEV")"; RLF="$(flat "$REL")"
 has "AC4 development.md: the release PR body is the pr-body.sh output" "$DF" 'release[^.]{0,120}pr-body\.sh|pr-body\.sh[^.]{0,120}release'
 has "AC4 development.md: the PR is opened with that body (gh pr create --body-file)" "$DF" 'gh pr create[^.]{0,40}--body-file'
-has "AC4 development.md: ship.sh comes after the PR" "$DF" 'pr-body\.sh[^#]{0,400}tools/ship\.sh'
+has "AC4 development.md: ship.sh comes after the PR" "$DF" 'pr-body\.sh[^#]{0,250}tools/ship\.sh'
 has "AC4 release.md: the release PR description is the pr-body.sh output" "$RLF" 'PR description[^.]{0,80}pr-body\.sh|pr-body\.sh[^.]{0,80}PR description'
 has "AC4 release.md: a release of several items has one block per item" "$RLF" 'one block per item'
 P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$TSK" | tr '\n' ' ' | tr -s ' ')"
