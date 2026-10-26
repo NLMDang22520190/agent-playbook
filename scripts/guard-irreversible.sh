@@ -827,7 +827,7 @@ wf_text() {
 # pipeline so far (D3), and sets SEGT to it; records the files this command writes (WF_P, WF_T: the text piped in plus its own,
 # D-g1; cp/mv: the sources' text, D-g2). 0 when the command is a database client and PLT holds destructive SQL.
 seg_sql() {
-  local t a b txt="" cl=" " f k rest pc tee=0 cmd="" nw=0 wa m st d
+  local t a b txt="" cl=" " f k rest pc tee=0 cmd="" cf=0 wa m st d dn bn pf="" tsk=0 ad
   local -a fl ot co
   fl=(); ot=(); co=()
   for t in "${SEGW[@]}"; do
@@ -839,9 +839,27 @@ seg_sql() {
         case "$a" in *[[:space:]]*) ;; *) b="${a##*/}"; cl="$cl${b%.exe} " ;; esac
         if [ "$tee" = 1 ]; then case "$a" in -*) ;; *) ot[${#ot[@]}]="$a"; continue ;; esac; fi
         [ "${a##*/}" = tee ] && tee=1
-        nw=$((nw + 1))
-        if [ "$nw" = 1 ]; then cmd="${a##*/}"
-        else case "$a" in -*) ;; *) co[${#co[@]}]="$a" ;; esac; fi ;;
+        if [ "$cf" = 1 ]; then
+          case "$a" in -*) ;; *) co[${#co[@]}]="$a" ;; esac
+        elif [ "$tsk" -gt 0 ]; then tsk=$((tsk - 1))
+        else
+          # the command word: skip the prefixes seg() skips (assignments, sudo, env, ... and their options)
+          ad=0
+          if [ -n "$pf" ]; then
+            case "$pf:$a" in
+              sudo:-[ugpCDhrtTU] | env:-[uCS] | nice:-n | timeout:-[sk] | time:-[fo] | exec:-a) tsk=1; ad=1 ;;
+              *:-* | *:[A-Za-z_]*=*) ad=1 ;;
+              *) [ "$pf" = timeout ] && ad=1; pf="" ;;
+            esac
+          fi
+          if [ "$ad" = 0 ]; then
+            case "$a" in
+              [A-Za-z_]*=*) ;;
+              sudo | env | command | nice | time | nohup | exec | timeout | '{' | '!' | then | do | else | if | while | until | elif) pf="$a" ;;
+              *) cf=1; cmd="${a##*/}" ;;
+            esac
+          fi
+        fi ;;
     esac
     rest="$a"
     while [[ $rest =~ $RE_SQLF ]]; do
@@ -875,9 +893,11 @@ seg_sql() {
       st=""
       if wf_text; then st="$WTX"; fi
       if [[ $f =~ $RE_SQLF ]] && [ -f "$NP" ] && [ -r "$NP" ]; then st="$st$NL$(cat "$NP" 2>/dev/null)"; fi
-      norm_path "$d" "$CWD"
-      if [ -d "$NP" ]; then norm_path "$NP/${f##*/}" /; fi
-      WF_P[${#WF_P[@]}]="$NP"; WF_T[${#WF_T[@]}]="$st"
+      norm_path "$d" "$CWD"; dn="$NP"
+      norm_path "$dn/${f##*/}" /; bn="$NP"
+      # DEST may be a directory a mkdir earlier in this command makes: unless it is one now (or ends in /), record DEST too
+      if [ -d "$dn" ] || [ "${d%/}" != "$d" ]; then dn="$bn"; else WF_P[${#WF_P[@]}]="$dn"; WF_T[${#WF_T[@]}]="$st"; fi
+      WF_P[${#WF_P[@]}]="$bn"; WF_T[${#WF_T[@]}]="$st"
     done
   fi
   SEGT="$txt"
