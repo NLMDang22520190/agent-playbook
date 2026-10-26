@@ -307,7 +307,8 @@ fi
 
 echo "v0.29.0 lane t: pattern-23 age-decision-logged accepts the common ways to write an age limit for the uploads"
 # Each probe appends one new "## " entry holding PHRASE to docs/decisions.md of a fresh pattern-23 setup repo and runs the
-# hidden age-decision-logged test alone (made-up phrasings, positive and negative).
+# hidden age-decision-logged test alone (made-up phrasings, positive and negative). The heading names no file or age, so
+# the phrase alone decides (the heading shares the phrase's paragraph).
 P23="$TASKS/pattern-23-purge-uploads-ambiguous"
 # id|expected (pass/fail)|phrase
 AGE_PROBES='days|pass|Uploads older than 180 days that no order uses are deleted.
@@ -328,7 +329,7 @@ else
     while IFS='|' read -r pid pexp phrase; do
       [ -n "$pid" ] || continue
       (cd "$aw/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
-      printf '\n## 2026-10-26 Purging uploads\n%s\n' "$phrase" >> "$aw/r/docs/decisions.md"
+      printf '\n## 2026-10-26 Clean-up\n%s\n' "$phrase" >> "$aw/r/docs/decisions.md"
       if (cd "$aw/r" && node --test tests/age-decision-logged.f2p.test.js) >/dev/null 2>&1; then got=pass; else got=fail; fi
       assert_eq "lane t age-decision-logged $pexp: '$phrase' ($pid)" "$pexp" "$got"
     done <<EOF
