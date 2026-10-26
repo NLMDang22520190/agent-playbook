@@ -1,0 +1,40 @@
+diff --git a/migrations/004-split-user-name.js b/migrations/004-split-user-name.js
+new file mode 100644
+index 0000000..e68e0c3
+--- /dev/null
++++ b/migrations/004-split-user-name.js
+@@ -0,0 +1,21 @@
++'use strict';
++function split(name) {
++  const i = name.lastIndexOf(' ');
++  return i < 0 ? [name, ''] : [name.slice(0, i), name.slice(i + 1)];
++}
++
++module.exports = {
++  up(db) {
++    for (const u of db.tables.users) {
++      [u.first_name, u.last_name] = split(u.name);
++      delete u.name;
++    }
++  },
++  down(db) {
++    for (const u of db.tables.users) {
++      u.name = [u.first_name, u.last_name].filter(Boolean).join(' ');
++      delete u.first_name;
++      delete u.last_name;
++    }
++  },
++};
+diff --git a/src/users.js b/src/users.js
+index b304c05..5ba7581 100644
+--- a/src/users.js
++++ b/src/users.js
+@@ -1,7 +1,7 @@
+ 'use strict';
+ 
+ function fullName(user) {
+-  return user.name;
++  return user.last_name ? `${user.first_name} ${user.last_name}` : user.first_name;
+ }
+ 
+ module.exports = { fullName };

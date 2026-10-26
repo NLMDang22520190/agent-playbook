@@ -1,0 +1,29 @@
+diff --git a/src/fees.js b/src/fees.js
+index 3d19769..92baad4 100644
+--- a/src/fees.js
++++ b/src/fees.js
+@@ -1,9 +1,10 @@
+ 'use strict';
+ 
+ // Late fee in cents for a loan returned daysLate days after its due date. Rules: docs/policy.md.
++// Within the 3-day grace period there is no fee; past it, every day late counts from the first day after the due date.
+ function lateFeeCents(daysLate) {
+   if (daysLate <= 3) return 0;
+-  return Math.min((daysLate - 3) * 50, 1000);
++  return Math.min(daysLate * 50, 1000);
+ }
+ 
+ module.exports = { lateFeeCents };
+diff --git a/tests/fees.test.js b/tests/fees.test.js
+index 7df893b..897a887 100644
+--- a/tests/fees.test.js
++++ b/tests/fees.test.js
+@@ -12,7 +12,7 @@ test('no fee within the grace period', () => {
+ });
+ 
+ test('one day past the grace period matches the policy', () => {
+-  assert.equal(lateFeeCents(4), 50);
++  assert.equal(lateFeeCents(4), 200);
+ });
+ 
+ test('the fee is capped at 10.00', () => {

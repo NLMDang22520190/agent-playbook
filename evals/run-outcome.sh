@@ -19,6 +19,11 @@
 # tests not seen by the agent" (FAIL when the transcript holds the hidden-test canary: the run is CONTAMINATED and not
 # passed), "nothing written outside the workdir", and in the without arm "without arm: no playbook file read and no
 # playbook Skill call" (stream-json transcripts; MANUAL for plain text).
+# Per graded run, two informational metrics that never change a check or the exit code (v0.28.0): extra_files_changed and
+# extra_files (paths of the agent's change, renames as delete + add, outside the task.conf scope and outside tests/, .agents/,
+# node_modules/, .gitignore, package-lock.json; null without scope; the list holds the first 50, C-sorted), tests_weakened
+# and tests_weakened_files (visible test files under tests/ as setup.sh left them, counted again after the adapter, before
+# grading). ERROR and SKIPPED runs carry them as null.
 # --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so
 # does its leak probe (--harness claude with the without arm: exit 3 when claude still sees the playbook block); the
 # presets, model flags, arm settings files, the pb-evals/1 JSON and its statistics come from evals/lib-harness.sh. Every
@@ -48,7 +53,7 @@ HP="hidden tests pass"; SEEN="hidden tests not seen by the agent"; STRAYC="nothi
 ISO="without arm: no playbook file read and no playbook Skill call"
 
 # runner temp dirs of the running task and the pid of its adapter, for the traps
-CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; SET_DIR=""; ND_FILE=""; ADPID=""
+CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""; SET_DIR=""; ND_FILE=""; ADPID=""
 # rm_dir DIR: remove a runner temp dir (never following a link), also one the agent made unreadable
 rm_dir() {
   [ -n "$1" ] || return 0
@@ -57,9 +62,9 @@ rm_dir() {
   return 0
 }
 cleanup() {
-  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$SET_DIR"
+  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$CUR_BASE"; rm_dir "$SET_DIR"
   if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
-  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; SET_DIR=""; ND_FILE=""
+  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""; SET_DIR=""; ND_FILE=""
 }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 trap cleanup EXIT
@@ -309,9 +314,21 @@ run_json() {
   [ -n "$FTREE" ] && ft="$(pbh_json_str "$FTREE")"
   [ -n "$PSHA" ] && ps="$(pbh_json_str "$PSHA")"
   [ "$ARM" = without ] && dr="$DROPPED"
-  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s]}' \
-    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS")
+  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s],"extra_files_changed":%s,"extra_files":%s,"tests_weakened":%s,"tests_weakened_files":%s}' \
+    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS" \
+    "$M_EXTRA" "$M_XFILES" "$M_TW" "$M_TWFILES")
 "
+}
+# json_list MAX -> the non-empty lines of stdin as a JSON array of strings, at most MAX of them (0: all)
+json_list() {
+  local l o="" n=0
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    n=$((n + 1))
+    [ "$1" = 0 ] || [ "$n" -le "$1" ] || break
+    o="$o${o:+,}$(pbh_json_str "$l")"
+  done
+  printf '[%s]' "$o"
 }
 # load_transcript: one pass of evals/transcript.js over $LOG
 load_transcript() {
@@ -376,9 +393,11 @@ EOF
   return "$rc"
 }
 # save_diff -> $EV/$RL.diff: the agent's change against the setup commit $SHEAD, new files included (a temp index, so the
-# agent's own index is not used; no external diff or textconv command of the repo config runs)
+# agent's own index is not used; no external diff or textconv command of the repo config runs). From the same index:
+# DIFF_NAMES, the changed paths (renames as delete + add) one per line, and DIFF_OK=1 when they could be listed.
 save_diff() {
   local ix
+  DIFF_NAMES=""; DIFF_OK=0
   ix="$(mktemp -d "${TMPDIR:-/tmp}/pb-evidx.XXXXXX")" || pb_die "cannot create a temp dir for the diff of $RL" 3
   CUR_IDX="$ix"
   if ! ( cd "$WD" && export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_INDEX_FILE="$ix/index" &&
@@ -386,18 +405,21 @@ save_diff() {
          git -c core.fsmonitor=false diff --cached --no-ext-diff --no-textconv --binary "$SHEAD" ) > "$EV/$RL.diff" 2>/dev/null; then
     printf 'note: no diff for %s (git add/diff failed in the workdir)\n' "$RL" >&2
     printf '# no diff: git add/diff failed in the workdir\n' > "$EV/$RL.diff"
+  elif ( cd "$WD" && export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_INDEX_FILE="$ix/index" &&
+         git -c core.fsmonitor=false diff --cached --no-renames --name-only -z "$SHEAD" ) > "$ix/names" 2>/dev/null; then
+    DIFF_NAMES="$(tr '\000' '\n' < "$ix/names")"; DIFF_OK=1
   fi
   rm_dir "$ix"; CUR_IDX=""
 }
 # drop_run -> the run's workdir and prompt file leave the workroot (its transcript and diff are already in $EV)
-drop_run() { rm_dir "$WD"; rm -f "$PF"; }
+drop_run() { rm_dir "$WD"; rm -f "$PF"; rm_dir "$CUR_BASE"; CUR_BASE=""; }
 spent_of() { printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 
 for RUN in $RUNS; do
   ID="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$ID.$ARM.$K"
   TD="$TASKS_DIR/$ID"; TLANG="$(tconf "$ID" language)"
-  FTREE=""; PSHA=""; S_CHECKS=""; NOTES_J=""
+  FTREE=""; PSHA=""; S_CHECKS=""; NOTES_J=""; M_EXTRA=null; M_XFILES=null; M_TW=null; M_TWFILES=null
   note "language=$TLANG"; note "source=$(tconf "$ID" source)"; note "expected_weight=$(tconf "$ID" expected_weight)"
   note "tasks_dir=$TASKS_DIR"
   if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
@@ -426,6 +448,9 @@ for RUN in $RUNS; do
   else printf '%s\n%s\n' "$(cat "$TD/prompt.md")" "$NONINT" > "$PF"; fi
   SHEAD="$(git -C "$WD" rev-parse HEAD 2>/dev/null)"
   FTREE="$(git -C "$WD" rev-parse 'HEAD^{tree}' 2>/dev/null)"; PSHA="$(git hash-object "$PF" 2>/dev/null)"
+  # DECISION[D6]: the visible tests as setup.sh left them, kept outside the workroot for tests_weakened
+  CUR_BASE="$(mktemp -d "${TMPDIR:-/tmp}/pb-evbase.XXXXXX")" || pb_die "cannot create a temp dir for the visible tests of $RL" 3
+  if [ -d "$WD/tests" ]; then cp -R "$WD/tests" "$CUR_BASE/tests" || pb_die "cannot copy the visible tests of $RL" 3; fi
   SC_HOME="$(mktemp -d "${TMPDIR:-/tmp}/pb-evhome.XXXXXX")" || pb_die "cannot create a temp playbook home" 3
   CUR_HOME="$SC_HOME"
   mkdir -p "$SC_HOME/.agents" || pb_die "cannot create $SC_HOME/.agents" 3
@@ -490,6 +515,20 @@ EOF
     drop_run
     continue
   fi
+  # the hygiene metrics (DECISION[D2]: informational, never a check), from the workdir before grading
+  SCOPE="$(tconf "$ID" scope)"
+  if [ -n "$SCOPE" ]; then
+    if [ "$DIFF_OK" = 1 ]; then
+      XF="$(printf '%s\n' "$DIFF_NAMES" | pbh_scope_extra "$SCOPE")"
+      if [ -z "$XF" ]; then M_EXTRA=0; else M_EXTRA="$(printf '%s\n' "$XF" | wc -l | tr -d ' ')"; fi
+      M_XFILES="$(printf '%s\n' "$XF" | json_list 50)"
+    else
+      note "extra_files_changed unknown: git could not list the changed paths"
+    fi
+  fi
+  TWO="$(pbh_tests_weakened "$CUR_BASE" "$WD")"
+  M_TW="$(printf '%s\n' "$TWO" | sed -n 1p)"
+  M_TWFILES="$(printf '%s\n' "$TWO" | sed 1d | json_list 0)"
   CONT=0
   if LC_ALL=C grep -qF "$CANARY" "$LOG" 2>/dev/null; then CONT=1; fi
   if grade && [ "$CONT" = 0 ]; then record PASS "$HP"; else record FAIL "$HP"; fi
@@ -536,6 +575,7 @@ const HP = process.argv[2], SEEN = process.argv[3], ISO = process.argv[4], K = j
 const f = (v, d) => (v === null || v === undefined) ? "-" : String(Number(v.toFixed(d)));
 const cell = s => String(s).replace(/\|/g, "\\|");
 const res = (r, n) => ((r.checks || []).find(c => c.name === n) || {}).result;
+const nv = v => (v === null || v === undefined) ? "-" : String(v);
 let o = "## pass@1 and pass^" + K + " per arm (check `" + HP + "`)\n\n";
 for (const arm of j.arms || []) {
   let n = 0, p = 0, c = 0, a = 0;
@@ -556,10 +596,20 @@ for (const r of R) {
   if (r.arm === "without" && res(r, ISO) === "FAIL") flags.push("- Invalid: the without arm result of " + r.scenario + " (run " + r.label + " failed the isolation check).");
 }
 if (flags.length) o += "\n" + flags.join("\n") + "\n";
-o += "\n## Runs\n\n| Run | Status | Hidden tests | Failed checks | Cost (USD) | Seconds |\n|---|---|---|---|---|---|\n";
+o += "\n## Scope and visible tests per arm\n\n";
+for (const arm of j.arms || []) {
+  const g = R.filter(r => r.arm === arm && r.status === "graded");
+  const ms = k => { const v = g.map(r => r[k]).filter(x => typeof x === "number");
+    return [v.length ? (v.reduce((s, x) => s + x, 0) / v.length).toFixed(2) : "-", v.filter(x => x > 0).length, v.length]; };
+  const e = ms("extra_files_changed"), t = ms("tests_weakened");
+  o += "- " + arm + ": extra_files_changed mean " + e[0] + " (runs > 0: " + e[1] + " of " + e[2] + "), tests_weakened mean " + t[0] +
+    " (runs > 0: " + t[1] + " of " + t[2] + ")\n";
+}
+o += "\n## Runs\n\n| Run | Status | Hidden tests | Failed checks | Extra files | Tests weakened | Cost (USD) | Seconds |\n|---|---|---|---|---|---|---|---|\n";
 for (const r of R) {
   const failed = (r.checks || []).filter(c => c.result === "FAIL").map(c => cell(c.name)).join("; ");
   o += "| " + cell(r.label) + " | " + r.status + (r.error ? ": " + cell(r.error) : "") + " | " + (res(r, HP) || "-") + " | " + (failed || "-") + " | " +
+    nv(r.extra_files_changed) + " | " + nv(r.tests_weakened) + " | " +
     (r.cost_usd === null ? "-" : r.cost_usd) + " | " + (r.seconds === null ? "-" : r.seconds) + " |\n";
 }
 process.stdout.write(o);' "$JF" "$HP" "$SEEN" "$ISO"

@@ -10,6 +10,8 @@
 #   pbh_arm_settings FILE ARM HOME REPO
 #                                     writes the Claude Code --settings JSON of ARM to FILE and prints the number of
 #                                     non-playbook lines of HOME/.claude/CLAUDE.md that the without arm also drops (0 for with)
+#   pbh_hook_settings FILE REPO       writes the with arm's --settings JSON of --hooks to FILE: autoMemoryEnabled false and the guard
+#                                     and learnings hook handlers (REPO/scripts, cygpath -m form when cygpath exists; DECISION[D30])
 #   pbh_check_key NAME                NAME without a trailing " (...)" group that carries a run-specific value (DECISION[D8])
 #   pbh_results_json NDJSON OUT       writes the pb-evals/1 document OUT from NDJSON: line 1 = the top-level fields (no runs,
 #                                     no summary), every next line = one run (kept in order); adds schema and summary (node)
@@ -24,6 +26,15 @@
 #                                     instruction file above WORKROOT holds the playbook block) and returns 2
 #   pbh_leak_prompt HEADING           prints the prompt of the leak probe: is the block headed HEADING in the agent's context?
 #   pbh_probe_answer FILE             YES, NO or UNKNOWN: the first word of the last stream-json result text of FILE, else of its text
+#   pbh_scope_extra SCOPE             stdin: changed paths, one per line; prints those outside SCOPE (space-separated entries:
+#                                     one ending in / is a prefix, any other a bash case glob on the whole path, never
+#                                     expanded) and outside the always-allowed set (tests/ .agents/ node_modules/ prefixes,
+#                                     .gitignore, package-lock.json), LC_ALL=C sorted
+#   pbh_test_counts FILE              prints "T A M": test declarations, assertions and skip/only markers of FILE at line start
+#                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
+#   pbh_tests_weakened BEFORE AFTER   line 1: the sum over the regular files under BEFORE/tests of max(0,T0-T1) + max(0,A0-A1)
+#                                     + max(0,M1-M0) against the same path under AFTER; then each file with a positive sum
+#                                     (tests/...), LC_ALL=C sorted
 
 # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
 # flags as listed by `claude --help` in Claude Code 2.1.295. DECISION[D3]: the claude and codex presets are best guesses.
@@ -139,6 +150,25 @@ EOF
   pbh_dropped_lines "$cm"
 }
 
+# v0.28.0 (lane k1c, DECISION[D7]): the handlers of the interface contract with the runner repo's scripts and --eval before the mode flag;
+# PreToolUse (Bash|Write|Edit) guard, SessionStart guard --session-start and learnings hook, Stop guard --stop. Claude Code runs hooks through
+# Git Bash on Windows, so the path is written as C:/... (cygpath -m), as claudeMdExcludes above.
+pbh_hook_settings() {
+  local file="$1" p="$2/scripts" m
+  if command -v cygpath >/dev/null 2>&1 && m="$(cygpath -m "$p" 2>/dev/null)" && [ -n "$m" ]; then p="$m"; fi
+  {
+    printf '{\n  "autoMemoryEnabled": false,\n  "hooks": {\n'
+    printf '    "PreToolUse": [{"matcher": "Bash|Write|Edit", "hooks": [{"type": "command", "command": %s, "timeout": 10}]}],\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval # agent-playbook:guard")"
+    printf '    "SessionStart": [{"hooks": [{"type": "command", "command": %s, "timeout": 10}, {"type": "command", "command": %s, "timeout": 10}]}],\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval --session-start # agent-playbook:guard-start")" \
+      "$(pbh_json_str "bash \"$p/learnings-hook.sh\" --eval # agent-playbook:learnings")"
+    printf '    "Stop": [{"hooks": [{"type": "command", "command": %s, "timeout": 30}]}]\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval --stop # agent-playbook:guard-stop")"
+    printf '  }\n}\n'
+  } > "$file"
+}
+
 pbh_check_key() {
   local n="$1" g
   case "$n" in
@@ -213,19 +243,26 @@ fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
 # .claude/skills/playbook-*, <NAME>/SKILL.md or HOME/.claude/CLAUDE.md. The OK paths (the workdir, the temp PLAYBOOK_HOME, the runner's
 # settings dir) are not playbook files (AC4.2); empty ones are ignored.
 # HOME and the allowed dirs also come on stdin, one per line: Git Bash converts a /tmp/... or /c/... argument to C:/... (argv and environment
-# only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI)
+# only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI). A native Windows transcript
+# writes C:\\Users\\...: backslashes count as slashes, and /c/x, C:/x and c:/x are the same path (v0.28.0 H5)
 pbh_iso_check() {
   printf '%s\n' "${2:-}" "${3:-}" "${4:-}" "${5:-}" | node -e '
 const fs = require("fs"), a = process.argv.slice(1);
 let raw = ""; try { raw = fs.readFileSync(0, "utf8"); } catch (e) {}
-const sl = raw.split("\n"), homes = [...new Set([a[1], sl[0]].filter(Boolean))];
-const ok = [...new Set(a.slice(2, 5).concat(sl.slice(1, 4)).filter(Boolean))], names = a.slice(5);
+const fwd = s => s.replace(/\\/g, "/");
+const forms = p => { p = fwd(p); let m = /^\/([A-Za-z])(\/.*)?$/.exec(p); const r = [p];
+  if (!m) { m = /^([A-Za-z]):(\/.*)?$/.exec(p); if (m) r.push("/" + m[1].toLowerCase() + (m[2] || "")); }
+  if (m) r.push(m[1].toUpperCase() + ":" + (m[2] || "/"), m[1].toLowerCase() + ":" + (m[2] || "/"));
+  return r; };
+const all = l => [...new Set([].concat(...l.filter(Boolean).map(forms)))];
+const sl = raw.split("\n"), homes = all([a[1], sl[0]]);
+const ok = all(a.slice(2, 5).concat(sl.slice(1, 4))), names = a.slice(5);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + homes.map(h => "|" + esc(h)).join("") + ")";
 const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
 if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
 const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
-const bad = s => { if (typeof s !== "string") return false; for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
+const bad = s => { if (typeof s !== "string") return false; s = fwd(s); for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
 let fail = false;
 for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
   let o; try { o = JSON.parse(line); } catch (e) { continue; }
@@ -301,4 +338,59 @@ for (const l of raw.split("\n")) {
 if (t === null) t = raw;
 const m = /^[^A-Za-z]*(yes|no)\b/i.exec(t);
 process.stdout.write(m ? m[1].toUpperCase() : "UNKNOWN");' "$1" 2>/dev/null || printf 'UNKNOWN'
+}
+
+# pbh_scope_extra SCOPE (v0.28.0 K2, DECISION[D4]): the scope entries are split by hand, so a glob entry is never expanded
+pbh_scope_extra() {
+  local sc p e rest ok
+  sc="$(printf '%s' "$1" | tr '\t\r\n' '   ')"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in tests/* | .agents/* | node_modules/* | .gitignore | package-lock.json) continue ;; esac
+    ok=0; rest="$sc"
+    while [ -n "$rest" ]; do
+      rest="${rest# }"
+      case "$rest" in *" "*) e="${rest%% *}"; rest="${rest#* }" ;; *) e="$rest"; rest="" ;; esac
+      [ -n "$e" ] || continue
+      case "$e" in
+        */) case "$p" in "$e"*) ok=1 ;; esac ;;
+        *)
+          # shellcheck disable=SC2254   # a scope entry without a trailing / is a glob on purpose (DECISION[D4])
+          case "$p" in $e) ok=1 ;; esac ;;
+      esac
+      [ "$ok" = 1 ] && break
+    done
+    [ "$ok" = 1 ] || printf '%s\n' "$p"
+  done | LC_ALL=C sort
+}
+
+# pbh_test_counts FILE (DECISION[D5]): T = test(/it( declarations (also .skip/.only) and python def test_, A = statements
+# starting with assert (assert.x(, assert, self.assertX(, assert_eq), M = .skip( .only( { skip: occurrences; CR ignored
+pbh_test_counts() {
+  [ -f "$1" ] || { printf '0 0 0\n'; return 0; }
+  LC_ALL=C awk '
+    { sub(/\r$/, "") }
+    /^[[:space:]]*(test|it)([.](skip|only))?[[:space:]]*[(]/ || /^[[:space:]]*def test_/ { t++ }
+    /^[[:space:]]*(assert|self[.]assert)/ { a++ }
+    { m += gsub(/[.]skip[[:space:]]*[(]/, "&") + gsub(/[.]only[[:space:]]*[(]/, "&") + gsub(/[{][[:space:]]*skip[[:space:]]*:/, "&") }
+    END { printf "%d %d %d\n", t, a, m }' "$1"
+}
+
+# pbh_tests_weakened BEFORE AFTER (DECISION[D5]): per visible test file; a file missing under AFTER counts 0 0 0
+pbh_tests_weakened() {
+  local b="$1" a="$2" rel c0 c1 n sum=0 files=""
+  if [ -d "$b/tests" ]; then
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      rel="${rel#./}"
+      c0="$(pbh_test_counts "$b/$rel")"; c1="$(pbh_test_counts "$a/$rel")"
+      n="$(printf '%s %s\n' "$c0" "$c1" | awk '{ s = 0; if ($1 > $4) s += $1 - $4; if ($2 > $5) s += $2 - $5; if ($6 > $3) s += $6 - $3; print s }')"
+      if [ "$n" -gt 0 ]; then sum=$((sum + n)); files="$files$rel
+"; fi
+    done <<EOF
+$(cd "$b" && find ./tests -type f | LC_ALL=C sort)
+EOF
+  fi
+  printf '%s\n' "$sum"
+  [ -z "$files" ] || printf '%s' "$files" | LC_ALL=C sort
 }

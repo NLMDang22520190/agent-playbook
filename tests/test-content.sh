@@ -347,16 +347,17 @@ if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest 
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
 MATRIX_LINE="$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')"
-assert_contains "v0.24.19 AC1 the shard matrix is exactly 1/6, 2/6, 3/6, 4/6, 5/6, 6/6" "$MATRIX_LINE" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']"
-assert_eq "v0.24.19 AC1 the matrix line is nothing but the six-entry list" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
-for k in 1 2 3 4 5 6; do
-  assert_contains "v0.24.19 AC4 the shard matrix has $k/6" "$SB" "$k/6"
+assert_contains "v0.28.0 the shard matrix is exactly 1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 7/7" "$MATRIX_LINE" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']"
+assert_eq "v0.28.0 the matrix line is nothing but the seven-entry list" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
+for k in 1 2 3 4 5 6 7; do
+  assert_contains "v0.28.0 the shard matrix has $k/7" "$SB" "$k/7"
 done
+assert_not_contains "v0.28.0 no matrix entry ending in /6' is left" "$SB" "/6'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /4' is left" "$SB" "/4'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /3' is left" "$SB" "/3'"
-assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is six: 'split in six'" "$SB" "split in six"
+assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is seven: 'split in seven'" "$SB" "split in seven"
 assert_not_contains "v0.24.19 AC1 the windows-shard comment no longer says 'split in four'" "$SB" "split in four"
-assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'six parallel shards'" "$(cat "$WF")" "six parallel shards"
+assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'seven parallel shards'" "$(cat "$WF")" "seven parallel shards"
 assert_not_contains "v0.24.19 AC1 the workflow no longer says 'four parallel shards'" "$(cat "$WF")" "four parallel shards"
 # AC7: the quoted "windows shard k/n" names of tools/ci-tree-tested.sh (the header comment has them unquoted) are exactly the matrix entries
 CIT="$PB_ROOT/tools/ci-tree-tested.sh"
@@ -385,8 +386,10 @@ MAC_MATRIX_SET="$(printf '%s\n' "$MAC_MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | 
 assert_eq "v0.24.21 AC3 ci-tree-tested.sh checks exactly the macos-shard matrix entries (same set and count)" "$MAC_MATRIX_SET" "$NEED_MAC_SET"
 if [ -n "$NEED_MAC_SET" ] && [ -n "$MAC_MATRIX_SET" ]; then t_ok "v0.24.21 AC3 both macOS sides are non-empty"; else t_bad "v0.24.21 AC3 both macOS sides are non-empty" "need [$NEED_MAC_SET] matrix [$MAC_MATRIX_SET]"; fi
 CIT_HEAD="$(sed -n '1,30p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
-assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
-assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
+assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'ten suite jobs'" "$CIT_HEAD" "ten suite jobs"
+assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'twelve green jobs'" "$CIT_HEAD" "twelve green jobs"
+assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
+assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
 assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
 assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'nine green jobs'" "$CIT_HEAD" "nine green jobs"
 if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
@@ -2153,5 +2156,54 @@ assert_contains "fix3 README: the paragraph names PGP (warn only, decision S-D4)
 assert_contains "fix3 README: the paragraph names SSH (the case that stops)" "$UPAR" "SSH"
 assert_contains "fix3 README: the paragraph names the allowed signers setting" "$UPAR" "gpg.ssh.allowedSignersFile"
 assert_not_contains "fix3 README: no claim that any signature that does not verify stops the update" "$UPAR" "a signature that does not verify stops the update"
+
+echo "v0.28.0 lane k1b AC-B7: setup step 4 offers the Claude Code hooks as an optional extra line (default no)"
+K1B_S4="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+qchk "k1b AC-B7 step 4 names the install command claude-hooks.sh install" "$K1B_S4" 'claude-hooks\.sh install'
+qchk "k1b AC-B7 step 4: the hooks line is an optional extra outside the 8-question cap" "$K1B_S4" 'hooks?[^.;]{0,160}(extra|optional line|outside the 8|not count|on top)|(extra|optional line|outside the 8|on top of)[^.;]{0,160}hooks?'
+qchk "k1b AC-B7 step 4: the hooks line is for Claude Code only" "$K1B_S4" 'claude code only|only (for|in) claude code|claude code[^.]{0,60}only'
+qchk "k1b AC-B7 step 4: the hooks default to no" "$K1B_S4" 'hooks?[^.]{0,250}default no|default no[^.]{0,250}hooks?'
+qchk "k1b AC-B7 step 4: the hooks go into ~/.claude/settings.json" "$K1B_S4" '~/\.claude/settings\.json'
+qchk "k1b AC-B7 step 4: says what the guard hook does" "$K1B_S4" 'guard[^.]{0,200}(irreversible|block|warn)'
+qchk "k1b AC-B7 step 4: says what the learnings hook does" "$K1B_S4" 'learnings[^.]{0,200}(session start|SessionStart|LEARNINGS)'
+qchk "k1b AC-B7 step 4: says a backup is made" "$K1B_S4" 'back(s|ed)? ?up|backup'
+qchk "k1b AC-B7 step 4: says how to remove them (claude-hooks.sh uninstall)" "$K1B_S4" 'claude-hooks\.sh uninstall'
+flat_has "k1b AC-B7 yes -> conf.sh set hooks on --global" "$SETUP" 'conf\.sh set hooks on --global'
+flat_has "k1b AC-B7 no -> hooks off" "$SETUP" 'hooks off'
+flat_has "k1b AC-B7 a non-interactive setup never installs the hooks" "$SETUP" '(non-interactive|headless)[^.]{0,250}(never|not|no)[^.]{0,40}install[^.]{0,80}hooks?|hooks?[^.]{0,250}(non-interactive|headless)[^.]{0,120}(never|not)[^.]{0,20}install'
+K1B_S6="$(awk '/^6\. \*\*Write the values/ { f = 1 } f && /^7\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+qchk "k1b AC-B7 step 6 lists the global key hooks (on/off)" "$K1B_S6" '`hooks` \(on ?(\||/|or) ?off'
+flat_has "k1b AC-B7 questions.md lists the optional hooks key (global)" "$QUESTIONS" '`hooks` \(global\)'
+K1B_SW="$(wc -w < "$SETUP" | tr -d ' ')"
+if [ "$K1B_SW" -le 1100 ]; then t_ok "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100) ($K1B_SW)"; else t_bad "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100)" "$K1B_SW words"; fi
+
+echo "v0.28.0 lane k1b AC-B8: the K5 pointer (learn.sh init --link-agents) where the learnings hook is absent"
+K1B_S8="$(awk '/^8\. \*\*Project bootstrap/ { f = 1 } f && /^9\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+qchk "k1b AC-B8 step 8 offers the pointer when the learnings hook is not installed" "$K1B_S8" 'learnings hook[^.]{0,200}(not installed|is off|off[ ,;)])|(not installed|is off)[^.]{0,200}learnings hook'
+qchk "k1b AC-B8 step 8 offers the pointer for Codex and OpenCode" "$K1B_S8" 'codex.{0,250}(pointer|link-agents)|(pointer|link-agents).{0,250}codex'
+qchk "k1b AC-B8 step 8 says the pointer is how those agents learn about the file" "$K1B_S8" 'pointer.{0,150}(is how|is the way|is what)'
+flat_has "k1b AC-B8 README: Codex/OpenCode learn about LEARNINGS.md through learn.sh init --link-agents" "$README" '(codex|opencode).{0,250}link-agents|link-agents.{0,250}(codex|opencode)'
+
+echo "v0.28.0 lane k1b AC-B9: README section Hooks (Claude Code, opt-in) with handlers, PB_HEADLESS, the Stop check and Limits"
+exact_heading "k1b AC-B9 README has the heading ## Hooks (Claude Code, opt-in)" "$README" '## Hooks (Claude Code, opt-in)'
+K1B_HK="$(awk '/^## Hooks \(Claude Code, opt-in\)$/ { f = 1; print; next } f && /^## / { exit } f { print }' "$README")"
+K1B_HKF="$(printf '%s\n' "$K1B_HK" | tr '\n' ' ' | tr -s ' ')"
+for k1b_n in 'guard-irreversible\.sh' 'learnings-hook\.sh' 'PreToolUse' 'SessionStart' 'Stop' 'claude-hooks\.sh uninstall' 'export PB_HEADLESS=1' 'claude -p' 'CI=true'; do
+  qchk "k1b AC-B9 hooks section names $k1b_n" "$K1B_HKF" "$k1b_n"
+done
+qchk "k1b AC-B9 hooks section: opt-in through setup" "$K1B_HKF" 'set up the playbook|playbook-setup'
+qchk "k1b AC-B9 hooks section: PB_HEADLESS=0 forces warn-only" "$K1B_HKF" 'PB_HEADLESS=0[^.]{0,120}warn'
+qchk "k1b AC-B9 hooks section: the Stop check asks to revert and report" "$K1B_HKF" 'Stop.{0,250}revert.{0,250}(report|pending)'
+qchk "k1b AC-B9 Codex: hooks exist (cited) but are not installed" "$K1B_HKF" 'codex.{0,250}(learn\.chatgpt\.com/docs/hooks|developers\.openai\.com/codex/hooks)'
+qchk "k1b AC-B9 Codex: text rule only in v0.28.0" "$K1B_HKF" 'codex[^#]{0,250}(not installed|no hooks? (are|is) installed)[^#]{0,200}text rule only|codex[^#]{0,250}text rule only'
+qchk "k1b AC-B9 OpenCode: tool.execute.before exists (cited)" "$K1B_HKF" 'opencode.{0,250}tool\.execute\.before'
+qchk "k1b AC-B9 OpenCode: cites opencode.ai/docs/plugins" "$K1B_HKF" 'opencode\.ai/docs/plugins'
+qchk "k1b AC-B9 OpenCode: no plugin ships, text rule only" "$K1B_HKF" 'opencode.{0,250}text rule only'
+K1B_LIM="$(printf '%s\n' "$K1B_HK" | awk '/^###+ Limits/ { f = 1 } f { print }' | tr '\n' ' ' | tr -s ' ')"
+if [ -n "$K1B_LIM" ]; then t_ok "k1b AC-B9 the hooks section has a Limits subsection"; else t_bad "k1b AC-B9 the hooks section has a Limits subsection" "no ### Limits heading inside ## Hooks (Claude Code, opt-in)"; fi
+for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group' 'here-doc' 'node -e' 'python -c' 'perl -e' 'git alias' 'find -delete' 'xargs rm' '\\u' 'concatenat' 'PowerShell' 'NotebookEdit' 'MCP' 'disableAllHooks' 'settings\.local\.json' 'guard itself' 'non-git|not a git|outside (a )?git' 'script[^.]{0,60}(written|writes)[^.]{0,60}(then )?run' 'backstop'; do
+  qchk "k1b AC-B9 Limits lists $k1b_n" "$K1B_LIM" "$k1b_n"
+done
+
 
 t_summary

@@ -37,7 +37,7 @@ for arm in with without; do
   if [ -f "$FR/claude.$L.settings" ] && cmp -s "$FR/claude.$L.settings" "$OD/results.$L.evidence/$arm-settings.json"; then t_ok "AC3.2 $L: the evidence copy equals the file claude got"
   else t_bad "AC3.2 $L: the evidence copy equals the file claude got" "differs or missing"; fi
   assert_file "AC3.3 $L: the env record exists" "$FR/claude.$L.env"
-  assert_eq "AC3.3 $L: the claude process has no PB_EVAL_* variable (not even the caller's)" "" "$(rec_of "$FR/claude.$L.env")"
+  assert_eq "AC3.3 $L: the claude process has no PB_EVAL_* variable but PB_EVAL_HOOKS and PB_EVAL_HOOK_LOG (not even the caller's; v0.28.0 AC-C2)" "PB_EVAL_HOOKS PB_EVAL_HOOK_LOG" "$(evnames "$FR/claude.$L.env")"
   assert_eq "AC3.1 $L: HOME is the real one" "$GH" "$(cat "$FR/claude.$L.hm" 2>/dev/null)"
 done
 SW="$FR/claude.E8.without.1.settings"

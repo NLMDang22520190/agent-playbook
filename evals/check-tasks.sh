@@ -9,6 +9,11 @@
 #   - solved (solution.patch applied with git apply to the second repo, then hidden/ copied over it): every hidden file
 #     passes. A task without a solution.patch file skips the apply (allowed only when fail_to_pass is empty); an empty
 #     solution.patch is BROKEN.
+#   - scope (v0.28.0, when task.conf has scope=): every path solution.patch adds, changes or deletes is inside scope (an
+#     entry ending in / is a prefix, any other a bash case glob on the whole path) or in the always-allowed set (tests/,
+#     .agents/, node_modules/, .gitignore, package-lock.json), else "BROKEN solution.patch changes <path> outside scope";
+#   - wrong fixes (v0.28.0): each testdata/wrong-*.patch applies to a fresh setup repo and, with hidden/ copied over it, fails
+#     at least one hidden file, else "BROKEN wrong fix testdata/<file> does not apply" or "... passes every hidden test".
 # Each hidden file runs alone from the repo root with the task's language command: node --test F, python3 -m unittest F,
 # bash F (under `timeout 120` when the timeout command exists).
 # DECISION[D11]: a language counts as present only when a real call works (python3 -c 'import sys'; the Windows Store
@@ -71,9 +76,39 @@ run_hidden() {
   esac
 }
 
+# outside_scope SCOPE -> the paths of stdin outside SCOPE and outside the always-allowed set, C-sorted; the same rule as
+# pbh_scope_extra in evals/lib-harness.sh (this script stays standalone: it sources only scripts/lib.sh)
+outside_scope() {
+  local sc p e rest ok
+  sc="$(printf '%s' "$1" | tr '\t\r\n' '   ')"
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in tests/* | .agents/* | node_modules/* | .gitignore | package-lock.json) continue ;; esac
+    ok=0; rest="$sc"
+    while [ -n "$rest" ]; do
+      rest="${rest# }"
+      case "$rest" in *" "*) e="${rest%% *}"; rest="${rest#* }" ;; *) e="$rest"; rest="" ;; esac
+      [ -n "$e" ] || continue
+      case "$e" in
+        */) case "$p" in "$e"*) ok=1 ;; esac ;;
+        *)
+          # shellcheck disable=SC2254   # a scope entry without a trailing / is a glob on purpose (DECISION[D4])
+          case "$p" in $e) ok=1 ;; esac ;;
+      esac
+      [ "$ok" = 1 ] && break
+    done
+    [ "$ok" = 1 ] || printf '%s\n' "$p"
+  done | LC_ALL=C sort
+}
+
+# changed_paths REPO -> the paths of REPO's working tree that differ from HEAD (renames as delete + add), one per line
+changed_paths() {
+  (cd "$1" && git add -A >/dev/null 2>&1 && git diff --cached --no-renames --name-only -z HEAD) | tr '\000' '\n'
+}
+
 # check_task DIR -> prints the reason when BROKEN (return 1), "SKIPPED (...)" (return 2), nothing when OK (return 0)
 check_task() {
-  local d="$1" id lang f2p p2p w r1 r2 h1 h2 f leaked
+  local d="$1" id lang f2p p2p w r1 r2 h1 h2 f leaked scope out wp wn r3 rej
   id="$(basename "$d")"
   lang="$(conf "$d" language)"; f2p="$(conf "$d" fail_to_pass)"; p2p="$(conf "$d" pass_to_pass)"
   [ -f "$d/task.conf" ] || { echo "no task.conf"; return 1; }
@@ -110,6 +145,11 @@ check_task() {
   done
   if [ -f "$d/solution.patch" ]; then
     (cd "$r2" && git apply "$d/solution.patch") >"$w/apply.log" 2>&1 || { echo "solution.patch does not apply"; return 1; }
+    scope="$(conf "$d" scope)"
+    if [ -n "$scope" ]; then
+      out="$(changed_paths "$r2" | outside_scope "$scope" | sed -n 1p)"
+      [ -z "$out" ] || { echo "solution.patch changes $out outside scope"; return 1; }
+    fi
   fi
   cp -R "$d/hidden/." "$r2/" || { echo "cannot copy hidden/ into the repo"; return 1; }
   for f in $f2p; do
@@ -117,6 +157,19 @@ check_task() {
   done
   for f in $p2p; do
     run_hidden "$lang" "$r2" "$f" || { echo "solved: pass_to_pass $f fails after solution.patch"; return 1; }
+  done
+  for wp in "$d"/testdata/wrong-*.patch; do
+    [ -f "$wp" ] || continue
+    wn="testdata/${wp##*/}"; r3="$w/wrong"
+    rm -rf "$r3"
+    (cd "$w" && bash "$d/setup.sh" "$r3") >"$w/setup3.log" 2>&1 || { echo "setup.sh failed (for wrong fix $wn)"; return 1; }
+    (cd "$r3" && git apply "$wp") >"$w/apply3.log" 2>&1 || { echo "wrong fix $wn does not apply"; return 1; }
+    cp -R "$d/hidden/." "$r3/" || { echo "cannot copy hidden/ into the repo"; return 1; }
+    rej=0
+    for f in $f2p $p2p; do
+      run_hidden "$lang" "$r3" "$f" || { rej=1; break; }
+    done
+    [ "$rej" = 1 ] || { echo "wrong fix $wn passes every hidden test"; return 1; }
   done
   rm -rf "$w"
   return 0

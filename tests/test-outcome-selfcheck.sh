@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for evals/check-tasks.sh (v0.27.0 lane O, slice S0a, AC19-AC20): the offline self-check of outcome-eval tasks.
+# Tests for evals/check-tasks.sh (v0.27.0 lane O, slice S0a, AC19-AC20; v0.28.0 lane K2 slice S1, AC3-AC4): the offline self-check of outcome-eval tasks.
 # Every task here is a fixture made in a temp tasks dir; the real corpus is tested in test-outcome-corpus.sh.
 # A fixture task: task.conf, prompt.md, setup.sh (builds a tiny git repo in $1), solution.patch, hidden/tests/*.
 # The fixture repo holds a visible tests/f2p.sh that always passes, so a self-check that ran the repo's own file
@@ -233,4 +233,106 @@ else
   t_bad "AC20 no source line other than scripts/lib.sh" "missing $CHECK"
 fi
 : "$ALL_OUT"
+
+# ---- v0.28.0 lane K2 slice S1 (AC3, AC4): the scope check of solution.patch and the wrong-fix check (testdata/wrong-*.patch)
+# A second fixture tasks dir; mk_task/h_bash/h_node/snap write and read "$T", so T points at it from here on.
+T="$(mk_tmp)"
+# setup-bash2: setup-bash plus a tracked NOTES.txt (for a patch that deletes a file outside scope)
+sed 's#^printf .exit 0.n. > tests/f2p.sh$#&\nprintf "notes\\n" > NOTES.txt#' "$S/setup-bash.sh" > "$S/setup-bash2.sh"
+if ! grep -q 'NOTES.txt' "$S/setup-bash2.sh"; then
+  { sed -n '1,/^printf .exit 0/p' "$S/setup-bash.sh"; printf '%s\n' 'printf "notes\n" > NOTES.txt'; sed '1,/^printf .exit 0/d' "$S/setup-bash.sh"; } > "$S/setup-bash2.sh"
+fi
+# mk_patch_new KIND PATH TEXT -> a diff that adds PATH; mk_patch_rm KIND PATH -> a diff that deletes PATH
+mk_patch_new() {
+  local r="$S/base-$1-$RANDOM$RANDOM"
+  bash "$S/setup-$1.sh" "$r" >/dev/null 2>&1 || { echo "fixture: base repo $1 failed" >&2; return 1; }
+  mkdir -p "$r/$(dirname "$2")" && printf '%s\n' "$3" > "$r/$2" && git -C "$r" add -A && git -C "$r" diff --cached
+}
+mk_patch_rm() {
+  local r="$S/base-$1-$RANDOM$RANDOM"
+  bash "$S/setup-$1.sh" "$r" >/dev/null 2>&1 || { echo "fixture: base repo $1 failed" >&2; return 1; }
+  git -C "$r" rm -q "$2" && git -C "$r" diff --cached
+}
+P_TESTS_BASH="$(mk_patch bash tests/f2p.sh '1i\
+# reviewed')"
+P_NEW_NOTES="$(mk_patch_new bash notes/todo.txt 'later')"
+P_RM_NOTES="$(mk_patch_rm bash2 NOTES.txt)"
+P_STALE="$(printf '%s\n' '--- a/calc.sh' '+++ b/calc.sh' '@@ -1,2 +1,2 @@' '-add() { echo nothing-like-this; }' '+add() { echo 0; }' ' mul() { echo $(( $1 * $2 )); }')"
+# scope ID SCOPE -> appends scope= to the task.conf; wrong ID NAME PATCH -> testdata/NAME
+scope() { printf 'scope=%s\n' "$2" >> "$T/$1/task.conf"; }
+wrong() { mkdir -p "$T/$1/testdata"; printf '%s\n' "$3" > "$T/$1/testdata/$2"; }
+bash_task() { # ID PATCH [KIND] -> the good bash task with PATCH as solution.patch
+  mk_task "$1" "${3:-bash}" bash tests/f2p.sh tests/p2p.sh "$2"
+  h_bash "$1" f2p.sh "$F2P_BODY"; h_bash "$1" p2p.sh "$P2P_BODY"
+}
+node_task() { # ID PATCH
+  mk_task "$1" node node tests/add.f2p.test.js tests/mul.p2p.test.js "$2"
+  h_node "$1" add.f2p.test.js 'm.add(2, 3), 5'; h_node "$1" mul.p2p.test.js 'm.mul(2, 3), 6'
+}
+bash_task sc-ok "$P_FIX_BASH"; scope sc-ok "calc.sh"
+bash_task sc-out "$P_FIX_BASH"; scope sc-out "lib/"
+bash_task sc-glob "$P_FIX_BASH"; scope sc-glob "*.sh"
+node_task sc-prefix "$P_FIX_NODE"; scope sc-prefix "src/"
+node_task sc-noprefix "$P_FIX_NODE"; scope sc-noprefix "src"
+bash_task sc-tests "$P_FIX_BASH
+$P_TESTS_BASH"; scope sc-tests "calc.sh"
+bash_task sc-new "$P_FIX_BASH
+$P_NEW_NOTES"; scope sc-new "calc.sh"
+bash_task sc-del "$P_FIX_BASH
+$P_RM_NOTES" bash2; scope sc-del "calc.sh"
+bash_task sc-none "$P_FIX_BASH
+$P_NEW_NOTES"
+bash_task wf-ok "$P_FIX_BASH"
+wrong wf-ok wrong-01-nofix.patch "$P_NOFIX_BASH"; wrong wf-ok wrong-02-breaks-mul.patch "$P_BREAK_BASH"
+wrong wf-ok sample.patch "$P_FIX_BASH"   # not a wrong-*.patch file: never checked, although it passes every hidden test
+bash_task wf-passes "$P_FIX_BASH"
+wrong wf-passes wrong-01-nofix.patch "$P_NOFIX_BASH"; wrong wf-passes wrong-02-same.patch "$P_FIX_BASH"
+bash_task wf-noapply "$P_FIX_BASH"; wrong wf-noapply wrong-01-stale.patch "$P_STALE"
+mk_task wf-nopatch bash bash "" tests/p2p.sh none; h_bash wf-nopatch p2p.sh "$P2P_BODY"
+wrong wf-nopatch wrong-01-comment.patch "$P_NOFIX_BASH"
+mk_task wf-nopatch-ok bash bash "" tests/p2p.sh none; h_bash wf-nopatch-ok p2p.sh "$P2P_BODY"
+wrong wf-nopatch-ok wrong-01-breaks-mul.patch "$P_BREAK_BASH"
+node_task wf-node "$P_FIX_NODE"; wrong wf-node wrong-01-nofix.patch "$P_NOFIX_NODE"
+SNAP2="$(snap)"
+
+echo "K2 S1 AC4 scope: a solution.patch file outside scope (and outside the always-allowed set) is BROKEN"
+run bash "$CHECK" --tasks-dir "$T"
+assert_rc "AC3/AC4 exit 1 when any task is BROKEN" 1
+line_ok "AC4 scope=calc.sh, the patch changes calc.sh -> OK" '^sc-ok SELF-CHECK OK( |$)'
+line_ok "AC4 scope=lib/, the patch changes calc.sh -> BROKEN solution.patch changes calc.sh outside scope" '^sc-out SELF-CHECK BROKEN solution\.patch changes calc\.sh outside scope$'
+line_ok "AC4 a glob entry (*.sh) matches calc.sh -> OK" '^sc-glob SELF-CHECK OK( |$)'
+line_ok "AC4 a prefix entry (src/) matches src/m.js -> OK" '^sc-prefix SELF-CHECK OK( |$)'
+line_ok "AC4 an entry without / (src) is not a prefix -> BROKEN for src/m.js" '^sc-noprefix SELF-CHECK BROKEN solution\.patch changes src/m\.js outside scope$'
+line_ok "AC4 tests/ is always allowed: the patch also edits tests/f2p.sh -> OK" '^sc-tests SELF-CHECK OK( |$)'
+line_ok "AC4 a file the patch adds outside scope -> BROKEN names it" '^sc-new SELF-CHECK BROKEN solution\.patch changes notes/todo\.txt outside scope$'
+line_ok "AC4 a file the patch deletes outside scope -> BROKEN names it" '^sc-del SELF-CHECK BROKEN solution\.patch changes NOTES\.txt outside scope$'
+line_ok "AC4 a task without scope= is not scope-checked -> OK" '^sc-none SELF-CHECK OK( |$)'
+
+echo "K2 S1 AC3 wrong fixes: each testdata/wrong-*.patch must apply to a fresh setup repo and fail at least one hidden file"
+line_ok "AC3 a wrong fix failing F2P and one breaking only P2P are both rejected; sample.patch is ignored -> OK" '^wf-ok SELF-CHECK OK( |$)'
+line_ok "AC3 a wrong fix passing every hidden test -> BROKEN wrong fix <file> passes every hidden test" '^wf-passes SELF-CHECK BROKEN wrong fix (testdata/)?wrong-02-same\.patch passes every hidden test$'
+line_ok "AC3 a wrong fix that does not apply -> BROKEN wrong fix <file> does not apply" '^wf-noapply SELF-CHECK BROKEN wrong fix (testdata/)?wrong-01-stale\.patch does not apply$'
+line_ok "AC3 the check also runs for a task without solution.patch (F2P empty) -> BROKEN" '^wf-nopatch SELF-CHECK BROKEN wrong fix (testdata/)?wrong-01-comment\.patch passes every hidden test$'
+line_ok "AC3 a no-solution task whose wrong fix breaks P2P -> OK" '^wf-nopatch-ok SELF-CHECK OK( |$)'
+line_ok "AC3 node task: a wrong fix failing F2P under node --test -> OK" '^wf-node SELF-CHECK OK( |$)'
+assert_eq "AC3/AC4 the self-check leaves the tasks dir unchanged" "$SNAP2" "$(snap)"
+run bash "$CHECK" --tasks-dir "$T" --tasks sc-ok,sc-tests,wf-ok,wf-node
+assert_rc "AC3/AC4 exit 0 when every selected task is OK" 0
+
+echo "K2 review fix 4: check-tasks outside_scope and lib-harness pbh_scope_extra give the same answer"
+# outside_scope is copied from check-tasks.sh on purpose (the script stays standalone); this pins that the copies agree.
+OS_FN="$(sed -n '/^outside_scope() {/,/^}/p' "$CHECK")"
+assert_contains "fix4 check-tasks.sh defines outside_scope" "$OS_FN" "outside_scope() {"
+# agree SCOPE EXPECTED PATH... -> both functions print EXPECTED ('|'-joined) for the PATHs on stdin
+agree() {
+  local sc="$1" exp="$2" in a b; shift 2
+  in="$(printf '%s\n' "$@")"
+  a="$(printf '%s\n' "$in" | (eval "$OS_FN"; outside_scope "$sc") | tr '\n' '|')"
+  b="$(printf '%s\n' "$in" | (. "$PB_ROOT/evals/lib-harness.sh"; pbh_scope_extra "$sc") | tr '\n' '|')"
+  assert_eq "fix4 outside_scope = pbh_scope_extra for scope '$sc'" "$b" "$a"
+  assert_eq "fix4 scope '$sc' gives the expected outside paths" "$exp" "$a"
+}
+agree "src/import/" "README.md|src/x.js|" src/import/a.js src/x.js tests/t.js README.md node_modules/x/y package-lock.json .agents/h.md
+agree "src/*.js docs/" "lib/c.js|notes/my plan.txt|" src/a.js src/sub/b.js docs/x.md lib/c.js "notes/my plan.txt" .gitignore
+agree "src/a.js" "src/a.jsx|src/b.js|" src/a.js src/a.jsx src/b.js
 t_summary

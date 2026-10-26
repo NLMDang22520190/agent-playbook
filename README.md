@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.27.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-17378-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.28.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-18935-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -154,6 +154,45 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 ./install.sh uninstall --harness all --yes   # removes only what the installer created; keeps config and backups
 ```
 
+## Hooks (Claude Code, opt-in)
+
+The rules ask the agent to stop before irreversible actions. In Claude Code, hooks can enforce part of that. They stay off until you say yes: say "set up the playbook" and answer yes to the hooks line (playbook-setup asks once, default no), or run
+
+```bash
+bash ~/.agents/playbook/scripts/claude-hooks.sh install     # merge into ~/.claude/settings.json (backup first)
+bash ~/.agents/playbook/scripts/claude-hooks.sh status      # one line per handler
+bash ~/.agents/playbook/scripts/claude-hooks.sh uninstall   # remove only the agent-playbook handlers
+```
+
+The merge needs node. Without it the script changes nothing and prints the JSON to add by hand. Your other settings and hooks stay as they are, `install.sh uninstall` removes ours too, and `install.sh doctor` says whether they are installed, partly installed or turned off by `disableAllHooks`.
+
+| Event | Handler | What it does |
+|---|---|---|
+| PreToolUse (`Bash`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. |
+| SessionStart | `guard-irreversible.sh --session-start` | Records the commit the session started from. |
+| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions. |
+| Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. |
+
+Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
+
+Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but v0.28.0 does not install them, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
+
+### Limits
+
+The guard reads the command text of one tool call. It does not see through:
+
+- another shell or evaluator: `bash -c`, `sh -c`, `eval`, `$(...)` and backticks, subshells and brace groups, here-docs fed to a shell;
+- interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
+- git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
+- SQL that reaches a file through a pipe or a copy (`echo ... | tee f`, `echo ... | cat > f`, `cp drop.sql f`) and is then read by a database client;
+- tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
+- edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
+- projects that are not a git repository, where the Stop check has no diff to compare;
+- a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
+
+For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
+SQL that a database client has already run through one of these bypasses has no backstop.
+
 ## Updates and feedback
 
 <p align="center">
@@ -172,7 +211,7 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 
 ## Behaviour evals
 
-Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 39 scenarios, E1 to E39. `evals/run-evals.sh` runs the 35 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
+Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 41 scenarios, E1 to E41. `evals/run-evals.sh` runs the 37 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
 
 ```bash
 evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-evals-$(date +%s)" --max-cost 5
@@ -184,12 +223,12 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **17378 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **18935 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
-| Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 23 on v0.25.0 (2026-10-25): E30 6/6 auto checks in two runs, E1 6/6, E29 6/6, 1.51 USD in total. Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 24](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 28 on v0.27.0 (2026-10-26): with vs without, 13 scenarios, 44 runs, 6.07 USD; the kept rules hold their deltas (E29, E21, E3, E4). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 ## Alongside Superpowers or other skill packs
 
@@ -217,8 +256,8 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  17378 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E39) · RUBRIC.md · make-fixture.sh
+├── tests/                  18935 tests, run in sandboxes, never touch the real HOME
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E41) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
 ```

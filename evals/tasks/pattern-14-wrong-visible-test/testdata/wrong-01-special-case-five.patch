@@ -1,0 +1,12 @@
+diff --git a/src/fees.js b/src/fees.js
+index 3d19769..058f1dd 100644
+--- a/src/fees.js
++++ b/src/fees.js
+@@ -3,6 +3,7 @@
+ // Late fee in cents for a loan returned daysLate days after its due date. Rules: docs/policy.md.
+ function lateFeeCents(daysLate) {
+   if (daysLate <= 3) return 0;
++  if (daysLate === 5) return 250;
+   return Math.min((daysLate - 3) * 50, 1000);
+ }
+ 
