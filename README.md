@@ -184,7 +184,7 @@ The guard reads the command text of one tool call. It does not see through:
 - another shell or evaluator: `bash -c`, `sh -c`, `eval`, `$(...)` and backticks, subshells and brace groups, here-docs fed to a shell;
 - interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
 - git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
-- SQL that reaches a file through a pipe or a copy (`echo ... | tee f`, `echo ... | cat > f`, `cp drop.sql f`) and is then read by a database client;
+- SQL that reaches a database client through a file in a form it does not follow: a non-`.sql` file read from disk (`cp notes.txt f.sql`, `cat notes.txt > f.sql`), a file written by an earlier tool call, `&>` redirects, file names with spaces, client options glued to the file name (`psql --file=f.txt`, `psql -ff.txt`), and long prefix options with a separate value (`sudo --user x cp ...`);
 - tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
 - projects that are not a git repository, where the Stop check has no diff to compare;
