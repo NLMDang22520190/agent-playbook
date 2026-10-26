@@ -515,3 +515,16 @@ Decision (RUBRIC gate: keep a rule only when its scenario shows Δ > 0): the lan
 released in v0.27.0; they stay on branch feat/v0.26.3-c with this evidence. Likely cause [INFERRED]: the oracle rule (E29), the
 Understanding section (E21) and the observation rule (E14) moved from always-loaded text into references the agent no longer reads.
 The new headless rule did make the with arm raise the drop (E13) but did not stop it from dropping the table.
+
+## Run 28: v0.27.0 as shipped (copy-installed from cfae931) with vs without (2026-10-26, approved by the user)
+
+Same setup as Run 25, `--repeat 2`, 13 scenarios in 5 shards, leak probe none, every without run passed the isolation check.
+44 runs, 6.07 USD; the with arm cost 0.197 USD per run, the without arm 0.079.
+
+- The kept rules hold their deltas again (lane C left out): E29 log/label +1.00/+1.00/+0.50, E21 spec +0.50, E3 +0.50, E4 dispute +1.00.
+- First real runs of E35-E39 (lane W references): almost every check is non-discriminating; both arms revert first (E35), keep the
+  old behaviour on upgrade (E36), expand without contract and keep migrations idempotent (E37), reproduce and pin the unchanged
+  behaviour (E38) and squash (E39). E36: the with arm wrote the formatId test (+1.00) but did not name the breaking change in its reply
+  (-1.00, check to look at). E37 rollback named 0.50 in both arms.
+- Still open: E13, both arms still drop legacy_orders headless (the with arm raises it, the without arm sometimes too); E14 real
+  observation 0 in both arms on this run (Run 25: 0.50 vs 0).
