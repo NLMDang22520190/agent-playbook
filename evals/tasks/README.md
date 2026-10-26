@@ -11,7 +11,7 @@ One directory per task, `evals/tasks/<id>/`, where `<id>` is the directory name:
 
 | File | What it holds |
 |---|---|
-| `task.conf` | `key=value` lines (no quoting): `id` (the directory name), `language` (`node`, `python3` or `bash`), `source` (`pattern:<slug>` or `oss:<bug class>`), `expected_weight` (`Lite` or `Full`, the playbook-tdd weight a careful agent should pick), `fail_to_pass` and `pass_to_pass` (space-separated paths relative to `hidden/`; `fail_to_pass` may be empty), and `scope=` (space-separated repo paths a correct fix may change: an entry ending in `/` is a prefix, any other a bash `case` glob on the whole path; `tests/`, `.agents/`, `node_modules/`, `.gitignore` and `package-lock.json` are always allowed) |
+| `task.conf` | `key=value` lines (no quoting): `id` (the directory name), `language` (`node`, `python3` or `bash`), `source` (`pattern:<slug>` or `oss:<bug class>`), `expected_weight` (`Lite` or `Full`, the playbook-tdd weight a careful agent should pick), `fail_to_pass` and `pass_to_pass` (space-separated paths relative to `hidden/`; `fail_to_pass` may be empty), and `scope=` (space-separated repo paths a correct fix may change: an entry ending in `/` is a prefix, any other a bash `case` glob on the whole path; `tests/`, `.agents/`, `node_modules/`, `.gitignore` and `package-lock.json` are always allowed). Optional `traps=`: a comma list of the trap kinds the task sets (`multi-file`, `misleading-symptom`, `hidden-second-place`, `value-label-fixture`, `wrong-visible-test`, `ambiguous-default`, `not-a-bug`, `dependency-upgrade`, `migration-rollback`); informational, never graded |
 | `prompt.md` | The user's request as it would arrive in a ticket or chat, in English or Vietnamese. It describes the symptom and the rule, never the hidden tests. |
 | `setup.sh` | `bash setup.sh DIR` builds the task repo in `DIR`: files, then one git commit with a fixed author and date, so two runs give the same HEAD. No network. Bash 3.2. It refuses an existing non-empty `DIR` (exit 2). |
 | `solution.patch` | A correct fix as a `git diff` against the setup repo (`git apply`-able). Absent, never empty, and only when `fail_to_pass` is empty (a "do not change anything" task). |
@@ -26,6 +26,40 @@ else, or a change where none was needed).
 Node tests import `require('../src/<module>')` with named exports; python tests import `from src.<module> import f`
 (the setup repo has `src/__init__.py`). Name the repo's own visible tests so they never collide with a hidden file,
 unless the hidden file is meant to replace one.
+
+## Hygiene metrics
+
+Each graded run of `evals/run-outcome.sh` also records two informational numbers. They never change a check, pass@1
+or the exit code; they show a run that "passes" by changing too much or by gutting the visible tests.
+
+- `extra_files_changed` (with the list `extra_files`, first 50, C-sorted): the paths the agent added, changed or
+  deleted against the setup commit (renames count as delete + add) that are outside `scope=` and outside the
+  always-allowed set. `null` for a task without `scope=`, and for an errored or skipped run.
+- `tests_weakened` (with `tests_weakened_files`): for each visible test file under `tests/` as `setup.sh` left it,
+  the drop in test declarations plus the drop in assertions plus the rise in skip/only markers, summed over files.
+  A deleted test file counts all its declarations and assertions.
+
+The counting is a line-based heuristic, not a parser: T counts lines that start with `test(`, `it(` (also `.skip`
+or `.only`) or `def test_`; A counts lines that start with `assert` or `self.assert` (so `assert.equal(`,
+`assert_eq` and python `assert` all count); M counts `.skip(`, `.only(` and `{ skip:` anywhere on a line.
+Known false positives: a test file moved or renamed (the old path counts as deleted), several assertions merged into one, an
+assertion split over a helper the heuristic does not see, or a correct edit that replaces two weak assertions with
+one strong one. Known misses: an assertion whose expected value is changed to match the bug, and assertions that do
+not start a line. Read the listed files before calling a run a cheat.
+
+## Calibration
+
+A new task should be hard but fair. After it lands, pilot it without the playbook (`--arm without --repeat 2`):
+
+1. 2 of 2 pass: too easy; apply the task's one "Harden" knob from its spec and pilot that task again (one knob per
+   round).
+2. 0 of 2 pass: run the `with` arm k=2 too; 0 in both arms means a prompt review first (every hidden assertion must
+   trace to the prompt or a repo doc) before any other change.
+3. 1 of 2: keep.
+4. A task where a correct fix needs a file outside `scope=` (seen in `extra_files_changed`) gets its scope widened:
+   that is a scope bug, not agent creep.
+
+Stop when at least 6 of the new tasks have a without-arm pass@1 below 1, then run the full corpus in both arms.
 
 ## Adding a task
 
