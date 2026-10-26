@@ -2211,4 +2211,10 @@ if lite_step 4 | tr '\n' ' ' | grep -qiE -- 'mutation spot-check'; then t_bad "v
 qchk "v0.28.1 t references/test-quality.md still covers the mutation spot-check" "$(cat "$TDD/references/test-quality.md")" 'mutation spot-check'
 qchk "v0.28.1 t Full reviewer role still does the mutation spot-check" "$(cat "$TDD/roles/reviewer.md")" 'Do the mutation spot-check'
 
+# v0.28.1 lane p: when the request covers any/every input, the RED test covers each input class, not only the reported example.
+lite_has "v0.28.1 p Lite step 2: a request covering any/every input tests each input class" 2 'any/every input[^.]{0,40}each input class'
+lite_has "v0.28.1 p Lite step 2: input classes include a leading dash" 2 'input class[^.]{0,60}leading dash'
+sec_flat_has "v0.28.1 p tester.md Do: any/every input means each input class" "$TESTER" '^## Do' 'any/every input[^.]{0,60}each input class'
+sec_flat_has "v0.28.1 p tester.md Do: not only the reported example" "$TESTER" '^## Do' 'input class[^.]{0,80}not only the reported example'
+
 t_summary
