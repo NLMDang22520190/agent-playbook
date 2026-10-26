@@ -33,8 +33,9 @@ assert_contains "AC8.1 the library header names lane O's run-outcome.sh as a use
 
 echo "v0.28.2 lane o pbh_clean_env unsets CLAUDE* and ANTHROPIC_BASE_URL in the calling shell, keeps the rest"
 run env CLAUDECODE=1 CLAUDE_X_Y=2 ANTHROPIC_BASE_URL=http://leak.invalid ANTHROPIC_API_KEY=k1 MY_CLAUDE_X=keep2 \
-  bash -c 'set -u; . "$0"; pbh_clean_env; env | LC_ALL=C sort' "$LIBH"
-assert_rc "pbh_clean_env returns 0 under set -u" 0
+  bash -c 'set -u; . "$0"; pbh_clean_env; echo "clean-rc=$?"; env | LC_ALL=C sort' "$LIBH"
+assert_rc "pbh_clean_env runs under set -u" 0
+assert_contains "pbh_clean_env returns 0 under set -u (its own status)" "$OUT" "clean-rc=0"
 assert_eq "pbh_clean_env: no CLAUDE* variable is left" "0" "$(printf '%s\n' "$OUT" | grep -c '^CLAUDE')"
 assert_eq "pbh_clean_env: ANTHROPIC_BASE_URL is gone" "0" "$(printf '%s\n' "$OUT" | grep -c '^ANTHROPIC_BASE_URL=')"
 assert_contains "pbh_clean_env: ANTHROPIC_API_KEY stays" "$OUT" "ANTHROPIC_API_KEY=k1"
