@@ -1,0 +1,21 @@
+diff --git a/src/stock.js b/src/stock.js
+index bd37c8f..2fbd21c 100644
+--- a/src/stock.js
++++ b/src/stock.js
+@@ -1,15 +1,15 @@
+ 'use strict';
+ 
+ function available(item) {
+   return item.onHand - item.reserved;
+ }
+ 
+ function reserve(item, qty) {
+-  if (!item.preorder && qty > available(item)) {
++  if (qty > available(item)) {
+     throw new Error(`cannot reserve ${qty} of ${item.sku}: only ${available(item)} available`);
+   }
+   item.reserved += qty;
+   return item;
+ }
+ 
+ module.exports = { available, reserve };

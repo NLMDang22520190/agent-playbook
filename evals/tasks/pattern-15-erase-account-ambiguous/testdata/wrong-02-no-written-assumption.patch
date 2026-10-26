@@ -1,0 +1,25 @@
+diff --git a/src/accounts.js b/src/accounts.js
+index 5b0efbb..2194e04 100644
+--- a/src/accounts.js
++++ b/src/accounts.js
+@@ -1,7 +1,19 @@
+ 'use strict';
+ 
+ function findUser(db, userId) {
+   return db.users.find((u) => u.id === userId) || null;
+ }
+ 
+-module.exports = { findUser };
++// Erases the personal data of a customer and ends their sessions; orders stay.
++function deleteAccount(db, userId) {
++  const user = findUser(db, userId);
++  if (!user) return;
++  user.email = null;
++  user.password = null;
++  user.name = null;
++  user.phone = null;
++  user.address = null;
++  db.sessions = db.sessions.filter((s) => s.userId !== userId);
++}
++
++module.exports = { findUser, deleteAccount };
