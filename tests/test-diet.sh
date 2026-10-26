@@ -18,7 +18,7 @@ echo "S1 AC1 docs/delta-audit.md: one row per scenario, a verdict each, runs and
 assert_file "AC1 docs/delta-audit.md exists" "$AUDIT"
 AF="$(flat "$AUDIT")"
 has "AC1 the audit names the results file it cites" "$AF" '2026-10-12-claude-code-2\.1\.296\.md'
-has "AC1 the audit defines the four verdicts" "$AF" 'KEEP[^|]{0,400}PROCESS-ONLY[^|]{0,400}ZERO[^|]{0,400}UNMEASURED'
+for v in KEEP PROCESS-ONLY ZERO UNMEASURED; do has "AC1 the audit defines the verdict $v" "$AF" "\*\*$v\*\*: "; done
 for e in $(sed -n 's/^## \(E[0-9][0-9]*\) .*/\1/p' "$SCN"); do
   row="$(grep -E "^\| $e[ |]" "$AUDIT" 2>/dev/null | head -n 1)"
   if [ -n "$row" ]; then t_ok "AC1 the audit has a row for $e"; else t_bad "AC1 the audit has a row for $e" "no '| $e ' row"; continue; fi
@@ -41,7 +41,7 @@ has "AC2 marked scenarios are not Δ evidence" "$DS" 'not (count as )?Δ evidenc
 has "AC2 the section points to docs/delta-audit.md" "$DS" 'docs/delta-audit\.md'
 GATE="$(printf '%s' "$RF" | grep -oE 'Gate for keeping a rule[^#]*' | head -n 1)"
 has "AC2 the gate says what happens to ZERO items: reference-only or opt-in" "$GATE" 'ZERO[^.]{0,250}(reference-only|reference only)[^.]{0,120}opt-in|ZERO[^.]{0,250}opt-in[^.]{0,120}reference'
-has "AC2 the gate says ZERO items leave always-loaded text" "$GATE" 'ZERO[^.]{0,300}always-loaded'
+has "AC2 the gate says ZERO items leave always-loaded text" "$GATE" 'ZERO[^.]{0,250}always-loaded'
 RUBTXT="$(awk '/^## Running evals automatically/ { f = 1; next } f && /^## / { exit } f { print }' "$RUB" | tr '\n' ' ')"
 AUTO="$(sed -n 's/^AUTO="\(.*\)"$/\1/p' "$PB_ROOT/evals/run-evals.sh" | head -n 1)"
 for e in $AUTO; do
@@ -52,8 +52,8 @@ done
 echo "S1 AC6 README: the runs pointer covers Runs 25-37, one cost line"
 RM="$(flat "$README")"
 hasnt "AC6 README no longer says Latest, Run 28" "$RM" 'Latest, Run 28'
-has "AC6 README points to Runs 25-37 and the audit" "$RM" 'Runs 25[-–]37[^|]{0,300}docs/delta-audit\.md|docs/delta-audit\.md[^|]{0,300}Runs 25[-–]37'
+has "AC6 README points to Runs 25-37 and the audit" "$RM" 'Runs 25[-–]37[^|]{0,250}docs/delta-audit\.md|docs/delta-audit\.md[^|]{0,250}Runs 25[-–]37'
 has "AC6 README states the cost of the with arm, about 2-2.5x" "$RM" '2[-–]2\.5 ?(x|times)'
-has "AC6 the cost line cites Runs 25, 26 and 29" "$RM" '2[-–]2\.5 ?(x|times)[^|]{0,300}Run 25[^|]{0,80}26[^|]{0,80}29|Runs? 25, 26 and 29[^|]{0,200}2[-–]2\.5'
+has "AC6 the cost line cites Runs 25, 26 and 29" "$RM" '2[-–]2\.5 ?(x|times)[^|]{0,250}Run 25[^|]{0,80}26[^|]{0,80}29|Runs? 25, 26 and 29[^|]{0,200}2[-–]2\.5'
 
 t_summary
