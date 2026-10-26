@@ -1,0 +1,36 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 3d08d50..be2dd10 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -5,3 +5,7 @@ Decision: sessions are kept in the store, not in a cookie store. Why: one proces
+ 
+ ## 2026-01-08 Emails are compared as typed
+ Decision: login compares the email exactly. Why: sign-up already lowercases it.
++
++## 2026-10-26 Deleting an account keeps its orders
++Decision: deleteAccount erases the personal fields and ends the sessions, and keeps the customer's orders, anonymised.
++Why: orders are accounting records kept 10 years (docs/retention.md); the ticket did not say what to do with them.
+diff --git a/src/accounts.js b/src/accounts.js
+index 5b0efbb..ca514a5 100644
+--- a/src/accounts.js
++++ b/src/accounts.js
+@@ -4,4 +4,18 @@ function findUser(db, userId) {
+   return db.users.find((u) => u.id === userId) || null;
+ }
+ 
+-module.exports = { findUser };
++// Erases the personal data of a customer and ends their sessions. Orders are accounting records (docs/retention.md):
++// they stay, still pointing at the anonymised user id.
++function deleteAccount(db, userId) {
++  const user = findUser(db, userId);
++  if (!user) return;
++  user.email = null;
++  user.password = null;
++  user.name = null;
++  user.phone = null;
++  user.address = null;
++  user.deleted = true;
++  db.sessions = db.sessions.filter((s) => s.userId !== userId);
++}
++
++module.exports = { findUser, deleteAccount };
