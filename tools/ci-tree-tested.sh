@@ -7,10 +7,10 @@
 #   1. repos/R/commits/SHA/pulls: at most 5 PRs, each with its head sha H; a PR whose head repo is not R, or whose base.ref is not main, is skipped
 #   2. repos/R/actions/workflows/test.yml/runs?event=pull_request&head_sha=H&status=success&per_page=10 (newest first);
 #   3. repos/R/actions/runs/ID/jobs?filter=latest&per_page=100: test (ubuntu-latest), test (macos-latest),
-#      test (windows-latest), macos shard 1/2, 2/2 and windows shard 1/6, 2/6, 3/6, 4/6, 5/6, 6/6 all concluded success (none skipped or
-#      missing); and in each of the nine suite jobs (not the two aggregators) the step "Tests and static checks" (shards: "Tests and
+#      test (windows-latest), macos shard 1/2, 2/2 and windows shard 1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 7/7 all concluded success (none skipped or
+#      missing); and in each of the ten suite jobs (not the two aggregators) the step "Tests and static checks" (shards: "Tests and
 #      static checks (shard)") completed with conclusion success, from the jobs API `steps`: a docs-only PR run reports the
-#      same eleven green jobs but its full step is skipped (a "Docs-only checks" step ran instead), and such a run is never reused
+#      same twelve green jobs but its full step is skipped (a "Docs-only checks" step ran instead), and such a run is never reused
 #   4. tree(SHA) equals tree(H) (repos/R/git/commits/X, .tree.sha)
 #   5. the first parent P of SHA is an ancestor of H: repos/R/compare/P...H is "ahead" or "identical", behind_by 0
 # A merge commit or a squash of an up-to-date PR passes; a rebase merge fails step 5 and so does a merge of a PR
@@ -73,7 +73,8 @@ if (mode === "pulls") {
   if (!d || !Array.isArray(d.jobs)) process.exit(1);
   const need = ["test (ubuntu-latest)", "test (macos-latest)", "test (windows-latest)",
     "macos shard 1/2", "macos shard 2/2",
-    "windows shard 1/6", "windows shard 2/6", "windows shard 3/6", "windows shard 4/6", "windows shard 5/6", "windows shard 6/6"];
+    "windows shard 1/7", "windows shard 2/7", "windows shard 3/7", "windows shard 4/7", "windows shard 5/7", "windows shard 6/7",
+    "windows shard 7/7"];
   for (const n of need) {
     const js = d.jobs.filter((j) => j && j.name === n);
     if (js.length === 0 || !js.every((j) => j.status === "completed" && j.conclusion === "success")) process.exit(1);
