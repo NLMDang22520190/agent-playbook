@@ -318,4 +318,21 @@ line_ok "AC3 node task: a wrong fix failing F2P under node --test -> OK" '^wf-no
 assert_eq "AC3/AC4 the self-check leaves the tasks dir unchanged" "$SNAP2" "$(snap)"
 run bash "$CHECK" --tasks-dir "$T" --tasks sc-ok,sc-tests,wf-ok,wf-node
 assert_rc "AC3/AC4 exit 0 when every selected task is OK" 0
+
+echo "K2 review fix 4: check-tasks outside_scope and lib-harness pbh_scope_extra give the same answer"
+# outside_scope is copied from check-tasks.sh on purpose (the script stays standalone); this pins that the copies agree.
+OS_FN="$(sed -n '/^outside_scope() {/,/^}/p' "$CHECK")"
+assert_contains "fix4 check-tasks.sh defines outside_scope" "$OS_FN" "outside_scope() {"
+# agree SCOPE EXPECTED PATH... -> both functions print EXPECTED ('|'-joined) for the PATHs on stdin
+agree() {
+  local sc="$1" exp="$2" in a b; shift 2
+  in="$(printf '%s\n' "$@")"
+  a="$(printf '%s\n' "$in" | (eval "$OS_FN"; outside_scope "$sc") | tr '\n' '|')"
+  b="$(printf '%s\n' "$in" | (. "$PB_ROOT/evals/lib-harness.sh"; pbh_scope_extra "$sc") | tr '\n' '|')"
+  assert_eq "fix4 outside_scope = pbh_scope_extra for scope '$sc'" "$b" "$a"
+  assert_eq "fix4 scope '$sc' gives the expected outside paths" "$exp" "$a"
+}
+agree "src/import/" "README.md|src/x.js|" src/import/a.js src/x.js tests/t.js README.md node_modules/x/y package-lock.json .agents/h.md
+agree "src/*.js docs/" "lib/c.js|notes/my plan.txt|" src/a.js src/sub/b.js docs/x.md lib/c.js "notes/my plan.txt" .gitignore
+agree "src/a.js" "src/a.jsx|src/b.js|" src/a.js src/a.jsx src/b.js
 t_summary
