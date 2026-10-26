@@ -5,8 +5,12 @@
 # HEAD is branch main and equals origin/main. Then runs tests/run-all.sh. With --dry-run it prints
 # the steps it would take (would tag, would push) and changes nothing; otherwise it creates the
 # tag and pushes it (CI then creates the release). Repo root = the parent of this script's directory.
+# Signing: with a non-empty effective user.signingkey the tag is a signed annotated tag (git tag -s,
+# format from gpg.format); if signing fails it exits 3 with no tag and nothing pushed, never an
+# unsigned fallback. Without a key the tag is lightweight and one line says it is unsigned.
+# It only reads the signing settings and never generates keys. See docs/development.md, "Signing release tags".
 # Exit codes: 0 ok, 1 refused (check, tree, branch, origin or suite), 2 usage (not vX.Y.Z, extra
-#             or unknown arguments), 3 environment (not a git repo, no origin, git failure).
+#             or unknown arguments), 3 environment (not a git repo, no origin, git failure, signing failed).
 set -u
 cd "$(dirname "$0")/.." || exit 3
 
@@ -56,6 +60,23 @@ if [ "$dry" -eq 1 ]; then
   echo "dry run: would push $tag to origin"
   exit 0
 fi
-git tag "$tag" || { echo "git tag failed" >&2; exit 3; }
+signkey="$(git config --get user.signingkey 2>/dev/null || true)"
+if [ -n "$signkey" ]; then
+  # git 2.43 with gpg.format=ssh and a missing key file prints an error, exits 0 and leaves an unsigned
+  # annotated tag, so check the tag object for a signature block as well as the exit status.
+  sign_ok=1
+  git tag -s -m "$tag" "$tag" || sign_ok=0
+  if [ "$sign_ok" -eq 1 ]; then
+    git cat-file tag "$tag" 2>/dev/null | LC_ALL=C grep -Eq '^-----BEGIN (SSH|PGP|SIGNED MESSAGE)' || sign_ok=0
+  fi
+  if [ "$sign_ok" -eq 0 ]; then
+    git rev-parse -q --verify "refs/tags/$tag" >/dev/null && git tag -d "$tag" >/dev/null 2>&1
+    echo "signing failed for tag $tag (user.signingkey is set); no tag created, nothing pushed" >&2
+    exit 3
+  fi
+else
+  git tag "$tag" || { echo "git tag failed" >&2; exit 3; }
+fi
 git push origin "$tag" || { echo "git push failed (tag $tag exists locally)" >&2; exit 3; }
+[ -n "$signkey" ] || echo "note: tag $tag is unsigned (no user.signingkey; see docs/development.md, Signing release tags)"
 echo "released $tag"
