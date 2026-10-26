@@ -153,10 +153,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$CLEAN_ENV" = 1 ]; then
-  for v in $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
-  unset ANTHROPIC_BASE_URL
-fi
+if [ "$CLEAN_ENV" = 1 ]; then pbh_clean_env; fi   # evals/lib-harness.sh
 
 # The adapter runs as: bash -c "$ADAPTER" adapter <workdir> <prompt-file>, so it sees them as $1 and $2.
 # DECISION[D3]: the claude and codex presets are best guesses; their CLIs were not available to verify.

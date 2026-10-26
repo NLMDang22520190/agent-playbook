@@ -78,7 +78,8 @@ Stop when at least 6 of the new tasks have a without-arm pass@1 below 1, then ru
 ## Running the tasks
 
 `evals/run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks id1,id2]` runs an agent on each
-task with the flags of `evals/run-evals.sh` (`--model`, `--arm`, `--repeat`, `--max-cost`, `--timeout`) and the same
+task with the flags of `evals/run-evals.sh` (`--model`, `--arm`, `--repeat`, `--max-cost`, `--timeout`, `--clean-env`,
+which drops the `CLAUDE*` variables and `ANTHROPIC_BASE_URL` that a nested Claude session leaks) and the same
 isolation (a temp `PLAYBOOK_HOME` and `TMPDIR` per run). The hidden tests never enter the workroot: they are copied over
 a private copy of the workdir after the agent exits, and a transcript that shows the canary makes the run
 CONTAMINATED (not passed). It writes a markdown file with pass@1 and pass^K per arm and per task, and a `pb-evals/1`

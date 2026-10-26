@@ -2,8 +2,10 @@
 # Runs an agent harness on the outcome-eval tasks (evals/tasks/<id>/, format in evals/tasks/README.md) and grades each run
 # only by the task's hidden tests: every fail_to_pass file must pass and every pass_to_pass file must still pass.
 #   run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks-dir DIR] [--tasks id1,id2]
-#                  [--workroot DIR] [--out FILE] [--timeout SECONDS] [--interactive] [--max-cost USD]
+#                  [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
 #                  [--model M] [--arm with|without|both] [--repeat K]
+# --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first, as in evals/run-evals.sh (a desktop or nested
+# Claude session leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
 # --tasks-dir defaults to evals/tasks next to this script, --tasks to every task directory in it. Each run has the label
 # <id>.<arm>.<k> (pattern-02-dimension-text.with.1), in the order task, then k, then arm (with before without). Per run:
 # `bash DIR/<id>/setup.sh <workroot>/<label>` builds a fresh repo (no network), <workroot>/<label>.prompt gets prompt.md
@@ -71,7 +73,7 @@ trap cleanup EXIT
 trap 'stop_adapter; cleanup; trap - EXIT; exit 130' INT
 trap 'stop_adapter; cleanup; trap - EXIT; exit 143' TERM
 
-HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0
+HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0; CLEAN_ENV=0
 MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any run replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
@@ -93,11 +95,13 @@ while [ $# -gt 0 ]; do
     --arm)       ARM_OPT="$2"; ARM_SET=1; shift ;;
     --repeat)    REPEAT_OPT="$2"; REPEAT_SET=1; shift ;;
     --interactive) INTERACTIVE=1 ;;
+    --clean-env) CLEAN_ENV=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
   shift
 done
+if [ "$CLEAN_ENV" = 1 ]; then pbh_clean_env; fi   # evals/lib-harness.sh
 
 # the adapter runs as: bash -c "$ADAPTER" adapter <workdir> <prompt-file>; the presets live in evals/lib-harness.sh
 if [ -n "$HARNESS" ] && [ -n "$CMD" ]; then pb_die "use either --harness or --cmd, not both" 2; fi
