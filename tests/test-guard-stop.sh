@@ -237,4 +237,18 @@ gs; expect_pass "R7 a closed /* */ comment before CREATE on the same line keeps 
 srepo; schema "$S_HEAD" "$S_ORD" '/*' 'notes' '*/' "$S_LEG"
 gs; expect_pass "R7 a closed multi-line comment above the table keeps it"
 
+# ---- v0.28 fix round 2 (re-review /home/dev/v026/28-rereview.md N3) ----
+echo "F2-3 (re-review N3) a glob that can match .git or the state dir counts as the state dir (AC-A6, AC-A10)"
+srepo
+for c in 'rm -rf .git/pb-*' 'rm -rf .git/pb*' 'rm -rf .git/pb-guar?' 'rm -rf .git/*' 'rm -rf .gi*' 'rm -rf .g?t' 'rm -rf ./.gi*' \
+  'rm -rf .[g]it' 'rm -rf .[!.]*' "rm -rf $R/.gi*" 'cd .git && rm -rf pb-*'; do
+  grun PB_HEADLESS=1 -- "$(jbash "$c" "$R")"
+  expect_block "F2-3 N3 [$c] in a repo with a session baseline" rm-outside
+done
+assert_file "F2-3 N3 the baseline file is still there (nothing ran)" "$(gcd "$R")/pb-guard/$SID"
+for c in 'rm -rf build*' 'rm -rf .agents/*' 'rm -rf db/pb-*' 'rm -rf .gitk*' 'rm -rf .gitignore'; do
+  grun PB_HEADLESS=1 -- "$(jbash "$c" "$R")"
+  expect_pass "F2-3 N3 [$c] cannot match .git: still allowed"
+done
+
 t_summary

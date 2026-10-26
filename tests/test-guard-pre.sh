@@ -353,4 +353,83 @@ for c in 'cd sub && sqlite3 app.db < db/drop.sql' 'cd db && sqlite3 ../app.db < 
   expect_pass "R5 [$c]"
 done
 
+# ---- v0.28 fix round 2 (re-review /home/dev/v026/28-rereview.md N1, N2) ----
+echo "F2-1 (re-review N1) AC-A3 SQL written to a file by a redirect earlier in the command, then fed to a client, blocks again"
+# All of these blocked at 13d67e4 and pass at ef929fb (base-sql.sh). Expected: a file written earlier in the same command by any
+# redirect (> or >> of echo/printf/cat, or a here-doc; any extension) counts as the text a later client reads from it; a ( ) or { }
+# group keeps its text flowing into a pipe after it; a client naming an existing .sql file reads the file even with a here-doc attached.
+FN1="cat > cmds.txt <<'EOF'
+DROP TABLE users;
+EOF
+sqlite3 app.db < cmds.txt"
+FN2="cat > cmds.txt <<'EOF'
+DROP TABLE users;
+EOF
+sqlite3 app.db \".read cmds.txt\""
+FN3="psql -f db/drop.sql <<'EOF'
+EOF"
+FN4="cat > cmds.txt <<EOF
+TRUNCATE audit_log;
+EOF
+psql -f cmds.txt"
+FN5="printf 'DROP TABLE users;\\n' > n.sql
+sqlite3 app.db < n.sql"
+for h in "printf 'DROP TABLE users;\\n' > n.sql && sqlite3 app.db < n.sql" 'echo "DROP TABLE users;" > d.sql && sqlite3 app.db < d.sql' \
+  'echo "DROP TABLE users;" > x.sql; sqlite3 app.db < x.sql' "echo 'DROP TABLE users;' > q.txt; sqlite3 app.db < q.txt" \
+  "printf 'DROP TABLE users;' >> q.txt && sqlite3 app.db < q.txt" "echo 'DROP TABLE users;' > cmds.txt && sqlite3 app.db \".read cmds.txt\"" \
+  "echo 'DROP DATABASE shop;' > q.txt && mysql shop < q.txt" "echo 'DELETE FROM sessions;' > wipe && psql -f wipe" \
+  "( echo 'DROP TABLE users;' ) | sqlite3 app.db" '( echo "DROP TABLE users;" ) | sqlite3 app.db' \
+  "{ echo 'DROP TABLE users;'; } | sqlite3 app.db" '{ echo "DROP TABLE users;"; } | sqlite3 app.db' \
+  "( echo 'SELECT 1;'; echo 'DROP TABLE users;' ) | psql shop" "( printf 'TRUNCATE orders;' ) | mysql shop" \
+  "$FN1" "$FN2" "$FN3" "$FN4" "$FN5"; do
+  grun PB_HEADLESS=1 -- "$(jbash "$h" "$P")"
+  expect_block "F2-1 N1 SQL reaches a client through a file or a group [$(printf '%s' "$h" | tr '\n' ' ')]" sql
+done
+# Benign rows of the first fix round stay allowed (also pinned by the R2 rows above): a file holding DROP that no client reads, a
+# client reading a harmless file, a harmless group. They pass today; they guard the fix against blocking every write-then-run shape.
+FB1="cat > cmds.txt <<'EOF'
+DROP TABLE users;
+EOF
+sqlite3 app.db < db/read.sql"
+FB2="psql -f db/read.sql <<'EOF'
+EOF"
+FB3="cat > tests/db.test.js <<'EOF'
+db.run('DROP TABLE IF EXISTS users');
+EOF
+node --test tests/db.test.js"
+for h in 'echo "DROP TABLE users;" > notes.txt && sqlite3 app.db ".tables"' "echo 'SELECT 1;' > q.sql && sqlite3 app.db < q.sql" \
+  "( echo 'SELECT 1;' ) | sqlite3 app.db" "{ echo 'DROP TABLE users;'; } > notes.txt" "( echo 'DROP TABLE users;' ) > notes.txt; sqlite3 app.db < db/read.sql" \
+  "echo 'DROP TABLE users;' > q.txt; cat q.txt | wc -l" "$FB1" "$FB2" "$FB3"; do
+  grun PB_HEADLESS=1 -- "$(jbash "$h" "$P")"
+  expect_pass "F2-1 N1 not sql [$(printf '%s' "$h" | tr '\n' ' ')]"
+done
+
+echo "F2-2 (re-review N2) a project directly in a temp dir (T/proj) cannot delete its siblings (T/other) (AC-A6)"
+TW=/pbguard-tmp; PD=/pbguard-tmp/proj
+for c in 'rm -rf ../other' "rm -rf $TW/other" 'rm -rf "$TMPDIR/other"' 'rm -rf "${TMPDIR}"/other' 'cd .. && rm -rf other' \
+  'rm -rf ../*' 'rm -rf ../proj.cache' "rm -rf $TW/proj.cache/sub"; do
+  grun PB_HEADLESS=1 TMPDIR="$TW" -- "$(jbash "$c" "$PD")"
+  expect_block "F2-2 N2 project $PD, TMPDIR $TW: [$c]" rm-outside
+done
+for c in 'rm -rf build' "rm -rf $PD/build" 'd=$(mktemp -d); rm -rf "$d"'; do
+  grun PB_HEADLESS=1 TMPDIR="$TW" -- "$(jbash "$c" "$PD")"
+  expect_pass "F2-2 N2 project $PD, TMPDIR $TW: [$c]"
+done
+for c in 'rm -rf ../other' 'rm -rf /tmp/other'; do
+  grun PB_HEADLESS=1 TMPDIR= -- "$(jbash "$c" /tmp/proj)"
+  expect_block "F2-2 N2 TMPDIR unset, project /tmp/proj: [$c]" rm-outside
+done
+echo "F2-2 (re-review N2) real tree: project and a sibling directly under the temp base; commands run only when the guard allows them"
+PJ="$(mktemp -d "$GTP/proj.XXXXXX")"; PJ="$(cd "$PJ" && pwd -P)"
+SB="$(mktemp -d "$GTP/other.XXXXXX")"; SB="$(cd "$SB" && pwd -P)"
+mkdir -p "$PJ/build" && printf 'x\n' > "$PJ/build/out.js" && printf 'keep me\n' > "$SB/sentinel.txt"
+for c in "rm -rf ../${SB##*/}" "rm -rf $SB" "cd .. && rm -rf ${SB##*/}"; do
+  grun PB_HEADLESS=1 TMPDIR="$GTP" CLAUDE_PROJECT_DIR="$PJ" -- "$(jbash "$c" "$PJ")"
+  if [ "$RC" = 0 ]; then (cd "$PJ" && bash -c "$c") >/dev/null 2>&1; fi
+  expect_block "F2-2 N2 real tree: [$c]" rm-outside
+  assert_file "F2-2 N2 real tree: the sibling's sentinel survives [$c]" "$SB/sentinel.txt"
+done
+grun PB_HEADLESS=1 TMPDIR="$GTP" CLAUDE_PROJECT_DIR="$PJ" -- "$(jbash 'rm -rf build' "$PJ")"
+expect_pass "F2-2 N2 real tree: rm -rf build inside the project"
+
 t_summary
