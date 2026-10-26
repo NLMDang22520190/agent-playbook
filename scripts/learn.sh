@@ -4,6 +4,8 @@
 #   learn.sh add --title T --rule R --why W --evidence E --source user|failure|review [--scope S]
 #                [--role tester|implementer|reviewer|all]   (default all; written as "- Role:" after "- Scope:")
 #   learn.sh retire L-0001 --reason R
+#   learn.sh trust [DIR]|untrust [DIR]|trusted   (the projects whose learnings the SessionStart hook injects: the lines
+#                              of <home>/.agents/trusted-projects; DIR defaults to the project root; the USER runs these)
 #   learn.sh check
 #   learn.sh checklist ROLE   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
 #                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
@@ -20,6 +22,49 @@ MAX_ENTRIES="${LEARN_MAX_ENTRIES:-$(pb_conf_get learn_max_entries 40)}"
 MAX_LINES="${LEARN_MAX_LINES:-$(pb_conf_get learn_max_lines 250)}"
 TODAY="${PLAYBOOK_DATE:-$(date -u +%F)}"
 SECRET_RE='sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{12,}|(password|passwd|secret|token|api[_-]?key)[[:space:]]*[=:]'
+
+# Trust-file path matching (v0.29.0 slice T). Same helpers in learn.sh and learnings-hook.sh: keep both copies equal.
+CYG=""; command -v cygpath >/dev/null 2>&1 && CYG=1
+# pb_resolve PATH -> RES: absolute PATH with a Windows form turned into a POSIX one (cygpath -u when present), `.`/`..`
+# folded, symlinks resolved when the directory exists; 1 when PATH is not absolute. WIN=1 for a drive-letter form.
+pb_resolve() {
+  local p="$1" d v seg out="" drv="" IFS
+  p="${p%$'\r'}"; WIN=0
+  case "$p" in [A-Za-z]:[/\\]* | [A-Za-z]:) WIN=1; p="$(printf '%s' "$p" | tr '\\' '/')" ;; esac
+  if [ -n "$CYG" ]; then
+    case "$p" in
+      /*) d="$(cygpath -u "$p" 2>/dev/null)" && [ -n "$d" ] && p="$d" ;;
+      [A-Za-z]:*)   # keep the drive: the POSIX form is used only when it maps back to the same drive letter
+        d="$(cygpath -u "$p" 2>/dev/null)" && [ -n "$d" ] && v="$(cygpath -m "$d" 2>/dev/null)" &&
+          [ "$(printf '%s' "${v%%:*}" | tr 'A-Z' 'a-z')" = "$(printf '%s' "${p%%:*}" | tr 'A-Z' 'a-z')" ] && p="$d" ;;
+    esac
+  fi
+  case "$p" in /* | [A-Za-z]:*) ;; *) return 1 ;; esac
+  if [ -d "$p" ] && d="$(cd "$p" 2>/dev/null && pwd -P)" && [ -n "$d" ]; then RES="$d"; return 0; fi
+  case "$p" in [A-Za-z]:*) drv="${p%%:*}:"; p="${p#?:}" ;; esac
+  IFS=/; set -f
+  for seg in $p; do
+    case "$seg" in "" | .) ;; ..) out="${out%/*}" ;; *) out="$out/$seg" ;; esac
+  done
+  set +f
+  RES="$drv${out:-/}"
+}
+# pb_key PATH -> KEY (stdout): the comparison form of PATH; equal keys are the same project. 1 when not absolute.
+pb_key() {
+  local k
+  pb_resolve "$1" || return 1
+  k="$RES"
+  [ -n "$CYG" ] && k="$(cygpath -m "$k" 2>/dev/null || printf '%s' "$k")"
+  if [ -n "$CYG" ] || [ "$WIN" = 1 ]; then k="$(printf '%s' "$k" | tr 'A-Z' 'a-z')"; fi
+  while :; do case "$k" in ?*/) k="${k%/}" ;; *) break ;; esac; done
+  printf '%s' "$k"
+}
+
+TRUSTF="$(pb_home)/.agents/trusted-projects"
+# trust_dir DIR -> DIR absolute (a relative DIR is taken from the cwd)
+trust_dir() { case "$1" in /* | [A-Za-z]:*) printf '%s' "$1" ;; *) printf '%s/%s' "$PWD" "$1" ;; esac; }
+# trust_lines: the entries of the trust file (comments and blank lines left out), one per line
+trust_lines() { [ -f "$TRUSTF" ] || return 0; grep -v '^[[:space:]]*\(#.*\)\{0,1\}$' "$TRUSTF" | tr -d '\r' || true; }
 
 active_count() { grep -c '^- Status: active' "$FILE" 2>/dev/null || true; }
 
@@ -153,6 +198,50 @@ case "$cmd" in
     echo "retired $id"
     ;;
 
+  trust | untrust)
+    [ $# -le 1 ] || pb_die "usage: learn.sh $cmd [DIR]" 2
+    dir="$(trust_dir "${1:-$ROOT}")"
+    if [ "$cmd" = trust ]; then
+      pb_resolve "$dir" && [ -d "$RES" ] || pb_die "no such directory: ${1:-$ROOT}" 2
+      store="$RES"
+      [ -n "$CYG" ] && store="$(cygpath -m "$RES" 2>/dev/null || printf '%s' "$RES")"
+    else
+      store="$dir"
+    fi
+    want="$(pb_key "$dir")" || pb_die "not an absolute path: $dir" 2
+    found=0
+    while IFS= read -r tl; do
+      tk="$(pb_key "$tl")" || continue
+      if [ "$tk" = "$want" ]; then found=$((found + 1)); fi
+    done <<EOF
+$(trust_lines)
+EOF
+    if [ "$cmd" = trust ]; then
+      if [ "$found" -gt 0 ]; then echo "already trusted: $store"; exit 0; fi
+      mkdir -p "$(dirname "$TRUSTF")" || pb_die "cannot create $(dirname "$TRUSTF")" 3
+      if [ -s "$TRUSTF" ] && [ -n "$(tail -c1 "$TRUSTF")" ]; then printf '\n' >> "$TRUSTF"; fi
+      printf '%s\n' "$store" >> "$TRUSTF" || pb_die "cannot write $TRUSTF" 3
+      echo "trusted: $store"
+    else
+      if [ "$found" -eq 0 ]; then echo "not trusted, nothing to remove: $store"; exit 0; fi
+      tmp="$(mktemp "${TMPDIR:-/tmp}/pbtrust.XXXXXX")" || pb_die "mktemp failed" 3
+      while IFS= read -r tl || [ -n "$tl" ]; do
+        t2="${tl%$'\r'}"
+        case "$t2" in "" | "#"*) printf '%s\n' "$tl" >> "$tmp"; continue ;; esac
+        if tk="$(pb_key "$t2")" && [ "$tk" = "$want" ]; then continue; fi
+        printf '%s\n' "$tl" >> "$tmp"
+      done < "$TRUSTF"
+      cat "$tmp" > "$TRUSTF"
+      rm -f "$tmp"
+      echo "removed $found trust entr$([ "$found" -eq 1 ] && echo y || echo ies) for $store (untrusted)"
+    fi
+    ;;
+
+  trusted)
+    items="$(trust_lines)"
+    if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no trusted projects"; fi
+    ;;
+
   check)
     [ -f "$FILE" ] || pb_die "$REL not found" 2
     problems=0
@@ -212,6 +301,6 @@ case "$cmd" in
     if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no learnings for $crole"; fi
     ;;
   *)
-    pb_die "usage: learn.sh init|add|retire|check|checklist" 2
+    pb_die "usage: learn.sh init|add|retire|check|checklist|trust|untrust|trusted" 2
     ;;
 esac

@@ -170,7 +170,7 @@ The merge needs node. Without it the script changes nothing and prints the JSON 
 |---|---|---|
 | PreToolUse (`Bash`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. |
 | SessionStart | `guard-irreversible.sh --session-start` | Records the commit the session started from. |
-| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions. |
+| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions, only for trusted projects: those you list with `learn.sh trust` (`untrust` and `trusted` manage the list in `~/.agents/trusted-projects`) or all of them with `learnings_hook_trust=all` in the global conf (a project conf cannot set it). For any other project it prints one line saying the file was not injected. |
 | Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. |
 
 Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
@@ -189,6 +189,8 @@ The guard reads the command text of one tool call. It does not see through:
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
 - projects that are not a git repository, where the Stop check has no diff to compare;
 - a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
+
+The `learnings-hook.sh` trust gate covers only the automatic injection. The `AGENTS.global.md` text rule still tells agents to read `.agents/LEARNINGS.md`, so the file of an untrusted project can still be read as a text rule, and an agent could run `learn.sh trust` itself: only you should run it (the hook line and the `playbook-learn` skill say so).
 
 For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
 SQL that a database client has already run through one of these bypasses has no backstop.
