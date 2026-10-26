@@ -190,6 +190,7 @@ The guard reads the command text of one tool call. It does not see through:
 - a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
 
 For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
+SQL that a database client has already run through one of these bypasses has no backstop.
 
 ## Updates and feedback
 
