@@ -123,6 +123,6 @@ hasnt "AC5 item 7 the feedback example proposes no taken scenario number" "$FBS"
 has "AC5 item 7 the feedback example still proposes a new eval" "$FBS" '--eval "new: implementer edits a snapshot file"'
 hasnt "AC5 item 11 release.md headings carry no internal AC codes" "$(flat "$PB_ROOT/skills/playbook-tdd/references/release.md")" '\(AC[0-9]'
 NR="$(grep -F 'Native roles get' "$PB_ROOT/skills/playbook-tdd/SKILL.md")"
-has "AC5 item 8 native roles get the context pack, with no conclusions" "$NR" 'context pack \(paths, excerpts, commands; no conclusions\)[^.]{0,20}never your conversation or opinions'
+has "AC5 item 8 native roles get the context pack, with no conclusions" "$NR" 'never your conversation or opinions; the context pack holds paths, excerpts and commands, not conclusions'
 
 t_summary
