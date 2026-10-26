@@ -1,0 +1,49 @@
+diff --git a/src/docs/invoice.js b/src/docs/invoice.js
+index a693854..4a47ada 100644
+--- a/src/docs/invoice.js
++++ b/src/docs/invoice.js
+@@ -1,9 +1,10 @@
+ 'use strict';
+ 
++const { displayName } = require('../names');
++
+ // Header block of an invoice PDF.
+ function invoiceHeader(order) {
+-  const c = order.customer;
+-  return [`Bill to: ${c.email || c.name}`, `Invoice ${order.id}`].join('\n');
++  return [`Bill to: ${displayName(order.customer)}`, `Invoice ${order.id}`].join('\n');
+ }
+ 
+ module.exports = { invoiceHeader };
+diff --git a/src/mail/receipt.js b/src/mail/receipt.js
+index 0c1c658..effd045 100644
+--- a/src/mail/receipt.js
++++ b/src/mail/receipt.js
+@@ -1,9 +1,10 @@
+ 'use strict';
+ 
++const { displayName } = require('../names');
++
+ // First line of the payment confirmation sent after checkout.
+ function receiptGreeting(order) {
+-  const handle = order.customer.email.split('@')[0];
+-  return `Xin chào ${handle},`;
++  return `Xin chào ${displayName(order.customer)},`;
+ }
+ 
+ module.exports = { receiptGreeting };
+diff --git a/src/names.js b/src/names.js
+index a1828cf..9d0b059 100644
+--- a/src/names.js
++++ b/src/names.js
+@@ -1,8 +1,8 @@
+ 'use strict';
+ 
+-// How we address a customer: their name, else their company, else their e-mail address.
++// How we address a customer: their e-mail address, else their name, else their company.
+ function displayName(customer) {
+-  return customer.name || customer.company || customer.email;
++  return customer.email || customer.name || customer.company;
+ }
+ 
+ module.exports = { displayName };

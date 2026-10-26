@@ -1,0 +1,13 @@
+diff --git a/src/import/dates.js b/src/import/dates.js
+index 66e3f30..ec97efb 100644
+--- a/src/import/dates.js
++++ b/src/import/dates.js
+@@ -2,6 +2,8 @@
+ 
+ // Turns a booking date string into a Date. Partner CSV files and web bookings both come through here.
+ function parseDate(str) {
++  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
++  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+   return new Date(str);
+ }
+ 

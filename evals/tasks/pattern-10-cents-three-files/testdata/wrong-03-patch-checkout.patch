@@ -1,0 +1,41 @@
+diff --git a/src/checkout.js b/src/checkout.js
+index a21bebe..ef9f31a 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -1,17 +1,33 @@
+ 'use strict';
+ 
++const { toCents } = require('./money');
+ const { applyCoupon } = require('./coupons');
+ const { shippingCents } = require('./shipping');
+ const { taxCents } = require('./tax');
+ 
++// The helpers read config amounts as cents, so convert the config before calling them.
++function inCents(config) {
++  const coupons = {};
++  for (const code of Object.keys(config.coupons || {})) {
++    const c = config.coupons[code];
++    coupons[code] = c.type === 'fixed' ? { ...c, amount: String(toCents(c.amount)) } : c;
++  }
++  const shipping = {
++    flat: String(toCents(config.shipping.flat)),
++    free_over: String(toCents(config.shipping.free_over)),
++  };
++  return { coupons, shipping };
++}
++
+ // cart: { lines: [{ sku, unitCents, qty }], coupon }   config: { coupons, shipping, taxPct }
+ // Returns integer cents: { subtotal, discount, shipping, tax, total }.
+ function checkoutTotal(cart, config) {
++  const cfg = inCents(config);
+   const subtotal = cart.lines.reduce((sum, line) => sum + line.unitCents * line.qty, 0);
+-  const goods = applyCoupon(subtotal, cart.coupon, config.coupons);
++  const goods = applyCoupon(subtotal, cart.coupon, cfg.coupons);
+   const discount = subtotal - goods;
+-  const shipping = shippingCents(goods, config.shipping);
+-  const tax = taxCents(goods, config.taxPct);
++  const shipping = shippingCents(goods, cfg.shipping);
++  const tax = Math.round(taxCents(goods, config.taxPct));
+   return { subtotal, discount, shipping, tax, total: goods + shipping + tax };
+ }
+ 

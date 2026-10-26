@@ -1,0 +1,28 @@
+diff --git a/data/products.json b/data/products.json
+index e97dac6..1235bee 100644
+--- a/data/products.json
++++ b/data/products.json
+@@ -4,17 +4,17 @@
+     "name": "Desk",
+     "options": [
+       { "name": "size", "choices": [
+-        { "value": "w120", "label": "120 × 60 cm" },
+-        { "value": "w140", "label": "140 × 70 cm" }
++        { "value": "w120", "label": "w120" },
++        { "value": "w140", "label": "w140" }
+       ] },
+       { "name": "finish", "choices": [
+-        { "value": "oak-nat", "label": "Natural oak" },
+-        { "value": "walnut", "label": "Dark walnut" }
++        { "value": "oak-nat", "label": "oak-nat" },
++        { "value": "walnut", "label": "walnut" }
+       ] }
+     ],
+     "addons": [
+-      { "value": "cable-tray", "label": "Cable tray" },
+-      { "value": "monitor-arm", "label": "Monitor arm" }
++      { "value": "cable-tray", "label": "cable-tray" },
++      { "value": "monitor-arm", "label": "monitor-arm" }
+     ]
+   },
+   {

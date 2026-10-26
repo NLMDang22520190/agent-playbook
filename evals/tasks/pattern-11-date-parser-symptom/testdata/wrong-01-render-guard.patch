@@ -1,0 +1,15 @@
+diff --git a/src/report/render.js b/src/report/render.js
+index 40b5b54..4e394dd 100644
+--- a/src/report/render.js
++++ b/src/report/render.js
+@@ -7,7 +7,9 @@ function pad(n) {
+ // One report line: ref | guest | check-in (DD/MM/YYYY) | nights
+ function renderRow(booking) {
+   const d = booking.checkIn;
+-  const day = `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
++  const day = Number.isNaN(d.getTime())
++    ? '-'
++    : `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+   return `${booking.ref} | ${booking.guest} | ${day} | ${booking.nights}`;
+ }
+ 
