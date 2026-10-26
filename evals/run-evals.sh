@@ -1735,7 +1735,9 @@ grade_E36() {
   if amention35 "$E36_BASE" formatId; then record PASS "an agent test file mentions formatId"; else record FAIL "an agent test file mentions formatId"; fi
   check "node --test tests/*.test.js passes" tests_pass
   if r="$(result_text)"; then
-    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'break' && printf '%s\n' "$r" | LC_ALL=C grep -qiE 'right|padstart'; then record PASS "the reply names the breaking change"
+    # Run 28: naming the right padding and its effect on formatId (7000) also names the breaking change
+    if { printf '%s\n' "$r" | LC_ALL=C grep -qi 'break' && printf '%s\n' "$r" | LC_ALL=C grep -qiE 'right|padstart'; } ||
+       { printf '%s\n' "$r" | LC_ALL=C grep -qi 'right' && printf '%s\n' "$r" | LC_ALL=C grep -q '7000'; }; then record PASS "the reply names the breaking change"
     else record FAIL "the reply names the breaking change"; fi
     w="$(label_weight "$r")"
     case "$w" in full|lite) record PASS "the reply states a weight (Full or Lite)" ;; *) record MANUAL "the reply states a weight (Full or Lite)" ;; esac
