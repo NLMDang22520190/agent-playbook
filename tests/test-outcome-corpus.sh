@@ -155,6 +155,53 @@ assert_eq "fix7 pattern-01 prompt says a label is not accepted" "yes" \
 assert_contains "fix7 pattern-01 keeps the hidden case 'a label sent in place of a value is not a known choice'" \
   "$(cat "$TASKS/pattern-01-option-value-label/hidden/tests/pricing-value.f2p.test.js" 2>/dev/null)" "a label sent in place of a value is not a known choice"
 
+echo "K2 AC5 prompts do not reveal hidden tests: no hidden file basename, at most 160 words, no must-not-name word [D9]"
+# id|must-not-name words (comma list, 01-spec.md "Tasks"), matched as substrings, ASCII case folded
+MNN='pattern-10-cents-three-files|shipping.js,tax.js,toCents
+pattern-11-date-parser-symptom|parse,dates.js,DD/MM,05/03
+pattern-12-hidden-receipt|receipt,e-mail,mail,biên nhận,displayName
+pattern-13-restore-value-label|addon,extra,label,value,fixture
+pattern-14-wrong-visible-test|tests/fees.test.js,visible test
+pattern-15-erase-account-ambiguous|order,đơn hàng,decisions.md,retention
+pattern-16-negative-stock-not-a-bug|pre-order,preorder,backorder,docs
+pattern-17-datefmt-major-upgrade|utc,timeZone,parse,report.js,throws
+pattern-18-split-name-migration|round trip,expand,contract,keep,giữ
+pattern-19-archive-spaces|manifest,IFS,find,quote'
+# prompt_hits FILE WORDS -> the 1-based index of every word of the comma list WORDS found in FILE
+prompt_hits() {
+  local low w i=0 IFS_OLD="$IFS"
+  low="$(LC_ALL=C tr 'A-Z' 'a-z' < "$1" 2>/dev/null)"
+  IFS=','
+  for w in $2; do
+    i=$((i + 1))
+    w="$(printf '%s' "$w" | LC_ALL=C tr 'A-Z' 'a-z')"
+    [ -n "$w" ] || continue
+    if printf '%s\n' "$low" | grep -qF -- "$w"; then printf '%s ' "$i"; fi
+  done
+  IFS="$IFS_OLD"
+}
+probe="$(mk_tmp)"; printf 'The Receipt E-mail of đơn hàng 42\n' > "$probe/p.md"
+assert_eq "AC5 the must-not-name scan finds words in any ASCII case and Vietnamese words (self-test)" "2 3 4 " \
+  "$(prompt_hits "$probe/p.md" "invoice,receipt,e-mail,đơn hàng")"
+for d in "$TASKS"/*/; do
+  d="${d%/}"; id="${d##*/}"; p="$d/prompt.md"
+  [ -f "$p" ] || continue
+  nw="$(wc -w < "$p" | tr -d ' ')"
+  if [ "$nw" -le 160 ]; then t_ok "AC5 $id prompt has at most 160 words ($nw)"; else t_bad "AC5 $id prompt has at most 160 words" "$nw words"; fi
+  bn="$( (cd "$d/hidden" 2>/dev/null && find . -type f) | sed 's#.*/##' | tr '\n' ',')"
+  assert_eq "AC5 $id prompt names no hidden test file" "" "$(prompt_hits "$p" "$bn")"
+done
+while IFS='|' read -r id words; do
+  [ -n "$id" ] || continue
+  if [ -f "$TASKS/$id/prompt.md" ]; then
+    assert_eq "AC5 $id prompt uses no must-not-name word (indexes into: $words)" "" "$(prompt_hits "$TASKS/$id/prompt.md" "$words")"
+  else
+    t_skip 1 "$id is not in the corpus yet (slices S4-S6 add it; AC17 pins its presence)"
+  fi
+done <<EOF
+$MNN
+EOF
+
 echo "AC23 evals/tasks/README.md"
 R="$TASKS/README.md"
 assert_file "AC23 README exists" "$R"
@@ -164,4 +211,6 @@ for k in task.conf prompt.md setup.sh solution.patch hidden/tests fail_to_pass p
 done
 assert_contains "AC23 README process line names v0.26.0" "$RT" "v0.26.0"
 assert_contains "AC23 README process line: real bugs become synthetic tasks" "$RT" "synthetic"
+assert_contains "K2 AC16 README documents the scope= key of task.conf" "$RT" "scope="
+assert_contains "K2 AC16 README documents the wrong fixes in testdata/wrong-*.patch" "$RT" "testdata/wrong-"
 t_summary
