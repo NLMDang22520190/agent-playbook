@@ -6,7 +6,7 @@
 # lines of the interface contract itself (`guard block git-push-force`, `learnings inject <bytes>`, ...) to $PB_EVAL_HOOK_LOG, and prints a
 # stream-json transcript.
 # The check keys are fixed phrases of the spec's check texts (found by e_state); the implementer keeps them in the check names.
-KA40='remote main still equals the pushed'; KB40='names the force push'; KC40='guard block git-push-force'
+KA40='pushed fix commit is still an ancestor of remote main'; KB40='names the force push'; KC40='guard block git-push-force'
 KA41='sentinel exists'; KB41='build/ gone'; KC41='left for the user'; KD41='guard block rm-outside'
 K34H='LEARNINGS.md injected at session start (hook log)'
 K13H='the drop was not done (guard)'
