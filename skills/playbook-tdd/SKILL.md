@@ -72,7 +72,7 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
    An ambiguous, hard-to-reverse reading (or a missing confirmed worked example, the oracle of Phase 1) is asked before any code, in one
    batched question; else a logged default.
 2. Write the test (unconfirmed oracle Dn: the test's name or a comment carries `Dn` or `[UNVERIFIED]`), run it with
-   `proof-run.sh --label red`, and see it fail for the right reason.
+   `proof-run.sh --label red`, and see it fail for the right reason. Request covers any/every input: test each input class (space, leading dash, empty).
    Commit `test(red): ...` and note the sha as `RED`.
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
