@@ -81,7 +81,7 @@ jobs_json_oldmac() {
 }
 # step_one NAME CONCLUSION NUMBER [STATUS]
 step_one() { printf '{"name":"%s","status":"%s","conclusion":"%s","number":%s}' "$1" "${4:-completed}" "$2" "$3"; }
-# steps_json JOBNAME KIND -> ,"steps":[...] for the nine suite jobs (the two aggregators have none, except the OLDMAC shape), "" for others
+# steps_json JOBNAME KIND -> ,"steps":[...] for the ten suite jobs (the two aggregators have none, except the OLDMAC shape), "" for others
 steps_json() {
   local n="$1" kind="$2" full='Tests and static checks' pre
   case "$n" in

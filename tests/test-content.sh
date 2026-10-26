@@ -386,8 +386,10 @@ MAC_MATRIX_SET="$(printf '%s\n' "$MAC_MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | 
 assert_eq "v0.24.21 AC3 ci-tree-tested.sh checks exactly the macos-shard matrix entries (same set and count)" "$MAC_MATRIX_SET" "$NEED_MAC_SET"
 if [ -n "$NEED_MAC_SET" ] && [ -n "$MAC_MATRIX_SET" ]; then t_ok "v0.24.21 AC3 both macOS sides are non-empty"; else t_bad "v0.24.21 AC3 both macOS sides are non-empty" "need [$NEED_MAC_SET] matrix [$MAC_MATRIX_SET]"; fi
 CIT_HEAD="$(sed -n '1,30p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
-assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
-assert_contains "v0.24.21 AC2 the ci-tree-tested.sh header counts 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
+assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'ten suite jobs'" "$CIT_HEAD" "ten suite jobs"
+assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'twelve green jobs'" "$CIT_HEAD" "twelve green jobs"
+assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
+assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
 assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
 assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'nine green jobs'" "$CIT_HEAD" "nine green jobs"
 if printf '%s\n' "$SB" | grep 'PB_SHARD' | grep -q 'matrix\.'; then t_ok "v14 AC8.2 PB_SHARD is taken from the matrix"; else t_bad "v14 AC8.2 PB_SHARD is taken from the matrix" "PB_SHARD lines: $(printf '%s\n' "$SB" | grep PB_SHARD)"; fi
