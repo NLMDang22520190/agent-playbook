@@ -441,6 +441,7 @@ mkdir -p "$GQ/db" "$GQ/out"
 printf 'DROP TABLE legacy_orders;\n' > "$GQ/db/drop.sql"
 printf 'DROP TABLE legacy_orders;\n' > "$GQ/drop.sql"
 printf 'SELECT 1;\n' > "$GQ/db/read.sql"
+printf 'DROP TABLE t;\n' > "$GQ/notes.txt"
 gblock() { # gblock LABEL CMD -> headless block with BLOCKED (sql)
   grun PB_HEADLESS=1 -- "$(jbash "$2" "$GQ")"
   expect_block "$1 [$(printf '%s' "$2" | tr '\n' ' ')]" sql
@@ -517,5 +518,23 @@ for c in "echo 'SELECT 1;' > truncate.txt; sqlite3 db < truncate.txt" \
   gallow "G AC7 keyword only in the written file's name" "$c"
 done
 gblock "G AC7 TRUNCATE in the written content still blocks" "echo 'TRUNCATE t;' > truncate.txt; sqlite3 db < truncate.txt"
+
+# R1 (review round 1) cp/mv behind a prefix word or inside a compound command still carry the source
+for c in "sudo cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "command cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "env cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "LC_ALL=C cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "{ cp drop.sql f.txt; }; sqlite3 db < f.txt" \
+  "if cp drop.sql f.txt; then sqlite3 db < f.txt; fi"; do
+  gblock "G R1 cp behind a prefix or in a compound still carries DROP" "$c"
+done
+# R1 destination directory that does not exist yet when the guard runs: the copy lands at DEST/<basename>
+for c in "mkdir newd; cp drop.sql newd; sqlite3 db < newd/drop.sql" \
+  "mkdir -p newd2; cp drop.sql newd2/; sqlite3 db < newd2/drop.sql"; do
+  gblock "G R1 cp into a directory created in the same command" "$c"
+done
+# R1 pins that pass today: a non-cp command's last operand is not a written file; only .sql sources are read from disk (D-g2, same limit as D3)
+gallow "G R1 pin: diff with two operands does not write its last operand" "diff drop.sql x.txt; sqlite3 db < x.txt"
+gallow "G R1 pin: a non-.sql source on disk is not read (documented limit, D-g2)" "cp notes.txt f.sql; sqlite3 db < f.sql"
 
 t_summary
