@@ -1,0 +1,27 @@
+diff --git a/src/cart/restore.js b/src/cart/restore.js
+index f5e4717..1263d1f 100644
+--- a/src/cart/restore.js
++++ b/src/cart/restore.js
+@@ -4,6 +4,7 @@
+ // saved:   { lines: [{ productId, options: { <option name>: <saved choice> }, addons: [<saved addon>] }] }
+ // catalog: [{ id, options: [{ name, choices: [{ value, label }] }], addons: [{ value, label }] }]
+ // Returns  { lines: [{ productId, options: { <option name>: <choice value> }, addons: [<addon value>] }] }
++// Saved carts store values, never labels (docs/cart.md).
+ function restoreCart(saved, catalog) {
+   const lines = [];
+   for (const line of saved.lines || []) {
+@@ -12,12 +13,12 @@ function restoreCart(saved, catalog) {
+     const options = {};
+     for (const option of product.options || []) {
+       const want = (line.options || {})[option.name];
+-      const choice = option.choices.find((c) => c.label === want) || option.choices[0];
++      const choice = option.choices.find((c) => c.value === want) || option.choices[0];
+       options[option.name] = choice.value;
+     }
+     const addons = [];
+     for (const want of line.addons || []) {
+-      const addon = (product.addons || []).find((a) => a.label === want);
++      const addon = (product.addons || []).find((a) => a.value === want);
+       if (addon) addons.push(addon.value);
+     }
+     lines.push({ productId: product.id, options, addons });
