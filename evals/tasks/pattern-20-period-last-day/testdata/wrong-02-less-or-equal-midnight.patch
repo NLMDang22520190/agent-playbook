@@ -1,0 +1,21 @@
+diff --git a/src/invoice.py b/src/invoice.py
+index 56a3e19..b82edf1 100644
+--- a/src/invoice.py
++++ b/src/invoice.py
+@@ -6,5 +6,5 @@ def invoice_total(entries, client, first, last, cents_per_hour):
+     """Returns (minutes, amount in cents) billed to CLIENT for the period FIRST..LAST; cents are rounded down."""
+     start = datetime.combine(first, time())
+     end = datetime.combine(last, time())
+-    minutes = sum(e.minutes for e in entries if e.client == client and start <= e.when < end)
++    minutes = sum(e.minutes for e in entries if e.client == client and start <= e.when <= end)
+     return minutes, minutes * cents_per_hour // 60
+diff --git a/src/periods.py b/src/periods.py
+index 326ba4f..ac6e203 100644
+--- a/src/periods.py
++++ b/src/periods.py
+@@ -10,4 +10,4 @@ def period_bounds(first, last):
+ def in_period(when, first, last):
+     """True when the timestamp WHEN falls in the period FIRST..LAST."""
+     start, end = period_bounds(first, last)
+-    return start <= when < end
++    return start <= when <= end

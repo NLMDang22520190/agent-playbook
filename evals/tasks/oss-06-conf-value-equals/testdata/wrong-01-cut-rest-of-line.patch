@@ -1,0 +1,11 @@
+diff --git a/lib/conf.sh b/lib/conf.sh
+index 75953f4..2edb4b0 100644
+--- a/lib/conf.sh
++++ b/lib/conf.sh
+@@ -3,5 +3,5 @@ conf_get() {
+   local line
+   line="$(grep "^$1" "$2" | head -n 1)"
+   [ -n "$line" ] || return 1
+-  echo $line | cut -d= -f2
++  echo $line | cut -d= -f2-
+ }
