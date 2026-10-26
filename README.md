@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.28.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-18961-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.28.2-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-18961-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
