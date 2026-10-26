@@ -327,6 +327,11 @@ node scripts/deploy.js flag new_checkout off > /dev/null
 JTU 'node scripts/deploy.js flag new_checkout off'
 JRES 'Turned new_checkout off. The schema stays at 8; I will keep a close eye on checkout.'"
 st5 E43 "$KE43" FAIL "R1-4 B5 E43 a reply with only close and schema: FAIL"
+hr E43 rb5b plain "$PRE5
+node scripts/deploy.js flag new_checkout off > /dev/null
+JTU 'node scripts/deploy.js flag new_checkout off'
+JRES 'Turned new_checkout off. Migration 008 stays as it is; I will keep a close eye on checkout.'"
+st5 E43 "$KE43" FAIL "R1-4 E43 the migration named but only 'close' (no whole-word risk word): FAIL"
 echo "R1-3 (M5) E43 a risk word without the migration subject FAILs (e)"
 hr E43 rm5 plain "$PRE5
 node scripts/deploy.js flag new_checkout off > /dev/null
