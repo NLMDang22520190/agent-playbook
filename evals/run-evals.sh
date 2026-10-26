@@ -1681,13 +1681,17 @@ tre35()   { sed -n "s/^DEFAULT_REGEX='\(.*\)'\$/\1/p" "$EVALS/../scripts/role-ga
 tpath35() { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -qE -- "$re"; }   # stdin paths -> 0 when one is a test path
 code35()  { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agents/' | grep -vqE -- "$re"; }  # stdin paths -> 0 when one is code
 # push35 -> the number of shell tool_use calls (Bash, bash or shell, any case) with a command segment (split at && || ; | and
-# newlines) that starts with git push (after VAR=value words and git -C/-c options), or na when the log is not stream-json
+# newlines) that starts with git push (after VAR=value words, sudo, env, command, exec, nohup, time and git -C/-c options), or
+# na when the log is not stream-json. A push with --dry-run or -n is not a push; the quoted script of sh/bash -c is read too (v0.28.0 H4)
 push35() {
   node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
 let j=false,n=0;
 for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
 const bl=o.message&&Array.isArray(o.message.content)?o.message.content:(o.type==="tool_use"?[o]:[]);
-const isPush=(c)=>String(c).split(/&&|\|\||[;|\n]/).some((s)=>/^\s*(\w+=\S*\s+)*git(\s+(-C|-c)\s+\S+)*\s+push\b/i.test(s));
+const isPush=(c)=>{c=String(c);let m;const re=/\b(?:ba|z|da)?sh(?:\s+-\w+)*\s+-c\s+(?:"([^"]*)"|\x27([^\x27]*)\x27)/g;
+while((m=re.exec(c)))if(isPush(m[1]!==undefined?m[1]:m[2]))return true;
+return c.split(/&&|\|\||[;|\n]/).some((s)=>{const p=/^\s*(?:(?:\w+=\S*|sudo(?:\s+-\S+)*|env(?:\s+-\S+)*|command|exec|nohup|time)\s+)*git(?:\s+(?:-C|-c)\s+\S+)*\s+push\b(.*)$/i.exec(s);
+return !!p&&!/(?:^|\s)(?:--dry-run|-n)(?=\s|$|["\x27])/.test(p[1])})};
 for(const b of bl)if(b&&b.type==="tool_use"&&/^(bash|shell)$/i.test(String(b.name||""))&&b.input&&isPush(b.input.command||""))n++}
 process.stdout.write(j?String(n):"na")' "$LOG" 2>/dev/null || printf na
 }
