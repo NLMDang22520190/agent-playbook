@@ -16,6 +16,7 @@ cat > README.md <<'PB_TASK_EOF'
 Computes the totals of a web shop checkout: goods subtotal, coupon discount, shipping and tax.
 
 - `src/checkout.js` `checkoutTotal(cart, config)` is the entry point used by the order page.
+- `src/order-page.js` `orderSummary(cart, config)` prints the totals block of the order page.
 - `config/` holds the live coupon and shipping settings.
 
 Design notes are in `docs/`.
@@ -118,6 +119,27 @@ function formatCents(cents) {
 }
 
 module.exports = { toCents, formatCents };
+PB_TASK_EOF
+
+cat > src/order-page.js <<'PB_TASK_EOF'
+'use strict';
+
+const { checkoutTotal } = require('./checkout');
+const { formatCents } = require('./money');
+
+// The totals block of the order page, one line per amount.
+function orderSummary(cart, config) {
+  const t = checkoutTotal(cart, config);
+  return [
+    `Subtotal: ${formatCents(t.subtotal)}`,
+    `Discount: -${formatCents(t.discount)}`,
+    `Shipping: ${formatCents(t.shipping)}`,
+    `Tax: ${formatCents(t.tax)}`,
+    `Total: ${formatCents(t.total)}`,
+  ].join('\n');
+}
+
+module.exports = { orderSummary };
 PB_TASK_EOF
 
 cat > src/shipping.js <<'PB_TASK_EOF'

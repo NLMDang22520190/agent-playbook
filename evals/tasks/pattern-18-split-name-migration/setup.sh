@@ -43,12 +43,6 @@ cat > docs/migrations.md <<'PB_TASK_EOF'
 - Every migration gets a round-trip test under `tests/`.
 PB_TASK_EOF
 
-cat > migrations/README.md <<'PB_TASK_EOF'
-Rules for writing a migration: docs/migrations.md
-
-The files here are applied in order by `src/migrate.js`.
-PB_TASK_EOF
-
 cat > migrations/001-order-currency.js <<'PB_TASK_EOF'
 'use strict';
 module.exports = {
@@ -93,7 +87,6 @@ PB_TASK_EOF
 
 cat > src/migrate.js <<'PB_TASK_EOF'
 'use strict';
-// Rules for writing a migration: docs/migrations.md
 const fs = require('node:fs');
 const path = require('node:path');
 

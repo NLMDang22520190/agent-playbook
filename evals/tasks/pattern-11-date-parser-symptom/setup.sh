@@ -57,10 +57,10 @@ cat > package.json <<'PB_TASK_EOF'
 PB_TASK_EOF
 
 cat > samples/partner-2026-03.csv <<'PB_TASK_EOF'
-B-1041;Hoa Nguyen;02/03/2026;1
-B-1042;Quang Do;10/03/2026;4
+B-1041;Hoa Nguyen;03/03/2026;1
+B-1042;Quang Do;03/03/2026;4
 B-1043;Lan Pham;13/03/2026;2
-B-1044;Minh Tran;05/03/2026;3
+B-1044;Minh Tran;17/03/2026;3
 B-1045;Thu Vu;21/03/2026;2
 B-1046;Khanh Bui;28/03/2026;5
 PB_TASK_EOF

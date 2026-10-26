@@ -119,8 +119,8 @@ PB_TASK_EOF
 cat > src/cart/save.js <<'PB_TASK_EOF'
 'use strict';
 
-// Turns a live cart into the stored form (docs/cart.md).
-// cart: { lines: [{ productId, options: { <option name>: <choice value> }, addons: [<addon value>] }] }
+// Turns a live cart into the stored form: a plain copy of the lines, so later edits to the live cart do not leak in.
+// cart: { lines: [{ productId, options: { <option name>: <choice> }, addons: [...] }] }
 function saveCart(cart) {
   return {
     lines: (cart.lines || []).map((line) => ({
