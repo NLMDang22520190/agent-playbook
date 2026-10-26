@@ -106,4 +106,23 @@ assert_not_contains "AC4 pr-body.sh leaves the Playbook feedback line out" "$OUT
 TW="$(wc -w < "$TSK" | tr -d ' ')"
 if [ "$TW" -le 3700 ] && [ "$TW" -ge 3650 ]; then t_ok "AC3 playbook-tdd SKILL.md stays within its budget and its count+50 pin (3650..3700): $TW"; else t_bad "AC3 playbook-tdd SKILL.md stays within 3650..3700" "$TW words"; fi
 
+echo "S4 AC5 wording contradictions from scales.md section 7"
+TQ="$(flat "$PB_ROOT/skills/playbook-tdd/references/test-quality.md")"
+has "AC5 item 1 quarantining a flaky test is a skip, only with the user's approval" "$TQ" "[Qq]uarantin[^.]{0,80}skip[^.]{0,80}user's approval"
+has "AC5 item 1 the approved quarantine is recorded" "$TQ" "user's approval, recorded"
+hasnt "AC5 item 1 no bare 'Quarantine it with an issue link'" "$TQ" 'Quarantine it with an issue link'
+if grep -qx '### Proof for claims that matter' "$PB_ROOT/AGENTS.global.md"; then t_ok "AC5 item 2 the always-on Proof heading says claims that matter"; else t_bad "AC5 item 2 the always-on Proof heading says claims that matter" "heading not found"; fi
+if grep -q 'Proof for every claim' "$PB_ROOT/AGENTS.global.md" "$PB_ROOT/skills/playbook-proof/SKILL.md"; then t_bad "AC5 item 2 no 'Proof for every claim' heading is left" "found"; else t_ok "AC5 item 2 no 'Proof for every claim' heading is left"; fi
+RM2="$(flat "$PB_ROOT/README.md")"
+hasnt "AC5 item 2 README no longer says every claim carries a label" "$RM2" 'Every claim carries'
+has "AC5 item 2 README says claims that matter carry a label" "$RM2" 'Claims that matter carry `\[VERIFIED\]`'
+hasnt "AC5 item 4 README no longer says someone must look at the screen" "$RM2" 'someone to look at the screen'
+has "AC5 item 4 README: one real look in this session, an agent screenshot counts" "$RM2" 'UI change needs one real look[^|]{0,120}screenshot or browser read[^|]{0,80}agent'
+FBS="$(flat "$PB_ROOT/skills/playbook-feedback/SKILL.md")"
+hasnt "AC5 item 7 the feedback example proposes no taken scenario number" "$FBS" 'new: E[0-9]'
+has "AC5 item 7 the feedback example still proposes a new eval" "$FBS" '--eval "new: implementer edits a snapshot file"'
+hasnt "AC5 item 11 release.md headings carry no internal AC codes" "$(flat "$PB_ROOT/skills/playbook-tdd/references/release.md")" '\(AC[0-9]'
+NR="$(grep -F 'Native roles get' "$PB_ROOT/skills/playbook-tdd/SKILL.md")"
+has "AC5 item 8 native roles get the context pack, with no conclusions" "$NR" 'context pack \(paths, excerpts, commands; no conclusions\)[^.]{0,20}never your conversation or opinions'
+
 t_summary
