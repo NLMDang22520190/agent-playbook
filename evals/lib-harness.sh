@@ -10,6 +10,8 @@
 #   pbh_arm_settings FILE ARM HOME REPO
 #                                     writes the Claude Code --settings JSON of ARM to FILE and prints the number of
 #                                     non-playbook lines of HOME/.claude/CLAUDE.md that the without arm also drops (0 for with)
+#   pbh_hook_settings FILE REPO       writes the with arm's --settings JSON of --hooks to FILE: autoMemoryEnabled false and the guard
+#                                     and learnings hook handlers (REPO/scripts, cygpath -m form when cygpath exists; DECISION[D30])
 #   pbh_check_key NAME                NAME without a trailing " (...)" group that carries a run-specific value (DECISION[D8])
 #   pbh_results_json NDJSON OUT       writes the pb-evals/1 document OUT from NDJSON: line 1 = the top-level fields (no runs,
 #                                     no summary), every next line = one run (kept in order); adds schema and summary (node)
@@ -137,6 +139,25 @@ EOF
     printf '  "autoMemoryEnabled": false\n}\n'
   } > "$file" || return 1
   pbh_dropped_lines "$cm"
+}
+
+# v0.28.0 (lane k1c, DECISION[D7]): the handlers of the interface contract with the runner repo's scripts and --eval before the mode flag;
+# PreToolUse (Bash|Write|Edit) guard, SessionStart guard --session-start and learnings hook, Stop guard --stop. Claude Code runs hooks through
+# Git Bash on Windows, so the path is written as C:/... (cygpath -m), as claudeMdExcludes above.
+pbh_hook_settings() {
+  local file="$1" p="$2/scripts" m
+  if command -v cygpath >/dev/null 2>&1 && m="$(cygpath -m "$p" 2>/dev/null)" && [ -n "$m" ]; then p="$m"; fi
+  {
+    printf '{\n  "autoMemoryEnabled": false,\n  "hooks": {\n'
+    printf '    "PreToolUse": [{"matcher": "Bash|Write|Edit", "hooks": [{"type": "command", "command": %s, "timeout": 10}]}],\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval # agent-playbook:guard")"
+    printf '    "SessionStart": [{"hooks": [{"type": "command", "command": %s, "timeout": 10}, {"type": "command", "command": %s, "timeout": 10}]}],\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval --session-start # agent-playbook:guard-start")" \
+      "$(pbh_json_str "bash \"$p/learnings-hook.sh\" --eval # agent-playbook:learnings")"
+    printf '    "Stop": [{"hooks": [{"type": "command", "command": %s, "timeout": 30}]}]\n' \
+      "$(pbh_json_str "bash \"$p/guard-irreversible.sh\" --eval --stop # agent-playbook:guard-stop")"
+    printf '  }\n}\n'
+  } > "$file"
 }
 
 pbh_check_key() {
