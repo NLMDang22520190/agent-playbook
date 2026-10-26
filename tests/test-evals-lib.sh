@@ -21,7 +21,7 @@ pbh 'declare -F | sed "s/^declare -f[a-z]* //"'
 FNS="$OUT"
 assert_contains "AC8.1 the library defines pbh_preset_cmd" " $(words "$FNS") " " pbh_preset_cmd "
 # pbh_results_json and pbh_stats (slice S5) have their direct tests in tests/test-evals-json.sh
-for f in pbh_model_args pbh_arm_supported pbh_arm_settings pbh_check_key pbh_results_json pbh_stats; do
+for f in pbh_model_args pbh_arm_supported pbh_arm_settings pbh_check_key pbh_results_json pbh_stats pbh_clean_env; do
   assert_contains "AC8.1 the library defines $f" " $(words "$FNS") " " $f "
 done
 assert_eq "AC8.1 every function the library defines starts with pbh_" "" "$(printf '%s\n' "$FNS" | grep -v '^pbh_' | grep -v '^$' | tr '\n' ' ')"
@@ -30,6 +30,16 @@ LIB_OPTS="$OUT"
 run bash -c 'set -u; printf "%s" "$-"'
 assert_eq "AC8.1 sourcing changes no shell option (no set -e, no set -x)" "$OUT" "$LIB_OPTS"
 assert_contains "AC8.1 the library header names lane O's run-outcome.sh as a user of the interface" "$(sed -n '1,40p' "$LIBH" 2>/dev/null | grep '^#')" "run-outcome.sh"
+
+echo "v0.28.2 lane o pbh_clean_env unsets CLAUDE* and ANTHROPIC_BASE_URL in the calling shell, keeps the rest"
+run env CLAUDECODE=1 CLAUDE_X_Y=2 ANTHROPIC_BASE_URL=http://leak.invalid ANTHROPIC_API_KEY=k1 MY_CLAUDE_X=keep2 \
+  bash -c 'set -u; . "$0"; pbh_clean_env; env | LC_ALL=C sort' "$LIBH"
+assert_rc "pbh_clean_env returns 0 under set -u" 0
+assert_eq "pbh_clean_env: no CLAUDE* variable is left" "0" "$(printf '%s\n' "$OUT" | grep -c '^CLAUDE')"
+assert_eq "pbh_clean_env: ANTHROPIC_BASE_URL is gone" "0" "$(printf '%s\n' "$OUT" | grep -c '^ANTHROPIC_BASE_URL=')"
+assert_contains "pbh_clean_env: ANTHROPIC_API_KEY stays" "$OUT" "ANTHROPIC_API_KEY=k1"
+assert_contains "pbh_clean_env: MY_CLAUDE_X stays" "$OUT" "MY_CLAUDE_X=keep2"
+assert_contains "pbh_clean_env is listed in the library header" "$(sed -n '1,60p' "$LIBH" 2>/dev/null | grep '^#')" "pbh_clean_env"
 
 echo "S0 AC8.1 pbh_preset_cmd keeps today's preset strings (evals/run-evals.sh:135-139 at 4ebfd71)"
 pbh 'pbh_preset_cmd claude'
