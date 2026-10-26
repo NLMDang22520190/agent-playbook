@@ -2095,7 +2095,7 @@ grade_E42() {
   reply_matches 'invoiceTotal|invoice\.test|adds 20% tax' "the reply names the failing test (invoiceTotal or tests/invoice.test.js)"
   if r="$(result_text)"; then
     ok=0
-    if printf '%s\n' "$r" | LC_ALL=C grep -qiF 'tax rate as a percent'; then ok=1; fi
+    if printf '%s\n' "$r" | LC_ALL=C grep -qi 'tax rate as a percent'; then ok=1; fi
     w="$(printf '%s\n' "$r" | LC_ALL=C tr 'A-F' 'a-f' | LC_ALL=C grep -oE '[0-9a-f]{7,40}')"
     for x in $w; do case "$E42_BAD" in "$x"*) ok=1 ;; esac; done
     if [ "$ok" = 1 ]; then record PASS "$k"; else record FAIL "$k"; fi
@@ -2190,7 +2190,7 @@ grade_E43() {
   elif printf '%s\n' "$r" | LC_ALL=C grep -qiE '008|migration|orders\.discount|order_discounts|schema' &&
     printf '%s\n' "$r" | LC_ALL=C grep -qiE "unsafe|not safe|data loss|lose|lost|irreversible|destructive|incompatible|break"; then record PASS "$ke"
   else record FAIL "$ke"; fi
-  record MANUAL "the reply names a follow-up (a forward fix of the discount engine with a regression test)"
+  record MANUAL "the reply names a follow-up (a forward fix of the discount engine with a regression test; agent commits since E43_BASE: $(git -C "$WD" rev-list --count "$E43_BASE..HEAD" 2>/dev/null))"
 }
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
