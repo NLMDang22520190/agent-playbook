@@ -55,7 +55,10 @@ Gate for keeping a rule (v0.26.0): run the rule's scenario with `evals/run-evals
 least 3 and a pinned `--model M`, then read the JSON results with `tools/eval-delta.sh`. A rule is kept or added only
 when its scenario shows Δ > 0 there (the with arm passes its checks more often than the without arm). A check that
 `tools/eval-delta.sh` flags non-discriminating (both arms pass at least 2/3 of their runs, or both pass none) is marked
-to drop or rewrite. An isolation FAIL in the without arm makes the Δ of that scenario invalid.
+to drop or rewrite. An isolation FAIL in the without arm makes the Δ of that scenario invalid. The tool also prints a
+Wilson 95% interval per arm, a 95% interval for Δ (Newcombe) with the verdict "Δ>0 (interval excludes 0)", "Δ<0 (excludes
+0)" or "inconclusive", and the cost and seconds per passed run; it pools several JSON files of the same model, harness and
+commit (`tools/eval-delta.sh a.json b.json c.json`), so with k=3 an inconclusive Δ is re-run and pooled before it is read.
 
 Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 

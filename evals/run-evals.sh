@@ -55,7 +55,8 @@
 # prompt hash, cost and seconds, and a summary with pass@1 and pass^K per check) and prints "json: <path>" after "results:";
 # with --arm or --repeat the md also gets a "## pass@1 and pass^K" section. Every graded without run gets the check
 # "without arm: no playbook file read and no playbook Skill call" from its stream-json transcript (MANUAL for plain text).
-# tools/eval-delta.sh reads the JSON of a pinned run with both arms and prints the delta per check.
+# tools/eval-delta.sh reads the JSON of a pinned run with both arms and prints the delta per check, with Wilson and
+# Newcombe 95% intervals; it pools several JSON files of the same model, harness and commit.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
