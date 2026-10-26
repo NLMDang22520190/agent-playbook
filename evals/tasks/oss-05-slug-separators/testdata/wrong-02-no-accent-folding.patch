@@ -1,0 +1,16 @@
+diff --git a/src/slug.js b/src/slug.js
+index f5c66ed..c1e69fb 100644
+--- a/src/slug.js
++++ b/src/slug.js
+@@ -2,7 +2,10 @@
+ 
+ // The slug of a product name, used in its public link (rule: docs/urls.md).
+ function slugify(name) {
+-  return encodeURIComponent(String(name).trim().toLowerCase());
++  return String(name)
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, '-')
++    .replace(/^-+|-+$/g, '');
+ }
+ 
+ module.exports = { slugify };

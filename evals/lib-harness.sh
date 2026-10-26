@@ -12,6 +12,9 @@
 #                                     non-playbook lines of HOME/.claude/CLAUDE.md that the without arm also drops (0 for with)
 #   pbh_hook_settings FILE REPO       writes the with arm's --settings JSON of --hooks to FILE: autoMemoryEnabled false and the guard
 #                                     and learnings hook handlers (REPO/scripts, cygpath -m form when cygpath exists; DECISION[D30])
+#   pbh_clean_env                     unsets every CLAUDE* variable and ANTHROPIC_BASE_URL in the calling shell (--clean-env of
+#                                     run-evals.sh and run-outcome.sh: a desktop or nested Claude session leaks them into the
+#                                     child); ANTHROPIC_API_KEY and everything else stay
 #   pbh_check_key NAME                NAME without a trailing " (...)" group that carries a run-specific value (DECISION[D8])
 #   pbh_results_json NDJSON OUT       writes the pb-evals/1 document OUT from NDJSON: line 1 = the top-level fields (no runs,
 #                                     no summary), every next line = one run (kept in order); adds schema and summary (node)
@@ -72,6 +75,13 @@ pbh_arm_supported() {
 
 pbh_json_str() {
   printf '"%s"' "$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
+pbh_clean_env() {
+  local v
+  for v in $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+  unset ANTHROPIC_BASE_URL
+  return 0
 }
 
 pbh_phys() {

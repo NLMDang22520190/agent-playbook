@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.28.1-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-18961-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.28.2-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-19120-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -184,7 +184,7 @@ The guard reads the command text of one tool call. It does not see through:
 - another shell or evaluator: `bash -c`, `sh -c`, `eval`, `$(...)` and backticks, subshells and brace groups, here-docs fed to a shell;
 - interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
 - git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
-- SQL that reaches a file through a pipe or a copy (`echo ... | tee f`, `echo ... | cat > f`, `cp drop.sql f`) and is then read by a database client;
+- SQL that reaches a database client through a file in a form it does not follow: a non-`.sql` file read from disk (`cp notes.txt f.sql`, `cat notes.txt > f.sql`), a file written by an earlier tool call, `&>` redirects, file names with spaces, client options glued to the file name (`psql --file=f.txt`, `psql -ff.txt`), and long prefix options with a separate value (`sudo --user x cp ...`);
 - tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
 - projects that are not a git repository, where the Stop check has no diff to compare;
@@ -223,7 +223,7 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **18961 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **19120 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
@@ -256,7 +256,7 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  18961 tests, run in sandboxes, never touch the real HOME
+├── tests/                  19120 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E41) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md

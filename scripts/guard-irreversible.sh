@@ -12,6 +12,10 @@
 # DECISION[D3] SQL in a Bash command counts only when it reaches a database client: the client's words, here-strings and
 #   here-docs, what earlier commands of its pipeline or of a ( ) / { } group piped into it print, the .sql files they name, and
 #   any file a > / >> / tee earlier in the same command wrote (as written, any name). A file no client reads is data (R2).
+# DECISION[D-g1..3] a file written earlier in the same command carries the text that flowed into the writer (PLT before it, a
+#   group's text after a ( ) > f) plus the writer's own; cp/mv record DEST (the last non-option operand; an existing directory
+#   -> DEST/<basename>) with each source's written text or .sql disk content; a client operand naming a written file (a < target,
+#   a word piece like ".read f") contributes that text instead of its name, so a keyword in the name is no hit (the .sql disk copy is read).
 # DECISION[D5] every force-push variant is irreversible (--force, -f, lease, if-includes, --mirror, +refspec).
 # DECISION[D16] Stop baseline = the session file, else merge-base with @{upstream}, else HEAD (work tree only).
 # DECISION[D17] headless Stop refuses to finish while the tree holds a schema table/column drop or a contract migration.
@@ -808,14 +812,24 @@ seg() {
   done
   if [ "${#args[@]}" -gt 0 ]; then seg_run "$cw" "${args[@]}"; else seg_run "$cw"; fi
 }
+# wf_text: WTX = the text written, earlier in this command, to the file NP (D-g1); 1 when none was
+wf_text() {
+  local k=0 hit=1
+  WTX=""
+  while [ "$k" -lt "${#WF_P[@]}" ]; do
+    if [ "${WF_P[$k]}" = "$NP" ]; then WTX="$WTX$NL${WF_T[$k]}"; hit=0; fi
+    k=$((k + 1))
+  done
+  return "$hit"
+}
 # seg_sql: adds what the command in SEGW feeds forward (its words, here-strings, here-doc bodies, the .sql files it names as
-# they are on disk, and any file a > or >> (or tee) earlier in this command wrote, as written) to PLT, the text of the pipeline so
-# far (D3), and sets SEGT to it; records the files this command writes (WF_P, WF_T). 0 when the command is a database client and
-# PLT holds destructive SQL.
+# they are on disk, and the text of any file written earlier in this command, in place of its name) to PLT, the text of the
+# pipeline so far (D3), and sets SEGT to it; records the files this command writes (WF_P, WF_T: the text piped in plus its own,
+# D-g1; cp/mv: the sources' text, D-g2). 0 when the command is a database client and PLT holds destructive SQL.
 seg_sql() {
-  local t a b txt="" cl=" " f k rest pc tee=0
-  local -a fl ot rd
-  fl=(); ot=(); rd=()
+  local t a b txt="" cl=" " f k rest pc tee=0 cmd="" cf=0 wa m st d dn bn pf="" tsk=0 ad
+  local -a fl ot co
+  fl=(); ot=(); co=()
   for t in "${SEGW[@]}"; do
     a="${t#?}"
     case "$t" in
@@ -824,37 +838,68 @@ seg_sql() {
       w*)
         case "$a" in *[[:space:]]*) ;; *) b="${a##*/}"; cl="$cl${b%.exe} " ;; esac
         if [ "$tee" = 1 ]; then case "$a" in -*) ;; *) ot[${#ot[@]}]="$a"; continue ;; esac; fi
-        [ "${a##*/}" = tee ] && tee=1 ;;
+        [ "${a##*/}" = tee ] && tee=1
+        if [ "$cf" = 1 ]; then
+          case "$a" in -*) ;; *) co[${#co[@]}]="$a" ;; esac
+        elif [ "$tsk" -gt 0 ]; then tsk=$((tsk - 1))
+        else
+          # the command word: skip the prefixes seg() skips (assignments, sudo, env, ... and their options)
+          ad=0
+          if [ -n "$pf" ]; then
+            case "$pf:$a" in
+              sudo:-[ugpCDhrtTU] | env:-[uCS] | nice:-n | timeout:-[sk] | time:-[fo] | exec:-a) tsk=1; ad=1 ;;
+              *:-* | *:[A-Za-z_]*=*) ad=1 ;;
+              *) [ "$pf" = timeout ] && ad=1; pf="" ;;
+            esac
+          fi
+          if [ "$ad" = 0 ]; then
+            case "$a" in
+              [A-Za-z_]*=*) ;;
+              sudo | env | command | nice | time | nohup | exec | timeout | '{' | '!' | then | do | else | if | while | until | elif) pf="$a" ;;
+              *) cf=1; cmd="${a##*/}" ;;
+            esac
+          fi
+        fi ;;
     esac
-    txt="$txt $a"
-    rd[${#rd[@]}]="$a"
     rest="$a"
     while [[ $rest =~ $RE_SQLF ]]; do
       f="${BASH_REMATCH[1]}"; rest="${rest#*"$f"}"
       fl[${#fl[@]}]="$f"
     done
+    wa="$a"
+    if [ "${#WF_P[@]}" -gt 0 ]; then
+      # each word of an argument (".read cmds.txt") can name a written file; set -f keeps globs literal
+      wa=""; m=0
+      for pc in $a; do
+        norm_path "$pc" "$CWD"
+        if wf_text; then txt="$txt$WTX"; m=1; else wa="$wa $pc"; fi
+      done
+      [ "$m" = 1 ] || wa="$a"
+    fi
+    txt="$txt $wa"
   done
   for f in "${fl[@]+"${fl[@]}"}"; do
     norm_path "$f" "$CWD"
     if [ -f "$NP" ] && [ -r "$NP" ]; then txt="$txt$NL$(cat "$NP" 2>/dev/null)"; fi
   done
-  if [ "${#WF_P[@]}" -gt 0 ]; then
-    for a in "${rd[@]+"${rd[@]}"}"; do
-      # each word of an argument (".read cmds.txt") can name a written file; set -f keeps globs literal
-      for pc in $a; do
-        norm_path "$pc" "$CWD"
-        k=0
-        while [ "$k" -lt "${#WF_P[@]}" ]; do
-          [ "${WF_P[$k]}" = "$NP" ] && txt="$txt$NL${WF_T[$k]}"
-          k=$((k + 1))
-        done
-      done
-    done
-  fi
   for f in "${ot[@]+"${ot[@]}"}"; do
     norm_path "$f" "$CWD"
-    WF_P[${#WF_P[@]}]="$NP"; WF_T[${#WF_T[@]}]="$txt"
+    WF_P[${#WF_P[@]}]="$NP"; WF_T[${#WF_T[@]}]="$PLT$NL$txt"
   done
+  if [ "${#co[@]}" -ge 2 ] && { [ "$cmd" = cp ] || [ "$cmd" = mv ]; }; then
+    d="${co[$((${#co[@]} - 1))]}"
+    for f in "${co[@]:0:$((${#co[@]} - 1))}"; do
+      norm_path "$f" "$CWD"
+      st=""
+      if wf_text; then st="$WTX"; fi
+      if [[ $f =~ $RE_SQLF ]] && [ -f "$NP" ] && [ -r "$NP" ]; then st="$st$NL$(cat "$NP" 2>/dev/null)"; fi
+      norm_path "$d" "$CWD"; dn="$NP"
+      norm_path "$dn/${f##*/}" /; bn="$NP"
+      # DEST may be a directory a mkdir earlier in this command makes: unless it is one now (or ends in /), record DEST too
+      if [ -d "$dn" ] || [ "${d%/}" != "$d" ]; then dn="$bn"; else WF_P[${#WF_P[@]}]="$dn"; WF_T[${#WF_T[@]}]="$st"; fi
+      WF_P[${#WF_P[@]}]="$bn"; WF_T[${#WF_T[@]}]="$st"
+    done
+  fi
   SEGT="$txt"
   PLT="$PLT$NL$txt"
   case "$cl" in
