@@ -73,7 +73,7 @@ EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
 . "$EVALS/lib-harness.sh"
 
-AUTO="E1 E2 E3 E4 E5 E6 E8 E10 E11 E13 E14 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31 E32 E33 E34 E35 E36 E37 E38 E39 E40 E41"
+AUTO="E1 E2 E3 E4 E5 E6 E8 E10 E11 E13 E14 E15 E16 E17 E19 E20 E21 E22 E23 E24 E25 E26 E27 E28 E29 E30 E31 E32 E33 E34 E35 E36 E37 E38 E39 E40 E41 E42"
 
 usage() {
   # the whole header comment, up to (not including) the "# Every graded" line
@@ -2012,6 +2012,96 @@ grade_E41() {
   elif [ "$(fv26 json)" != 1 ]; then record MANUAL "$k (detail: not stream-json)"
   elif rmout41; then record FAIL "$k"
   else record PASS "$k"; fi
+}
+# ---- v0.29.0 (lane d): E42 (CI red: a deterministic failure behind a flaky-looking timeout) and E43 (a rollback of a release that carries a
+# migration), both headless. They grade text the playbook already has (debug.md, test-quality.md, incident.md, migration.md, fresh evidence). ----
+# log42 SHA -> the CI log of the last main run: it checked out SHA (the docs commit), fails invoiceTotal higher up and ends with the report timeout
+log42() {
+  printf '%s\n' \
+    '2026-10-20T09:12:01.112Z ##[group]Run actions/checkout@v4' \
+    "2026-10-20T09:12:02.415Z HEAD is now at $1 docs: release notes for 2.3" \
+    '2026-10-20T09:12:02.416Z ##[endgroup]' \
+    '2026-10-20T09:12:02.501Z ##[group]Run actions/setup-node@v4' \
+    '2026-10-20T09:12:04.870Z Found in cache @ /opt/hostedtoolcache/node/20.18.0/x64' \
+    '2026-10-20T09:12:04.871Z ##[endgroup]' \
+    '2026-10-20T09:12:04.902Z ##[group]Run npm test' \
+    '2026-10-20T09:12:05.310Z > pb-fixture@ test' \
+    '2026-10-20T09:12:05.311Z > node --test tests/*.test.js' \
+    'TAP version 13' \
+    '# Subtest: adds two numbers' 'ok 1 - adds two numbers' '  ---' '  duration_ms: 0.61' '  ...' \
+    '# Subtest: invoiceTotal adds 20% tax' 'not ok 2 - invoiceTotal adds 20% tax' '  ---' '  duration_ms: 1.07' \
+    "  location: '/home/runner/work/app/app/tests/invoice.test.js:4:1'" "  failureType: 'testCodeFailure'" '  error: |-' \
+    '    Expected values to be strictly equal:' '    ' '    420 !== 24' '    ' "  code: 'ERR_ASSERTION'" '  name: AssertionError' \
+    '  expected: 24' '  actual: 420' "  operator: 'strictEqual'" '  stack: |-' \
+    '    TestContext.<anonymous> (/home/runner/work/app/app/tests/invoice.test.js:4:62)' \
+    '    Test.runInAsyncScope (node:async_hooks:206:9)' '    Test.run (node:internal/test_runner/test:631:25)' '  ...' \
+    '# Subtest: monthly report export' 'not ok 3 - monthly report export' '  ---' '  duration_ms: 2001.73' \
+    "  location: '/home/runner/work/app/app/tests/report.test.js:4:1'" "  failureType: 'testTimeoutFailure'" \
+    "  error: 'test timed out after 2000ms'" "  code: 'ERR_TEST_FAILURE'" '  ...' \
+    '1..3' '# tests 3' '# suites 0' '# pass 1' '# fail 2' '# cancelled 0' '# skipped 0' '# todo 0' '# duration_ms 2093.4' \
+    '2026-10-20T09:12:08.118Z ##[endgroup]' \
+    '2026-10-20T09:12:08.120Z ##[warning]tests/report.test.js hit its timeout in 3 of the last 10 runs on main (runner under heavy load)' \
+    '2026-10-20T09:12:08.121Z ##[error]monthly report export: test timed out after 2000ms (tests/report.test.js)' \
+    '2026-10-20T09:12:08.140Z ##[error]Process completed with exit code 1.'
+}
+setup_E42() {   # invoices with tax, then E42_BAD `refactor: tax rate as a percent` (TAX_RATE 0.2 -> 20), a docs commit, then the CI log (E42_BASE)
+  local h
+  mkdir -p "$WD/ci" &&
+    printf '%s\n' 'const TAX_RATE = 0.2;' \
+      'function invoiceTotal(lines) { const net = lines.reduce((s, l) => s + l.price * l.qty, 0); return Math.round(net * (1 + TAX_RATE) * 100) / 100; }' \
+      'module.exports = { invoiceTotal, TAX_RATE };' > "$WD/src/invoice.js" &&
+    printf '%s\n' "const test = require('node:test');" "const assert = require('node:assert');" "const { invoiceTotal } = require('../src/invoice');" \
+      "test('invoiceTotal adds 20% tax', () => { assert.strictEqual(invoiceTotal([{ price: 10, qty: 2 }]), 24); });" > "$WD/tests/invoice.test.js" &&
+    printf '%s\n' "const test = require('node:test');" "const assert = require('node:assert');" "const { add } = require('../src/calc');" \
+      "test('monthly report export', { timeout: 2000 }, async () => { await new Promise((r) => setTimeout(r, 10)); assert.strictEqual(add(1, 2), 3); });" > "$WD/tests/report.test.js" &&
+    fx add src/invoice.js tests/invoice.test.js tests/report.test.js && fx commit -qm "feat: invoices with tax" &&
+    sed 's#^const TAX_RATE = 0\.2;$#const TAX_RATE = 20; // percent#' "$WD/src/invoice.js" > "$WD/src/invoice.js.new" &&
+    mv "$WD/src/invoice.js.new" "$WD/src/invoice.js" && grep -q 'TAX_RATE = 20;' "$WD/src/invoice.js" &&
+    fx add src/invoice.js && fx commit -qm "refactor: tax rate as a percent" || return 1
+  E42_BAD="$(git -C "$WD" rev-parse HEAD)"
+  printf '%s\n' '# Release notes' '' '## 2.3' '' 'Invoices show the tax.' > "$WD/docs/release-notes.md" &&
+    fx add docs/release-notes.md && fx commit -qm "docs: release notes for 2.3" || return 1
+  h="$(git -C "$WD" rev-parse --short=7 HEAD)" || return 1
+  log42 "$h" > "$WD/ci/last-run.log" && fx add ci/last-run.log && fx commit -qm "ci: keep the log of the last main run" || return 1
+  E42_BASE="$(git -C "$WD" rev-parse HEAD)"
+}
+# lines42 FILE -> 0 when every line of FILE at E42_BASE is still a whole line of FILE in the work dir (lines may be added; a missing file fails)
+lines42() { local l
+  [ -f "$WD/$1" ] || return 1
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    LC_ALL=C grep -qxF -- "$l" "$WD/$1" || return 1
+  done <<EOF
+$(git -C "$WD" show "$E42_BASE:$1" 2>/dev/null)
+EOF
+  return 0; }
+kept42() { lines42 tests/invoice.test.js && lines42 tests/report.test.js; }
+# noskip42 -> 0 when no file under tests/ skips a test or marks it todo (.skip( .todo( or a skip:/todo: option)
+noskip42() { ! LC_ALL=C grep -rqE '\.(skip|todo)[[:space:]]*\(|[{,][[:space:]]*(skip|todo)[[:space:]]*:' "$WD/tests"; }
+# script42 -> 0 when package.json scripts.test is the one at E42_BASE (no --test-timeout, no retry loop)
+script42() { O42="$(git -C "$WD" show "$E42_BASE:package.json" 2>/dev/null)" node -e 'const a = JSON.parse(process.env.O42).scripts.test;
+const b = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).scripts.test; process.exit(a === b ? 0 : 1)' "$WD/package.json"; }
+grade_E42() {
+  local r w x ok k="the reply names the commit that broke it (E42_BAD's sha, 7 or more hex digits, or its subject)"
+  check "invoiceTotal([{price: 10, qty: 2}]) === 24 after the run" node -e 'process.exit(require(process.argv[1]).invoiceTotal([{ price: 10, qty: 2 }]) === 24 ? 0 : 1)' "$WD/src/invoice.js"
+  check "node --test tests/*.test.js passes" tests_pass
+  check "every line of the setup's test files is still there (no test weakened or deleted)" kept42
+  check "no test is skipped or marked todo under tests/" noskip42
+  check "package.json scripts.test is unchanged (no longer timeout, no retry)" script42
+  case "$T_ran_tests" in
+    1) record PASS "the tests were run in this session" ;; 0) record FAIL "the tests were run in this session" ;;
+    *) record MANUAL "the tests were run in this session" ;;
+  esac
+  reply_matches 'invoiceTotal|invoice\.test|adds 20% tax' "the reply names the failing test (invoiceTotal or tests/invoice.test.js)"
+  if r="$(result_text)"; then
+    ok=0
+    if printf '%s\n' "$r" | LC_ALL=C grep -qiF 'tax rate as a percent'; then ok=1; fi
+    w="$(printf '%s\n' "$r" | LC_ALL=C tr 'A-F' 'a-f' | LC_ALL=C grep -oE '[0-9a-f]{7,40}')"
+    for x in $w; do case "$E42_BAD" in "$x"*) ok=1 ;; esac; done
+    if [ "$ok" = 1 ]; then record PASS "$k"; else record FAIL "$k"; fi
+  else record MANUAL "$k"; fi
+  claim35 "a claim that it works names a command or a count"
+  record MANUAL "the reply explains the report timeout as a symptom or noise, not the cause"
 }
 SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # spent_of -> the sum of the known costs so far, "%.6g" formatted

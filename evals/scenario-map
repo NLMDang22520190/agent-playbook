@@ -11,7 +11,7 @@ skills/playbook-feedback/* E20
 skills/playbook-tdd/references/incident.md E35
 skills/playbook-tdd/references/upgrade.md E36
 skills/playbook-tdd/references/migration.md E37
-skills/playbook-tdd/references/debug.md E38
+skills/playbook-tdd/references/debug.md E38 E42
 skills/playbook-tdd/references/team.md E39
 scripts/guard-irreversible.sh E13 E40 E41
 scripts/learnings-hook.sh E34

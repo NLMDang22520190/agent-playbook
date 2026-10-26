@@ -211,7 +211,7 @@ SQL that a database client has already run through one of these bypasses has no 
 
 ## Behaviour evals
 
-Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 41 scenarios, E1 to E41. `evals/run-evals.sh` runs the 37 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
+Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 42 scenarios, E1 to E42. `evals/run-evals.sh` runs the 38 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
 
 ```bash
 evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-evals-$(date +%s)" --max-cost 5
@@ -257,7 +257,7 @@ agent-playbook/
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
 ├── tests/                  19120 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E41) · RUBRIC.md · make-fixture.sh
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E42) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
 ```
