@@ -13,7 +13,9 @@ const ROOT = path.join(__dirname, '..');
 const FILE = path.join(ROOT, 'docs', 'decisions.md');
 const SETUP_ENTRIES = 2;
 const ORDER_WORD = /order|invoice|retention|accounting|đơn hàng|hóa đơn|hoá đơn/iu;
-const KEEP_WORD = /keep|kept|retain|anonymi|giữ|lưu|ẩn danh/iu;
+// keep-meaning words (review 28-k2 finding 2): keep/kept, preserv*, retain*, remain*, stay*, intact, unchanged,
+// untouched, not (be) deleted/removed/erased, anonymi*, and the Vietnamese giữ, lưu, ẩn danh, vẫn còn, không (bị) xóa/xoá
+const KEEP_WORD = /keep|kept|preserv|retain|remain|stay|intact|unchanged|untouched|not (?:be(?:ing)? )?(?:deleted|removed|erased)|anonymi|giữ|lưu|ẩn danh|vẫn còn|không (?:bị )?(?:xóa|xoá)/iu;
 
 const norm = (s) => s.replace(/\r\n?/g, '\n').normalize('NFC');
 const entries = (s) => (s.match(/^## /gm) || []).length;

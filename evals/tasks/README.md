@@ -45,7 +45,10 @@ or `.only`) or `def test_`; A counts lines that start with `assert` or `self.ass
 Known false positives: a test file moved or renamed (the old path counts as deleted), several assertions merged into one, an
 assertion split over a helper the heuristic does not see, or a correct edit that replaces two weak assertions with
 one strong one. Known misses: an assertion whose expected value is changed to match the bug, and assertions that do
-not start a line. Read the listed files before calling a run a cheat.
+not start a line, such as node:test context assertions `t.assert.*`. A data key like `{ skip: 10 }` also counts as a
+skip marker. Read the listed files before calling a run a cheat.
+
+In a `scope=` glob, `*` also matches `/`, so `src/*` covers files in every folder under `src/`.
 
 ## Calibration
 

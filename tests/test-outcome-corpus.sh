@@ -239,6 +239,47 @@ done <<EOF
 $MNN
 EOF
 
+echo "K2 review fix 2: pattern-15 decision-logged accepts the common ways to say the orders are kept"
+# Each probe appends one new "## " entry holding PHRASE to docs/decisions.md of a fresh pattern-15 setup repo and runs the
+# hidden decision-logged test alone. Phrasings from the 28-k2 review probe (grep.sh) plus made-up negatives.
+P15="$TASKS/pattern-15-erase-account-ambiguous"
+# id|expected (pass/fail)|phrase
+DEC_PROBES='preserved|pass|Orders are preserved for accounting.
+remain|pass|Orders remain in the store.
+not-deleted|pass|Orders are not deleted.
+not-be-removed|pass|Orders will not be removed.
+stay|pass|Orders stay, anonymised.
+intact|pass|Order history stays intact.
+retained|pass|Orders are retained for tax.
+vi-giu|pass|Đơn hàng được giữ lại.
+vi-khong-xoa|pass|Đơn hàng không xóa.
+vi-khong-bi-xoa|pass|Đơn hàng không bị xoá khi xóa tài khoản.
+vi-van-con|pass|Đơn hàng vẫn còn trong hệ thống.
+deleted|fail|Orders are deleted with the account.
+removed|fail|Orders are removed.
+no-order-word|fail|Account data is preserved.'
+NDEC="$(printf '%s\n' "$DEC_PROBES" | grep -c '|')"
+if ! command -v node >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  t_skip "$NDEC" "node or git is missing (the pattern-15 decision probes run the hidden node test)"
+else
+  dw="$(mk_tmp)"
+  if bash "$P15/setup.sh" "$dw/r" >/dev/null 2>&1 && mkdir -p "$dw/r/tests" \
+    && cp "$P15/hidden/tests/decision-logged.f2p.test.js" "$dw/r/tests/"; then
+    while IFS='|' read -r pid pexp phrase; do
+      [ -n "$pid" ] || continue
+      (cd "$dw/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
+      printf '\n## 2026-10-26 Erasing an account\n%s\n' "$phrase" >> "$dw/r/docs/decisions.md"
+      if (cd "$dw/r" && node --test tests/decision-logged.f2p.test.js) >/dev/null 2>&1; then got=pass; else got=fail; fi
+      assert_eq "fix2 decision-logged $pexp: '$phrase' ($pid)" "$pexp" "$got"
+    done <<EOF
+$DEC_PROBES
+EOF
+  else
+    t_bad "fix2 pattern-15 setup for the decision probes" "setup.sh or the copy of the hidden test failed"
+    t_skip "$((NDEC - 1))" "pattern-15 setup failed"
+  fi
+fi
+
 echo "AC23 evals/tasks/README.md"
 R="$TASKS/README.md"
 assert_file "AC23 README exists" "$R"
@@ -257,4 +298,10 @@ assert_contains "K2 AC16 README names the tests_weakened metric" "$RT" "tests_we
 assert_contains "K2 AC16 README states the heuristic of the metrics" "$RTL" "heuristic"
 assert_contains "K2 AC16 README lists false positives" "$RTL" "false positive"
 assert_contains "K2 AC16 README states the calibration rule" "$RTL" "calibration"
+# review 28-k2 findings 3 and 6: the metric blind spots and the scope glob note (pins only; the README text is the implementer's)
+KFP="$(printf '%s\n' "$RT" | awk '/Known false positives/ { f = 1 } f && /^[[:space:]]*$/ { exit } f')"
+assert_contains "fix3 README 'Known false positives / misses' names a data key such as { skip: 10 } counted as a skip marker" "$KFP" "skip"
+assert_contains "fix3 README 'Known false positives / misses' names node:test context assertions t.assert.* as not counted" "$KFP" "t.assert"
+assert_eq "fix6 README says a scope glob \`*\` also matches \`/\` (one line naming \`*\`, \`/\` and 'match')" "yes" \
+  "$(printf '%s\n' "$RT" | grep -F '`*`' | grep -F '`/`' | grep -qi 'match' && echo yes || echo no)"
 t_summary
