@@ -91,7 +91,7 @@ has "AC4 Phase 4: the final report is the hand-off report 06-final-report.md" "$
 has "AC4 Phase 4: Pre-mortem, Models used and the feedback line belong to the hand-off report only" "$P4" 'Pre-mortem[^.]{0,80}Models used[^.]{0,80}Playbook feedback line[^.]{0,60}this report only'
 has "AC4 Phase 4: they are not PR description parts" "$P4" 'not (to|in|part of) the PR description'
 L5="$(awk '/^### Lite workflow/ { f = 1; next } f && /^###? / { exit } f { print }' "$TSK" | tr '\n' ' ' | tr -s ' ')"
-has "AC4 Lite step 5: the final report is the hand-off report" "$L5" '5\. Final report \(`06-final-report\.md`, the hand-off report\)'
+has "AC4 Lite step 5: the final report is the hand-off report (the step still starts 5. Final report with)" "$L5" 'hand-off report `06-final-report\.md`'
 has "AC4 the template says which parts stay in the hand-off report" "$(flat "$FIN")" 'hand-off report[^>]{0,200}Pre-mortem[^>]{0,120}Playbook feedback[^>]{0,200}pr-body\.sh'
 echo "S3 AC4 pr-body.sh keeps Weight and Not checked and leaves the Pre-mortem and the feedback line out (characterization)"
 H="$(mk_tmp)"
