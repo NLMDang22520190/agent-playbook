@@ -307,14 +307,21 @@ fi
 
 echo "v0.29.0 lane t: pattern-23 age-decision-logged accepts the common ways to write an age limit for the uploads"
 # Each probe appends one new "## " entry holding PHRASE to docs/decisions.md of a fresh pattern-23 setup repo and runs the
-# hidden age-decision-logged test alone (made-up phrasings, positive and negative). The heading names no file or age, so
-# the phrase alone decides (the heading shares the phrase's paragraph).
+# hidden age-decision-logged test alone (made-up phrasings, positive and negative). The heading carries only a date (the
+# check must ignore dates) and a neutral title, so the phrase decides; \n in a phrase is a line break (review fix 1:
+# the check is per "## " entry, so the age and the file word may sit in different paragraphs; review fix 2: any age).
 P23="$TASKS/pattern-23-purge-uploads-ambiguous"
 # id|expected (pass/fail)|phrase
 AGE_PROBES='days|pass|Uploads older than 180 days that no order uses are deleted.
 one-year|pass|Unused files older than one year are removed.
 hyphen|pass|A 6-month limit applies to uploads.
 a-year|pass|An upload is old after a year.
+thirty-days|pass|Uploads older than thirty days are removed.
+four-weeks|pass|Unused uploads go after four weeks.
+five-years|pass|Uploads are kept five years, then deleted.
+const|pass|Uploads past MAX_AGE_DAYS (180) are deleted.
+split|pass|Decision: the age limit is 180 days.\n\nOnly uploads no order uses are deleted.
+date-only|fail|Old uploads are deleted (decided 2026-10-26).
 vi-ngay|pass|Tệp upload cũ hơn 90 ngày sẽ bị xóa.
 no-age|fail|Old uploads are deleted.
 no-file-word|fail|Older than 180 days are deleted.
@@ -329,7 +336,7 @@ else
     while IFS='|' read -r pid pexp phrase; do
       [ -n "$pid" ] || continue
       (cd "$aw/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
-      printf '\n## 2026-10-26 Clean-up\n%s\n' "$phrase" >> "$aw/r/docs/decisions.md"
+      printf '\n## 2026-10-26 Clean-up\n%b\n' "$phrase" >> "$aw/r/docs/decisions.md"
       if (cd "$aw/r" && node --test tests/age-decision-logged.f2p.test.js) >/dev/null 2>&1; then got=pass; else got=fail; fi
       assert_eq "lane t age-decision-logged $pexp: '$phrase' ($pid)" "$pexp" "$got"
     done <<EOF

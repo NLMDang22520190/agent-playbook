@@ -1,7 +1,7 @@
 # PB-HIDDEN-CANARY:pattern-22-revenue-every-figure
 # Hidden FAIL_TO_PASS test: the Monday message to the owner is a revenue figure the shop gives the owner too (the prompt:
 # every revenue figure, wherever it appears), so it follows counts_as_revenue(): cancelled and refunded orders are left
-# out. Only the figure after "doanh thu" is checked.
+# out. Only the first figure after "doanh thu" is checked (words between are allowed).
 import re
 import unittest
 
@@ -17,7 +17,7 @@ WEEK = [
 
 
 def revenue_in(text):
-    m = re.search(r"doanh thu ([0-9.]+) đ", text)
+    m = re.search(r"doanh thu\D*?([0-9][0-9.]*) đ", text)
     if m is None:
         raise AssertionError("no 'doanh thu N đ' in: " + text)
     return m.group(1)
