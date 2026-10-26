@@ -147,3 +147,6 @@ test-update-signed.sh 49
 test-learnings-hook.sh 15
 test-evals-hooks.sh 150
 test-evals-grade15.sh 420
+# v0.28.0 lane k1b estimates until a CI run measures them (L-0009): test-claude-hooks.sh 40, test-install-hooks.sh 60.
+test-claude-hooks.sh 40
+test-install-hooks.sh 60

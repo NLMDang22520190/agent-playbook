@@ -420,6 +420,7 @@ cmd_uninstall() {
   resolve_harness
   confirm
   say "uninstalling agent-playbook from $H (harness: $HARNESS)"
+  if want claude; then uninstall_hooks; fi
   while IFS= read -r d; do
     for s in $SKILLS; do
       case "$(skill_state "$d/$s" "$REPO/skills/$s")" in
@@ -444,6 +445,43 @@ cmd_uninstall() {
   fi
   registry_drop "$H" "$HARNESS"
   say "done. Your settings (~/.agents/playbook.conf) and backups (~/.agents/playbook-backups) were kept."
+}
+
+# uninstall_hooks: remove our Claude Code hook handlers from $H/.claude/settings.json before the scripts go away.
+# DECISION[D24]: install.ps1 delegates uninstall to this script, so Windows uninstalls reach this too. Without node the
+# file is left as it is and a WARN names the manual step (DECISION[D12]).
+uninstall_hooks() {
+  local s="$H/.claude/settings.json" flags=""
+  if [ ! -f "$s" ] || ! grep -qF '# agent-playbook:' "$s"; then return 0; fi
+  [ "$DRY" -eq 1 ] && flags="--dry-run"
+  # shellcheck disable=SC2086
+  bash "$REPO/scripts/claude-hooks.sh" uninstall --home "$H" $flags >/dev/null && { say "  -  agent-playbook hooks in $s"; return 0; }
+  warn "hooks: the agent-playbook hooks in $s were not removed (the merge needs node). Remove by hand every handler whose command contains '# agent-playbook:'"
+}
+
+# doctor_hooks: one line on the opt-in Claude Code hooks, from claude-hooks.sh status (grep only)
+doctor_hooks() {
+  local out ok="" broken="" dis=0 n st
+  out="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null)"
+  for n in guard guard-start guard-stop learnings; do
+    st="$(printf '%s\n' "$out" | sed -n "s/^$n: //p")"
+    case "$st" in
+      installed) ok="$ok${ok:+, }$n" ;;
+      broken*) broken="$broken${broken:+, }$n" ;;
+    esac
+  done
+  printf '%s\n' "$out" | grep -qF 'disabled (disableAllHooks)' && dis=1
+  if [ -n "$broken" ]; then
+    problem "hooks: $broken point at a missing script (run scripts/claude-hooks.sh install or uninstall)"
+  elif [ -z "$ok" ]; then
+    say 'INFO  hooks: not installed (opt-in: say "set up the playbook")'
+  elif [ "$dis" -eq 1 ]; then
+    say "INFO  hooks: installed but disabled (disableAllHooks)"
+  elif [ "$ok" = "guard, guard-start, guard-stop, learnings" ]; then
+    say "OK    hooks: guard, learnings installed"
+  else
+    say "INFO  hooks: partly installed ($ok)"
+  fi
 }
 
 anything_installed() {
@@ -528,6 +566,7 @@ cmd_doctor() {
   if want codex && [ -s "$H/.codex/AGENTS.override.md" ]; then
     problem "$H/.codex/AGENTS.override.md is non-empty and shadows AGENTS.md (Codex reads the override instead)"
   fi
+  if want claude; then doctor_hooks; fi
   if [ -f "$H/.agents/playbook.conf" ]; then say "OK    $H/.agents/playbook.conf exists"
   else say "INFO  no $H/.agents/playbook.conf yet: the first agent session will run playbook-setup"; fi
   if [ "$PROBLEMS" -eq 0 ]; then say "doctor: healthy"; else say "doctor: $PROBLEMS problem(s)"; exit 1; fi
