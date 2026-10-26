@@ -77,8 +77,7 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full; exit 3: fix named file, run again.
-4. Fresh run of test, lint and typecheck with `proof-run.sh`; one mutation spot-check on the new
-   logic is recommended. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
+4. Fresh run of test, lint and typecheck with `proof-run.sh`. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
    real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
    command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, cannot tell which is right).
