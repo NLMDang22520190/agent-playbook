@@ -85,4 +85,38 @@ echo "S4 AC4.1 the default mode (no --arm) has no isolation check"
 go --cmd "bash $A/isot.sh" --scenarios E8
 assert_eq "AC4.1 default mode: no isolation check line" "0" "$(printf '%s\n' "$OUT" | grep -cF "$ISO")"
 
+echo "H5 (v0.28.0) pbh_iso_check reads Windows backslash paths of real transcripts (Run 25b/28 wording, user name anonymised)"
+. "$PB_ROOT/evals/lib-harness.sh"
+H5D="$(mk_tmp)"
+# h5 LABEL EXPECT HOME OK1 TOOL INPUT-JSON: a one-line transcript with one tool_use, checked with the names playbook-tdd playbook-proof
+h5() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"%s","input":%s}]}}\n' "$5" "$6" > "$H5D/log"
+  assert_eq "$1" "$2" "$(pbh_iso_check "$H5D/log" "$3" "$4" "" "" playbook-tdd playbook-proof)"; }
+HP='/c/Users/tester'; HW='C:/Users/tester'; WDP='/c/Users/tester/pbeval/r28/E/E4.without.1'
+h5 "H5 Read C:\\Users\\tester\\.claude\\skills\\playbook-tdd\\roles\\tester.md (HOME /c/Users/tester): FAIL" FAIL "$HP" "$WDP" Read \
+  '{"file_path":"C:\\Users\\tester\\.claude\\skills\\playbook-tdd\\roles\\tester.md"}'
+h5 "H5 Read C:\\Users\\tester\\.agents\\playbook\\scripts\\proof-run.sh (HOME /c/Users/tester): FAIL" FAIL "$HP" "$WDP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents\\playbook\\scripts\\proof-run.sh"}'
+h5 "H5 Bash cat C:\\Users\\tester\\.agents\\playbook.conf (HOME C:/Users/tester): FAIL" FAIL "$HW" "$WDP" Bash \
+  '{"command":"cat C:\\Users\\tester\\.agents\\playbook.conf"}'
+h5 "H5 Read with a lower-case drive c:\\Users\\tester\\.agents\\x.md (HOME /c/Users/tester): FAIL" FAIL "$HP" "$WDP" Read \
+  '{"file_path":"c:\\Users\\tester\\.agents\\x.md"}'
+h5 "H5 Read D:\\team\\playbook-proof\\SKILL.md (a playbook skill name): FAIL" FAIL "$HP" "$WDP" Read \
+  '{"file_path":"D:\\team\\playbook-proof\\SKILL.md"}'
+h5 "H5 control: the workdir's own .agents in backslash form (Run 28 E4.without.1): PASS" PASS "$HP" "$WDP" Read \
+  '{"file_path":"C:\\Users\\tester\\pbeval\\r28\\E\\E4.without.1\\.agents\\handoff\\01-spec.md"}'
+h5 "H5 control: the workdir's own .agents in mixed form (Run 28 E4.without.2 style): PASS" PASS "$HP" "$WDP" Read \
+  '{"file_path":"C:\\Users\\tester\\pbeval\\r28\\E\\E4.without.1\\.agents/handoff/01-spec.md"}'
+# OK-path form normalisation, kept apart from .claude/skills/playbook-* (that pattern is HOME-independent, case 14): an OK path
+# that lies under HOME/.agents covers its own subtree in any drive form, and a sibling under HOME/.agents still FAILs
+WTP='/c/Users/tester/.agents/wt'
+h5 "H5 control: the OK path /c/Users/tester/.agents/wt read as C:\\Users\\tester\\.agents\\wt\\src\\a.js: PASS" PASS "$HP" "$WTP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents\\wt\\src\\a.js"}'
+h5 "H5 control: OK path given as C:/Users/tester/.agents/wt, read as c:\\Users\\tester\\.agents\\wt\\src\\a.js: PASS" PASS "$HP" "C:/Users/tester/.agents/wt" Read \
+  '{"file_path":"c:\\Users\\tester\\.agents\\wt\\src\\a.js"}'
+h5 "H5 sibling of that OK path: C:\\Users\\tester\\.agents\\playbook\\x (OK1 /c/Users/tester/.agents/wt): FAIL" FAIL "$HP" "$WTP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents\\playbook\\x"}'
+h5 "H5 control: C:\\Users\\tester\\.agents-old\\x.md is not .agents: PASS" PASS "$HP" "$WDP" Read \
+  '{"file_path":"C:\\Users\\tester\\.agents-old\\x.md"}'
+
 t_summary

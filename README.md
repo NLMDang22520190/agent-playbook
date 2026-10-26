@@ -189,7 +189,7 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 | Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
-| Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 23 on v0.25.0 (2026-10-25): E30 6/6 auto checks in two runs, E1 6/6, E29 6/6, 1.51 USD in total. Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 24](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 28 on v0.27.0 (2026-10-26): with vs without, 13 scenarios, 44 runs, 6.07 USD; the kept rules hold their deltas (E29, E21, E3, E4). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 ## Alongside Superpowers or other skill packs
 

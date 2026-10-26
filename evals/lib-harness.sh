@@ -213,19 +213,26 @@ fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
 # .claude/skills/playbook-*, <NAME>/SKILL.md or HOME/.claude/CLAUDE.md. The OK paths (the workdir, the temp PLAYBOOK_HOME, the runner's
 # settings dir) are not playbook files (AC4.2); empty ones are ignored.
 # HOME and the allowed dirs also come on stdin, one per line: Git Bash converts a /tmp/... or /c/... argument to C:/... (argv and environment
-# only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI)
+# only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI). A native Windows transcript
+# writes C:\\Users\\...: backslashes count as slashes, and /c/x, C:/x and c:/x are the same path (v0.28.0 H5)
 pbh_iso_check() {
   printf '%s\n' "${2:-}" "${3:-}" "${4:-}" "${5:-}" | node -e '
 const fs = require("fs"), a = process.argv.slice(1);
 let raw = ""; try { raw = fs.readFileSync(0, "utf8"); } catch (e) {}
-const sl = raw.split("\n"), homes = [...new Set([a[1], sl[0]].filter(Boolean))];
-const ok = [...new Set(a.slice(2, 5).concat(sl.slice(1, 4)).filter(Boolean))], names = a.slice(5);
+const fwd = s => s.replace(/\\/g, "/");
+const forms = p => { p = fwd(p); let m = /^\/([A-Za-z])(\/.*)?$/.exec(p); const r = [p];
+  if (!m) { m = /^([A-Za-z]):(\/.*)?$/.exec(p); if (m) r.push("/" + m[1].toLowerCase() + (m[2] || "")); }
+  if (m) r.push(m[1].toUpperCase() + ":" + (m[2] || "/"), m[1].toLowerCase() + ":" + (m[2] || "/"));
+  return r; };
+const all = l => [...new Set([].concat(...l.filter(Boolean).map(forms)))];
+const sl = raw.split("\n"), homes = all([a[1], sl[0]]);
+const ok = all(a.slice(2, 5).concat(sl.slice(1, 4))), names = a.slice(5);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const H = "(?:~|\\$HOME|\\$\\{HOME\\}" + homes.map(h => "|" + esc(h)).join("") + ")";
 const pats = [new RegExp(H + "/\\.agents(?=$|[/\\s\"\\x27;|&)`])"), /\.claude\/skills\/playbook-/, new RegExp(H + "/\\.claude/CLAUDE\\.md")];
 if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc).join("|") + ")/SKILL\\.md"));
 const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
-const bad = s => { if (typeof s !== "string") return false; for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
+const bad = s => { if (typeof s !== "string") return false; s = fwd(s); for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
 let fail = false;
 for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
   let o; try { o = JSON.parse(line); } catch (e) { continue; }
