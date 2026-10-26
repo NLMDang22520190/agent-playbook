@@ -140,3 +140,8 @@ test-evals-json.sh 80
 test-eval-delta.sh 80
 test-evals-keys.sh 350
 test-update-signed.sh 45
+test-guard-pre.sh 60
+test-guard-git.sh 70
+test-guard-stop.sh 110
+test-guard-replay.sh 45
+test-guard-misc.sh 50
