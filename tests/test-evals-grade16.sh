@@ -69,7 +69,7 @@ if line_has E42 MANUAL 'timeout'; then t_ok "AC2 E42 the timeout explained as a 
 
 echo "AC2 E42 a revert of the bad commit, named by its subject, is a code fix too; a test added to the setup's file keeps its lines"
 hr E42 revert plain "$PRE5
-B=\$(git log --format=%H -n 1 --grep='tax rate as a percent'); $GC revert -q --no-edit \"\$B\"
+B=\$(git log --format=%H -n 1 --grep='tax rate as a percent'); $GC revert --no-edit \"\$B\" >/dev/null
 printf '%s\n' \"test('invoiceTotal of nothing is 0', () => { assert.strictEqual(invoiceTotal([]), 0); });\" >> tests/invoice.test.js
 JTU 'npm test'
 JRES 'Reverted refactor: tax rate as a percent; invoiceTotal is fixed. npm test: 4 passed.'"
