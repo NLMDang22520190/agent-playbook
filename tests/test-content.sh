@@ -2217,4 +2217,36 @@ lite_has "v0.28.1 p Lite step 2: input classes include a leading dash" 2 'input 
 sec_flat_has "v0.28.1 p tester.md Do: any/every input means each input class" "$TESTER" '^## Do' 'any/every input[^.]{0,60}each input class'
 sec_flat_has "v0.28.1 p tester.md Do: not only the reported example" "$TESTER" '^## Do' 'input class[^.]{0,80}not only the reported example'
 
+
+# ---- v0.29.0 lane w, slice T: trust docs (AC-T7, AC-T8, spec Revision 2 F1 and F3) ----
+echo "v0.29.0 lane w T AC-T8: README hooks table row for learnings-hook.sh"
+TW_ROW="$(grep -E '^\|.*`learnings-hook\.sh`' "$README" | head -n 1)"
+if [ -n "$TW_ROW" ]; then t_ok "v0.29.0 T AC-T8 the README hooks table has a row for learnings-hook.sh"; else t_bad "v0.29.0 T AC-T8 the README hooks table has a row for learnings-hook.sh" "no table row naming learnings-hook.sh"; fi
+qchk "v0.29.0 T AC-T8 the row says it injects only for trusted projects" "$TW_ROW" 'trusted'
+qchk "v0.29.0 T AC-T8 the row names learn.sh trust" "$TW_ROW" 'learn\.sh trust'
+qchk "v0.29.0 T AC-T8 the row names learnings_hook_trust=all" "$TW_ROW" 'learnings_hook_trust=all'
+qchk "v0.29.0 T AC-T8 the row says the key is read from the global conf" "$TW_ROW" 'global'
+
+echo "v0.29.0 lane w T AC-T7 + F1: playbook-setup offers once to trust the current project, within the word budget"
+TW_S4="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /^5\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+qchk "v0.29.0 T AC-T7 step 4 (the hooks line) names learn.sh trust" "$TW_S4" 'learn\.sh trust'
+qchk "v0.29.0 T AC-T7 step 4 offers it for the current project" "$TW_S4" 'trust.{0,200}(current|this) project|(current|this) project.{0,200}trust'
+qchk "v0.29.0 T AC-T7 step 4: the trust offer is made once" "$TW_S4" 'trust.{0,200}once|once.{0,200}learn\.sh trust'
+qchk "v0.29.0 T AC-T7 step 4: the trust offer defaults to no" "$TW_S4" 'default no.{0,250}learn\.sh trust|learn\.sh trust.{0,250}default no'
+qchk "v0.29.0 T AC-T7 step 4: never trusts in a non-interactive run" "$TW_S4" 'never.{0,100}trust'
+TW_SW="$(wc -w < "$SETUP" | tr -d ' ')"
+if grep -q 'learn\.sh trust' "$SETUP" && [ "$TW_SW" -le 1100 ]; then t_ok "v0.29.0 T F1 playbook-setup mentions learn.sh trust and stays at most 1100 words ($TW_SW)"; else t_bad "v0.29.0 T F1 playbook-setup mentions learn.sh trust and stays at most 1100 words" "$TW_SW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$SETUP")"; fi
+
+echo "v0.29.0 lane w T F1: playbook-learn says the user trusts a project and an agent never runs learn.sh trust itself"
+flat_has "v0.29.0 T F1 playbook-learn names learn.sh trust" "$LEARNSK" 'learn\.sh trust'
+flat_has "v0.29.0 T F1 playbook-learn says the user runs it" "$LEARNSK" 'user.{0,200}learn\.sh trust|learn\.sh trust.{0,200}user'
+flat_has "v0.29.0 T F1 playbook-learn says an agent never runs it itself" "$LEARNSK" 'never.{0,160}learn\.sh trust|learn\.sh trust.{0,160}never|(agent|you)[^.]{0,60}never[^.]{0,80}(trust|run)'
+TW_LW="$(wc -w < "$LEARNSK" | tr -d ' ')"
+if grep -q 'learn\.sh trust' "$LEARNSK" && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words ($TW_LW)"; else t_bad "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words" "$TW_LW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$LEARNSK")"; fi
+
+echo "v0.29.0 lane w T F3: README Limits name the AGENTS.global text rule and agent self-trust"
+qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,300}LEARNINGS\.md|LEARNINGS\.md.{0,300}AGENTS\.global\.md'
+qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,300}(trust|inject)|(trust|inject).{0,300}text rule'
+qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,300}(agent|itself|own)|(agent|itself).{0,300}learn\.sh trust'
+
 t_summary

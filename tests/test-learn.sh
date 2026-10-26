@@ -191,4 +191,225 @@ run bash "$LEARN" checklist
 assert_rc "AC5.3 a missing ROLE exits 2" 2
 run bash "$LEARN" checklist Tester
 assert_rc "AC5.3 ROLE is case-sensitive (Tester exits 2)" 2
+# ---- v0.29.0 lane w, slice T: learn.sh trust | untrust | trusted (AC-T1, AC-T4, AC-T5) ----
+# The cases above are untouched. Every case below starts from a fresh PLAYBOOK_HOME (the trust file lives in it).
+fresh_home() { PLAYBOOK_HOME="$(mk_tmp)"; export PLAYBOOK_HOME; TF="$PLAYBOOK_HOME/.agents/trusted-projects"; }
+# ents -> the entries of the trust file, comments and blank lines left out
+ents() { grep -v '^[[:space:]]*#' "$TF" 2>/dev/null | grep -v '^[[:space:]]*$'; return 0; }
+n_ents() { ents | wc -l | tr -d ' '; }
+write_tf() { mkdir -p "$PLAYBOOK_HOME/.agents"; printf '%s\n' "$@" > "$TF"; }
+TRD="$(mk_tmp)"; TR="$TRD/trproj"; mkdir -p "$TR"; mk_repo "$TR"
+TR2="${TR}2"; mkdir -p "$TR2"
+CTR="$(cd "$TR" && pwd -P)"; CTR2="$(cd "$TR2" && pwd -P)"
+EXPF="$CTR"; if command -v cygpath >/dev/null 2>&1; then EXPF="$(cygpath -m "$CTR")"; fi   # Git Bash stores the cygpath -m form
+spell() { # NAME ARG: 'trust ARG' adds nothing (3 assertions)
+  run bash "$LEARN" trust "$2"
+  assert_rc "$1: exit 0" 0
+  assert_contains "$1: says already trusted" "$OUT" "already trusted"
+  assert_eq "$1: still one entry" "1" "$(n_ents)"
+}
+
+echo "T trust: the project root, canonical and absolute (AC-T5)"
+fresh_home; cd "$TR" || exit 3
+run bash "$LEARN" trust
+assert_rc "T AC-T5 trust without DIR exits 0" 0
+assert_file "T AC-T1 the trust file is created at PLAYBOOK_HOME/.agents/trusted-projects" "$TF"
+assert_eq "T AC-T5 trust without DIR stores the project root (canonical, absolute)" "$EXPF" "$(ents)"
+assert_no_path "T AC-T1 nothing is written into the project" "$TR/.agents"
+assert_eq "T AC-T1 the project tree stays clean" "" "$(git -C "$TR" status --porcelain)"
+run bash "$LEARN" trust
+assert_rc "T AC-T5 a second trust of the same project exits 0" 0
+assert_contains "T AC-T5 a second trust says already trusted" "$OUT" "already trusted"
+assert_eq "T AC-T5 a second trust adds nothing" "1" "$(n_ents)"
+
+echo "T trust: idempotent across spellings (AC-T4, AC-T5)"
+cd "$TRD" || exit 3
+spell "T AC-T5 relative DIR" "trproj"
+spell "T AC-T5 ./DIR/ with a trailing slash" "./trproj/"
+spell "T AC-T5 absolute DIR with a trailing slash" "$TR/"
+spell "T AC-T5 absolute DIR with .. segments" "$TR/src/.."
+spell "T AC-T5 relative DIR with .. segments" "trproj/src/.."
+ln -s "$TR" "$TRD/trlink" 2>/dev/null
+if [ -L "$TRD/trlink" ]; then
+  spell "T AC-T4 absolute symlink to the project" "$TRD/trlink"
+  spell "T AC-T4 relative symlink to the project" "trlink"
+else
+  t_skip 6 "ln -s made no symlink here (Windows copy): symlink rows not testable"
+fi
+assert_eq "T AC-T5 after every spelling the one entry is still the canonical path" "$EXPF" "$(ents)"
+
+echo "T trust: a relative DIR and the default root are stored absolute (AC-T5)"
+fresh_home; cd "$TRD" || exit 3
+run bash "$LEARN" trust trproj
+assert_rc "T AC-T5 relative DIR: exit 0" 0
+assert_eq "T AC-T5 relative DIR is stored as the absolute canonical path" "$EXPF" "$(ents)"
+fresh_home; cd "$TR/src" || exit 3
+run bash "$LEARN" trust ../
+assert_eq "T AC-T5 DIR ../ from a subdirectory is stored as the project root" "$EXPF" "$(ents)"
+fresh_home; cd "$TR/src" || exit 3
+run bash "$LEARN" trust
+assert_rc "T AC-T5 no DIR from a subdirectory: exit 0" 0
+assert_eq "T AC-T5 no DIR from a subdirectory stores the project root, not the subdirectory" "$EXPF" "$(ents)"
+
+echo "T trust: a missing DIR is exit 2 and adds nothing (AC-T5)"
+fresh_home; cd "$TR" || exit 3
+run bash "$LEARN" trust "$TRD/does-not-exist"
+assert_rc "T AC-T5 missing DIR exits 2" 2
+assert_eq "T AC-T5 missing DIR adds nothing" "0" "$(n_ents)"
+if [ -n "$OUT" ]; then t_ok "T AC-T5 missing DIR says why"; else t_bad "T AC-T5 missing DIR says why" "no output"; fi
+
+echo "T trust: an existing file keeps its comments and entries (AC-T1, AC-T5)"
+fresh_home; mkdir -p "$PLAYBOOK_HOME/.agents"; printf '# keep me\n/some/other/project' > "$TF"   # no final newline
+cd "$TR" || exit 3
+run bash "$LEARN" trust
+assert_rc "T AC-T5 trust into an existing file: exit 0" 0
+assert_eq "T AC-T5 the file now holds two entries" "2" "$(n_ents)"
+assert_eq "T AC-T1 the comment line is kept" "1" "$(grep -c '^# keep me$' "$TF")"
+assert_eq "T AC-T5 the other entry is kept on its own line" "1" "$(grep -cxF '/some/other/project' "$TF")"
+assert_eq "T AC-T5 the project is on its own line" "1" "$(grep -cxF -- "$EXPF" "$TF")"
+
+echo "T trusted: lists the entries (AC-T5)"
+run bash "$LEARN" trusted
+assert_rc "T AC-T5 trusted exits 0" 0
+assert_contains "T AC-T5 trusted lists the project" "$OUT" "$EXPF"
+assert_contains "T AC-T5 trusted lists the other entry" "$OUT" "/some/other/project"
+fresh_home
+run bash "$LEARN" trusted
+assert_rc "T AC-T5 trusted with no trust file exits 0" 0
+if printf '%s' "$OUT" | grep -qi 'no trusted projects'; then t_ok "T AC-T5 trusted with no trust file says 'no trusted projects'"; else t_bad "T AC-T5 trusted with no trust file says 'no trusted projects'" "got [$OUT]"; fi
+write_tf "# only a comment" ""
+run bash "$LEARN" trusted
+assert_rc "T AC-T5 trusted with only comments exits 0" 0
+if printf '%s' "$OUT" | grep -qi 'no trusted projects'; then t_ok "T AC-T5 trusted with only comments says 'no trusted projects'"; else t_bad "T AC-T5 trusted with only comments says 'no trusted projects'" "got [$OUT]"; fi
+
+echo "T untrust: removes every line that matches, any spelling (AC-T5)"
+fresh_home; write_tf "# keep" "$CTR" "/some/other/project" "$CTR/"   # the same project twice, in two spellings
+cd "$TRD" || exit 3
+run bash "$LEARN" untrust trproj
+assert_rc "T AC-T5 untrust exits 0" 0
+if printf '%s' "$OUT" | grep -Eiq 'remov|untrust'; then t_ok "T AC-T5 untrust says what it did"; else t_bad "T AC-T5 untrust says what it did" "got [$OUT]"; fi
+assert_eq "T AC-T5 untrust removes both spellings and keeps the other entry" "/some/other/project" "$(ents)"
+assert_eq "T AC-T5 untrust keeps the comment" "1" "$(grep -c '^# keep$' "$TF")"
+if [ -L "$TRD/trlink" ]; then
+  fresh_home; write_tf "$TRD/trlink" "/some/other/project"
+  run bash "$LEARN" untrust "$TR"
+  assert_eq "T AC-T4 untrust removes a line that is a symlink to the project" "/some/other/project" "$(ents)"
+else
+  t_skip 1 "ln -s made no symlink here (Windows copy): symlink row not testable"
+fi
+fresh_home; write_tf "$CTR" "$CTR2"
+run bash "$LEARN" untrust "$TR"
+assert_eq "T AC-T5 untrust does not remove a project whose name extends the given one" "$CTR2" "$(ents)"
+before="$(cksum < "$TF")"
+run bash "$LEARN" untrust "$TRD"
+assert_rc "T AC-T5 untrust of a parent directory exits 0" 0
+assert_eq "T AC-T5 untrust of a parent directory removes no child" "$before" "$(cksum < "$TF")"
+run bash "$LEARN" untrust "$TR"
+assert_rc "T AC-T5 untrust of a project that is not listed exits 0" 0
+if [ -n "$OUT" ]; then t_ok "T AC-T5 untrust of a project that is not listed says so"; else t_bad "T AC-T5 untrust of a project that is not listed says so" "no output"; fi
+assert_eq "T AC-T5 that leaves the file unchanged" "$before" "$(cksum < "$TF")"
+fresh_home
+run bash "$LEARN" untrust "$TR"
+assert_rc "T AC-T5 untrust with no trust file exits 0" 0
+fresh_home; write_tf "$CTR" "/some/other/project"; cd "$TR/src" || exit 3
+run bash "$LEARN" untrust
+assert_rc "T AC-T5 untrust without DIR exits 0" 0
+assert_eq "T AC-T5 untrust without DIR removes the project root" "/some/other/project" "$(ents)"
+
+echo "T usage names the new commands (AC-T5)"
+run bash "$LEARN" frobnicate
+assert_rc "T AC-T5 an unknown command exits 2" 2
+assert_contains "T AC-T5 the usage line names untrust" "$OUT" "untrust"
+assert_contains "T AC-T5 the usage line names trusted" "$OUT" "trusted"
+
+# mk_cygpath_stub DIR: writes DIR/cygpath, a fake cygpath (v0.29.0 slice T): drive C: holds the temp dir; see the stub header
+mk_cygpath_stub() {
+  cat > "$1/cygpath" <<'PB_STUB'
+#!/usr/bin/env bash
+# Stub cygpath for the tests (Git Bash has the real one). The drive C: holds the temp dir: a POSIX path under the temp base
+# maps to C:/Users/Tester/AppData/Local/Temp/..., and the C:\..., C:/..., c:/... and /c/... spellings map back to it.
+# Supports -m, -u, -w (-a and other flags are ignored). Env: PB_STUB_REAL (canonical temp base), PB_STUB_RAW (temp base as given).
+mode=u
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) shift; break ;;
+    -m | -am | -ma) mode=m ;;
+    -w | -aw | -wa) mode=w ;;
+    -u | -au | -ua) mode=u ;;
+    -*) ;;
+    *) break ;;
+  esac
+  shift
+done
+PFX='/Users/Tester/AppData/Local/Temp'
+lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
+upper() { printf '%s' "$1" | tr 'a-z' 'A-Z'; }
+fwd() { printf '%s' "$1" | tr '\\' '/'; }
+to_unix() {
+  local p rest low letter
+  p="$(fwd "$1")"
+  case "$p" in
+    [A-Za-z]:*) rest="${p#?:}"; letter="${p%%:*}" ;;
+    /[A-Za-z] | /[A-Za-z]/*) rest="${p#/?}"; letter="${p#/}"; letter="${letter%%/*}" ;;
+    *) printf '%s\n' "$p"; return ;;
+  esac
+  low="$(lower "$rest")"
+  case "$low" in
+    "$(lower "$PFX")" | "$(lower "$PFX")"/*) printf '%s%s\n' "$PB_STUB_REAL" "${rest:${#PFX}}" ;;
+    *) printf '/%s%s\n' "$(lower "$letter")" "$rest" ;;
+  esac
+}
+to_m() {
+  local p b l
+  p="$(fwd "$1")"
+  case "$p" in
+    [A-Za-z]:*) printf '%s\n' "$p"; return ;;
+    /[A-Za-z]) printf '%s:/\n' "$(upper "${p#/}")"; return ;;
+    /[A-Za-z]/*) l="${p#/}"; printf '%s:%s\n' "$(upper "${l%%/*}")" "${p#/?}"; return ;;
+  esac
+  for b in "$PB_STUB_REAL" "$PB_STUB_RAW"; do
+    [ -n "$b" ] || continue
+    case "$p" in
+      "$b") printf 'C:%s\n' "$PFX"; return ;;
+      "$b"/*) printf 'C:%s%s\n' "$PFX" "${p#"$b"}"; return ;;
+    esac
+  done
+  printf 'C:/stubroot%s\n' "$p"
+}
+for a in "$@"; do
+  case "$mode" in
+    u) to_unix "$a" ;;
+    m) to_m "$a" ;;
+    w) to_m "$a" | tr '/' '\\' ;;
+  esac
+done
+exit 0
+PB_STUB
+  chmod +x "$1/cygpath"
+}
+
+echo "T trust stores the cygpath -m form when cygpath exists (AC-T5, AC-T4; stub cygpath on PATH)"
+STUBD="$(mk_tmp)"; mk_cygpath_stub "$STUBD"
+export PB_STUB_REAL="$(cd "$PB_TMPBASE" && pwd -P)" PB_STUB_RAW="$PB_TMPBASE"
+WCTR="C:/Users/Tester/AppData/Local/Temp${CTR#"$PB_STUB_REAL"}"
+if [ "$(PATH="$STUBD:$PATH" cygpath -m "$CTR" 2>/dev/null)" = "$WCTR" ]; then
+  fresh_home; cd "$TR" || exit 3
+  PATH="$STUBD:$PATH" run bash "$LEARN" trust
+  assert_rc "T AC-T5 stub cygpath: trust exits 0" 0
+  assert_eq "T AC-T5 stub cygpath: the stored line is the cygpath -m form" "$WCTR" "$(ents)"
+  PATH="$STUBD:$PATH" spell "T AC-T5 stub cygpath: a second trust (POSIX spelling, trailing slash)" "$TR/"
+  PATH="$STUBD:$PATH" run bash "$LEARN" trusted
+  assert_contains "T AC-T5 stub cygpath: trusted lists the cygpath -m line" "$OUT" "$WCTR"
+  fresh_home; write_tf "$CTR"
+  PATH="$STUBD:$PATH" run bash "$LEARN" trust
+  assert_contains "T AC-T4 stub cygpath: a hand-written POSIX line is the same project" "$OUT" "already trusted"
+  assert_eq "T AC-T4 stub cygpath: that adds no second line" "1" "$(n_ents)"
+  fresh_home; write_tf "$WCTR" "/some/other/project"
+  PATH="$STUBD:$PATH" run bash "$LEARN" untrust "$TR"
+  assert_eq "T AC-T4 stub cygpath: untrust (POSIX spelling) removes the cygpath -m line" "/some/other/project" "$(ents)"
+else
+  t_skip 9 "the stub cygpath is not runnable here: Windows form rows not testable"
+fi
+unset PB_STUB_REAL PB_STUB_RAW
+
 t_summary
