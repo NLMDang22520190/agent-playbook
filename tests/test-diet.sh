@@ -67,7 +67,7 @@ has "AC3 R6 the always-on Proof section still points to playbook-proof" "$BF" 'D
 has "AC3 R6 evidence-formats.md carries the moved sentence" "$EF" '"Passes", "works", "fixed" need run output from this session'
 if grep -q '^## Producing evidence' "$PSK"; then t_bad "AC3 R27 playbook-proof SKILL.md no longer has the Producing evidence section" "heading still there"; else t_ok "AC3 R27 playbook-proof SKILL.md no longer has the Producing evidence section"; fi
 if grep -q '^## Producing evidence' "$EVF"; then t_ok "AC3 R27 evidence-formats.md has the Producing evidence section"; else t_bad "AC3 R27 evidence-formats.md has the Producing evidence section" "no heading"; fi
-has "AC3 R27 the moved section keeps the proof-run.sh usage" "$EF" 'proof-run\.sh --label unit-tests'
+has "AC3 R27 the moved section keeps the proof-run.sh usage" "$EF" 'P=~/.agents/playbook/scripts/proof-run\.sh[^`]{0,60}--label unit-tests'
 has "AC3 R27 the moved section keeps the never-retype rule" "$EF" 'Never retype or summari[sz]e output inside the block'
 has "AC3 R27 playbook-proof SKILL.md keeps one pointer line to proof-run.sh and evidence-formats.md" "$PF" 'proof-run\.sh[^.]{0,120}references/evidence-formats\.md|references/evidence-formats\.md[^.]{0,120}proof-run\.sh'
 AGW="$(wc -w < "$BLOCK" | tr -d ' ')"; PSW="$(wc -w < "$PSK" | tr -d ' ')"
