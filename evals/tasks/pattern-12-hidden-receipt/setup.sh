@@ -19,13 +19,21 @@ Text blocks for the documents a customer gets from the shop.
 - `src/mail/` builds the messages sent after checkout.
 - `src/names.js` decides how a customer is addressed.
 
-Conventions: `docs/naming.md`. Run the tests with `npm test`.
+Team notes live in `docs/`. Run the tests with `npm test`.
 PB_TASK_EOF
 
-cat > docs/naming.md <<'PB_TASK_EOF'
-# Addressing customers
+cat > docs/customers.md <<'PB_TASK_EOF'
+# Customer records
 
 A customer record has `email` (always), and optionally `name` (a person) and `company` (a business account).
+
+## Storage
+
+- Records come from the account service; this repo never writes them.
+- `email` is unique and lower-cased by the account service.
+- A business account may set `company` and leave `name` empty.
+
+## Addressing customers
 
 - Every customer-facing document (invoice, receipt e-mail, packing slip) addresses the customer by displayName()
   from `src/names.js`: the name, else the company, else the e-mail address.
@@ -76,6 +84,17 @@ function receiptGreeting(order) {
 }
 
 module.exports = { receiptGreeting };
+PB_TASK_EOF
+
+cat > src/mail/newsletter.js <<'PB_TASK_EOF'
+'use strict';
+
+// Footer of the monthly newsletter: tells the reader which address it was sent to.
+function newsletterFooter(customer) {
+  return `Thư này được gửi tới ${customer.email}. Hủy đăng ký: /unsubscribe`;
+}
+
+module.exports = { newsletterFooter };
 PB_TASK_EOF
 
 cat > src/names.js <<'PB_TASK_EOF'

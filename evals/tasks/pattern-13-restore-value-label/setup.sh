@@ -14,12 +14,12 @@ cat > README.md <<'PB_TASK_EOF'
 # furniture-cart
 
 Cart of a small furniture shop. Products (`data/products.json`) have options (size, finish, ...) with choices, and
-optional add-ons. Each choice and add-on has a `value` (stable id) and a `label` (what the customer sees).
+optional add-ons.
 
 - `src/cart/save.js` turns the live cart into the form we store when a customer leaves.
 - `src/cart/restore.js` rebuilds that stored cart against the current catalog when the customer comes back.
 
-Cart rules: `docs/cart.md`. Run the tests with `npm test`.
+Notes are in `docs/`. Run the tests with `npm test`.
 PB_TASK_EOF
 
 cat > data/products.json <<'PB_TASK_EOF'
@@ -59,8 +59,16 @@ cat > data/products.json <<'PB_TASK_EOF'
 PB_TASK_EOF
 
 cat > docs/cart.md <<'PB_TASK_EOF'
-# Saved carts
+# Cart
 
+## Live cart
+
+- A cart holds at most 20 lines; quantity per line is 1 to 9.
+- Prices are never stored in the cart; checkout reads them from the catalog.
+
+## Saved carts
+
+- A cart is saved when the customer leaves and kept for 30 days.
 - Saved carts store choice values and addon values, never labels: labels are display text and get reworded.
 - On restore, a choice value the product no longer has resets to the default choice (the first choice of the option);
   an option missing from the saved cart takes the default choice too.

@@ -15,12 +15,10 @@ cat > README.md <<'PB_TASK_EOF'
 
 Computes the totals of a web shop checkout: goods subtotal, coupon discount, shipping and tax.
 
-- `src/checkout.js` `checkoutTotal(cart, config)` puts the pieces together.
-- `src/coupons.js`, `src/shipping.js`, `src/tax.js` hold one rule each.
-- `src/money.js` converts between decimal strings and cents.
+- `src/checkout.js` `checkoutTotal(cart, config)` is the entry point used by the order page.
 - `config/` holds the live coupon and shipping settings.
 
-How money is stored and computed: see `docs/money.md`.
+Design notes are in `docs/`.
 
 Run the tests with `npm test`.
 PB_TASK_EOF
