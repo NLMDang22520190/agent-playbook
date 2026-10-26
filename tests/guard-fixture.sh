@@ -28,6 +28,12 @@ jbash() {
   printf '{"session_id":"%s","transcript_path":"/pbguard/t.jsonl","cwd":"%s","permission_mode":"bypassPermissions","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s","description":"List files","timeout":120000},"tool_use_id":"toolu_01A"}' \
     "${3:-s1}" "$(jstr "${2:-$GCWD}")" "$(jstr "$1")"
 }
+# jps CMD [CWD] [SESSION] -> PreToolUse JSON for a PowerShell call (same fields as jbash; docs: https://code.claude.com/docs/en/hooks,
+# section "PowerShell": command, description, timeout, run_in_background)
+jps() {
+  printf '{"session_id":"%s","transcript_path":"/pbguard/t.jsonl","cwd":"%s","permission_mode":"bypassPermissions","hook_event_name":"PreToolUse","tool_name":"PowerShell","tool_input":{"command":"%s","description":"List files","timeout":120000},"tool_use_id":"toolu_01P"}' \
+    "${3:-s1}" "$(jstr "${2:-$GCWD}")" "$(jstr "$1")"
+}
 # jwrite FILE CONTENT [CWD] -> PreToolUse JSON for Write
 jwrite() {
   printf '{"session_id":"s1","transcript_path":"/pbguard/t.jsonl","cwd":"%s","permission_mode":"default","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"%s","content":"%s"},"tool_use_id":"toolu_01B"}' \
