@@ -1,0 +1,23 @@
+diff --git a/bin/archive b/bin/archive
+index 0509c8c..90e46ff 100755
+--- a/bin/archive
++++ b/bin/archive
+@@ -1,17 +1,17 @@
+ #!/usr/bin/env bash
+ # archive SRC DEST: copies every regular file under SRC into DEST (flat), writes DEST/MANIFEST (one name per line) and
+ # prints "archived N files", N = the number of MANIFEST lines.
+ set -u
+ here="$(cd "$(dirname "$0")/.." && pwd)"
+ . "$here/lib/collect.sh"
+ . "$here/lib/manifest.sh"
+ src="${1:?usage: archive SRC DEST}"
+ dest="${2:?usage: archive SRC DEST}"
+ mkdir -p "$dest" && dest="$(cd "$dest" && pwd)" || exit 1
+ cd "$src" || exit 1
+ files="$(collect_files .)"
+ for f in $files; do
+-  cp $f "$dest/" 2>/dev/null
++  cp -- "$f" "$dest/" 2>/dev/null
+ done
+ write_manifest "$dest" $files
+ echo "archived $(wc -l < "$dest/MANIFEST" | tr -d ' ') files"

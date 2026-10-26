@@ -1,0 +1,14 @@
+diff --git a/src/dashboard.js b/src/dashboard.js
+index 34a35b8..7fd4dc9 100644
+--- a/src/dashboard.js
++++ b/src/dashboard.js
+@@ -1,8 +1,8 @@
+ 'use strict';
+ const { available } = require('./stock');
+ 
+ function stockLabel(item) {
+-  return `${available(item)} in stock`;
++  return `${Math.max(0, available(item))} in stock`;
+ }
+ 
+ module.exports = { stockLabel };

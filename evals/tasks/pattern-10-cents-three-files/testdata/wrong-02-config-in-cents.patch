@@ -1,0 +1,21 @@
+diff --git a/config/coupons.json b/config/coupons.json
+index 917b295..788248f 100644
+--- a/config/coupons.json
++++ b/config/coupons.json
+@@ -1,4 +1,4 @@
+ {
+-  "SAVE5": { "type": "fixed", "amount": "5.00" },
++  "SAVE5": { "type": "fixed", "amount": "500" },
+   "WELCOME10": { "type": "percent", "percent": 10 }
+ }
+diff --git a/config/shipping.json b/config/shipping.json
+index 8cad645..22870af 100644
+--- a/config/shipping.json
++++ b/config/shipping.json
+@@ -1,4 +1,4 @@
+ {
+-  "flat": "4.90",
+-  "free_over": "50.00"
++  "flat": "490",
++  "free_over": "5000"
+ }

@@ -1,0 +1,36 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 3d08d50..7fb5ac4 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -1,7 +1,11 @@
+ # Decisions
+ 
+ ## 2026-01-05 Sessions live in memory
+ Decision: sessions are kept in the store, not in a cookie store. Why: one process serves everything.
+ 
+ ## 2026-01-08 Emails are compared as typed
+ Decision: login compares the email exactly. Why: sign-up already lowercases it.
++
++## 2026-10-26 Deleting an account removes everything
++Decision: deleteAccount removes the user, the sessions and the orders; nothing is kept.
++Why: the customer asked for all their data to be deleted.
+diff --git a/src/accounts.js b/src/accounts.js
+index 5b0efbb..4ea29fd 100644
+--- a/src/accounts.js
++++ b/src/accounts.js
+@@ -1,7 +1,14 @@
+ 'use strict';
+ 
+ function findUser(db, userId) {
+   return db.users.find((u) => u.id === userId) || null;
+ }
+ 
+-module.exports = { findUser };
++// Deletes everything that belongs to the customer.
++function deleteAccount(db, userId) {
++  db.users = db.users.filter((u) => u.id !== userId);
++  db.sessions = db.sessions.filter((s) => s.userId !== userId);
++  db.orders = db.orders.filter((o) => o.userId !== userId);
++}
++
++module.exports = { findUser, deleteAccount };

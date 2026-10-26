@@ -1,0 +1,11 @@
+diff --git a/docs/policy.md b/docs/policy.md
+index 00e2a42..5c44377 100644
+--- a/docs/policy.md
++++ b/docs/policy.md
+@@ -2,5 +2,5 @@
+ 
+ - Loans are due 21 days after checkout.
+ - Late returns: a grace period of 3 days: returned within 3 days after the due date, no fee. Once the grace period is
+-  exceeded, the fee is 50 cents per day late, counted from the first day after the due date, capped at 10.00.
++  exceeded, the fee is 50 cents per day late after the grace period, capped at 10.00.
+ - Fees are shown on the member's account page and paid at the desk.

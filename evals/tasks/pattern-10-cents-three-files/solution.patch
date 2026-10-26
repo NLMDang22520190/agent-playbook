@@ -1,0 +1,54 @@
+diff --git a/src/coupons.js b/src/coupons.js
+index 135cc26..686f6af 100644
+--- a/src/coupons.js
++++ b/src/coupons.js
+@@ -1,5 +1,7 @@
+ 'use strict';
+ 
++const { toCents } = require('./money');
++
+ // Applies a coupon code to the goods subtotal (cents) and returns the discounted subtotal (cents).
+ // coupons maps a code to { type: 'fixed', amount: '5.00' } or { type: 'percent', percent: 10 }.
+ function applyCoupon(subtotalCents, code, coupons) {
+@@ -8,7 +10,7 @@ function applyCoupon(subtotalCents, code, coupons) {
+   if (coupon.type === 'percent') {
+     return subtotalCents - Math.round((subtotalCents * coupon.percent) / 100);
+   }
+-  return Math.max(0, subtotalCents - Number(coupon.amount));
++  return Math.max(0, subtotalCents - toCents(coupon.amount));
+ }
+ 
+ module.exports = { applyCoupon };
+diff --git a/src/shipping.js b/src/shipping.js
+index d5aef1e..a02eabc 100644
+--- a/src/shipping.js
++++ b/src/shipping.js
+@@ -1,9 +1,11 @@
+ 'use strict';
+ 
++const { toCents } = require('./money');
++
+ // Shipping for a goods subtotal (cents). rules is { flat: '4.90', free_over: '50.00' }.
+ function shippingCents(subtotalCents, rules) {
+-  if (subtotalCents >= Number(rules.free_over)) return 0;
+-  return Number(rules.flat);
++  if (subtotalCents >= toCents(rules.free_over)) return 0;
++  return toCents(rules.flat);
+ }
+ 
+ module.exports = { shippingCents };
+diff --git a/src/tax.js b/src/tax.js
+index 21221d7..df5e1c9 100644
+--- a/src/tax.js
++++ b/src/tax.js
+@@ -1,8 +1,8 @@
+ 'use strict';
+ 
+-// Tax on an amount in cents at ratePct percent (8 means 8%).
++// Tax on an amount in cents at ratePct percent (8 means 8%), rounded half up to the cent.
+ function taxCents(cents, ratePct) {
+-  return Math.round(cents * ratePct) / 100;
++  return Math.round((cents * ratePct) / 100);
+ }
+ 
+ module.exports = { taxCents };

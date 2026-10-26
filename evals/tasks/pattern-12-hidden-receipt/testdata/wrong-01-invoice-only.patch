@@ -1,0 +1,17 @@
+diff --git a/src/docs/invoice.js b/src/docs/invoice.js
+index a693854..4a47ada 100644
+--- a/src/docs/invoice.js
++++ b/src/docs/invoice.js
+@@ -1,9 +1,10 @@
+ 'use strict';
+ 
++const { displayName } = require('../names');
++
+ // Header block of an invoice PDF.
+ function invoiceHeader(order) {
+-  const c = order.customer;
+-  return [`Bill to: ${c.email || c.name}`, `Invoice ${order.id}`].join('\n');
++  return [`Bill to: ${displayName(order.customer)}`, `Invoice ${order.id}`].join('\n');
+ }
+ 
+ module.exports = { invoiceHeader };

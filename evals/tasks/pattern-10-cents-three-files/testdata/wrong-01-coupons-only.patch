@@ -1,0 +1,21 @@
+diff --git a/src/coupons.js b/src/coupons.js
+index 135cc26..686f6af 100644
+--- a/src/coupons.js
++++ b/src/coupons.js
+@@ -1,5 +1,7 @@
+ 'use strict';
+ 
++const { toCents } = require('./money');
++
+ // Applies a coupon code to the goods subtotal (cents) and returns the discounted subtotal (cents).
+ // coupons maps a code to { type: 'fixed', amount: '5.00' } or { type: 'percent', percent: 10 }.
+ function applyCoupon(subtotalCents, code, coupons) {
+@@ -8,7 +10,7 @@ function applyCoupon(subtotalCents, code, coupons) {
+   if (coupon.type === 'percent') {
+     return subtotalCents - Math.round((subtotalCents * coupon.percent) / 100);
+   }
+-  return Math.max(0, subtotalCents - Number(coupon.amount));
++  return Math.max(0, subtotalCents - toCents(coupon.amount));
+ }
+ 
+ module.exports = { applyCoupon };

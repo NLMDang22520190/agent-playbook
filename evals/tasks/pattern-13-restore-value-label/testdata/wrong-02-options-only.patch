@@ -1,0 +1,13 @@
+diff --git a/src/cart/restore.js b/src/cart/restore.js
+index f5e4717..b23518e 100644
+--- a/src/cart/restore.js
++++ b/src/cart/restore.js
+@@ -12,7 +12,7 @@ function restoreCart(saved, catalog) {
+     const options = {};
+     for (const option of product.options || []) {
+       const want = (line.options || {})[option.name];
+-      const choice = option.choices.find((c) => c.label === want) || option.choices[0];
++      const choice = option.choices.find((c) => c.value === want) || option.choices[0];
+       options[option.name] = choice.value;
+     }
+     const addons = [];
