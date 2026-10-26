@@ -4,7 +4,9 @@
 # prompt language, setup.sh refusing a non-empty target, solution.patch presence, then evals/check-tasks.sh over the
 # whole corpus (setup twice with one HEAD, F2P fail and P2P pass unsolved, all pass after solution.patch).
 # DECISION[D1] 13 tasks (node 9, python3 3, bash 1; prompts VI 6 / EN 7); K2 adds pattern-10..19 (node 9, bash 1; VI 4 / EN 6) = 23 tasks; v0.28.2 lane n adds oss-05, oss-06, pattern-20 (node 1, python3 1, bash 1;
-# VI 1 / EN 2; hidden input classes the prompt implies with "any"/"every"/"whatever") = 26 tasks. DECISION[D13] every id, weight, file split
+# VI 1 / EN 2; hidden input classes the prompt implies with "any"/"every"/"whatever") = 26 tasks; v0.29.0 lane t adds oss-07,
+# pattern-21, pattern-22, pattern-23 (node 2, python3 1, bash 1; VI 2 / EN 2; no repo doc lists the hidden classes) = 30 tasks.
+# DECISION[D13] every id, weight, file split
 # and expected value below is an author-chosen oracle from 01-spec.md "Corpus" [UNVERIFIED] until the user reviews it.
 # DECISION[D12] the private-name denylist is never committed: it comes from PB_CORPUS_DENYLIST (comma list) or is skipped.
 . "$(dirname "$0")/lib.sh"
@@ -38,9 +40,14 @@ pattern-18-split-name-migration|node|vi|Full|tests/migration-004.f2p.test.js|tes
 pattern-19-archive-spaces|bash|en|Lite|tests/archive-names.f2p.sh|tests/archive-plain.p2p.sh
 oss-05-slug-separators|node|en|Lite|tests/slug-names.f2p.test.js|tests/slug-plain.p2p.test.js
 oss-06-conf-value-equals|bash|en|Lite|tests/conf-values.f2p.sh|tests/conf-basic.p2p.sh
-pattern-20-period-last-day|python3|vi|Lite|tests/test_period_report_last_day.py tests/test_period_invoice_last_day.py|tests/test_period_inside.py'
+pattern-20-period-last-day|python3|vi|Lite|tests/test_period_report_last_day.py tests/test_period_invoice_last_day.py|tests/test_period_inside.py
+oss-07-csv-export-cells|node|en|Lite|tests/export-cells.f2p.test.js|tests/export-plain.p2p.test.js
+pattern-21-unsubscribe-exact|bash|vi|Lite|tests/unsubscribe-exact.f2p.sh|tests/unsubscribe-plain.p2p.sh
+pattern-22-revenue-every-figure|python3|vi|Lite|tests/test_monthly_revenue_rule.py tests/test_week_message_revenue.py|tests/test_daily_and_accounting.py
+pattern-23-purge-uploads-ambiguous|node|en|Full|tests/age-decision-logged.f2p.test.js tests/purge-uploads.f2p.test.js|tests/uploads-basic.p2p.test.js'
 
-# K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n (scope= is space-separated, traps= comma list; 01-spec.md "Tasks")
+# K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n and the four of v0.29.0 lane t (scope= is
+# space-separated, traps= comma list; 01-spec.md "Tasks")
 NEWMETA='pattern-10-cents-three-files|src/coupons.js src/shipping.js src/tax.js src/checkout.js|multi-file
 pattern-11-date-parser-symptom|src/import/|misleading-symptom
 pattern-12-hidden-receipt|src/docs/invoice.js src/mail/receipt.js src/names.js|hidden-second-place,multi-file
@@ -53,7 +60,11 @@ pattern-18-split-name-migration|migrations/ src/users.js docs/decisions.md|migra
 pattern-19-archive-spaces|bin/ lib/|misleading-symptom,multi-file
 oss-05-slug-separators|src/|input-classes
 oss-06-conf-value-equals|lib/ bin/|input-classes
-pattern-20-period-last-day|src/|hidden-second-place,input-classes'
+pattern-20-period-last-day|src/|hidden-second-place,input-classes
+oss-07-csv-export-cells|src/ bin/|input-classes
+pattern-21-unsubscribe-exact|bin/|input-classes
+pattern-22-revenue-every-figure|src/|hidden-second-place
+pattern-23-purge-uploads-ambiguous|src/uploads.js src/store.js docs/decisions.md|ambiguous-default'
 
 # conf_val FILE KEY -> the value of KEY= (first line), surrounding double quotes removed
 conf_val() {
@@ -71,7 +82,7 @@ if python3 -c 'import sys' >/dev/null 2>&1; then HAVE_PY=1; fi
 
 echo "AC21 corpus layout"
 n_dirs="$(cd "$TASKS" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type d | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "K2 AC17 26 task directories under evals/tasks (23 + 3 of v0.28.2) [D1]" 26 "${n_dirs:-0}"
+assert_eq "K2 AC17 30 task directories under evals/tasks (23 + 3 of v0.28.2 + 4 of v0.29.0) [D1]" 30 "${n_dirs:-0}"
 c_node=0; c_py=0; c_bash=0; c_vi=0; c_en=0
 while IFS='|' read -r id lang plang weight f2p p2p; do
   [ -n "$id" ] || continue
@@ -129,8 +140,8 @@ while IFS='|' read -r id lang plang weight f2p p2p; do
 done <<EOF
 $CORPUS
 EOF
-assert_eq "K2 AC17 languages: node 19, python3 4, bash 3 [D1]" "19 4 3" "$c_node $c_py $c_bash"
-assert_eq "K2 AC17 prompts: 11 Vietnamese, 15 English [D1]" "11 15" "$c_vi $c_en"
+assert_eq "K2 AC17 languages: node 21, python3 5, bash 4 [D1]" "21 5 4" "$c_node $c_py $c_bash"
+assert_eq "K2 AC17 prompts: 13 Vietnamese, 17 English [D1]" "13 17" "$c_vi $c_en"
 
 echo "K2 AC17 scope, traps and wrong fixes of the ten new tasks"
 while IFS='|' read -r id scp trp; do
@@ -213,7 +224,11 @@ pattern-18-split-name-migration|round trip,expand,contract,keep,giữ
 pattern-19-archive-spaces|manifest,IFS,find,quote
 oss-05-slug-separators|accent,diacritic,unicode,leading,trailing,consecutive,underscore,đ
 oss-06-conf-value-equals|last,prefix,twice,comment,quote,dash,spaces,glob
-pattern-20-period-last-day|hóa đơn,invoice,billing,23:59,một ngày,one day'
+pattern-20-period-last-day|hóa đơn,invoice,billing,23:59,một ngày,one day
+oss-07-csv-export-cells|quote,newline,line break,rfc,4180,escape,double
+pattern-21-unsubscribe-exact|regex,grep,dấu chấm,gạch,dash,dot,-f
+pattern-22-revenue-every-figure|hoàn tiền,refund,tuần,week,message,tin nhắn,owner,counts_as_revenue
+pattern-23-purge-uploads-ambiguous|order,đơn hàng,decisions.md,retention,day,month,year,design'
 # prompt_hits FILE WORDS -> the 1-based index of every word of the comma list WORDS found in FILE
 prompt_hits() {
   local low w i=0 IFS_OLD="$IFS"
@@ -287,6 +302,41 @@ EOF
   else
     t_bad "fix2 pattern-15 setup for the decision probes" "setup.sh or the copy of the hidden test failed"
     t_skip "$((NDEC - 1))" "pattern-15 setup failed"
+  fi
+fi
+
+echo "v0.29.0 lane t: pattern-23 age-decision-logged accepts the common ways to write an age limit for the uploads"
+# Each probe appends one new "## " entry holding PHRASE to docs/decisions.md of a fresh pattern-23 setup repo and runs the
+# hidden age-decision-logged test alone (made-up phrasings, positive and negative).
+P23="$TASKS/pattern-23-purge-uploads-ambiguous"
+# id|expected (pass/fail)|phrase
+AGE_PROBES='days|pass|Uploads older than 180 days that no order uses are deleted.
+one-year|pass|Unused files older than one year are removed.
+hyphen|pass|A 6-month limit applies to uploads.
+a-year|pass|An upload is old after a year.
+vi-ngay|pass|Tệp upload cũ hơn 90 ngày sẽ bị xóa.
+no-age|fail|Old uploads are deleted.
+no-file-word|fail|Older than 180 days are deleted.
+words-only|fail|Uploads are deleted when they are old enough.'
+NAGE="$(printf '%s\n' "$AGE_PROBES" | grep -c '|')"
+if ! command -v node >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+  t_skip "$NAGE" "node or git is missing (the pattern-23 decision probes run the hidden node test)"
+else
+  aw="$(mk_tmp)"
+  if bash "$P23/setup.sh" "$aw/r" >/dev/null 2>&1 && mkdir -p "$aw/r/tests" \
+    && cp "$P23/hidden/tests/age-decision-logged.f2p.test.js" "$aw/r/tests/"; then
+    while IFS='|' read -r pid pexp phrase; do
+      [ -n "$pid" ] || continue
+      (cd "$aw/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
+      printf '\n## 2026-10-26 Purging uploads\n%s\n' "$phrase" >> "$aw/r/docs/decisions.md"
+      if (cd "$aw/r" && node --test tests/age-decision-logged.f2p.test.js) >/dev/null 2>&1; then got=pass; else got=fail; fi
+      assert_eq "lane t age-decision-logged $pexp: '$phrase' ($pid)" "$pexp" "$got"
+    done <<EOF
+$AGE_PROBES
+EOF
+  else
+    t_bad "lane t pattern-23 setup for the decision probes" "setup.sh or the copy of the hidden test failed"
+    t_skip "$((NAGE - 1))" "pattern-23 setup failed"
   fi
 fi
 
