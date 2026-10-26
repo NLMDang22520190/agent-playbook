@@ -140,3 +140,5 @@ test-evals-json.sh 80
 test-eval-delta.sh 80
 test-evals-keys.sh 350
 test-update-signed.sh 45
+test-evals-hooks.sh 150
+test-evals-grade15.sh 420
