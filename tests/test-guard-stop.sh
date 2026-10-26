@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Lane k1a (v0.28.0) scripts/guard-irreversible.sh --session-start and --stop:
 # A-S5 session baseline, Stop schema/migration diff, rename is not a drop (AC-A10, AC-A11, AC-A13), A-S9 Stop give-up counter (AC-A17).
+# Review fix round R6, R7: the guard's state dir is outside the project; a commented-out CREATE TABLE counts as removed.
 # Hook input: the documented SessionStart and Stop JSON (https://code.claude.com/docs/en/hooks, fetched 2026-10-26).
 . "$(dirname "$0")/lib.sh"
 . "$PB_ROOT/tests/guard-fixture.sh"
@@ -196,5 +197,44 @@ assert_file "AC-A17 no session_id: the count lives in nosession.stops" "$(gcd "$
 grun PB_HEADLESS=1 -- "$(jstop "$R" -)" --stop
 assert_rc "AC-A17 no session_id: Stop 4 gives up" 0
 assert_contains "AC-A17 no session_id: Stop 4 says it gave up" "$GOUT" "gave up after 3 Stop blocks"
+
+# ---- v0.28 hook review fix round (review /home/dev/v026/28-hooks-review.md, orchestrator decisions R6, R7) ----
+echo "R6 (review F6) the guard's own state dir counts as outside the project (AC-A6, AC-A10)"
+srepo
+for c in 'rm -rf .git/pb-guard' 'rm -rf ./.git/pb-guard/' 'rm -rf .git/pb-guard/*' "rm -rf $R/.git/pb-guard" \
+  'cd .git && rm -rf pb-guard' 'rm -rf .git/./pb-guard' 'rm -rf .git'; do
+  grun PB_HEADLESS=1 -- "$(jbash "$c" "$R")"
+  expect_block "R6 [$c] in a repo with a session baseline" rm-outside
+done
+assert_file "R6 the baseline file is still there (nothing ran)" "$(gcd "$R")/pb-guard/$SID"
+for c in 'rm -rf build' 'rm -rf .agents/handoff' 'rm -rf db/pb-guard'; do
+  grun PB_HEADLESS=1 -- "$(jbash "$c" "$R")"
+  expect_pass "R6 [$c] inside the project is still allowed"
+done
+# characterization (spec AC-A11 fallback order: session file, merge-base with @{upstream}, HEAD): with the state dir gone
+# after SessionStart, a committed drop is still caught through the upstream merge-base
+SRC="$(mk_tmp)/src"; mk_schema_repo "$SRC" >/dev/null
+R="$(mk_tmp)/clone"; git clone -q "$SRC" "$R"; GRUNDIR="$R"; SID=r6-wiped
+grun PB_HEADLESS=1 -- "$(jstart "$R" "$SID")" --session-start
+schema "$S_HEAD" "$S_ORD"; fxg "$R" commit -qam "drop legacy_orders"
+rm -rf "$(gcd "$R")/pb-guard"
+gs; expect_block "R6 state dir removed after SessionStart: the upstream merge-base still sees the committed drop" schema-drop
+
+echo "R7 (review F7) a CREATE TABLE inside a comment counts as removed (AC-A11)"
+srepo; schema "$S_HEAD" "$S_ORD" "$S_LEGC" "/* $S_LEG */"
+gs; expect_block "R7 CREATE TABLE legacy_orders inside /* */ on one line" schema-drop
+assert_contains "R7 the message names the commented-out table" "$GERR" "legacy_orders"
+srepo; schema "$S_HEAD" "$S_ORD" "$S_LEGC" '/*' "$S_LEG" '*/'
+gs; expect_block "R7 CREATE TABLE legacy_orders inside a multi-line /* */" schema-drop
+srepo; schema "$S_HEAD" "$S_ORD" "$S_LEGC" '/* dropped:' "$S_LEG" 'end */'
+gs; expect_block "R7 a multi-line /* */ with text on the open and close lines" schema-drop
+srepo; schema "$S_HEAD" "$S_ORD" "$S_LEGC" "-- $S_LEG"
+gs; expect_block "R7 CREATE TABLE legacy_orders after -- (characterization)" schema-drop
+srepo; schema "$S_HEAD" "$S_ORD" "/* $S_LEGC */" "$S_LEG"
+gs; expect_pass "R7 a closed /* */ comment before the table keeps it"
+srepo; schema "$S_HEAD" "$S_ORD" "$S_LEGC" "/* old shop */ $S_LEG"
+gs; expect_pass "R7 a closed /* */ comment before CREATE on the same line keeps it"
+srepo; schema "$S_HEAD" "$S_ORD" '/*' 'notes' '*/' "$S_LEG"
+gs; expect_pass "R7 a closed multi-line comment above the table keeps it"
 
 t_summary
