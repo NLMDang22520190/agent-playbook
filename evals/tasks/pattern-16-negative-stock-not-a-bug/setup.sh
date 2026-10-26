@@ -28,7 +28,7 @@ Stock levels of the shop's warehouse.
 - `src/dashboard.js` `stockLabel(item)`: the stock label on the inventory dashboard.
 - `src/export.js` `stockCsvLine(item)`: one line of the nightly CSV export the warehouse imports.
 
-Rules: `docs/inventory.md`. Tests: `npm test`.
+Notes agreed with the warehouse are in `docs/`. Tests: `npm test`.
 PB_TASK_EOF
 
 cat > docs/inventory.md <<'PB_TASK_EOF'
@@ -38,9 +38,26 @@ Agreed with the warehouse, 2026-01-20.
 
 - Available stock is `onHand - reserved`.
 - A regular item can never be reserved beyond what is available: `reserve` refuses it.
-- Pre-order items can be reserved before the goods arrive, so they may go below zero: -3 means three units are
-  backordered.
-- The dashboard and the export show the signed number; the warehouse import parses it.
+- Stock is counted every Monday; a count that differs from `onHand` is corrected by the warehouse, not by the shop.
+PB_TASK_EOF
+
+cat > docs/selling-ahead.md <<'PB_TASK_EOF'
+# Selling ahead of delivery
+
+Agreed with the warehouse and the buyers, 2026-02-02.
+
+- Items flagged `preorder` take reservations before the goods arrive; `reserve` does not cap them.
+- Their available stock then drops under zero. The number below zero is how many units customers are waiting for,
+  and the buyers order at least that many from the supplier.
+- Nobody may round it up to zero anywhere: the buyers read it on the dashboard and the warehouse reads it in the
+  nightly export (see `docs/export.md`).
+PB_TASK_EOF
+
+cat > docs/export.md <<'PB_TASK_EOF'
+# Nightly export
+
+One line per SKU, `sku;available`, where `available` is a signed integer (the warehouse import accepts a leading
+minus sign). Lines are written in catalogue order.
 PB_TASK_EOF
 
 cat > src/stock.js <<'PB_TASK_EOF'

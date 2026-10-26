@@ -136,16 +136,15 @@ index 67d1793..35f875e 100644
  }
  
  module.exports = { invoiceDate };
-diff --git a/src/report.js b/src/report.js
-index e2b980f..851c001 100644
---- a/src/report.js
-+++ b/src/report.js
-@@ -4,7 +4,7 @@ const datefmt = require('datefmt');
- const STAMP = 'YYYY-MM-DD HH:mm';
- 
- function stampUtc(d) {
--  return datefmt.format(d, STAMP, { utc: true });
-+  return datefmt.format(d, STAMP, { timeZone: 'UTC' });
- }
- 
- module.exports = { stampUtc };
+diff --git a/src/settings.js b/src/settings.js
+index 4b08bd3..21b03dd 100644
+--- a/src/settings.js
++++ b/src/settings.js
+@@ -3,6 +3,6 @@
+ // Display settings of the daily report.
+ module.exports = {
+   REPORT_TITLE: 'Daily billing report',
+-  REPORT_STAMP: { pattern: 'YYYY-MM-DD HH:mm', options: { utc: true } },
++  REPORT_STAMP: { pattern: 'YYYY-MM-DD HH:mm', options: { timeZone: 'UTC' } },
+   ROWS_PER_PAGE: 50,
+ };
