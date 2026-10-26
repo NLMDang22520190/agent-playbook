@@ -140,4 +140,37 @@ assert_rc "AC6 --workroot inside --tasks-dir -> exit 2" 2
 assert_no_path "AC6 the workroot inside the tasks dir is not created" "$T/wr"
 assert_eq "AC6 the adapter did not run" "NO-RECORD" "$(rec_of "$SR/t-add.with.1.args")"
 
+echo "v0.28.2 lane o --clean-env: CLAUDE* and ANTHROPIC_BASE_URL do not reach the adapter (as in run-evals.sh)"
+mk_stub envdump 'env | LC_ALL=C sort > "$SR/$l.allenv"'
+CE_NAMES="CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CONFIG_DIR CLAUDELIKE ANTHROPIC_BASE_URL ANTHROPIC_API_KEY ANTHROPIC_MODEL PB_CONTROL_VAR MY_CLAUDE_X"
+ce_export() {
+  export CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli CLAUDE_CONFIG_DIR=/leak/cfg CLAUDELIKE=1 ANTHROPIC_BASE_URL=http://leak.invalid \
+    ANTHROPIC_API_KEY=sk-test-key ANTHROPIC_MODEL=m1 PB_CONTROL_VAR=keepme MY_CLAUDE_X=keep2
+}
+ce_unset() { for v in $CE_NAMES; do unset "$v"; done; }
+ce_export; ro --clean-env --cmd "bash $SA/envdump.sh" --tasks t-add; ce_unset
+assert_rc "CE1 --clean-env: the run itself works (idle stub, the task stays unsolved -> exit 1)" 1
+ENVT="$(cat "$SR/t-add.with.1.allenv" 2>/dev/null)"
+assert_file "CE1 the adapter ran and dumped its environment" "$SR/t-add.with.1.allenv"
+assert_eq "CE1 no variable starting with CLAUDE reaches the adapter" "0" "$(printf '%s\n' "$ENVT" | grep -c '^CLAUDE')"
+assert_eq "CE1 ANTHROPIC_BASE_URL is removed" "0" "$(printf '%s\n' "$ENVT" | grep -c '^ANTHROPIC_BASE_URL=')"
+assert_contains "CE1 ANTHROPIC_API_KEY stays" "$ENVT" "ANTHROPIC_API_KEY=sk-test-key"
+assert_contains "CE1 other ANTHROPIC_ variables stay" "$ENVT" "ANTHROPIC_MODEL=m1"
+assert_contains "CE1 the control variable stays" "$ENVT" "PB_CONTROL_VAR=keepme"
+assert_contains "CE1 a name that only contains CLAUDE (not a prefix) stays" "$ENVT" "MY_CLAUDE_X=keep2"
+ce_export; ro --cmd "bash $SA/envdump.sh" --tasks t-add --clean-env; ce_unset
+ENVT="$(cat "$SR/t-add.with.1.allenv" 2>/dev/null)"
+assert_file "CE2 --clean-env after the other options: the adapter ran" "$SR/t-add.with.1.allenv"
+assert_eq "CE2 --clean-env after the other options works too" "0" "$(printf '%s\n' "$ENVT" | grep -c '^CLAUDE\|^ANTHROPIC_BASE_URL=')"
+ce_export; ro --cmd "bash $SA/envdump.sh" --tasks t-add; ce_unset
+ENVT="$(cat "$SR/t-add.with.1.allenv" 2>/dev/null)"
+assert_contains "CE3 without the flag CLAUDECODE is kept" "$ENVT" "CLAUDECODE=1"
+assert_contains "CE3 without the flag CLAUDE_CONFIG_DIR is kept" "$ENVT" "CLAUDE_CONFIG_DIR=/leak/cfg"
+assert_contains "CE3 without the flag ANTHROPIC_BASE_URL is kept" "$ENVT" "ANTHROPIC_BASE_URL=http://leak.invalid"
+assert_contains "CE3 without the flag the API key is kept" "$ENVT" "ANTHROPIC_API_KEY=sk-test-key"
+run bash "$OUTCOME" --help
+assert_contains "CE4 the usage text documents --clean-env" "$OUT" "--clean-env"
+assert_contains "CE4 the usage text says what --clean-env drops" "$OUT" "drop every CLAUDE"
+assert_contains "CE4 the tasks README documents run-outcome --clean-env" "$(cat "$PB_ROOT/evals/tasks/README.md")" "--clean-env"
+
 t_summary
