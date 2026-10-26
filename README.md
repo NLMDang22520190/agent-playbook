@@ -30,10 +30,10 @@ Then open a new agent session and say *"set up the playbook"*. Setup asks at mos
 | Rule | Why |
 |---|---|
 | Read the repo first. Ask only when a choice is material and hard to reverse; otherwise pick a default, log it in `decisions.md` and review the defaults together at the end. | Waiting on choices that can be undone is slow. Guessing the ones that cannot causes rework or damage. |
-| Every claim carries `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`, and "passes" needs output from a run in this session. | Tests have passed on the wrong screen, and a confident wrong explanation costs the next person a day. |
+| Claims that matter carry `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`, and "passes" needs output from a run in this session. | Tests have passed on the wrong screen, and a confident wrong explanation costs the next person a day. |
 | The tester, implementer and reviewer run in three fresh contexts, and `role-gate.sh` enforces the split through git. | An agent that writes both the code and its tests writes tests that agree with its mistakes. |
 | Acceptance criteria quote the request word for word, with a source anchor. | Paraphrasing a request is the fastest way to build what nobody asked for. |
-| A UI change needs someone to look at the screen. | Passing tests cannot tell you the screen is right. |
+| A UI change needs one real look at the running screen in this session: a screenshot or browser read, which the agent can take. | Passing tests cannot tell you the screen is right. |
 | Stay in scope, and never loosen a test or a gate. | Unrequested changes hide in diffs nobody reviews, and a loosened gate protects no one. |
 | When skills give opposite orders, the playbook wins. | Two skills with opposite orders make behaviour random. |
 
@@ -225,7 +225,7 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 |---|---|---|
 | Script, installer and tool tests | **19120 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 39 / 60 lines · 4,577 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 39 / 60 lines · 4,584 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
 | Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Runs 25-37 (2026-10-26, with vs without the playbook, k=2 to 5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): Δ > 0 for E2, E3, E4, E6, E14, E29, pattern-12 and pattern-15, and with the opt-in hooks for E13 and E34; Δ = 0 on 20 of 23 outcome tasks. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |

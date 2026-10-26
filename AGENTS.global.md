@@ -13,7 +13,7 @@ Why: waiting on reversible choices is slow; guessing irreversible ones does dama
 Load a skill named here before work it covers (the `Skill` tool, or read its `SKILL.md`) and say which skill you loaded. This block is a summary, not the procedure.
 Why: agents reading only this summary skipped steps.
 
-### Proof for every claim
+### Proof for claims that matter
 Label non-trivial claims: [VERIFIED] ran or read this session, with evidence; [INFERRED] reasoned from stated facts; [UNVERIFIED] not checked. Library, API and version facts cite official docs (URL, version). No evidence: say "unverified", never a plausible guess. Details: `playbook-proof`. On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence.
 Why: tests passed on the wrong screen; confident guesses cost others a day.
 

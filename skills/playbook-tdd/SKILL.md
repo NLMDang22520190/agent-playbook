@@ -239,7 +239,7 @@ sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREE
 (gate, then the test command as evidence, optional checkpoint commit) use
 `bash ~/.agents/playbook/scripts/tdd-step.sh red|green` (`--base` red, `--baseline` both).
 How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.
-Native roles get the full role file plus the allowed input paths, never your conversation or opinions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
+Native roles get the full role file plus the allowed input paths, never your conversation or opinions; the context pack holds paths, excerpts and commands, not conclusions. In `none` mode play the roles one after another: commit between roles, re-read only the hand-off files, still run the gates, and report "degraded mode: roles shared one context".
 
 **Why:** a different, stronger reviewer model catches what the author's model misses, and a role that
 never saw your reasoning cannot inherit its mistakes.

@@ -3,7 +3,7 @@ name: playbook-proof
 description: Use when stating results, diagnoses, comparisons or recommendations, or before saying work is done, fixed or passing - attach evidence (command output from this session, file:line, official docs) and label confidence; also to review others' claims.
 ---
 
-# Proof for every claim
+# Proof for claims that matter
 
 **Why:** green that nobody looked at has shipped the wrong screen before, and a plausible
 invention in a handoff costs the next session a day.
