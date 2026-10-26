@@ -537,4 +537,16 @@ done
 gallow "G R1 pin: diff with two operands does not write its last operand" "diff drop.sql x.txt; sqlite3 db < x.txt"
 gallow "G R1 pin: a non-.sql source on disk is not read (documented limit, D-g2)" "cp notes.txt f.sql; sqlite3 db < f.sql"
 
+# R2 (review round 2) cp prefix state machine: option and value words of sudo/timeout/nice/env keep the cp, DEST handling
+for c in "sudo -u x cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "timeout 5 cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "nice -n 5 cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "nice -5 cp drop.sql f.txt; sqlite3 db < f.txt" \
+  "env -i cp drop.sql f.txt; sqlite3 db < f.txt"; do
+  gblock "G R2 cp behind a prefix with options or a value word still carries DROP" "$c"
+done
+# R2 pin: DEST is an existing directory, so the copy lands at exist/drop.sql and the client reads a directory path (no text)
+mkdir -p "$GQ/exist"
+gallow "G R2 pin: cp into an existing directory, client reads the directory path" "cp drop.sql exist; sqlite3 db < exist"
+
 t_summary
