@@ -56,4 +56,25 @@ has "AC6 README points to Runs 25-37 and the audit" "$RM" 'Runs 25[-–]37[^|]{0
 has "AC6 README states the cost of the with arm, about 2-2.5x" "$RM" '2[-–]2\.5 ?(x|times)'
 has "AC6 the cost line cites Runs 25, 26 and 29" "$RM" '2[-–]2\.5 ?(x|times)[^|]{0,250}Run 25[^|]{0,80}26[^|]{0,80}29|Runs? 25, 26 and 29[^|]{0,200}2[-–]2\.5'
 
+echo "S2 AC3 the always-loaded diet: ZERO-only text leaves AGENTS.global.md and the playbook-proof SKILL.md, a pointer stays"
+BLOCK="$PB_ROOT/AGENTS.global.md"
+PSK="$PB_ROOT/skills/playbook-proof/SKILL.md"
+EVF="$PB_ROOT/skills/playbook-proof/references/evidence-formats.md"
+BF="$(flat "$BLOCK")"; PF="$(flat "$PSK")"; EF="$(flat "$EVF")"
+hasnt "AC3 R6 AGENTS.global.md no longer carries the E5 run-output sentence" "$BF" 'need run output from this session'
+hasnt "AC3 R6 AGENTS.global.md no longer carries the path:line sentence" "$BF" 'Code claims cite `path:line`'
+has "AC3 R6 the always-on Proof section still points to playbook-proof" "$BF" 'Details: `playbook-proof`'
+has "AC3 R6 evidence-formats.md carries the moved sentence" "$EF" '"Passes", "works", "fixed" need run output from this session'
+if grep -q '^## Producing evidence' "$PSK"; then t_bad "AC3 R27 playbook-proof SKILL.md no longer has the Producing evidence section" "heading still there"; else t_ok "AC3 R27 playbook-proof SKILL.md no longer has the Producing evidence section"; fi
+if grep -q '^## Producing evidence' "$EVF"; then t_ok "AC3 R27 evidence-formats.md has the Producing evidence section"; else t_bad "AC3 R27 evidence-formats.md has the Producing evidence section" "no heading"; fi
+has "AC3 R27 the moved section keeps the proof-run.sh usage" "$EF" 'proof-run\.sh --label unit-tests'
+has "AC3 R27 the moved section keeps the never-retype rule" "$EF" 'Never retype or summari[sz]e output inside the block'
+has "AC3 R27 playbook-proof SKILL.md keeps one pointer line to proof-run.sh and evidence-formats.md" "$PF" 'proof-run\.sh[^.]{0,120}references/evidence-formats\.md|references/evidence-formats\.md[^.]{0,120}proof-run\.sh'
+AGW="$(wc -w < "$BLOCK" | tr -d ' ')"; PSW="$(wc -w < "$PSK" | tr -d ' ')"
+if [ "$AGW" -lt 718 ]; then t_ok "AC3 AGENTS.global.md has fewer words than at v0.28.2 (718): $AGW"; else t_bad "AC3 AGENTS.global.md has fewer words than at v0.28.2 (718)" "$AGW words"; fi
+if [ "$PSW" -lt 675 ]; then t_ok "AC3 playbook-proof SKILL.md has fewer words than at v0.28.2 (675): $PSW"; else t_bad "AC3 playbook-proof SKILL.md has fewer words than at v0.28.2 (675)" "$PSW words"; fi
+for keep in '\[VERIFIED\] ran or read this session' 'On pushback, re-check' 'Never weaken, skip or delete a test or gate' 'If the user asks to skip tests, ask once and offer the test' 'A rename or removal of an export is a public API change' 'log it in `\.agents/handoff/decisions\.md`' 'Read `\.agents/LEARNINGS\.md` first'; do
+  has "AC3 KEEP text stays in AGENTS.global.md: $keep" "$BF" "$keep"
+done
+
 t_summary

@@ -278,8 +278,11 @@ jchk 'v24.1 Clarify: end the summary with assumptions and logged defaults' "$BLO
 jchk 'v24.1 Proof: the [VERIFIED] label' "$BLOCK" "$PROOF" '\[VERIFIED\][^[]{0,60}(ran|read)[^[]{0,60}evidence'
 jchk 'v24.1 Proof: the [INFERRED] label' "$BLOCK" "$PROOF" '\[INFERRED\] reasoned from stated facts'
 jchk 'v24.1 Proof: the [UNVERIFIED] label' "$BLOCK" "$PROOF" '\[UNVERIFIED\] not checked'
-jchk 'v24.1 Proof: code claims cite path:line read this session' "$BLOCK" "$PROOF" 'cite `path:line` read this session'
-jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh' "$BLOCK" "$PROOF" '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
+# v0.29.0 lane a: these two sentences moved (Δ = 0 for E5, docs/delta-audit.md R6) from the always-on Proof section to
+# skills/playbook-proof/references/evidence-formats.md; the pins follow the text to its new place
+EVF="$PB_ROOT/skills/playbook-proof/references/evidence-formats.md"
+jchk 'v24.1 Proof: code claims cite path:line read this session (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' 'cite `path:line` read this session'
+jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
 jchk 'v24.1 Proof: library, API and version facts cite official docs' "$BLOCK" "$PROOF" 'version facts cite official docs \(URL, version\)'
 jchk 'v24.1 Proof: no evidence means say unverified' "$BLOCK" "$PROOF" 'No evidence[^.]{0,30}"unverified"'
 jchk 'v24.1 Proof: never fill gaps with plausible guesses' "$BLOCK" "$PROOF" '[Nn]ever[^.]{0,30}plausible guess'
