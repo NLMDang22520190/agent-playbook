@@ -34,7 +34,7 @@ chmod +x "$BIN/gh"
 R="own/repo"
 h40() { printf '%040d' "$1"; }          # 40 digits are a valid hex sha
 SHA="$(h40 1)"; PAR="$(h40 2)"; HEAD="$(h40 3)"; TREE="$(h40 4)"
-NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "macos shard 1/2" "macos shard 2/2" "windows shard 1/6" "windows shard 2/6" "windows shard 3/6" "windows shard 4/6" "windows shard 5/6" "windows shard 6/6")
+NAMES=("test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)" "macos shard 1/2" "macos shard 2/2" "windows shard 1/7" "windows shard 2/7" "windows shard 3/7" "windows shard 4/7" "windows shard 5/7" "windows shard 6/7" "windows shard 7/7")
 
 # put KEYPATH JSON -> the response of `gh api <KEYPATH>` (query string left out; runs also by head sha: use put_runs)
 put() { local v="$2"; printf '%s\n' "${v//$'\r'/}" > "$DATA/${1//\//_}"; }
@@ -51,7 +51,7 @@ run_json() { # ID HEADSHA [CONCLUSION] [LISTED-BASEREF]  (pull_requests[] is emp
   printf '{"id":%s,"head_sha":"%s","event":"pull_request","status":"completed","conclusion":"%s","pull_requests":%s}' "$1" "$2" "${3:-success}" "$prs"
 }
 runs_json() { printf '{"total_count":%s,"workflow_runs":[%s]}' "$1" "$2"; }
-jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all eleven success) | skipped|failure|cancelled NAME | missing NAME
+jobs_json() { # MODE NAME [STEPKIND]: MODE ok (all twelve success) | skipped|failure|cancelled NAME | missing NAME
   # | steps NAME STEPKIND: the jobs are all success; NAME's step list is changed (v0.23.0 AC5.3):
   #   docsonly (only a Docs-only checks step), both (full step skipped + Docs-only success), fullskipped (full step skipped, no other),
   #   fullfailed (full step failure), fullmissing (setup steps only), nosteps (no steps field), fullcancelled, fullnotdone

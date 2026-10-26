@@ -347,16 +347,17 @@ if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest 
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
 MATRIX_LINE="$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')"
-assert_contains "v0.24.19 AC1 the shard matrix is exactly 1/6, 2/6, 3/6, 4/6, 5/6, 6/6" "$MATRIX_LINE" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']"
-assert_eq "v0.24.19 AC1 the matrix line is nothing but the six-entry list" "shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
-for k in 1 2 3 4 5 6; do
-  assert_contains "v0.24.19 AC4 the shard matrix has $k/6" "$SB" "$k/6"
+assert_contains "v0.28.0 the shard matrix is exactly 1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 7/7" "$MATRIX_LINE" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']"
+assert_eq "v0.28.0 the matrix line is nothing but the seven-entry list" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
+for k in 1 2 3 4 5 6 7; do
+  assert_contains "v0.28.0 the shard matrix has $k/7" "$SB" "$k/7"
 done
+assert_not_contains "v0.28.0 no matrix entry ending in /6' is left" "$SB" "/6'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /4' is left" "$SB" "/4'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /3' is left" "$SB" "/3'"
-assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is six: 'split in six'" "$SB" "split in six"
+assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is seven: 'split in seven'" "$SB" "split in seven"
 assert_not_contains "v0.24.19 AC1 the windows-shard comment no longer says 'split in four'" "$SB" "split in four"
-assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'six parallel shards'" "$(cat "$WF")" "six parallel shards"
+assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'seven parallel shards'" "$(cat "$WF")" "seven parallel shards"
 assert_not_contains "v0.24.19 AC1 the workflow no longer says 'four parallel shards'" "$(cat "$WF")" "four parallel shards"
 # AC7: the quoted "windows shard k/n" names of tools/ci-tree-tested.sh (the header comment has them unquoted) are exactly the matrix entries
 CIT="$PB_ROOT/tools/ci-tree-tested.sh"
