@@ -7,7 +7,8 @@
 // normalize(text) -> { format, text, usage }:
 //   format "codex" when a line is a thread./turn./item. event, no line is a Claude Code stream-json event (system, assistant,
 //   user, result, tool_use, stream_event), and more than half of the non-empty lines are JSON events (a text that quotes one
-//   event line is not a Codex log); then text is the transcript rewritten as stream-json lines that the readers already
+//   event line is not a Codex log; Codex's own stderr lines, `WARNING: ...`, `Reading additional input from stdin...` and
+//   `<ISO time>Z ERROR|WARN|INFO|DEBUG|TRACE <target>: ...`, do not count); then text is the transcript rewritten as stream-json lines that the readers already
 //   understand. Any other transcript (Claude stream-json, plain text, mixed) comes back unchanged with format "" and usage
 //   null, so the readers read it exactly as before.
 // The rewrite: every item.completed becomes one assistant line (item.started is skipped):
@@ -16,8 +17,15 @@
 //                         a file argument <dir>/playbook-<name>/SKILL.md of a read-type command (cat, head, tail, less, more,
 //                         nl, bat; sed, awk, grep, egrep, fgrep, rg after their script or pattern) also gives Read {file_path}
 //                         and Skill {skill: playbook-<name>} (Codex loads a skill by reading its SKILL.md). A mention elsewhere
-//                         (ls, test -f, a search pattern, an echo, a redirect target) is no read; the without-arm isolation
-//                         check still fails on it, because it reads the Bash command itself.
+//                         (ls, test -f, a search pattern, a flag value such as rg -g, an echo, a redirect target, sed -i,
+//                         a heredoc body) is no read; the without-arm isolation check still fails on it, because it reads
+//                         the Bash command itself. Followed: grep/sed/awk -f FILE, a cd earlier in the same script (relative
+//                         paths join it), brace expansion {a,b}, sudo/env/nice/timeout/command/exec/nohup/time prefixes,
+//                         $( ) and backtick bodies, and `... | xargs [flags] <read verb>` (the words of the command before the
+//                         pipe are its files). Not followed (a read this way is not mapped): python -c / node -e / perl -e
+//                         and other interpreters, variables ($f in a for loop, $X/SKILL.md), a heredoc body fed to a shell,
+//                         eval, pushd/popd, find -exec, wc/sort/diff and other verbs outside the list; a cd inside ( ) also
+//                         applies after the subshell, and braces are expanded inside quotes too.
 //   file_change        -> Write {file_path} for an added path, Edit {file_path} for an updated or deleted one, in order
 //   web_search         -> WebFetch {url} for action open_page, else WebSearch {query}
 //   mcp_tool_call      -> mcp__<server>__<tool> {arguments}
@@ -25,6 +33,8 @@
 // turn.failed; result = the last agent_message of that turn, only when it succeeded (a failed turn has no reply);
 // usage = the sum of every turn.completed usage (numeric fields). An error event does not end a turn (Codex prints transient
 // "Reconnecting" errors), so it changes nothing. No result line when the last turn never ended.
+// Codex's own stderr lines: they are not counted when deciding whether most lines are JSON events
+const STDERR = /^(?:WARNING: |Reading additional input from stdin|\d{4}-\d\d-\d\dT[\d:.]+Z +(?:ERROR|WARN|INFO|DEBUG|TRACE) )/;
 const CLAUDE = { system: 1, assistant: 1, user: 1, result: 1, tool_use: 1, stream_event: 1 };
 
 // shellWord(s) -> s read as exactly one shell word ('...', "..." with \ escapes, bare characters), or null
@@ -66,14 +76,66 @@ function script(cmd) {
   return w === null ? c : w;
 }
 
-// commands(s) -> the simple commands of a shell script, each a list of words (quotes removed) and {redir: OP} markers.
-// Split at ; & | ( ) and newlines outside quotes; a digit word right before > or < is its fd; >&N and 2>&1 name no file.
+// stripHeredocs(s) -> s without the body lines of each heredoc (<<WORD, <<'WORD', <<"WORD", <<-WORD; not <<<), up to and
+// including the terminator line; an unterminated heredoc swallows the rest. The body is data, never commands.
+function stripHeredocs(s) {
+  const out = [], pend = [];
+  for (const line of s.split("\n")) {
+    if (pend.length) {
+      const d = pend[0], t = d.dash ? line.replace(/^\t+/, "") : line;
+      if (t.replace(/\r$/, "") === d.word) pend.shift();
+      continue;
+    }
+    out.push(line);
+    const re = /(?<!<)<<(?!<)(-?)[ \t]*(?:(["'])([A-Za-z_][-A-Za-z0-9_]*)\2|\\?([A-Za-z_][-A-Za-z0-9_]*))/g;
+    let m;
+    while ((m = re.exec(line))) pend.push({ dash: m[1] === "-", word: m[3] || m[4] });
+  }
+  return out.join("\n");
+}
+// takeSubs(s, bodies) -> s with every $( ) and backtick substitution (outside single quotes; not $(( ))) replaced by the word X;
+// their bodies go to bodies (read as scripts of their own)
+function takeSubs(s, bodies) {
+  let out = "", i = 0, sq = false, dq = false;
+  const n = s.length;
+  while (i < n) {
+    const c = s[i];
+    if (sq) { out += c; if (c === "'") sq = false; i++; continue; }
+    if (c === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
+    if (c === "'" && !dq) { sq = true; out += c; i++; continue; }
+    if (c === '"') { dq = !dq; out += c; i++; continue; }
+    if (c === "$" && s[i + 1] === "(" && s[i + 2] !== "(") {
+      let d = 1, j = i + 2;
+      while (j < n && d > 0) { if (s[j] === "(") d++; else if (s[j] === ")") d--; j++; }
+      bodies.push(s.slice(i + 2, d === 0 ? j - 1 : n)); out += "X"; i = j; continue;
+    }
+    if (c === "`") {
+      const j = s.indexOf("`", i + 1), e = j < 0 ? n : j;
+      bodies.push(s.slice(i + 1, e)); out += "X"; i = e + 1; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+// braces(w) -> the words of w after brace expansion of {a,b,...} groups (no nesting; at most 64 words)
+function braces(w) {
+  const m = /\{([^{}]*,[^{}]*)\}/.exec(w);
+  if (!m) return [w];
+  const res = [];
+  for (const part of m[1].split(",")) {
+    for (const x of braces(w.slice(0, m.index) + part + w.slice(m.index + m[0].length))) { if (res.length < 64) res.push(x); }
+  }
+  return res;
+}
+// commands(s) -> the simple commands of a shell script: { words, piped } with the words (quotes removed) and {redir: OP}
+// markers; piped is true for a command that reads the output of a single | before it.
+// Split at ; & | && || ( ) and newlines outside quotes; a digit word right before > or < is its fd; >&N and 2>&1 name no file.
 function commands(s) {
   const cmds = [];
-  let words = [], w = null, i = 0;
+  let words = [], w = null, i = 0, piped = false;
   const n = s.length;
   const endWord = () => { if (w !== null) { words.push(w); w = null; } };
-  const endCmd = () => { endWord(); if (words.length) cmds.push(words); words = []; };
+  const endCmd = (pipeNext) => { endWord(); if (words.length) cmds.push({ words, piped }); words = []; piped = !!pipeNext; };
   while (i < n) {
     const c = s[i];
     if (c === "'") { const j = s.indexOf("'", i + 1), e = j < 0 ? n : j; w = (w || "") + s.slice(i + 1, e); i = e + 1; continue; }
@@ -95,6 +157,8 @@ function commands(s) {
       words.push({ redir: op });
       continue;
     }
+    if (c === "|" && s[i + 1] !== "|") { endCmd(true); i++; continue; }
+    if ((c === "|" || c === "&") && s[i + 1] === c) { endCmd(); i += 2; continue; }
     if (";&|()".indexOf(c) >= 0) { endCmd(); i++; continue; }
     w = (w || "") + c; i++;
   }
@@ -112,41 +176,70 @@ const VALUE_FLAG = {
 const PAT_FLAG = { sed: /^-[ef]|^--(?:expression|file)/, awk: /^-f|^--file/, grep: /^-[ef]|^--(?:regexp|file)/,
   egrep: /^-[ef]|^--(?:regexp|file)/, fgrep: /^-[ef]|^--(?:regexp|file)/, rg: /^-[ef]|^--(?:regexp|file)/ };
 const SKILL_PATH = /(?:^|\/)(playbook-[A-Za-z0-9_-]+)\/SKILL\.md$/;
+// a file flag whose value is a file the command reads (grep -f PATTERNFILE, sed -f SCRIPT, awk -f PROGRAM)
+const FILE_FLAG = { sed: /^-f$/, awk: /^-f$/, grep: /^-f$/, egrep: /^-f$/, fgrep: /^-f$/, rg: /^-f$/ };
+// prefix commands that run the next word as the command; PREFIX_VALUE: their flags that take a value
+const PREFIX = /^(?:sudo|env|nice|timeout|command|exec|nohup|time|xargs)$/;
+const PREFIX_VALUE = { sudo: /^-[ugphCDRTU]$/, env: /^-[uCS]$/, nice: /^-n$/, timeout: /^-[sk]$/, xargs: /^-[nILdPsEa]$/ };
 // skillReads(script) -> [[path, skill]...]: the playbook SKILL.md files that read-type commands of the script read
 function skillReads(s) {
-  const out = [];
-  for (const cw of commands(s)) {
+  const out = [], bodies = [];
+  const main = takeSubs(stripHeredocs(String(s)), bodies);
+  for (const b of bodies) for (const r of skillReads(b)) out.push(r);
+  let cwd = null, prev = null;
+  for (const cmd of commands(main)) {
     const words = [];
     let redir = null;
-    for (const x of cw) {
+    for (const x of cmd.words) {
       if (typeof x === "object") { redir = x.redir; continue; }
       if (redir !== null) { if (redir === "<") words.push({ input: x }); redir = null; continue; }   // a > target is a write, << a heredoc word
-      words.push(x);
+      for (const e of braces(x)) words.push(e);
     }
-    let k = 0;
-    while (k < words.length && typeof words[k] === "string" &&
-      (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k]) || /^(?:sudo|env|command|exec|nohup|time)$/.test(words[k].replace(/^.*\//, "")))) {
+    const before = prev;
+    prev = words;
+    let k = 0, xargs = false;
+    while (k < words.length && typeof words[k] === "string") {
+      const b = words[k].replace(/^.*\//, "");
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k])) { k++; continue; }
+      if (!PREFIX.test(b)) break;
+      if (b === "command" && /^-[vV]$/.test(words[k + 1] || "")) { k = words.length; break; }   // a lookup, not a run
+      if (b === "xargs") xargs = true;
       k++;
-      while (k < words.length && typeof words[k] === "string" && /^-/.test(words[k])) k++;
+      while (k < words.length && typeof words[k] === "string" && /^-/.test(words[k])) k += PREFIX_VALUE[b] && PREFIX_VALUE[b].test(words[k]) ? 2 : 1;
+      if (b === "timeout") k++;   // the duration
     }
     if (k >= words.length || typeof words[k] !== "string") continue;
     const verb = words[k].replace(/^.*\//, "");
+    if (verb === "cd" && !xargs) {
+      const d = typeof words[k + 1] === "string" ? words[k + 1] : "";
+      cwd = d === "" || d === "-" ? null : /^[/~$]/.test(d) ? d.replace(/\/+$/, "") : cwd !== null ? cwd + "/" + d.replace(/\/+$/, "") : null;
+      continue;
+    }
     if (!READ_ALL.test(verb) && !READ_PAT.test(verb)) continue;
-    const pos = [], inputs = [];
+    if (verb === "sed" && words.slice(k + 1).some(t => typeof t === "string" && /^(?:-[a-zA-Z]*i|--in-place)/.test(t))) continue;   // sed -i writes
+    const pos = [], reads = [];
     let patByFlag = false, dd = false;
     for (let j = k + 1; j < words.length; j++) {
       const t = words[j];
-      if (typeof t === "object") { inputs.push(t.input); continue; }
+      if (typeof t === "object") { reads.push(t.input); continue; }
       if (!dd && t === "--") { dd = true; continue; }
       if (!dd && /^-./.test(t)) {
         if (PAT_FLAG[verb] && PAT_FLAG[verb].test(t)) patByFlag = true;
-        if (VALUE_FLAG[verb] && VALUE_FLAG[verb].test(t)) j++;
+        if (VALUE_FLAG[verb] && VALUE_FLAG[verb].test(t)) {
+          if (FILE_FLAG[verb] && FILE_FLAG[verb].test(t) && typeof words[j + 1] === "string") reads.push(words[j + 1]);
+          j++;
+        }
         continue;
       }
       pos.push(t);
     }
     if (READ_PAT.test(verb) && !patByFlag) pos.shift();   // the script or pattern
-    for (const p of pos.concat(inputs)) { const m = SKILL_PATH.exec(p); if (m) out.push([p, m[1]]); }
+    if (xargs && cmd.piped && before) for (const t of before.slice(1)) if (typeof t === "string" && !/^-/.test(t)) pos.push(t);
+    for (let p of pos.concat(reads)) {
+      if (cwd !== null && !/^[/~$]/.test(p)) p = cwd + "/" + p;
+      const m = SKILL_PATH.exec(p);
+      if (m) out.push([p, m[1]]);
+    }
   }
   return out;
 }
@@ -155,7 +248,7 @@ function normalize(text) {
   const objs = [];
   let codex = false, claude = false, lines = 0;
   for (const line of String(text).split(/\r?\n/)) {
-    if (line.trim() === "") continue;
+    if (line.trim() === "" || STDERR.test(line)) continue;
     lines++;
     let o;
     try { o = JSON.parse(line); } catch (e) { continue; }
