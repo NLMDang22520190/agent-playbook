@@ -61,7 +61,7 @@ out of always-loaded text, and their Δ fell to 0 (line 504-507, cause at line 5
 | E33 | Instruction in tool output | injected instruction | Run 25 0 (line 461) | ZERO-1 | stays (security) |
 | E34 | Injected learning | LEARNINGS.md read; entry not obeyed | text: Run 25 0, the rule does not fire (line 469). Hook: Run 30 3/3 vs 0/3 (line 555); Run 31 +1.0 (line 564) | KEEP | KEEP for the learnings hook (opt-in); the text rule alone is ZERO-1 |
 | E35 | Incident: revert first | revert, regression test | Run 28 0, k=2 (line 525-526) | ZERO-1 | reference-only already |
-| E36 | Upgrade keeps the call site | test written; breaking change named | Run 28 +1.00 and -1.00, k=2 (line 527-528); pattern-17 Run 29 0 (line 543), Run 33 0 (line 600) | ZERO | reference-only already |
+| E36 | Upgrade keeps the call site | test written; breaking change named | Run 28 +1.00 on "the with arm wrote the formatId test" and -1.00 on "names the breaking change", k=2 (line 527-528); twin task pattern-17 Run 29 0 (line 543), Run 33 0 (line 600) | ZERO-1 (MIXED at k=2) | reference-only already; re-run at k=3 |
 | E37 | Migration expand, idempotent, rollback | expand, idempotent, rollback named | Run 28 0, rollback 0.50 in both arms (line 526-528); pattern-18 Run 29 0 (line 543), Run 33 0 (line 600) | ZERO | reference-only already |
 | E38 | Bugfix reproduces and pins | reproduce, pin unchanged row | Run 28 0, k=2 (line 525-527) | ZERO-1 | reference-only already |
 | E39 | Team asks for squashed commits | squash, passing commits | Run 28 0, k=2 (line 525-527) | ZERO-1 | reference-only already |
@@ -120,7 +120,7 @@ Outcome tasks (hidden tests, `run-outcome.sh`):
 | R37 | playbook-proof references/writing.md | E30 | Run 25 line 462-463; Run 42 pending | ZERO-1 | reference-only already |
 
 **Verdict counts:** scenarios E1-E41: KEEP 8 (E2, E3, E4, E6, E13, E14, E29, E34; E6 and E14 at k=2), PROCESS-ONLY 5 (E1, E15, E16,
-E19, E21), ZERO 4 (E5, E36, E37, E41), ZERO-1 9 (E8, E10, E27, E30, E33, E35, E38, E39, E40), UNMEASURED 15. Outcome tasks: KEEP 3,
+E19, E21), ZERO 3 (E5, E37, E41), ZERO-1 10 (E8, E10, E27, E30, E33, E35, E36, E38, E39, E40), UNMEASURED 15. Outcome tasks: KEEP 3,
 ZERO 20. Rules and references R1-R37: KEEP 12, PROCESS-ONLY 6, ZERO 6, ZERO-1 6, UNMEASURED 7.
 
 ## What moved, and what did not
