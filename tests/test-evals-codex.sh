@@ -279,7 +279,7 @@ sr "sudo -u dev cat PATH" "playbook-tdd" "sudo -u dev cat $P"
 sr "echo \"\$(cat PATH)\"" "playbook-tdd" "echo \"\$(cat $P)\""
 sr "echo \`cat PATH\`" "playbook-tdd" "echo \`cat $P\`"
 sr "echo PATH | xargs cat" "playbook-tdd" "echo $P | xargs cat"
-sr "sed -i on PATH is a write" "" "sed -i 's/a/b/' $P"
+sr "sed in place (-i.bak) on PATH is a write" "" "sed -i.bak 's/a/b/' $P"
 sr "a heredoc body that names a cat of PATH is data" "" "cat > notes.sh <<'EOF'
 cat $P
 EOF"
