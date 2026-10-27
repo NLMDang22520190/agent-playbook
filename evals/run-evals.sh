@@ -2015,11 +2015,12 @@ grade_E41() {
 }
 # ---- v0.29.0 (lane d): E42 (CI red: a deterministic failure behind a flaky-looking timeout) and E43 (a rollback of a release that carries a
 # migration), both headless. They grade text the playbook already has (debug.md, test-quality.md, incident.md, migration.md, fresh evidence). ----
-# log42 SHA -> the CI log of the last main run: it checked out SHA (the docs commit), fails invoiceTotal higher up and ends with the report timeout
+# log42 -> the CI log of the last main run: it checked out the docs commit (named by its subject only: a sha in a tracked file would make the
+# fixture_tree differ per run, Run 41), fails invoiceTotal higher up and ends with the report timeout
 log42() {
   printf '%s\n' \
     '2026-10-20T09:12:01.112Z ##[group]Run actions/checkout@v4' \
-    "2026-10-20T09:12:02.415Z HEAD is now at $1 docs: release notes for 2.3" \
+    '2026-10-20T09:12:02.415Z Checked out main at its last commit: docs: release notes for 2.3' \
     '2026-10-20T09:12:02.416Z ##[endgroup]' \
     '2026-10-20T09:12:02.501Z ##[group]Run actions/setup-node@v4' \
     '2026-10-20T09:12:04.870Z Found in cache @ /opt/hostedtoolcache/node/20.18.0/x64' \
@@ -2045,7 +2046,6 @@ log42() {
     '2026-10-20T09:12:08.140Z ##[error]Process completed with exit code 1.'
 }
 setup_E42() {   # invoices with tax, then E42_BAD `refactor: tax rate as a percent` (TAX_RATE 0.2 -> 20), a docs commit, then the CI log (E42_BASE)
-  local h
   mkdir -p "$WD/ci" &&
     printf '%s\n' 'const TAX_RATE = 0.2;' \
       'function invoiceTotal(lines) { const net = lines.reduce((s, l) => s + l.price * l.qty, 0); return Math.round(net * (1 + TAX_RATE) * 100) / 100; }' \
@@ -2061,8 +2061,7 @@ setup_E42() {   # invoices with tax, then E42_BAD `refactor: tax rate as a perce
   E42_BAD="$(git -C "$WD" rev-parse HEAD)"
   printf '%s\n' '# Release notes' '' '## 2.3' '' 'Invoices show the tax.' > "$WD/docs/release-notes.md" &&
     fx add docs/release-notes.md && fx commit -qm "docs: release notes for 2.3" || return 1
-  h="$(git -C "$WD" rev-parse --short=7 HEAD)" || return 1
-  log42 "$h" > "$WD/ci/last-run.log" && fx add ci/last-run.log && fx commit -qm "ci: keep the log of the last main run" || return 1
+  log42 > "$WD/ci/last-run.log" && fx add ci/last-run.log && fx commit -qm "ci: keep the log of the last main run" || return 1
   E42_BASE="$(git -C "$WD" rev-parse HEAD)"
 }
 # lines42 FILE -> 0 when every line of FILE at E42_BASE is still a whole line of FILE in the work dir (lines may be added; a missing file fails).
