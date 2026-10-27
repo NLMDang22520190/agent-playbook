@@ -18,11 +18,11 @@ echo "S1 AC1 docs/delta-audit.md: one row per scenario, a verdict each, runs and
 assert_file "AC1 docs/delta-audit.md exists" "$AUDIT"
 AF="$(flat "$AUDIT")"
 has "AC1 the audit names the results file it cites" "$AF" '2026-10-12-claude-code-2\.1\.296\.md'
-for v in KEEP PROCESS-ONLY ZERO UNMEASURED; do has "AC1 the audit defines the verdict $v" "$AF" "\*\*$v\*\*: "; done
+for v in KEEP PROCESS-ONLY ZERO UNMEASURED INCONCLUSIVE; do has "AC1 the audit defines the verdict $v" "$AF" "\*\*$v\*\*: "; done
 for e in $(sed -n 's/^## \(E[0-9][0-9]*\) .*/\1/p' "$SCN"); do
   row="$(grep -E "^\| $e[ |]" "$AUDIT" 2>/dev/null | head -n 1)"
   if [ -n "$row" ]; then t_ok "AC1 the audit has a row for $e"; else t_bad "AC1 the audit has a row for $e" "no '| $e ' row"; continue; fi
-  if printf '%s' "$row" | grep -qE '\| *(KEEP|PROCESS-ONLY|ZERO|ZERO-1|UNMEASURED)[^|]*\|[^|]*\|? *$'; then t_ok "AC1 the $e row ends with a verdict and an action"; else t_bad "AC1 the $e row ends with a verdict and an action" "[$row]"; fi
+  if printf '%s' "$row" | grep -qE '\| *(KEEP|PROCESS-ONLY|ZERO|ZERO-1|UNMEASURED|INCONCLUSIVE)[^|]*\|[^|]*\|? *$'; then t_ok "AC1 the $e row ends with a verdict and an action"; else t_bad "AC1 the $e row ends with a verdict and an action" "[$row]"; fi
 done
 NRULES="$(grep -cE '^\| R[0-9]+ ' "$AUDIT" 2>/dev/null)"
 if [ "${NRULES:-0}" -ge 15 ]; then t_ok "AC1 the audit has at least 15 rule or reference rows R<n> ($NRULES)"; else t_bad "AC1 the audit has at least 15 rule or reference rows R<n>" "${NRULES:-0} rows"; fi
