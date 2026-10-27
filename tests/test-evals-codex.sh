@@ -8,6 +8,9 @@
 # Review round 1 (lane cx): a mixed transcript stays Claude, the synthetic Read/Skill calls are observed and come only from read-type
 # commands, an error event never ends a turn, a log counts as Codex only when most of its lines are JSON events, AskUserQuestion checks
 # on Codex are MANUAL (n/a), and a failed last turn has no reply.
+# Review round 2: Codex's own stderr lines (WARNING:, Reading additional input, <timestamp>Z ERROR ...) do not count against the
+# JSONL majority, and the skill-read mapping follows cd, braces, sudo -u, $( ) and backticks, xargs and grep -f, while sed -i,
+# heredoc bodies and flag values (rg -g) are no reads.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$PB_ROOT/evals/lib-harness.sh"
@@ -262,6 +265,47 @@ EOF
 S2="$(node "$FJS" "$TR/s2.log" 2>/dev/null)"
 assert_eq "codex: grep with the path as its file, head after cd, awk with the path as its file: three Skill calls" "3" "$(printf '%s\n' "$S2" | grep -c '^tool=Skill$')"
 assert_contains "codex: the grep read is a Read of that path" "$S2" "read=skills/playbook-proof/SKILL.md"
+
+# skill reads of single commands (evals/codex-jsonl.js skillReads): sr NAME EXPECTED SCRIPT -> the skills read, comma separated
+P="/h/.agents/skills/playbook-tdd/SKILL.md"; Q="/h/.agents/skills/playbook-proof/SKILL.md"
+sr() { assert_eq "skill reads: $1" "$2" "$(node -e 'process.stdout.write(require(process.argv[1]).skillReads(process.argv[2]).map(r => r[1]).join(","))' "$PB_ROOT/evals/codex-jsonl.js" "$3" 2>&1)"; }
+sr "cat of two paths in two commands" "playbook-tdd,playbook-proof" "cat $P; cat $Q"
+sr "head -n 200 PATH (the -n value is skipped)" "playbook-tdd" "head -n 200 $P"
+sr "rg -g PATH pattern src: a flag value, no read" "" "rg -g $P Weight src"
+sr "grep -f PATH file: the pattern file is read" "playbook-tdd" "grep -f $P src/a.js"
+sr "cd DIR && cat SKILL.md: the cd is followed" "playbook-tdd" "cd /h/.agents/skills/playbook-tdd && cat SKILL.md"
+sr "brace expansion playbook-{tdd,proof}/SKILL.md" "playbook-tdd,playbook-proof" "cat ~/.agents/skills/playbook-{tdd,proof}/SKILL.md"
+sr "sudo -u dev cat PATH" "playbook-tdd" "sudo -u dev cat $P"
+sr "echo \"\$(cat PATH)\"" "playbook-tdd" "echo \"\$(cat $P)\""
+sr "echo \`cat PATH\`" "playbook-tdd" "echo \`cat $P\`"
+sr "echo PATH | xargs cat" "playbook-tdd" "echo $P | xargs cat"
+sr "sed -i on PATH is a write" "" "sed -i 's/a/b/' $P"
+sr "a heredoc body that names a cat of PATH is data" "" "cat > notes.sh <<'EOF'
+cat $P
+EOF"
+sr "a heredoc written into PATH is a write" "" "cat <<EOF > $P
+hello
+EOF"
+sr "a command after the heredoc body is still read" "playbook-proof" "cat > n.txt <<EOF
+x
+EOF
+cat $Q"
+
+# a short run with Codex's own stderr noise (rmcp / models ERROR lines, WARNING, Reading additional input) is still Codex
+{ echo 'WARNING: proceeding, even though we could not create PATH aliases'
+  echo 'Reading additional input from stdin...'
+  for t in 05.729174 05.922185 06.310046 06.656755 07.658929 07.673645; do
+    echo "2026-10-27T02:11:$t""Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed"
+  done
+  echo '{"type":"thread.started","thread_id":"t-n"}'
+  echo '{"type":"turn.started"}'
+  echo '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"NO"}}'
+  echo '{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}'
+  echo '{"type":"thread.started","thread_id":"t-n2"}'
+} > "$TR/n1.log"
+rm -f "$TR/n1.log.result"
+assert_eq "codex + stderr noise (5 events, 8 stderr lines): format=codex" "codex" "$(tkey "$TR/n1.log" format)"
+assert_eq "codex + stderr noise: the reply is read" "NO" "$(cat "$TR/n1.log.result" 2>/dev/null)"
 
 # ---- lib-harness.sh: the isolation check and the probe answer ----
 echo "lane cx: pbh_iso_check and pbh_probe_answer read a Codex JSONL transcript"
