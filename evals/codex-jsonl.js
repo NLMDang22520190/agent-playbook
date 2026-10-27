@@ -5,10 +5,12 @@
 // {changes: [{path, kind: add|update|delete}]}, web_search {query, action: {type: open_page, url} | {type: search}} and
 // mcp_tool_call {server, tool, arguments}; other item types (reasoning, todo_list, error) are not tool calls.
 // normalize(text) -> { format, text, usage }:
-//   format "codex" when a line is a thread./turn./item. event, no line is a Claude Code stream-json event (system, assistant,
-//   user, result, tool_use, stream_event), and more than half of the non-empty lines are JSON events (a text that quotes one
-//   event line is not a Codex log; Codex's own stderr lines, `WARNING: ...`, `Reading additional input from stdin...` and
-//   `<ISO time>Z ERROR|WARN|INFO|DEBUG|TRACE <target>: ...`, do not count); then text is the transcript rewritten as stream-json lines that the readers already
+//   format "codex" when the JSON events show the Codex sequence, in this order: thread.started, then turn.started, then an
+//   item.* event or a turn.completed / turn.failed, and no line is a Claude Code stream-json event (system, assistant, user,
+//   result, tool_use, stream_event). Non-JSON lines (Codex's stderr: warnings, timestamped or ANSI-coloured ERROR lines,
+//   panics, backtraces) do not matter, however many there are. A text that quotes one or two event lines is not a Codex log;
+//   a text that quotes a whole sequence is read as one (an accepted trade-off). Then text is the transcript rewritten as
+//   stream-json lines that the readers already
 //   understand. Any other transcript (Claude stream-json, plain text, mixed) comes back unchanged with format "" and usage
 //   null, so the readers read it exactly as before.
 // The rewrite: every item.completed becomes one assistant line (item.started is skipped):
@@ -33,8 +35,6 @@
 // turn.failed; result = the last agent_message of that turn, only when it succeeded (a failed turn has no reply);
 // usage = the sum of every turn.completed usage (numeric fields). An error event does not end a turn (Codex prints transient
 // "Reconnecting" errors), so it changes nothing. No result line when the last turn never ended.
-// Codex's own stderr lines: they are not counted when deciding whether most lines are JSON events
-const STDERR = /^(?:WARNING: |Reading additional input from stdin|\d{4}-\d\d-\d\dT[\d:.]+Z +(?:ERROR|WARN|INFO|DEBUG|TRACE) )/;
 const CLAUDE = { system: 1, assistant: 1, user: 1, result: 1, tool_use: 1, stream_event: 1 };
 
 // shellWord(s) -> s read as exactly one shell word ('...', "..." with \ escapes, bare characters), or null
@@ -117,13 +117,15 @@ function takeSubs(s, bodies) {
   }
   return out;
 }
-// braces(w) -> the words of w after brace expansion of {a,b,...} groups (no nesting; at most 64 words)
-function braces(w) {
+// braces(w) -> the words of w after brace expansion of {a,b,...} groups (no nesting); the expansion stops at 64 words
+function braces(w, res) {
+  res = res || [];
+  if (res.length >= 64) return res;
   const m = /\{([^{}]*,[^{}]*)\}/.exec(w);
-  if (!m) return [w];
-  const res = [];
+  if (!m) { res.push(w); return res; }
   for (const part of m[1].split(",")) {
-    for (const x of braces(w.slice(0, m.index) + part + w.slice(m.index + m[0].length))) { if (res.length < 64) res.push(x); }
+    braces(w.slice(0, m.index) + part + w.slice(m.index + m[0].length), res);
+    if (res.length >= 64) break;
   }
   return res;
 }
@@ -246,18 +248,18 @@ function skillReads(s) {
 
 function normalize(text) {
   const objs = [];
-  let codex = false, claude = false, lines = 0;
+  let seq = 0, claude = false;   // seq: 1 after thread.started, 2 after a turn.started that follows it, 3 after an item or turn end
   for (const line of String(text).split(/\r?\n/)) {
-    if (line.trim() === "" || STDERR.test(line)) continue;
-    lines++;
     let o;
     try { o = JSON.parse(line); } catch (e) { continue; }
     if (!o || typeof o !== "object" || typeof o.type !== "string") continue;
-    if (/^(?:thread|turn|item)\./.test(o.type)) codex = true;
-    else if (CLAUDE[o.type]) claude = true;
+    if (CLAUDE[o.type]) claude = true;
+    if (seq === 0 && o.type === "thread.started") seq = 1;
+    else if (seq === 1 && o.type === "turn.started") seq = 2;
+    else if (seq === 2 && (/^item\./.test(o.type) || o.type === "turn.completed" || o.type === "turn.failed")) seq = 3;
     objs.push(o);
   }
-  if (!codex || claude || objs.length * 2 <= lines) return { format: "", text, usage: null };
+  if (seq < 3 || claude) return { format: "", text, usage: null };
   const out = [], usage = {};
   let reply = null, ended = null, anyUsage = false, n = 0;
   const tool = (name, input) => out.push({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "cx" + (++n), name, input }] } });
