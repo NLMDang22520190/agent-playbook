@@ -2245,8 +2245,8 @@ TW_LW="$(wc -w < "$LEARNSK" | tr -d ' ')"
 if grep -q 'learn\.sh trust' "$LEARNSK" && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words ($TW_LW)"; else t_bad "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words" "$TW_LW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$LEARNSK")"; fi
 
 echo "v0.29.0 lane w T F3: README Limits name the AGENTS.global text rule and agent self-trust"
-qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,300}LEARNINGS\.md|LEARNINGS\.md.{0,300}AGENTS\.global\.md'
-qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,300}(trust|inject)|(trust|inject).{0,300}text rule'
-qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,300}(agent|itself|own)|(agent|itself).{0,300}learn\.sh trust'
+qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,255}LEARNINGS\.md|LEARNINGS\.md.{0,255}AGENTS\.global\.md'
+qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,255}(trust|inject)|(trust|inject).{0,255}text rule'
+qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,255}(agent|itself|own)|(agent|itself).{0,255}learn\.sh trust'
 
 t_summary

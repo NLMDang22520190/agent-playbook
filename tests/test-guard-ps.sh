@@ -27,7 +27,7 @@ nocrash() {
   if [ "$RC" = 0 ] && ! has "$GERR" 'syntax error' && ! has "$GERR" 'unbound variable' && ! has "$GERR" 'bad substitution' &&
     ! has "$GERR" ': line ' && ! has "$GERR" 'command not found'; then t_ok "$1 (exit 0, no crash)"; else t_bad "$1 (exit 0, no crash)" "rc=$RC $OUT"; fi
 }
-NLC="$(printf '\n')"
+NLC=$'\n' # a real newline ($(printf '\n') would be empty: command substitution strips it)
 
 echo "P1 AC-P1 the PowerShell tool is checked (headless BLOCK, interactive WARN, harmless PASS)"
 psh 'Remove-Item -Recurse -Force C:\Users\me\docs'
@@ -599,13 +599,13 @@ psh "$HB"; expect_pass "AC-P8 commands inside @\"...\"@ are text, not commands"
 HP2="$(printf '%s\n' '$x = @'"'" 'it is "quoted" and has '"'"'quotes'"'" 'git push -f' "'"'@' 'git push -f')"
 psh "$HP2"; expect_block "AC-P8 a command after a multi-line single-quoted here-string is seen" git-push-force
 HB2="$(printf '%s\n' '$x = @"' 'a "quoted" word' '"@; git push -f')"
-psh "$HB2"; expect_not_block "AC-P8 text after the closing \"@ on its own line (not valid PowerShell): no crash"
+psh "$HB2"; expect_block "AC-P8 tokens may follow the closing \"@ on its line (like '@ | Out-File): a git push -f after \"@; is a command" git-push-force
 HP3="$(printf '%s\n' '$x = @"' 'line one' '"@' 'git push -f')"
 psh "$HP3"; expect_block "AC-P8 a command after a double-quoted here-string is seen" git-push-force
 HE="$(printf '%s\n' 'Write-Host @'"'" "it's" "'"'@' 'Remove-Item -Recurse -Force C:\Users\me\docs')"
 psh "$HE"; expect_block "AC-P8 here-string as an argument, then a delete outside" rm-outside
 HE2="$(printf '%s\n' 'Remove-Item -Recurse -Force @'"'" 'C:\Users\me\docs' "'"'@')"
-psh "$HE2"; expect_not_block "AC-P8 a here-string as the Remove-Item target is one word (no crash)"
+psh "$HE2"; expect_block "AC-P8 a here-string as the Remove-Item target is one word: its text C:\\Users\\me\\docs is outside the project" rm-outside
 HS="$(printf '%s\n' '@'"'" 'DROP TABLE t' "'"'@ | Out-File notes.txt')"
 psh "$HS" "$P"; expect_pass "AC-P8 a here-string piped to Out-File is not SQL"
 # comments
@@ -722,7 +722,9 @@ expect_pass "AC-P9 truncated JSON is PASS (fail-open)"
 grun PB_HEADLESS=1 -- '{"session_id":"s1","cwd":"C:\\work\\app","hook_event_name":"PreToolUse","tool_name":"PowerShell","tool_input":{"description":"x"},"tool_use_id":"t"}'
 expect_pass "AC-P9 a PowerShell call without a command field is PASS"
 grun PB_HEADLESS=1 -- '{"tool_name":"PowerShell","tool_input":{"command":"git push -f"}}'
-nocrash "AC-P9 a call without cwd and session does not crash"
+expect_block "AC-P9 a call without cwd and session: headless git push -f still blocks, no crash" git-push-force
+if ! has "$GERR" 'syntax error' && ! has "$GERR" 'unbound variable' && ! has "$GERR" 'bad substitution' && ! has "$GERR" ': line ' &&
+  ! has "$GERR" 'command not found'; then t_ok "AC-P9 no cwd and no session: no shell error text"; else t_bad "AC-P9 no cwd and no session: no shell error text" "$OUT"; fi
 grun PB_HEADLESS=1 -- 'tool_name PowerShell; git push --force origin main'
 expect_pass "AC-P9 non-JSON text is PASS"
 
