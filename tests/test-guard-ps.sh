@@ -901,4 +901,234 @@ Write-Host FileSystem::C:\Users\me
 Get-ChildItem -Recurse FileSystem::C:\Users\me
 EOF
 
+# ---- review round 2 fixes (blocker 1, majors 2-5, minors 6-7): same text, fail closed ----
+# Hook text arrives JSON-decoded; a form feed travels as the JSON escape \f (the guard decodes it). A vertical tab has no short
+# JSON escape (real clients send \u000b, which the guard documents as not decoded), so VT is sent as the raw byte here: [UNVERIFIED]
+# whether a real client's \u000b form would reach the guard decoded; the row pins the decoded byte only.
+WNB=$'\xc2\xa0' WEN=$'\xe2\x80\x82' WEM=$'\xe2\x80\x83' WTH=$'\xe2\x80\x89' WIS=$'\xe3\x80\x80'
+FFC=$'\f' VTC=$'\v'
+# psj CMD [CWD]: like psh, but a raw form feed byte is sent as the JSON escape \f
+psj() { local j; j="$(jps "$1" "${2:-$W}")"; j="${j//$FFC/\\f}"; grun PB_HEADLESS="$PSM" "${PSE[@]}" -- "$j"; }
+# expect_block_any NAME: BLOCK (exit 2, no stdout) of any kind; used where the spec leaves the kind open
+expect_block_any() { if [ "$RC" = 2 ] && [ -z "$GOUT" ]; then t_ok "$1 (BLOCK any kind)"; else t_bad "$1 (BLOCK any kind)" "rc=$RC $OUT"; fi; }
+
+echo "P1 review2 R1 [blocker] an assignment prefix does not hide the command that runs on its right"
+blk rm-outside <<'EOF'
+$null = Remove-Item -Recurse -Force C:\Users\me
+$x += Remove-Item -Recurse C:\Users\me
+$x -= Remove-Item -Recurse C:\Users\me
+[void](Remove-Item -Recurse C:\Users\me)
+$a, $b = Remove-Item -Recurse C:\Users\me
+[string]$o = Remove-Item -Recurse -Force C:\Users\me
+$x = (Remove-Item -Recurse C:\Users\me)
+$x = $(Remove-Item -Recurse C:\Users\me)
+$r = Remove-Item -Recurse -Force ..\other
+$r = rm -r C:\Users\me
+EOF
+blk git-push-force <<'EOF'
+$r = git push -f origin main
+$r = git push --force origin main
+$a, $b = git push --force
+[string]$o = git push -f
+$x += git push -f
+[void](git push -f)
+$x = (git push --force-with-lease)
+$null = git push origin +main
+EOF
+blk sql <<'EOF'
+$r = "DROP TABLE t" | sqlite3 app.db
+$null = 'DROP TABLE t' | psql
+$r = sqlite3 app.db "DROP TABLE t"
+EOF
+# controls: an assignment alone, or one whose right side is harmless, stays a PASS
+pas <<'EOF'
+$x = 'C:\Users\me'
+$n = git status
+$r = Remove-Item -Recurse -Force .\dist
+$null = Remove-Item .\a.txt
+[void](Get-ChildItem -Recurse)
+$r = "DROP TABLE t" | Out-String
+EOF
+
+echo "P1 review2 R2 built-in location functions cd.. cd\ and drive switches move the working location"
+blk rm-outside <<'EOF'
+cd..; cd..; Remove-Item -Recurse -Force .\other
+cd..; Remove-Item -Recurse -Force .\other
+cd\; Remove-Item -Recurse -Force .\Users\me
+cd \; Remove-Item -Recurse -Force .\Users\me
+D:; Remove-Item -Recurse -Force .\x
+d:; Remove-Item -Recurse -Force .\x
+C:; Remove-Item -Recurse -Force .\x
+E:; rm -r .\x
+Write-Host go; D:; Remove-Item -Recurse -Force .\x
+EOF
+psh "cd..${NLC}Remove-Item -Recurse -Force .\\other"; expect_block "R2 cd.. on its own line, delete on the next" rm-outside
+psh 'cd..; git push -f'; expect_block "R2 cd.. then a force push still blocks" git-push-force
+pas <<'EOF'
+cd .\sub; Remove-Item -Recurse -Force .\x
+cd .\sub; cd..; Remove-Item -Recurse -Force .\x
+Set-Location .\sub; Remove-Item -Recurse -Force .\x
+Write-Host "cd..; Remove-Item -Recurse .\other"
+EOF
+
+echo "P1 review2 R3 Unicode and control whitespace separates words like a space"
+set -- NBSP:"$WNB" EN-SPACE:"$WEN" EM-SPACE:"$WEM" THIN-SPACE:"$WTH" IDEOGRAPHIC-SPACE:"$WIS" VT:"$VTC"
+for wsp in "$@"; do
+  wn="${wsp%%:*}"; wc="${wsp#*:}"
+  psh "Remove-Item${wc}-Recurse${wc}C:\\Users\\me"; expect_block "R3 [$wn] Remove-Item<ws>-Recurse<ws>C:\\Users\\me" rm-outside
+  psh "Remove-Item -Recurse${wc}-Force${wc}..\\other"; expect_block "R3 [$wn] between -Recurse, -Force and a relative outside target" rm-outside
+  psh "git${wc}push -f"; expect_block "R3 [$wn] git<ws>push -f" git-push-force
+  psh "git push${wc}-f origin main"; expect_block "R3 [$wn] git push<ws>-f" git-push-force
+  psh "git push --force${wc}origin main"; expect_block "R3 [$wn] git push --force<ws>origin" git-push-force
+  psh "sqlite3${wc}app.db \"DROP TABLE t\""; expect_block "R3 [$wn] sqlite3<ws>app.db DROP TABLE" sql
+  psh "Remove-Item -Recurse -Force .\\dist${wc}; git status"; expect_pass "R3 [$wn] control: inside delete, then harmless"
+done
+psj "Remove-Item${FFC}-Recurse${FFC}C:\\Users\\me"; expect_block "R3 [FORM-FEED \\f] Remove-Item<ff>-Recurse<ff>C:\\Users\\me" rm-outside
+psj "git${FFC}push -f"; expect_block "R3 [FORM-FEED \\f] git<ff>push -f" git-push-force
+psj "git push${FFC}--force"; expect_block "R3 [FORM-FEED \\f] git push<ff>--force" git-push-force
+psj "Remove-Item -Recurse${FFC}-Force${FFC}..\\other"; expect_block "R3 [FORM-FEED \\f] relative outside target" rm-outside
+psj "Remove-Item -Recurse -Force .\\dist${FFC}"; expect_pass "R3 [FORM-FEED \\f] control: inside delete"
+# controls: a no-break or ideographic space inside a quoted in-project path is part of the name (the path stays inside)
+pas <<EOF
+Remove-Item -Recurse -Force ".\my${WNB}dir"
+Remove-Item -Recurse -Force '.\my${WNB}dir'
+Remove-Item -Recurse -Force ".\my${WIS}dir\x"
+Remove-Item -Recurse -Force "C:\work\app\my${WNB}dir"
+Remove-Item${WNB}-Recurse${WNB}.\dist
+git${WNB}status
+Write-Host "a${WNB}git push -f"
+Write-Host 'a${WIS}Remove-Item -Recurse C:\Users\me'
+EOF
+
+echo "P1 review2 R4 \$(...) inside an expandable here-string runs; in a literal here-string it is text"
+psh "Remove-Item -Recurse -Force @\"${NLC}\$(git push -f)${NLC}\"@"; expect_block "R4 expandable here-string as a delete target with \$(git push -f)" git-push-force
+psh "Write-Output @\"${NLC}\$(git push -f)${NLC}\"@"; expect_block "R4 Write-Output @\"..\"@ with \$(git push -f)" git-push-force
+psh "Write-Output @\"${NLC}text \$(git push --force origin main) more${NLC}\"@"; expect_block "R4 \$(git push --force) in the middle of a line of the here-string" git-push-force
+psh "Write-Host @\"${NLC}\$(Remove-Item -Recurse C:\\Users\\me)${NLC}\"@"; expect_block "R4 Write-Host @\"..\"@ with \$(Remove-Item -Recurse C:\\Users\\me)" rm-outside
+psh "Remove-Item -Recurse -Force @\"${NLC}\$(Remove-Item -Recurse C:\\Users\\me)${NLC}\"@"; expect_block "R4 delete target here-string holding \$(Remove-Item -Recurse C:\\Users\\me)" rm-outside
+psh "\$s = @\"${NLC}\$(git push -f)${NLC}\"@"; expect_block "R4 assigned here-string with \$(git push -f)" git-push-force
+psh "Write-Output @\"${NLC}\$(\"DROP TABLE t\" | sqlite3 app.db)${NLC}\"@"; expect_block "R4 \$(\"DROP TABLE t\" | sqlite3 app.db) in a here-string" sql
+# literal here-string: no subexpression runs, so the text passes; as a delete target it is still a non-path word (BLOCK as before)
+psh "Write-Output @'${NLC}\$(git push -f)${NLC}'@"; expect_pass "R4 control: literal @'..'@ holding \$(git push -f) is text"
+psh "Write-Output @'${NLC}\$(Remove-Item -Recurse C:\\Users\\me)${NLC}'@"; expect_pass "R4 control: literal @'..'@ holding a \$(Remove-Item) is text"
+psh "Write-Output @\"${NLC}git push -f${NLC}\"@"; expect_pass "R4 control: expandable here-string with plain text git push -f and no \$( ) is text"
+psh "Remove-Item -Recurse -Force @'${NLC}C:\\Users\\me${NLC}'@"; expect_block "R4 literal here-string as a delete target outside (as before)" rm-outside
+
+echo "P1 review2 R5 more assignment forms make a resolved variable unresolved (fail closed)"
+PSE=(TEMP=/tmp/pbfix3tempA TMP=/tmp/pbfix3tempB TMPDIR=/tmp/pbfix3tempC)   # temp dirs the guard knows without cygpath; never created
+blk rm-outside <<'EOF'
+$env:TEMP, $b = 'C:\Users\me', 1; Remove-Item -Recurse -Force $env:TEMP
+$env:TEMP,$b = 'C:\Users\me', 1; Remove-Item -Recurse -Force $env:TEMP
+$b, $env:TEMP = 1, 'C:\Users\me'; Remove-Item -Recurse -Force $env:TEMP
+[string]$env:TEMP = 'C:\Users\me'; Remove-Item -Recurse -Force $env:TEMP
+Set-Item Env:/TEMP C:\Users; Remove-Item -Recurse $env:TEMP\me
+Set-Item Env:TEMP C:\Users; Remove-Item -Recurse $env:TEMP\me
+set-item ENV:temp C:\Users; Remove-Item -Recurse $env:TEMP\me
+Set-Item -Path Env:\TEMP -Value C:\Users; Remove-Item -Recurse $env:TEMP\me
+Set-Item -Path Env:/TMP -Value C:\Users; Remove-Item -Recurse $env:TMP\me
+si Env:TEMP C:\Users; Remove-Item -Recurse $env:TEMP\me
+Rename-Item env:FOO TEMP; Remove-Item -Recurse $env:TEMP
+Rename-Item -Path Env:FOO -NewName TEMP; Remove-Item -Recurse $env:TEMP
+rni env:FOO TMP; Remove-Item -Recurse $env:TMP
+New-Item -Path Env:\TEMP -Value C:\Users -Force; Remove-Item -Recurse $env:TEMP\me
+New-Item Env:TEMP -Value C:\Users -Force; Remove-Item -Recurse $env:TEMP\me
+ni -Path Env:\TMPDIR -Value C:\Users -Force; Remove-Item -Recurse $env:TMPDIR\me
+[Environment]::SetEnvironmentVariable('TEMP','C:\Users'); Remove-Item -Recurse $env:TEMP
+[System.Environment]::SetEnvironmentVariable("TEMP", "C:\Users"); Remove-Item -Recurse $env:TEMP\me
+[Environment]::SetEnvironmentVariable('TMP','C:\Users',[EnvironmentVariableTarget]::Process); Remove-Item -Recurse $env:TMP\me
+EOF
+pas <<'EOF'
+Set-Item Env:FOO C:\Users; Remove-Item -Recurse -Force $env:TEMP\pbx
+Rename-Item env:FOO BAR; Remove-Item -Recurse -Force $env:TEMP\pbx
+New-Item -Path Env:\FOO -Value C:\Users -Force; Remove-Item -Recurse -Force $env:TEMP\pbx
+[Environment]::SetEnvironmentVariable('FOO','C:\Users'); Remove-Item -Recurse -Force $env:TEMP\pbx
+$env:FOO, $b = 'C:\Users', 1; Remove-Item -Recurse -Force $env:TEMP\pbx
+Rename-Item .\a.txt TEMP.txt; Remove-Item -Recurse -Force $env:TEMP\pbx
+EOF
+PSE=()
+blk rm-outside /pbguard-home/proj <<'EOF'
+Set-Item Env:USERPROFILE C:\Windows; Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+Rename-Item env:FOO HOME; Remove-Item -Recurse -Force $env:HOME\proj\build
+[Environment]::SetEnvironmentVariable('USERPROFILE','C:\Windows'); Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+$HOME, $b = 'C:\', 1; Remove-Item -Recurse -Force $HOME\proj\build
+EOF
+
+echo "P1 review2 R6 a call operator whose command is a group or a variable is an unknown command"
+blk rm-outside <<'EOF'
+& (Get-Command Remove-Item) -Recurse C:\Users\me
+& (gcm Remove-Item) -Recurse -Force C:\Users\me
+& $cmd -Recurse C:\x
+& $cmd C:\x -Recurse
+& ${cmd} -Recurse C:\x
+EOF
+blk git-push-force <<'EOF'
+. (gcm git) push -f
+& (Get-Command git) push --force origin main
+& $g push -f
+& $g push --force-with-lease
+EOF
+psh '& $cmd -Recurse .\dist'; expect_block_any "R6 & \$cmd -Recurse with an inside target (command unknown) [kind open, UNVERIFIED]"
+psh '& (Get-Command Remove-Item) -Recurse .\dist'; expect_block_any "R6 & (Get-Command Remove-Item) -Recurse inside target [kind open, UNVERIFIED]"
+pas <<'EOF'
+& (Get-Command foo) -Name x
+& (Get-Command foo)
+& $cmd status
+. (gcm git) status
+& .\tool.ps1 -Recurse
+& 'C:\tools\x.exe' -Recurse
+EOF
+
+echo "P1 review2 R7 compound assignment to a resolved variable makes it unresolved"
+PSE=(TEMP=/tmp/pbfix3tempA TMP=/tmp/pbfix3tempB TMPDIR=/tmp/pbfix3tempC)
+blk rm-outside <<'EOF'
+$env:TEMP += '\..\..\Users'; Remove-Item -Recurse $env:TEMP
+$env:TEMP -= 'x'; Remove-Item -Recurse $env:TEMP
+$env:TEMP *= 2; Remove-Item -Recurse $env:TEMP
+$env:TEMP /= 2; Remove-Item -Recurse $env:TEMP
+$env:TEMP %= 2; Remove-Item -Recurse $env:TEMP
+$env:TEMP ??= 'C:\Users'; Remove-Item -Recurse $env:TEMP
+$Env:Temp+='\..\..\Users'; Remove-Item -Recurse -Force "$env:TEMP"
+$env:TMP += '\..\..\Users'; Remove-Item -Recurse "$env:TMP\x"
+$env:TMPDIR += '\..\..\Users'; Remove-Item -Recurse "$env:TMPDIR\x"
+EOF
+pas <<'EOF'
+$env:FOO += '\..'; Remove-Item -Recurse -Force $env:TEMP\pbx
+$x += 1; Remove-Item -Recurse -Force $env:TEMP\pbx
+$x ??= 1; Remove-Item -Recurse -Force "$env:TEMP\pbx"
+EOF
+PSE=()
+blk rm-outside /pbguard-home/proj <<'EOF'
+$HOME += '\..\..'; Remove-Item -Recurse -Force $HOME\proj\build
+$env:USERPROFILE += '\..\..'; Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+EOF
+PSE=(CLAUDE_PROJECT_DIR='C:\work\app')
+blk rm-outside 'C:\other' <<'EOF'
+$env:CLAUDE_PROJECT_DIR += '\..'; Remove-Item -Recurse -Force "$env:CLAUDE_PROJECT_DIR\build"
+EOF
+PSE=()
+
+echo "P1 review2 addendum A: New-Item -Path Env: -Name X names the variable X"
+PSE=(TEMP=/tmp/pbfix3tempA TMP=/tmp/pbfix3tempB TMPDIR=/tmp/pbfix3tempC)
+blk rm-outside <<'EOF'
+New-Item -Path Env: -Name TEMP -Value C:\Users -Force; Remove-Item -Recurse -Force $env:TEMP
+New-Item -Path Env: -Name TEMP -Value C:\Users -Force; Remove-Item -Recurse -Force $env:TEMP\me
+new-item -path ENV: -name temp -value C:\Users -force; Remove-Item -Recurse $env:TEMP\me
+ni -Path env: -Name TMP -Value C:\Users -Force; Remove-Item -Recurse $env:TMP\me
+New-Item -Name TMPDIR -Path Env: -Value C:\Users; Remove-Item -Recurse $env:TMPDIR\me
+EOF
+pas <<'EOF'
+New-Item -Path Env: -Name FOO -Value C:\Users -Force; Remove-Item -Recurse -Force $env:TEMP\pbx
+ni -Path env: -Name BAR -Value x; Remove-Item -Recurse -Force $env:TEMP\pbx
+New-Item -Path .\dist -Name TEMP -ItemType Directory; Remove-Item -Recurse -Force $env:TEMP\pbx
+EOF
+PSE=()
+
+echo "P1 review2 addendum B: a # comment after | keeps the pipeline across the newline"
+psh "\"DROP TABLE t\" |  # c${NLC}sqlite3 app.db"; expect_block "B \"DROP TABLE t\" |  # c<newline>sqlite3 app.db" sql
+psh "\"DROP TABLE t\" | # run it${NLC}${NLC}psql"; expect_block "B comment, blank line, then psql" sql
+psh "'DROP TABLE t' |# c${CR}${NLC}sqlite3 app.db"; expect_block "B comment then CRLF" sql
+psh "git status |  # c${NLC}Out-Null"; expect_pass "B control: git status | # c<newline>Out-Null"
+psh "\"DROP TABLE t\" |  # c${NLC}Out-File notes.txt"; expect_pass "B control: comment, then Out-File (no SQL client)"
+psh "\"DROP TABLE t\"  # c${NLC}sqlite3 app.db"; expect_pass "B control: no pipe, comment only, next line is a separate command"
+
 t_summary

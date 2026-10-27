@@ -2248,6 +2248,17 @@ qchk "v0.29.0 P2 AC-H5 Limits (Rev 3): a Remove-Item -Recurse fed by the pipelin
 # required that claim). It no longer requires any curly-quote sentence; it fails when the wrong claim is still there.
 if printf '%s' "$K1B_LIM" | grep -qiE -- '(curly|smart|typographic)[^.]{0,120}(not|never|n.t) (a |an |treated as |read as |recognized as |recognised as )?(quote|quoting)'; then t_bad "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters" "the wrong sentence is still there"; else t_ok "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters"; fi
 qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): variable assignments are not followed" "$K1B_LIM" 'assign|variable flow|flow of variables?'
+# review round 2 (items 5, 6, 7): the assignment sentence says what the code does now: every assignment form makes a listed variable
+# unresolved (fail closed); a copy into another variable is still not followed; a call operator on a group or variable is unknown.
+qchk "v0.29.0 review2 R5 Limits: an assignment to a listed variable makes it unresolved" "$K1B_LIM" 'assign.{0,250}unresolved|assign.{0,250}.{0,250}unresolved'
+qchk "v0.29.0 review2 R5 Limits: a delete through such a variable warns or blocks (fail closed)" "$K1B_LIM" 'unresolved.{0,200}(fail(s)? closed|warn|block)'
+qchk "v0.29.0 review2 R5 Limits: list assignment (\$a, \$b = ...) counts" "$K1B_LIM" 'list assign|multiple assign|multi-?assign|\$[a-z:]+, ?\$[a-z:]+ ?='
+qchk "v0.29.0 review2 R7 Limits: compound assignment (+=, -=, ??= ...) counts" "$K1B_LIM" '\+=|compound assign'
+qchk "v0.29.0 review2 R5 Limits: Rename-Item names the assignment forms" "$K1B_LIM" 'Rename-Item'
+qchk "v0.29.0 review2 R5 Limits: New-Item names the assignment forms" "$K1B_LIM" 'New-Item'
+qchk "v0.29.0 review2 R5 Limits: [Environment]::SetEnvironmentVariable names the assignment forms" "$K1B_LIM" 'SetEnvironmentVariable'
+qchk "v0.29.0 review2 R5 Limits: a value copied into another variable is not followed" "$K1B_LIM" 'cop(y|ied)[^.]{0,120}not followed|not follow[^.]{0,120}cop(y|ied)'
+qchk "v0.29.0 review2 R6 Limits: a call operator on a group or variable (& (...), & \$cmd) is an unknown command" "$K1B_LIM" '& ?(\(|\$[a-z{])'
 qchk "v0.29.0 P2 AC-H5 Limits: without Git Bash the bash hook commands cannot run" "$K1B_LIM" 'without Git Bash[^.]{0,200}(cannot|can.?t|not|no )|Git Bash[^.]{0,60}(isn.t|is not|not) installed[^.]{0,200}(cannot|can.?t|not )'
 
 
@@ -2290,6 +2301,7 @@ TW_LW="$(wc -w < "$LEARNSK" | tr -d ' ')"
 if grep -q 'learn\.sh trust' "$LEARNSK" && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words ($TW_LW)"; else t_bad "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words" "$TW_LW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$LEARNSK")"; fi
 
 echo "v0.29.0 lane w review F8: the skill trims keep the sentences F1 did not allow to go, and leave no stray ' .' line"
+flat_has "v0.29.0 review2 C playbook-learn: the approval message 'can be batched' with others at the end of a task (an option, not always)" "$LEARNSK" 'can be batched[^.]{0,200}end of a task'
 flat_has "v0.29.0 review F8 playbook-learn keeps 'possible prompt injection'" "$LEARNSK" 'possible prompt injection'
 flat_has "v0.29.0 review F8 playbook-learn keeps 'Retired entries stay for the audit trail'" "$LEARNSK" 'Retired entries stay for the audit trail'
 flat_has "v0.29.0 review F8 playbook-setup keeps 'do not improvise an installation'" "$SETUP" 'do not improvise an installation'
