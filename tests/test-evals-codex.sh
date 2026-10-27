@@ -5,6 +5,9 @@
 # the inline readers h31_count and push35 of run-evals.sh) detect the format per transcript and read a Codex transcript as if it
 # were stream-json; Claude stream-json and plain text are read exactly as before (pinned below).
 # The transcripts are small and synthetic (their shape follows codex-cli 0.164.0 logs). Never calls a real harness.
+# Review round 1 (lane cx): a mixed transcript stays Claude, the synthetic Read/Skill calls are observed and come only from read-type
+# commands, an error event never ends a turn, a log counts as Codex only when most of its lines are JSON events, AskUserQuestion checks
+# on Codex are MANUAL (n/a), and a failed last turn has no reply.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$PB_ROOT/evals/lib-harness.sh"
@@ -71,7 +74,29 @@ cat > "$TR/c3.log" <<'EOF'
 {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Starting."}}
 {"type":"turn.failed","error":{"message":"stream disconnected"}}
 EOF
+rm -f "$TR/c3.log.result"
 assert_eq "codex: turn.failed: result_ok=0" "0" "$(tkey "$TR/c3.log" result_ok)"
+assert_no_path "codex: a failed last turn has no reply (no .result file)" "$TR/c3.log.result"
+assert_eq "codex: a failed last turn has no reply (full_named=na)" "na" "$(tkey "$TR/c3.log" full_named)"
+cat > "$TR/c6.log" <<'EOF'
+{"type":"thread.started","thread_id":"t-6a"}
+{"type":"turn.started"}
+{"type":"error","message":"Reconnecting... 1/5"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}
+EOF
+assert_eq "codex: an error event before turn.completed: result_ok=1" "1" "$(tkey "$TR/c6.log" result_ok)"
+cat > "$TR/c7.log" <<'EOF'
+{"type":"thread.started","thread_id":"t-6b"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}
+{"type":"error","message":"Reconnecting... 2/5"}
+EOF
+assert_eq "codex: an error event after turn.completed: result_ok=1" "1" "$(tkey "$TR/c7.log" result_ok)"
+rm -f "$TR/c7.log.result"
+node "$TJS" "$TR/c7.log" >/dev/null 2>&1
+assert_eq "codex: an error event after turn.completed keeps the reply" "Done." "$(cat "$TR/c7.log.result" 2>/dev/null)"
 
 # the shlex quoting of codex: '"'"' inside a single-quoted -lc script; the tests/ write before the skill read; src before the spec
 cat > "$TR/c4.log" <<'EOF'
@@ -122,6 +147,30 @@ asked=0
 prose_q=1
 models=" "$(node "$TJS" "$TR/k1.log" 2>/dev/null)"
 assert_eq "claude: the final reply is the result field" "Weight: Lite. Done?" "$(cat "$TR/k1.log.result" 2>/dev/null)"
+{ sed -n 1,4p "$TR/k1.log"; echo '{"type":"turn.started"}'; sed -n 5p "$TR/k1.log"; } > "$TR/k2.log"
+assert_eq "claude + a stray codex-type line: the transcript stays Claude stream-json" "json=1
+result_ok=1
+cost=0.25
+subagent=0
+tdd_order=ok
+feedback_captured=0
+full_named=0
+untested_label=0
+ran_tests=1
+spec_first=0
+asked=0
+prose_q=1
+models=" "$(node "$TJS" "$TR/k2.log" 2>/dev/null)"
+assert_eq "claude + a stray codex-type line: the reply is the result field" "Weight: Lite. Done?" "$(cat "$TR/k2.log.result" 2>/dev/null)"
+cat > "$TR/p2.log" <<'EOF'
+The Codex log I looked at had lines like this one:
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Quoted reply."}}
+and it ended with a turn.completed line.
+That is all I have to say about it.
+EOF
+rm -f "$TR/p2.log.result"
+assert_not_contains "plain text quoting one codex event line: not read as Codex (no format= line)" "$(node "$TJS" "$TR/p2.log" 2>/dev/null)" "format="
+assert_no_path "plain text quoting one codex event line: no reply taken from the quoted line" "$TR/p2.log.result"
 printf '%s\n' 'plain text output, not stream-json' 'turn.started item.completed' > "$TR/p1.log"
 assert_eq "plain text: the transcript.js output is unchanged" "json=0
 result_ok=0
@@ -180,6 +229,40 @@ tool=Write
 tool=Bash
 cmd=npm test" "$(node "$FJS" "$TR/k1.log" 'npm' 2>/dev/null)"
 
+F3="$(node "$FJS" "$TR/c1.log" 2>/dev/null)"
+assert_contains "codex facts: a cat of a playbook SKILL.md is a Bash, a Read and a Skill call, in that order" "$F3" "tool=Bash
+tool=Read
+tool=Skill"
+assert_contains "codex facts: the Read call has the SKILL.md path" "$F3" "read=/home/u/.agents/skills/playbook-tdd/SKILL.md"
+cat > "$TR/s1.log" <<'EOF'
+{"type":"thread.started","thread_id":"t-s1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'ls /h/.agents/skills/playbook-tdd/SKILL.md'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'test -f /h/.agents/skills/playbook-tdd/SKILL.md && echo yes'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc \"rg 'skills/playbook-tdd/SKILL.md' src\"","aggregated_output":"","exit_code":1,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"/bin/bash -lc 'echo skills/playbook-tdd/SKILL.md > notes.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"command_execution","command":"/bin/bash -lc 'cat src/a.js > skills/playbook-tdd/SKILL.md'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_5","type":"file_change","changes":[{"path":"/w/E19/tests/m.test.js","kind":"add"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_6","type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}
+EOF
+S1="$(node "$FJS" "$TR/s1.log" 2>/dev/null)"
+assert_not_contains "codex: ls, test -f, an rg pattern, an echo and a redirect target naming SKILL.md are no Skill call" "$S1" "tool=Skill"
+assert_not_contains "codex: ... and no Read call" "$S1" "tool=Read"
+assert_eq "codex: no read-type command before the tests/ write: tdd_order=bad" "bad" "$(tkey "$TR/s1.log" tdd_order)"
+cat > "$TR/s2.log" <<'EOF'
+{"type":"thread.started","thread_id":"t-s2"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -lc 'grep -n Weight skills/playbook-proof/SKILL.md'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'cd /w && head -n 20 x/playbook-learn/SKILL.md | wc -l'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc \"awk 'NR<5' skills/playbook-feedback/SKILL.md\"","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}
+EOF
+S2="$(node "$FJS" "$TR/s2.log" 2>/dev/null)"
+assert_eq "codex: grep with the path as its file, head after cd, awk with the path as its file: three Skill calls" "3" "$(printf '%s\n' "$S2" | grep -c '^tool=Skill$')"
+assert_contains "codex: the grep read is a Read of that path" "$S2" "read=skills/playbook-proof/SKILL.md"
+
 # ---- lib-harness.sh: the isolation check and the probe answer ----
 echo "lane cx: pbh_iso_check and pbh_probe_answer read a Codex JSONL transcript"
 H="$(mk_tmp)"
@@ -195,6 +278,12 @@ assert_eq "codex iso: a read of a playbook skill's SKILL.md by name: FAIL" "FAIL
 mk_codex_cmd "$TR/i3.log" "\"/bin/bash -lc 'cat /w/E3/.agents/handoff/01-spec.md src/calc.js'\""
 assert_eq "codex iso: reads inside the workdir only: PASS" "PASS" "$(pbh_iso_check "$TR/i3.log" "$H" /w/E3 "" "" playbook-proof playbook-tdd)"
 assert_eq "codex probe: the last agent_message is the answer" "NO" "$(pbh_probe_answer "$TR/i3.log")"
+mk_codex_cmd "$TR/i4.log" "\"/bin/bash -lc 'ls $H/.agents/skills/playbook-tdd/SKILL.md'\""
+assert_eq "codex iso: an ls of HOME/.agents/skills/... (no read) still FAILs: the check stays strict" "FAIL" "$(pbh_iso_check "$TR/i4.log" "$H" /w/E3 "" "" playbook-proof playbook-tdd)"
+printf '%s\n' '{"type":"thread.started","thread_id":"t-p"}' '{"type":"turn.started"}' \
+  '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"NO"}}' \
+  '{"type":"turn.failed","error":{"message":"stream disconnected"}}' > "$TR/i5.log"
+assert_eq "codex probe: a failed last turn has no answer: UNKNOWN" "UNKNOWN" "$(pbh_probe_answer "$TR/i5.log")"
 
 # ---- the runner: graders on Codex transcripts (--cmd adapters print the JSONL) ----
 echo "lane cx: run-evals.sh grades Codex transcripts"
@@ -232,8 +321,15 @@ cat > "$TR/r29.log" <<'EOF'
 {"type":"turn.completed","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0}}
 EOF
 cx_run E29 none "$TR/r29.log"
-assert_eq "runner E29 codex: no AskUserQuestion call: PASS" "PASS" "$(e_state E29 'no AskUserQuestion tool call in the transcript')"
-assert_contains "runner E29 codex: the detail says it is trivially true for Codex" "$(printf '%s\n' "$OUT" | grep '^E29 PASS no AskUserQuestion')" "(detail: trivially true: Codex has no AskUserQuestion tool)"
+assert_eq "runner E29 codex: no AskUserQuestion call: MANUAL (n/a, not an inflated PASS)" "MANUAL" "$(e_state E29 'no AskUserQuestion tool call in the transcript')"
+assert_contains "runner E29 codex: the detail says n/a for Codex" "$(printf '%s\n' "$OUT" | grep '^E29 MANUAL no AskUserQuestion')" "(detail: n/a: Codex has no AskUserQuestion tool)"
+assert_contains "runner E29 codex: the JSON key of the check is unchanged" "$(cat "$XW/results.json" 2>/dev/null)" '"key": "no AskUserQuestion tool call in the transcript"'
+cx_run E2 none "$TR/r29.log"
+assert_eq "runner E2 codex headless: no AskUserQuestion call: MANUAL" "MANUAL" "$(e_state E2 'headless: no AskUserQuestion call in the transcript')"
+assert_contains "runner E2 codex: the detail says n/a for Codex" "$(printf '%s\n' "$OUT" | grep '^E2 MANUAL headless: no AskUserQuestion')" "(detail: n/a: Codex has no AskUserQuestion tool)"
+cx_run E26 none "$TR/r29.log"
+assert_eq "runner E26 codex: no AskUserQuestion call: MANUAL" "MANUAL" "$(e_state E26 'no AskUserQuestion tool call in the transcript')"
+assert_contains "runner E26 codex: the detail says n/a for Codex" "$(printf '%s\n' "$OUT" | grep '^E26 MANUAL no AskUserQuestion')" "(detail: n/a: Codex has no AskUserQuestion tool)"
 
 cat > "$TR/r35.log" <<'EOF'
 {"type":"thread.started","thread_id":"t-11"}
