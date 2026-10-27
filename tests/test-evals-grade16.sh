@@ -267,11 +267,12 @@ $R1_GOODR"
 st5 E42 "$KC42" FAIL "R1-5 A1 E42 the report test commented out with /* */ (its lines kept): FAIL"
 st5 E42 "$KD42" PASS "R1-5 A1 E42 no skip or todo word (characterization): PASS"
 echo "R1-1 (A2) E42 a setup test file restored with CRLF line ends (core.autocrlf=true) keeps its lines"
+# CR counted by bytes (tr | wc), not grep: Git for Windows' grep strips the CR of a CRLF line before matching
 hr E42 ra2 plain "$PRE5$FIX42
 git config core.autocrlf true
 node -e 'const fs=require(\"fs\"),f=\"tests/report.test.js\";fs.writeFileSync(f,fs.readFileSync(f,\"utf8\").replace(\"timeout: 2000\",\"timeout: 60000\"))'
 git checkout -- tests/report.test.js
-if grep -q \"\$(printf '\\r')\" tests/report.test.js; then echo crlf; else echo lf; fi > \"\$REC/R1A2.eol\"
+if [ \"\$(tr -d '\\r' < tests/report.test.js | wc -c)\" -ne \"\$(wc -c < tests/report.test.js)\" ]; then echo crlf; else echo lf; fi > \"\$REC/R1A2.eol\"
 JTU 'node --test tests/*.test.js'
 $R1_GOODR"
 assert_eq "R1-1 A2 E42 fixture: the restored report test has CRLF line ends (characterization)" "crlf" "$(cat "$REC/R1A2.eol" 2>/dev/null)"
