@@ -170,6 +170,16 @@ assert_rc "AC6 --json -> exit 0" 0
 J="$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);const r=j.rows.find(x=>x.scenario==="E1"&&x.check==="x");console.log([j.dry_run,j.pooled.length,j.skipped.length,j.delta_rc,r&&r.delta,r&&r.lo>0,r&&r.hi,r&&r.verdict].join("|"))}catch(e){console.log("BAD "+e.message)}})')"
 assert_eq "AC6 rows from the Newcombe table, pooled and skipped lists" "false|4|3|0|1|true|1|Δ>0 (interval excludes 0)" "$J"
 
+echo "AC4 a commit that shares the first 12 characters of HEAD but differs later is not pooled (full-SHA match only)"
+NEAR="${SHA:0:12}$(printf '%s' "${SHA:12}" | tr '0-9a-f' '1-9a-f0')"
+printf '{"schema":"pb-evals/1","playbook_commit":"%s","harness":"claude","model":"m1","runs":[]}\n' "$NEAR" > "$OD/near-sha.json"
+g --harness claude --model m1 --pool-only
+assert_rc "AC4 near-SHA fixture: --pool-only -> exit 0" 0
+assert_eq "AC4 the near-SHA fixture differs from HEAD but shares its 12-char prefix" "${SHA:0:12}|1" "${NEAR:0:12}|$([ "$NEAR" != "$SHA" ] && echo 1)"
+assert_contains "AC4 the near-SHA file is skipped as another commit" "$OUT" "skipped: $OD/near-sha.json (other commit)"
+assert_eq "AC4 the near-SHA file is not pooled (still four files)" "4" "$(printf '%s\n' "$OUT" | grep -c '^pooled: ')"
+rm -f "$OD/near-sha.json"
+
 echo "AC5 runner exit codes: 1 and 4 continue, 2 and 3 stop"
 for rc in 1 4; do
   : > "$CALLS"
