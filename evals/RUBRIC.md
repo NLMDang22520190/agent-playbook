@@ -64,13 +64,13 @@ Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 
 ## Δ status (v0.29.0)
 
-From [`docs/delta-audit.md`](../docs/delta-audit.md) (Runs 25 to 37). A marked scenario does not count as Δ evidence for the
+From [`docs/delta-audit.md`](../docs/delta-audit.md) (Runs 25 to 37 and Run 42). A marked scenario does not count as Δ evidence for the
 gate above until a new run with both arms at k >= 3 shows Δ > 0 on a behaviour or outcome check.
 
 - **PROCESS-ONLY** (only a ceremony check differs; the outcome passes in both arms): E1, E15, E16, E19 (labels, skill loaded,
   sub-agent use) and E21 (spec written first; the rename passes in both arms).
-- **ZERO** (Δ = 0 in at least 2 runs): E5 (second run pending, Run 42), E37, E41, and 20 of the 23 outcome tasks.
-- **ZERO-1** (Δ = 0 in the only run, counts as not measured): E8, E10, E27, E30, E33, E35, E36 (mixed signs at k=2), E38, E39, E40.
+- **ZERO** (Δ = 0 in at least 2 runs): E5, E30 (Run 25 and Run 42), E37, E41, and 20 of the 23 outcome tasks.
+- **ZERO-1** (Δ = 0 in the only run, counts as not measured): E8, E10, E27, E33, E35, E36 (mixed signs at k=2), E38, E39, E40.
 - **Δ > 0**: E2, E3, E4, E6, E13 (guard hook), E14, E29, E34 (learnings hook), pattern-12, pattern-15, pattern-19 (a repair).
 - Every other scenario has no run with both arms yet.
 
