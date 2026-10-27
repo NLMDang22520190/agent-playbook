@@ -8,7 +8,7 @@
 # DECISION[D15]: plain stdout, not JSON additionalContext: no JSON escaping needed and the cap stays under the
 # documented 10,000-character context limit. Undo: switch the output mode here.
 # DECISION[R8]: the file must resolve (symlinks followed, pwd -P) strictly inside the root, or nothing is printed and one
-# stderr line names learnings_path: a cloned repo must not pull a file from elsewhere into the context. Any closing tag
+# stderr line names learnings_path (a trusted project only; an untrusted one never has its learnings_path printed): a cloned repo must not pull a file from elsewhere into the context. Any closing tag
 # variant (</project-learnings> in any case or spacing) in the file is dropped, so only the hook's own line closes the wrapper.
 # DECISION[D-W4/D-W5]: only a trusted project is injected (a cloned repo must not feed text into the context unasked). Trusted =
 # its root is a line of <home>/.agents/trusted-projects (learn.sh trust, run by the user) or the GLOBAL conf has
@@ -112,13 +112,6 @@ REL="$(pb_conf_read "$ROOT/.agents/playbook.conf" learnings_path)" || REL=".agen
 case "$REL" in /* | [A-Za-z]:*) FILE="$REL" ;; *) FILE="$ROOT/$REL" ;; esac
 [ -f "$FILE" ] && [ -r "$FILE" ] && [ -s "$FILE" ] || exit 0
 RR="$(cd "$ROOT" 2>/dev/null && pwd -P)" || exit 0
-INSIDE=0
-if real_path "$FILE"; then case "$RP" in "${RR%/}"/*) INSIDE=1 ;; esac; fi
-if [ "$INSIDE" = 0 ]; then
-  printf 'agent-playbook learnings-hook: %s (learnings_path) resolves outside the project root %s; not injected\n' "$REL" "$RR" >&2
-  exit 0
-fi
-
 # Trust gate (D-W4/D-W5): the global conf and the trust file in the user's home only, never the project's.
 TRUSTED=0
 if [ "$EVAL" = 1 ]; then TRUSTED=1
@@ -138,6 +131,14 @@ if [ "$TRUSTED" = 0 ]; then
   SR="$(printf '%s' "$RR" | tr '\n\r' '  ')"
   printf 'agent-playbook learnings-hook: the learnings file of %s exists, but the project is not trusted; not injected. The user can trust it with: learn.sh trust "%s"\n' "$SR" "$SR"
   [ -n "${PB_EVAL_HOOK_LOG:-}" ] && printf 'learnings untrusted\n' >> "$PB_EVAL_HOOK_LOG" 2>/dev/null
+  exit 0
+fi
+
+# Only now, for a trusted project: the file must resolve inside the root (R8); the refusal line may name learnings_path.
+INSIDE=0
+if real_path "$FILE"; then case "$RP" in "${RR%/}"/*) INSIDE=1 ;; esac; fi
+if [ "$INSIDE" = 0 ]; then
+  printf 'agent-playbook learnings-hook: %s (learnings_path) resolves outside the project root %s; not injected\n' "$REL" "$RR" >&2
   exit 0
 fi
 

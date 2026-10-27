@@ -65,7 +65,7 @@ if [ -n "$signkey" ]; then
   # git 2.43 with gpg.format=ssh and a missing key file prints an error, exits 0 and leaves an unsigned
   # annotated tag, so check the tag object for a signature block as well as the exit status.
   sign_ok=1
-  git tag -s -m "$tag" "$tag" || sign_ok=0
+  git tag -s -m "release $tag" "$tag" || sign_ok=0
   if [ "$sign_ok" -eq 1 ]; then
     git cat-file tag "$tag" 2>/dev/null | LC_ALL=C grep -Eq '^-----BEGIN (SSH|PGP|SIGNED MESSAGE)' || sign_ok=0
   fi
