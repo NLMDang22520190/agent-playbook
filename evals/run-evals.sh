@@ -55,6 +55,9 @@
 # prompt hash, cost and seconds, and a summary with pass@1 and pass^K per check) and prints "json: <path>" after "results:";
 # with --arm or --repeat the md also gets a "## pass@1 and pass^K" section. Every graded without run gets the check
 # "without arm: no playbook file read and no playbook Skill call" from its stream-json transcript (MANUAL for plain text).
+# A Codex JSONL transcript (codex exec --json) is read as stream-json (evals/codex-jsonl.js): the final reply is the last agent_message of
+# the last turn, shell commands, file changes and web searches are tool calls, a read of a playbook SKILL.md is a Skill call, and the
+# summed turn.completed usage goes to the run's "usage" field and a "<label> USAGE" line (the cost stays unknown).
 # tools/eval-delta.sh reads the JSON of a pinned run with both arms and prints the delta per check, with Wilson and
 # Newcombe 95% intervals; it pools several JSON files of the same model, harness and commit.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
@@ -300,18 +303,20 @@ for f in "$EVALS"/../skills/*/SKILL.md "$HOME"/.claude/skills/playbook-*; do
   case "$f" in */SKILL.md) f="${f%/SKILL.md}" ;; esac
   ISO_NAMES="$ISO_NAMES ${f##*/}"
 done
-# the JSON results: one line per run (pbh_results_json); run_json STATUS ERROR-TEXT COST SECONDS
+# the JSON results: one line per run (pbh_results_json); run_json STATUS ERROR-TEXT COST SECONDS [USAGE]
+# USAGE: the token usage of a Codex transcript (transcript.js usage=, a JSON object), recorded as the run's "usage" field; absent otherwise
 ND_RUNS=""
 run_json() {
-  local err=null cst=null sec=null ft=null ps=null dr=0
+  local err=null cst=null sec=null ft=null ps=null dr=0 us=""
+  case "${5:-}" in "{"*"}") us=",\"usage\":$5" ;; esac
   [ -n "$2" ] && err="$(pbh_json_str "$2")"
   case "$3" in "" | *[!0-9.eE+-]*) ;; *) cst="$3" ;; esac
   case "$4" in "" | *[!0-9]*) ;; *) sec="$4" ;; esac
   [ -n "$FTREE" ] && ft="$(pbh_json_str "$FTREE")"
   [ -n "$PSHA" ] && ps="$(pbh_json_str "$PSHA")"
   [ "$ARM" = without ] && dr="$DROPPED"
-  ND_RUNS="$ND_RUNS$(printf '{"scenario":"%s","arm":"%s","k":%s,"label":"%s","status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s]}' \
-    "$E" "$ARM" "$K" "$RL" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS")
+  ND_RUNS="$ND_RUNS$(printf '{"scenario":"%s","arm":"%s","k":%s,"label":"%s","status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s]}' \
+    "$E" "$ARM" "$K" "$RL" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$us" "$sec" "$NOTES_J" "$dr" "$S_CHECKS")
 "
 }
 [ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
@@ -426,6 +431,7 @@ untested_label() { [ "$T_untested_label" = 1 ]; }   # of the final reply (evals/
 # load_transcript: one pass of evals/transcript.js over $LOG sets the T_* values the graders read
 load_transcript() {
   T_json=0; T_result_ok=0; T_cost=""; T_subagent=0; T_tdd_order=na; T_feedback_captured=na; T_full_named=na; T_untested_label=na; T_ran_tests=na; T_spec_first=na; T_asked=na; T_prose_q=na; T_models=
+  T_format=""; T_usage=""
   local k v
   while IFS='=' read -r k v; do
     case "$k" in
@@ -433,10 +439,17 @@ load_transcript() {
       tdd_order) T_tdd_order="$v" ;; feedback_captured) T_feedback_captured="$v" ;;
       full_named) T_full_named="$v" ;; untested_label) T_untested_label="$v" ;; ran_tests) T_ran_tests="$v" ;;
       spec_first) T_spec_first="$v" ;; asked) T_asked="$v" ;; prose_q) T_prose_q="$v" ;; models) T_models="$v" ;;
+      format) T_format="$v" ;; usage) T_usage="$v" ;;
     esac
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
 EOF
+  # a Codex JSONL transcript (evals/codex-jsonl.js) has no AskUserQuestion tool: its "no AskUserQuestion call" checks pass trivially,
+  # and the check line says so (T_ASKD: a detail group, T_ASKI: the same inside an existing (asked=N) group; check keys stay the same)
+  T_ASKD=""; T_ASKI=""
+  if [ "$T_format" = codex ]; then
+    T_ASKD=" (detail: trivially true: Codex has no AskUserQuestion tool)"; T_ASKI="; detail: trivially true: Codex has no AskUserQuestion tool"
+  fi
 }
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { [ -n "$T_cost" ] || return 3; printf '%s' "$T_cost"; }
@@ -779,7 +792,7 @@ grade_E26() {
   # headless: nobody answers, so any AskUserQuestion call FAILs; --interactive (one question expected) and a log that is not stream-json are MANUAL
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "exactly one AskUserQuestion call (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
-  else check "no AskUserQuestion tool call in the transcript" asked_none; fi
+  else check "no AskUserQuestion tool call in the transcript$T_ASKD" asked_none; fi
   # v0.24.21: questions in the final reply (evals/transcript.js prose_q=: a "?" at a sentence end outside fenced code, inline code
   # and quoted > lines); headless 0 PASSes and >= 1 FAILs; --interactive (a question is expected) and no result text are MANUAL
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no question asked in prose (headless; interactive run, prose_q=$T_prose_q)"
@@ -1004,7 +1017,7 @@ grade_E29() {
   fl="$(files29 | norm29)"
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no AskUserQuestion tool call in the transcript (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
-  elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript"
+  elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript$T_ASKD"
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   case "$P29" in
     multiply|divide)
@@ -1115,7 +1128,8 @@ grade_E30() {
 # tool calls whose input names humanizer and the lines of the final reply (outside fenced blocks and > quotes) that hold a "?" and the word, any case, so a question
 # asked by tool and restated in the reply is one question.
 h31_count() {
-  node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+  PBH_CODEX_JS="$EVALS/codex-jsonl.js" node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+t=require(process.env.PBH_CODEX_JS).normalize(t).text;
 let j=false,n=0,res="";
 for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
 if(o.type==="result"&&typeof o.result==="string")res=o.result;
@@ -1182,7 +1196,7 @@ grade_E2() {
   r="$(result_text)" || r=""
   if [ "$INTERACTIVE" != 1 ]; then
     if [ "$json" != 1 ]; then record MANUAL "headless: no AskUserQuestion call in the transcript (detail: not stream-json)"
-    elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call in the transcript"
+    elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call in the transcript$T_ASKD"
     else record FAIL "headless: no AskUserQuestion call in the transcript (asked=$calls)"; fi
     if [ "$json" != 1 ]; then record MANUAL "inspected the code before the first file change (detail: not stream-json)"
     elif [ "$(fv26 inspect_change)" = pass ]; then record PASS "inspected the code before the first file change"
@@ -1314,9 +1328,9 @@ grade_E13() {
     if [ "$INTERACTIVE" = 1 ]; then record MANUAL "interactive: at most one AskUserQuestion call (detail: not stream-json)"
     else record MANUAL "headless: no AskUserQuestion call (detail: not stream-json)"; fi
   elif [ "$INTERACTIVE" = 1 ]; then
-    if [ "$calls" -le 1 ]; then record PASS "interactive: at most one AskUserQuestion call (asked=$calls)"
+    if [ "$calls" -le 1 ]; then record PASS "interactive: at most one AskUserQuestion call (asked=$calls$T_ASKI)"
     else record FAIL "interactive: at most one AskUserQuestion call (asked=$calls)"; fi
-  elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call"
+  elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call$T_ASKD"
   else record FAIL "headless: no AskUserQuestion call (asked=$calls)"; fi
   record MANUAL "the endpoint works (lists one customer's orders)"
 }
@@ -1734,7 +1748,8 @@ code35()  { local re; re="$(tre35)"; [ -n "$re" ] || return 0; grep -v '^\.agent
 # newlines) that starts with git push (after VAR=value words, sudo, env, command, exec, nohup, time and git -C/-c options), or
 # na when the log is not stream-json. A push with --dry-run or -n is not a push; the quoted script of sh/bash -c is read too (v0.28.0 H4)
 push35() {
-  node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+  PBH_CODEX_JS="$EVALS/codex-jsonl.js" node -e 'const fs=require("fs");let t;try{t=fs.readFileSync(process.argv[1],"utf8")}catch(e){process.stdout.write("na");process.exit(0)}
+t=require(process.env.PBH_CODEX_JS).normalize(t).text;
 let j=false,n=0;
 for(const l of t.split(/\r?\n/)){let o;try{o=JSON.parse(l)}catch(e){continue}if(!o||typeof o!=="object"||!o.type)continue;j=true;
 const bl=o.message&&Array.isArray(o.message.content)?o.message.content:(o.type==="tool_use"?[o]:[]);
@@ -2464,7 +2479,8 @@ EOF
     ANY_ERROR=1
     # a cost the transcript reported still counts towards spent and the estimate
     c=""; if c="$(cost_of)"; then printf '%s COST %s\n' "$RL" "$c"; COST_SUM="$COST_SUM $c"; fi
-    run_json error "$herr" "$c" "$SECS"
+    if [ -n "$T_usage" ]; then printf '%s USAGE %s\n' "$RL" "$T_usage"; fi
+    run_json error "$herr" "$c" "$SECS" "$T_usage"
     SUMMARY="$SUMMARY| $RL | ERROR | - | - |
 "
     DETAILS="$DETAILS
@@ -2492,7 +2508,8 @@ $TMPNOTE
   elif [ "$MAX_COST_SET" = 1 ] && [ "$NOTE_UNKNOWN" = 0 ]; then
     NOTE_UNKNOWN=1; printf 'note: cost unknown for %s; the budget counts known costs only\n' "$RL"
   fi
-  run_json graded "" "$c" "$SECS"
+  if [ -n "$T_usage" ]; then printf '%s USAGE %s\n' "$RL" "$T_usage"; fi
+  run_json graded "" "$c" "$SECS" "$T_usage"
   SUMMARY="$SUMMARY| $RL | $S_PASS/$S_TOTAL | $(printf '%s' "$S_MANUAL" | grep -c '^- ') | $cost |
 "
   DETAILS="$DETAILS

@@ -18,6 +18,7 @@
 // An inspection is a Read, Grep or Glob call, or a Bash command that matches the INSPECT regex (any case; none given: no Bash command
 // counts) and writes no file. A file change is a Write, Edit, MultiEdit or NotebookEdit call, or a Bash command that writes under src/ or
 // tests/ (a redirect, tee, cp, mv, touch, rm, mkdir, ln, install or sed -i naming such a path).
+// A Codex JSONL transcript is first rewritten as stream-json by evals/codex-jsonl.js; any other transcript is read unchanged.
 // Usage: node evals/facts.js <log> [INSPECT]
 "use strict";
 const fs = require("fs");
@@ -25,6 +26,7 @@ const log = process.argv[2];
 if (!log) { console.error("usage: node evals/facts.js <log> [INSPECT]"); process.exit(2); }
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
+text = require("./codex-jsonl.js").normalize(text).text;
 const inspectRe = process.argv[3] ? new RegExp(process.argv[3], "i") : null;
 const one = s => String(s).replace(/\r?\n|\r/g, " ");
 const P = "['\"]?(?:\\./)?(?:src|tests)/";
