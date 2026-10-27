@@ -29,7 +29,7 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    | OpenCode | `task`, `skill`, `question` tools; `~/.config/opencode/` | native: the `task` tool |
    | Other | read the harness docs | ask the user |
 
-   State your conclusion (confirmed in step 4).
+   State your conclusion.
 
    On Windows, `bash --version` must say `msys`/`mingw` (Git Bash); `C:\Windows\System32\bash.exe` is
    the WSL launcher (wrong home): call Git Bash by its full path (usually
@@ -49,10 +49,11 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip questions inspection already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
    Claude Code only: an optional line outside the 8 offers the hooks (default no): guard warns on irreversible
-   actions, blocking them headless; learnings adds project lessons at session start. Yes:
+   actions, blocking them headless; learnings adds the lessons of trusted projects at session start. Yes:
    `bash ~/.agents/playbook/scripts/claude-hooks.sh install` (into `~/.claude/settings.json`, backup first;
    `claude-hooks.sh uninstall` removes them), `conf.sh set hooks on --global`; no: `hooks off`.
-   Non-interactive: never install the hooks.
+   With the learnings hook, offer once (default no) to trust the current project:
+   `bash ~/.agents/playbook/scripts/learn.sh trust`, run on a yes. Non-interactive: never install the hooks or trust a project.
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
@@ -61,9 +62,9 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or
    low-tier, each with a reason and its relative cost. Label any sample table "example". The user
    accepts it or picks others. Store each pick with
-   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting, stored as `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`).
+   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting).
    Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
-   never write keys that are not documented in step 6.
+   never write keys not documented in step 6.
 
 5. **Non-interactive run** (CI, `claude -p`, `codex exec`, `opencode run`, or no reply possible):
    do not block. Write the defaults, add `setup=defaults-noninteractive`, and list every
@@ -79,12 +80,12 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
    (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `humanizer` (ask | always | never, default ask), `hooks` (on/off), `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
-   shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as your email address or a private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
+   shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as an email address or private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 
 7. **Verify and report.**
-   - `bash $C list` and paste the output.
+   - `bash $C list`, output pasted.
    - `bash ~/.agents/playbook/scripts/role-model.sh check`: it must say "no generic model keys";
-     otherwise tell the user which generic keys exist and offer to move them to per-harness keys.
+     otherwise name the generic keys and offer to move them to per-harness keys.
    - Check that the always-on block is loaded: look for the `<!-- BEGIN agent-playbook` line in the
      global file of this harness (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
      `~/.config/opencode/AGENTS.md`, which falls back to `~/.claude/CLAUDE.md`). If it is missing,
@@ -100,11 +101,11 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    Also offer the leak guard: ask for private strings the public repos must never contain and store them with
    `conf.sh set leak_literals "you@example.com,private-repo-name" --global`; then offer
    `bash ~/.agents/playbook/scripts/leak-check.sh install-hooks` in the project (pre-commit and pre-push hooks that
-   refuse tokens, keys and those strings in added lines). An existing hook of the user is left alone. Linked git worktrees do not see a project conf that is git-excluded,
+   refuse tokens, keys and those strings in added lines). An existing user hook is left alone. Linked git worktrees do not see a project conf that is git-excluded,
    so a `leak_literals` kept only in the project conf is not read there: keep private literals in the global conf.
 
 9. **Summary** in at most 10 lines: what was written where, the assumptions, and how to change
-   them later (`conf.sh set ...` or "reconfigure the playbook").
+   them later.
 
 ## Do not
 - install packages, change harness settings or edit global instruction files without consent;

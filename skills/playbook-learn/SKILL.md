@@ -14,6 +14,7 @@ so it stays small. Script: `~/.agents/playbook/scripts/learn.sh`.
 
 ## At the start of a task
 If the file exists, read it. Apply the active entries whose `Scope` matches the files you will touch.
+The hook injects it only for a project the user trusted (`learn.sh trust`, run by the user, never by an agent).
 
 ## When to propose an entry
 | Trigger | `--source` |
@@ -58,7 +59,7 @@ Do **not** record:
 ## Role checklists
 `bash $L checklist <role>` prints the active entries for that role and for `all` (an entry without a Role line counts
 as `all`) as `- [ ] <rule> (L-000N, scope: <scope>)`, or "no learnings for <role>". The orchestrator puts that output
-into section 2c of the role prompt (the playbook-tdd role prompt template), so a lesson reaches the role that needs it.
+into section 2c of the role prompt (the playbook-tdd role prompt template).
 `check` reports an unknown Role value as a problem.
 
 ## Promoting a lesson to the global playbook

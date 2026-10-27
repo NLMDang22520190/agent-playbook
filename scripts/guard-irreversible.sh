@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # guard-irreversible.sh: agent-playbook guard hook for irreversible actions (Claude Code hooks, opt-in).
-# Reads the hook JSON on stdin (https://code.claude.com/docs/en/hooks) and exits 0 or 2, nothing else.
-#   (no mode flag)    PreToolUse on Bash, Write and Edit
+# Reads the hook JSON on stdin (https://code.claude.com/docs/en/hooks; the PowerShell tool: section "PowerShell", tool_name
+# PowerShell, the text in tool_input.command) and exits 0 or 2, nothing else.
+#   (no mode flag)    PreToolUse on Bash, PowerShell, Write and Edit
 #   --session-start   SessionStart: records HEAD in <git-common-dir>/pb-guard/<session_id> (the first write wins)
 #   --stop            Stop: end-of-turn diff of schema files and migrations against the session baseline
 #   --eval            the eval runner's handlers; while PB_EVAL_HOOKS is set, a call without --eval does nothing
@@ -31,6 +32,28 @@
 # DECISION[D26] C:\x, C:/x and /c/x are one path, compared without case when a drive letter is involved.
 # DECISION[D28] after 3 Stop blocks in one session the 4th Stop gives up (exit 0 and a warning).
 # DECISION[D29] home paths come from pb_home (scripts/lib.sh) only, tilde expansion included.
+# DECISION[D-W1] a PowerShell git command goes through the same seg_git as Bash: every force variant on any branch (D5), no list of protected branches.
+# DECISION[D-W3] a PowerShell delete target that cannot be resolved (a variable not listed below, $(...), ( ), a splatted variable, $_) or a
+#   recursive Remove-Item with no target word at all (its target comes from a pipeline) counts as outside, like D23: it blocks or warns.
+# DECISION[D-P1] PowerShell: Remove-Item and its aliases (rm ri del erase rmdir rd), recursive when a parameter abbreviates -Recurse (-r, -Re ...)
+#   and not -Recurse:$false; targets = positional words, -Path -LiteralPath -LP -PSPath (also -Path:X) and comma lists; the value of any other
+#   named parameter is never a target. Known variables: $HOME $env:USERPROFILE $env:HOME -> pb_home, $PWD -> hook cwd, $env:TEMP/TMP/TMPDIR,
+#   $env:CLAUDE_PROJECT_DIR -> the env value; names in any case, expanded inside "..." only. Command words in any case, with .exe or a path.
+# DECISION[D-W12] PowerShell: a same-command assignment to a variable the guard resolves ($x = ..., $x += ..., $a, $env:X = ..., [t]$x = ..., Set-Item env:X,
+#   Set-Variable X, New-Item -Path Env: -Name X, Rename-Item env:A X, [Environment]::SetEnvironmentVariable('X', ..); names in any case) makes that
+#   variable unresolved for the rest of the command (fail closed; a copy into another variable is not followed). A target with :: (a
+#   provider path) or a drive-relative one (C:x, C:..\x) is unresolved too. Unicode dashes U+2013/2014/2015 at the start of a word act as -; curly
+#   quotes U+2018-201B and U+201C-201E are quote characters; the Unicode separators U+0085, U+00A0, U+1680, U+2000-200A, U+2028, U+2029, U+202F,
+#   U+205F, U+3000 and the raw form feed and vertical tab bytes separate words (a JSON \u000b or \u000c escape is not decoded: a Limit); a | at the end of a line continues the pipeline (across # comments); `. CMD` is a call like `& CMD`.
+# DECISION[D-W13] PowerShell: the command on the right of an assignment runs through the same checks (the left side is removed: [type] casts, a variable
+#   with an optional scope prefix, a chain of .member, ::member and [index], comma lists; operators = += -= *= /= %= ??=); `cd..` moves to the
+#   parent, `cd\` and a drive switch (C: .. Z:) make relative targets unresolved; $(...) in an expandable here-string runs like in "..."; a delete with an
+#   unresolved target is reported after the commands of its $(...) group (their hit wins).
+# DECISION[D-W14] PowerShell: & or . followed by a group, a variable or a quoted name with an expansion (& "Remove-$x", .$c) is an unknown command: a
+#   recursive switch in its arguments (also written -Rec:$true) -> rm-outside, push with a force form -> git-push-force, anything else passes.
+# DECISION[D-P2] malformed PowerShell (unterminated quote, here-string, comment or group, stray closer, trailing backtick) fails open (D1): PowerShell
+#   parses the whole script first and runs none of it. Not followed (README Limits): Invoke-Expression/iex, powershell -Command, pwsh -c,
+#   -EncodedCommand, cmd /c, Start-Process, & { } run later, Invoke-Command, --%, .NET calls, a value flowing from one variable into another.
 # Bash 3.2 and BWK awk; no jq, node or python. Known bypasses (bash -c, eval, interpreters, ...) are listed in README.
 case "$0" in */*) PB_GDIR="${0%/*}" ;; *) PB_GDIR=. ;; esac
 # shellcheck source=scripts/lib.sh
@@ -58,6 +81,9 @@ TL=$'\036'   # an unquoted tilde at the start of a word
 NL=$'\n'
 TAB=$'\t'
 CR=$'\r'
+CM=$'\003'   # an unquoted comma in a PowerShell word
+CALLM=$'\004'   # in front of a PowerShell command word that is a group or a variable after & or . (an unknown command)
+IS_PS=0
 G_PFX="agent-playbook guard: "
 
 # ---- hook JSON on stdin -> shell assignments (one awk process: JSON decode + shell tokens of a Bash command) ----
@@ -240,7 +266,264 @@ function tokenize(s,   i, c, k) {
   }
   sepw()
 }
-BEGIN { DS = "\034"; US = "\037"; BQ = "\035"; TL = "\036" }
+# ---- PowerShell tokenizer (tool_name PowerShell): the token kinds of tokenize ("w", "o", "s", "s|", "s(", "s)") ----
+# Quotes: single quotes with a doubled quote; double quotes with backtick escapes, a doubled quote and expansions marked DS..US
+# (the variables the guard knows are renamed by psvar, every other expansion is the unresolved name "("); here-strings; backtick
+# escapes and backtick-newline; # and <# #> comments; ; newline && || | separators; > >> 2>&1 *> redirections. A ( ) or { } group
+# at the start of a command is s( .. s); inside a command it adds an unresolved word and its commands run as separate commands
+# at the next separator. Unquoted commas become the byte 003 (Remove-Item takes an array). Malformed text (PBAD: an unterminated
+# quote, here-string, comment or group, a stray closer, a trailing backtick) gives no tokens: PowerShell parses a whole script
+# before it runs any of it.
+function psvar(nm,   l) {
+  l = tolower(nm)
+  if (l == "home" || l == "env:home" || l == "env:userprofile") return "HOME"
+  if (l == "pwd") return "PWD"
+  if (l == "env:temp") return "PS_TEMP"
+  if (l == "env:tmp") return "PS_TMP"
+  if (l == "env:tmpdir") return "TMPDIR"
+  if (l == "env:claude_project_dir") return "CLAUDE_PROJECT_DIR"
+  if (l == "true") return "PS_TRUE"
+  if (l == "false") return "PS_FALSE"
+  return "("
+}
+# qs(i) / qd(i): the length of the single / double quote character at T[i] (0 when none): the ASCII one, or a curly one (UTF-8 bytes):
+# U+2018 U+2019 U+201A U+201B open and close a single-quoted string, U+201C U+201D U+201E a double-quoted one.
+function qs(i) {
+  if (T[i] == "\047") return 1
+  if (T[i] == "\342" && T[i + 1] == "\200" && (T[i + 2] == "\230" || T[i + 2] == "\231" || T[i + 2] == "\232" || T[i + 2] == "\233")) return 3
+  return 0
+}
+function qd(i) {
+  if (T[i] == "\"") return 1
+  if (T[i] == "\342" && T[i + 1] == "\200" && (T[i + 2] == "\234" || T[i + 2] == "\235" || T[i + 2] == "\236")) return 3
+  return 0
+}
+# wsl(i): the length of the whitespace character at T[i] (0 when none): space, tab, CR, form feed, vertical tab (the raw bytes), or one of the
+# Unicode separators U+0085, U+00A0, U+1680, U+2000-200A, U+2028, U+2029, U+202F, U+205F, U+3000 (UTF-8 bytes; the guard runs awk bytewise)
+function wsl(i,   c, d) {
+  c = T[i]
+  if (c == " " || c == "\t" || c == "\r" || c == "\014" || c == "\013") return 1
+  if (c == "\302") return (T[i + 1] == "\240" || T[i + 1] == "\205") ? 2 : 0
+  if (c == "\341") return (T[i + 1] == "\232" && T[i + 2] == "\200") ? 3 : 0
+  d = T[i + 2]
+  if (c == "\342" && T[i + 1] == "\200" && d != "" && (index(WSB, d) > 0 || d == "\250" || d == "\251" || d == "\257")) return 3
+  if (c == "\342" && T[i + 1] == "\201" && d == "\237") return 3
+  if (c == "\343" && T[i + 1] == "\200" && d == "\200") return 3
+  return 0
+}
+# PCALL: a call operator (& or .) was just read: a command word that starts with an unknown expansion is marked CALLM (an unknown command)
+function pw_end() {
+  if (PWI) {
+    if (PPE == "o") PTK = PTK " " q("o" PW)
+    else {
+      if (PCALL && PNW == 0 && index(PW, DS "(" US) > 0) PW = CALLM PW
+      PTK = PTK " " q("w" PW); PNW++
+    }
+    PPE = ""; PCALL = 0
+  }
+  PW = ""; PWI = 0
+}
+function pw_sep(k,   ex, j) {
+  pw_end()
+  PTK = PTK " " q(k); PNW = 0; PPE = ""; PCALL = 0
+  ex = PEX; PEX = ""
+  while ((j = index(ex, "\002")) > 0) { PTK = PTK substr(ex, 1, j - 1) " " q(k); ex = substr(ex, j + 1) }
+}
+function psub(i,   sw, sinw, spe, snw, stk, sex, scl, r) {
+  sw = PW; sinw = PWI; spe = PPE; snw = PNW; stk = PTK; sex = PEX; scl = PCALL
+  r = ptok(i, 1)
+  PSUBTK = PTK
+  PW = sw; PWI = sinw; PPE = spe; PNW = snw; PTK = stk; PEX = sex; PCALL = scl
+  return r
+}
+function psgroup(i,   r) {
+  PW = PW DS "(" US; PWI = 1
+  r = psub(i)
+  PEX = PEX PSUBTK "\002"
+  return r
+}
+# phsx(b, ls): the body of an expandable here-string (text from b to the newline before the closing line at ls): backtick escapes and $ expansions
+# like in "...", so a $(...) runs; the quote character itself is plain text
+function phsx(b, ls,   k, c, e) {
+  PWI = 1; k = b
+  while (k < ls - 1) {
+    c = T[k]
+    if (c == "`") {
+      e = T[k + 1]
+      if (e == "n") PW = PW "\n"
+      else if (e == "t") PW = PW "\t"
+      else if (e == "r") PW = PW "\r"
+      else if (e != "") PW = PW e
+      k += 2; continue
+    }
+    if (c == "$") { k = pdollar(k); continue }
+    PW = PW c; k++
+  }
+  if (k > ls - 1) PBAD = 1
+  return ls + 2
+}
+function phs(i,   q1, j, b, ls, le) {
+  q1 = T[i + 1]; j = i + 2
+  while (T[j] == " " || T[j] == "\t" || T[j] == "\r") j++
+  if (T[j] != "\n") return 0
+  b = j + 1; ls = b
+  while (ls <= m) {
+    if (T[ls] == q1 && T[ls + 1] == "@") {
+      if (q1 == "\"") return phsx(b, ls)
+      PW = PW substr(str, b, (ls > b) ? ls - 1 - b : 0); PWI = 1; return ls + 2
+    }
+    le = ls
+    while (le <= m && T[le] != "\n") le++
+    ls = le + 1
+  }
+  PBAD = 1; return m + 1
+}
+function psq(i,   l, l2) {
+  PWI = 1
+  while (i <= m) {
+    l = qs(i)
+    if (l) {
+      l2 = qs(i + l)
+      if (l2) { PW = PW "\047"; i += l + l2; continue }
+      return i + l
+    }
+    PW = PW T[i]; i++
+  }
+  PBAD = 1; return i
+}
+function pdollar(i,   c, k, nm) {
+  c = T[i + 1]
+  if (c == "(") return psgroup(i + 2)
+  if (c == "{") {
+    k = i + 2
+    while (k <= m && T[k] != "}") k++
+    PW = PW DS psvar(substr(str, i + 2, k - i - 2)) US; PWI = 1
+    return k + 1
+  }
+  if (c != "" && c ~ /[A-Za-z_]/) {
+    k = i + 1
+    while (k <= m && T[k] ~ /[A-Za-z0-9_]/) k++
+    if (tolower(substr(str, i + 1, k - i - 1)) == "env" && T[k] == ":") { k++; while (k <= m && T[k] ~ /[A-Za-z0-9_]/) k++ }
+    PW = PW DS psvar(substr(str, i + 1, k - i - 1)) US; PWI = 1
+    return k
+  }
+  if (c == "?" || c == "$" || c == "^") { PW = PW DS "(" US; PWI = 1; return i + 2 }
+  PW = PW "$"; PWI = 1; return i + 1
+}
+function pdq(i,   c, e, l, l2) {
+  PWI = 1
+  while (i <= m) {
+    c = T[i]
+    l = qd(i)
+    if (l) {
+      l2 = qd(i + l)
+      if (l2) { PW = PW "\""; i += l + l2; continue }
+      return i + l
+    }
+    if (c == "`") {
+      e = T[i + 1]
+      if (e == "n") PW = PW "\n"
+      else if (e == "t") PW = PW "\t"
+      else if (e == "r") PW = PW "\r"
+      else if (e != "") PW = PW e
+      i += 2; continue
+    }
+    if (c == "$") { i = pdollar(i); continue }
+    PW = PW c; i++
+  }
+  PBAD = 1; return i
+}
+function ptok(i, depth,   c, e, k, l) {
+  PW = ""; PWI = 0; PPE = ""; PNW = 0; PTK = ""; PEX = ""; PCALL = 0
+  while (i <= m) {
+    c = T[i]
+    if ((l = wsl(i)) > 0) { pw_end(); i += l; continue }
+    if (c == "\n" || c == ";") { pw_sep("s"); i++; continue }
+    if (c == "|") {
+      if (T[i + 1] == "|") { pw_sep("s"); i += 2 } else {
+        pw_sep("s|"); i++
+        while (1) {   # a | at the end of a line continues the pipeline, across blanks, newlines and # comments
+          if ((l = wsl(i)) > 0) { i += l; continue }
+          if (T[i] == "\n") { i++; continue }
+          if (T[i] == "#") { while (i <= m && T[i] != "\n") i++; continue }
+          break
+        }
+      }
+      continue
+    }
+    if (c == "&") {
+      if (T[i + 1] == "&") { pw_sep("s"); i += 2; continue }
+      if (!PWI && PNW == 0) { PCALL = 1; i++; continue }
+      pw_sep("s"); PCALL = 1; i++; continue
+    }
+    if (c == "." && !PWI && PNW == 0 && PPE == "" && (wsl(i + 1) > 0 || T[i + 1] == "$")) { PCALL = 1; i++; continue }   # . CMD (dot-source) is a call like & CMD
+    if (c == ")" || c == "}") {
+      if (depth == 0) PBAD = 1
+      pw_sep("s")
+      if (depth > 0) return i + 1
+      i++; continue
+    }
+    if (c == "(" || c == "{") {
+      if (c == "(" && PCALL && !PWI && PNW == 0) { i = psgroup(i + 1); continue }   # & (expr) ARGS: the group is the command word
+      if (!PWI && PNW == 0) { PTK = PTK " " q("s("); i = psub(i + 1); PTK = PTK PSUBTK " " q("s)"); continue }
+      i = psgroup(i + 1); continue
+    }
+    if (c == "@") {
+      e = T[i + 1]
+      if (e == "(" || e == "{") { i = psgroup(i + 2); continue }
+      if (e == "\047" || e == "\"") { k = phs(i); if (k > 0) { i = k; continue } }
+      if (!PWI && e != "" && e ~ /[A-Za-z_]/) {
+        k = i + 1
+        while (k <= m && T[k] ~ /[A-Za-z0-9_]/) k++
+        PW = DS "(" US; PWI = 1; i = k; continue
+      }
+      PW = PW c; PWI = 1; i++; continue
+    }
+    if (c == "#" && !PWI) { while (i <= m && T[i] != "\n") i++; continue }
+    if (c == "<" && T[i + 1] == "#") {
+      pw_end(); i += 2
+      while (i <= m && !(T[i] == "#" && T[i + 1] == ">")) i++
+      if (i > m) PBAD = 1
+      i += 2; continue
+    }
+    if (c == ">") {
+      if (PWI && PPE == "" && PW ~ /^[0-9*]$/) { PW = ""; PWI = 0 } else pw_end()
+      i++
+      if (T[i] == ">") i++
+      if (T[i] == "&" && T[i + 1] ~ /[0-9]/) { i++; while (T[i] ~ /[0-9]/) i++; continue }
+      PPE = "o"; continue
+    }
+    if ((l = qs(i)) > 0) { i = psq(i + l); continue }
+    if ((l = qd(i)) > 0) { i = pdq(i + l); continue }
+    if (c == "$") { i = pdollar(i); continue }
+    if (c == "`") {
+      e = T[i + 1]
+      if (e == "") { PBAD = 1; i++; continue }
+      if (e == "\n") { pw_end(); i += 2; continue }
+      if (e == "\r" && T[i + 2] == "\n") { pw_end(); i += 3; continue }
+      PW = PW e; PWI = 1; i += 2; continue
+    }
+    if (c == "~" && !PWI) {
+      PW = TL; PWI = 1; i++
+      if (T[i] == "\\") { PW = PW "/"; i++ }
+      continue
+    }
+    if (c == ",") { PW = PW "\003"; PWI = 1; i++; continue }
+    # U+2013 U+2014 U+2015 (en dash, em dash, horizontal bar) at the start of a word act as - (a parameter or an option of a native command)
+    if (!PWI && c == "\342" && T[i + 1] == "\200" && (T[i + 2] == "\223" || T[i + 2] == "\224" || T[i + 2] == "\225")) { PW = "-"; PWI = 1; i += 3; continue }
+    PW = PW c; PWI = 1; i++
+  }
+  if (depth > 0) PBAD = 1
+  pw_sep("s")
+  return i
+}
+function ptokenize(s) {
+  gsub("[\002\003\004\034\035\036\037]", "", s)
+  str = s; m = split(s, T, ""); PBAD = 0
+  ptok(1, 0)
+  if (PBAD) PTK = ""
+}
+BEGIN { DS = "\034"; US = "\037"; BQ = "\035"; TL = "\036"; CALLM = "\004"; WSB = "\200\201\202\203\204\205\206\207\210\211\212" }
 { S = S $0 "\n" }
 END {
   n = split(S, C, ""); p = 1
@@ -250,7 +533,8 @@ END {
   if (bad) exit 0
   ws()
   if (p <= n) exit 0
-  print "J_tool=" q(TOP["tool_name"])
+  tn = TOP["tool_name"]
+  print "J_tool=" q(tn)
   print "J_sid=" q(TOP["session_id"])
   print "J_cwd=" q(TOP["cwd"])
   print "J_active=" q(TOP["stop_hook_active"])
@@ -258,10 +542,13 @@ END {
   print "J_file=" q(TI["file_path"])
   print "J_content=" q(TI["content"])
   print "J_new=" q(TI["new_string"])
-  if (TOP["tool_name"] == "Bash") {
+  if (tn == "Bash") {
     tokenize(TI["command"]); print "W=(" TOK ")"
     TOK = ""; for (i = 1; i <= hdg; i++) TOK = TOK " [" i "]=" q(HB[i])
     print "H=(" TOK ")"
+  } else if (tn == "PowerShell") {
+    ptokenize(TI["command"]); print "W=(" PTK ")"
+    print "H=()"
   }
   print "J_ok=1"
 }'
@@ -397,6 +684,13 @@ var_value() {
     PWD) [ "$CWD_OK" = 1 ] || return 1; VV="$CWD"; return 0 ;;
     TMPDIR) [ -n "${TMPDIR:-}" ] || return 1; VV="$TMPDIR"; return 0 ;;
     CLAUDE_PROJECT_DIR) [ -n "${CLAUDE_PROJECT_DIR:-}" ] || return 1; VV="$CLAUDE_PROJECT_DIR"; return 0 ;;
+    PS_TEMP | PS_TMP)
+      f="${TEMP:-}"
+      [ "$1" = PS_TMP ] && f="${TMP:-}"
+      [ -n "$f" ] || return 1
+      VV="$f"
+      if command -v cygpath >/dev/null 2>&1; then VV="$(cygpath -u "$f" 2>/dev/null)" || VV="$f"; fi
+      return 0 ;;
   esac
   return 1
 }
@@ -490,7 +784,8 @@ target_ok() {
   p="$EXP"
   case "$p" in *[\*\?\[]*) g="$p"; p="${p%%[\*\?\[]*}" ;; esac
   case "$p" in
-    /* | [A-Za-z]:* | *\\*) ;;
+    /* | [A-Za-z]:* | \\*) ;;
+    *\\*) if [ "$IS_PS" = 1 ] && [ "$CWD_OK" != 1 ]; then UNRES=1; RM_T="$1"; return 1; fi ;;
     *) if [ "$CWD_OK" != 1 ]; then UNRES=1; RM_T="$1"; return 1; fi ;;
   esac
   case "$p" in [A-Za-z]:*) CIC=1 ;; esac
@@ -836,7 +1131,12 @@ seg_sql() {
       h*) txt="$txt$NL${H[$a]:-}"; continue ;;
       o*) ot[${#ot[@]}]="$a"; continue ;;
       w*)
-        case "$a" in *[[:space:]]*) ;; *) b="${a##*/}"; cl="$cl${b%.exe} " ;; esac
+        if [ "$IS_PS" = 1 ]; then
+          b="${a##*[/\\]}"
+          case "$b" in *[[:space:]]*) ;; *) lower "$b"; cl="$cl${LW%.exe} " ;; esac
+        else
+          case "$a" in *[[:space:]]*) ;; *) b="${a##*/}"; cl="$cl${b%.exe} " ;; esac
+        fi
         if [ "$tee" = 1 ]; then case "$a" in -*) ;; *) ot[${#ot[@]}]="$a"; continue ;; esac; fi
         [ "${a##*/}" = tee ] && tee=1
         if [ "$cf" = 1 ]; then
@@ -905,6 +1205,7 @@ seg_sql() {
   case "$cl" in
     *" sqlite3 "* | *" psql "* | *" mysql "* | *" mariadb "* | *" sqlcmd "* | *" duckdb "* | *" clickhouse-client "* | \
       *" wrangler d1 execute "* | *" supabase db "*) ;;
+    *" invoke-sqlcmd "*) [ "$IS_PS" = 1 ] || return 1 ;;
     *) return 1 ;;
   esac
   sql_destructive "$PLT"
@@ -946,6 +1247,430 @@ pre_bash() {
       *) SEGW[${#SEGW[@]}]="$t" ;;
     esac
   done
+  [ -n "$HIT" ] || exit 0
+  decide "$HIT" "$J_cmd" "$HINT"
+}
+
+# ---- PreToolUse: PowerShell (D-W1, D-W3; https://code.claude.com/docs/en/hooks, section "PowerShell") ----
+# The JP awk program tokenizes the command like a Bash one (ptokenize); the git, SQL and cd logic above is reused on those words.
+# ps_cw -> PS_I: index of the command word in SEGW (redirection targets skipped), LW: its name without path and .exe, lower case; 1 when none
+ps_cw() {
+  local n="${#SEGW[@]}" w
+  PS_I=0
+  while [ "$PS_I" -lt "$n" ]; do
+    case "${SEGW[$PS_I]}" in r* | o* | h*) PS_I=$((PS_I + 1)) ;; *) break ;; esac
+  done
+  [ "$PS_I" -lt "$n" ] || return 1
+  w="${SEGW[$PS_I]#?}"
+  w="${w##*[/\\]}"
+  lower "${w%.[Ee][Xx][Ee]}"
+  return 0
+}
+# ps_split: an unquoted comma (the byte CM) ends a word for every command but Remove-Item (a native command gets an array as separate arguments)
+ps_split() {
+  local -a nw
+  local t k b
+  nw=()
+  for t in "${SEGW[@]}"; do
+    case "$t" in
+      *"$CM"*)
+        k="${t:0:1}"; b="${t:1}"
+        while :; do
+          case "$b" in
+            *"$CM"*) nw[${#nw[@]}]="$k${b%%"$CM"*}"; b="${b#*"$CM"}" ;;
+            *) nw[${#nw[@]}]="$k$b"; break ;;
+          esac
+        done ;;
+      *) nw[${#nw[@]}]="$t" ;;
+    esac
+  done
+  SEGW=("${nw[@]}")
+}
+# ps_pre NAME FULL -> 0 when NAME is a non-empty prefix of FULL (a PowerShell parameter abbreviation)
+ps_pre() {
+  [ -n "$1" ] || return 1
+  case "$2" in "$1"*) return 0 ;; esac
+  return 1
+}
+# ps_tg WORD: adds the target WORD (split at unquoted commas) to PS_TG
+ps_tg() {
+  local v="$1"
+  case "$v" in
+    *"$CM"*)
+      while :; do
+        case "$v" in
+          *"$CM"*) [ -z "${v%%"$CM"*}" ] || PS_TG[${#PS_TG[@]}]="${v%%"$CM"*}"; v="${v#*"$CM"}" ;;
+          *) [ -z "$v" ] || PS_TG[${#PS_TG[@]}]="$v"; break ;;
+        esac
+      done ;;
+    *) PS_TG[${#PS_TG[@]}]="$v" ;;
+  esac
+}
+# ps_rm START: Remove-Item (and its aliases) with -Recurse and a target outside the project root and the temp dirs (D-W3: an
+# unresolved target, or none at all, counts as outside). Targets: positional words, -Path/-LiteralPath/-LP/-PSPath (also
+# -Path:X); the value of another named parameter is never a target.
+ps_rm() {
+  local i="$1" n="${#SEGW[@]}" a nm ln val bound rec=0 t isp
+  PS_TG=()
+  while [ "$i" -lt "$n" ]; do
+    a="${SEGW[$i]}"; i=$((i + 1))
+    case "$a" in r* | o* | h*) continue ;; esac
+    a="${a#?}"
+    case "$a" in
+      -?*)
+        nm="${a#-}"; val=""; bound=0
+        case "$nm" in *:*) val="${nm#*:}"; nm="${nm%%:*}"; bound=1 ;; esac
+        lower "$nm"; ln="$LW"; isp=0
+        if ps_pre "$ln" recurse; then
+          rec=1
+          if [ "$bound" = 1 ] && [ "$val" = "${DS}PS_FALSE${US}" ]; then rec=0; fi
+          continue
+        fi
+        [ "$ln" = lp ] && isp=1
+        ps_pre "$ln" path && isp=1
+        ps_pre "$ln" pspath && isp=1
+        ps_pre "$ln" literalpath && isp=1
+        if [ "$isp" = 1 ]; then
+          if [ "$bound" = 1 ]; then ps_tg "$val"
+          elif [ "$i" -lt "$n" ]; then
+            case "${SEGW[$i]}" in w*) ps_tg "${SEGW[$i]#?}"; i=$((i + 1)) ;; esac
+          fi
+          continue
+        fi
+        if [ "$bound" = 0 ]; then
+          case "$ln" in
+            filter | include | exclude | credential | stream | erroraction | warningaction | informationaction | errorvariable | \
+              warningvariable | informationvariable | outvariable | outbuffer | pipelinevariable | ea | wa | ia | infa | ev | wv | \
+              iv | ov | ob | pv) i=$((i + 1)) ;;
+          esac
+        fi ;;
+      *) ps_tg "$a" ;;
+    esac
+  done
+  [ "$rec" = 1 ] || return 1
+  if [ "${#PS_TG[@]}" -eq 0 ]; then
+    HIT=rm-outside
+    HINT=" A recursive delete has no target word (its target comes from a pipeline or a splatted variable): use a literal path inside the project or a temp dir."
+    return 0
+  fi
+  for t in "${PS_TG[@]}"; do
+    UNRES=0; RM_STATE=0
+    case "$t" in
+      *::* | [A-Za-z]:[!/\\]* | [A-Za-z]:) UNRES=1; RM_T="$t" ;;   # a provider path (FileSystem::..., Registry::...) or a drive-relative one (C:x, C:..\x)
+    esac
+    if [ "$UNRES" = 1 ] || ! target_ok "$t"; then
+      HIT=rm-outside
+      if [ "$RM_STATE" = 1 ]; then
+        HINT=" The target $RM_T holds the guard's session baselines (.git/pb-guard): leave it in place."
+      elif [ "$UNRES" = 1 ]; then
+        HINT=" A target could not be resolved to a path (an unknown or reassigned variable, a subexpression, a splatted variable, a provider path with :: or a drive-relative path like C:x): use a literal path inside the project or a temp dir."
+      else
+        HINT=" The target $RM_T is outside the project root ($ROOTN) and the temp dirs."
+      fi
+      return 0
+    fi
+  done
+  return 1
+}
+# ps_cd START: follow cd / Set-Location for later relative paths (a parameter name stops the tracking)
+ps_cd() {
+  local i="$1" n="${#SEGW[@]}"
+  while [ "$i" -lt "$n" ]; do
+    case "${SEGW[$i]}" in r* | o* | h*) i=$((i + 1)) ;; *) break ;; esac
+  done
+  if [ "$i" -lt "$n" ]; then
+    case "${SEGW[$i]#?}" in -*) CWD_OK=0; return ;; esac
+  fi
+  seg_cd "$i"
+}
+# ps_unres NAME: an assignment changed the variable (NAME as renamed by psvar): it stays unresolved for the rest of the command
+ps_unres() {
+  case "$1" in HOME | PWD | PS_TEMP | PS_TMP | TMPDIR | CLAUDE_PROJECT_DIR) printf -v "GS_$1" '%s' 0 ;; esac
+}
+# ps_vn NAME -> PV: the psvar name of a variable named NAME in Set-Item / Set-Variable (env:TEMP, HOME ...); 1 when none
+ps_vn() {
+  local n="$1"
+  lower "$n"; n="$LW"
+  case "$n" in env:\\* | env:/*) n="env:${n#env:?}" ;; esac
+  case "$n" in
+    home | env:home | env:userprofile) PV=HOME ;;
+    pwd) PV=PWD ;;
+    env:temp) PV=PS_TEMP ;;
+    env:tmp) PV=PS_TMP ;;
+    env:tmpdir) PV=TMPDIR ;;
+    env:claude_project_dir) PV=CLAUDE_PROJECT_DIR ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+# ps_br STR: STR starts with [: PBL = the length of the balanced [...] group at its start (0 and rc 1 when it is not closed)
+ps_br() {
+  local s="$1" k=0 d=0 c n="${#1}"
+  PBL=0
+  while [ "$k" -lt "$n" ]; do
+    c="${s:$k:1}"
+    case "$c" in
+      \[) d=$((d + 1)) ;;
+      \]) d=$((d - 1)); if [ "$d" = 0 ]; then PBL=$((k + 1)); return 0; fi ;;
+    esac
+    k=$((k + 1))
+  done
+  return 1
+}
+# ps_idn STR: PIR = STR without its leading identifier characters
+ps_idn() {
+  local s="$1"
+  PIR="${s#"${s%%[!A-Za-z0-9_]*}"}"
+}
+# ps_lead PIECE: PIECE starts an assignment target: any [type] casts, a variable (with an optional scope: $script:r), then a chain of .member, ::member
+# and [index] (quoted keys included). PLV=1, PLN = the variable name the guard resolves (or empty), PLR = what follows the target (the operator and
+# the start of the right side, or empty). A piece that is only casts gives PLV=0 and PLR empty (the target is in the next word). rc 1: not a target.
+ps_lead() {
+  local p="$1" cast=0 nm
+  PLV=0; PLN=""; PLR=""
+  while :; do
+    case "$p" in \[*) ;; *) break ;; esac
+    ps_br "$p" || return 1
+    p="${p:$PBL}"; cast=1
+  done
+  case "$p" in
+    "$DS"*"$US"*)
+      nm="${p#"$DS"}"; nm="${nm%%"$US"*}"; p="${p#*"$US"}"
+      # a scope prefix ($script:r, $global:r, $local:r, $private:r, $using:r): the name after the colon is the variable (the tokenizer keeps only
+      # ( for an unknown name before the colon)
+      case "$p" in
+        :[A-Za-z_]*) p="${p#:}"; ps_idn "$p"; nm="${p%"$PIR"}"; p="$PIR"; if ps_vn "$nm"; then nm="$PV"; fi ;;
+      esac
+      PLN="$nm" ;;
+    ::*) ;;
+    *) if [ "$cast" = 1 ] && [ -z "$p" ]; then return 0; fi; return 1 ;;
+  esac
+  while :; do
+    case "$p" in
+      .*) p="${p#.}"
+        case "$p" in "$DS"*"$US"*) p="${p#*"$US"}" ;; esac
+        ps_idn "$p"; p="$PIR" ;;
+      ::*) p="${p#::}"; ps_idn "$p"; p="$PIR" ;;
+      \[*) ps_br "$p" || return 1; p="${p:$PBL}" ;;
+      *) break ;;
+    esac
+  done
+  PLV=1; PLR="$p"
+  return 0
+}
+# ps_lhs: the segment starts with an assignment ($x = .., $a, $b += .., [string] $o = .., $x.a = .., $x[0] = .., $h['k'] = .., $script:r = ..): the
+# variables it names that the guard resolves become unresolved (D-W12), and the left side with its operator is removed from SEGW, so that the command
+# on the right runs through the same checks (D-W13). 0 when something was removed. A comma list may span words ($a, $b = ..); a word holding the
+# operator and the start of the right side is kept (glue).
+ps_lhs() {
+  local n="${#SEGW[@]}" i=0 k w piece st=0 comma g nm
+  local -a nw nm_l
+  nm_l=()
+  while [ "$i" -lt "$n" ]; do
+    case "${SEGW[$i]}" in w*) ;; *) return 1 ;; esac
+    w="${SEGW[$i]#?}"
+    while :; do
+      case "$w" in
+        *"$CM"*) piece="${w%%"$CM"*}"; w="${w#*"$CM"}"; comma=1 ;;
+        *) piece="$w"; w=""; comma=0 ;;
+      esac
+      if [ -n "$piece" ] && [ "$st" = 0 ]; then
+        ps_lead "$piece" || return 1
+        if [ "$PLV" = 1 ]; then nm_l[${#nm_l[@]}]="$PLN"; st=1; fi
+        piece="$PLR"
+      fi
+      if [ -n "$piece" ]; then
+        case "$piece" in
+          '??='*) g="${piece#\?\?=}" ;;
+          [-+*/%]=*) g="${piece#??}" ;;
+          =*) g="${piece#=}" ;;
+          *) return 1 ;;
+        esac
+        if [ "$comma" = 1 ]; then g="$g$CM$w"; fi
+        for nm in "${nm_l[@]}"; do ps_unres "$nm"; done
+        nw=()
+        if [ -n "$g" ]; then nw[0]="w$g"; fi
+        k=$((i + 1))
+        while [ "$k" -lt "$n" ]; do nw[${#nw[@]}]="${SEGW[$k]}"; k=$((k + 1)); done
+        SEGW=("${nw[@]+"${nw[@]}"}")
+        return 0
+      fi
+      if [ "$comma" = 1 ]; then st=0; else break; fi
+    done
+    i=$((i + 1))
+  done
+  return 1
+}
+# ps_asg: a same-command assignment inside a segment to a variable the guard resolves ($x += v ...) makes the variable unresolved from then
+# on (D-W12, fail closed); likewise a Set-Item / Set-Variable / New-Item / Rename-Item style command naming it (env:TEMP, env:/TEMP, HOME ...,
+# or a New-Item -Path Env: -Name TEMP, a Rename-Item env:FOO TEMP), and [Environment]::SetEnvironmentVariable('TEMP', ..) (its arguments
+# are the next segment: ENVSET).
+ps_asg() {
+  local i n="${#SEGW[@]}" w piece rest nm last k envp=0
+  local -a aw
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    case "${SEGW[$i]}" in w*) ;; *) i=$((i + 1)); continue ;; esac
+    w="${SEGW[$i]#?}"
+    lower "$w"
+    case "$LW" in *::setenvironmentvariable*) ENVSET=1 ;; esac
+    while :; do
+      case "$w" in
+        *"$CM"*) piece="${w%%"$CM"*}"; w="${w#*"$CM"}"; last=0 ;;
+        *) piece="$w"; last=1 ;;
+      esac
+      case "$piece" in \[*) case "$piece" in *"$DS"*) piece="$DS${piece#*"$DS"}" ;; esac ;; esac
+      case "$piece" in
+        "$DS"*"$US"*)
+          nm="${piece#"$DS"}"; nm="${nm%%"$US"*}"; rest="${piece#*"$US"}"
+          if [ -z "$rest" ] && [ "$last" = 1 ] && [ "$((i + 1))" -lt "$n" ]; then
+            case "${SEGW[$((i + 1))]}" in w*) rest="${SEGW[$((i + 1))]#?}" ;; esac
+          fi
+          case "$rest" in = | =* | [-+*/%]=* | '??='*) ps_unres "$nm" ;; esac ;;
+      esac
+      [ "$last" = 1 ] && break
+    done
+    i=$((i + 1))
+  done
+  ps_cw || return 0
+  case "$LW" in
+    set-item | si | set-variable | sv | set | new-variable | nv | new-item | ni | set-content | sc | clear-item | cli | rename-item | rni | \
+      move-item | mi | mv | move | copy-item | cpi | cp | copy)
+      aw=()
+      k="$((PS_I + 1))"
+      while [ "$k" -lt "$n" ]; do
+        case "${SEGW[$k]}" in w*) w="${SEGW[$k]#?}"
+          case "$w" in -?*:*) w="${w#*:}" ;; -*) w="" ;; esac
+          if [ -n "$w" ]; then
+            aw[${#aw[@]}]="$w"
+            if ps_vn "$w"; then ps_unres "$PV"; fi
+            lower "$w"
+            case "$LW" in env:*) envp=1 ;; esac
+          fi ;;
+        esac
+        k=$((k + 1))
+      done
+      # a command on the env: provider names a variable by its bare name too (New-Item -Path Env: -Name TEMP, Rename-Item env:FOO TEMP)
+      if [ "$envp" = 1 ]; then
+        for w in "${aw[@]}"; do
+          if ps_vn "env:$w"; then ps_unres "$PV"; fi
+          if ps_vn "$w"; then ps_unres "$PV"; fi
+        done
+      fi ;;
+  esac
+}
+# ps_envname: the segment after a [Environment]::SetEnvironmentVariable call holds its arguments: the first one names the variable
+ps_envname() {
+  local i=0 n="${#SEGW[@]}" w
+  while [ "$i" -lt "$n" ]; do
+    case "${SEGW[$i]}" in r* | o* | h*) i=$((i + 1)) ;; *) break ;; esac
+  done
+  [ "$i" -lt "$n" ] || return 0
+  w="${SEGW[$i]#?}"; w="${w%%"$CM"*}"
+  if ps_vn "env:$w"; then ps_unres "$PV"; fi
+}
+# ps_unk START: the command word is a group or a variable after & or . (& (Get-Command x) .., & $cmd ..): its name is unknown, so the arguments decide:
+# a recursive switch is a recursive delete with an unknown target (rm-outside), push with a force form is git-push-force (D-W14); other arguments pass.
+ps_unk() {
+  local i="$1" n="${#SEGW[@]}" a ln nm val rec=0 push=0 force=0
+  while [ "$i" -lt "$n" ]; do
+    a="${SEGW[$i]}"; i=$((i + 1))
+    case "$a" in w*) ;; *) continue ;; esac
+    lower "${a#?}"; ln="$LW"
+    case "$ln" in
+      push) push=1 ;;
+      --recursive | -rf | -fr) rec=1; force=1 ;;
+      --force* | --mirror | +?*) force=1 ;;
+      -f* | -[!-]*f*) force=1 ;;
+    esac
+    case "$ln" in
+      -?*)
+        nm="${ln#-}"; val=""
+        case "$nm" in *:*) val="${nm#*:}"; nm="${nm%%:*}" ;; esac   # -Rec:$true binds the value with a colon
+        if ps_pre "$nm" recurse && [ "$val" != "${DS}ps_false${US}" ]; then rec=1; fi ;;
+    esac
+  done
+  if [ "$rec" = 1 ]; then
+    HIT=rm-outside
+    HINT=" The command is a group or a variable after & or . (its name is unknown) and its arguments hold a recursive switch: name the command."
+    return 0
+  fi
+  if [ "$push" = 1 ] && [ "$force" = 1 ]; then
+    HIT=git-push-force
+    HINT=" The command is a group or a variable after & or . (its name is unknown) and its arguments are a force push: name the command."
+    return 0
+  fi
+  return 1
+}
+# ps_seg: one simple command in SEGW; 0 when it is a hit
+ps_seg() {
+  local rc was="$ENVSET" raw
+  ENVSET=0; PS_RHS=0; UNRES=0
+  while ps_lhs; do PS_RHS=1; done
+  # the right side starts with the dot-source operator ($r = . git push -f, $r = . $c ..): the next word is the command (a variable: unknown)
+  if [ "$PS_RHS" = 1 ] && [ "${#SEGW[@]}" -gt 1 ] && [ "${SEGW[0]}" = "w." ]; then
+    SEGW=("${SEGW[@]:1}")
+    case "${SEGW[0]}" in w*"$DS("*"$US"*) SEGW[0]="w$CALLM${SEGW[0]#?}" ;; esac
+  fi
+  ps_asg
+  if [ "$was" = 1 ]; then ps_envname; fi
+  ps_cw || return 1
+  if [ "$PS_RHS" = 0 ]; then
+    lower "${SEGW[$PS_I]#?}"; raw="$LW"
+    case "$raw" in
+      'cd..') SEGW=("${SEGW[@]:0:$PS_I}" wcd w.. "${SEGW[@]:$((PS_I + 1))}") ;;   # the cd.. function
+      'cd\' | 'cd/') CWD_OK=0; return 1 ;;                                       # the cd\ function: the drive root
+      [a-z]:) CWD_OK=0; return 1 ;;                                              # a drive function (C: .. Z:) changes location
+    esac
+    ps_cw || return 1
+  fi
+  case "$LW" in
+    remove-item | rm | ri | del | erase | rmdir | rd)
+      ps_rm "$((PS_I + 1))"; rc=$?
+      [ "$rc" = 0 ] || ps_split
+      return "$rc" ;;
+  esac
+  ps_split
+  ps_cw || return 1
+  case "$LW" in
+    "$CALLM"*) ps_unk "$((PS_I + 1))"; return ;;
+    git) seg_git "$((PS_I + 1))"; return ;;
+    cd | sl | chdir | set-location | pushd | push-location) ps_cd "$((PS_I + 1))"; return 1 ;;
+    popd | pop-location) CWD_OK=0; return 1 ;;
+  esac
+  return 1
+}
+pre_ps() {
+  local t
+  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""
+  case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
+  NP_DRV=0
+  if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
+  CWD_OK=1
+  norm_path "${CLAUDE_PROJECT_DIR:-$CWD}" /; ROOTN="$NP"
+  [ "$NP_DRV" = 1 ] && CIC=1
+  SEGW=(); PLT=""; WF_P=(); WF_T=(); GD=0; GT=""; SEGT=""
+  for t in "${W[@]}"; do
+    case "$t" in
+      s | 's|' | 's(' | 's)')
+        if [ "${#SEGW[@]}" -gt 0 ]; then
+          if ps_seg; then
+            # a delete whose target is unresolved (a $(...) group) is reported after the commands that run inside that group: their hit wins
+            if [ "$UNRES" = 1 ] && [ "$HIT" = rm-outside ] && [ -z "$DEFH" ]; then DEFH="$HIT"; DEFT="$HINT"; HIT=""; HINT=""; else break; fi
+          fi
+          if seg_sql; then HIT=sql; HINT=""; break; fi
+          if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
+        fi
+        SEGW=()
+        case "$t" in
+          s) PLT="" ;;
+          's(') GD=$((GD + 1)) ;;
+          's)') if [ "$GD" -gt 0 ]; then gclose; else PLT=""; fi ;;
+        esac ;;
+      *) SEGW[${#SEGW[@]}]="$t" ;;
+    esac
+  done
+  if [ -z "$HIT" ] && [ -n "$DEFH" ]; then HIT="$DEFH"; HINT="$DEFT"; fi
   [ -n "$HIT" ] || exit 0
   decide "$HIT" "$J_cmd" "$HINT"
 }
@@ -1163,6 +1888,7 @@ case "$MODE" in
 esac
 case "$J_tool" in
   Bash) pre_bash ;;
+  PowerShell) pre_ps ;;
   Write | Edit) pre_write ;;
 esac
 exit 0

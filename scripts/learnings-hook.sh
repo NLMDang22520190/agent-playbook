@@ -8,8 +8,11 @@
 # DECISION[D15]: plain stdout, not JSON additionalContext: no JSON escaping needed and the cap stays under the
 # documented 10,000-character context limit. Undo: switch the output mode here.
 # DECISION[R8]: the file must resolve (symlinks followed, pwd -P) strictly inside the root, or nothing is printed and one
-# stderr line names learnings_path: a cloned repo must not pull a file from elsewhere into the context. Any closing tag
+# stderr line names learnings_path (a trusted project only; an untrusted one never has its learnings_path printed): a cloned repo must not pull a file from elsewhere into the context. Any closing tag
 # variant (</project-learnings> in any case or spacing) in the file is dropped, so only the hook's own line closes the wrapper.
+# DECISION[D-W4/D-W5]: only a trusted project is injected (a cloned repo must not feed text into the context unasked). Trusted =
+# its root is a line of <home>/.agents/trusted-projects (learn.sh trust, run by the user) or the GLOBAL conf has
+# learnings_hook_trust=all; never read from the project. Otherwise one line says so (no entry text). --eval skips the check.
 # Env: PB_EVAL_HOOKS (non-empty: exit 0 silently unless --eval), PB_EVAL_HOOK_LOG (append "learnings inject <bytes>").
 # Bash 3.2 compatible; no jq, node or python.
 set -u
@@ -50,6 +53,47 @@ ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || ROOT="$(json_cwd "$INPUT")"
 [ -n "$ROOT" ] || exit 0
 
+# Trust-file path matching (v0.29.0 slice T). Same helpers in learn.sh and learnings-hook.sh: keep both copies equal.
+CYG=""; command -v cygpath >/dev/null 2>&1 && CYG=1
+# pb_resolve PATH -> RES: absolute PATH with a Windows form turned into a POSIX one (cygpath -u when present), `.`/`..`
+# folded, symlinks resolved when the directory exists; 1 when PATH is not absolute. WIN=1 for a drive-letter form.
+pb_resolve() {
+  local p="$1" d v seg out="" drv="" IFS
+  p="${p%$'\r'}"; WIN=0
+  case "$p" in [A-Za-z]:[/\\]* | [A-Za-z]:) WIN=1; p="$(printf '%s' "$p" | tr '\\' '/')" ;; esac
+  if [ -n "$CYG" ]; then
+    case "$p" in
+      /*) d="$(cygpath -u "$p" 2>/dev/null)" && [ -n "$d" ] && p="$d" ;;
+      [A-Za-z]:*)   # keep the drive: the POSIX form is used only when it maps back to the same drive letter
+        d="$(cygpath -u "$p" 2>/dev/null)" && [ -n "$d" ] && v="$(cygpath -m "$d" 2>/dev/null)" &&
+          [ "$(printf '%s' "${v%%:*}" | tr 'A-Z' 'a-z')" = "$(printf '%s' "${p%%:*}" | tr 'A-Z' 'a-z')" ] && p="$d" ;;
+    esac
+  fi
+  case "$p" in /* | [A-Za-z]:*) ;; *) return 1 ;; esac
+  if [ -d "$p" ] && d="$(cd "$p" 2>/dev/null && pwd -P)" && [ -n "$d" ]; then RES="$d"; return 0; fi
+  case "$p" in [A-Za-z]:*) drv="${p%%:*}:"; p="${p#?:}" ;; esac
+  IFS=/; set -f
+  for seg in $p; do
+    case "$seg" in "" | .) ;; ..) out="${out%/*}" ;; *) out="$out/$seg" ;; esac
+  done
+  set +f
+  RES="$drv${out:-/}"
+}
+# pb_key PATH -> KEY (stdout): the comparison form of PATH; equal keys are the same project. 1 when not absolute.
+pb_key() {
+  local k
+  pb_resolve "$1" || return 1
+  k="$RES"
+  [ -n "$CYG" ] && k="$(cygpath -m "$k" 2>/dev/null || printf '%s' "$k")"
+  if [ -n "$CYG" ] || [ "$WIN" = 1 ]; then k="$(printf '%s' "$k" | tr 'A-Z' 'a-z')"; fi
+  while :; do case "$k" in ?*/) k="${k%/}" ;; *) break ;; esac; done
+  printf '%s' "$k"
+}
+
+if [ -n "$CYG" ]; then   # a Windows-form root (C:\x, C:/x) is turned into the POSIX form before it is used
+  case "$ROOT" in /* | [A-Za-z]:*) R_U="$(cygpath -u "$ROOT" 2>/dev/null)" && [ -n "$R_U" ] && ROOT="$R_U" ;; esac
+fi
+
 # real_path FILE -> RP: FILE with its symlinks followed and its directory resolved by pwd -P; 1 when that fails
 real_path() {
   local f="$1" t d i=0
@@ -68,6 +112,29 @@ REL="$(pb_conf_read "$ROOT/.agents/playbook.conf" learnings_path)" || REL=".agen
 case "$REL" in /* | [A-Za-z]:*) FILE="$REL" ;; *) FILE="$ROOT/$REL" ;; esac
 [ -f "$FILE" ] && [ -r "$FILE" ] && [ -s "$FILE" ] || exit 0
 RR="$(cd "$ROOT" 2>/dev/null && pwd -P)" || exit 0
+# Trust gate (D-W4/D-W5): the global conf and the trust file in the user's home only, never the project's.
+TRUSTED=0
+if [ "$EVAL" = 1 ]; then TRUSTED=1
+else
+  [ "$(pb_conf_read "$(pb_conf_global)" learnings_hook_trust)" = "all" ] && TRUSTED=1
+  TF="$(pb_home)/.agents/trusted-projects"
+  if [ "$TRUSTED" = 0 ] && [ -f "$TF" ] && RK="$(pb_key "$RR")"; then
+    while IFS= read -r tl || [ -n "$tl" ]; do
+      tl="${tl%$'\r'}"
+      case "$tl" in "" | "#"*) continue ;; esac
+      TK="$(pb_key "$tl")" || continue
+      if [ "$TK" = "$RK" ]; then TRUSTED=1; break; fi
+    done < "$TF"
+  fi
+fi
+if [ "$TRUSTED" = 0 ]; then
+  SR="$(printf '%s' "$RR" | tr '\n\r' '  ')"
+  printf 'agent-playbook learnings-hook: the learnings file of %s exists, but the project is not trusted; not injected. The user can trust it with: learn.sh trust "%s"\n' "$SR" "$SR"
+  [ -n "${PB_EVAL_HOOK_LOG:-}" ] && printf 'learnings untrusted\n' >> "$PB_EVAL_HOOK_LOG" 2>/dev/null
+  exit 0
+fi
+
+# Only now, for a trusted project: the file must resolve inside the root (R8); the refusal line may name learnings_path.
 INSIDE=0
 if real_path "$FILE"; then case "$RP" in "${RR%/}"/*) INSIDE=1 ;; esac; fi
 if [ "$INSIDE" = 0 ]; then
