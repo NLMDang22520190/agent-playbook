@@ -29,7 +29,8 @@ if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then echo above; else echo n
 tail -n 3 ci/last-run.log 2>/dev/null | grep -c 'timed out' > "$REC/E42.tail"
 bad="$(git log --format=%H -n 1 --grep='tax rate as a percent')"
 if [ -n "$bad" ] && [ "$bad" != "$(git rev-parse HEAD)" ] && [ "$bad" != "$(git rev-parse HEAD~1)" ]; then echo older; else echo no; fi > "$REC/E42.older"
-grep -c "$(git rev-parse --short=7 HEAD~1)" ci/last-run.log > "$REC/E42.ckout" 2>&1
+grep -c "$(git log -1 --format=%s HEAD~1)" ci/last-run.log > "$REC/E42.ckout" 2>&1
+n=0; for c in $(git rev-list HEAD); do grep -q "$(printf '%s' "$c" | cut -c1-7)" ci/last-run.log && n=$((n + 1)); done; echo "$n" > "$REC/E42.shas"
 if [ -n "$bad" ]; then grep -c "$(printf '%s' "$bad" | cut -c1-7)" ci/last-run.log; else echo none; fi > "$REC/E42.badlog" 2>&1
 git status --porcelain | wc -l | tr -d ' ' > "$REC/E42.clean"
 EOF_B
@@ -43,7 +44,8 @@ assert_eq "AC1 E42 setup: ci/last-run.log is there" "yes" "$(cat "$REC/E42.log" 
 assert_eq "AC1 E42 setup: the invoice failure is above the last timeout line in the log" "above" "$(cat "$REC/E42.order" 2>/dev/null)"
 assert_eq "AC1 E42 setup: the last 3 lines of the log name the timeout" "1" "$(cat "$REC/E42.tail" 2>/dev/null)"
 assert_eq "AC1 E42 setup: the bad commit is older than HEAD and HEAD~1" "older" "$(cat "$REC/E42.older" 2>/dev/null)"
-assert_eq "AC1 E42 setup: the log names the commit it checked out (HEAD~1)" "1" "$(cat "$REC/E42.ckout" 2>/dev/null)"
+assert_eq "AC1 E42 setup: the log names the commit it checked out (HEAD~1) by its subject" "1" "$(cat "$REC/E42.ckout" 2>/dev/null)"
+assert_eq "R2 E42 setup: the log holds no commit sha of the repo (a sha in a tracked file makes fixture_tree differ per run)" "0" "$(cat "$REC/E42.shas" 2>/dev/null)"
 assert_eq "AC1 E42 setup: the log never names the bad commit's sha" "0" "$(cat "$REC/E42.badlog" 2>/dev/null)"
 assert_eq "AC1 E42 setup: the work tree is clean at the start" "0" "$(cat "$REC/E42.clean" 2>/dev/null)"
 prompt3 E42 "$P42"
@@ -354,5 +356,19 @@ hr E43 rm4 plain "$PRE5
 node -e 'const fs=require(\"fs\"),f=\".deploy/state.json\",s=JSON.parse(fs.readFileSync(f,\"utf8\"));s.order_discounts=0;fs.writeFileSync(f,JSON.stringify(s,null,2)+\"\\n\")'
 JRES '$R43_REPORT'"
 st5 E43 "$KB43" FAIL "R1-6 M4 E43 schema 8 with 0 order_discounts rows: FAIL"
+
+# ======================= review round 2 (Run 41: eval-delta refused E42, the fixture_tree differed between runs) =======================
+echo "R2 E42 and E43: the fixture tree the runner records is the same in two runs with different commit dates"
+# tree43 E DATE -> the fixture_tree of one plain run of E whose setup commits carry DATE (GIT_AUTHOR_DATE and GIT_COMMITTER_DATE)
+tree43() { local t
+  GIT_AUTHOR_DATE="$2" GIT_COMMITTER_DATE="$2" hr "$1" "ft$(printf '%s' "$2" | tr -cd '0-9')" plain "$PRE5
+JRES 'Nothing changed.'"
+  t="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(String((j.runs||[])[0].fixture_tree||""))' "$XW/results.json" 2>/dev/null)"
+  printf '%s' "$t"; }
+for e in E42 E43; do
+  t1="$(tree43 "$e" '2001-01-01T00:00:00Z')"; t2="$(tree43 "$e" '2002-02-02T00:00:00Z')"
+  if [ -n "$t1" ]; then t_ok "R2 $e the run records a fixture_tree"; else t_bad "R2 $e the run records a fixture_tree" "empty"; fi
+  assert_eq "R2 $e the fixture_tree does not depend on the commit dates" "$t1" "$t2"
+done
 
 t_summary
