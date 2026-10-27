@@ -2206,6 +2206,49 @@ for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group'
 done
 
 
+# ---- v0.29.0 lane w, slice P2: README hooks table and Limits for the PowerShell tool (AC-H5, spec Revisions 2 and 3) ----
+echo "v0.29.0 lane w P2 AC-H5: README hooks section names the PowerShell tool and its Limits"
+WP_ROW="$(grep -E '^\| *PreToolUse' "$README" | head -n 1)"
+if [ -n "$WP_ROW" ]; then t_ok "v0.29.0 P2 AC-H5 the README hooks table has a PreToolUse row"; else t_bad "v0.29.0 P2 AC-H5 the README hooks table has a PreToolUse row" "no table row starting with PreToolUse"; fi
+for wp_n in 'Bash' 'PowerShell' 'Write' 'Edit'; do
+  qchk "v0.29.0 P2 AC-H5 the PreToolUse row names $wp_n" "$WP_ROW" "$wp_n"
+done
+qchk "v0.29.0 P2 AC-H5 the PreToolUse row says which PowerShell forms are checked (Remove-Item)" "$WP_ROW" 'Remove-Item'
+qchk "v0.29.0 P2 AC-H5 the hooks section cites the Claude Code hooks docs URL" "$K1B_HKF" 'code\.claude\.com/docs/en/hooks'
+# the "tools it is not attached to" line (the one naming NotebookEdit) no longer names the PowerShell tool
+WP_ATT="$(printf '%s\n' "$K1B_HK" | grep -E 'NotebookEdit')"
+if [ -n "$WP_ATT" ]; then t_ok "v0.29.0 P2 AC-H5 Limits still has the not-attached line (NotebookEdit, MCP)"; else t_bad "v0.29.0 P2 AC-H5 Limits still has the not-attached line (NotebookEdit, MCP)" "no line naming NotebookEdit"; fi
+if printf '%s\n' "$WP_ATT" | grep -qiE 'PowerShell'; then t_bad "v0.29.0 P2 AC-H5 the not-attached line no longer names the PowerShell tool" "still names PowerShell: $WP_ATT"; else t_ok "v0.29.0 P2 AC-H5 the not-attached line no longer names the PowerShell tool"; fi
+qchk "v0.29.0 P2 AC-H5 the not-attached line still names MCP tools" "$WP_ATT" 'MCP'
+WP_PSL="$(printf '%s\n' "$K1B_HK" | awk '/^###+ Limits/ { f = 1 } f' | grep -iE 'PowerShell' | grep -vE 'NotebookEdit')"
+if [ -n "$WP_PSL" ]; then t_ok "v0.29.0 P2 AC-H5 Limits has a PowerShell item (a line about PowerShell besides the not-attached line)"; else t_bad "v0.29.0 P2 AC-H5 Limits has a PowerShell item (a line about PowerShell besides the not-attached line)" "no Limits line names PowerShell"; fi
+# each uncovered form is named in Limits (meaning pins, flexible wording)
+qchk "v0.29.0 P2 AC-H5 Limits: Invoke-Expression" "$K1B_LIM" 'Invoke-Expression'
+qchk "v0.29.0 P2 AC-H5 Limits: iex" "$K1B_LIM" '(^|[^a-z])iex([^a-z]|$)'
+qchk "v0.29.0 P2 AC-H5 Limits: powershell -Command" "$K1B_LIM" 'powershell(\.exe)?[^.;]{0,30}-Command'
+qchk "v0.29.0 P2 AC-H5 Limits: pwsh -c" "$K1B_LIM" 'pwsh[^.;]{0,20}-c([^a-z]|$)'
+qchk "v0.29.0 P2 AC-H5 Limits: -EncodedCommand" "$K1B_LIM" '-EncodedCommand'
+qchk "v0.29.0 P2 AC-H5 Limits: cmd /c" "$K1B_LIM" 'cmd(\.exe)? /c'
+qchk "v0.29.0 P2 AC-H5 Limits: Start-Process" "$K1B_LIM" 'Start-Process'
+qchk "v0.29.0 P2 AC-H5 Limits: scriptblocks run later (& { }, Invoke-Command)" "$K1B_LIM" 'script ?blocks?[^.]{0,200}(later|run|invok)'
+qchk "v0.29.0 P2 AC-H5 Limits: & { } scriptblock call" "$K1B_LIM" '& ?\{'
+qchk "v0.29.0 P2 AC-H5 Limits: Invoke-Command" "$K1B_LIM" 'Invoke-Command'
+qchk "v0.29.0 P2 AC-H5 Limits: the --% stop-parsing token" "$K1B_LIM" '(^|[^-])--%'
+qchk "v0.29.0 P2 AC-H5 Limits: variables other than the listed ones count as outside (warn or block)" "$K1B_LIM" 'variables?[^.]{0,250}outside|outside[^.]{0,250}variables?'
+qchk "v0.29.0 P2 AC-H5 Limits: Remove-Item without -Recurse is not covered" "$K1B_LIM" 'Remove-Item[^.]{0,150}without[^.]{0,40}-Recurse|without[^.]{0,40}-Recurse'
+qchk "v0.29.0 P2 AC-H5 Limits: registry paths" "$K1B_LIM" 'registry'
+qchk "v0.29.0 P2 AC-H5 Limits: provider paths" "$K1B_LIM" 'provider'
+qchk "v0.29.0 P2 AC-H5 Limits: Set-Content writing SQL files" "$K1B_LIM" 'Set-Content'
+qchk "v0.29.0 P2 AC-H5 Limits: Out-File writing SQL files" "$K1B_LIM" 'Out-File'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): .NET calls such as [IO.Directory]::Delete" "$K1B_LIM" '\.NET'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): names [IO.Directory]::Delete" "$K1B_LIM" 'IO\.Directory'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): splatting without a visible -Recurse" "$K1B_LIM" 'splat'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 3): a Remove-Item -Recurse fed by the pipeline has no target word and warns or blocks even inside the project" "$K1B_LIM" 'pipe(line)?[^.]{0,250}(false positive|even (inside|in |when)|fail(s)? closed|warn|block)'
+qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): curly quotes are not quote characters" "$K1B_LIM" 'curly|smart quote|typographic'
+qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): variable assignments are not followed" "$K1B_LIM" 'assign|variable flow|flow of variables?'
+qchk "v0.29.0 P2 AC-H5 Limits: without Git Bash the bash hook commands cannot run" "$K1B_LIM" 'without Git Bash[^.]{0,200}(cannot|can.?t|not|no )|Git Bash[^.]{0,60}(isn.t|is not|not) installed[^.]{0,200}(cannot|can.?t|not )'
+
+
 # v0.28.1 lane t (lever 2): Lite step 4 no longer recommends a mutation spot-check; Full keeps it.
 if lite_step 4 | tr '\n' ' ' | grep -qiE -- 'mutation spot-check'; then t_bad "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check" "Lite step 4 still mentions it"; else t_ok "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check"; fi
 qchk "v0.28.1 t references/test-quality.md still covers the mutation spot-check" "$(cat "$TDD/references/test-quality.md")" 'mutation spot-check'
