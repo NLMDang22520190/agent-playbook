@@ -157,3 +157,4 @@ test-guard-stop.sh 400
 test-guard-replay.sh 35
 test-guard-misc.sh 150
 test-outcome-metrics.sh 101
+test-diet.sh 2

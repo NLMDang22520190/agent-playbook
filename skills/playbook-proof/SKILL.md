@@ -3,7 +3,7 @@ name: playbook-proof
 description: Use when stating results, diagnoses, comparisons or recommendations, or before saying work is done, fixed or passing - attach evidence (command output from this session, file:line, official docs) and label confidence; also to review others' claims.
 ---
 
-# Proof for every claim
+# Proof for claims that matter
 
 **Why:** green that nobody looked at has shipped the wrong screen before, and a plausible
 invention in a handoff costs the next session a day.
@@ -33,16 +33,6 @@ A user-visible change (UI, HTTP API, CLI output, file format) needs one real obs
 this session (screenshot or browser read, curl, the CLI command); unit tests alone are not enough.
 What could not be observed goes under "Not checked".
 
-## Producing evidence
-
-```bash
-P=~/.agents/playbook/scripts/proof-run.sh
-bash $P --label unit-tests -- pnpm test           # exit code is passed through
-bash $P --label repro --tail 80 -- python -m pytest tests/test_x.py -k overflow
-```
-It prints a markdown block to paste verbatim and stores the full redacted log under
-`.agents/handoff/evidence/` with its sha256. Never retype or summarise output inside the block.
-
 ## Rules
 1. **Fresh evidence only.** A run from before your last edit proves nothing now.
 2. **Quote, don't paraphrase,** the deciding lines of output or code (keep quotes short).
@@ -64,5 +54,5 @@ It prints a markdown block to paste verbatim and stores the full redacted log un
 - [ ] `proof-check.sh REPORT` prints `fresh` for every evidence block you cite; re-run what is stale.
 - [ ] Assumptions and anything [UNVERIFIED] are listed.
 
-Answer format and examples: `references/evidence-formats.md`.
+Producing evidence with `proof-run.sh`, answer formats and examples: `references/evidence-formats.md`.
 Text others will read (final report, PR description, docs): follow `references/writing.md`.

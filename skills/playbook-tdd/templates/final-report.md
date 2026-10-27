@@ -3,6 +3,7 @@
 **Result:** <one sentence>
 **Weight:** Full | Lite (no independent review) | Lite (user override; Full criteria: <x>) | Exempt (docs-only / config-only / spike) · reason: <one line>
 **Mode:** native | manual | none (degraded: roles shared one context)
+<hand-off report: the Pre-mortem, Models used and Playbook feedback lines stay here; the PR description is the pr-body.sh output (Weight, Request coverage, Not checked, Review, Decisions, Unverified)>
 
 ## Request coverage
 One row for each sentence of the raw request, copied verbatim. Leave none out. Each row says what happened to it.

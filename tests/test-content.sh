@@ -260,14 +260,15 @@ if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.m
 # <= 4500 bytes (v0.24.10: the Quick line is gone; v0.24.24: raised from 4400 for the pushback sentence, decision D3-prime)
 if [ "$BLOCK_BYTES" -le 4750 ]; then t_ok "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25) ($BLOCK_BYTES)"; else t_bad "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25)" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
-for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
+# v0.29.0 lane a: the Proof heading reads "for claims that matter" (it was "for every claim"; the body labels non-trivial claims only)
+for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for claims that matter' '### Scope discipline' \
          '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
   exact_heading "v24.1 block keeps the heading [$h]" "$BLOCK" "$h"
   if section "$BLOCK" "^$h\$" | grep -qE -- '^Why: [^ ]'; then t_ok "v24.1 [$h] keeps its Why: line"; else t_bad "v24.1 [$h] keeps its Why: line" 'no line starting with "Why: " in the section'; fi
 done
 exact_heading 'v24.1 block keeps its title' "$BLOCK" '## Agent Playbook (always on)'
 # key rules pinned, each in its own section (joined text, so a wrapped sentence still matches)
-CLAR24='^### Clarify before changing'; PROOF='^### Proof for every claim'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
+CLAR24='^### Clarify before changing'; PROOF='^### Proof for claims that matter'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
 jchk 'v24.1 Clarify: inspect first (code, config, docs, git history)' "$BLOCK" "$CLAR24" 'Inspect first[^.]{0,20}code, config, docs, git history'
 jchk 'v24.1 Clarify: never ask what the repo can answer' "$BLOCK" "$CLAR24" 'Never ask what the repo can answer'
 jchk 'v24.1 Clarify: ask only when material AND hard to reverse' "$BLOCK" "$CLAR24" 'material AND hard to reverse'
@@ -278,8 +279,11 @@ jchk 'v24.1 Clarify: end the summary with assumptions and logged defaults' "$BLO
 jchk 'v24.1 Proof: the [VERIFIED] label' "$BLOCK" "$PROOF" '\[VERIFIED\][^[]{0,60}(ran|read)[^[]{0,60}evidence'
 jchk 'v24.1 Proof: the [INFERRED] label' "$BLOCK" "$PROOF" '\[INFERRED\] reasoned from stated facts'
 jchk 'v24.1 Proof: the [UNVERIFIED] label' "$BLOCK" "$PROOF" '\[UNVERIFIED\] not checked'
-jchk 'v24.1 Proof: code claims cite path:line read this session' "$BLOCK" "$PROOF" 'cite `path:line` read this session'
-jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh' "$BLOCK" "$PROOF" '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
+# v0.29.0 lane a: these two sentences moved (Δ = 0 for E5, docs/delta-audit.md R6) from the always-on Proof section to
+# skills/playbook-proof/references/evidence-formats.md; the pins follow the text to its new place
+EVF="$PB_ROOT/skills/playbook-proof/references/evidence-formats.md"
+jchk 'v24.1 Proof: code claims cite path:line read this session (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' 'cite `path:line` read this session'
+jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
 jchk 'v24.1 Proof: library, API and version facts cite official docs' "$BLOCK" "$PROOF" 'version facts cite official docs \(URL, version\)'
 jchk 'v24.1 Proof: no evidence means say unverified' "$BLOCK" "$PROOF" 'No evidence[^.]{0,30}"unverified"'
 jchk 'v24.1 Proof: never fill gaps with plausible guesses' "$BLOCK" "$PROOF" '[Nn]ever[^.]{0,30}plausible guess'
