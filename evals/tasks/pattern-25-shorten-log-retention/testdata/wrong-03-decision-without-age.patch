@@ -1,0 +1,47 @@
+diff --git a/bin/prune-logs b/bin/prune-logs
+index 7efa604..7b4aedd 100755
+--- a/bin/prune-logs
++++ b/bin/prune-logs
+@@ -1,11 +1,14 @@
+ #!/usr/bin/env bash
+-# prune-logs: deletes the log files under $LOG_DIR (default logs) older than KEEP_DAYS and prints "pruned N".
+-# A log file is <kind>/<name>-YYYY-MM-DD.log; other files are left alone. TODAY=YYYY-MM-DD fixes the date.
++# prune-logs: deletes the log files under $LOG_DIR (default logs) older than their kind's retention and prints
++# "pruned N". A log file is <kind>/<name>-YYYY-MM-DD.log; other files are left alone. TODAY=YYYY-MM-DD fixes the date.
++# App logs are kept APP_KEEP_DAYS; every other kind, audit logs included, KEEP_DAYS (docs/logging.md: audit logs at
++# least 1 year; docs/decisions.md 2026-10-26).
+ set -u
+ here="$(cd "$(dirname "$0")/.." && pwd)"
+ . "$here/lib/days.sh"
+ 
+ KEEP_DAYS=400
++APP_KEEP_DAYS=30
+ 
+ dir="${LOG_DIR:-logs}"
+ today="${TODAY:-$(date +%Y-%m-%d)}"
+@@ -19,8 +22,12 @@ for f in "$dir"/*/*.log; do
+     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+     *) continue ;;
+   esac
++  case "${f#"$dir"/}" in
++    app/*) keep="$APP_KEEP_DAYS" ;;
++    *) keep="$KEEP_DAYS" ;;
++  esac
+   age="$(days_between "$day" "$today")"
+-  if [ "$age" -gt "$KEEP_DAYS" ]; then
++  if [ "$age" -gt "$keep" ]; then
+     rm -f "$f" && n=$((n + 1))
+   fi
+ done
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 9d9671b..7f8d7d4 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -6,3 +6,7 @@ Decision: each kind of log gets one file per day, named by its date. Why: easy t
+ ## 2025-09-22 One nightly clean-up
+ Decision: bin/prune-logs runs from cron at 03:00 and deletes the logs older than KEEP_DAYS. Why: the disk was large
+ enough then.
++
++## 2026-10-26 App logs are pruned sooner
++Decision: bin/prune-logs prunes app logs sooner than before; audit logs keep the old retention.
++Why: the disk is full; audit logs are needed by the accountant.

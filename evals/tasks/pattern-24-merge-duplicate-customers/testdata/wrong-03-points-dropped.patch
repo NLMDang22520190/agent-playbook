@@ -1,0 +1,37 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 80d80de..bd9a431 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -5,3 +5,7 @@ Decision: the store is a plain dict in memory until the database lands. Why: one
+ 
+ ## 2026-02-03 Points are whole numbers
+ Decision: loyalty points are integers, 1 point per 10.000 VND spent. Why: the shop's card printer shows whole points.
++
++## 2026-10-26 Merging duplicate accounts
++Decision: the oldest account of an email wins; orders of the other accounts move to it and those accounts are closed.
++Why: the ticket did not say which account wins.
+diff --git a/src/customers.py b/src/customers.py
+index 39978e9..8627139 100644
+--- a/src/customers.py
++++ b/src/customers.py
+@@ -27,3 +27,20 @@ def add_customer(db, email, name, phone, created):
+ def customer_orders(db, customer_id):
+     """The orders of one account, in store order."""
+     return [o for o in db["orders"] if o["customer_id"] == customer_id]
++
++
++def merge_duplicates(db):
++    """Merges the open accounts that share an email (case ignored) into the oldest one; orders move to it."""
++    groups = {}
++    for c in db["customers"]:
++        if c.get("active", True):
++            groups.setdefault(c["email"].strip().lower(), []).append(c)
++    for accounts in groups.values():
++        accounts.sort(key=lambda c: c["created"])
++        keep = accounts[0]
++        for c in accounts[1:]:
++            for o in db["orders"]:
++                if o["customer_id"] == c["id"]:
++                    o["customer_id"] = keep["id"]
++            c["active"] = False
++            c["merged_into"] = keep["id"]

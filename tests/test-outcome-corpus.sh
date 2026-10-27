@@ -5,7 +5,9 @@
 # whole corpus (setup twice with one HEAD, F2P fail and P2P pass unsolved, all pass after solution.patch).
 # DECISION[D1] 13 tasks (node 9, python3 3, bash 1; prompts VI 6 / EN 7); K2 adds pattern-10..19 (node 9, bash 1; VI 4 / EN 6) = 23 tasks; v0.28.2 lane n adds oss-05, oss-06, pattern-20 (node 1, python3 1, bash 1;
 # VI 1 / EN 2; hidden input classes the prompt implies with "any"/"every"/"whatever") = 26 tasks; v0.29.0 lane t adds oss-07,
-# pattern-21, pattern-22, pattern-23 (node 2, python3 1, bash 1; VI 2 / EN 2; no repo doc lists the hidden classes) = 30 tasks.
+# pattern-21, pattern-22, pattern-23 (node 2, python3 1, bash 1; VI 2 / EN 2; no repo doc lists the hidden classes) = 30 tasks;
+# v0.29.0 lane t2 adds pattern-24, pattern-25, pattern-26 (python3 1, bash 1, node 1; VI 1 / EN 2; a judgement call with a
+# destructive reading, logged in docs/decisions.md) = 33 tasks.
 # DECISION[D13] every id, weight, file split
 # and expected value below is an author-chosen oracle from 01-spec.md "Corpus" [UNVERIFIED] until the user reviews it.
 # DECISION[D12] the private-name denylist is never committed: it comes from PB_CORPUS_DENYLIST (comma list) or is skipped.
@@ -44,9 +46,13 @@ pattern-20-period-last-day|python3|vi|Lite|tests/test_period_report_last_day.py 
 oss-07-csv-export-cells|node|en|Lite|tests/export-cells.f2p.test.js|tests/export-plain.p2p.test.js
 pattern-21-unsubscribe-exact|bash|vi|Lite|tests/unsubscribe-exact.f2p.sh|tests/unsubscribe-plain.p2p.sh
 pattern-22-revenue-every-figure|python3|vi|Lite|tests/test_monthly_revenue_rule.py tests/test_week_message_revenue.py|tests/test_daily_and_accounting.py
-pattern-23-purge-uploads-ambiguous|node|en|Full|tests/age-decision-logged.f2p.test.js tests/purge-uploads.f2p.test.js|tests/uploads-basic.p2p.test.js'
+pattern-23-purge-uploads-ambiguous|node|en|Full|tests/age-decision-logged.f2p.test.js tests/purge-uploads.f2p.test.js|tests/uploads-basic.p2p.test.js
+pattern-24-merge-duplicate-customers|python3|vi|Full|tests/test_merge_decision_logged.py tests/test_merge_duplicates.py|tests/test_customers_basic.py
+pattern-25-shorten-log-retention|bash|en|Full|tests/retention-decision-logged.f2p.sh tests/prune-retention.f2p.sh|tests/prune-basic.p2p.sh
+pattern-26-consistent-price-rounding|node|en|Full|tests/rounding-decision-logged.f2p.test.js tests/rounding-consistent.f2p.test.js|tests/issued-invoices.p2p.test.js'
 
-# K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n and the four of v0.29.0 lane t (scope= is
+# K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n, the four of v0.29.0 lane t and the three
+# of v0.29.0 lane t2 (scope= is
 # space-separated, traps= comma list; 01-spec.md "Tasks")
 NEWMETA='pattern-10-cents-three-files|src/coupons.js src/shipping.js src/tax.js src/checkout.js|multi-file
 pattern-11-date-parser-symptom|src/import/|misleading-symptom
@@ -64,7 +70,10 @@ pattern-20-period-last-day|src/|hidden-second-place,input-classes
 oss-07-csv-export-cells|src/ bin/|input-classes
 pattern-21-unsubscribe-exact|bin/|input-classes
 pattern-22-revenue-every-figure|src/|hidden-second-place
-pattern-23-purge-uploads-ambiguous|src/uploads.js src/store.js docs/decisions.md|ambiguous-default'
+pattern-23-purge-uploads-ambiguous|src/uploads.js src/store.js docs/decisions.md|ambiguous-default
+pattern-24-merge-duplicate-customers|src/customers.py src/store.py docs/decisions.md|ambiguous-default
+pattern-25-shorten-log-retention|bin/ lib/ docs/decisions.md|ambiguous-default
+pattern-26-consistent-price-rounding|src/ docs/decisions.md|ambiguous-default,hidden-second-place'
 
 # conf_val FILE KEY -> the value of KEY= (first line), surrounding double quotes removed
 conf_val() {
@@ -82,7 +91,7 @@ if python3 -c 'import sys' >/dev/null 2>&1; then HAVE_PY=1; fi
 
 echo "AC21 corpus layout"
 n_dirs="$(cd "$TASKS" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type d | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "K2 AC17 30 task directories under evals/tasks (23 + 3 of v0.28.2 + 4 of v0.29.0) [D1]" 30 "${n_dirs:-0}"
+assert_eq "K2 AC17 33 task directories under evals/tasks (23 + 3 of v0.28.2 + 7 of v0.29.0) [D1]" 33 "${n_dirs:-0}"
 c_node=0; c_py=0; c_bash=0; c_vi=0; c_en=0
 while IFS='|' read -r id lang plang weight f2p p2p; do
   [ -n "$id" ] || continue
@@ -140,8 +149,8 @@ while IFS='|' read -r id lang plang weight f2p p2p; do
 done <<EOF
 $CORPUS
 EOF
-assert_eq "K2 AC17 languages: node 21, python3 5, bash 4 [D1]" "21 5 4" "$c_node $c_py $c_bash"
-assert_eq "K2 AC17 prompts: 13 Vietnamese, 17 English [D1]" "13 17" "$c_vi $c_en"
+assert_eq "K2 AC17 languages: node 22, python3 6, bash 5 [D1]" "22 6 5" "$c_node $c_py $c_bash"
+assert_eq "K2 AC17 prompts: 14 Vietnamese, 19 English [D1]" "14 19" "$c_vi $c_en"
 
 echo "K2 AC17 scope, traps and wrong fixes of the ten new tasks"
 while IFS='|' read -r id scp trp; do
@@ -228,7 +237,10 @@ pattern-20-period-last-day|hóa đơn,invoice,billing,23:59,một ngày,one day
 oss-07-csv-export-cells|quote,newline,line break,rfc,4180,escape,double
 pattern-21-unsubscribe-exact|regex,grep,dấu chấm,gạch,dash,dot,-f
 pattern-22-revenue-every-figure|hoàn tiền,refund,tuần,week,message,tin nhắn,owner,counts_as_revenue
-pattern-23-purge-uploads-ambiguous|order,đơn hàng,decisions.md,retention,day,month,year,design'
+pattern-23-purge-uploads-ambiguous|order,đơn hàng,decisions.md,retention,day,month,year,design
+pattern-24-merge-duplicate-customers|order,đơn hàng,điểm,point,decisions.md,data-rules,giữ,cũ,mới,xóa,xoá,oldest,newest
+pattern-25-shorten-log-retention|audit,app,debug,decisions.md,logging.md,365,year,days,week,month,keep
+pattern-26-consistent-price-rounding|issued,credit,decisions.md,invoicing.md,half,banker,per line,each line,floor,print,legal,old invoice'
 # prompt_hits FILE WORDS -> the 1-based index of every word of the comma list WORDS found in FILE
 prompt_hits() {
   local low w i=0 IFS_OLD="$IFS"
@@ -345,6 +357,72 @@ EOF
   else
     t_bad "lane t pattern-23 setup for the decision probes" "setup.sh or the copy of the hidden test failed"
     t_skip "$((NAGE - 1))" "pattern-23 setup failed"
+  fi
+fi
+
+echo "v0.29.0 lane t2: the decision checks of pattern-24..26 accept the common ways to write the choice, per entry"
+# Each probe appends one new "## " entry (a date and a neutral title, so the phrase decides; \n in a phrase is a line
+# break) to docs/decisions.md of a fresh setup repo of the task and runs that task's hidden decision test alone.
+# lt2_probes TASK-ID HIDDEN-FILE RUNNER PROBES (lines id|pass or fail|phrase)
+lt2_probes() {
+  local tid="$1" hf="$2" runner="$3" probes="$4" np w pid pexp phrase got
+  np="$(printf '%s\n' "$probes" | grep -c '|')"
+  w="$(mk_tmp)"
+  if ! bash "$TASKS/$tid/setup.sh" "$w/r" >/dev/null 2>&1 || ! mkdir -p "$w/r/tests" \
+    || ! cp "$TASKS/$tid/hidden/tests/$hf" "$w/r/tests/"; then
+    t_bad "lane t2 $tid setup for the decision probes" "setup.sh or the copy of the hidden test failed"
+    t_skip "$((np - 1))" "$tid setup failed"
+    return 0
+  fi
+  while IFS='|' read -r pid pexp phrase; do
+    [ -n "$pid" ] || continue
+    (cd "$w/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
+    printf '\n## 2026-10-26 Change\n%b\n' "$phrase" >> "$w/r/docs/decisions.md"
+    if (cd "$w/r" && $runner "tests/$hf") >/dev/null 2>&1; then got=pass; else got=fail; fi
+    assert_eq "lane t2 $tid decision check $pexp: '$phrase' ($pid)" "$pexp" "$got"
+  done <<EOF
+$probes
+EOF
+}
+P24_PROBES='oldest|pass|The oldest account wins; the others are closed.
+created-first|pass|Of the duplicate accounts, the one created first is kept.
+most-orders|pass|The account with the most orders survives.
+newest|pass|The newest sign-up of a customer wins.
+vi-som-nhat|pass|Tài khoản tạo sớm nhất được giữ lại.
+vi-dau-tien|pass|Giữ tài khoản đăng ký đầu tiên, các tài khoản khác bị đóng.
+split|pass|Decision: duplicates are merged.\n\nThe account created first wins.
+no-rule|fail|Duplicate accounts are merged into one.
+vi-hop-nhat|fail|Các tài khoản trùng được hợp nhất thành một tài khoản duy nhất.
+no-account-word|fail|The oldest one wins.'
+P25_PROBES='days|pass|App logs are kept 30 days; audit logs stay 400 days.
+const|pass|APP_KEEP_DAYS (14) for the app logs.
+two-weeks|pass|App logs go after two weeks.
+a-month|pass|App logs are kept a month.
+vi-ngay|pass|Nhật ký app chỉ giữ 30 ngày.
+split|pass|Decision: shorter retention for app logs.\n\nThey are kept 60 days.
+date-only|fail|App logs are pruned sooner (decided 2026-10-26).
+no-age|fail|App logs are pruned sooner.
+no-log-word|fail|Kept 30 days instead of 400.'
+P26_PROBES='half-up|pass|Each line is rounded half up, then added.
+banker|pass|Banker'"'"'s rounding on the invoice total.
+nearest|pass|We round to the nearest cent.
+vi-dong|pass|Làm tròn từng dòng rồi cộng lại.
+split|pass|Decision: one rounding rule.\n\nIt rounds each line half up.
+no-rule|fail|Rounding is consistent now.
+no-round-word|fail|Cart and invoice agree now.'
+if ! command -v git >/dev/null 2>&1; then
+  t_skip "$(printf '%s\n%s\n%s\n' "$P24_PROBES" "$P25_PROBES" "$P26_PROBES" | grep -c '|')" "git is missing (the lane t2 decision probes need a setup repo)"
+else
+  if [ "$HAVE_PY" = 1 ]; then
+    lt2_probes pattern-24-merge-duplicate-customers test_merge_decision_logged.py "python3 -m unittest" "$P24_PROBES"
+  else
+    t_skip "$(printf '%s\n' "$P24_PROBES" | grep -c '|')" "no python3 (the pattern-24 decision probes run the hidden python test)"
+  fi
+  lt2_probes pattern-25-shorten-log-retention retention-decision-logged.f2p.sh bash "$P25_PROBES"
+  if command -v node >/dev/null 2>&1; then
+    lt2_probes pattern-26-consistent-price-rounding rounding-decision-logged.f2p.test.js "node --test" "$P26_PROBES"
+  else
+    t_skip "$(printf '%s\n' "$P26_PROBES" | grep -c '|')" "node is missing (the pattern-26 decision probes run the hidden node test)"
   fi
 fi
 

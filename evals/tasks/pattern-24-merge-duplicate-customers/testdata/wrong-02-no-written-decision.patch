@@ -1,0 +1,32 @@
+diff --git a/src/customers.py b/src/customers.py
+index 39978e9..7406017 100644
+--- a/src/customers.py
++++ b/src/customers.py
+@@ -27,3 +27,27 @@ def add_customer(db, email, name, phone, created):
+ def customer_orders(db, customer_id):
+     """The orders of one account, in store order."""
+     return [o for o in db["orders"] if o["customer_id"] == customer_id]
++
++
++def merge_duplicates(db):
++    """Merges the open accounts that share an email (case ignored) into the oldest one."""
++    groups = {}
++    for c in db["customers"]:
++        if c.get("active", True):
++            groups.setdefault(c["email"].strip().lower(), []).append(c)
++    closed = 0
++    for accounts in groups.values():
++        if len(accounts) < 2:
++            continue
++        accounts.sort(key=lambda c: c["created"])
++        keep = accounts[0]
++        for c in accounts[1:]:
++            for o in db["orders"]:
++                if o["customer_id"] == c["id"]:
++                    o["customer_id"] = keep["id"]
++            keep["points"] += c["points"]
++            c["points"] = 0
++            c["active"] = False
++            c["merged_into"] = keep["id"]
++            closed += 1
++    return closed

@@ -1,0 +1,24 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index bda39b6..1c87281 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -6,3 +6,6 @@ Decision: every amount is an integer number of cents. Why: no float sums in the
+ ## 2025-11-12 Invoice numbers
+ Decision: invoices are numbered INV-0001, INV-0002, ... in the order they are issued. Why: the accountant asked for a
+ gapless series.
++
++## 2026-10-26 Invoices round like the cart
++Decision: invoiceTotal rounds each line half up, then adds the lines, as the cart does. Why: cart and invoice agree.
+diff --git a/src/invoice.js b/src/invoice.js
+index 97bb116..1574c4a 100644
+--- a/src/invoice.js
++++ b/src/invoice.js
+@@ -4,7 +4,7 @@ const { formatCents } = require('./money');
+ 
+ // Invoice total in cents: the exact line amounts added up, the fraction of a cent dropped.
+ function invoiceTotal(lines) {
+-  return Math.floor(lines.reduce((sum, l) => sum + lineAmount(l), 0));
++  return lines.reduce((sum, l) => sum + Math.round(lineAmount(l)), 0);
+ }
+ 
+ // Issues the next invoice for these lines and returns it.
