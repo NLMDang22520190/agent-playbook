@@ -4,10 +4,13 @@
 //   feedback_captured=1|0|na  full_named=1|0|na  untested_label=1|0|na  ran_tests=1|0|na  spec_first=1|0|na
 //   asked=<N>|na (the number of tool_use blocks named AskUserQuestion; na when the log is not stream-json)
 //   prose_q=<N>|na (the number of questions in the final reply, the rule at proseQ below; na when there is no result text)
+//   format=codex and usage=<the summed turn.completed usage as JSON, or empty> (only for a Codex JSONL transcript, before models)
 //   models=<the `model` parameter of each Agent/Task tool_use, in order, comma separated; '-' for a call without one;
 //   empty when there is no call>   (always the last key). Only calls whose subagent_type is absent or general-purpose are
 //   listed: a helper sub-agent such as Explore or Plan is not a role and may run without a model.
 // and writes the final reply (the last stream-json "result" field) to <log>.result.
+// A Codex JSONL transcript (codex exec --json) is first rewritten as stream-json by evals/codex-jsonl.js (the final reply is the
+// last agent_message of the last turn); Claude stream-json and plain text are read unchanged.
 // Usage: node evals/transcript.js <log>
 // Limits of the cd tracking (bashWrites): a `cd` is followed only as a simple command of its own, one directory at a time. These
 // shapes are not tracked: a chain such as `cd .agents; cd handoff` (each cd argument is judged alone, so `handoff` by itself
@@ -26,6 +29,8 @@ const log = process.argv[2];
 if (!log) { console.error("usage: node evals/transcript.js <log>"); process.exit(2); }
 let text;
 try { text = fs.readFileSync(log, "utf8"); } catch (e) { console.error("cannot read " + log); process.exit(3); }
+const NZ = require("./codex-jsonl.js").normalize(text);
+text = NZ.text;
 
 const models = [];
 let json = false, result = null, asked = 0, i = 0, skill = -1, write = -1, subagent = false, captured = false, ran = false, specw = -1, srcw = -1;
@@ -385,5 +390,5 @@ process.stdout.write([
   "spec_first=" + (!json ? "na" : b(specw > 0 && (srcw < 0 || specw < srcw))),
   "asked=" + (!json ? "na" : String(asked)),
   "prose_q=" + (reply === null ? "na" : String(proseQ(reply))),
-  "models=" + models.join(","),
-].join("\n") + "\n");
+].concat(NZ.format === "codex" ? ["format=codex", "usage=" + (NZ.usage ? JSON.stringify(NZ.usage) : "")] : [],
+  ["models=" + models.join(",")]).join("\n") + "\n");
