@@ -1,0 +1,30 @@
+diff --git a/src/uploads.js b/src/uploads.js
+index 69539d1..4f46648 100644
+--- a/src/uploads.js
++++ b/src/uploads.js
+@@ -1,5 +1,8 @@
+ 'use strict';
+ 
++const MAX_AGE_DAYS = 180;
++const DAY_MS = 24 * 60 * 60 * 1000;
++
+ // Adds an upload record and its file.
+ function addUpload(store, upload) {
+   store.uploads.push(upload);
+@@ -19,4 +22,15 @@ function diskUsage(store) {
+   return Object.values(store.disk).reduce((sum, n) => sum + n, 0);
+ }
+ 
+-module.exports = { addUpload, listUploads, diskUsage };
++// Deletes (record and file) the uploads older than MAX_AGE_DAYS that no order uses.
++function purgeOldUploads(store, now) {
++  const cutoff = now.getTime() - MAX_AGE_DAYS * DAY_MS;
++  const used = new Set(store.orders.map((o) => o.designUploadId));
++  const purged = store.uploads.filter((u) => !used.has(u.id) && Date.parse(u.createdAt) < cutoff);
++  const gone = new Set(purged.map((u) => u.id));
++  store.uploads = store.uploads.filter((u) => !gone.has(u.id));
++  for (const u of purged) delete store.disk[u.path];
++  return purged;
++}
++
++module.exports = { addUpload, listUploads, diskUsage, purgeOldUploads };

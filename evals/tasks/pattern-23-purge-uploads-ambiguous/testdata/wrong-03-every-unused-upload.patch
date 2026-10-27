@@ -1,0 +1,32 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 38c3f65..f06b03b 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -5,3 +5,7 @@ Decision: uploads are stored on the shop's own disk, not in a cloud bucket. Why:
+ 
+ ## 2026-03-14 Upload size limit
+ Decision: an upload may be at most 50 MB. Why: the print RIP rejects bigger files anyway.
++
++## 2026-10-26 Unused uploads are purged
++Decision: purgeOldUploads deletes every upload that no order uses, whatever its age, and keeps the design files of
++orders. Why: an upload nobody printed is not needed; the disk is full.
+diff --git a/src/uploads.js b/src/uploads.js
+index 69539d1..91ade60 100644
+--- a/src/uploads.js
++++ b/src/uploads.js
+@@ -19,4 +19,14 @@ function diskUsage(store) {
+   return Object.values(store.disk).reduce((sum, n) => sum + n, 0);
+ }
+ 
+-module.exports = { addUpload, listUploads, diskUsage };
++// Deletes (record and file) every upload that no order uses.
++function purgeOldUploads(store, now) {
++  void now;
++  const used = new Set(store.orders.map((o) => o.designUploadId));
++  const purged = store.uploads.filter((u) => !used.has(u.id));
++  store.uploads = store.uploads.filter((u) => used.has(u.id));
++  for (const u of purged) delete store.disk[u.path];
++  return purged;
++}
++
++module.exports = { addUpload, listUploads, diskUsage, purgeOldUploads };

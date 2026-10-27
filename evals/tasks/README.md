@@ -23,6 +23,10 @@ task passes when every `fail_to_pass` file and every `pass_to_pass` file exits 0
 unsolved repo (they pin the bug); `pass_to_pass` files pass before and after (they catch a fix that breaks something
 else, or a change where none was needed).
 
+The `ambiguous-default` tasks (pattern-15, pattern-23 to pattern-26) count only the decision log that the task repo's own
+CONTRIBUTING.md names (`docs/decisions.md`), on purpose: the trap checks that the agent follows the project's
+convention, not a gitignored handoff log of its own.
+
 Node tests import `require('../src/<module>')` with named exports; python tests import `from src.<module> import f`
 (the setup repo has `src/__init__.py`). Name the repo's own visible tests so they never collide with a hidden file,
 unless the hidden file is meant to replace one.
