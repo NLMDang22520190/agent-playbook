@@ -53,11 +53,15 @@ assert_eq "AC8.1 pbh_preset_cmd opencode" 'cd "$1" && opencode run --auto "$(cat
 echo "S0 AC8.2 run-evals.sh sources the library and keeps no second copy of the presets"
 if grep -qE '^[^#]*(\.|source)[[:space:]].*lib-harness\.sh' "$PB_ROOT/evals/run-evals.sh"; then t_ok "AC8.2 run-evals.sh sources evals/lib-harness.sh"
 else t_bad "AC8.2 run-evals.sh sources evals/lib-harness.sh" "no '. .../lib-harness.sh' line in evals/run-evals.sh"; fi
-for p in 'claude -p --output-format stream-json --verbose' 'codex exec "$(cat' 'opencode run --auto'; do
+for p in 'claude -p --output-format stream-json --verbose' 'opencode run --auto'; do
   hits="$(cd "$PB_ROOT" && grep -lF -- "$p" evals/*.sh tools/*.sh 2>/dev/null | tr '\n' ' ')"
   assert_eq "AC8.2 the preset string [$p] appears in one file only, the library" "evals/lib-harness.sh " "$hits"
   assert_eq "AC8.2 the preset string [$p] appears once in the library" "1" "$(grep -cF -- "$p" "$LIBH" 2>/dev/null || true)"
 done
+# v0.30.0 lane g: the codex command line lives in evals/codex-adapter.sh, which the library's preset runs
+p='--skip-git-repo-check --json --ephemeral'
+hits="$(cd "$PB_ROOT" && grep -lF -- "$p" evals/*.sh tools/*.sh 2>/dev/null | tr '\n' ' ')"
+assert_eq "AC8.2 the codex flags [$p] appear in one file only, evals/codex-adapter.sh" "evals/codex-adapter.sh " "$hits"
 
 echo "S0 AC1.4/AC8.1 pbh_model_args maps the model flag per harness"
 pbh 'pbh_model_args claude claude-opus-x'
