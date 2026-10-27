@@ -46,6 +46,8 @@
 # PB_EVAL_SETTINGS and do their own isolation. Codex, OpenCode and --real-home cannot run the without arm (exit 2), nor can
 # a workroot under a directory whose CLAUDE.md, AGENTS.md or rules file holds the playbook block, or a user rules file
 # (~/.claude/rules) that holds it. The helpers live in evals/lib-harness.sh (also sourced by run-outcome.sh).
+# A --cmd adapter can run a harness without the playbook when it gives the without arm a clean HOME (Codex Run C1 did so,
+# evals/results/2026-10-12-claude-code-2.1.296.md).
 # --hooks (needs --arm or --repeat, and --harness claude or --cmd): the with arm's settings file also gets the guard and learnings
 # hooks (PreToolUse, SessionStart, Stop: the runner repo's scripts/guard-irreversible.sh and scripts/learnings-hook.sh with --eval);
 # the without arm never has hooks. Every run gets PB_EVAL_HOOKS=1 (hooks a user installed stand aside), PB_EVAL_HOOK_LOG=

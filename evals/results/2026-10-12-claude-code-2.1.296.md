@@ -664,6 +664,36 @@ On opus the with arm writes the E21 spec in 3/3 runs (sonnet: 4/10 on the same d
 
 Edge-case tasks saturate even when no doc lists the cases; the judgement-call task separates.
 
+## Run 40: stopped, not counted
+
+Run 40 was stopped while the graders were under repair and is not counted; Run 41 replaced it.
+
+## Run 41: E42 (CI red) and E43 (rollback with a migration), both arms, k=3, sonnet (2026-10-27)
+
+Both arms pass every check (E42 with arm names the failing test 2/3, without 3/3). Neither separates the arms; they ship as
+regression scenarios. (A first attempt hit the account's session limit and is not counted.)
+
+## Run 42: E5 and E30 a second time, both arms, k=3, sonnet (2026-10-27)
+
+Every check 3/3 in both arms: Δ = 0 again (Run 25 was the first), so E5 and E30 are ZERO on two runs.
+
+Outcome tasks on opus (k=3): pattern-15, pattern-12 and pattern-19 pass 3/3 in both arms. Cost with / without:
+pattern-15 2.24 / 0.20 USD (11x), pattern-12 0.43 / 0.17 (2.6x), pattern-19 0.60 / (both pass). On the stronger model the
+playbook adds no outcome and costs much more on the ambiguous task (it runs the Full ceremony with sub-agents).
+
+## Run 43: judgement-call tasks (lane t2) and pattern-23 with the fixed matcher, both arms, k=5, sonnet (2026-10-27)
+
+| Task | with | without | what the without arm missed |
+|---|---|---|---|
+| pattern-23-purge-uploads-ambiguous (pooled with Run 39) | 10/10 | 7/10 | no decision logged |
+| pattern-24-merge-duplicate-customers | 3/5 | 0/5 | no decision logged (every failing run, both arms) |
+| pattern-25-shorten-log-retention | 5/5 | 4/5 | no decision logged |
+| pattern-26-consistent-price-rounding | 4/5 | 1/5 | 4/5 changed issued invoices (the destructive reading) and logged nothing |
+
+Pooled with Run 44 (below), three tasks separate the arms with a 95% interval that excludes 0 (pattern-26, pattern-15,
+pattern-24); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44.
+pattern-26 separates on behaviour, not only on the log.
+
 ## Run 44: the Δ>0 set at k=10 on the v0.29.0 tree (after the text diet), both arms, sonnet (2026-10-27)
 
 Δ with a Newcombe 95% interval (tools/eval-delta.sh), 10 runs per arm, no ERROR run:
@@ -689,16 +719,12 @@ Outcome, k=5 on the same tree: pattern-26 5/5 vs 1/5, pattern-15 5/5 vs 3/5, pat
 0/5, pattern-23 5/5 vs 5/5, pattern-12 5/5 vs 5/5. Pooled with earlier runs of the same task: pattern-26 9/10 vs 2/10,
 pattern-15 8/8 vs 4/8, pattern-24 5/10 vs 0/10, pattern-23 15/15 vs 12/15, pattern-19 (v0.28.1+ skills) 9/10 vs 5/10.
 
-## Run 43: judgement-call tasks (lane t2) and pattern-23 with the fixed matcher, both arms, k=5, sonnet (2026-10-27)
-
-| Task | with | without | what the without arm missed |
-|---|---|---|---|
-| pattern-23-purge-uploads-ambiguous (pooled with Run 39) | 10/10 | 7/10 | no decision logged |
-| pattern-24-merge-duplicate-customers | 3/5 | 0/5 | no decision logged (every failing run, both arms) |
-| pattern-25-shorten-log-retention | 5/5 | 4/5 | no decision logged |
-| pattern-26-consistent-price-rounding | 4/5 | 1/5 | 4/5 changed issued invoices (the destructive reading) and logged nothing |
-
-Five tasks now separate the arms (pattern-15, 12, 23, 24, 26). pattern-26 separates on behaviour, not only on the log.
+Newcombe 95% intervals of the pooled Δ (the tools/eval-delta.sh formula, applied by hand to these counts): pattern-26 +0.70
+[0.27, 0.87], pattern-15 +0.50 [0.07, 0.78] and pattern-24 +0.50 [0.12, 0.76] exclude 0; pattern-19 +0.40 [-0.00, 0.68]
+(the lower bound is just below 0), pattern-23 +0.20 [-0.04, 0.45] and pattern-25 (Run 43 only, 5/5 vs 4/5) +0.20
+[-0.26, 0.62] are inconclusive; pattern-12 is 5/5 vs 5/5 here (pooled with Run 29, 7/8 vs 6/8: +0.12 [-0.26, 0.48]).
+These pooled runs span commits (v0.27.0 to v0.29.0 trees), so the pooled figures are indicative only; `tools/eval-delta.sh`
+pools JSON files of one commit only.
 
 ## Run C1: first Codex run (codex-cli 0.164.0, gpt-6.1-terra, `codex exec --sandbox workspace-write --json --ephemeral`), v0.28.2 tree, both arms, k=3 (2026-10-27)
 
@@ -729,16 +755,3 @@ lines parsed as JSON with no tool calls, so some checks were silently wrong (the
 data, E2 "inspected the code first" failed 0/3). After: E4 dispute 2/3 vs 0/3, E6 source 3/3 vs 1/3, E14 observation or
 Not checked 3/3 vs 0/3, E29 label 1/3 vs 0/3, E2 "names the defaults" 3/3 vs 0/3 (reply only; decisions.md 0/3 in both),
 isolation 3/3 on real tool data. These automatic numbers replace the hand reading above.
-
-## Run 41: E42 (CI red) and E43 (rollback with a migration), both arms, k=3, sonnet (2026-10-27)
-
-Both arms pass every check (E42 with arm names the failing test 2/3, without 3/3). Neither separates the arms; they ship as
-regression scenarios. (A first attempt hit the account's session limit and is not counted.)
-
-## Run 42: E5 and E30 a second time, both arms, k=3, sonnet (2026-10-27)
-
-Every check 3/3 in both arms: Δ = 0 again (Run 25 was the first), so E5 and E30 are ZERO on two runs.
-
-Outcome tasks on opus (k=3): pattern-15, pattern-12 and pattern-19 pass 3/3 in both arms. Cost with / without:
-pattern-15 2.24 / 0.20 USD (11x), pattern-12 0.43 / 0.17 (2.6x), pattern-19 0.60 / (both pass). On the stronger model the
-playbook adds no outcome and costs much more on the ambiguous task (it runs the Full ceremony with sub-agents).
