@@ -1647,14 +1647,16 @@ qchk "v26 N AC13 README says run-evals.sh runs the $NAUTO26 that have automatic 
 for e in E2 E6 E13 E14 E32 E33 E34; do
   qchk "v26 N AC12 RUBRIC.md lists $e as auto-gradable" "$RUBTXT" "$e[^0-9][^.]{0,250}auto-gradable"
 done
-echo "v0.26.0 lane N S8 AC13 (Q2): the harness badge and the Behaviour evals row say Codex and OpenCode are installable, not evaluated"
+echo "v0.26.0 lane N S8 AC13 (Q2), v0.29.0 Run C1: the harness badge and the Behaviour evals row say Codex is partly evaluated and OpenCode is installable, not evaluated"
 BADGE26="$(grep -o 'img\.shields\.io/badge/harness-[^)]*' "$PB_ROOT/README.md" | head -n 1)"
 qchk "v26 N AC13 the harness badge says Claude Code is evaluated" "$BADGE26" 'Claude_Code[_ (:%0-9a-f]{0,12}evaluated'
-qchk "v26 N AC13 the harness badge says Codex is install only or not evaluated" "$BADGE26" 'Codex[^)]{0,80}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
+qchk "v29 Run C1 the harness badge says Codex is partly evaluated" "$BADGE26" 'Codex[:_ ]{0,4}partly_evaluated'
+if printf '%s' "$BADGE26" | grep -qE 'Codex,_OpenCode|Codex[:_ ]{0,4}(installable|not_evaluated)'; then t_bad "v29 Run C1 the harness badge has no Codex not-evaluated text" "[$BADGE26]"; else t_ok "v29 Run C1 the harness badge has no Codex not-evaluated text"; fi
 qchk "v26 N AC13 the harness badge says OpenCode is install only or not evaluated" "$BADGE26" 'OpenCode[^)]{0,60}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
 assert_not_contains "v26 N AC13 the old harness badge text is gone" "$BADGE26" "harness-Claude_Code_·_Codex_·_OpenCode-"
 ROW26="$(grep '^| Behaviour evals |' "$PB_ROOT/README.md" | head -n 1)"
-qchk "v26 N AC13 the Behaviour evals row says Codex and OpenCode are installable, not evaluated" "$ROW26" 'Codex and OpenCode[^|]{0,40}installable[^|]{0,20}not evaluated'
+qchk "v29 Run C1 the Behaviour evals row says Codex is partly evaluated and names Run C1" "$ROW26" 'Codex[^|;]{0,20}partly evaluated[^|;]{0,40}Run C1'
+qchk "v26 N AC13 the Behaviour evals row says OpenCode is installable, not evaluated" "$ROW26" 'OpenCode[^|;]{0,20}installable[^|;]{0,20}not evaluated'
 qchk "v26 N AC13 the Behaviour evals row keeps Claude Code as the only evaluated harness" "$ROW26" 'Claude Code[^|;]{0,40}only'
 assert_not_contains "v26 N AC13 the Behaviour evals row no longer says not run yet" "$ROW26" "not run yet"
 echo "v0.26.0 lane N S8 AC14 (D10): the scenario map names the new auto-graded scenarios"

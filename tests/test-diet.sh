@@ -49,10 +49,10 @@ for e in $AUTO; do
   if printf '%s' "$RUBTXT" | grep -qE -- "(^|[^0-9])$e([^0-9]|$)"; then t_ok "AC2 the auto-gradable list of RUBRIC.md names $e"; else t_bad "AC2 the auto-gradable list of RUBRIC.md names $e" "not in the Running evals automatically section"; fi
 done
 
-echo "S1 AC6 README: the runs pointer covers Runs 25-37, one cost line"
+echo "S1 AC6 README: the runs pointer covers Runs 25-44 (v0.29.0 review), one cost line"
 RM="$(flat "$README")"
 hasnt "AC6 README no longer says Latest, Run 28" "$RM" 'Latest, Run 28'
-has "AC6 README points to Runs 25-37 and the audit" "$RM" 'Runs 25[-–]37[^|]{0,250}docs/delta-audit\.md|docs/delta-audit\.md[^|]{0,250}Runs 25[-–]37'
+has "AC6 README points to Runs 25-44 and the audit" "$RM" 'Runs 25[-–]44[^|]{0,250}docs/delta-audit\.md|docs/delta-audit\.md[^|]{0,250}Runs 25[-–]44'
 has "AC6 README states the cost of the with arm, about 2-2.5x" "$RM" '2[-–]2\.5 ?(x|times)'
 has "AC6 the cost line cites Runs 25, 26 and 29" "$RM" '2[-–]2\.5 ?(x|times)[^|]{0,250}Run 25[^|]{0,80}26[^|]{0,80}29|Runs? 25, 26 and 29[^|]{0,200}2[-–]2\.5'
 
