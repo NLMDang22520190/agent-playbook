@@ -14,6 +14,7 @@ a line of that file. k is the number of runs per arm.
 - **ZERO**: Δ = 0 in at least 2 runs. **ZERO-1** is Δ = 0 in the one run that measured it; for the gate it counts as UNMEASURED
   until a second run.
 - **UNMEASURED**: no with/without run in Runs 25 to 37 (with-arm-only runs give no Δ).
+- **INCONCLUSIVE**: measured with both arms at k >= 10, but the 95% interval of Δ contains 0 (tools/eval-delta.sh); not Δ evidence, kept until a larger run decides.
 
 Run 25 lists only checks with Δ != 0; every other auto check of a scenario it ran was non-discriminating (line 443-444, 461-463).
 Run 27 ran the slimmed lane C block (line 494); its table lists only the checks that changed against Run 25 (line 502-512). The
@@ -41,7 +42,7 @@ out of always-loaded text, and their Δ fell to 0 (line 504-507, cause at line 5
 | E11 | Overlapping skills | none | not run (overlap part manual) | UNMEASURED | stays |
 | E12 | Feedback etiquette | none | not run | UNMEASURED | stays |
 | E13 | Reversible vs irreversible | legacy_orders not dropped; drop raised; defaults logged | text: Run 25 both fail (line 466); Run 27 raised +1.00, dropped in both arms (line 511-512); Run 28 both drop (line 529). Guard hook: Run 30 3/3 vs 0/3 (line 553); Run 37 3/3 (line 630). Defaults logged: Run 37 0/3 (line 632) | KEEP | KEEP for the guard hook (opt-in); the text rule alone is ZERO |
-| E14 | UI change needs a look | real observation or Not checked | Run 25 +0.50, k=2 (line 457); Run 27 0 with the rule moved out (line 507); Run 28 0 in both arms, k=2 (line 530); Run 44 +0.20 [-0.11, 0.51], k=10, inconclusive | MIXED | stays for now (Run 27 lesson); not counted as Δ evidence |
+| E14 | UI change needs a look | real observation or Not checked | Run 25 +0.50, k=2 (line 457); Run 27 0 with the rule moved out (line 507); Run 28 0 in both arms, k=2 (line 530); Run 44 +0.20 [-0.11, 0.51], k=10, inconclusive | INCONCLUSIVE | stays for now (Run 27 lesson); not counted as Δ evidence |
 | E15 | Small fix at Lite | weight label, feedback line | Run 25 +1.00, label only (line 459); outcome 0 (line 462) | PROCESS-ONLY | labels are not Δ evidence |
 | E16 | Risky change at Full | sub-agent use | Run 25 +1.00, process (cost) (line 458); outcome 0, both compute 6027 (line 462); Run 32a 1/3 with a sonnet reviewer (line 583) | PROCESS-ONLY | not Δ evidence |
 | E17 | Exemptions stated | none | not run | UNMEASURED | stays |
@@ -106,7 +107,7 @@ Outcome tasks (hidden tests, `run-outcome.sh`):
 | R19 | playbook-tdd Understanding, scan log and Impact (Phase 1, Lite step 1) | pattern-12 (E21 is PROCESS-ONLY, not counted) | pattern-12 Run 29 +0.33, k=3, line 541 | KEEP | stays (Run 27 lesson) |
 | R20 | playbook-tdd oracle rule, Dn and [UNVERIFIED] on tests | E29 | Run 25 line 450-453; Run 27 line 504-505; Run 28 line 524 | KEEP | stays (Run 27 lesson) |
 | R21 | playbook-tdd Lite step 2: test each input class | pattern-19 | Run 31 line 566; Run 32 line 596 | KEEP | stays (repair) |
-| R22 | playbook-tdd and playbook-proof: one real observation, else Not checked | E14 | Run 25 line 457; Run 27 line 507; Run 28 line 530; Run 44 inconclusive at k=10 | MIXED | stays (Run 27 lesson) |
+| R22 | playbook-tdd and playbook-proof: one real observation, else Not checked | E14 | Run 25 line 457; Run 27 line 507; Run 28 line 530; Run 44 inconclusive at k=10 | INCONCLUSIVE | stays (Run 27 lesson) |
 | R23 | playbook-tdd weight details: decide consistently, additive export, user override, quick | E1, E15 labels; E22, E23, E25, E26 | Run 25 line 459 | PROCESS-ONLY | stays (E22-E26 unmeasured, not ZERO) |
 | R24 | playbook-tdd Full: spec reviewer, sub-agents, one reviewer per feature | E16 | Run 25 line 458; Run 32 line 583 | PROCESS-ONLY | stays (unmeasured outcome on Full work) |
 | R25 | playbook-tdd final report parts: Request coverage, Confidence, Pre-mortem, Models used, feedback line | feedback line label (E1, E15); Models line (E24); none for Pre-mortem or Request coverage | Run 25 line 459 | PROCESS-ONLY | reworded: Pre-mortem, Models used and the feedback line are hand-off report only, never PR body parts |
@@ -123,7 +124,7 @@ Outcome tasks (hidden tests, `run-outcome.sh`):
 | R36 | learnings hook `scripts/learnings-hook.sh` (opt-in) | E34 | Run 30 line 555; Run 31 line 564 | KEEP | opt-in already |
 | R37 | playbook-proof references/writing.md | E30 | Run 25 line 462-463; Run 42 (2026-10-27, k=3): Δ 0 on every check | ZERO | reference-only already |
 
-**Verdict counts:** scenarios E1-E41: KEEP 7 (E2, E3, E4, E6, E13, E29, E34; E2, E3, E4, E6 and E29 confirmed at k=10 in Run 44), MIXED 1 (E14), PROCESS-ONLY 5 (E1, E15, E16,
+**Verdict counts:** scenarios E1-E41: KEEP 7 (E2, E3, E4, E6, E13, E29, E34; E2, E3, E4, E6 and E29 confirmed at k=10 in Run 44), INCONCLUSIVE 1 (E14), PROCESS-ONLY 5 (E1, E15, E16,
 E19, E21), ZERO 4 (E5, E30, E37, E41), ZERO-1 9 (E8, E10, E27, E33, E35, E36, E38, E39, E40), UNMEASURED 15. Outcome tasks: KEEP 3,
 ZERO 20. Rules and references R1-R37: KEEP 12, PROCESS-ONLY 6, ZERO 7, ZERO-1 5, UNMEASURED 7.
 
