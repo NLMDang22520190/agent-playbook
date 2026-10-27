@@ -279,16 +279,14 @@ chk "v0.24.29 D-0 harnesses.md: a separate worktree gives the isolation without 
 chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$SKILL_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
 SKW3="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$SKW3" -le 3700 ]; then t_ok "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer ($SKW3)"; else t_bad "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer" "$SKW3 words"; fi
-SITU_ONE="$(tr '
-' ' ' < "$PB_ROOT/skills/playbook-tdd/references/situations.md" 2>/dev/null)"   # v0.30.0 lane m: the infra tester gate call moved there
-NGOOD="$(printf '%s %s' "$SKILL_ONE" "$SITU_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
-NALL="$(printf '%s %s' "$SKILL_ONE" "$SITU_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
-assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md and references/situations.md shows --base" "$NALL" "$NGOOD"
+NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
+NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
+assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
 if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
 chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
 chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
 # fix round 1: the reviewer/tester gates read --base <sha before the role> (the role files' wording), not a bare <sha>
-NSHA="$(printf '%s %s' "$SKILL_ONE" "$SITU_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
+NSHA="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 (fix 6) every 'check tester|reviewer' in SKILL.md reads --base <sha before the role>" "$NALL" "$NSHA"
 
 echo "v0.24.21 AC2: role files, README and the beginners doc show the gates with --base"

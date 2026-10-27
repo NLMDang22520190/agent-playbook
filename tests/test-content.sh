@@ -4,7 +4,6 @@
 
 TDD="$PB_ROOT/skills/playbook-tdd"
 SKILL="$TDD/SKILL.md"
-SITU="$TDD/references/situations.md"   # v0.30.0 lane m: the R26 situational mechanics moved here from SKILL.md
 TESTER="$TDD/roles/tester.md"
 IMPL="$TDD/roles/implementer.md"
 REVIEWER="$TDD/roles/reviewer.md"
@@ -160,7 +159,7 @@ l18="$(line_of "$SCEN" '^## E18 ')"; l19="$(line_of "$SCEN" '^## E19 ')"
 if [ -n "$l18" ] && [ -n "$l19" ] && [ "$l18" -lt "$l19" ]; then t_ok 'AC2.2 E19 comes after E18'; else t_bad 'AC2.2 E19 comes after E18' "E18 line [$l18] E19 line [$l19]"; fi
 
 # --- v0.9.0 #4 AC4.6: the test-infra role is documented
-TDDALL="$(cat "$SKILL" "$SITU" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
+TDDALL="$(cat "$SKILL" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
 # paragraphs (blank-line separated) that talk about infra
 infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n"} tolower($0) ~ /infra/'; }
 IP="$(infra_paras)"
@@ -729,18 +728,16 @@ sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL
 # --- v0.22.1 AC4: when the user says the result is wrong
 exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
 WRONG='^## When the user says it is wrong'
-sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$SITU" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
-sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$SITU" "$WRONG" 'misread'
-sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$SITU" "$WRONG" 'missed[^.]{0,30}(place|scan)'
-sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$SITU" "$WRONG" 'wrong assumption'
-sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$SITU" "$WRONG" 'not verified live'
-sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SITU" "$WRONG" 'real bug'
-sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SITU" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
-sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SITU" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
-sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SITU" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
-sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SITU" "$WRONG" 'regression eval'
-sec_flat_has 'v0.30.0 lane m SKILL.md: When the user says it is wrong points to references/situations.md' "$SKILL" "$WRONG" 'references/situations\.md#user-says-wrong'
-assert_file 'v0.30.0 lane m references/situations.md exists' "$SITU"
+sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$SKILL" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
+sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$SKILL" "$WRONG" 'misread'
+sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$SKILL" "$WRONG" 'missed[^.]{0,30}(place|scan)'
+sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$SKILL" "$WRONG" 'wrong assumption'
+sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$SKILL" "$WRONG" 'not verified live'
+sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SKILL" "$WRONG" 'real bug'
+sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SKILL" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
+sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SKILL" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
+sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SKILL" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
+sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL" "$WRONG" 'regression eval'
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
@@ -749,11 +746,11 @@ flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt in
 
 
 # --- v0.22.1 review findings: content
-sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SITU" "$WRONG" 'playbook-learn'
-sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SITU" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
-sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SITU" "$WRONG" 'docs-only|exempt'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SITU" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SITU" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
+sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SKILL" "$WRONG" 'playbook-learn'
+sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SKILL" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
+sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$WRONG" 'docs-only|exempt'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
 sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
 SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
@@ -1077,22 +1074,20 @@ echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
 sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILL" "$P2" 'parallel'
 sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
-sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SITU" '^## Parallel slices' 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
+sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
 sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
 sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
-sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SITU" '^## Parallel slices' 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
-sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SITU" '^## Parallel slices' 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
-sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SITU" '^## Parallel slices' 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
+sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
+sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
+sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
 sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
 # v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
 # `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
 echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
-PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SITU" | tr '\n' ' ' | tr -s ' ')"
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
-NCM="$(grep -o -- '--commits' "$SITU" | wc -l | tr -d ' ')"
-assert_eq 'v0.26.1 AC-D1 references/situations.md names --commits exactly once (at most one sentence, T3; moved from SKILL.md in v0.30.0 lane m)' "1" "$NCM"
-assert_eq 'v0.30.0 lane m SKILL.md no longer names --commits' "0" "$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
-sec_flat_has 'v0.30.0 lane m SKILL.md Parallel slices points to references/situations.md' "$SKILL" "$P2" 'Slices whose files are disjoint[^.]{0,200}references/situations\.md#parallel-slices'
+NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
+assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
 echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
@@ -1858,8 +1853,7 @@ if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |
 
 echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
 # AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
-# v0.30.0 lane m: the user moved it to 3700 on 2026-10-23; the measured slimming (queue P0-2) lowers it to the new count rounded up
-if [ "$SKB" = "3350" ]; then t_ok "v0.24.29 AC8 / v0.30.0 lane m evals/word-budgets gives playbook-tdd SKILL.md exactly 3350 (3700 until the R26 move)"; else t_bad "v0.24.29 AC8 / v0.30.0 lane m evals/word-budgets gives playbook-tdd SKILL.md exactly 3350 (3700 until the R26 move)" "budget [$SKB]"; fi
+if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
 # AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
 sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
 sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
