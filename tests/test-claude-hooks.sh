@@ -246,11 +246,13 @@ if [ "$HAVE_NODE" = 1 ]; then
 EOF
   run CH install --home "$H"
   assert_rc "AC-B1 install over an old marker entry exits 0" 0
-  assert_eq "AC-B1 PreToolUse still has two groups (no duplicate guard)" "2" "$(jget "$F" 'j.hooks.PreToolUse.length')"
+  assert_eq "AC-B1 no duplicate guard: exactly one handler ends with the guard tail (guard-ps is a different tail)" "1" "$(jget "$F" 'j.hooks.PreToolUse.reduce((n, g) => n + g.hooks.filter(h => h.command.endsWith("# agent-playbook:guard")).length, 0)')"
+  assert_eq "AC-H1 over an old guard plus a foreign group PreToolUse has three groups (guard, foreign, PowerShell)" "3" "$(jget "$F" 'j.hooks.PreToolUse.length')"
+  assert_eq "AC-H1 the third PreToolUse group is the PowerShell guard-ps one" "true" "$(jget "$F" 'j.hooks.PreToolUse[2].matcher==="PowerShell" && j.hooks.PreToolUse[2].hooks.length===1 && j.hooks.PreToolUse[2].hooks[0].command.endsWith("# agent-playbook:guard-ps")')"
   assert_eq "AC-B1 the old guard entry (first group) now has the new path" "true" "$(jget "$F" 'j.hooks.PreToolUse[0].hooks[0].command===a' "bash \"$P/guard-irreversible.sh\" # agent-playbook:guard")"
   assert_eq "AC-B1 the foreign group stays second" '"/usr/local/bin/audit-bash.sh"' "$(jget "$F" 'j.hooks.PreToolUse[1].hooks[0].command')"
   assert_eq "AC-B1 the old path is gone" "0" "$(grep -c '/old/place' "$F")"
-else t_skip 5 "AC-B1 marker replaced in place (no node)"; fi
+else t_skip 7 "AC-B1 marker replaced in place (no node)"; fi
 
 echo "AC-B1 --dry-run writes nothing"
 if [ "$HAVE_NODE" = 1 ]; then
