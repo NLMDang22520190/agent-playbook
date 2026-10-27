@@ -358,8 +358,15 @@ psh 'Remove-Item -Recurse -Force "$env:TMPDIR\pbx"'; expect_pass "AC-P5 \$env:TM
 PSE=(TEMP='C:\work\app\.tmp' TMPDIR=)
 psh 'Remove-Item -Recurse -Force "$env:TEMP\x"'; expect_pass "AC-P5 TEMP=C:\\work\\app\\.tmp resolves to a path inside the project"
 PSE=(TEMP='C:\elsewhere\tmp' TMPDIR=)
-psh 'Remove-Item -Recurse -Force "$env:TEMP\x"'; expect_block "AC-P5 TEMP=C:\\elsewhere\\tmp resolves to an outside path" rm-outside
-psh 'Remove-Item -Recurse -Force $env:TEMP\x'; expect_block "AC-P5 unquoted \$env:TEMP\\x with an outside TEMP" rm-outside
+if command -v cygpath >/dev/null 2>&1; then
+  # Git Bash: temp_dirs adds TEMP itself (through cygpath) to the temp dirs rm may clean, so any TEMP is a temp dir there and
+  # a path below it passes; "outside both roots" exists only where there is no cygpath (same probe as the guard's)
+  psh 'Remove-Item -Recurse -Force "$env:TEMP\x"'; expect_pass "AC-P5 TEMP=C:\\elsewhere\\tmp on Git Bash: TEMP is itself a temp dir (temp_dirs)"
+  psh 'Remove-Item -Recurse -Force $env:TEMP\x'; expect_pass "AC-P5 unquoted \$env:TEMP\\x on Git Bash: below the TEMP temp dir"
+else
+  psh 'Remove-Item -Recurse -Force "$env:TEMP\x"'; expect_block "AC-P5 TEMP=C:\\elsewhere\\tmp resolves to an outside path" rm-outside
+  psh 'Remove-Item -Recurse -Force $env:TEMP\x'; expect_block "AC-P5 unquoted \$env:TEMP\\x with an outside TEMP" rm-outside
+fi
 PSE=(CLAUDE_PROJECT_DIR='C:\work\app')
 psh 'Remove-Item -Recurse "$env:CLAUDE_PROJECT_DIR\build"' 'C:\other'; expect_pass "AC-P5 \$env:CLAUDE_PROJECT_DIR\\build is inside (cwd elsewhere)"
 psh 'Remove-Item -Recurse $env:CLAUDE_PROJECT_DIR\build' 'C:\other'; expect_pass "AC-P5 unquoted \$env:CLAUDE_PROJECT_DIR\\build is inside"
