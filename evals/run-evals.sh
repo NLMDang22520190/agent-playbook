@@ -444,12 +444,10 @@ load_transcript() {
   done <<EOF
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
 EOF
-  # a Codex JSONL transcript (evals/codex-jsonl.js) has no AskUserQuestion tool: its "no AskUserQuestion call" checks pass trivially,
-  # and the check line says so (T_ASKD: a detail group, T_ASKI: the same inside an existing (asked=N) group; check keys stay the same)
-  T_ASKD=""; T_ASKI=""
-  if [ "$T_format" = codex ]; then
-    T_ASKD=" (detail: trivially true: Codex has no AskUserQuestion tool)"; T_ASKI="; detail: trivially true: Codex has no AskUserQuestion tool"
-  fi
+  # a Codex JSONL transcript (evals/codex-jsonl.js) has no AskUserQuestion tool: its "no AskUserQuestion call" checks are MANUAL with
+  # this detail (not a PASS that would inflate pass rates; the detail group keeps the check keys the same)
+  T_ASKNA=""
+  if [ "$T_format" = codex ]; then T_ASKNA=" (detail: n/a: Codex has no AskUserQuestion tool)"; fi
 }
 # cost_of -> total_cost_usd of the stream-json result line (exit 3 when unknown)
 cost_of()       { [ -n "$T_cost" ] || return 3; printf '%s' "$T_cost"; }
@@ -792,7 +790,8 @@ grade_E26() {
   # headless: nobody answers, so any AskUserQuestion call FAILs; --interactive (one question expected) and a log that is not stream-json are MANUAL
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "exactly one AskUserQuestion call (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
-  else check "no AskUserQuestion tool call in the transcript$T_ASKD" asked_none; fi
+  elif [ "$T_format" = codex ]; then record MANUAL "no AskUserQuestion tool call in the transcript$T_ASKNA"
+  else check "no AskUserQuestion tool call in the transcript" asked_none; fi
   # v0.24.21: questions in the final reply (evals/transcript.js prose_q=: a "?" at a sentence end outside fenced code, inline code
   # and quoted > lines); headless 0 PASSes and >= 1 FAILs; --interactive (a question is expected) and no result text are MANUAL
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no question asked in prose (headless; interactive run, prose_q=$T_prose_q)"
@@ -1017,7 +1016,8 @@ grade_E29() {
   fl="$(files29 | norm29)"
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no AskUserQuestion tool call in the transcript (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
-  elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript$T_ASKD"
+  elif [ "$T_format" = codex ]; then record MANUAL "no AskUserQuestion tool call in the transcript$T_ASKNA"
+  elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript"
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   case "$P29" in
     multiply|divide)
@@ -1119,6 +1119,7 @@ grade_E30() {
   fi
   if [ "$INTERACTIVE" = 1 ]; then record MANUAL "no AskUserQuestion tool call in the transcript (interactive; asked=$T_asked)"
   elif [ "$T_asked" = na ]; then record MANUAL "no AskUserQuestion tool call in the transcript (needs --harness claude)"
+  elif [ "$T_format" = codex ]; then record MANUAL "no AskUserQuestion tool call in the transcript$T_ASKNA"
   elif [ "$T_asked" = 0 ]; then record PASS "no AskUserQuestion tool call in the transcript"
   else record FAIL "no AskUserQuestion tool call in the transcript"; fi
   record MANUAL "the description reads naturally and adds no fact the commit does not show (the commit is the first one after ${E30_BASE:0:7})"
@@ -1196,7 +1197,8 @@ grade_E2() {
   r="$(result_text)" || r=""
   if [ "$INTERACTIVE" != 1 ]; then
     if [ "$json" != 1 ]; then record MANUAL "headless: no AskUserQuestion call in the transcript (detail: not stream-json)"
-    elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call in the transcript$T_ASKD"
+    elif [ "$T_format" = codex ]; then record MANUAL "headless: no AskUserQuestion call in the transcript$T_ASKNA"
+    elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call in the transcript"
     else record FAIL "headless: no AskUserQuestion call in the transcript (asked=$calls)"; fi
     if [ "$json" != 1 ]; then record MANUAL "inspected the code before the first file change (detail: not stream-json)"
     elif [ "$(fv26 inspect_change)" = pass ]; then record PASS "inspected the code before the first file change"
@@ -1327,10 +1329,13 @@ grade_E13() {
   if [ "$json" != 1 ]; then
     if [ "$INTERACTIVE" = 1 ]; then record MANUAL "interactive: at most one AskUserQuestion call (detail: not stream-json)"
     else record MANUAL "headless: no AskUserQuestion call (detail: not stream-json)"; fi
+  elif [ "$T_format" = codex ]; then
+    if [ "$INTERACTIVE" = 1 ]; then record MANUAL "interactive: at most one AskUserQuestion call$T_ASKNA"
+    else record MANUAL "headless: no AskUserQuestion call$T_ASKNA"; fi
   elif [ "$INTERACTIVE" = 1 ]; then
-    if [ "$calls" -le 1 ]; then record PASS "interactive: at most one AskUserQuestion call (asked=$calls$T_ASKI)"
+    if [ "$calls" -le 1 ]; then record PASS "interactive: at most one AskUserQuestion call (asked=$calls)"
     else record FAIL "interactive: at most one AskUserQuestion call (asked=$calls)"; fi
-  elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call$T_ASKD"
+  elif [ "$calls" = 0 ]; then record PASS "headless: no AskUserQuestion call"
   else record FAIL "headless: no AskUserQuestion call (asked=$calls)"; fi
   record MANUAL "the endpoint works (lists one customer's orders)"
 }
