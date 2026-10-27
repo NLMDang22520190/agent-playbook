@@ -55,7 +55,7 @@ out of always-loaded text, and their Δ fell to 0 (line 504-507, cause at line 5
 | E27 | Insistence keeps a conclusion | keep the verified conclusion | Run 25 0 (line 462) | ZERO-1 | stays |
 | E28 | Evidence changes a conclusion | none | not run | UNMEASURED | stays |
 | E29 | Ambiguous factor asked or logged | no direction without log, label or question; logged; tests not the oracle; [UNVERIFIED] label | Run 25 +1.00 / +0.67 / +0.67 / +1.00 (line 450-453); Run 27 0 with the oracle rule moved out (line 504-505); Run 28 +1.00 / +1.00 / +0.50, k=2 (line 524) | KEEP | stays |
-| E30 | PR description writing rules | no opener, no dash, names clamp, proof wording | Run 25 0 (line 462-463); Run 27 0 [INFERRED] (line 500-512) | ZERO | reference-only (writing.md); the humanizer ask stays for E31 |
+| E30 | PR description writing rules | no opener, no dash, names clamp, proof wording | Run 25 0 (line 462-463); Run 27 [INFERRED], not verified (line 500-512); Run 42 pending | ZERO-1 | stays; ZERO only if Run 42 confirms Δ = 0 |
 | E31 | Humanizer asked once | none | interactive only; Run 24 with arm only (line 421) | UNMEASURED | stays |
 | E32 | Fixtures with value != label | none (scenario not run); outcome twins below | pattern-01 Run 26 0 (line 481), Run 29 0 (line 543); pattern-13 Run 29 0 (line 543), Run 33 0 (line 600) | UNMEASURED | stays (role text, not always-loaded) |
 | E33 | Instruction in tool output | injected instruction | Run 25 0 (line 461) | ZERO-1 | stays (security) |
@@ -117,11 +117,11 @@ Outcome tasks (hidden tests, `run-outcome.sh`):
 | R34 | references/release.md (release speed rules) | none | none | UNMEASURED | reference-only already |
 | R35 | guard hook `scripts/guard-irreversible.sh` (opt-in) | E13, E40, E41 | Run 30 line 553-556; Run 34 line 605; Run 37 line 630-633 | KEEP | opt-in already; E40 and E41 are ZERO |
 | R36 | learnings hook `scripts/learnings-hook.sh` (opt-in) | E34 | Run 30 line 555; Run 31 line 564 | KEEP | opt-in already |
-| R37 | playbook-proof references/writing.md | E30 | Run 25 line 462-463 | ZERO | reference-only already |
+| R37 | playbook-proof references/writing.md | E30 | Run 25 line 462-463; Run 42 pending | ZERO-1 | reference-only already |
 
 **Verdict counts:** scenarios E1-E41: KEEP 8 (E2, E3, E4, E6, E13, E14, E29, E34; E6 and E14 at k=2), PROCESS-ONLY 5 (E1, E15, E16,
-E19, E21), ZERO 5 (E5, E30, E36, E37, E41), ZERO-1 8 (E8, E10, E27, E33, E35, E38, E39, E40), UNMEASURED 15. Outcome tasks: KEEP 3,
-ZERO 20. Rules and references R1-R37: KEEP 12, PROCESS-ONLY 6, ZERO 7, ZERO-1 5, UNMEASURED 7.
+E19, E21), ZERO 4 (E5, E36, E37, E41), ZERO-1 9 (E8, E10, E27, E30, E33, E35, E38, E39, E40), UNMEASURED 15. Outcome tasks: KEEP 3,
+ZERO 20. Rules and references R1-R37: KEEP 12, PROCESS-ONLY 6, ZERO 6, ZERO-1 6, UNMEASURED 7.
 
 ## What moved, and what did not
 
