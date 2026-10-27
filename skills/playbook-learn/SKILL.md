@@ -36,7 +36,7 @@ Do **not** record:
 2. **Draft** the entry. Rule: one imperative sentence, at most 300 chars. Why: the cause. Evidence:
    something checkable (the user's words with the date, a CI run or log path, a commit, `path:line`).
    Scope: a glob or area, or `project-wide`.
-3. **Ask the user** to approve the wording (one message, batched at the end of a
+3. **Ask the user** to approve the wording (one message, can be batched with others at the end of a
    task). Without approval, do not write. In a non-interactive run, list the proposals in your final
    message instead of writing them.
 4. **Write:**
