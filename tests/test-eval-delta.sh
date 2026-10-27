@@ -278,7 +278,8 @@ if command -v python3 >/dev/null 2>&1; then
   runs_pp E6 without 4 'c00=0 c01=1 c03=3 c04=4 c20=0 c21=1 c23=3 c24=4 c50=0 c51=1 c53=3 c54=4 c70=0 c71=1 c73=3 c74=4'
   doc "$D/py.json" m-1 c0ffee1 custom pb-evals/1 '[]' "${RR[@]}"
   run bash "$DL" "$D/py.json"
-  PY="$(python3 -I - <<'PYEOF'
+  # -X utf8: the rows print a Δ; a native Windows python3 writes a pipe in cp1252 and fails on it (-I ignores PYTHONUTF8)
+  PY="$(python3 -I -X utf8 - <<'PYEOF'
 from math import sqrt
 z = 1.959963984540054
 def w(p, n):
