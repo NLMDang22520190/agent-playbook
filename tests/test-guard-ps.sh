@@ -1131,4 +1131,67 @@ psh "git status |  # c${NLC}Out-Null"; expect_pass "B control: git status | # c<
 psh "\"DROP TABLE t\" |  # c${NLC}Out-File notes.txt"; expect_pass "B control: comment, then Out-File (no SQL client)"
 psh "\"DROP TABLE t\"  # c${NLC}sqlite3 app.db"; expect_pass "B control: no pipe, comment only, next line is a separate command"
 
+# ---- review fix round 3 (tester fix4): lead-ins of an assignment, call operator on a string/group, more Unicode spaces ----
+echo "P1 review3 F1 an assignment with a property, index, scope or typed target does not hide its right-hand command"
+blk rm-outside <<'EOF'
+$x.a = Remove-Item -Recurse -Force C:\Users\me
+$x[0] = Remove-Item -Recurse -Force C:\Users\me
+$script:r = Remove-Item -Recurse -Force C:\Users\me
+$x.a.b = Remove-Item -Recurse -Force C:\Users\me
+$h['k'] = Remove-Item -Recurse -Force C:\Users\me
+$r -= Remove-Item -Recurse C:\Users\me
+[string] $r = Remove-Item -Recurse -Force C:\Users\me
+[int[]] $r = Remove-Item -Recurse -Force C:\Users\me
+$env:R = Remove-Item -Recurse -Force C:\Users\me
+$r=Remove-Item -Recurse -Force C:\Users\me
+EOF
+blk git-push-force <<'EOF'
+$global:r = git push -f origin main
+$env:R = git push -f
+$r = . git push -f origin main
+$r = & git push -f
+$h['k'] = git push --force
+$x.a.b = git push --force origin main
+$x.a = git push -f
+$x[0] = git push -f
+$r=git push -f
+[string] $r = git push -f
+EOF
+pas <<'EOF'
+$x.a = 'C:\Users\me'
+$h['k'] = 1
+$script:r = git status
+$r = . .\build.ps1
+$x[0] = 'git push -f'
+$x.a = Remove-Item -Recurse -Force .\dist
+EOF
+
+echo "P1 review3 F2 a call operator on a group with a switch attached by a colon, or on an expandable string, is an unknown command"
+blk rm-outside <<'EOF'
+& ($c) -Rec:$true C:\Users\me
+& ($c) -Recurse:$true C:\Users\me
+& "Remove-$x" -Recurse C:\Users\me
+EOF
+blk git-push-force <<'EOF'
+& "$g" push -f
+EOF
+# [UNVERIFIED] whether PowerShell treats .$c as a dot-source call of the variable's value; the row pins fail closed (BLOCK any kind)
+psh '.$c -Recurse C:\Users\me'; expect_block_any "F2 .\$c -Recurse C:\\Users\\me (fail closed) [kind open, UNVERIFIED]"
+pas <<'EOF'
+& "Remove-$x" -Name a
+EOF
+
+echo "P1 review3 F3 NEL U+0085, U+1680, U+2028 and U+2029 separate words like a space"
+WNL=$'\xc2\x85' WOG=$'\xe1\x9a\x80' WLS=$'\xe2\x80\xa8' WPS=$'\xe2\x80\xa9'
+set -- NEL-U+0085:"$WNL" OGHAM-U+1680:"$WOG" LINE-SEP-U+2028:"$WLS" PARA-SEP-U+2029:"$WPS"
+for ws in "$@"; do
+  wn="${ws%%:*}" wc="${ws#*:}"
+  psh "Remove-Item${wc}-Recurse${wc}C:\\Users\\me"; expect_block "F3 [$wn] Remove-Item<ws>-Recurse<ws>C:\\Users\\me" rm-outside
+  psh "git${wc}push -f"; expect_block "F3 [$wn] git<ws>push -f" git-push-force
+  psh "git push${wc}--force origin main"; expect_block "F3 [$wn] git push<ws>--force origin main" git-push-force
+  psh "Write-Host \"a${wc}b\"; git status"; expect_pass "F3 [$wn] control: the character inside quotes"
+  psh "Write-Host \"git${wc}push -f\""; expect_pass "F3 [$wn] control: git<ws>push -f only inside a quoted string"
+  psh "Remove-Item -Recurse -Force \".\\dist${wc}x\""; expect_pass "F3 [$wn] control: quoted inside delete target"
+done
+
 t_summary

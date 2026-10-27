@@ -2261,6 +2261,23 @@ qchk "v0.29.0 review2 R5 Limits: a value copied into another variable is not fol
 qchk "v0.29.0 review2 R6 Limits: a call operator on a group or variable (& (...), & \$cmd) is an unknown command" "$K1B_LIM" '& ?(\(|\$[a-z{])'
 qchk "v0.29.0 P2 AC-H5 Limits: without Git Bash the bash hook commands cannot run" "$K1B_LIM" 'without Git Bash[^.]{0,200}(cannot|can.?t|not|no )|Git Bash[^.]{0,60}(isn.t|is not|not) installed[^.]{0,200}(cannot|can.?t|not )'
 
+# review fix round 3 (tester fix4): the Limits do not over-claim vertical tab, and name the assignment targets the code checks
+# [UNVERIFIED] how a real client sends a vertical tab: the JSON escape \u000b, which the guard documents as not decoded.
+qchk "v0.29.0 review3 F3 Limits: the JSON-escaped vertical tab (\\u000b) is named as not decoded" "$K1B_LIM" '\\u000b.{0,250}not decoded|not decoded.{0,250}\\u000b|vertical tab[^;]{0,200}\\u[^;]{0,200}not decoded'
+VT_BAD=""
+while IFS= read -r vtc <&3; do
+  [ -n "$vtc" ] || continue
+  printf '%s' "$vtc" | grep -qiE -- 'u000b|escape|not decoded|raw|literal' || VT_BAD="$VT_BAD [$vtc]"
+done 3<<EOF_VT
+$(printf '%s' "$K1B_LIM" | grep -oiE 'vertical tab[^;]{0,160}')
+EOF_VT
+if [ -z "$VT_BAD" ]; then t_ok "v0.29.0 review3 F3 Limits: every mention of vertical tab is qualified (raw byte only, or the \\u escape not decoded)"; else t_bad "v0.29.0 review3 F3 Limits: every mention of vertical tab is qualified (raw byte only, or the \\u escape not decoded)" "unqualified:$VT_BAD"; fi
+qchk "v0.29.0 review3 F1 Limits: an assignment to a property (\$x.a = ...) is checked" "$K1B_LIM" 'assign.{0,250}propert|propert.{0,250}assign|\$[a-z]+\.[a-z]+ ?='
+qchk "v0.29.0 review3 F1 Limits: an assignment to an index (\$x[0] = ...) is checked" "$K1B_LIM" 'assign.{0,250}index|index.{0,250}assign|\$[a-z]+\[[^]]+\] ?='
+qchk "v0.29.0 review3 F1 Limits: an assignment with a scope prefix (\$script:r = ...) is checked" "$K1B_LIM" 'assign.{0,250}scope|scope.{0,250}assign|\$(script|global|local):[a-z]+ ?='
+qchk "v0.29.0 review3 F3 Limits: NEL, U+1680, U+2028 and U+2029 are named among the word separators" "$K1B_LIM" 'U\+0085.{0,250}U\+1680.{0,250}U\+2028.{0,250}U\+2029|NEL.{0,250}U\+1680.{0,250}U\+2028.{0,250}U\+2029'
+
+
 
 # v0.28.1 lane t (lever 2): Lite step 4 no longer recommends a mutation spot-check; Full keeps it.
 if lite_step 4 | tr '\n' ' ' | grep -qiE -- 'mutation spot-check'; then t_bad "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check" "Lite step 4 still mentions it"; else t_ok "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check"; fi
