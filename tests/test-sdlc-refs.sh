@@ -66,12 +66,13 @@ CL='Do not defend the result and do not patch at once; in a production incident,
 if grep -Fxq -e "$CL" "$SK"; then t_ok "AC4 SKILL.md has the incident clause verbatim"; else t_bad "AC4 SKILL.md has the incident clause verbatim" "no line [$CL]"; fi
 if grep -Fxq -e 'Do not defend the result and do not patch at once.' "$SK"; then t_bad "AC4 the old sentence is replaced" "old line still there"
 else t_ok "AC4 the old sentence is replaced"; fi
-NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$SK")"
-assert_eq "AC4 step 1 follows the clause unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
+SITU="$REF/situations.md"   # v0.30.0 lane m: the four steps moved there, the clause stays in SKILL.md
+NEXT="$(awk '/^## When the user says it is wrong/ { f = 1; next } f && /^1\. / { print; exit }' "$SITU")"
+assert_eq "AC4 step 1 opens the steps in references/situations.md unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
 for s in '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' \
          '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
          '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
-  if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+  if grep -Fxq -e "$s" "$SITU"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
 done
 
 U="$REF/upgrade.md"
@@ -158,16 +159,17 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # then v0.28.1 lanes t and p: -9 (Lite step 4 mutation note) +12 (Lite step 2 input-class line) = +3
 # then v0.29.0 lane a: -19 (the Phase 4 report bullet points to the template; Pre-mortem and feedback line are hand-off only)
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
+# then v0.30.0 lane m: -361 (the R26 situational mechanics moved to references/situations.md, one pointer line each)
 W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
 if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) words (3700 - 3 + 3 - 19 + 10 = 3691)" "$((W0 - 3 + 3 - 19 + 10))" "$w"
+  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) - 361 (v0.30.0 m) words (3700 - 3 + 3 - 19 + 10 - 361 = 3330)" "$((W0 - 3 + 3 - 19 + 10 - 361))" "$w"
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
 else t_ok "AC16 the slice-size Why line is cut"; fi
 if grep -q '^\*\*Why:\*\*' "$SK"; then t_ok "AC16 at least one **Why:** line remains (run-checks.sh)"; else t_bad "AC16 at least one **Why:** line remains (run-checks.sh)" "none"; fi
-if grep -Eq '^skills/playbook-tdd/SKILL\.md 3700 ' "$WB"; then t_ok "AC16 evals/word-budgets keeps playbook-tdd at 3700"; else t_bad "AC16 evals/word-budgets keeps playbook-tdd at 3700" "line changed"; fi
+if grep -Eq '^skills/playbook-tdd/SKILL\.md 3350 ' "$WB"; then t_ok "AC16 / v0.30.0 lane m evals/word-budgets has playbook-tdd at 3350 (3700 until the R26 move)"; else t_bad "AC16 / v0.30.0 lane m evals/word-budgets has playbook-tdd at 3350 (3700 until the R26 move)" "line changed"; fi
 # characterization: AGENTS.global.md stays as it is (rule freeze); these pass before and after
 if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook." "$AG"; then
   t_ok "AC16 AGENTS.global.md keeps the precedence sentence verbatim"; else t_bad "AC16 AGENTS.global.md keeps the precedence sentence verbatim" "missing"; fi
