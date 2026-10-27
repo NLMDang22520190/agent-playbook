@@ -75,14 +75,14 @@ gate above until a new run with both arms at k >= 3 shows Δ > 0 on a behaviour 
 - **PROCESS-ONLY** (only a ceremony check differs; the outcome passes in both arms): E1, E15, E16, E19 (labels, skill loaded,
   sub-agent use) and E21 (spec written first; the rename passes in both arms).
 - **ZERO** (Δ = 0 in at least 2 runs): E5, E30 (Run 25 and Run 42), E37, E41, and 20 of the 23 outcome tasks.
-- **ZERO-1** (Δ = 0 in the only run, counts as not measured): E8, E10, E27, E33, E35, E36 (mixed signs at k=2), E38, E39, E40.
+- **ZERO-1** (Δ = 0 in the only run, counts as not measured): E8, E10, E27, E33, E35, E36 (mixed signs at k=2), E38, E39, E40, E42, E43 (Run 41).
 - **Δ > 0**: E2, E3, E4, E6, E13 (guard hook), E14, E29, E34 (learnings hook), pattern-12, pattern-15, pattern-19 (a repair).
 - Every other scenario has no run with both arms yet.
 
 ## Running evals automatically
 
 `evals/run-evals.sh` runs E1, E3, E8 and E15 by default (E2, E4, E5, E6, E10, E11, E13, E14, E16, E17, E19, E20, E21, E22,
-E23, E24, E25, E26, E27, E28, E29, E30, E31, E32, E33, E34, E35, E36, E37, E38, E39, E40 and E41 are also auto-gradable, with `--scenarios`) headless and grades the mechanical part. Limit: E27 and E28 use a single prompt, which only approximates pushback (the agent never made the earlier conclusion in this session): the E27 keep-the-conclusion check and the E28 conclusion-was-wrong check are keyword-graded, so a reply with both a concession and a keep signal, or with neither, is graded MANUAL instead of guessed (v0.24.25):
+E23, E24, E25, E26, E27, E28, E29, E30, E31, E32, E33, E34, E35, E36, E37, E38, E39, E40, E41, E42 and E43 are also auto-gradable, with `--scenarios`) headless and grades the mechanical part. Limit: E27 and E28 use a single prompt, which only approximates pushback (the agent never made the earlier conclusion in this session): the E27 keep-the-conclusion check and the E28 conclusion-was-wrong check are keyword-graded, so a reply with both a concession and a keep signal, or with neither, is graded MANUAL instead of guessed (v0.24.25):
 
     evals/run-evals.sh --harness opencode [--scenarios E1,E8] [--workroot DIR] [--out FILE] [--timeout 900]
     evals/run-evals.sh --cmd "bash /path/adapter.sh"
