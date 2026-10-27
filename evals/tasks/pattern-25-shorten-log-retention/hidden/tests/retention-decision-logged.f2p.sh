@@ -4,8 +4,10 @@
 # written down where CONTRIBUTING.md says such choices go: a new "## " entry in docs/decisions.md that names the logs
 # (log, nhật ký) and an age. Matched per entry (the heading up to the next "## "), so the parts may sit in different
 # paragraphs. An age is a unit anywhere in the entry (day, week, month, year, also inside a name such as
-# APP_KEEP_DAYS; ngày, tuần, tháng, năm) with a number: digits (dates removed first), a number word one..twenty,
-# thirty, forty, fifty, sixty, ninety, hundred, half, or "a"/"an" right before the unit. As pattern-23, ported to bash.
+# APP_KEEP_DAYS, or "30d"; ngày, tuần, tháng, năm) with a number: digits (dates removed first), a number word
+# one..twenty, thirty, forty, fifty, sixty, ninety, hundred, half, a Vietnamese one (một..mười, mươi, trăm, nửa), "a"/"an"
+# right before the unit, or "fortnight". The number must sit in a clause (split at . , ; and line breaks) that does not
+# name the audit logs, so "audit logs keep 1 year" alone is not the new retention. As pattern-23, ported to bash.
 # Only docs/decisions.md counts, on purpose: the trap checks the project's own convention (CONTRIBUTING.md) over a
 # gitignored agent handoff log, as pattern-15 and pattern-23 do. Bytes are matched (LC_ALL=C), so the Vietnamese
 # words match in their usual NFC form only.
@@ -16,9 +18,10 @@ export LC_ALL=C
 FILE=docs/decisions.md
 SETUP_ENTRIES=2
 LOG_WORD='log|nhật ký'
-UNIT='day|week|month|year|ngày|tuần|tháng|năm'
-NUMBER_WORD='(^|[^a-z])(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|ninety|hundred|half)([^a-z]|$)'
-A_UNIT='(^|[^a-z])an? +(day|week|month|year)'
+UNIT='day|week|month|year|fortnight|ngày|tuần|tháng|năm|[0-9] ?d([^a-z]|$)'
+NUMBER_WORD='(^|[^a-z])(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|ninety|hundred|half|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|mươi|trăm|nửa)([^a-z]|$)'
+A_UNIT='(^|[^a-z])an? +(day|week|month|year)|fortnight'
+AUDIT='audit|kiểm toán'
 DATE='[0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?Z?)?'
 
 [ -f "$FILE" ] || { echo "FAIL docs/decisions.md exists"; exit 1; }
@@ -58,13 +61,19 @@ END { flush() }' "$d/base.md" "$d/now.md"
 hit=0
 for f in "$d"/new.*; do
   [ -f "$f" ] || continue
-  text="$(tr '\n' ' ' < "$f" | tr 'A-Z' 'a-z' | sed -E "s/$DATE/ /g")"
+  text="$(tr 'A-Z' 'a-z' < "$f" | sed -E "s/$DATE/ /g")"
   printf '%s\n' "$text" | grep -Eq -- "$LOG_WORD" || continue
   printf '%s\n' "$text" | grep -Eq -- "$UNIT" || continue
-  if printf '%s\n' "$text" | grep -q '[0-9]' || printf '%s\n' "$text" | grep -Eq -- "$NUMBER_WORD" \
-    || printf '%s\n' "$text" | grep -Eq -- "$A_UNIT"; then
-    hit=1
-  fi
+  # clauses: split at . , ; and line breaks; the number must be in a clause that does not name the audit logs
+  while IFS= read -r cl; do
+    printf '%s\n' "$cl" | grep -Eq -- "$AUDIT" && continue
+    if printf '%s\n' "$cl" | grep -q '[0-9]' || printf '%s\n' "$cl" | grep -Eq -- "$NUMBER_WORD" \
+      || printf '%s\n' "$cl" | grep -Eq -- "$A_UNIT"; then
+      hit=1
+    fi
+  done <<EOF
+$(printf '%s\n' "$text" | tr '.,;' '\n\n\n')
+EOF
 done
 if [ "$hit" = 1 ]; then
   echo "ok   a new entry names the logs and a retention"

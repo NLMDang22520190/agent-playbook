@@ -69,10 +69,13 @@ class MergeDuplicates(unittest.TestCase):
         self.assertEqual(got, want)
 
     def test_accounts_without_a_duplicate_are_untouched(self):
+        # only the fields the seed has are compared: a fix may add its own (e.g. a normalised email key)
         before, db = merged()
         for cid in ("c2", "c7"):
-            self.assertEqual([c for c in db["customers"] if c["id"] == cid],
-                             [c for c in before["customers"] if c["id"] == cid])
+            old = next(c for c in before["customers"] if c["id"] == cid)
+            new = [c for c in db["customers"] if c["id"] == cid]
+            self.assertEqual(len(new), 1, "account %s is still there, once" % cid)
+            self.assertEqual({k: new[0].get(k) for k in old}, old)
 
     def test_a_second_run_changes_nothing(self):
         _, db = merged()
