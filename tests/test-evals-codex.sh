@@ -11,6 +11,8 @@
 # Review round 2: Codex's own stderr lines (WARNING:, Reading additional input, <timestamp>Z ERROR ...) do not count against the
 # JSONL majority, and the skill-read mapping follows cd, braces, sudo -u, $( ) and backticks, xargs and grep -f, while sed -i,
 # heredoc bodies and flag values (rg -g) are no reads.
+# Review round 3: a log is Codex by sequence (thread.started, then turn.started, then an item.* or a turn end), however many
+# non-JSON lines it has; command -v is a lookup, timeout N runs its command; brace expansion stops at 64 words.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$PB_ROOT/evals/lib-harness.sh"
@@ -306,6 +308,48 @@ cat $Q"
 rm -f "$TR/n1.log.result"
 assert_eq "codex + stderr noise (5 events, 8 stderr lines): format=codex" "codex" "$(tkey "$TR/n1.log" format)"
 assert_eq "codex + stderr noise: the reply is read" "NO" "$(cat "$TR/n1.log.result" 2>/dev/null)"
+
+sr "command -v cat PATH: a lookup, no read" "" "command -v cat $P"
+sr "timeout 5 cat PATH: a read" "playbook-tdd" "timeout 5 cat $P"
+BR=""; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do BR="$BR{a,b}"; done
+assert_eq "braces: a 22-group word stops at 64 words and finishes in under 2 s" "fast" "$(node -e 'const t=Date.now();require(process.argv[1]).skillReads("cat x/"+process.argv[2]+"/playbook-tdd/SKILL.md");process.stdout.write(Date.now()-t<2000?"fast":"slow")' "$PB_ROOT/evals/codex-jsonl.js" "$BR" 2>&1)"
+
+# stderr noise of any shape around a 9-event run: the event sequence decides, not the share of JSON lines
+ev9() { cat <<'EOF'
+{"type":"thread.started","thread_id":"t"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"type":"command_execution","command":"ls","status":"in_progress"}}
+{"type":"item.completed","item":{"type":"command_execution","command":"ls","exit_code":0}}
+{"type":"item.started","item":{"type":"command_execution","command":"cat a","status":"in_progress"}}
+{"type":"item.completed","item":{"type":"command_execution","command":"cat a","exit_code":0}}
+{"type":"item.completed","item":{"type":"reasoning","text":"x"}}
+{"type":"item.completed","item":{"type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":1}}
+EOF
+}
+{ ev9 | head -2; for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo "error: failed to connect to MCP server 'ps': connection refused"; done; ev9 | tail -n +3; } > "$TR/nb.log"
+assert_eq "noise B: 12 untimestamped error lines inside a 9-event run: format=codex" "codex" "$(tkey "$TR/nb.log" format)"
+{ ev9 | head -2; for i in 1 2 3 4 5 6 7 8 9 10; do printf '\033[2m2026-10-27T02:11:06.310046Z\033[0m \033[31mERROR\033[0m rmcp::transport::worker: closed\n'; done; ev9 | tail -n +3; } > "$TR/nb2.log"
+assert_eq "noise B2: 10 ANSI-coloured timestamped ERROR lines: format=codex" "codex" "$(tkey "$TR/nb2.log" format)"
+{ ev9 | head -8
+  printf '%s\n' "thread 'tokio-runtime-worker' panicked at codex-rs/core/src/client.rs:412:17:" \
+    'called `Result::unwrap()` on an `Err` value: Os { code: 32, kind: BrokenPipe }' \
+    'note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace' 'stack backtrace:' \
+    '   0: rust_begin_unwind' '   1: core::panicking::panic_fmt' '   2: core::result::unwrap_failed' \
+    '   3: codex_core::client::stream' '   4: tokio::runtime::task::harness' '   5: std::sys::thread::unix::thread_start'
+  ev9 | tail -1; } > "$TR/nc.log"
+assert_eq "noise C: a Rust panic with a 6-frame backtrace: format=codex" "codex" "$(tkey "$TR/nc.log" format)"
+{ printf '%s\n' 'WARNING: proceeding, even though we could not create PATH aliases:' \
+    '  Refusing to create helper binaries under temporary dir "/w/tmp"' '  (codex_home: AbsolutePathBuf("/w/tmp/.codex"))' \
+    '  Hint: set CODEX_HOME to a directory outside the temporary dir, or pass' '  --allow-temp-home to keep going. The helper binaries are used for:' \
+    '    - apply_patch' '    - the sandbox launcher' '    - the shell snapshot' '  Without them, commands may run more slowly.' \
+    '  See the docs for details.'
+  ev9; } > "$TR/nd.log"
+assert_eq "noise D: a 10-line indented WARNING block: format=codex" "codex" "$(tkey "$TR/nd.log" format)"
+printf '%s\n' 'Notes:' '{"type":"thread.started","thread_id":"x"}' '{"type":"turn.started"}' 'Shall I continue?' > "$TR/ne3.log"
+assert_not_contains "plain text quoting thread.started and turn.started only: not Codex" "$(node "$TJS" "$TR/ne3.log" 2>/dev/null)" "format="
+printf '%s\n' 'Here is the log:' '2026-10-27T02:11:05Z ERROR codex: x' '2026-10-27T02:11:05Z ERROR codex: y' '{"type":"thread.started","thread_id":"x"}' 'Shall I continue?' > "$TR/ne2.log"
+assert_not_contains "plain text quoting one event and two timestamped lines: not Codex" "$(node "$TJS" "$TR/ne2.log" 2>/dev/null)" "format="
 
 # ---- lib-harness.sh: the isolation check and the probe answer ----
 echo "lane cx: pbh_iso_check and pbh_probe_answer read a Codex JSONL transcript"
