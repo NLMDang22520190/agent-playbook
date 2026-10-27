@@ -1,9 +1,10 @@
 # PB-HIDDEN-CANARY:pattern-24-merge-duplicate-customers
 """Hidden FAIL_TO_PASS test: the request does not say which account wins a merge, so the choice is written down where
 CONTRIBUTING.md says such choices go: a new "## " entry in docs/decisions.md that names the accounts (account,
-customer, duplicate; tài khoản, khách) and a rule for the winner (oldest, earliest, first, newest, latest, most,
-created, sign-up, login, primary, survivor, wins; Vietnamese: a superlative "nhất" other than "hợp nhất" / "duy
-nhất", đầu tiên, tài khoản chính, tạo / đăng ký trước or sau). Matched per entry (the heading up to the next "## "),
+customer, duplicate; tài khoản, khách) and a rule for the winner (oldest, older, earliest, earlier, first, newest,
+latest, most, created, sign-up, login, primary, original, new, survivor, wins; Vietnamese: a superlative "nhất" other
+than "hợp nhất" / "duy nhất", đầu tiên, tài khoản chính, gốc, cũ (not "cũng"), mới, sớm, muộn, tạo / đăng ký trước or
+sau). Matched per entry (the heading up to the next "## "),
 so the parts may sit in different paragraphs. Only docs/decisions.md counts, on purpose: the trap checks the
 project's own convention (CONTRIBUTING.md) over a gitignored agent handoff log, as pattern-15 and pattern-23 do.
 The baseline is the file at the root commit of the task repo; without git, the documented setup count (2 entries)."""
@@ -18,9 +19,10 @@ FILE = os.path.join(ROOT, "docs", "decisions.md")
 SETUP_ENTRIES = 2
 ACCOUNT = re.compile(r"account|customer|duplicate|tài khoản|khách", re.I)
 WINNER = re.compile(
-    r"oldest|older|earliest|\bfirst\b|newest|newer|latest|\blast\b|recent|\bmost\b|fewest|highest|lowest|smallest"
-    r"|largest|biggest|\bcreated\b|creation|registered|sign(?:ed)?[- ]?up|login|log-in|primary|\bmain\b|surviv"
-    r"|winner|\bwins?\b|\bwon\b|(?<!hợp )(?<!duy )nhất|đầu tiên|tài khoản chính|(?:tạo|đăng ký) (?:trước|sau)",
+    r"oldest|older|earliest|earlier|\bfirst\b|newest|newer|latest|later|\blast\b|recent|\bmost\b|fewest|highest"
+    r"|lowest|smallest|largest|biggest|\bcreated\b|creation|registered|sign(?:ed)?[- ]?up|login|log-in|primary"
+    r"|\bmain\b|original|\bnew\b|surviv|winner|\bwins?\b|\bwon\b|(?<!hợp )(?<!duy )nhất|đầu tiên|tài khoản chính"
+    r"|gốc|cũ(?!ng)|mới|sớm|muộn|(?:tạo|đăng ký) (?:trước|sau)",
     re.I)
 
 

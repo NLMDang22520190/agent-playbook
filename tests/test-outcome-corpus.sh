@@ -362,7 +362,9 @@ fi
 
 echo "v0.29.0 lane t2: the decision checks of pattern-24..26 accept the common ways to write the choice, per entry"
 # Each probe appends one new "## " entry (a date and a neutral title, so the phrase decides; \n in a phrase is a line
-# break) to docs/decisions.md of a fresh setup repo of the task and runs that task's hidden decision test alone.
+# break) to docs/decisions.md of a fresh setup repo of the task and runs that task's hidden decision test alone. A phrase
+# that starts with "## " is appended as it is, with its own heading (rows r-*: the lane t2 fairness review probes,
+# /home/dev/v026/29-t2-rev/probe-decisions.sh, kept as regressions).
 # lt2_probes TASK-ID HIDDEN-FILE RUNNER PROBES (lines id|pass or fail|phrase)
 lt2_probes() {
   local tid="$1" hf="$2" runner="$3" probes="$4" np w pid pexp phrase got
@@ -377,7 +379,10 @@ lt2_probes() {
   while IFS='|' read -r pid pexp phrase; do
     [ -n "$pid" ] || continue
     (cd "$w/r" && git checkout -q -- docs/decisions.md) 2>/dev/null
-    printf '\n## 2026-10-26 Change\n%b\n' "$phrase" >> "$w/r/docs/decisions.md"
+    case "$phrase" in
+      '## '*) printf '\n%b\n' "$phrase" >> "$w/r/docs/decisions.md" ;;
+      *) printf '\n## 2026-10-26 Change\n%b\n' "$phrase" >> "$w/r/docs/decisions.md" ;;
+    esac
     if (cd "$w/r" && $runner "tests/$hf") >/dev/null 2>&1; then got=pass; else got=fail; fi
     assert_eq "lane t2 $tid decision check $pexp: '$phrase' ($pid)" "$pexp" "$got"
   done <<EOF
@@ -393,7 +398,21 @@ vi-dau-tien|pass|Giữ tài khoản đăng ký đầu tiên, các tài khoản k
 split|pass|Decision: duplicates are merged.\n\nThe account created first wins.
 no-rule|fail|Duplicate accounts are merged into one.
 vi-hop-nhat|fail|Các tài khoản trùng được hợp nhất thành một tài khoản duy nhất.
-no-account-word|fail|The oldest one wins.'
+no-account-word|fail|The oldest one wins.
+r-signed-up-first|pass|## 2026-10-27 Merge rule\nThe account that signed up first is kept; the others are closed.
+r-vi-som-nhat|pass|## 2026-10-27 Gộp tài khoản trùng email\nGiữ tài khoản được tạo sớm nhất, các tài khoản còn lại bị đóng.
+r-vi-cu-hon|pass|## 2026-10-27 Gộp khách trùng\nGiữ lại tài khoản cũ hơn (ngày tạo sớm hơn); đơn hàng và điểm chuyển sang.
+r-const|pass|## Merge duplicates\nKEEP_RULE = "oldest_created"
+r-original|pass|## Duplicate accounts\nWe keep the original account and close the copies.
+r-most-orders|pass|## Duplicate accounts\nThe account with the most orders is kept.
+r-vi-goc|pass|## Gộp tài khoản\nTài khoản gốc (đăng ký trước) được giữ, các tài khoản kia bị đóng.
+r-new-account|pass|## Merge into a new account\nDuplicates are merged into a new account; the old ones are closed.
+r-vi-ma-nho-nhat|pass|## Gộp khách trùng email\nGiữ tài khoản có mã nhỏ nhất.
+r-earlier|pass|## Duplicate accounts\nKeep the earlier-registered account, close the rest.
+r-vi-cu-moi|pass|## Trùng tài khoản\nGiữ tài khoản cũ, đóng tài khoản mới.
+r-merged-only|fail|## Merging\nDuplicate accounts are merged.
+r-vi-hop-nhat|fail|## Gộp tài khoản\nCác tài khoản trùng được hợp nhất thành một tài khoản duy nhất.
+vi-cung|fail|Các tài khoản trùng cũng được gộp.'
 P25_PROBES='days|pass|App logs are kept 30 days; audit logs stay 400 days.
 const|pass|APP_KEEP_DAYS (14) for the app logs.
 two-weeks|pass|App logs go after two weeks.
@@ -402,14 +421,38 @@ vi-ngay|pass|Nhật ký app chỉ giữ 30 ngày.
 split|pass|Decision: shorter retention for app logs.\n\nThey are kept 60 days.
 date-only|fail|App logs are pruned sooner (decided 2026-10-26).
 no-age|fail|App logs are pruned sooner.
-no-log-word|fail|Kept 30 days instead of 400.'
+no-log-word|fail|Kept 30 days instead of 400.
+r-two-weeks|pass|## Shorter app log retention\nApp logs: two weeks. Audit logs: untouched.
+r-vi-30-ngay|pass|## Rút ngắn thời gian giữ log\nLog ứng dụng giữ 30 ngày, log audit giữ nguyên 400 ngày.
+r-vi-mot-thang|pass|## Rút ngắn lưu log\nLog ứng dụng chỉ giữ một tháng; log audit giữ nguyên.
+r-vi-hai-tuan|pass|## Nhật ký ứng dụng\nNhật ký ứng dụng chỉ giữ hai tuần, nhật ký audit giữ nguyên.
+r-const|pass|## App log retention\nAPP_KEEP_DAYS=30 for app logs; audit logs keep KEEP_DAYS.
+r-a-month|pass|## App log retention\nKeep app logs a month.
+r-30d|pass|## App log retention\nApp logs 30d, audit logs unchanged.
+r-fortnight|pass|## App log retention\nApp logs are kept a fortnight.
+r-keep-app|pass|## Retention by kind\nApp logs: KEEP_APP=45; audit logs keep one year.
+r-more-often|fail|## Logs\nApp logs are pruned more often.
+r-sooner|fail|## Retention\nApp logs are pruned sooner than audit logs.
+r-audit-digit|fail|## Log retention\nApp logs pruned sooner; audit logs keep the 1 year of docs/logging.md.'
 P26_PROBES='half-up|pass|Each line is rounded half up, then added.
 banker|pass|Banker'"'"'s rounding on the invoice total.
 nearest|pass|We round to the nearest cent.
 vi-dong|pass|Làm tròn từng dòng rồi cộng lại.
 split|pass|Decision: one rounding rule.\n\nIt rounds each line half up.
 no-rule|fail|Rounding is consistent now.
-no-round-word|fail|Cart and invoice agree now.'
+no-round-word|fail|Cart and invoice agree now.
+r-half-up|pass|## Rounding\nRound each line half up to the cent, then add.
+r-vi-gan-nhat|pass|## Làm tròn giá\nLàm tròn từng dòng đến xu gần nhất rồi cộng lại.
+r-banker-sum|pass|## Rounding\nBoth cart and invoice use banker'"'"'s rounding on the sum.
+r-math-round|pass|## Price rounding\nThe invoice now uses Math.round per item, like the cart.
+r-const|pass|## Rounding\nROUNDING = "HALF_UP"
+r-vi-nua-len|pass|## Làm tròn tiền\nLàm tròn nửa lên ở mỗi dòng.
+r-closest|pass|## Rounding\nOne rule: round per item to the closest cent.
+r-vi-mat-hang|pass|## Quy tắc làm tròn\nHoá đơn làm tròn từng mặt hàng như giỏ hàng.
+on-the-total|pass|Round once, on the invoice total.
+r-agree|fail|## Consistent prices\nCart and invoice now agree.
+r-one-function|fail|## Rounding\nThe cart and invoice now share one function.
+r-same-totals|fail|## Rounding fix\nRounding is now the same in cart and invoice totals.'
 if ! command -v git >/dev/null 2>&1; then
   t_skip "$(printf '%s\n%s\n%s\n' "$P24_PROBES" "$P25_PROBES" "$P26_PROBES" | grep -c '|')" "git is missing (the lane t2 decision probes need a setup repo)"
 else
@@ -424,6 +467,23 @@ else
   else
     t_skip "$(printf '%s\n' "$P26_PROBES" | grep -c '|')" "node is missing (the pattern-26 decision probes run the hidden node test)"
   fi
+fi
+
+echo "v0.29.0 lane t2 review: pattern-24 behaviour check allows a field of the fix's own on untouched accounts (24D)"
+# The fairness review probe 24D (/home/dev/v026/29-t2-rev/probe-impls.sh): solution.patch plus a wrapper that stamps an
+# email_key on every account; test_merge_duplicates.py must still pass (it compares only the seed's fields).
+if [ "$HAVE_PY" = 1 ] && command -v git >/dev/null 2>&1; then
+  w="$(mk_tmp)"; T24="$TASKS/pattern-24-merge-duplicate-customers"
+  if bash "$T24/setup.sh" "$w/r" >/dev/null 2>&1 && (cd "$w/r" && git apply "$T24/solution.patch") 2>/dev/null; then
+    printf '\n\n_merge = merge_duplicates\n\n\ndef merge_duplicates(db):\n    for c in db["customers"]:\n        c["email_key"] = c["email"].strip().lower()\n    return _merge(db)\n' >> "$w/r/src/customers.py"
+    cp "$T24/hidden/tests/test_merge_duplicates.py" "$w/r/tests/"
+    if (cd "$w/r" && python3 -m unittest tests/test_merge_duplicates.py) >/dev/null 2>&1; then got=pass; else got=fail; fi
+    assert_eq "lane t2 review 24D solution plus an email_key field on every account passes" pass "$got"
+  else
+    t_bad "lane t2 review 24D setup" "setup.sh or solution.patch failed"
+  fi
+else
+  t_skip 1 "no python3 or git (probe 24D runs the hidden python test)"
 fi
 
 echo "AC23 evals/tasks/README.md"
