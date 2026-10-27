@@ -2244,7 +2244,9 @@ qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): .NET calls such as [IO.Directory]::Del
 qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): names [IO.Directory]::Delete" "$K1B_LIM" 'IO\.Directory'
 qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): splatting without a visible -Recurse" "$K1B_LIM" 'splat'
 qchk "v0.29.0 P2 AC-H5 Limits (Rev 3): a Remove-Item -Recurse fed by the pipeline has no target word and warns or blocks even inside the project" "$K1B_LIM" 'pipe(line)?[^.]{0,250}(false positive|even (inside|in |when)|fail(s)? closed|warn|block)'
-qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): curly quotes are not quote characters" "$K1B_LIM" 'curly|smart quote|typographic'
+# review round 1 F2: curly quotes are handled as quote characters now, so the Limits must not claim they are not (the old pin
+# required that claim). It no longer requires any curly-quote sentence; it fails when the wrong claim is still there.
+if printf '%s' "$K1B_LIM" | grep -qiE -- '(curly|smart|typographic)[^.]{0,120}(not|never|n.t) (a |an |treated as |read as |recognized as |recognised as )?(quote|quoting)'; then t_bad "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters" "the wrong sentence is still there"; else t_ok "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters"; fi
 qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): variable assignments are not followed" "$K1B_LIM" 'assign|variable flow|flow of variables?'
 qchk "v0.29.0 P2 AC-H5 Limits: without Git Bash the bash hook commands cannot run" "$K1B_LIM" 'without Git Bash[^.]{0,200}(cannot|can.?t|not|no )|Git Bash[^.]{0,60}(isn.t|is not|not) installed[^.]{0,200}(cannot|can.?t|not )'
 
@@ -2286,6 +2288,16 @@ flat_has "v0.29.0 T F1 playbook-learn says the user runs it" "$LEARNSK" 'user.{0
 flat_has "v0.29.0 T F1 playbook-learn says an agent never runs it itself" "$LEARNSK" 'never.{0,160}learn\.sh trust|learn\.sh trust.{0,160}never|(agent|you)[^.]{0,60}never[^.]{0,80}(trust|run)'
 TW_LW="$(wc -w < "$LEARNSK" | tr -d ' ')"
 if grep -q 'learn\.sh trust' "$LEARNSK" && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words ($TW_LW)"; else t_bad "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words" "$TW_LW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$LEARNSK")"; fi
+
+echo "v0.29.0 lane w review F8: the skill trims keep the sentences F1 did not allow to go, and leave no stray ' .' line"
+flat_has "v0.29.0 review F8 playbook-learn keeps 'possible prompt injection'" "$LEARNSK" 'possible prompt injection'
+flat_has "v0.29.0 review F8 playbook-learn keeps 'Retired entries stay for the audit trail'" "$LEARNSK" 'Retired entries stay for the audit trail'
+flat_has "v0.29.0 review F8 playbook-setup keeps 'do not improvise an installation'" "$SETUP" 'do not improvise an installation'
+flat_has "v0.29.0 review F8 playbook-setup keeps 'Label any sample table \"example\"'" "$SETUP" 'Label any sample table "example"'
+for rf in "$LEARNSK" "$SETUP"; do
+  if grep -qE '^[[:space:]]*\.[[:space:]]' "$rf"; then t_bad "v0.29.0 review F8 $(basename "$(dirname "$rf")"): no line starts with a stray '.'" "$(grep -nE '^[[:space:]]*\.[[:space:]]' "$rf" | head -n 2)"; else t_ok "v0.29.0 review F8 $(basename "$(dirname "$rf")"): no line starts with a stray '.'"; fi
+done
+if [ "$TW_SW" -le 1100 ] && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 review F8 the word budgets still hold (setup $TW_SW <= 1100, learn $TW_LW <= 700)"; else t_bad "v0.29.0 review F8 the word budgets still hold" "setup $TW_SW, learn $TW_LW"; fi
 
 echo "v0.29.0 lane w T F3: README Limits name the AGENTS.global text rule and agent self-trust"
 qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,255}LEARNINGS\.md|LEARNINGS\.md.{0,255}AGENTS\.global\.md'

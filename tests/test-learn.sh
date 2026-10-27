@@ -412,4 +412,35 @@ else
 fi
 unset PB_STUB_REAL PB_STUB_RAW
 
+
+# ---- review round 1 fix (05-review.md finding 4): trust and untrust are case-sensitive for POSIX paths without cygpath ----
+echo "T trust: two directories that differ only by case are two projects on a case-sensitive file system without cygpath (F4)"
+CSD="$(mk_tmp)"; mkdir -p "$CSD/CaseProj-7c2" "$CSD/caseproj-7c2" 2>/dev/null
+# probe (L-0004): case-insensitive file system or a cygpath on PATH (Git Bash folds case by design): t_skip with the same count (9)
+if [ "$(ls "$CSD" | wc -l | tr -d ' ')" = 2 ] && ! command -v cygpath > /dev/null 2>&1; then
+  CU="$(cd "$CSD/CaseProj-7c2" && pwd -P)"; CL="$(cd "$CSD/caseproj-7c2" && pwd -P)"
+  fresh_home; cd "$CSD" || exit 3
+  run bash "$LEARN" trust "$CU"
+  assert_rc "T F4 trust CaseProj-7c2: exit 0" 0
+  run bash "$LEARN" trust "$CL"
+  assert_not_contains "T F4 trusting caseproj-7c2 after CaseProj-7c2 is not 'already trusted'" "$OUT" "already trusted"
+  assert_eq "T F4 both case spellings are stored as two entries" "2" "$(n_ents)"
+  run bash "$LEARN" untrust "$CL"
+  assert_rc "T F4 untrust caseproj-7c2: exit 0" 0
+  assert_eq "T F4 untrust caseproj-7c2 removes only that entry and keeps CaseProj-7c2" "$CU" "$(ents)"
+  fresh_home; cd "$CSD" || exit 3
+  run bash "$LEARN" trust "$CU"
+  run bash "$LEARN" untrust "$CL"
+  assert_rc "T F4 untrust of the other-case dir when only CaseProj-7c2 is listed: exit 0" 0
+  assert_eq "T F4 that untrust removes nothing (the entry stays)" "$CU" "$(ents)"
+  run bash "$LEARN" untrust "$CU"
+  assert_eq "T F4 untrust CaseProj-7c2 removes it" "0" "$(n_ents)"
+  fresh_home; cd "$CSD" || exit 3
+  write_tf "$CL"
+  run bash "$LEARN" untrust "$CU"
+  assert_eq "T F4 untrust CaseProj-7c2 does not remove a hand-written caseproj-7c2 line" "$CL" "$(ents)"
+else
+  t_skip 9 "case-sensitive file system without cygpath not available here: case rows not testable"
+fi
+
 t_summary

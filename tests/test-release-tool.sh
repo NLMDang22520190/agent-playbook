@@ -466,6 +466,7 @@ if [ "$SSH_SIGN" = 1 ]; then
   run_in "$C" bash tools/release.sh v1.2.3
   assert_rc "AC-S1 release with an ssh signing key -> exit 0" 0
   assert_eq "AC-S1 the tag is an annotated tag object" "tag" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+  assert_eq "AC-S1 the signed tag message is 'release v1.2.3'" "release v1.2.3" "$(git -C "$C" tag -l --format='%(contents:subject)' v1.2.3 2>/dev/null)"
   assert_contains "AC-S1 the tag object carries an SSH signature (the marker install.sh classifies on)" \
     "$(git -C "$C" cat-file tag refs/tags/v1.2.3 2>/dev/null | LC_ALL=C grep -e '^-----BEGIN SSH SIGNATURE-----')" "BEGIN SSH SIGNATURE"
   if git -C "$C" -c gpg.ssh.allowedSignersFile="$SW/allowed" verify-tag v1.2.3 > /dev/null 2>&1; then t_ok "AC-S1 git verify-tag accepts the local tag against the allowed signers file"; else t_bad "AC-S1 git verify-tag accepts the local tag against the allowed signers file"; fi
@@ -493,8 +494,9 @@ if [ "$SSH_SIGN" = 1 ]; then
   run_in "$C" bash tools/release.sh v1.2.3
   assert_rc "AC-S1 a repo-level user.signingkey is used (effective config) -> exit 0" 0
   assert_eq "AC-S1 a repo-level signing key gives an annotated tag" "tag" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+  assert_eq "AC-S1 a repo-level signing key: the tag message is 'release v1.2.3'" "release v1.2.3" "$(git -C "$C" tag -l --format='%(contents:subject)' v1.2.3 2>/dev/null)"
 else
-  t_skip 16 "AC-S1/AC-S5 signed release tag (ssh-keygen or ssh tag signing unsupported here)"
+  t_skip 18 "AC-S1/AC-S5 signed release tag (ssh-keygen or ssh tag signing unsupported here)"
 fi
 
 echo "AC-S6: docs/development.md 'Signing release tags' section"

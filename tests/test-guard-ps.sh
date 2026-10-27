@@ -728,4 +728,177 @@ if ! has "$GERR" 'syntax error' && ! has "$GERR" 'unbound variable' && ! has "$G
 grun PB_HEADLESS=1 -- 'tool_name PowerShell; git push --force origin main'
 expect_pass "AC-P9 non-JSON text is PASS"
 
+
+# ---- review round 1 fixes (05-review.md findings 1, 2, 3, 5, 6, 7): same text, fail closed ----
+# Characters as bytes (the suite stays ASCII): U+2013 en dash, U+2014 em dash, U+2015 horizontal bar; the curly quotes
+# U+2018 U+2019 U+201A U+201B (single) and U+201C U+201D U+201E (double). PowerShell treats all of them as dashes / quote marks.
+ED=$'\xe2\x80\x93' EM=$'\xe2\x80\x94' HB=$'\xe2\x80\x95'
+LS=$'\xe2\x80\x98' RS=$'\xe2\x80\x99' SL=$'\xe2\x80\x9a' SH=$'\xe2\x80\x9b'
+LQ=$'\xe2\x80\x9c' RQ=$'\xe2\x80\x9d' DL=$'\xe2\x80\x9e'
+CR=$'\r'
+
+echo "P1 review F1 Unicode dashes (U+2013, U+2014, U+2015) start a parameter word like -"
+blk rm-outside <<EOF
+Remove-Item ${ED}Recurse ${ED}Force C:\Users\me\docs
+Remove-Item ${EM}Recurse ${EM}Force C:\Users\me\docs
+Remove-Item ${HB}Recurse ${HB}Force C:\Users\me\docs
+Remove-Item ${ED}Recurse C:\Users\me\docs
+Remove-Item ${EM}Recurse C:\Users\me\docs
+Remove-Item ${HB}Recurse C:\Users\me\docs
+Remove-Item ${ED}r C:\Users\me\docs
+Remove-Item -Recurse ${ED}Path C:\Users\me\docs
+Remove-Item -Recurse ${EM}LiteralPath C:\Users\me\docs
+Remove-Item -Recurse ${ED}Path:C:\Users\me\docs
+rm ${ED}r ${ED}fo C:\Users\me\docs
+Remove-Item ${ED}Recurse ${ED}Force ..\other
+EOF
+blk git-push-force <<EOF
+git push ${EM}force origin main
+git push ${ED}force origin main
+git push ${HB}force origin main
+git push origin main ${EM}force-with-lease
+EOF
+# controls: a dash character inside a word (a path in the project) is not a parameter; a non-recursive delete stays a PASS
+pas <<EOF
+Remove-Item -Recurse -Force .\dist${ED}old
+Remove-Item -Recurse -Force C:\work\app\a${ED}b
+Remove-Item -Recurse -Force .\my${EM}dir\x
+Remove-Item -Recurse -Force .\my${HB}dir
+Remove-Item ${ED}Force C:\Users\me\docs
+Remove-Item ${ED}Recurse -Force .\dist
+Write-Host ${ED}Recurse
+EOF
+
+echo "P1 review F2 curly quotes (U+2018 U+2019 U+201A U+201B, U+201C U+201D U+201E) are quote characters"
+blk rm-outside <<EOF
+Remove-Item -Recurse -Force ${LQ}C:\Users\me\docs${RQ}
+Remove-Item -Recurse -Force ${LS}C:\Users\me\docs${RS}
+Remove-Item -Recurse -Force ${SL}C:\Users\me\docs${SH}
+Remove-Item -Recurse -Force ${DL}C:\Users\me\docs${LQ}
+Remove-Item -Recurse -Force ${LQ}C:\Users\me\my docs${RQ}
+Remove-Item -Recurse -Force ${LS}C:\Users\me\my docs${RS}
+Remove-Item -Recurse -Force ${LQ}..\other${RQ}
+Remove-Item -Recurse -Force ${LS}..\other${RS}
+Remove-Item -Recurse -Path ${LQ}C:\Users\me\docs${RQ}
+Remove-Item -Recurse -Path:${LQ}C:\Users\me\docs${RQ}
+Remove-Item -Recurse -LiteralPath ${LS}C:\Users\me\docs${RS}
+EOF
+blk git-push-force <<EOF
+git push ${LQ}--force${RQ} origin main
+git push ${LS}-f${RS} origin main
+git push ${DL}--force${RQ} origin main
+git push origin ${LQ}+main${RQ}
+EOF
+blk sql <<EOF
+sqlite3 app.db ${LQ}DROP TABLE t${RQ}
+psql -c ${LS}TRUNCATE t${RS}
+${LQ}DROP TABLE t${RQ} | sqlite3 app.db
+EOF
+# controls: a quoted path in the project passes; text inside curly quotes is one string (a ; in it separates nothing)
+pas <<EOF
+Remove-Item -Recurse -Force ${LQ}.\dist${RQ}
+Remove-Item -Recurse -Force ${LS}.\dist${RS}
+Remove-Item -Recurse -Force ${LQ}.\my dist${RQ}
+Remove-Item -Recurse -Force ${LQ}C:\work\app\dist${RQ}
+Write-Host ${LQ}a; git push -f${RQ}
+Write-Host ${LS}a; Remove-Item -Recurse C:\Users\me${RS}
+EOF
+
+echo "P1 review F3 a same-command assignment to a variable the guard resolves makes it unresolved (fail closed)"
+PSE=(TEMP=/tmp/pbfix2tempA TMP=/tmp/pbfix2tempB TMPDIR=/tmp/pbfix2tempC)   # temp dirs the guard knows without cygpath; never created
+blk rm-outside <<'EOF'
+$env:TEMP = "C:\Users\me"; Remove-Item -Recurse -Force $env:TEMP
+$Env:Temp="C:\Users\me"; Remove-Item -Recurse -Force $env:TEMP
+$env:TEMP='C:\Users'; Remove-Item -Recurse -Force "$env:TEMP\me"
+Set-Item env:TEMP C:\Users; Remove-Item -Recurse $env:TEMP\me
+Set-Item -Path env:TEMP -Value C:\Users; Remove-Item -Recurse $env:TEMP\me
+$env:TMP = "C:\Users"; Remove-Item -Recurse -Force "$env:TMP\me"
+$env:TMPDIR = "C:\Users"; Remove-Item -Recurse -Force "$env:TMPDIR\me"
+Write-Host x; $env:TEMP = "C:\Users\me"; Remove-Item -Recurse -Force $env:TEMP
+EOF
+# the same, assignment and delete on separate lines
+psh "\$env:TEMP = \"C:\\Users\\me\"${NLC}Remove-Item -Recurse -Force \$env:TEMP"; expect_block "F3 assignment on its own line, delete on the next" rm-outside
+psh "\$env:TEMP = \"C:\\Users\\me\"${CR}${NLC}Remove-Item -Recurse -Force \$env:TEMP"; expect_block "F3 CRLF between the assignment and the delete" rm-outside
+# controls: without the assignment the temp delete passes; an assignment to another variable changes nothing
+pas <<'EOF'
+Remove-Item -Recurse -Force $env:TEMP\pbx
+Remove-Item -Recurse -Force "$env:TMP\pbx"
+$x = 1; Remove-Item -Recurse -Force $env:TEMP\pbx
+$env:FOO = "C:\Users"; Remove-Item -Recurse -Force "$env:TEMP\pbx"
+Set-Item env:FOO C:\Users; Remove-Item -Recurse -Force $env:TEMP\pbx
+Set-Variable x C:\; Remove-Item -Recurse -Force $env:TEMP\pbx
+EOF
+PSE=(CLAUDE_PROJECT_DIR='C:\work\app')
+blk rm-outside 'C:\other' <<'EOF'
+$env:CLAUDE_PROJECT_DIR = "C:\"; Remove-Item -Recurse -Force "$env:CLAUDE_PROJECT_DIR\Users"
+$Env:CLAUDE_PROJECT_DIR="C:\"; Remove-Item -Recurse -Force $env:CLAUDE_PROJECT_DIR\Users
+Set-Item env:CLAUDE_PROJECT_DIR C:\; Remove-Item -Recurse -Force $env:CLAUDE_PROJECT_DIR\Users
+EOF
+pas 'C:\other' <<'EOF'
+Remove-Item -Recurse -Force "$env:CLAUDE_PROJECT_DIR\build"
+$x = "C:\"; Remove-Item -Recurse -Force "$env:CLAUDE_PROJECT_DIR\build"
+EOF
+PSE=()
+# HOME, USERPROFILE and the home-like names: the project is inside the fixture home (cwd /pbguard-home/proj), so $HOME\proj\build
+# passes unless an assignment in the same command changed what $HOME means
+blk rm-outside /pbguard-home/proj <<'EOF'
+$HOME = "C:\"; Remove-Item -Recurse -Force $HOME\proj\build
+$Home="C:\"; Remove-Item -Recurse -Force "$HOME\proj\build"
+Set-Variable HOME C:\; Remove-Item -Recurse -Force $HOME\proj\build
+Set-Variable -Name HOME -Value C:\; Remove-Item -Recurse -Force $HOME\proj\build
+$env:USERPROFILE = "C:\Windows"; Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+$env:HOME = "C:\Windows"; Remove-Item -Recurse -Force "$env:HOME\proj\build"
+Set-Item env:USERPROFILE C:\Windows; Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+EOF
+pas /pbguard-home/proj <<'EOF'
+Remove-Item -Recurse -Force $HOME\proj\build
+$x = "C:\"; Remove-Item -Recurse -Force $HOME\proj\build
+$env:FOO = "C:\"; Remove-Item -Recurse -Force $env:USERPROFILE\proj\build
+EOF
+
+echo "P1 review F5 a pipe continued on the next line keeps the pipeline (SQL client on the next line)"
+psh "\"DROP TABLE t\" |${NLC}sqlite3 app.db"; expect_block "F5 \"DROP TABLE t\" |<newline>sqlite3 app.db" sql
+psh "'DROP TABLE t' |${NLC}${NLC}psql"; expect_block "F5 'DROP TABLE t' |<newline><newline>psql" sql
+psh "\"DROP TABLE t\" |${NLC}  psql -d x"; expect_block "F5 the next line is indented" sql
+psh "echo 'DROP TABLE t' |${NLC}psql"; expect_block "F5 echo 'DROP TABLE t' |<newline>psql" sql
+psh "\"DROP TABLE t\" |  ${NLC}sqlite3 app.db"; expect_block "F5 spaces after the pipe, then the newline" sql
+psh "\"DROP TABLE t\" |${CR}${NLC}sqlite3 app.db"; expect_block "F5 CRLF after the pipe" sql
+psh "\"DROP TABLE t\" |${NLC}Out-File notes.txt"; expect_pass "F5 control: the pipe continues into Out-File (no SQL client)"
+psh "\"DROP TABLE t\"${NLC}sqlite3 app.db"; expect_pass "F5 control: no pipe, so the next line is a separate command with no SQL"
+
+echo "P1 review F6 dot-sourcing . CMD is a call like & CMD"
+blk rm-outside <<'EOF'
+. Remove-Item -Recurse -Force C:\Users\me\docs
+.  rm -r C:\Users\me\docs
+cd x; . Remove-Item -Recurse C:\Users\me\docs
+if ($true) { . Remove-Item -Recurse -Force C:\Users\me\docs }
+EOF
+blk git-push-force <<'EOF'
+. git push -f
+. git push --force origin main
+EOF
+pas <<'EOF'
+. Remove-Item -Recurse -Force .\dist
+. .\env.ps1
+. git status
+EOF
+
+echo "P1 review F7 drive-relative and provider-qualified delete targets fail closed"
+blk rm-outside <<'EOF'
+Remove-Item -Recurse -Force C:..\other
+Remove-Item -Recurse -Force "C:..\other"
+Remove-Item -Recurse -Path C:..\other
+Remove-Item -Recurse -Force FileSystem::C:\Users\me
+Remove-Item -Recurse -Force Microsoft.PowerShell.Core\FileSystem::C:\x
+Remove-Item -Recurse -Force "FileSystem::C:\Users\me"
+Remove-Item -Recurse -Force -Path FileSystem::C:\Users\me
+Remove-Item -Recurse -Force FileSystem::C:\work\app\dist
+Remove-Item -Recurse -Force Registry::HKEY_CURRENT_USER\Software\x
+EOF
+pas <<'EOF'
+Remove-Item FileSystem::C:\Users\me
+Write-Host FileSystem::C:\Users\me
+Get-ChildItem -Recurse FileSystem::C:\Users\me
+EOF
+
 t_summary

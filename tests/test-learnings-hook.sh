@@ -561,4 +561,40 @@ else
 fi
 unset PB_STUB_REAL PB_STUB_RAW
 
+
+# ---- review round 1 fixes (05-review.md findings 4 and 10) ----
+echo "T7 review F4 trust matching is case-sensitive for POSIX paths on a case-sensitive file system (no cygpath)"
+# Two project dirs whose names differ only by case. Probe first (L-0004): a case-insensitive file system or a cygpath on PATH
+# (Windows Git Bash folds case by design, AC-T4) make these rows meaningless: t_skip with the same count (13 assertions).
+CSD="$(mk_tmp)"; mkdir -p "$CSD/CaseProj-7c2" "$CSD/caseproj-7c2" 2>/dev/null
+if [ "$(ls "$CSD" | wc -l | tr -d ' ')" = 2 ] && ! command -v cygpath > /dev/null 2>&1; then
+  mk_trust_proj "$CSD/CaseProj-7c2"; mk_trust_proj "$CSD/caseproj-7c2"
+  trust_case "T7 F4 same spelling (upper case dir) is trusted" "$CSD/CaseProj-7c2" "$CSD/CaseProj-7c2" inject
+  trust_case "T7 F4 same spelling (lower case dir) is trusted" "$CSD/caseproj-7c2" "$CSD/caseproj-7c2" inject
+  trust_case "T7 F4 trusting CaseProj-7c2 does not trust caseproj-7c2" "$CSD/CaseProj-7c2" "$CSD/caseproj-7c2" untrusted
+  trust_case "T7 F4 trusting caseproj-7c2 does not trust CaseProj-7c2" "$CSD/caseproj-7c2" "$CSD/CaseProj-7c2" untrusted
+  # both listed: each still only matches itself, a third spelling matches neither
+  mkdir -p "$CSD/CASEPROJ-7c2"; mk_trust_proj "$CSD/CASEPROJ-7c2"
+  trust_case "T7 F4 both other-case dirs listed: the third spelling is not trusted" "$CSD/CaseProj-7c2" "$CSD/CASEPROJ-7c2" untrusted
+else
+  t_skip 13 "case-sensitive file system without cygpath not available here: case rows not testable"
+fi
+
+echo "T8 review F10 an untrusted project's learnings_path value is not printed on stderr either"
+LPD="$(mk_tmp)"; LPR="$LPD/tproj-lp8"; mk_trust_proj "$LPR"
+mkdir -p "$LPD/LPOUT-8181"; printf 'outside-8181 text\n' > "$LPD/LPOUT-8181/notes.md"
+printf 'learnings_path=../LPOUT-8181/notes.md\n' > "$LPR/.agents/playbook.conf"
+new_home                                   # untrusted
+tp_hook "$NH" "$(js_input "$LPR")"
+assert_rc "T8 F10 untrusted, learnings_path outside the root: exit 0" 0
+assert_not_contains "T8 F10 untrusted: stderr does not print the project conf's learnings_path value" "$ERR" "LPOUT-8181"
+assert_not_contains "T8 F10 untrusted: stdout does not print the learnings_path value" "$OUT" "LPOUT-8181"
+assert_not_contains "T8 F10 untrusted: no text of the outside file" "$OUT$ERR" "outside-8181"
+new_home "$LPR"                            # trusted: today's refusal line stays
+tp_hook "$NH" "$(js_input "$LPR")"
+assert_rc "T8 F10 trusted, learnings_path outside the root: exit 0" 0
+assert_eq "T8 F10 trusted: nothing injected" "" "$OUT"
+assert_contains "T8 F10 trusted: stderr keeps the refusal line naming learnings_path" "$ERR" "learnings_path"
+assert_contains "T8 F10 trusted: the refusal line says it was not injected" "$ERR" "not injected"
+
 t_summary
