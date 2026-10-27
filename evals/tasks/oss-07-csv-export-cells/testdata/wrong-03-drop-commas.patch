@@ -1,0 +1,16 @@
+diff --git a/src/csv.js b/src/csv.js
+index 74a2ffb..b6337b3 100644
+--- a/src/csv.js
++++ b/src/csv.js
+@@ -1,9 +1,9 @@
+ 'use strict';
+ 
+-// One CSV cell: a missing value is empty, anything else its text.
++// One CSV cell: a missing value is empty; commas are dropped so a value never spills into the next column.
+ function cell(value) {
+   if (value === undefined || value === null) return '';
+-  return String(value);
++  return String(value).replace(/,/g, '');
+ }
+ 
+ // toCsv(rows, columns) -> a header line with the column names, then one line per row, each line ending in "\n".

@@ -1,0 +1,53 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index bda39b6..bfea164 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -6,3 +6,10 @@ Decision: every amount is an integer number of cents. Why: no float sums in the
+ ## 2025-11-12 Invoice numbers
+ Decision: invoices are numbered INV-0001, INV-0002, ... in the order they are issued. Why: the accountant asked for a
+ gapless series.
++
++## 2026-10-26 One rounding rule for cart and invoice
++Decision: an invoice total follows the cart: each line is rounded to the nearest cent (half up), then the lines are
++added up. Only invoices issued from now on use it: a reprint shows the total stored at issue time, and INV-0001..0003
++keep their totals; the cent of INV-0003 goes through a credit note if the owner wants one.
++Why: the customer pays the cart total; the ticket did not say which rule wins or what happens to issued invoices, and
++docs/invoicing.md never changes an issued invoice.
+diff --git a/src/invoice.js b/src/invoice.js
+index 97bb116..c95708a 100644
+--- a/src/invoice.js
++++ b/src/invoice.js
+@@ -1,10 +1,11 @@
+ 'use strict';
+-const { lineAmount } = require('./cart');
++const { cartTotal } = require('./cart');
+ const { formatCents } = require('./money');
+ 
+-// Invoice total in cents: the exact line amounts added up, the fraction of a cent dropped.
++// Invoice total in cents: the cart's rule, each line rounded to the nearest cent (half up), then added up
++// (docs/decisions.md 2026-10-26), so the invoice always shows what the customer paid.
+ function invoiceTotal(lines) {
+-  return Math.floor(lines.reduce((sum, l) => sum + lineAmount(l), 0));
++  return cartTotal(lines);
+ }
+ 
+ // Issues the next invoice for these lines and returns it.
+@@ -19,7 +20,8 @@ function issueInvoice(store, lines, date) {
+   return invoice;
+ }
+ 
+-// The text of an invoice (PDF and reprint), or null for an unknown id.
++// The text of an invoice (PDF and reprint), or null for an unknown id. The total is the one stored at issue time: an
++// issued invoice never changes (docs/invoicing.md), also when the rounding rule changes later.
+ function printInvoice(store, id) {
+   const inv = store.invoices.find((i) => i.id === id);
+   if (!inv) return null;
+@@ -27,7 +29,7 @@ function printInvoice(store, id) {
+     const off = l.discountPct ? ` -${l.discountPct}%` : '';
+     return `${l.sku} x${l.qty} @ ${formatCents(l.unitPrice)}${off}`;
+   });
+-  return [`Invoice ${inv.id} ${inv.date}`, ...rows, `Total: ${formatCents(invoiceTotal(inv.lines))}`].join('\n');
++  return [`Invoice ${inv.id} ${inv.date}`, ...rows, `Total: ${formatCents(inv.total)}`].join('\n');
+ }
+ 
+ module.exports = { invoiceTotal, issueInvoice, printInvoice };

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Opt-in Claude Code hooks of agent-playbook (v0.28.0): adds the guard and learnings handlers to
+# Opt-in Claude Code hooks of agent-playbook (v0.28.0, PowerShell handler v0.29.0): adds the guard and learnings handlers to
 # <home>/.claude/settings.json, removes them again, or reports their state. Bash 3.2.
 #
 # Usage: claude-hooks.sh install|uninstall|status [--home DIR] [--dry-run]
-#   install    merge the four handlers (other keys and hooks are kept; a backup goes to
+#   install    merge the five handlers (other keys and hooks are kept; a backup goes to
 #              <home>/.agents/playbook-backups first; a second run changes nothing)
 #   uninstall  remove only handlers whose command contains "# agent-playbook:"
 #   status     one line per handler: installed | not installed | broken (script missing)
@@ -12,6 +12,10 @@
 # JSON to add or remove by hand. status uses grep and awk only.
 # DECISION[D20]: handlers PreToolUse Bash|Write|Edit (guard), SessionStart (guard --session-start, learnings),
 # Stop (guard --stop, timeout 30). DECISION[D22]: no onFailure field (fail-open).
+# DECISION[D-W2]: the PowerShell tool gets its own handler guard-ps (PreToolUse, matcher PowerShell), not a wider matcher on
+# guard: install matches handlers by their tail and never rewrites a matcher, so a separate handler reaches v0.28 installs.
+# https://code.claude.com/docs/en/hooks (section PowerShell): a hook that matches only Bash never fires for that tool.
+# The eval runner's handlers (evals/lib-harness.sh) stay Bash|Write|Edit.
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -31,7 +35,7 @@ done
 [ -n "$HDIR" ] || HDIR="$(pb_home)"
 SETTINGS="$HDIR/.claude/settings.json"
 BACKUPS="$HDIR/.agents/playbook-backups"
-NAMES="guard guard-start guard-stop learnings"
+NAMES="guard guard-ps guard-start guard-stop learnings"
 
 # hook_dir -> <P>, the scripts dir inside the handler commands.
 # DECISION[D30] [UNVERIFIED]: `bash "<P>/..."` with <P> in cygpath -m form (C:/...) when cygpath exists, which both
@@ -43,11 +47,12 @@ hook_dir() {
 
 jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 
-# hooks_json -> the settings fragment with the four handlers of the interface contract
+# hooks_json -> the settings fragment with the five handlers of the interface contract
 hooks_json() {
-  local p g s l t
+  local p g gp s l t
   p="$(hook_dir)"
   g="$(jstr "bash \"$p/guard-irreversible.sh\" # agent-playbook:guard")"
+  gp="$(jstr "bash \"$p/guard-irreversible.sh\" # agent-playbook:guard-ps")"
   s="$(jstr "bash \"$p/guard-irreversible.sh\" --session-start # agent-playbook:guard-start")"
   l="$(jstr "bash \"$p/learnings-hook.sh\" # agent-playbook:learnings")"
   t="$(jstr "bash \"$p/guard-irreversible.sh\" --stop # agent-playbook:guard-stop")"
@@ -55,7 +60,8 @@ hooks_json() {
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Bash|Write|Edit", "hooks": [ { "type": "command", "command": "$g", "timeout": 10 } ] }
+      { "matcher": "Bash|Write|Edit", "hooks": [ { "type": "command", "command": "$g", "timeout": 10 } ] },
+      { "matcher": "PowerShell", "hooks": [ { "type": "command", "command": "$gp", "timeout": 10 } ] }
     ],
     "SessionStart": [
       { "hooks": [

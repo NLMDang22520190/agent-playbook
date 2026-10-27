@@ -260,14 +260,15 @@ if [ "$BLOCK_BYTES" -le 5000 ]; then t_ok "v13 AC5.1 / v24 AC1.7 AGENTS.global.m
 # <= 4500 bytes (v0.24.10: the Quick line is gone; v0.24.24: raised from 4400 for the pushback sentence, decision D3-prime)
 if [ "$BLOCK_BYTES" -le 4750 ]; then t_ok "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25) ($BLOCK_BYTES)"; else t_bad "v24.1 / v0.25.0 AC9b AGENTS.global.md is <= 4750 bytes (raised from 4500 by user decision 2026-10-25)" "$BLOCK_BYTES bytes"; fi
 # every rule section keeps its exact heading and its "Why: " line
-for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for every claim' '### Scope discipline' \
+# v0.29.0 lane a: the Proof heading reads "for claims that matter" (it was "for every claim"; the body labels non-trivial claims only)
+for h in '### Clarify before changing' '### Load the skill, not the summary' '### Proof for claims that matter' '### Scope discipline' \
          '### TDD with separated roles' '### When other skills overlap' '### Learnings and playbook feedback' '### First run and precedence'; do
   exact_heading "v24.1 block keeps the heading [$h]" "$BLOCK" "$h"
   if section "$BLOCK" "^$h\$" | grep -qE -- '^Why: [^ ]'; then t_ok "v24.1 [$h] keeps its Why: line"; else t_bad "v24.1 [$h] keeps its Why: line" 'no line starting with "Why: " in the section'; fi
 done
 exact_heading 'v24.1 block keeps its title' "$BLOCK" '## Agent Playbook (always on)'
 # key rules pinned, each in its own section (joined text, so a wrapped sentence still matches)
-CLAR24='^### Clarify before changing'; PROOF='^### Proof for every claim'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
+CLAR24='^### Clarify before changing'; PROOF='^### Proof for claims that matter'; LEARN='^### Learnings and playbook feedback'; FIRST='^### First run and precedence'; OVER='^### When other skills overlap'
 jchk 'v24.1 Clarify: inspect first (code, config, docs, git history)' "$BLOCK" "$CLAR24" 'Inspect first[^.]{0,20}code, config, docs, git history'
 jchk 'v24.1 Clarify: never ask what the repo can answer' "$BLOCK" "$CLAR24" 'Never ask what the repo can answer'
 jchk 'v24.1 Clarify: ask only when material AND hard to reverse' "$BLOCK" "$CLAR24" 'material AND hard to reverse'
@@ -278,8 +279,11 @@ jchk 'v24.1 Clarify: end the summary with assumptions and logged defaults' "$BLO
 jchk 'v24.1 Proof: the [VERIFIED] label' "$BLOCK" "$PROOF" '\[VERIFIED\][^[]{0,60}(ran|read)[^[]{0,60}evidence'
 jchk 'v24.1 Proof: the [INFERRED] label' "$BLOCK" "$PROOF" '\[INFERRED\] reasoned from stated facts'
 jchk 'v24.1 Proof: the [UNVERIFIED] label' "$BLOCK" "$PROOF" '\[UNVERIFIED\] not checked'
-jchk 'v24.1 Proof: code claims cite path:line read this session' "$BLOCK" "$PROOF" 'cite `path:line` read this session'
-jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh' "$BLOCK" "$PROOF" '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
+# v0.29.0 lane a: these two sentences moved (Δ = 0 for E5, docs/delta-audit.md R6) from the always-on Proof section to
+# skills/playbook-proof/references/evidence-formats.md; the pins follow the text to its new place
+EVF="$PB_ROOT/skills/playbook-proof/references/evidence-formats.md"
+jchk 'v24.1 Proof: code claims cite path:line read this session (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' 'cite `path:line` read this session'
+jchk 'v24.1 Proof: passes/works/fixed need run output via proof-run.sh (v0.29.0: in evidence-formats.md)' "$EVF" '^## Producing evidence' '"Passes", "works", "fixed" need run output from this session[^)]{0,60}proof-run\.sh'
 jchk 'v24.1 Proof: library, API and version facts cite official docs' "$BLOCK" "$PROOF" 'version facts cite official docs \(URL, version\)'
 jchk 'v24.1 Proof: no evidence means say unverified' "$BLOCK" "$PROOF" 'No evidence[^.]{0,30}"unverified"'
 jchk 'v24.1 Proof: never fill gaps with plausible guesses' "$BLOCK" "$PROOF" '[Nn]ever[^.]{0,30}plausible guess'
@@ -1643,14 +1647,16 @@ qchk "v26 N AC13 README says run-evals.sh runs the $NAUTO26 that have automatic 
 for e in E2 E6 E13 E14 E32 E33 E34; do
   qchk "v26 N AC12 RUBRIC.md lists $e as auto-gradable" "$RUBTXT" "$e[^0-9][^.]{0,250}auto-gradable"
 done
-echo "v0.26.0 lane N S8 AC13 (Q2): the harness badge and the Behaviour evals row say Codex and OpenCode are installable, not evaluated"
+echo "v0.26.0 lane N S8 AC13 (Q2), v0.29.0 Run C1: the harness badge and the Behaviour evals row say Codex is partly evaluated and OpenCode is installable, not evaluated"
 BADGE26="$(grep -o 'img\.shields\.io/badge/harness-[^)]*' "$PB_ROOT/README.md" | head -n 1)"
 qchk "v26 N AC13 the harness badge says Claude Code is evaluated" "$BADGE26" 'Claude_Code[_ (:%0-9a-f]{0,12}evaluated'
-qchk "v26 N AC13 the harness badge says Codex is install only or not evaluated" "$BADGE26" 'Codex[^)]{0,80}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
+qchk "v29 Run C1 the harness badge says Codex is partly evaluated" "$BADGE26" 'Codex[:_ ]{0,4}partly_evaluated'
+if printf '%s' "$BADGE26" | grep -qE 'Codex,_OpenCode|Codex[:_ ]{0,4}(installable|not_evaluated)'; then t_bad "v29 Run C1 the harness badge has no Codex not-evaluated text" "[$BADGE26]"; else t_ok "v29 Run C1 the harness badge has no Codex not-evaluated text"; fi
 qchk "v26 N AC13 the harness badge says OpenCode is install only or not evaluated" "$BADGE26" 'OpenCode[^)]{0,60}(not_evaluated|not%20evaluated|install_only|install%20only|installable)'
 assert_not_contains "v26 N AC13 the old harness badge text is gone" "$BADGE26" "harness-Claude_Code_·_Codex_·_OpenCode-"
 ROW26="$(grep '^| Behaviour evals |' "$PB_ROOT/README.md" | head -n 1)"
-qchk "v26 N AC13 the Behaviour evals row says Codex and OpenCode are installable, not evaluated" "$ROW26" 'Codex and OpenCode[^|]{0,40}installable[^|]{0,20}not evaluated'
+qchk "v29 Run C1 the Behaviour evals row says Codex is partly evaluated and names Run C1" "$ROW26" 'Codex[^|;]{0,20}partly evaluated[^|;]{0,40}Run C1'
+qchk "v26 N AC13 the Behaviour evals row says OpenCode is installable, not evaluated" "$ROW26" 'OpenCode[^|;]{0,20}installable[^|;]{0,20}not evaluated'
 qchk "v26 N AC13 the Behaviour evals row keeps Claude Code as the only evaluated harness" "$ROW26" 'Claude Code[^|;]{0,40}only'
 assert_not_contains "v26 N AC13 the Behaviour evals row no longer says not run yet" "$ROW26" "not run yet"
 echo "v0.26.0 lane N S8 AC14 (D10): the scenario map names the new auto-graded scenarios"
@@ -2206,6 +2212,79 @@ for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group'
 done
 
 
+# ---- v0.29.0 lane w, slice P2: README hooks table and Limits for the PowerShell tool (AC-H5, spec Revisions 2 and 3) ----
+echo "v0.29.0 lane w P2 AC-H5: README hooks section names the PowerShell tool and its Limits"
+WP_ROW="$(grep -E '^\| *PreToolUse' "$README" | head -n 1)"
+if [ -n "$WP_ROW" ]; then t_ok "v0.29.0 P2 AC-H5 the README hooks table has a PreToolUse row"; else t_bad "v0.29.0 P2 AC-H5 the README hooks table has a PreToolUse row" "no table row starting with PreToolUse"; fi
+for wp_n in 'Bash' 'PowerShell' 'Write' 'Edit'; do
+  qchk "v0.29.0 P2 AC-H5 the PreToolUse row names $wp_n" "$WP_ROW" "$wp_n"
+done
+qchk "v0.29.0 P2 AC-H5 the PreToolUse row says which PowerShell forms are checked (Remove-Item)" "$WP_ROW" 'Remove-Item'
+qchk "v0.29.0 P2 AC-H5 the hooks section cites the Claude Code hooks docs URL" "$K1B_HKF" 'code\.claude\.com/docs/en/hooks'
+# the "tools it is not attached to" line (the one naming NotebookEdit) no longer names the PowerShell tool
+WP_ATT="$(printf '%s\n' "$K1B_HK" | grep -E 'NotebookEdit')"
+if [ -n "$WP_ATT" ]; then t_ok "v0.29.0 P2 AC-H5 Limits still has the not-attached line (NotebookEdit, MCP)"; else t_bad "v0.29.0 P2 AC-H5 Limits still has the not-attached line (NotebookEdit, MCP)" "no line naming NotebookEdit"; fi
+if printf '%s\n' "$WP_ATT" | grep -qiE 'PowerShell'; then t_bad "v0.29.0 P2 AC-H5 the not-attached line no longer names the PowerShell tool" "still names PowerShell: $WP_ATT"; else t_ok "v0.29.0 P2 AC-H5 the not-attached line no longer names the PowerShell tool"; fi
+qchk "v0.29.0 P2 AC-H5 the not-attached line still names MCP tools" "$WP_ATT" 'MCP'
+WP_PSL="$(printf '%s\n' "$K1B_HK" | awk '/^###+ Limits/ { f = 1 } f' | grep -iE 'PowerShell' | grep -vE 'NotebookEdit')"
+if [ -n "$WP_PSL" ]; then t_ok "v0.29.0 P2 AC-H5 Limits has a PowerShell item (a line about PowerShell besides the not-attached line)"; else t_bad "v0.29.0 P2 AC-H5 Limits has a PowerShell item (a line about PowerShell besides the not-attached line)" "no Limits line names PowerShell"; fi
+# each uncovered form is named in Limits (meaning pins, flexible wording)
+qchk "v0.29.0 P2 AC-H5 Limits: Invoke-Expression" "$K1B_LIM" 'Invoke-Expression'
+qchk "v0.29.0 P2 AC-H5 Limits: iex" "$K1B_LIM" '(^|[^a-z])iex([^a-z]|$)'
+qchk "v0.29.0 P2 AC-H5 Limits: powershell -Command" "$K1B_LIM" 'powershell(\.exe)?[^.;]{0,30}-Command'
+qchk "v0.29.0 P2 AC-H5 Limits: pwsh -c" "$K1B_LIM" 'pwsh[^.;]{0,20}-c([^a-z]|$)'
+qchk "v0.29.0 P2 AC-H5 Limits: -EncodedCommand" "$K1B_LIM" '-EncodedCommand'
+qchk "v0.29.0 P2 AC-H5 Limits: cmd /c" "$K1B_LIM" 'cmd(\.exe)? /c'
+qchk "v0.29.0 P2 AC-H5 Limits: Start-Process" "$K1B_LIM" 'Start-Process'
+qchk "v0.29.0 P2 AC-H5 Limits: scriptblocks run later (& { }, Invoke-Command)" "$K1B_LIM" 'script ?blocks?[^.]{0,200}(later|run|invok)'
+qchk "v0.29.0 P2 AC-H5 Limits: & { } scriptblock call" "$K1B_LIM" '& ?\{'
+qchk "v0.29.0 P2 AC-H5 Limits: Invoke-Command" "$K1B_LIM" 'Invoke-Command'
+qchk "v0.29.0 P2 AC-H5 Limits: the --% stop-parsing token" "$K1B_LIM" '(^|[^-])--%'
+qchk "v0.29.0 P2 AC-H5 Limits: variables other than the listed ones count as outside (warn or block)" "$K1B_LIM" 'variables?[^.]{0,250}outside|outside[^.]{0,250}variables?'
+qchk "v0.29.0 P2 AC-H5 Limits: Remove-Item without -Recurse is not covered" "$K1B_LIM" 'Remove-Item[^.]{0,150}without[^.]{0,40}-Recurse|without[^.]{0,40}-Recurse'
+qchk "v0.29.0 P2 AC-H5 Limits: registry paths" "$K1B_LIM" 'registry'
+qchk "v0.29.0 P2 AC-H5 Limits: provider paths" "$K1B_LIM" 'provider'
+qchk "v0.29.0 P2 AC-H5 Limits: Set-Content writing SQL files" "$K1B_LIM" 'Set-Content'
+qchk "v0.29.0 P2 AC-H5 Limits: Out-File writing SQL files" "$K1B_LIM" 'Out-File'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): .NET calls such as [IO.Directory]::Delete" "$K1B_LIM" '\.NET'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): names [IO.Directory]::Delete" "$K1B_LIM" 'IO\.Directory'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 2 F4): splatting without a visible -Recurse" "$K1B_LIM" 'splat'
+qchk "v0.29.0 P2 AC-H5 Limits (Rev 3): a Remove-Item -Recurse fed by the pipeline has no target word and warns or blocks even inside the project" "$K1B_LIM" 'pipe(line)?[^.]{0,250}(false positive|even (inside|in |when)|fail(s)? closed|warn|block)'
+# review round 1 F2: curly quotes are handled as quote characters now, so the Limits must not claim they are not (the old pin
+# required that claim). It no longer requires any curly-quote sentence; it fails when the wrong claim is still there.
+if printf '%s' "$K1B_LIM" | grep -qiE -- '(curly|smart|typographic)[^.]{0,120}(not|never|n.t) (a |an |treated as |read as |recognized as |recognised as )?(quote|quoting)'; then t_bad "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters" "the wrong sentence is still there"; else t_ok "v0.29.0 review F2 README Limits no longer claim curly quotes are not quote characters"; fi
+qchk "v0.29.0 P2 AC-H5 Limits (P1 finding): variable assignments are not followed" "$K1B_LIM" 'assign|variable flow|flow of variables?'
+# review round 2 (items 5, 6, 7): the assignment sentence says what the code does now: every assignment form makes a listed variable
+# unresolved (fail closed); a copy into another variable is still not followed; a call operator on a group or variable is unknown.
+qchk "v0.29.0 review2 R5 Limits: an assignment to a listed variable makes it unresolved" "$K1B_LIM" 'assign.{0,250}unresolved|assign.{0,250}.{0,250}unresolved'
+qchk "v0.29.0 review2 R5 Limits: a delete through such a variable warns or blocks (fail closed)" "$K1B_LIM" 'unresolved.{0,200}(fail(s)? closed|warn|block)'
+qchk "v0.29.0 review2 R5 Limits: list assignment (\$a, \$b = ...) counts" "$K1B_LIM" 'list assign|multiple assign|multi-?assign|\$[a-z:]+, ?\$[a-z:]+ ?='
+qchk "v0.29.0 review2 R7 Limits: compound assignment (+=, -=, ??= ...) counts" "$K1B_LIM" '\+=|compound assign'
+qchk "v0.29.0 review2 R5 Limits: Rename-Item names the assignment forms" "$K1B_LIM" 'Rename-Item'
+qchk "v0.29.0 review2 R5 Limits: New-Item names the assignment forms" "$K1B_LIM" 'New-Item'
+qchk "v0.29.0 review2 R5 Limits: [Environment]::SetEnvironmentVariable names the assignment forms" "$K1B_LIM" 'SetEnvironmentVariable'
+qchk "v0.29.0 review2 R5 Limits: a value copied into another variable is not followed" "$K1B_LIM" 'cop(y|ied)[^.]{0,120}not followed|not follow[^.]{0,120}cop(y|ied)'
+qchk "v0.29.0 review2 R6 Limits: a call operator on a group or variable (& (...), & \$cmd) is an unknown command" "$K1B_LIM" '& ?(\(|\$[a-z{])'
+qchk "v0.29.0 P2 AC-H5 Limits: without Git Bash the bash hook commands cannot run" "$K1B_LIM" 'without Git Bash[^.]{0,200}(cannot|can.?t|not|no )|Git Bash[^.]{0,60}(isn.t|is not|not) installed[^.]{0,200}(cannot|can.?t|not )'
+
+# review fix round 3 (tester fix4): the Limits do not over-claim vertical tab, and name the assignment targets the code checks
+# [UNVERIFIED] how a real client sends a vertical tab: the JSON escape \u000b, which the guard documents as not decoded.
+qchk "v0.29.0 review3 F3 Limits: the JSON-escaped vertical tab (\\u000b) is named as not decoded" "$K1B_LIM" '\\u000b.{0,250}not decoded|not decoded.{0,250}\\u000b|vertical tab[^;]{0,200}\\u[^;]{0,200}not decoded'
+VT_BAD=""
+while IFS= read -r vtc <&3; do
+  [ -n "$vtc" ] || continue
+  printf '%s' "$vtc" | grep -qiE -- 'u000b|escape|not decoded|raw|literal' || VT_BAD="$VT_BAD [$vtc]"
+done 3<<EOF_VT
+$(printf '%s' "$K1B_LIM" | grep -oiE 'vertical tab[^;]{0,160}')
+EOF_VT
+if [ -z "$VT_BAD" ]; then t_ok "v0.29.0 review3 F3 Limits: every mention of vertical tab is qualified (raw byte only, or the \\u escape not decoded)"; else t_bad "v0.29.0 review3 F3 Limits: every mention of vertical tab is qualified (raw byte only, or the \\u escape not decoded)" "unqualified:$VT_BAD"; fi
+qchk "v0.29.0 review3 F1 Limits: an assignment to a property (\$x.a = ...) is checked" "$K1B_LIM" 'assign.{0,250}propert|propert.{0,250}assign|\$[a-z]+\.[a-z]+ ?='
+qchk "v0.29.0 review3 F1 Limits: an assignment to an index (\$x[0] = ...) is checked" "$K1B_LIM" 'assign.{0,250}index|index.{0,250}assign|\$[a-z]+\[[^]]+\] ?='
+qchk "v0.29.0 review3 F1 Limits: an assignment with a scope prefix (\$script:r = ...) is checked" "$K1B_LIM" 'assign.{0,250}scope|scope.{0,250}assign|\$(script|global|local):[a-z]+ ?='
+qchk "v0.29.0 review3 F3 Limits: NEL, U+1680, U+2028 and U+2029 are named among the word separators" "$K1B_LIM" 'U\+0085.{0,250}U\+1680.{0,250}U\+2028.{0,250}U\+2029|NEL.{0,250}U\+1680.{0,250}U\+2028.{0,250}U\+2029'
+
+
+
 # v0.28.1 lane t (lever 2): Lite step 4 no longer recommends a mutation spot-check; Full keeps it.
 if lite_step 4 | tr '\n' ' ' | grep -qiE -- 'mutation spot-check'; then t_bad "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check" "Lite step 4 still mentions it"; else t_ok "v0.28.1 t Lite step 4 no longer recommends a mutation spot-check"; fi
 qchk "v0.28.1 t references/test-quality.md still covers the mutation spot-check" "$(cat "$TDD/references/test-quality.md")" 'mutation spot-check'
@@ -2216,5 +2295,48 @@ lite_has "v0.28.1 p Lite step 2: a request covering any/every input tests each i
 lite_has "v0.28.1 p Lite step 2: input classes include a leading dash" 2 'input class[^.]{0,60}leading dash'
 sec_flat_has "v0.28.1 p tester.md Do: any/every input means each input class" "$TESTER" '^## Do' 'any/every input[^.]{0,60}each input class'
 sec_flat_has "v0.28.1 p tester.md Do: not only the reported example" "$TESTER" '^## Do' 'input class[^.]{0,80}not only the reported example'
+
+
+# ---- v0.29.0 lane w, slice T: trust docs (AC-T7, AC-T8, spec Revision 2 F1 and F3) ----
+echo "v0.29.0 lane w T AC-T8: README hooks table row for learnings-hook.sh"
+TW_ROW="$(grep -E '^\|.*`learnings-hook\.sh`' "$README" | head -n 1)"
+if [ -n "$TW_ROW" ]; then t_ok "v0.29.0 T AC-T8 the README hooks table has a row for learnings-hook.sh"; else t_bad "v0.29.0 T AC-T8 the README hooks table has a row for learnings-hook.sh" "no table row naming learnings-hook.sh"; fi
+qchk "v0.29.0 T AC-T8 the row says it injects only for trusted projects" "$TW_ROW" 'trusted'
+qchk "v0.29.0 T AC-T8 the row names learn.sh trust" "$TW_ROW" 'learn\.sh trust'
+qchk "v0.29.0 T AC-T8 the row names learnings_hook_trust=all" "$TW_ROW" 'learnings_hook_trust=all'
+qchk "v0.29.0 T AC-T8 the row says the key is read from the global conf" "$TW_ROW" 'global'
+
+echo "v0.29.0 lane w T AC-T7 + F1: playbook-setup offers once to trust the current project, within the word budget"
+TW_S4="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /^5\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
+qchk "v0.29.0 T AC-T7 step 4 (the hooks line) names learn.sh trust" "$TW_S4" 'learn\.sh trust'
+qchk "v0.29.0 T AC-T7 step 4 offers it for the current project" "$TW_S4" 'trust.{0,200}(current|this) project|(current|this) project.{0,200}trust'
+qchk "v0.29.0 T AC-T7 step 4: the trust offer is made once" "$TW_S4" 'trust.{0,200}once|once.{0,200}learn\.sh trust'
+qchk "v0.29.0 T AC-T7 step 4: the trust offer defaults to no" "$TW_S4" 'default no.{0,250}learn\.sh trust|learn\.sh trust.{0,250}default no'
+qchk "v0.29.0 T AC-T7 step 4: never trusts in a non-interactive run" "$TW_S4" 'never.{0,100}trust'
+TW_SW="$(wc -w < "$SETUP" | tr -d ' ')"
+if grep -q 'learn\.sh trust' "$SETUP" && [ "$TW_SW" -le 1100 ]; then t_ok "v0.29.0 T F1 playbook-setup mentions learn.sh trust and stays at most 1100 words ($TW_SW)"; else t_bad "v0.29.0 T F1 playbook-setup mentions learn.sh trust and stays at most 1100 words" "$TW_SW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$SETUP")"; fi
+
+echo "v0.29.0 lane w T F1: playbook-learn says the user trusts a project and an agent never runs learn.sh trust itself"
+flat_has "v0.29.0 T F1 playbook-learn names learn.sh trust" "$LEARNSK" 'learn\.sh trust'
+flat_has "v0.29.0 T F1 playbook-learn says the user runs it" "$LEARNSK" 'user.{0,200}learn\.sh trust|learn\.sh trust.{0,200}user'
+flat_has "v0.29.0 T F1 playbook-learn says an agent never runs it itself" "$LEARNSK" 'never.{0,160}learn\.sh trust|learn\.sh trust.{0,160}never|(agent|you)[^.]{0,60}never[^.]{0,80}(trust|run)'
+TW_LW="$(wc -w < "$LEARNSK" | tr -d ' ')"
+if grep -q 'learn\.sh trust' "$LEARNSK" && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words ($TW_LW)"; else t_bad "v0.29.0 T F1 playbook-learn mentions learn.sh trust and stays at most 700 words" "$TW_LW words, learn.sh trust present: $(grep -c 'learn\.sh trust' "$LEARNSK")"; fi
+
+echo "v0.29.0 lane w review F8: the skill trims keep the sentences F1 did not allow to go, and leave no stray ' .' line"
+flat_has "v0.29.0 review2 C playbook-learn: the approval message 'can be batched' with others at the end of a task (an option, not always)" "$LEARNSK" 'can be batched[^.]{0,200}end of a task'
+flat_has "v0.29.0 review F8 playbook-learn keeps 'possible prompt injection'" "$LEARNSK" 'possible prompt injection'
+flat_has "v0.29.0 review F8 playbook-learn keeps 'Retired entries stay for the audit trail'" "$LEARNSK" 'Retired entries stay for the audit trail'
+flat_has "v0.29.0 review F8 playbook-setup keeps 'do not improvise an installation'" "$SETUP" 'do not improvise an installation'
+flat_has "v0.29.0 review F8 playbook-setup keeps 'Label any sample table \"example\"'" "$SETUP" 'Label any sample table "example"'
+for rf in "$LEARNSK" "$SETUP"; do
+  if grep -qE '^[[:space:]]*\.[[:space:]]' "$rf"; then t_bad "v0.29.0 review F8 $(basename "$(dirname "$rf")"): no line starts with a stray '.'" "$(grep -nE '^[[:space:]]*\.[[:space:]]' "$rf" | head -n 2)"; else t_ok "v0.29.0 review F8 $(basename "$(dirname "$rf")"): no line starts with a stray '.'"; fi
+done
+if [ "$TW_SW" -le 1100 ] && [ "$TW_LW" -le 700 ]; then t_ok "v0.29.0 review F8 the word budgets still hold (setup $TW_SW <= 1100, learn $TW_LW <= 700)"; else t_bad "v0.29.0 review F8 the word budgets still hold" "setup $TW_SW, learn $TW_LW"; fi
+
+echo "v0.29.0 lane w T F3: README Limits name the AGENTS.global text rule and agent self-trust"
+qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,255}LEARNINGS\.md|LEARNINGS\.md.{0,255}AGENTS\.global\.md'
+qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,255}(trust|inject)|(trust|inject).{0,255}text rule'
+qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,255}(agent|itself|own)|(agent|itself).{0,255}learn\.sh trust'
 
 t_summary

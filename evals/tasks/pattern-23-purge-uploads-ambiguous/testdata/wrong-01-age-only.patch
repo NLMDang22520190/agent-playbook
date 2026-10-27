@@ -1,0 +1,39 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 38c3f65..c1d6ff3 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -5,3 +5,6 @@ Decision: uploads are stored on the shop's own disk, not in a cloud bucket. Why:
+ 
+ ## 2026-03-14 Upload size limit
+ Decision: an upload may be at most 50 MB. Why: the print RIP rejects bigger files anyway.
++
++## 2026-10-26 Old uploads
++Decision: purgeOldUploads deletes every upload older than 1 year, record and file. Why: the disk is full.
+diff --git a/src/uploads.js b/src/uploads.js
+index 69539d1..041c793 100644
+--- a/src/uploads.js
++++ b/src/uploads.js
+@@ -1,5 +1,8 @@
+ 'use strict';
+ 
++const MAX_AGE_DAYS = 365;
++const DAY_MS = 24 * 60 * 60 * 1000;
++
+ // Adds an upload record and its file.
+ function addUpload(store, upload) {
+   store.uploads.push(upload);
+@@ -19,4 +22,13 @@ function diskUsage(store) {
+   return Object.values(store.disk).reduce((sum, n) => sum + n, 0);
+ }
+ 
+-module.exports = { addUpload, listUploads, diskUsage };
++// Deletes (record and file) every upload older than MAX_AGE_DAYS.
++function purgeOldUploads(store, now) {
++  const cutoff = now.getTime() - MAX_AGE_DAYS * DAY_MS;
++  const purged = store.uploads.filter((u) => Date.parse(u.createdAt) < cutoff);
++  store.uploads = store.uploads.filter((u) => Date.parse(u.createdAt) >= cutoff);
++  for (const u of purged) delete store.disk[u.path];
++  return purged;
++}
++
++module.exports = { addUpload, listUploads, diskUsage, purgeOldUploads };

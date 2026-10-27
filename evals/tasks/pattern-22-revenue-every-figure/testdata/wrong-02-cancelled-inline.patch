@@ -1,0 +1,23 @@
+diff --git a/src/owner/week_message.py b/src/owner/week_message.py
+index a11de47..c71653f 100644
+--- a/src/owner/week_message.py
++++ b/src/owner/week_message.py
+@@ -7,5 +7,6 @@ def week_message(orders, first_day, last_day):
+     week = [o for o in orders if first_day <= o["date"] <= last_day]
+     total = 0
+     for o in week:
+-        total += o["total"]
++        if o["status"] != "cancelled":
++            total += o["total"]
+     return "Tuần {} - {}: {} đơn, doanh thu {}.".format(first_day, last_day, len(week), vnd(total))
+diff --git a/src/reports/monthly.py b/src/reports/monthly.py
+index 3a9de49..e4d1596 100644
+--- a/src/reports/monthly.py
++++ b/src/reports/monthly.py
+@@ -7,5 +7,5 @@ def monthly_summary(orders, month):
+     return {
+         "month": month,
+         "orders": len(of_month),
+-        "revenue": sum(o["total"] for o in of_month),
++        "revenue": sum(o["total"] for o in of_month if o["status"] != "cancelled"),
+     }

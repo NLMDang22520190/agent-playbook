@@ -10,6 +10,8 @@
 # (role-gate-size-exclude, sdlc-refs, evals-grade14, 14b, outcome-*) come from the two v0.26.3 runs only (v0.28.0 lane h).
 # v0.26 estimates until a CI run measures them (L-0009): test-evals-grade14c.sh 110, test-clean-pbtest.sh 2, test-proof-check.sh 12, test-role-gate-size-exclude.sh 150, test-sdlc-refs.sh 20, test-evals-grade14.sh 180, test-evals-grade14b.sh 130, test-update-signed.sh 45, test-role-gate-commits.sh 180, test-report-usage.sh 3, test-rubric-table.sh 5, test-evals-grade12.sh 160, test-evals-grade12c.sh 150, test-evals-grade12b.sh 220, test-evals-grade13.sh 90, test-evals-grade13b.sh 140, test-evals-lib.sh 40, test-evals-arms.sh 240, test-evals-arms-b.sh 200, test-evals-isolation.sh 90, test-evals-json.sh 80, test-eval-delta.sh 80, test-evals-keys.sh 350, test-outcome-selfcheck.sh 90, test-outcome-corpus.sh 180, test-outcome-runner.sh 120, test-outcome-isolation.sh 60, test-outcome-report.sh 150, test-outcome-metrics.sh 90, test-outcome-selfcheck.sh 120.
 # v0.28.0: the new v0.28 suites measured on run 40263102081 (Windows); test-guard-stop.sh 400, test-guard-misc.sh 150, test-learnings-hook.sh 60 and test-outcome-isolation.sh 300 are estimates (their shard was cancelled at the 20-minute limit, L-0009).
+# v0.29.0 lane w estimate until a CI run measures it (L-0009): test-guard-ps.sh 300.
+# v0.29.0 lane cx estimate until a CI run measures it (L-0009): test-evals-codex.sh 60.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -148,6 +150,8 @@ test-update-signed.sh 49
 test-learnings-hook.sh 60
 test-evals-hooks.sh 113
 test-evals-grade15.sh 335
+# v0.29.0 lane d estimate until a CI run measures it (L-0009): test-evals-grade16.sh 300.
+test-evals-grade16.sh 300
 # v0.28.0 lane k1b estimates until a CI run measures them (L-0009): test-claude-hooks.sh 40, test-install-hooks.sh 60.
 test-claude-hooks.sh 29
 test-install-hooks.sh 59
@@ -157,3 +161,6 @@ test-guard-stop.sh 400
 test-guard-replay.sh 35
 test-guard-misc.sh 150
 test-outcome-metrics.sh 101
+test-diet.sh 2
+test-guard-ps.sh 300
+test-evals-codex.sh 60

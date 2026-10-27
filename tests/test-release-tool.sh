@@ -353,4 +353,161 @@ run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC14.1 README equals the run's count (11): it proceeds, exit 0" 0
 assert_not_contains "AC14.1 a matching count prints no 'expected ... found' refusal" "$OUT" "found 11"
 
+echo "v0.29 slice S: release tag signing (AC-S1..AC-S7, spec 01-spec.md)"
+# Isolation: no real global/system git config, temp HOME and GNUPGHOME; the throw-away key lives in mk_tmp only.
+SW="$(cd "$(mk_tmp)" && pwd -P)"
+export GIT_CONFIG_GLOBAL="$SW/gitconfig" GIT_CONFIG_NOSYSTEM=1
+GNUPGHOME="$(mk_tmp)"; export GNUPGHOME
+HOME="$(mk_tmp)"; export HOME
+GC="$GIT_CONFIG_GLOBAL"
+cfg_reset() {   # fresh global config: identity only (git tag -s needs a tagger)
+  : > "$GC"
+  git config --file "$GC" user.name tester && git config --file "$GC" user.email t@example.invalid
+}
+cfg_ssh() {     # cfg_ssh KEYFILE: user.signingkey + gpg.format=ssh in the global config
+  cfg_reset
+  git config --file "$GC" gpg.format ssh && git config --file "$GC" user.signingkey "$1"
+}
+setup_full() {  # setup + install.sh and scripts/ committed, so a clone of origin is a working playbook checkout
+  setup
+  mkdir -p "$C/skills/stub" && echo "# stub" > "$C/skills/stub/SKILL.md" &&
+    cp "$PB_ROOT/install.sh" "$C/install.sh" && cp -R "$PB_ROOT/scripts/." "$C/scripts/" &&
+    ( cd "$C" && G add -A && G commit -qm installer && git push -q origin main ) || { echo "setup_full failed"; exit 3; }
+}
+probe_ssh_sign() {   # can this git + ssh-keygen sign a tag and verify it against an allowed signers file? (L-0004)
+  local p
+  p="$(cd "$(mk_tmp)" && pwd -P)" || return 1
+  command -v ssh-keygen >/dev/null 2>&1 || return 1
+  ssh-keygen -q -t ed25519 -N '' -C probe -f "$p/k" < /dev/null > /dev/null 2>&1 || return 1
+  printf 'probe@example.invalid namespaces="git" %s\n' "$(cat "$p/k.pub")" > "$p/allowed" || return 1
+  ( cd "$p" && git init -q r && cd r && printf 'x\n' > f && G add f && G commit -qm p &&
+    G -c gpg.format=ssh -c user.signingkey="$p/k" tag -s probe -m probe ) > /dev/null 2>&1 || return 1
+  git -C "$p/r" -c gpg.ssh.allowedSignersFile="$p/allowed" verify-tag probe > /dev/null 2>&1 || return 1
+  return 0
+}
+SSH_SIGN=0
+if probe_ssh_sign; then SSH_SIGN=1; fi
+KEY="$SW/missing-key"   # nonexistent unless ssh-keygen works
+if [ "$SSH_SIGN" = 1 ]; then
+  ssh-keygen -q -t ed25519 -N '' -C relkey -f "$SW/relkey" < /dev/null > /dev/null 2>&1 &&
+    printf 'release@example.invalid namespaces="git" %s\n' "$(cat "$SW/relkey.pub")" > "$SW/allowed" &&
+    KEY="$SW/relkey" || { echo "key setup failed"; exit 3; }
+fi
+RELSRC="$PB_ROOT/tools/release.sh"
+
+echo "AC-S3: release.sh never generates keys and never writes git config"
+assert_eq "AC-S3 release.sh does not mention ssh-keygen" "0" "$(grep -c 'ssh-keygen' "$RELSRC")"
+assert_eq "AC-S3 release.sh has no gpg key generation" "0" "$(grep -Ec 'gen-key|generate-key|quick-gen' "$RELSRC")"
+assert_eq "AC-S3 release.sh has no git config write (only --get reads)" "" \
+  "$(grep -E 'git[^|;&]* config' "$RELSRC" | grep -vE -e '--get|--list' || true)"
+
+echo "AC-S2: no signing key -> lightweight tag as today, one line naming it unsigned"
+setup; cfg_reset
+CFG0="$(cksum < "$GC")"
+HEAD0="$(git -C "$C" rev-parse HEAD)"
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC-S2 release without a signing key -> exit 0" 0
+assert_eq "AC-S2 the tag is lightweight (points straight at the commit)" "commit" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+assert_contains "AC-S2 the tag is in the origin" "$(origin_tags)" "v1.2.3"
+assert_eq "AC-S2 the tag peels to HEAD" "$HEAD0" "$(git -C "$O" rev-parse 'v1.2.3^{commit}')"
+assert_eq "AC-S2 exactly one output line says the tag is unsigned" "1" "$(printf '%s\n' "$OUT" | grep -ic 'unsigned')"
+assert_contains "AC-S2 that line names docs/development.md" "$(printf '%s\n' "$OUT" | grep -i 'unsigned')" "docs/development.md"
+assert_contains "AC-S2 that line names the tag" "$(printf '%s\n' "$OUT" | grep -i 'unsigned')" "v1.2.3"
+assert_contains "AC-S2 the release line is still printed" "$OUT" "released v1.2.3"
+assert_eq "AC-S3 the global git config is byte-identical after an unsigned release" "$CFG0" "$(cksum < "$GC")"
+cfg_reset; git config --file "$GC" user.signingkey ""
+setup
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC-S2 an empty user.signingkey counts as no key -> exit 0" 0
+assert_eq "AC-S2 an empty user.signingkey gives a lightweight tag" "commit" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+assert_eq "AC-S2 an empty user.signingkey still prints one unsigned line" "1" "$(printf '%s\n' "$OUT" | grep -ic 'unsigned')"
+
+echo "AC-S4: --dry-run changes nothing, with a signing key configured"
+cfg_ssh "$KEY"; CFG0="$(cksum < "$GC")"
+setup
+HEAD0="$(git -C "$C" rev-parse HEAD)"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC-S4 dry run with a signing key configured -> exit 0" 0
+assert_contains "AC-S4 dry run still says 'would tag'" "$OUT" "would tag"
+assert_eq "AC-S4 dry run creates no local tag" "" "$(tags_of "$C")"
+assert_eq "AC-S4 dry run pushes no tag" "" "$(origin_tags)"
+assert_eq "AC-S4 dry run leaves HEAD alone" "$HEAD0" "$(git -C "$C" rev-parse HEAD)"
+assert_eq "AC-S4 dry run leaves the global git config byte-identical" "$CFG0" "$(cksum < "$GC")"
+
+echo "AC-S7: signing key configured but signing fails -> exit 3, no tag, nothing pushed, no unsigned fallback"
+cfg_ssh "$SW/no-such-key-file"; CFG0="$(cksum < "$GC")"
+setup
+HEAD0="$(git -C "$C" rev-parse HEAD)"
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC-S7 user.signingkey names a missing file -> exit 3" 3
+assert_eq "AC-S7 no local tag is left behind (not even an unsigned one)" "" "$(tags_of "$C")"
+assert_eq "AC-S7 nothing is pushed to the origin" "" "$(origin_tags)"
+assert_contains "AC-S7 the output says signing failed" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "signing failed"
+assert_not_contains "AC-S7 it does not claim a release" "$OUT" "released v1.2.3"
+assert_eq "AC-S7 HEAD is untouched" "$HEAD0" "$(git -C "$C" rev-parse HEAD)"
+assert_eq "AC-S7 the global git config is byte-identical" "$CFG0" "$(cksum < "$GC")"
+
+# git 2.43 exits 0 and leaves an annotated UNSIGNED tag when the ssh key file is missing, so the case above also pins that
+# release.sh checks the result. Second injection: git itself fails (gpg program fails).
+cfg_reset; git config --file "$GC" user.signingkey ABCD1234; git config --file "$GC" gpg.program false
+setup
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC-S7 git tag -s fails (gpg program fails) -> exit 3" 3
+assert_eq "AC-S7 gpg failure: no local tag left behind" "" "$(tags_of "$C")"
+assert_eq "AC-S7 gpg failure: nothing pushed" "" "$(origin_tags)"
+assert_contains "AC-S7 gpg failure: the output says signing failed" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "signing failed"
+
+echo "AC-S1/AC-S5: signing key configured -> signed annotated tag that verifies, locally, at the origin and through install.sh update"
+if [ "$SSH_SIGN" = 1 ]; then
+  cfg_ssh "$KEY"; CFG0="$(cksum < "$GC")"
+  setup_full
+  HEAD0="$(git -C "$C" rev-parse HEAD)"
+  REPO_CFG0="$(cksum < "$C/.git/config")"
+  run_in "$C" bash tools/release.sh v1.2.3
+  assert_rc "AC-S1 release with an ssh signing key -> exit 0" 0
+  assert_eq "AC-S1 the tag is an annotated tag object" "tag" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+  assert_eq "AC-S1 the signed tag message is 'release v1.2.3'" "release v1.2.3" "$(git -C "$C" tag -l --format='%(contents:subject)' v1.2.3 2>/dev/null)"
+  assert_contains "AC-S1 the tag object carries an SSH signature (the marker install.sh classifies on)" \
+    "$(git -C "$C" cat-file tag refs/tags/v1.2.3 2>/dev/null | LC_ALL=C grep -e '^-----BEGIN SSH SIGNATURE-----')" "BEGIN SSH SIGNATURE"
+  if git -C "$C" -c gpg.ssh.allowedSignersFile="$SW/allowed" verify-tag v1.2.3 > /dev/null 2>&1; then t_ok "AC-S1 git verify-tag accepts the local tag against the allowed signers file"; else t_bad "AC-S1 git verify-tag accepts the local tag against the allowed signers file"; fi
+  assert_eq "AC-S1 the origin holds the same (signed) tag object" "$(git -C "$C" rev-parse refs/tags/v1.2.3 2>/dev/null)" "$(git -C "$O" rev-parse refs/tags/v1.2.3 2>/dev/null)"
+  if git -C "$O" -c gpg.ssh.allowedSignersFile="$SW/allowed" verify-tag v1.2.3 > /dev/null 2>&1; then t_ok "AC-S1 git verify-tag accepts the tag at the origin"; else t_bad "AC-S1 git verify-tag accepts the tag at the origin"; fi
+  assert_eq "AC-S1 the tag peels to HEAD" "$HEAD0" "$(git -C "$O" rev-parse 'v1.2.3^{commit}')"
+  assert_not_contains "AC-S1 a signed release prints no 'unsigned' line" "$(printf '%s' "$OUT" | tr 'A-Z' 'a-z')" "unsigned"
+  assert_contains "AC-S1 the release line is still printed" "$OUT" "released v1.2.3"
+  assert_eq "AC-S3 the global git config is byte-identical after a signed release" "$CFG0" "$(cksum < "$GC")"
+  assert_eq "AC-S3 the clone's repo config is byte-identical after a signed release" "$REPO_CFG0" "$(cksum < "$C/.git/config")"
+  # AC-S5: a fresh client of the origin runs install.sh's own verify path on the tag release.sh signed
+  D="$SW/client"; git clone -q "$O" "$D" 2>/dev/null || { echo "client clone failed"; exit 3; }
+  : > "$SW/registry"
+  git config --file "$GC" gpg.ssh.allowedSignersFile "$SW/allowed"
+  UOUT="$(cd "$D" && PLAYBOOK_REGISTRY="$SW/registry" bash install.sh update --yes < /dev/null 2>&1)"; URC=$?
+  assert_eq "AC-S5 install.sh update on the signed release -> exit 0" "0" "$URC"
+  assert_contains "AC-S5 install.sh update reports the signature verified" "$UOUT" "release tag v1.2.3: signature verified"
+  git config --file "$GC" --unset gpg.ssh.allowedSignersFile
+  UOUT="$(cd "$D" && PLAYBOOK_REGISTRY="$SW/registry" bash install.sh update --yes < /dev/null 2>&1)"
+  assert_not_contains "AC-S5 control: without an allowed signers file install.sh does not say verified" "$UOUT" "signature verified"
+  # a signing key set only in the repo config (not global) is honoured too (effective config)
+  cfg_reset; git config --file "$GC" gpg.format ssh
+  setup
+  git -C "$C" config user.signingkey "$KEY"
+  run_in "$C" bash tools/release.sh v1.2.3
+  assert_rc "AC-S1 a repo-level user.signingkey is used (effective config) -> exit 0" 0
+  assert_eq "AC-S1 a repo-level signing key gives an annotated tag" "tag" "$(git -C "$C" cat-file -t refs/tags/v1.2.3 2>/dev/null)"
+  assert_eq "AC-S1 a repo-level signing key: the tag message is 'release v1.2.3'" "release v1.2.3" "$(git -C "$C" tag -l --format='%(contents:subject)' v1.2.3 2>/dev/null)"
+else
+  t_skip 18 "AC-S1/AC-S5 signed release tag (ssh-keygen or ssh tag signing unsupported here)"
+fi
+
+echo "AC-S6: docs/development.md 'Signing release tags' section"
+DEVMD="$(cat "$PB_ROOT/docs/development.md" 2>/dev/null)"
+assert_contains "AC-S6 docs/development.md has a 'Signing release tags' section" "$DEVMD" "Signing release tags"
+assert_contains "AC-S6 it names gpg.format=ssh" "$DEVMD" "gpg.format"
+assert_contains "AC-S6 it names user.signingkey" "$DEVMD" "user.signingkey"
+assert_contains "AC-S6 it names gpg.ssh.allowedSignersFile" "$DEVMD" "gpg.ssh.allowedSignersFile"
+assert_contains "AC-S6 it says release.sh signs when a key is configured" "$(printf '%s\n' "$DEVMD" | grep -i 'release\.sh' | grep -i 'sign')" "release.sh"
+assert_contains "AC-S6 it says to watch the main-ci job of the first signed release" "$DEVMD" "main-ci"
+assert_contains "AC-S6 it names the recovery (gh release create by hand)" "$DEVMD" "gh release create"
+assert_contains "AC-S6 it names the GITHUB_SHA tag-object risk" "$DEVMD" "GITHUB_SHA"
+
 t_summary

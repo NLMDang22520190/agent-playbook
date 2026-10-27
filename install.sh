@@ -461,13 +461,14 @@ uninstall_hooks() {
 
 # doctor_hooks: one line on the opt-in Claude Code hooks, from claude-hooks.sh status (grep only)
 doctor_hooks() {
-  local out ok="" broken="" dis=0 n st
+  local out ok="" broken="" miss="" dis=0 n st
   out="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null)"
-  for n in guard guard-start guard-stop learnings; do
+  for n in guard guard-ps guard-start guard-stop learnings; do
     st="$(printf '%s\n' "$out" | sed -n "s/^$n: //p")"
     case "$st" in
       installed) ok="$ok${ok:+, }$n" ;;
       broken*) broken="$broken${broken:+, }$n" ;;
+      *) miss="$miss${miss:+, }$n" ;;
     esac
   done
   printf '%s\n' "$out" | grep -qF 'disabled (disableAllHooks)' && dis=1
@@ -477,10 +478,10 @@ doctor_hooks() {
     say 'INFO  hooks: not installed (opt-in: say "set up the playbook")'
   elif [ "$dis" -eq 1 ]; then
     say "INFO  hooks: installed but disabled (disableAllHooks)"
-  elif [ "$ok" = "guard, guard-start, guard-stop, learnings" ]; then
+  elif [ -z "$miss" ]; then
     say "OK    hooks: guard, learnings installed"
   else
-    say "INFO  hooks: partly installed ($ok)"
+    say "INFO  hooks: partly installed ($ok; missing: $miss; run scripts/claude-hooks.sh install)"
   fi
 }
 

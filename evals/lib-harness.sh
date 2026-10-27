@@ -25,10 +25,13 @@
 #   pbh_iso_check LOG HOME OK1 OK2 OK3 [NAME...]
 #                                     PASS or FAIL: the without-arm isolation check of the stream-json transcript LOG (OKn: paths
 #                                     that are not playbook files, such as the workdir; NAME: the playbook skill names) (node)
+#   pbh_codex_js                      prints the path of evals/codex-jsonl.js (the Codex JSONL reader the node readers load
+#                                     through PBH_CODEX_JS: a Codex transcript is read as stream-json, any other one unchanged)
 #   pbh_without_refusal WORKROOT HOME 0 when the without arm can run in WORKROOT; else prints why (a user rules file or an
 #                                     instruction file above WORKROOT holds the playbook block) and returns 2
 #   pbh_leak_prompt HEADING           prints the prompt of the leak probe: is the block headed HEADING in the agent's context?
-#   pbh_probe_answer FILE             YES, NO or UNKNOWN: the first word of the last stream-json result text of FILE, else of its text
+#   pbh_probe_answer FILE             YES, NO or UNKNOWN: the first word of the last stream-json result text of FILE (of a Codex
+#                                     JSONL FILE: its last agent_message), else of its text
 #   pbh_scope_extra SCOPE             stdin: changed paths, one per line; prints those outside SCOPE (space-separated entries:
 #                                     one ending in / is a prefix, any other a bash case glob on the whole path, never
 #                                     expanded) and outside the always-allowed set (tests/ .agents/ node_modules/ prefixes,
@@ -255,8 +258,9 @@ fs.writeFileSync(process.argv[2], JSON.stringify(d, null, 2) + "\n");' "$1" "$2"
 # HOME and the allowed dirs also come on stdin, one per line: Git Bash converts a /tmp/... or /c/... argument to C:/... (argv and environment
 # only), while a transcript written from Git Bash keeps the POSIX form, so both forms count (Windows CI). A native Windows transcript
 # writes C:\\Users\\...: backslashes count as slashes, and /c/x, C:/x and c:/x are the same path (v0.28.0 H5)
+pbh_codex_js() { printf '%s/codex-jsonl.js' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"; }
 pbh_iso_check() {
-  printf '%s\n' "${2:-}" "${3:-}" "${4:-}" "${5:-}" | node -e '
+  printf '%s\n' "${2:-}" "${3:-}" "${4:-}" "${5:-}" | PBH_CODEX_JS="$(pbh_codex_js)" node -e '
 const fs = require("fs"), a = process.argv.slice(1);
 let raw = ""; try { raw = fs.readFileSync(0, "utf8"); } catch (e) {}
 const fwd = s => s.replace(/\\/g, "/");
@@ -274,7 +278,7 @@ if (names.length) pats.push(new RegExp("(?:^|[/\\s\"\\x27=])(?:" + names.map(esc
 const isPb = s => typeof s === "string" && (/(^|:)playbook-/.test(s) || names.indexOf(s) >= 0);
 const bad = s => { if (typeof s !== "string") return false; s = fwd(s); for (const p of ok) s = s.split(p).join("<ok>"); return pats.some(r => r.test(s)); };
 let fail = false;
-for (const line of fs.readFileSync(a[0], "utf8").split("\n")) {
+for (const line of require(process.env.PBH_CODEX_JS).normalize(fs.readFileSync(a[0], "utf8")).text.split("\n")) {
   let o; try { o = JSON.parse(line); } catch (e) { continue; }
   if (!o || typeof o !== "object") continue;
   if (o.type === "system" && o.subtype === "init") for (const l of [o.skills, o.slash_commands]) if (Array.isArray(l) && l.some(isPb)) fail = true;
@@ -337,11 +341,11 @@ pbh_leak_prompt() {
 }
 
 pbh_probe_answer() {
-  node -e '
+  PBH_CODEX_JS="$(pbh_codex_js)" node -e '
 const fs = require("fs");
 let raw = "", t = null;
 try { raw = fs.readFileSync(process.argv[1], "utf8"); } catch (e) {}
-for (const l of raw.split("\n")) {
+for (const l of require(process.env.PBH_CODEX_JS).normalize(raw).text.split("\n")) {
   let o; try { o = JSON.parse(l); } catch (e) { continue; }
   if (o && o.type === "result" && typeof o.result === "string") t = o.result;
 }

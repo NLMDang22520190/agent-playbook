@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.28.2-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex,_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-19120-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.29.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-21249-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -30,10 +30,10 @@ Then open a new agent session and say *"set up the playbook"*. Setup asks at mos
 | Rule | Why |
 |---|---|
 | Read the repo first. Ask only when a choice is material and hard to reverse; otherwise pick a default, log it in `decisions.md` and review the defaults together at the end. | Waiting on choices that can be undone is slow. Guessing the ones that cannot causes rework or damage. |
-| Every claim carries `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`, and "passes" needs output from a run in this session. | Tests have passed on the wrong screen, and a confident wrong explanation costs the next person a day. |
+| Claims that matter carry `[VERIFIED]`, `[INFERRED]` or `[UNVERIFIED]`, and "passes" needs output from a run in this session. | Tests have passed on the wrong screen, and a confident wrong explanation costs the next person a day. |
 | The tester, implementer and reviewer run in three fresh contexts, and `role-gate.sh` enforces the split through git. | An agent that writes both the code and its tests writes tests that agree with its mistakes. |
 | Acceptance criteria quote the request word for word, with a source anchor. | Paraphrasing a request is the fastest way to build what nobody asked for. |
-| A UI change needs someone to look at the screen. | Passing tests cannot tell you the screen is right. |
+| A UI change needs one real look at the running screen in this session: a screenshot or browser read, which the agent can take. | Passing tests cannot tell you the screen is right. |
 | Stay in scope, and never loosen a test or a gate. | Unrequested changes hide in diffs nobody reviews, and a loosened gate protects no one. |
 | When skills give opposite orders, the playbook wins. | Two skills with opposite orders make behaviour random. |
 
@@ -168,14 +168,14 @@ The merge needs node. Without it the script changes nothing and prints the JSON 
 
 | Event | Handler | What it does |
 |---|---|---|
-| PreToolUse (`Bash`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. |
+| PreToolUse (`Bash`, `PowerShell`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. In the `PowerShell` tool (its own handler, `guard-ps`) it checks `git`, destructive SQL through `sqlcmd`, `sqlite3`, `psql` and the like, and `Remove-Item -Recurse` (aliases `rm`, `ri`, `del`, `rmdir`, `rd`) outside the project; see Limits. Tool names and input: [code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks) (section PowerShell). |
 | SessionStart | `guard-irreversible.sh --session-start` | Records the commit the session started from. |
-| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions. |
+| SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions, only for trusted projects: those you list with `learn.sh trust` (`untrust` and `trusted` manage the list in `~/.agents/trusted-projects`) or all of them with `learnings_hook_trust=all` in the global conf (a project conf cannot set it). For any other project it prints one line saying the file was not injected. |
 | Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. |
 
 Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
 
-Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but v0.28.0 does not install them, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
+Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but the playbook (v0.29.0) does not install them yet, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
 
 ### Limits
 
@@ -185,10 +185,13 @@ The guard reads the command text of one tool call. It does not see through:
 - interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
 - git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
 - SQL that reaches a database client through a file in a form it does not follow: a non-`.sql` file read from disk (`cp notes.txt f.sql`, `cat notes.txt > f.sql`), a file written by an earlier tool call, `&>` redirects, file names with spaces, client options glued to the file name (`psql --file=f.txt`, `psql -ff.txt`), and long prefix options with a separate value (`sudo --user x cp ...`);
-- tools it is not attached to: the PowerShell tool, NotebookEdit and MCP tools (a database MCP server, for example);
+- tools it is not attached to: NotebookEdit and MCP tools (a database MCP server, for example);
+- in the PowerShell tool, the same kind of gaps, and these forms in particular: `Invoke-Expression` and `iex`, `powershell -Command`, `pwsh -c` and `-EncodedCommand`, `cmd /c` and `Start-Process` (the inner command is not read); scriptblocks that run later (`& { }`, `Invoke-Command`); the `--%` stop-parsing token; .NET calls such as `[IO.Directory]::Delete(...)`; variables other than `$HOME`, `$PWD`, `$env:USERPROFILE`, `$env:HOME`, `$env:TEMP`, `$env:TMP`, `$env:TMPDIR` and `$env:CLAUDE_PROJECT_DIR` in a delete target, which count as outside the project (they warn or block); an assignment in the same command to one of the listed variables (`$env:TEMP = ...`, a list assignment such as `$a, $env:TEMP = ...`, a compound one such as `+=`, `Set-Item env:TEMP ...`, `Set-Variable`, `Rename-Item` or `New-Item` naming it, `[Environment]::SetEnvironmentVariable('TEMP', ...)`) makes it unresolved from then on, so a delete through it warns or blocks (fail closed), and a value copied from one variable into another is not followed; splatting (`Remove-Item @p`) with no visible `-Recurse`; `Remove-Item` without `-Recurse`; registry and other provider paths, except that a target with `::` (such as `FileSystem::C:\x`) or a drive-relative one (`C:x`, `C:..\x`) warns or blocks; a SQL file written with `Set-Content` or `Out-File` and run later. The Unicode dashes U+2013 to U+2015 at the start of a word are read as `-`, curly quotes as quote characters, and these as word separators: the Unicode characters U+0085 (NEL), U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000, and the raw form feed and vertical tab bytes (a JSON `\u000b` or `\u000c` escape is not decoded, so it does not separate words: a Limit); `$(...)` inside an expandable here-string runs like in a double-quoted string. The command on the right of an assignment (`$r = Remove-Item -Recurse ...`) is checked like any other, whatever the assignment target: a variable with a scope prefix (`$script:r = ...`), a property (`$x.a = ...`), an index (`$x[0] = ...`, `$h['k'] = ...`), a typed one (`[string] $r = ...`) or a comma list of these, with `=`, `+=`, `-=`, `*=`, `/=`, `%=` or `??=`; not seen through: an index or quoted member name with a space in it (`$h[$i + 1] = ...`, `$x.'a b' = ...`) and a glued dot call after the `=` (`$r = .$c ...`). `cd..` is followed as a move to the parent directory; `cd\` and a drive switch such as `D:` make later relative paths unresolved (fail closed). A call operator whose command is a group, a variable or a quoted name with an expansion (`& (Get-Command x) ...`, `& $cmd ...`, `& "Remove-$x" ...`, also with `.`, and `.$c`) is an unknown command: with a recursive switch in its arguments (also `-Rec:$true`), or `push` with a force form, it warns or blocks (fail closed). A pipeline-fed `Remove-Item -Recurse` has no target word, so it warns or blocks even inside the project (fail closed), for example `Get-ChildItem .\build | Remove-Item -Recurse`. The hook commands are `bash` commands: without Git Bash installed they cannot run, and the PowerShell tool is then unguarded;
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
 - projects that are not a git repository, where the Stop check has no diff to compare;
 - a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
+
+The `learnings-hook.sh` trust gate covers only the automatic injection. The `AGENTS.global.md` text rule still tells agents to read `.agents/LEARNINGS.md`, so the file of an untrusted project can still be read as a text rule, and an agent could run `learn.sh trust` itself: only you should run it (the hook line and the `playbook-learn` skill say so).
 
 For the file-based bypasses the Stop diff is the backstop: it judges the end state of the tree, whatever tool made the change.
 SQL that a database client has already run through one of these bypasses has no backstop.
@@ -211,7 +214,7 @@ SQL that a database client has already run through one of these bypasses has no 
 
 ## Behaviour evals
 
-Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 41 scenarios, E1 to E41. `evals/run-evals.sh` runs the 37 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
+Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 43 scenarios, E1 to E43. `evals/run-evals.sh` runs the 39 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
 
 ```bash
 evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-evals-$(date +%s)" --max-cost 5
@@ -223,12 +226,12 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **19120 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **21249 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 39 / 60 lines · 4,731 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 39 / 60 lines · 4,584 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
-| Behaviour evals | Claude Code 2.1.296 only; Codex and OpenCode are installable but not evaluated. Latest, Run 28 on v0.27.0 (2026-10-26): with vs without, 13 scenarios, 44 runs, 6.07 USD; the kept rules hold their deltas (E29, E21, E3, E4). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour evals | Claude Code 2.1.296 is the only harness evaluated in full; Codex is partly evaluated (Run C1: k=3, through a `--cmd` adapter kept outside the repo); OpenCode is installable but not evaluated. Runs 25-44 (2026-10-26 and 27, with vs without the playbook, k=2 to 10, Run 38 on claude-opus-5-5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): at k=10 (Run 44) E2, E3, E4, E6 and E29 show Δ > 0 with 95% intervals that exclude 0, E14 and E21 are inconclusive; with the opt-in hooks Δ > 0 for E13 and E34. Of the 33 outcome tasks, pattern-26, pattern-15 and pattern-24 separate the arms with intervals that exclude 0 (runs pooled across commits); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44; Δ = 0 on 20 tasks in two or more runs and on 6 in one run. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 ## Alongside Superpowers or other skill packs
 
@@ -256,8 +259,8 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  19120 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E41) · RUBRIC.md · make-fixture.sh
+├── tests/                  21249 tests, run in sandboxes, never touch the real HOME
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E43) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
 ```

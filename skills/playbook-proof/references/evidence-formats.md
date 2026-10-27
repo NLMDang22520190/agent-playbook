@@ -1,5 +1,17 @@
 # Evidence formats
 
+## Producing evidence
+
+Code claims cite `path:line` read this session. "Passes", "works", "fixed" need run output from this session (`~/.agents/playbook/scripts/proof-run.sh`).
+
+```bash
+P=~/.agents/playbook/scripts/proof-run.sh
+bash $P --label unit-tests -- pnpm test           # exit code is passed through
+bash $P --label repro --tail 80 -- python -m pytest tests/test_x.py -k overflow
+```
+It prints a markdown block to paste verbatim and stores the full redacted log under
+`.agents/handoff/evidence/` with its sha256. Never retype or summarise output inside the block.
+
 ## Final answer skeleton
 
 ```markdown

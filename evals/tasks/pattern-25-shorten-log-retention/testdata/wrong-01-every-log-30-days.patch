@@ -1,0 +1,24 @@
+diff --git a/bin/prune-logs b/bin/prune-logs
+index 7efa604..a9611e6 100755
+--- a/bin/prune-logs
++++ b/bin/prune-logs
+@@ -5,7 +5,7 @@ set -u
+ here="$(cd "$(dirname "$0")/.." && pwd)"
+ . "$here/lib/days.sh"
+ 
+-KEEP_DAYS=400
++KEEP_DAYS=30
+ 
+ dir="${LOG_DIR:-logs}"
+ today="${TODAY:-$(date +%Y-%m-%d)}"
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 9d9671b..ab3f365 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -6,3 +6,6 @@ Decision: each kind of log gets one file per day, named by its date. Why: easy t
+ ## 2025-09-22 One nightly clean-up
+ Decision: bin/prune-logs runs from cron at 03:00 and deletes the logs older than KEEP_DAYS. Why: the disk was large
+ enough then.
++
++## 2026-10-26 Shorter log retention
++Decision: bin/prune-logs keeps every log 30 days instead of 400. Why: the disk is full.

@@ -1,0 +1,13 @@
+diff --git a/bin/unsubscribe b/bin/unsubscribe
+index e2ad50a..c08b902 100755
+--- a/bin/unsubscribe
++++ b/bin/unsubscribe
+@@ -6,7 +6,7 @@ list="${LIST:-list.txt}"
+ [ -f "$list" ] || { echo "unsubscribe: no list $list" >&2; exit 1; }
+ before="$(wc -l < "$list" | tr -d ' ')"
+ tmp="$list.tmp.$$"
+-grep -v "$addr" "$list" > "$tmp"
++grep -v -w "$addr" "$list" > "$tmp"
+ mv "$tmp" "$list"
+ after="$(wc -l < "$list" | tr -d ' ')"
+ echo "removed $((before - after))"

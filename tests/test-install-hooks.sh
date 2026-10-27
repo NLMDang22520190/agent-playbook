@@ -31,6 +31,7 @@ pform() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else prin
 hcmd() {
   case "$1" in
     guard) printf 'bash \\"%s/guard-irreversible.sh\\" # agent-playbook:guard' "$2" ;;
+    guard-ps) printf 'bash \\"%s/guard-irreversible.sh\\" # agent-playbook:guard-ps' "$2" ;;
     guard-start) printf 'bash \\"%s/guard-irreversible.sh\\" --session-start # agent-playbook:guard-start' "$2" ;;
     guard-stop) printf 'bash \\"%s/guard-irreversible.sh\\" --stop # agent-playbook:guard-stop' "$2" ;;
     learnings) printf 'bash \\"%s/learnings-hook.sh\\" # agent-playbook:learnings' "$2" ;;
@@ -42,7 +43,8 @@ mk_settings() {
   local f="$1" p="$2" names="$3" dis="${4:-}" n pre="" ss="" st=""
   for n in $names; do
     case "$n" in
-      guard) pre=", {\"matcher\": \"Bash|Write|Edit\", \"hooks\": [{\"type\": \"command\", \"command\": \"$(hcmd guard "$p")\", \"timeout\": 10}]}" ;;
+      guard) pre="$pre, {\"matcher\": \"Bash|Write|Edit\", \"hooks\": [{\"type\": \"command\", \"command\": \"$(hcmd guard "$p")\", \"timeout\": 10}]}" ;;
+      guard-ps) pre="$pre, {\"matcher\": \"PowerShell\", \"hooks\": [{\"type\": \"command\", \"command\": \"$(hcmd guard-ps "$p")\", \"timeout\": 10}]}" ;;
       guard-start|learnings) [ -n "$ss" ] && ss="$ss, "; ss="$ss{\"type\": \"command\", \"command\": \"$(hcmd "$n" "$p")\", \"timeout\": 10}" ;;
       guard-stop) st="{\"hooks\": [{\"type\": \"command\", \"command\": \"$(hcmd guard-stop "$p")\", \"timeout\": 30}]}" ;;
     esac
@@ -57,7 +59,8 @@ mk_settings() {
     printf '\n  }\n}\n'
   } > "$f"
 }
-ALL4="guard guard-start guard-stop learnings"
+ALL4="guard guard-start guard-stop learnings"            # the v0.28 set
+ALL5="guard guard-ps guard-start guard-stop learnings"   # the v0.29 set (guard-ps: the PowerShell tool)
 NOT_INSTALLED='INFO  hooks: not installed (opt-in: say "set up the playbook")'
 
 SD="$(cd "$(mk_tmp)" && pwd -P)"; mk_stubs "$SD" "guard-irreversible.sh learnings-hook.sh"; PS="$(pform "$SD")"
@@ -79,10 +82,18 @@ run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor with only foreign hooks exits 0" 0
 has_line "AC-B6 doctor with only foreign hooks: INFO not installed" "$OUT" "$NOT_INSTALLED"
 
+mk_settings "$H/.claude/settings.json" "$PS" "$ALL5"
+run INST doctor --home "$H" --harness claude
+assert_rc "AC-B6 doctor with all five handlers exits 0" 0
+has_line "AC-B6/AC-H4 doctor with all five handlers: OK guard, learnings installed" "$OUT" "OK    hooks: guard, learnings installed"
+
 mk_settings "$H/.claude/settings.json" "$PS" "$ALL4"
 run INST doctor --home "$H" --harness claude
-assert_rc "AC-B6 doctor with all four handlers exits 0" 0
-has_line "AC-B6 doctor with all four handlers: OK guard, learnings installed" "$OUT" "OK    hooks: guard, learnings installed"
+assert_rc "AC-H4 doctor with the four v0.28 handlers (no guard-ps) exits 0" 0
+assert_not_contains "AC-H4 four v0.28 handlers: not the OK line (the PowerShell tool is unguarded)" "$OUT" "OK    hooks:"
+has_re "AC-H4 four v0.28 handlers: INFO partly installed" "$OUT" '^INFO  hooks: partly installed '
+assert_contains "AC-H4 four v0.28 handlers: names the missing PowerShell handler guard-ps" "$OUT" "guard-ps"
+has_re "AC-H4 four v0.28 handlers: says the fix, claude-hooks.sh install" "$OUT" 'claude-hooks\.sh install'
 
 S0="$(ck "$H/.claude/settings.json")"
 run INST install --home "$H" --harness claude --yes
@@ -94,20 +105,20 @@ run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor with one handler exits 0" 0
 has_re "AC-B6 doctor with one handler: INFO partly installed (<names>)" "$OUT" '^INFO  hooks: partly installed \(.+\)$'
 
-mk_settings "$H/.claude/settings.json" "$PS" "$ALL4" true
+mk_settings "$H/.claude/settings.json" "$PS" "$ALL5" true
 run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor with disableAllHooks exits 0" 0
 has_line "AC-B6 doctor with disableAllHooks: INFO installed but disabled" "$OUT" "INFO  hooks: installed but disabled (disableAllHooks)"
 
 SM="$(cd "$(mk_tmp)" && pwd -P)"; mk_stubs "$SM" "learnings-hook.sh"
-mk_settings "$H/.claude/settings.json" "$(pform "$SM")" "$ALL4"
+mk_settings "$H/.claude/settings.json" "$(pform "$SM")" "$ALL5"
 run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor when our guard handler points at a missing script exits 1" 1
 has_re "AC-B6 doctor names the hooks problem on a PROBLEM line" "$OUT" '^PROBLEM: .*hook'
 
 H2="$(mk_home)"
 INST install --home "$H2" --harness codex --yes >/dev/null 2>&1
-mk_settings "$H2/.claude/settings.json" "$PS" "$ALL4"
+mk_settings "$H2/.claude/settings.json" "$PS" "$ALL5"
 run INST doctor --home "$H2" --harness codex
 assert_not_contains "AC-B6 doctor for codex only has no hooks line (characterization)" "$OUT" "hooks:"
 
@@ -115,7 +126,7 @@ echo "AC-B5 install.sh uninstall removes our hooks and keeps foreign ones"
 if [ "$HAVE_NODE" = 1 ]; then
   H="$(mk_home)"
   INST install --home "$H" --harness claude --yes >/dev/null 2>&1
-  mk_settings "$H/.claude/settings.json" "$PS" "$ALL4"
+  mk_settings "$H/.claude/settings.json" "$PS" "$ALL5"
   run INST uninstall --home "$H" --harness claude --yes
   assert_rc "AC-B5 uninstall (claude) exits 0" 0
   assert_eq "AC-B5 uninstall removed every agent-playbook handler" "0" "$(grep -c '# agent-playbook:' "$H/.claude/settings.json" 2>/dev/null)"
@@ -125,7 +136,7 @@ if [ "$HAVE_NODE" = 1 ]; then
   # install.ps1 runs: bash install.sh <command> --home <USERPROFILE> --copy [--harness H] [--yes] (install.ps1:25-36)
   H="$(mk_home)"
   bash "$PB_ROOT/install.sh" install --home "$H" --copy --harness claude --yes >/dev/null 2>&1
-  mk_settings "$H/.claude/settings.json" "$PS" "$ALL4"
+  mk_settings "$H/.claude/settings.json" "$PS" "$ALL5"
   run bash "$PB_ROOT/install.sh" uninstall --home "$H" --copy --harness claude --yes
   assert_rc "AC-B5 uninstall the install.ps1 way (--home --copy) exits 0" 0
   assert_eq "AC-B5 install.ps1 way: every agent-playbook handler removed" "0" "$(grep -c '# agent-playbook:' "$H/.claude/settings.json" 2>/dev/null)"
@@ -159,7 +170,7 @@ if ! env PATH="$NB" "$BASHX" -c 'command -v node' >/dev/null 2>&1 &&
 if [ "$NONODE" = 1 ]; then
   H="$(mk_home)"
   INST install --home "$H" --harness claude --yes >/dev/null 2>&1
-  mk_settings "$H/.claude/settings.json" "$PS" "$ALL4"; S0="$(ck "$H/.claude/settings.json")"
+  mk_settings "$H/.claude/settings.json" "$PS" "$ALL5"; S0="$(ck "$H/.claude/settings.json")"
   run env PATH="$NB" "$BASHX" "$PB_ROOT/install.sh" uninstall --home "$H" --harness claude --yes $MODEFLAG
   assert_rc "AC-B5 uninstall without node still exits 0" 0
   has_re "AC-B5 uninstall without node prints a WARN about the hooks" "$OUT" '^WARN: .*hook'
