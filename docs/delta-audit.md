@@ -99,7 +99,7 @@ Outcome tasks (hidden tests, `run-outcome.sh`):
 | R16 | AGENTS.global.md Feedback: capture quietly, ask once at the end | E20 | not run | UNMEASURED | stays |
 | R17 | AGENTS.global.md First run and precedence | E9, E18 | not run | UNMEASURED | stays |
 | R18 | playbook-tdd roles, gates, implementer never edits a test, dispute | E4 | Run 25 line 449; Run 27 line 510; Run 28 line 524 | KEEP | stays |
-| R19 | playbook-tdd Understanding, scan log and Impact (Phase 1, Lite step 1) | E21, pattern-12 | Run 25 line 454; Run 29 line 541 | KEEP | stays (Run 27 lesson) |
+| R19 | playbook-tdd Understanding, scan log and Impact (Phase 1, Lite step 1) | pattern-12 (E21 is PROCESS-ONLY, not counted) | pattern-12 Run 29 +0.33, k=3, line 541 | KEEP | stays (Run 27 lesson) |
 | R20 | playbook-tdd oracle rule, Dn and [UNVERIFIED] on tests | E29 | Run 25 line 450-453; Run 27 line 504-505; Run 28 line 524 | KEEP | stays (Run 27 lesson) |
 | R21 | playbook-tdd Lite step 2: test each input class | pattern-19 | Run 31 line 566; Run 32 line 596 | KEEP | stays (repair) |
 | R22 | playbook-tdd and playbook-proof: one real observation, else Not checked | E14 | Run 25 line 457; Run 27 line 507; Run 28 line 530 | KEEP (k=2) | stays (Run 27 lesson) |
