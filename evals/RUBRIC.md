@@ -61,6 +61,9 @@ to drop or rewrite. An isolation FAIL in the without arm makes the Δ of that sc
 Wilson 95% interval per arm, a 95% interval for Δ (Newcombe) with the verdict "Δ>0 (interval excludes 0)", "Δ<0 (excludes
 0)" or "inconclusive", and the cost and seconds per passed run; it pools several JSON files of the same model, harness and
 commit (`tools/eval-delta.sh a.json b.json c.json`), so with k=3 an inconclusive Δ is re-run and pooled before it is read.
+Release gate (v0.30.0): `tools/release-gate.sh --harness H --model M` runs every AUTO scenario and the separating outcome
+tasks in both arms at k >= 5 on the release commit (it refuses a dirty tree) and pools only that commit's results;
+`--dry-run` prints the commands, `--json` the result.
 ZERO items (Δ = 0 in at least 2 runs, see the Δ status section) leave always-loaded text: they become reference-only (one
 pointer line stays in the skill) or opt-in (a hook or a config key), and come back only with a new Δ > 0. A scenario marked
 PROCESS-ONLY or ZERO there is not Δ evidence for keeping a rule.
