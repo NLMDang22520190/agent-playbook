@@ -46,7 +46,7 @@ echo "S0 AC8.1 pbh_preset_cmd keeps today's preset strings (evals/run-evals.sh:1
 pbh 'pbh_preset_cmd claude'
 assert_eq "AC8.1 pbh_preset_cmd claude" 'cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' "$OUT"
 pbh 'pbh_preset_cmd codex'
-assert_eq "AC8.1 pbh_preset_cmd codex" 'cd "$1" && codex exec "$(cat "$2")"' "$OUT"
+assert_contains "AC8 (v0.30.0 lane g) pbh_preset_cmd codex runs evals/codex-adapter.sh" "$OUT" "codex-adapter.sh"
 pbh 'pbh_preset_cmd opencode'
 assert_eq "AC8.1 pbh_preset_cmd opencode" 'cd "$1" && opencode run --auto "$(cat "$2")"' "$OUT"
 
@@ -79,7 +79,9 @@ for h in claude codex opencode; do
 done
 pbh 'pbh_arm_supported claude without'
 assert_rc "AC8.1 pbh_arm_supported claude without -> 0 (claude-settings mechanism)" 0
-for h in codex opencode; do
+pbh 'pbh_arm_supported codex without'
+assert_rc "AC8 (v0.30.0 lane g) pbh_arm_supported codex without -> 0 (fresh HOME in evals/codex-adapter.sh)" 0
+for h in opencode; do
   pbh "pbh_arm_supported $h without"
   assert_rc "AC3.5 pbh_arm_supported $h without -> 2" 2
   if [ "$RC" = 2 ] && [ -n "$(words "$OUT")" ]; then t_ok "AC3.5 pbh_arm_supported $h without prints a reason"; else t_bad "AC3.5 pbh_arm_supported $h without prints a reason" "empty output"; fi
