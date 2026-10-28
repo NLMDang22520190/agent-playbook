@@ -356,5 +356,19 @@ assert_not_contains "AC6 list --harness claude does not claim conf" "$OUT" "conf
 printf 'model_spec_reviewer_claude=session\n' > "$G"
 role plan --harness claude
 assert_eq "AC6 plan: a spec_reviewer session key shows next to the default reviewer, from conf" "Models: tester=session, implementer=session, reviewer=sonnet, spec_reviewer=session - from conf" "$OUT"
+
+echo "v0.30.0 c2 review: the plan says defaults (no conf) only when a built-in default appears in the line"
+reset
+printf 'model_tester_reasoning_effort=high\n' > "$L"
+role plan --harness codex
+assert_rc "review c2 codex + effort-only conf: plan exits 0" 0
+assert_contains "review c2 codex + effort-only conf: the effort is shown (tester=session (high))" "$OUT" "tester=session (high)"
+assert_eq "review c2 codex + effort-only conf: no built-in default applies, so the suffix stays session (no conf)" "session (no conf)" "${OUT##* - }"
+reset
+role plan --harness claude
+assert_eq "review c2 no conf + claude: the built-in reviewer=sonnet applies, suffix is defaults (no conf)" "defaults (no conf)" "${OUT##* - }"
+reset
+role plan --harness codex
+assert_eq "review c2 no conf + codex: no built-in default, suffix is session (no conf)" "session (no conf)" "${OUT##* - }"
 reset
 t_summary
