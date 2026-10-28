@@ -120,7 +120,7 @@ commit only (line 726-727).
 | R23 | playbook-tdd weight details: decide consistently, additive export, user override, quick | E1, E15 labels; E22, E23, E25, E26 | Run 25 line 459; Run 45: E26 RED commit +0.80 [0.19, 0.96]; E22, E23 labels; E25 ZERO-1 | KEEP | stays (the user override keeps the test first) |
 | R24 | playbook-tdd Full: spec reviewer, sub-agents, one reviewer per feature | E16 | Run 25 line 458; Run 32 line 583 | PROCESS-ONLY | stays (unmeasured outcome on Full work) |
 | R25 | playbook-tdd final report parts: Request coverage, Confidence, Pre-mortem, Models used, feedback line | feedback line label (E1, E15); Models line (E24); none for Pre-mortem or Request coverage | Run 25 line 459 | PROCESS-ONLY | reworded: Pre-mortem, Models used and the feedback line are hand-off report only, never PR body parts |
-| R26 | playbook-tdd situational mechanics: test infra role, parallel slices, cost logging and calibrate, resuming, "when the user says it is wrong", starting roles per harness | E3, E4, E14, E16, E21, E24, E29 (move test) | Run 46 (7 parts moved) and Run 47 (6 parts, roles kept): E29 [UNVERIFIED] label 12/15 -> 2/10, Δ +0.60 [0.20, 0.79]; E3 test first 5/5 -> 2/5, Δ +0.60 [0.03, 0.88] | KEEP (as placement) | stays in SKILL.md: the move was rejected |
+| R26 | playbook-tdd situational mechanics: test infra role, parallel slices, cost logging and calibrate, resuming, "when the user says it is wrong", starting roles per harness | none valid | Runs 46-47 compared an export tree with the R26 text moved against main, but the runner's with arm loads the installed playbook from the real HOME, so both sides ran the same v0.29.0 text (Run 49 finding); their gaps (E29 12/15 vs 2/10, E3 5/5 vs 2/5) are run-to-run variance | UNMEASURED | stays; re-measure once the runner can load a variant tree |
 | R27 | playbook-proof "Producing evidence" (proof-run.sh usage) | E5 | Run 25 line 461 | ZERO | moved to `references/evidence-formats.md`; a pointer line stays |
 | R28 | references/incident.md | E35 | Run 28 line 525-526 | ZERO-1 | reference-only already (one pointer line in playbook-tdd) |
 | R29 | references/upgrade.md | E36, pattern-17 | Run 28 line 527-528; Run 29 line 543; Run 33 line 600 | ZERO | reference-only already |
@@ -145,12 +145,7 @@ Reworded: R25 (hand-off report only). Everything tied to a KEEP row stays, and s
 measurement before a rule leaves, in either direction.
 
 The words that remain in the always-loaded files are mostly KEEP text (R1, R5, R9, R13, R18, R20, R21), INCONCLUSIVE text (R19, R22),
-PROCESS-ONLY text (R14, R16) and UNMEASURED text (R2, R3, R17: interactive or setup runs). Runs 45-47 (v0.30.0 lane m) measured the
-AUTO scenarios that were UNMEASURED and tried the R26 move. The move (SKILL.md 3691 -> 3173, then 3330 words with the roles section
-kept) was rejected: E29's [UNVERIFIED] label fell from 12/15 to 2/10 and E3's test first from 5/5 to 2/5, both with intervals that
-exclude 0, although none of the moved text is about either. Text in SKILL.md carries weight beyond its own topic (the Run 27 lesson
-holds for playbook-tdd too), so a word count alone is not a reason to move a part. The one always-loaded rule now ZERO in two runs,
-R7, stays: both of its scenarios only approximate pushback with a single prompt. Nothing moved in v0.30.0.
+PROCESS-ONLY text (R14, R16) and UNMEASURED text (R2, R3, R17: interactive or setup runs). Run 45 (v0.30.0 lane m) measured the AUTO scenarios that were UNMEASURED, both arms on main. Runs 46-49 tried to compare variant trees (the R26 move, two cost candidates) against main, but the with arm loads the installed playbook from the real HOME, not the tree under test, so those runs compared v0.29.0 with itself and decide nothing. They still show how far two identical arms can drift at k=5 (E29 12/15 vs 2/10, E3 5/5 vs 2/5, pattern-15 opus cost 0.51 vs 1.31 USD), which is a reason to read single k=5 gaps with care. Comparing a variant needs a runner mode that installs the tree into the with arm (queue). The one always-loaded rule now ZERO in two runs, R7, stays: both of its scenarios only approximate pushback with a single prompt. Nothing moved in v0.30.0.
 
 Cost: the with arm costs about 2-2.5x the without arm (Run 25: 0.166 vs 0.067 USD per run, line 484; Run 26: 0.160 vs 0.076,
 line 483; Run 29: 0.173 vs 0.082, line 536).
