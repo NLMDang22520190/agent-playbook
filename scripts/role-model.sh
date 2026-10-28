@@ -146,7 +146,7 @@ elif [ "$cmd" = "plan" ]; then
     # spec_reviewer only when it differs from the reviewer (it falls back to the reviewer, so equal = no news)
     [ "$r" = spec_reviewer ] && [ "$line" = "$(role_line reviewer "$harness")" ] && continue
     out="$out$sep$r=$line"; sep=", "
-    [ "$src" != "from conf" ] && [ "$line" != session ] && src="defaults (no conf)"
+    [ "$src" != "from conf" ] && [ "$(model_for "$r" "$harness")" != session ] && src="defaults (no conf)"
   done
   printf '%s - %s\n' "$out" "$src"
 elif [ "$want_effort" = 1 ]; then
