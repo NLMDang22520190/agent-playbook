@@ -481,6 +481,7 @@ for RUN in $RUNS; do
 $(pbh_model_args "$HARNESS" "$MODEL")
 EOF
       if [ "$HARNESS" = claude ] && [ -n "$SETF" ]; then set -- "$@" --settings "$SETF"; fi
+      if [ "$HARNESS" = codex ] && [ -n "$SETF" ]; then set -- "$@" --pb-arm "$ARM"; fi   # evals/codex-adapter.sh
     fi
     if [ "$USE_TIMEOUT" = 1 ]; then exec timeout "$TIMEOUT" bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1
     else exec bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1; fi

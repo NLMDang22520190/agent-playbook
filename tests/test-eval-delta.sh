@@ -185,7 +185,7 @@ hchk "AC7.2 --help: --repeat K takes 1..99" '--repeat K[^.]{0,20}1\.\.99'
 hchk "AC7.2 --help: the run label <E>.<arm>.<k>" '<E>\.<arm>\.<k>'
 hchk "AC7.2 --help: the JSON results file" '\.json'
 hchk "AC7.2 --help: Claude Code runs the without arm with --settings" 'Claude Code[^.]{0,80}--settings'
-hchk "AC7.2 --help: Codex and OpenCode cannot run the without arm" '(Codex|codex)[^.]{0,40}(OpenCode|opencode)[^.]{0,80}cannot run the without arm'
+hchk "AC7.2 --help: only OpenCode cannot run the without arm (Codex can, via evals/codex-adapter.sh)" '\. OpenCode[^.]{0,40}cannot run the without arm'
 
 echo "v29 S statistics: Wilson 95% per arm, Newcombe 95% for Δ, pooling, cost per passed run (spec lane s, AC1-AC5)"
 # runs_pp SCEN ARM N "chk=P ..." [COSTS] [SECONDS] -> appends N run objects to RR; run i PASSes chk when i <= P

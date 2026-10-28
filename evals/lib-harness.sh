@@ -47,7 +47,7 @@
 pbh_preset_cmd() {
   case "$1" in
     claude)   printf '%s' 'cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' ;;
-    codex)    printf '%s' 'cd "$1" && codex exec "$(cat "$2")"' ;;
+    codex)    printf 'bash %q "$1" "$2"' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/codex-adapter.sh" ;;   # v0.30.0: --json, fresh HOME without
     opencode) printf '%s' 'cd "$1" && opencode run --auto "$(cat "$2")"' ;;
     *) return 1 ;;
   esac
@@ -62,13 +62,11 @@ pbh_model_args() {
   return 0
 }
 
-# DECISION[D6]: only Claude Code (settings file) and --cmd (adapter-defined) can run the without arm in v0.26.0
+# DECISION[D6]: Claude Code (settings file), Codex (evals/codex-adapter.sh: a fresh HOME with auth.json only, v0.30.0) and --cmd
+# (adapter-defined) can run the without arm
 pbh_arm_supported() {
   [ "$2" = with ] && return 0
   case "$1" in
-    codex)
-      printf '%s\n' 'no documented per-run switch removes ~/.codex/AGENTS.md or the playbook skills without editing ~/.codex/config.toml'
-      return 2 ;;
     opencode)
       printf '%s\n' 'no documented per-run switch removes ~/.config/opencode/AGENTS.md'
       return 2 ;;

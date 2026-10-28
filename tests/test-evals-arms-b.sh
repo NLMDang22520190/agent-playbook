@@ -180,9 +180,9 @@ assert_eq "fix3 default mode: no probe" "0" "$(probes)"
 assert_file "fix3 default mode: the run ran" "$FR/claude.E8.args"
 
 # ================= S3b refusals =================
-echo "S3b AC3.5 codex and opencode refuse the without arm before any workdir; --arm with still works"
+echo "S3b AC3.5 opencode refuses the without arm before any workdir; --arm with still works"
 GH="$(mk_home)"
-for h in codex opencode; do
+for h in opencode; do
   for arm in without both; do
     go --harness "$h" --model m1 --arm "$arm" --scenarios E8
     assert_rc "AC3.5 --harness $h --arm $arm -> exit 2" 2
@@ -195,6 +195,16 @@ done
 go --harness codex --model m1 --arm with --scenarios E8
 assert_rc "AC3.5 --harness codex --model M --arm with -> exit 0" 0
 assert_file "AC3.5 --harness codex --arm with: codex ran" "$FR/codex.E8.args"
+echo "AC8 (v0.30.0 lane g) --harness codex --arm both: the without run gets a fresh HOME with auth.json only"
+mkdir -p "$GH/.codex"; printf '{"token":"T"}\n' > "$GH/.codex/auth.json"
+go --harness codex --model m1 --arm both --scenarios E8
+assert_rc "AC8 --harness codex --arm both -> exit 0" 0
+assert_eq "AC8 codex: the with run keeps the stand-in HOME" "$GH" "$(cat "$FR/codex.E8.with.1.hm" 2>/dev/null)"
+CXH="$(cat "$FR/codex.E8.without.1.hm" 2>/dev/null)"
+if [ -n "$CXH" ] && [ "$CXH" != "$GH" ]; then t_ok "AC8 codex: the without run has another HOME"; else t_bad "AC8 codex: the without run has another HOME" "HOME=[$CXH]"; fi
+assert_not_contains "AC8 codex: --pb-arm never reaches codex" "$(cat "$FR/codex.E8.without.1.args" 2>/dev/null)" "--pb-arm"
+assert_contains "AC8 codex: the without run still gets -m" "$(tr '\n' ' ' < "$FR/codex.E8.without.1.args" 2>/dev/null)" "-m m1"
+assert_contains "AC8 codex: the preset passes --json" "$(cat "$FR/codex.E8.without.1.args" 2>/dev/null)" "--json"
 go --cmd "bash $A/idle.sh" --real-home --arm without --scenarios E8
 assert_rc "AC3.5 --real-home --arm without -> exit 2" 2
 assert_contains "AC3.5 --real-home --arm without: the message" "$OUT" "--real-home keeps the playbook home; it cannot run the without arm"

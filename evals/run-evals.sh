@@ -43,11 +43,11 @@
 # temp dir pb-evset.*, removed on exit, copied to the evidence as <arm>-settings.json) that excludes ~/.claude/CLAUDE.md,
 # turns off and denies the playbook skills, denies reads of ~/.agents and sets autoMemoryEnabled false (the with arm gets a
 # file with autoMemoryEnabled false only, whenever --arm or --repeat is given). --cmd adapters get PB_EVAL_ARM and
-# PB_EVAL_SETTINGS and do their own isolation. Codex, OpenCode and --real-home cannot run the without arm (exit 2), nor can
+# PB_EVAL_SETTINGS and do their own isolation. The codex preset runs evals/codex-adapter.sh (codex exec --json) with --pb-arm
+# ARM: its without arm gets a fresh HOME that holds only .codex/auth.json (v0.30.0, the shape of Run C1's --cmd adapter).
+# OpenCode and --real-home cannot run the without arm (exit 2), nor can
 # a workroot under a directory whose CLAUDE.md, AGENTS.md or rules file holds the playbook block, or a user rules file
 # (~/.claude/rules) that holds it. The helpers live in evals/lib-harness.sh (also sourced by run-outcome.sh).
-# A --cmd adapter can run a harness without the playbook when it gives the without arm a clean HOME (Codex Run C1 did so,
-# evals/results/2026-10-12-claude-code-2.1.296.md).
 # --hooks (needs --arm or --repeat, and --harness claude or --cmd): the with arm's settings file also gets the guard and learnings
 # hooks (PreToolUse, SessionStart, Stop: the runner repo's scripts/guard-irreversible.sh and scripts/learnings-hook.sh with --eval);
 # the without arm never has hooks. Every run gets PB_EVAL_HOOKS=1 (hooks a user installed stand aside), PB_EVAL_HOOK_LOG=
@@ -2410,6 +2410,7 @@ S1: `multiply(a, b)` in src/calc.js returns the product of a and b, e.g. multipl
 $(pbh_model_args "$HARNESS" "$MODEL")
 EOF
       if [ "$HARNESS" = claude ] && [ -n "$SETF" ]; then set -- "$@" --settings "$SETF"; fi
+      if [ "$HARNESS" = codex ] && [ -n "$SETF" ]; then set -- "$@" --pb-arm "$ARM"; fi   # evals/codex-adapter.sh
     fi
     if [ "$USE_TIMEOUT" = 1 ]; then
       exec timeout "$TIMEOUT" bash -c "$ADAPTER" "$@" </dev/null >"$LOG" 2>&1

@@ -46,18 +46,22 @@ echo "S0 AC8.1 pbh_preset_cmd keeps today's preset strings (evals/run-evals.sh:1
 pbh 'pbh_preset_cmd claude'
 assert_eq "AC8.1 pbh_preset_cmd claude" 'cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' "$OUT"
 pbh 'pbh_preset_cmd codex'
-assert_eq "AC8.1 pbh_preset_cmd codex" 'cd "$1" && codex exec "$(cat "$2")"' "$OUT"
+assert_contains "AC8 (v0.30.0 lane g) pbh_preset_cmd codex runs evals/codex-adapter.sh" "$OUT" "codex-adapter.sh"
 pbh 'pbh_preset_cmd opencode'
 assert_eq "AC8.1 pbh_preset_cmd opencode" 'cd "$1" && opencode run --auto "$(cat "$2")"' "$OUT"
 
 echo "S0 AC8.2 run-evals.sh sources the library and keeps no second copy of the presets"
 if grep -qE '^[^#]*(\.|source)[[:space:]].*lib-harness\.sh' "$PB_ROOT/evals/run-evals.sh"; then t_ok "AC8.2 run-evals.sh sources evals/lib-harness.sh"
 else t_bad "AC8.2 run-evals.sh sources evals/lib-harness.sh" "no '. .../lib-harness.sh' line in evals/run-evals.sh"; fi
-for p in 'claude -p --output-format stream-json --verbose' 'codex exec "$(cat' 'opencode run --auto'; do
+for p in 'claude -p --output-format stream-json --verbose' 'opencode run --auto'; do
   hits="$(cd "$PB_ROOT" && grep -lF -- "$p" evals/*.sh tools/*.sh 2>/dev/null | tr '\n' ' ')"
   assert_eq "AC8.2 the preset string [$p] appears in one file only, the library" "evals/lib-harness.sh " "$hits"
   assert_eq "AC8.2 the preset string [$p] appears once in the library" "1" "$(grep -cF -- "$p" "$LIBH" 2>/dev/null || true)"
 done
+# v0.30.0 lane g: the codex command line lives in evals/codex-adapter.sh, which the library's preset runs
+p='--skip-git-repo-check --json --ephemeral'
+hits="$(cd "$PB_ROOT" && grep -lF -- "$p" evals/*.sh tools/*.sh 2>/dev/null | tr '\n' ' ')"
+assert_eq "AC8.2 the codex flags [$p] appear in one file only, evals/codex-adapter.sh" "evals/codex-adapter.sh " "$hits"
 
 echo "S0 AC1.4/AC8.1 pbh_model_args maps the model flag per harness"
 pbh 'pbh_model_args claude claude-opus-x'
@@ -79,7 +83,9 @@ for h in claude codex opencode; do
 done
 pbh 'pbh_arm_supported claude without'
 assert_rc "AC8.1 pbh_arm_supported claude without -> 0 (claude-settings mechanism)" 0
-for h in codex opencode; do
+pbh 'pbh_arm_supported codex without'
+assert_rc "AC8 (v0.30.0 lane g) pbh_arm_supported codex without -> 0 (fresh HOME in evals/codex-adapter.sh)" 0
+for h in opencode; do
   pbh "pbh_arm_supported $h without"
   assert_rc "AC3.5 pbh_arm_supported $h without -> 2" 2
   if [ "$RC" = 2 ] && [ -n "$(words "$OUT")" ]; then t_ok "AC3.5 pbh_arm_supported $h without prints a reason"; else t_bad "AC3.5 pbh_arm_supported $h without prints a reason" "empty output"; fi
