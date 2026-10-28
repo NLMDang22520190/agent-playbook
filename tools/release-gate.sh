@@ -171,10 +171,11 @@ for (const n of names) {
   else if (j.playbook_commit !== e.PG_SHA) why = "other commit";
   else if (j.harness !== e.PG_H) why = "other harness";
   else if (j.model !== e.PG_M) why = "other model";
-  console.log(why ? "S" + f + " (" + why + ")" : "P" + f);
+  // the bare name: node turns /tmp into a Windows path on Windows, so the shell adds $OD
+  console.log(why ? "S" + n + " (" + why + ")" : "P" + n);
 }')" || die 3 "node failed while pooling"
-POOLED="$(printf '%s\n' "$PL" | sed -n 's/^P//p')"
-SKIPPED="$(printf '%s\n' "$PL" | sed -n 's/^S//p')"
+POOLED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^P/, "") { print d "/" $0 }')"
+SKIPPED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^S/, "") { print d "/" $0 }')"
 [ -n "$POOLED" ] || die 2 "nothing to pool in $OD for commit $SHA, harness $LABEL, model $MODEL"
 FILES=()
 while IFS= read -r f; do [ -n "$f" ] && FILES+=("$f"); done <<EOF
