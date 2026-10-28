@@ -70,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows (Git Bash) is slow to start processes: it runs as seven parallel shards below; macOS runs as two.
+        # Windows (Git Bash) is slow to start processes: it runs as eight parallel shards below; macOS runs as two.
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -170,14 +170,14 @@ jobs:
           exit 1
 
   windows-shard:
-    # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in seven.
+    # Windows runs the same suite in Git Bash (no symlink rights: install tests use --copy), split in eight.
     name: windows shard ${{ matrix.shard }}
     needs: [reuse, changes]
     if: ${{ !cancelled() && !startsWith(github.ref, 'refs/tags/') && !(needs.reuse.result == 'success' && needs.reuse.outputs.run != '') }}
     strategy:
       fail-fast: false
       matrix:
-        shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']
+        shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
