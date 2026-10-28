@@ -2339,4 +2339,21 @@ qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to 
 qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,255}(trust|inject)|(trust|inject).{0,255}text rule'
 qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,255}(agent|itself|own)|(agent|itself).{0,255}learn\.sh trust'
 
+echo "v0.30.0 lane c2 AC7: the Spec review (Full) paragraph skips a one-slice spec with no other reading"
+# the "**Spec review (Full).**" paragraph of playbook-tdd SKILL.md on one line (up to the next blank line)
+C2P="$(awk '/^\*\*Spec review \(Full\)\.\*\*/ { f = 1 } f && /^[[:space:]]*$/ { exit } f { print }' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+c2chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
+c2chk "AC7 the Spec review (Full) paragraph exists" "$C2P" 'Spec review \(Full\)'
+c2chk "AC7 the paragraph says when to skip the spec reviewer: exactly one slice" "$C2P" 'skip[^.]{0,200}(exactly one|one|single|a single) slice|(exactly one|one|single|a single) slice[^.]{0,200}skip'
+c2chk "AC7 the skip also needs an Understanding section with no other reading" "$C2P" 'Understanding[^.]{0,160}no other reading|no other reading[^.]{0,160}Understanding'
+c2chk "AC7 the skip is noted in decisions.md" "$C2P" 'skip[^.]{0,250}decisions\.md|decisions\.md[^.]{0,250}skip'
+c2chk "AC7 the paragraph keeps: Lite has no spec reviewer" "$C2P" 'Lite has no spec reviewer'
+
+echo "v0.30.0 lane c2 AC8: the docs state the claude reviewer default (sonnet) and how to undo it"
+# sentences of README.md and docs/*.md, one per line (split on '. ' after flattening)
+C2DOCS="$(cat "$PB_ROOT/README.md" "$PB_ROOT"/docs/*.md 2>/dev/null | tr '\n' ' ' | tr -s ' ' | sed 's/\. /.\n/g')"
+C2DEF="$(printf '%s\n' "$C2DOCS" | grep -i 'sonnet' | grep -i 'reviewer' | grep -i 'claude' | grep -iE 'default')"
+if [ -n "$C2DEF" ]; then t_ok "AC8 a doc sentence says the claude reviewer defaults to sonnet"; else t_bad "AC8 a doc sentence says the claude reviewer defaults to sonnet" "no sentence in README.md or docs/*.md with default + sonnet + reviewer + claude"; fi
+if printf '%s\n' "$C2DOCS" | grep -qE 'model_reviewer(_claude)?=session'; then t_ok "AC8 the docs name model_reviewer=session to undo the default"; else t_bad "AC8 the docs name model_reviewer=session to undo the default" "no model_reviewer=session in README.md or docs/*.md"; fi
+
 t_summary

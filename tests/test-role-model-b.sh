@@ -111,7 +111,7 @@ export PLAYBOOK_HARNESS=codex
 role plan
 assert_eq "AC2.3/R6 plan honours PLAYBOOK_HARNESS" "Models: tester=tc, implementer=ic, reviewer=rc - from conf" "$OUT"
 role plan --harness claude
-assert_eq "AC2.3/R6 --harness beats PLAYBOOK_HARNESS in plan" "Models: tester=tcl, implementer=session, reviewer=session - from conf" "$OUT"
+assert_eq "AC2.3/R6 --harness beats PLAYBOOK_HARNESS in plan (v0.30.0 c2: claude reviewer default sonnet)" "Models: tester=tcl, implementer=session, reviewer=sonnet - from conf" "$OUT"
 unset PLAYBOOK_HARNESS
 role plan --harness "bad harness";  assert_rc "AC2.3 plan: an invalid harness exits 2" 2
 role plan --harness;                assert_rc "AC2.3 plan: --harness without a value exits 2" 2
@@ -127,7 +127,7 @@ echo "v0.24.0 review round 2 F5: a key present in any conf counts as from conf, 
 reset
 printf 'model_tester_claude=session\n' > "$G"
 role plan --harness claude
-assert_eq "F5 an explicit model_tester_claude=session in the global conf: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+assert_eq "F5 an explicit model_tester_claude=session in the global conf: from conf (v0.30.0 c2: reviewer unset -> sonnet)" "Models: tester=session, implementer=session, reviewer=sonnet - from conf" "$OUT"
 reset
 printf 'model_reviewer_claude=session\n' > "$L"
 role plan --harness claude
@@ -135,14 +135,17 @@ assert_eq "F5 an explicit session key in the project conf: from conf" "Models: t
 reset
 printf 'model_implementer=session\n' > "$G"
 role plan --harness claude
-assert_eq "F5 an explicit generic session key: from conf" "Models: tester=session, implementer=session, reviewer=session - from conf" "$OUT"
+assert_eq "F5 an explicit generic session key: from conf (v0.30.0 c2: reviewer unset -> sonnet)" "Models: tester=session, implementer=session, reviewer=sonnet - from conf" "$OUT"
 reset
 printf 'model_tester_codex=session\n' > "$G"
 role plan --harness claude
-assert_eq "F5 a session key of another harness does not count" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+# v0.30.0 c2 AC6: the claude reviewer now defaults to sonnet; the source must still not claim conf
+assert_contains "F5 a session key of another harness does not count (models part)" "$OUT" "Models: tester=session, implementer=session, reviewer=sonnet - "
+assert_not_contains "F5 a session key of another harness does not count (not from conf)" "$OUT" "from conf"
 reset
 role plan --harness claude
-assert_eq "F5 nothing set at all: session (no conf)" "Models: tester=session, implementer=session, reviewer=session - session (no conf)" "$OUT"
+assert_contains "F5 nothing set at all (models part)" "$OUT" "Models: tester=session, implementer=session, reviewer=sonnet - "
+assert_not_contains "F5 nothing set at all: not from conf" "$OUT" "from conf"
 reset
 echo "v0.24.1: a harness name that makes model_<role>_<H> equal another role's key is rejected"
 MSG="harness name 'light' collides with role reviewer_light"
@@ -265,5 +268,93 @@ reset
 role spec_reviewer --harness light
 assert_rc "v0.24.5 the harness collision check still works with spec_reviewer in the lists" 2
 assert_contains "v0.24.5 the collision names reviewer_light" "$OUT" "collides with role reviewer_light"
+reset
+
+# ---- v0.30.0 lane c2 (Full): under --harness claude the reviewers default to sonnet when no conf key sets them ----
+echo "v0.30.0 c2 AC1/AC2: claude reviewer, spec_reviewer and reviewer_light default to sonnet"
+reset
+role reviewer --harness claude
+assert_rc "AC1 reviewer --harness claude with no conf exits 0" 0
+assert_eq "AC1 reviewer --harness claude with no conf -> sonnet" "sonnet" "$OUT"
+export PLAYBOOK_HARNESS=claude
+role reviewer
+assert_eq "AC1 PLAYBOOK_HARNESS=claude reviewer with no conf -> sonnet" "sonnet" "$OUT"
+unset PLAYBOOK_HARNESS
+role spec_reviewer --harness claude
+assert_eq "AC2 spec_reviewer --harness claude with no conf -> sonnet" "sonnet" "$OUT"
+role reviewer_light --harness claude
+assert_eq "AC2 reviewer_light --harness claude with no conf -> sonnet" "sonnet" "$OUT"
+# keys of other roles, other harnesses or unknown keys are not reviewer keys: the default still applies
+printf 'model_tester_claude=haiku\nmodel_implementer=imp\nmodel_reviewer_codex=gpt\nmodel_orchestrator=x\n' > "$G"
+role reviewer --harness claude
+assert_eq "AC1 unrelated keys do not switch the claude default off (reviewer)" "sonnet" "$OUT"
+role spec_reviewer --harness claude
+assert_eq "AC2 unrelated keys do not switch the claude default off (spec_reviewer)" "sonnet" "$OUT"
+
+echo "v0.30.0 c2 AC3: an explicit conf key, even session, wins over the new default"
+reset
+printf 'model_reviewer=session\n' > "$G"
+role reviewer --harness claude;        assert_eq "AC3 model_reviewer=session wins (reviewer)" "session" "$OUT"
+role spec_reviewer --harness claude;   assert_eq "AC3 model_reviewer=session wins (spec_reviewer via the reviewer fallback)" "session" "$OUT"
+role reviewer_light --harness claude;  assert_eq "AC3 model_reviewer=session wins (reviewer_light via the reviewer fallback)" "session" "$OUT"
+reset
+printf 'model_reviewer_claude=session\n' > "$L"
+role reviewer --harness claude;        assert_eq "AC3 a project model_reviewer_claude=session wins" "session" "$OUT"
+reset
+printf 'model_reviewer=session\n' > "$L"
+role reviewer --harness claude;        assert_eq "AC3 a project-only model_reviewer=session wins" "session" "$OUT"
+reset
+printf 'model_reviewer_claude=opus\n' > "$G"
+role reviewer --harness claude;        assert_eq "AC3 model_reviewer_claude=opus wins" "opus" "$OUT"
+role spec_reviewer --harness claude;   assert_eq "AC3 spec_reviewer follows the configured claude reviewer" "opus" "$OUT"
+reset
+printf 'model_reviewer=gen\n' > "$G"
+role reviewer --harness claude;        assert_eq "AC3 a generic model_reviewer wins over the claude default" "gen" "$OUT"
+reset
+printf 'model_spec_reviewer=session\n' > "$G"
+role spec_reviewer --harness claude;   assert_eq "AC3 model_spec_reviewer=session wins for spec_reviewer" "session" "$OUT"
+role reviewer --harness claude;        assert_eq "AC3 model_spec_reviewer does not change the reviewer default" "sonnet" "$OUT"
+reset
+printf 'model_spec_reviewer_claude=haiku\n' > "$G"
+role spec_reviewer --harness claude;   assert_eq "AC3 model_spec_reviewer_claude wins for spec_reviewer" "haiku" "$OUT"
+reset
+printf 'model_reviewer_light=session\n' > "$G"
+role reviewer_light --harness claude;  assert_eq "AC3 model_reviewer_light=session wins for reviewer_light" "session" "$OUT"
+role reviewer --harness claude;        assert_eq "AC3 model_reviewer_light does not change the reviewer default" "sonnet" "$OUT"
+
+echo "v0.30.0 c2 AC4: other harnesses and no harness keep session"
+for h in codex opencode; do
+  reset
+  role reviewer --harness "$h";       assert_eq "AC4 reviewer --harness $h with no conf -> session" "session" "$OUT"
+  role spec_reviewer --harness "$h";  assert_eq "AC4 spec_reviewer --harness $h with no conf -> session" "session" "$OUT"
+  role reviewer_light --harness "$h"; assert_eq "AC4 reviewer_light --harness $h with no conf -> session" "session" "$OUT"
+done
+reset
+role reviewer;                        assert_eq "AC4 reviewer without a harness -> session" "session" "$OUT"
+
+echo "v0.30.0 c2 AC5: tester, implementer and mechanical are unchanged under claude"
+reset
+for r in tester implementer mechanical; do
+  role "$r" --harness claude; assert_eq "AC5 $r --harness claude with no conf -> session" "session" "$OUT"
+done
+
+echo "v0.30.0 c2 AC6: plan and list show the default and do not claim it came from conf"
+reset
+role plan --harness claude
+assert_rc "AC6 plan --harness claude exits 0" 0
+assert_contains "AC6 plan --harness claude shows reviewer=sonnet" "$OUT" "Models: tester=session, implementer=session, reviewer=sonnet - "
+assert_not_contains "AC6 plan --harness claude with no conf does not say from conf" "$OUT" "from conf"
+assert_not_contains "AC6 plan hides spec_reviewer when it equals the reviewer (both sonnet)" "$OUT" "spec_reviewer="
+role list --harness claude
+assert_eq "AC6 list --harness claude: reviewer=sonnet" "reviewer=sonnet" "$(printf '%s\n' "$OUT" | grep -x 'reviewer=.*')"
+assert_eq "AC6 list --harness claude: spec_reviewer=sonnet" "spec_reviewer=sonnet" "$(printf '%s\n' "$OUT" | grep -x 'spec_reviewer=.*')"
+assert_eq "AC6 list --harness claude: reviewer_light=sonnet" "reviewer_light=sonnet" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
+assert_eq "AC6 list --harness claude: tester=session" "tester=session" "$(printf '%s\n' "$OUT" | grep -x 'tester=.*')"
+assert_eq "AC6 list --harness claude: implementer=session" "implementer=session" "$(printf '%s\n' "$OUT" | grep -x 'implementer=.*')"
+assert_eq "AC6 list --harness claude: mechanical=session" "mechanical=session" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
+assert_not_contains "AC6 list --harness claude does not claim conf" "$OUT" "conf"
+printf 'model_spec_reviewer_claude=session\n' > "$G"
+role plan --harness claude
+assert_eq "AC6 plan: a spec_reviewer session key shows next to the default reviewer, from conf" "Models: tester=session, implementer=session, reviewer=sonnet, spec_reviewer=session - from conf" "$OUT"
 reset
 t_summary
