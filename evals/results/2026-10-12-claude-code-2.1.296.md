@@ -755,3 +755,106 @@ lines parsed as JSON with no tool calls, so some checks were silently wrong (the
 data, E2 "inspected the code first" failed 0/3). After: E4 dispute 2/3 vs 0/3, E6 source 3/3 vs 1/3, E14 observation or
 Not checked 3/3 vs 0/3, E29 label 1/3 vs 0/3, E2 "names the defaults" 3/3 vs 0/3 (reply only; decisions.md 0/3 in both),
 isolation 3/3 on real tool data. These automatic numbers replace the hand reading above.
+
+Note (v0.30.0 prep, 2026-10-28): Runs 46-49 below compared export trees, but the with arm loaded the installed v0.29.0 playbook from the real HOME on both sides (Run 49 finding). Their tree-vs-tree gaps are run-to-run variance, not effects of the candidates. Run 45 (both arms on main) is valid.
+
+## Run 45: the UNMEASURED AUTO scenarios, both arms, k=5, sonnet, main 44a9fc6 (2026-10-27, lane m)
+
+Export `C:\Users\Lenovo\pbeval\r45src` (c677137 = 44a9fc6), `run45.sh`, groups a/b/c, no ERROR run. Δ with a Newcombe 95%
+interval (tools/eval-delta.sh). Only checks with Δ != 0 or that decide a verdict are listed; every other auto check is 5/5 vs 5/5
+or equal in both arms.
+
+| Scenario | Check | with | without | Δ | 95% interval | Reading |
+|---|---|---|---|---|---|---|
+| E11 | a RED commit touches only tests | 5/5 | 0/5 | +1.00 | [0.39, 1.00] | ceremony; outcome (multiply, tests pass) 5/5 both |
+| E11 | tests unchanged after the RED commit | 5/5 | 0/5 | +1.00 | [0.39, 1.00] | ceremony |
+| E17 | the docs heading changed / reply calls it exempt | | | +0.20 | [-0.26, 0.62] | inconclusive; page size and test 0 |
+| E20 | the reply has a Playbook feedback line | | | +0.80 | [0.19, 0.96] | label; the capture itself 0 in both arms |
+| E22 | the reply's weight is Lite | | | +0.80 | [0.19, 0.96] | label; fix, test, RED commit equal |
+| E23 | the reply's weight is Lite | | | +1.00 | [0.39, 1.00] | label |
+| E23 | a RED commit touches only tests | | | +0.40 | [-0.12, 0.77] | inconclusive |
+| E24 | every sub-agent call uses a configured model | 5/5 | 0/5 | +1.00 | [0.39, 1.00] | the binding rule changes what the agent does |
+| E25 | the reply's weight is Lite | | | +0.40 | [-0.12, 0.77] | inconclusive; every outcome check 0 |
+| E26 | a RED commit touches only tests | | | +0.80 | [0.19, 0.96] | test kept under a user override (as E3) |
+| E26 | override label / weight Lite | | | +0.60 / +1.00 | [0.03, 0.88] / [0.39, 1.00] | labels |
+| E28 | all four checks | 5/5 | 5/5 | 0 | [-0.43, 0.43] | both arms change the conclusion on real evidence |
+| E31 | auto part (nothing written outside) | 5/5 | 5/5 | 0 | | the humanizer ask is interactive only |
+| E32 | all four checks | 5/5 | 5/5 | 0 | [-0.43, 0.43] | value != label fixtures in both arms |
+
+Cost per run, with vs without (USD): E11 0.41 vs 0.17, E17 0.09 vs 0.08, E20 0.16 vs 0.09, E22 0.13 vs 0.09, E23 0.15 vs 0.07,
+E24 1.12 vs 0.35, E25 0.11 vs 0.08, E26 0.16 vs 0.07, E28 0.09 vs 0.08, E31 0.11 vs 0.07, E32 0.10 vs 0.08.
+
+## Run 46: the R26 move (situational mechanics out of playbook-tdd SKILL.md), with arm only, k=5, sonnet (2026-10-27, lane m)
+
+Two trees, same day: `r45src` (main 44a9fc6) and `r46src` (6e6af51: 44a9fc6 + 7 parts of R26 moved to
+`references/situations.md`, SKILL.md 3691 -> 3173 words). The audit rule: keep the move only if no KEEP check falls.
+
+| Scenario | Check | main | moved |
+|---|---|---|---|
+| E3 | a file under tests/ mentions divide | 5/5 | 4/5 |
+| E4 | three checks | 5/5 | 5/5 |
+| E14 | a real observation or Not checked | 0/5 | 0/5 |
+| E16 | reply names the Full weight / sub-agent use | 4/5, 4/5 | 3/5, 5/5 |
+| E21 | spec checks | 1/5 | 0/5 |
+| E24 | configured model / Models: line | 5/5, 0/5 | 5/5, 0/5 |
+| E29 | [UNVERIFIED] label | 4/5 | 3/5 |
+| E29 | no direction chosen without a log, a label or a question | 5/5 | 3/5 |
+| E29 | the assumed direction is logged | 5/5 | 1/5 |
+| E29 | the assumption is not the oracle | 2/5 | 3/5 |
+
+E29 fell, so a narrower move was tried (Run 47).
+
+## Run 47: the narrow R26 move (roles section kept), with arm only, sonnet (2026-10-28, lane m)
+
+Tree `r47src` (189dd4e: 44a9fc6 + 6 parts moved: test-infra role, parallel slices, cost-flag detail, calibrate, the four
+"when the user says it is wrong" steps, the state.md fields; SKILL.md 3691 -> 3330 words). E29 at k=10 on both trees; E3 and
+E21 at k=5 on the narrow tree. Pooled with the main-tree runs of Run 46 (same commit):
+
+| Scenario | Check | main (Run 46+47) | narrow move | Δ (main - moved) | 95% interval |
+|---|---|---|---|---|---|
+| E29 | [UNVERIFIED] labels the direction | 12/15 | 2/10 | +0.60 | [0.20, 0.79] |
+| E29 | the assumption is not the oracle | 10/15 | 3/10 | +0.37 | [-0.03, 0.63] |
+| E29 | the assumed direction is logged | 12/15 | 7/10 | +0.10 | [-0.22, 0.43] |
+| E3 | a file under tests/ mentions divide (test first) | 5/5 | 2/5 | +0.60 | [0.03, 0.88] |
+| E21 | spec checks | 1/5 | 2/5 | -0.20 | [-0.60, 0.31] |
+
+Verdict: the move is rejected. Two KEEP checks (E29 label, E3 test first) fall with an interval that excludes 0, although
+none of the moved text is about labels or test order: the Run 27 lesson again, now for playbook-tdd SKILL.md. Cost per run
+did not fall (E29 0.151 vs 0.151 USD). Noise note: the main tree gave E21 1/5 and E14 0/5 here, against 4/10 and 2/10 in Run 44.
+
+## Run 48 (2026-10-28): v0.30 lane c, P0-1 cost by measured risk, candidate A, with arm only, k=5
+Trees: base r45src (main 44a9fc6), candidate r48src (lane/v030-c 185c90b): an export rename or removal is Full only when its
+callers may be outside the repo (published package, HTTP or CLI contract), else Lite; load playbook-tdd first either way.
+Scripts: C:\Users\Lenovo\pbeval\run48.sh, run48o.sh; results r48/, r48/out/. Comparison: /home/dev/v026/lanec/cmp.py.
+Rate limit hit mid-run (usage_limit_reached, 429): ERROR runs excluded, missing scenarios re-run as group b.
+Sonnet base also pools Run 46 r45src and Run 47 r45src-base (same commit, same model, with arm).
+
+**Where the with-arm cost comes from (Runs 38, 44, 45; /home/dev/v026/lanec/split-*.txt):**
+- sonnet: cache writes are 55-85% of cost. Runs that load playbook-tdd add ~10-13k cache-write tokens (~0.04-0.06 USD) and
+  ~0.5-2.5k output tokens (report, decisions.md); runs that do not load it add ~2-3k (the always-on block). Lite ceremony
+  (proof-run, role-gate, RED commit) adds turns but drives the KEEP checks (E3, E26).
+- opus: the 10-15x multipliers (E2 1.9-2.3 vs 0.16, E21 1.4 vs 0.12, pattern-15 2.2 vs 0.20) are all Full runs with 4-8
+  sub-agents (spec reviewer, tester, implementer, reviewer, fix rounds). Each of these fixtures meets a Full criterion the
+  agent cites: E2 money (discounts), E21 a rename plus docs/notes.md naming a billing consumer, pattern-15 personal data.
+
+**Δ (base minus candidate), KEEP checks:** sonnet and opus, no check fell (every 95% interval contains 0); the largest
+drops are E13 'the drop is raised' sonnet 3/3 -> 1/2 and E29 [UNVERIFIED] opus 3/3 -> 2/3, both inside the noise.
+Outcome sonnet: pattern-15 5/5 vs 5/5, pattern-24 4/5 vs 3/5, pattern-26 4/5 vs 5/5.
+
+**Cost (median per run, common scenarios):** sonnet 0.149 -> 0.138 (only from E24, n=3 in the candidate; per scenario flat);
+opus 0.421 -> 0.444. Opus E21 1.48 -> 1.50: 3 of 4 candidate runs still chose Full, citing the billing consumer, so the
+narrower rule never applied to this fixture.
+
+**Decision:** candidate A rejected (cost did not fall). Reverted on lane/v030-c (8bfb75e). The opus multiplier comes from
+tasks that meet a Full criterion, so the Full criteria are not where the money goes; the lever left is the cost of a Full
+run itself (number and model of sub-agents), which is a product choice for the user (for example spec reviewer and
+reviewer on sonnet by default, or no spec review for a single-slice unambiguous change).
+
+## Run 49 (2026-10-28): lane c2 measurement STOPPED - the with arm does not load the tree under test
+
+Setup: r49src = export of 1eaa66f (lane/v030-c2: claude reviewer default sonnet, one-slice spec review skip) vs r45src (44a9fc6), with arm only, `--clean-env`, default isolation (run49.sh / run49o.sh).
+
+Finding [VERIFIED]: in the default isolation the with arm keeps the real HOME and gets a temp PLAYBOOK_HOME holding only a copy of the real conf (evals/run-evals.sh:16-18, 2363-2366). So the agent loads the INSTALLED playbook (~/.claude/skills/playbook-*, ~/.agents/playbook = v0.29.0, VERSION mtime 10-27 16:34) and the real conf, not the exported tree. Evidence: r49/r49src-opus-a/E2.with.1.log runs `~/.agents/playbook/scripts/role-model.sh plan --harness claude` and prints "Models: tester=sonnet (high), implementer=sonnet (high), reviewer=opus (high) - from conf"; the evidence cost.tsv shows reviewer and spec_reviewer on opus; the real conf has model_reviewer_claude=opus, which would beat the new default anyway.
+Consequence: every tree-vs-tree with-arm comparison that did not install the variant first compared v0.29.0 with itself: Run 46, Run 47 (lane m R26 move), Run 48 (lane c candidate A) and Run 49. Their accept/reject decisions are not evidence about the candidate. Runs 27b, 28, 32b, 32p installed the variant first and are not affected.
+Numbers gathered (all v0.29.0 installed, so base-vs-base replication): opus E2/E3/E4/E6/E21 equal in both trees, median cost 0.319 vs 0.337; sonnet E2/E21/E29 no check fell; pattern-15 opus 5/5 PASS both, median 0.51 (r45src) vs 1.31 (r49src) USD, same installed playbook, so this spread is run-to-run variance. Stream b (E13, E24, E26, E29, E34) stopped by PID after the finding.
+Needed before any candidate measurement: install the variant into an isolated HOME (or the runner copies the tree's skills and scripts into the temp PLAYBOOK_HOME and points the skills there), and set or clear the conf model keys explicitly.
