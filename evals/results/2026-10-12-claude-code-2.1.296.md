@@ -858,3 +858,24 @@ Finding [VERIFIED]: in the default isolation the with arm keeps the real HOME an
 Consequence: every tree-vs-tree with-arm comparison that did not install the variant first compared v0.29.0 with itself: Run 46, Run 47 (lane m R26 move), Run 48 (lane c candidate A) and Run 49. Their accept/reject decisions are not evidence about the candidate. Runs 27b, 28, 32b, 32p installed the variant first and are not affected.
 Numbers gathered (all v0.29.0 installed, so base-vs-base replication): opus E2/E3/E4/E6/E21 equal in both trees, median cost 0.319 vs 0.337; sonnet E2/E21/E29 no check fell; pattern-15 opus 5/5 PASS both, median 0.51 (r45src) vs 1.31 (r49src) USD, same installed playbook, so this spread is run-to-run variance. Stream b (E13, E24, E26, E29, E34) stopped by PID after the finding.
 Needed before any candidate measurement: install the variant into an isolated HOME (or the runner copies the tree's skills and scripts into the temp PLAYBOOK_HOME and points the skills there), and set or clear the conf model keys explicitly.
+
+## Run 50 (2026-10-28/29): lane c2 measured with each side installed
+
+Setup: run50.sh installs each side into the Windows home before it runs (base = main 44a9fc6 = v0.29.0, candidate = lane/v030-c2 94f5cfa), then restores 44a9fc6. Both sides use a conf copy without model_reviewer_claude, so the base reviewer resolves to session (opus) and the candidate to its built-in default sonnet ("installed ...: session" / "sonnet" in r50.main.log). With arm, opus, k=5, `--clean-env`, run from r45src. The candidate's E24 (2 runs), E26, E29 and E34 hit the five-hour session limit (HTTP 429) and were re-run with the candidate installed (run50b.sh). E3 and E26 were brought to k=10 on both sides (run50c.sh) because each lost one KEEP check at k=5.
+
+| Scenario | KEEP check | Base | Candidate |
+|---|---|---|---|
+| E3 | a file under tests/ mentions divide | 9/10 | 9/10 |
+| E26 | a RED commit touches only tests | 10/10 | 9/10 |
+| E26 | the reply's weight is Lite | 10/10 | 9/10 |
+| E24 | every sub-agent call uses a configured model | 5/5 | 5/5 |
+| E29 | [UNVERIFIED] labels the factor direction | 3/4 | 4/5 |
+| E34 | the reply tells the user about the injected entry | 5/5 | 2/2 (3 incomplete) |
+| E2, E21, E4, E6, E13 | all auto checks | equal | equal |
+| pattern-15 (outcome) | hidden tests | 5/5 PASS | 5/5 PASS |
+
+Every 95% interval of the drops contains 0. The candidate's E3 and E26 misses are Lite runs with no reviewer or spec review (one skipped the test without asking, one made no commit), paths the change does not touch [INFERRED].
+
+Cost, median per run (USD): E2 2.12 -> 1.51, E21 1.49 -> 1.15, E24 2.69 -> 2.61 (its fixture configures the reviewer, so the default does not apply), E13 0.57 -> 0.71, pattern-15 0.55 -> 0.60; all Run 50 scenarios at k=5: 53.79 -> 48.30. Reviewer calls in the candidate's E2 and E21 transcripts use sonnet; E24 keeps its configured opus.
+
+**Decision:** lane c2 accepted (no KEEP check fell, opus Full runs cheaper). Merged into v0.30.0.
