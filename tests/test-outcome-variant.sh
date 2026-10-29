@@ -438,6 +438,18 @@ VSHIM="$(mk_tmp)"
 cat > "$VSHIM/shim" <<'EOF'
 #!/usr/bin/env bash
 n="${0##*/}"; hold=0; prev=""; last=""
+if [ "$n" = mkdir ] && [ -n "${VSHIM_MKLOCK_DIR:-}" ]; then   # pause BEFORE the runner's 2nd mkdir of the lock dir (the 1st finds the stale lock; the 2nd comes after its restore)
+  for a in "$@"; do last="$a"; done
+  case "$last" in
+    */.agents/.pb-variant.lock)
+      c=$(( $(cat "$VSHIM_MKLOCK_DIR/count" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$VSHIM_MKLOCK_DIR/count"
+      if [ "$c" = 2 ] && mkdir "$VSHIM_MKLOCK_DIR/claimed" 2>/dev/null; then
+        : > "$VSHIM_MKLOCK_DIR/held"
+        i=0; while [ ! -e "$VSHIM_MKLOCK_DIR/go" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+      fi ;;
+  esac
+  last=""
+fi
 for a in "$@"; do prev="$last"; last="$a"; done
 if [ -n "${VSHIM_HOLD:-}" ]; then
   case "${VSHIM_MODE:-}:$n" in
@@ -452,7 +464,7 @@ fi
 PATH="${PATH#"$VW_SHIM":}"
 exec "$n" "$@"
 EOF
-chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"
+chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"; cp "$VSHIM/shim" "$VSHIM/mkdir"
 vhold_new() { VHOLD="$(mk_tmp)"; }
 # valive PID: true when the process is running (not gone, not a zombie); /proc where there is one, else kill -0 and ps (macOS)
 valive() {
@@ -645,5 +657,44 @@ else
 fi
 [ -f "$G_FD/sleeper.pid" ] && kill "$(cat "$G_FD/sleeper.pid")" 2>/dev/null
 unset VFAKE_SLEEP
+
+# ---- AC22: a runner that took a stale lock over keeps the lock until its own install ----
+# Hold point: the PATH shim pauses the runner right BEFORE its 2nd "mkdir <H>/.agents/.pb-variant.lock" (the 1st finds the stale lock; the 2nd
+# is the loop going round after pbh_variant_restore_dir removed the lock) until $HD/go exists. restore_dir ends in shell builtins only, so
+# that mkdir is the first command that can be shimmed after the lock is gone: the pause lies in the gap. In the gap the test plays runner B:
+# it claims the lock with a live pid. With the gap, the runner that took the stale lock over ends with exit 2 ("another variant run");
+# once it keeps the lock it makes no 2nd mkdir of it, ends with exit 0 and the pause is never hit.
+echo "AC22 a runner that took a stale lock over and restored it is not refused by a runner that claims the lock right after the restore"
+mk_variant; VH="$(mk_vhome)"; B_22="$(tree_sig "$VH")"; vmk_stale "$VH"; VL22="$VL"; DEAD22="$(cat "$VL/pid")"
+HD="$(mk_tmp)"
+VW_SHIM="$VSHIM" VSHIM_MKLOCK_DIR="$HD" vstart --variant "$VD" $VBASE
+D_PID=$VPID; D_OD="$VOD"
+i=0; while [ ! -e "$HD/held" ] && valive "$D_PID" && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+GAP22=0
+if [ ! -e "$HD/held" ] && valive "$D_PID"; then
+  t_bad "AC22 setup: the runner neither paused before re-taking the lock nor ended" "still running after 30 s; stderr: $(cat "$D_OD/stderr" 2>/dev/null)"
+  kill -KILL "$D_PID" 2>/dev/null; wait "$D_PID" 2>/dev/null
+else
+  LIVE22=""
+  if [ -e "$HD/held" ]; then   # the runner is in the gap: runner B (a live pid) claims the lock now
+    GAP22=1
+    sleep 120 & LIVE22=$!
+    if mkdir "$VL22" 2>/dev/null; then
+      printf '%s\n' "$LIVE22" > "$VL22/pid"; mkdir -p "$VL22/snap/playbook"; printf 'LIVE-SNAP\n' > "$VL22/snap/playbook/VERSION"
+    fi
+    : > "$HD/go"
+  fi
+  VOD="$D_OD"; vfinish "$D_PID"
+  assert_rc "AC22 the runner that took the stale lock over finishes (exit 0)" 0
+  assert_not_contains "AC22 it was not refused as 'another variant run'" "$ERR" "another variant run"
+  assert_contains "AC22 it restored the stale snapshot" "$ERR" "variant: restored a stale snapshot left by pid $DEAD22"
+  assert_contains "AC22 its eval ran with the variant installed" "$(vlog)" "run ver=1.2.3-variant"
+  if [ "$GAP22" = 1 ]; then
+    assert_eq "AC22 the lock claimed in the gap was not taken over or installed over (pid and snapshot are still B's)" "$LIVE22 LIVE-SNAP" "$(tr -d '[:space:]' < "$VL22/pid" 2>/dev/null) $(cat "$VL22/snap/playbook/VERSION" 2>/dev/null)"
+    kill "$LIVE22" 2>/dev/null; wait "$LIVE22" 2>/dev/null
+    rm -rf "$VL22"   # B's claim, made by this test inside its own temp home
+  fi
+  expect_restored "AC22 at the end" "$B_22"
+fi
 
 t_summary

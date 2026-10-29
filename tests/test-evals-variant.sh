@@ -157,6 +157,13 @@ chmod 755 "$VPROBE/d"
 if [ "$(id -u)" = 0 ]; then VDIRPERM=0; fi
 printf 'x\n' > "$VPROBE/m"; chmod 640 "$VPROBE/m"; [ "$(fmode "$VPROBE/m")" = 640 ] || VMODEKEEP=0
 chmod 600 "$VPROBE/m"; [ "$(fmode "$VPROBE/m")" = 600 ] || VMODEKEEP=0
+#   VTRSEE=0: a "tr" cannot tell which file it reads from stdin (no /proc/<pid>/fd/0 link, and [ /dev/stdin -ef FILE ] is false: macOS),
+#   so the tr shim of the AC21 blocks cannot see the lock's pid read
+VTRSEE=0
+printf 'x
+' > "$VPROBE/t"
+if [ /dev/stdin -ef "$VPROBE/t" ] 2>/dev/null < "$VPROBE/t"; then VTRSEE=1; fi
+case "$(bash -c 'readlink "/proc/$$/fd/0"' < "$VPROBE/t" 2>/dev/null)" in */t) VTRSEE=1 ;; esac
 # tree_sig DIR -> every regular file (mode, md5) and symlink (target) under DIR, sorted; directories are not listed
 tree_sig() {
   (cd "$1" && find . -mindepth 1 \( -type f -o -type l \) | LC_ALL=C sort | while IFS= read -r p; do
@@ -489,6 +496,18 @@ if [ "$n" = tr ] && [ -n "${VSHIM_TR_DIR:-}" ]; then   # pause right after the n
       printf '%s' "$out"; exit 0 ;;
   esac
 fi
+if [ "$n" = mkdir ] && [ -n "${VSHIM_MKLOCK_DIR:-}" ]; then   # pause BEFORE the runner's 2nd mkdir of the lock dir (the 1st finds the stale lock; the 2nd comes after its restore)
+  for a in "$@"; do last="$a"; done
+  case "$last" in
+    */.agents/.pb-variant.lock)
+      c=$(( $(cat "$VSHIM_MKLOCK_DIR/count" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$VSHIM_MKLOCK_DIR/count"
+      if [ "$c" = 2 ] && mkdir "$VSHIM_MKLOCK_DIR/claimed" 2>/dev/null; then
+        : > "$VSHIM_MKLOCK_DIR/held"
+        i=0; while [ ! -e "$VSHIM_MKLOCK_DIR/go" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+      fi ;;
+  esac
+  last=""
+fi
 for a in "$@"; do prev="$last"; last="$a"; done
 if [ -n "${VSHIM_HOLD:-}" ]; then
   case "${VSHIM_MODE:-}:$n" in
@@ -503,7 +522,7 @@ fi
 PATH="${PATH#"$VW_SHIM":}"
 exec "$n" "$@"
 EOF
-chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"; cp "$VSHIM/shim" "$VSHIM/tr"
+chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"; cp "$VSHIM/shim" "$VSHIM/mkdir"; cp "$VSHIM/shim" "$VSHIM/tr"
 vhold_new() { VHOLD="$(mk_tmp)"; }
 # valive PID: true when the process is running (not gone, not a zombie); /proc where there is one, else kill -0 and ps (macOS)
 valive() {
@@ -925,70 +944,116 @@ assert_not_contains "AC20 control [claude block] no 'was created during the run'
 expect_restored "AC20 control [claude block]" "$B_20f"
 
 # ---- AC21: the stale takeover guards ----
-echo "AC21 two runners read the same dead pid: only one takes the stale lock over, the other does not install in the meantime"
-mk_variant; VH="$(mk_vhome)"; B_21="$(tree_sig "$VH")"; vmk_stale "$VH"; DEAD21="$(cat "$VL/pid")"
-HA="$(mk_tmp)"; HB="$(mk_tmp)"
-mk_variant; VDA="$VD"
-VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HA" VSHIM_TR_NTH=2 vstart --variant "$VDA" $VBASE   # A: stops after its claim and its second pid read
-A_PID=$VPID; A_OD="$VOD"
-if vwait_file "$HA/held"; then
-  mk_variant; VDB="$VD"
-  VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HB" VSHIM_TR_NTH=1 vstart --variant "$VDB" $VBASE   # B: stops after its first pid read (the dead pid)
-  B_PID=$VPID; B_OD="$VOD"
-  if vwait_file "$HB/held"; then
-    : > "$HB/go"   # both runners now hold the same dead pid; B goes on while A is between its claim and its pid replacement
-    i=0; while [ "$i" -lt 40 ]; do
-      [ -s "$VDB/.calls" ] && break
-      valive "$B_PID" || break
-      sleep 0.1; i=$((i + 1))
-    done
-    if [ -s "$VDB/.calls" ]; then t_bad "AC21 the second runner did not install while the first held the stale lock" "install.sh of B was called: $(head -n 1 "$VDB/.calls")"
-    else t_ok "AC21 the second runner did not install while the first held the stale lock"; fi
-    assert_eq "AC21 the second runner ran no harness in the meantime" "" "$(cat "$B_OD/claude.log" 2>/dev/null)"
-    assert_not_contains "AC21 the second runner did not report taking the stale lock over" "$(cat "$B_OD/stderr" 2>/dev/null)" "restored a stale snapshot left by pid"
-    : > "$HA/go"
-    VOD="$A_OD"; vfinish "$A_PID"
-    A_RC=$RC; A_ERR="$ERR"
-    if [ "$A_RC" = 0 ]; then t_ok "AC21 the first runner finishes (exit 0)"; else t_bad "AC21 the first runner finishes (exit 0)" "rc $A_RC; stderr: $A_ERR"; fi
-    assert_contains "AC21 the first runner restored the stale snapshot" "$A_ERR" "variant: restored a stale snapshot left by pid $DEAD21"
-    vwait_exit "$B_PID" 300 || { kill -KILL "$B_PID" 2>/dev/null; t_bad "AC21 the second runner ends once the first is done" "still running after 30 s"; }
-    VOD="$B_OD"; vfinish "$B_PID"
-    case "$RC" in 0|2) t_ok "AC21 the second runner ends with 0 (it went after the first) or 2 (live lock)" ;; *) t_bad "AC21 the second runner ends with 0 or 2" "rc $RC; stderr: $ERR" ;; esac
-    assert_eq "AC21 exactly one runner took the stale lock over" "1" "$(printf '%s\n%s\n' "$A_ERR" "$ERR" | grep -c 'variant: restored a stale snapshot left by pid')"
-    expect_restored "AC21 after both runners ended" "$B_21"
+if [ "$VTRSEE" = 0 ]; then
+  t_skip 9 "AC21 two runners read the same dead pid (cannot see which file tr reads: no /proc and /dev/stdin -ef unsupported, macOS)"
+else
+  echo "AC21 two runners read the same dead pid: only one takes the stale lock over, the other does not install in the meantime"
+  mk_variant; VH="$(mk_vhome)"; B_21="$(tree_sig "$VH")"; vmk_stale "$VH"; DEAD21="$(cat "$VL/pid")"
+  HA="$(mk_tmp)"; HB="$(mk_tmp)"
+  mk_variant; VDA="$VD"
+  VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HA" VSHIM_TR_NTH=2 vstart --variant "$VDA" $VBASE   # A: stops after its claim and its second pid read
+  A_PID=$VPID; A_OD="$VOD"
+  if vwait_file "$HA/held"; then
+    mk_variant; VDB="$VD"
+    VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HB" VSHIM_TR_NTH=1 vstart --variant "$VDB" $VBASE   # B: stops after its first pid read (the dead pid)
+    B_PID=$VPID; B_OD="$VOD"
+    if vwait_file "$HB/held"; then
+      : > "$HB/go"   # both runners now hold the same dead pid; B goes on while A is between its claim and its pid replacement
+      i=0; while [ "$i" -lt 40 ]; do
+        [ -s "$VDB/.calls" ] && break
+        valive "$B_PID" || break
+        sleep 0.1; i=$((i + 1))
+      done
+      if [ -s "$VDB/.calls" ]; then t_bad "AC21 the second runner did not install while the first held the stale lock" "install.sh of B was called: $(head -n 1 "$VDB/.calls")"
+      else t_ok "AC21 the second runner did not install while the first held the stale lock"; fi
+      assert_eq "AC21 the second runner ran no harness in the meantime" "" "$(cat "$B_OD/claude.log" 2>/dev/null)"
+      assert_not_contains "AC21 the second runner did not report taking the stale lock over" "$(cat "$B_OD/stderr" 2>/dev/null)" "restored a stale snapshot left by pid"
+      : > "$HA/go"
+      VOD="$A_OD"; vfinish "$A_PID"
+      A_RC=$RC; A_ERR="$ERR"
+      if [ "$A_RC" = 0 ]; then t_ok "AC21 the first runner finishes (exit 0)"; else t_bad "AC21 the first runner finishes (exit 0)" "rc $A_RC; stderr: $A_ERR"; fi
+      assert_contains "AC21 the first runner restored the stale snapshot" "$A_ERR" "variant: restored a stale snapshot left by pid $DEAD21"
+      vwait_exit "$B_PID" 300 || { kill -KILL "$B_PID" 2>/dev/null; t_bad "AC21 the second runner ends once the first is done" "still running after 30 s"; }
+      VOD="$B_OD"; vfinish "$B_PID"
+      case "$RC" in 0|2) t_ok "AC21 the second runner ends with 0 (it went after the first) or 2 (live lock)" ;; *) t_bad "AC21 the second runner ends with 0 or 2" "rc $RC; stderr: $ERR" ;; esac
+      assert_eq "AC21 exactly one runner took the stale lock over" "1" "$(printf '%s\n%s\n' "$A_ERR" "$ERR" | grep -c 'variant: restored a stale snapshot left by pid')"
+      expect_restored "AC21 after both runners ended" "$B_21"
+    else
+      t_bad "AC21 setup: the second runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$B_OD/stderr" 2>/dev/null)"
+      : > "$HB/go"; : > "$HA/go"; kill -KILL "$B_PID" "$A_PID" 2>/dev/null; wait "$B_PID" "$A_PID" 2>/dev/null
+    fi
   else
-    t_bad "AC21 setup: the second runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$B_OD/stderr" 2>/dev/null)"
-    : > "$HB/go"; : > "$HA/go"; kill -KILL "$B_PID" "$A_PID" 2>/dev/null; wait "$B_PID" "$A_PID" 2>/dev/null
+    t_bad "AC21 setup: the first runner reached its second pid read" "no 'held' file after 20 s; stderr: $(cat "$A_OD/stderr" 2>/dev/null)"
+    : > "$HA/go"; kill -KILL "$A_PID" 2>/dev/null; wait "$A_PID" 2>/dev/null
   fi
-else
-  t_bad "AC21 setup: the first runner reached its second pid read" "no 'held' file after 20 s; stderr: $(cat "$A_OD/stderr" 2>/dev/null)"
-  : > "$HA/go"; kill -KILL "$A_PID" 2>/dev/null; wait "$A_PID" 2>/dev/null
 fi
 
-echo "AC21 a stale lock replaced by a live runner's lock between the pid read and the claim is not taken over"
-mk_variant; VH="$(mk_vhome)"; B_21b="$(tree_sig "$VH")"; vmk_stale "$VH"; VL21="$VL"
-sleep 120 & LIVE21=$!
-HC="$(mk_tmp)"
-VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HC" VSHIM_TR_NTH=1 vstart --variant "$VD" $VBASE   # stops after reading the dead pid
-C_PID=$VPID; C_OD="$VOD"
-if vwait_file "$HC/held"; then
-  rm -rf "$VL21"; mkdir -p "$VL21/snap/playbook"; printf 'LIVE-SNAP\n' > "$VL21/snap/playbook/VERSION"; printf '%s\n' "$LIVE21" > "$VL21/pid"
-  : > "$HC/go"
-  VOD="$C_OD"; vfinish "$C_PID"
-  assert_rc "AC21 [replaced lock] the runner is refused on the live lock (exit 2)" 2
-  assert_contains "AC21 [replaced lock] the refusal names the live pid" "$ERR" "$LIVE21"
-  assert_no_path "AC21 [replaced lock] no install.sh call" "$VD/.calls"
-  assert_eq "AC21 [replaced lock] no harness run" "" "$(vlog)"
-  assert_eq "AC21 [replaced lock] the live runner's pid is still in the lock" "$LIVE21" "$(tr -d '[:space:]' < "$VL21/pid" 2>/dev/null)"
-  assert_eq "AC21 [replaced lock] its snapshot was not touched" "LIVE-SNAP" "$(cat "$VL21/snap/playbook/VERSION" 2>/dev/null)"
-  assert_eq "AC21 [replaced lock] no takeover claim is left in the lock" "" "$(ls -A "$VL21" 2>/dev/null | grep '^takeover\.')"
-  assert_eq "AC21 [replaced lock] the rest of the home is as before" "$B_21b" "$(tree_sig "$VH" | grep -v '\.pb-variant\.lock')"
+if [ "$VTRSEE" = 0 ]; then
+  t_skip 8 "AC21 [replaced lock] a stale lock replaced by a live runner (cannot see which file tr reads: no /proc and /dev/stdin -ef unsupported, macOS)"
 else
-  t_bad "AC21 [replaced lock] setup: the runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$C_OD/stderr" 2>/dev/null)"
-  : > "$HC/go"; kill -KILL "$C_PID" 2>/dev/null; wait "$C_PID" 2>/dev/null
+  echo "AC21 a stale lock replaced by a live runner's lock between the pid read and the claim is not taken over"
+  mk_variant; VH="$(mk_vhome)"; B_21b="$(tree_sig "$VH")"; vmk_stale "$VH"; VL21="$VL"
+  sleep 120 & LIVE21=$!
+  HC="$(mk_tmp)"
+  VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HC" VSHIM_TR_NTH=1 vstart --variant "$VD" $VBASE   # stops after reading the dead pid
+  C_PID=$VPID; C_OD="$VOD"
+  if vwait_file "$HC/held"; then
+    rm -rf "$VL21"; mkdir -p "$VL21/snap/playbook"; printf 'LIVE-SNAP\n' > "$VL21/snap/playbook/VERSION"; printf '%s\n' "$LIVE21" > "$VL21/pid"
+    : > "$HC/go"
+    VOD="$C_OD"; vfinish "$C_PID"
+    assert_rc "AC21 [replaced lock] the runner is refused on the live lock (exit 2)" 2
+    assert_contains "AC21 [replaced lock] the refusal names the live pid" "$ERR" "$LIVE21"
+    assert_no_path "AC21 [replaced lock] no install.sh call" "$VD/.calls"
+    assert_eq "AC21 [replaced lock] no harness run" "" "$(vlog)"
+    assert_eq "AC21 [replaced lock] the live runner's pid is still in the lock" "$LIVE21" "$(tr -d '[:space:]' < "$VL21/pid" 2>/dev/null)"
+    assert_eq "AC21 [replaced lock] its snapshot was not touched" "LIVE-SNAP" "$(cat "$VL21/snap/playbook/VERSION" 2>/dev/null)"
+    assert_eq "AC21 [replaced lock] no takeover claim is left in the lock" "" "$(ls -A "$VL21" 2>/dev/null | grep '^takeover\.')"
+    assert_eq "AC21 [replaced lock] the rest of the home is as before" "$B_21b" "$(tree_sig "$VH" | grep -v '\.pb-variant\.lock')"
+  else
+    t_bad "AC21 [replaced lock] setup: the runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$C_OD/stderr" 2>/dev/null)"
+    : > "$HC/go"; kill -KILL "$C_PID" 2>/dev/null; wait "$C_PID" 2>/dev/null
+  fi
+  kill "$LIVE21" 2>/dev/null; wait "$LIVE21" 2>/dev/null
+  rm -rf "$VL21"
 fi
-kill "$LIVE21" 2>/dev/null; wait "$LIVE21" 2>/dev/null
-rm -rf "$VL21"
 
+# ---- AC22: a runner that took a stale lock over keeps the lock until its own install ----
+# Hold point: the PATH shim pauses the runner right BEFORE its 2nd "mkdir <H>/.agents/.pb-variant.lock" (the 1st finds the stale lock; the 2nd
+# is the loop going round after pbh_variant_restore_dir removed the lock) until $HD/go exists. restore_dir ends in shell builtins only, so
+# that mkdir is the first command that can be shimmed after the lock is gone: the pause lies in the gap. In the gap the test plays runner B:
+# it claims the lock with a live pid. With the gap, the runner that took the stale lock over ends with exit 2 ("another variant run");
+# once it keeps the lock it makes no 2nd mkdir of it, ends with exit 0 and the pause is never hit.
+echo "AC22 a runner that took a stale lock over and restored it is not refused by a runner that claims the lock right after the restore"
+mk_variant; VH="$(mk_vhome)"; B_22="$(tree_sig "$VH")"; vmk_stale "$VH"; VL22="$VL"; DEAD22="$(cat "$VL/pid")"
+HD="$(mk_tmp)"
+VW_SHIM="$VSHIM" VSHIM_MKLOCK_DIR="$HD" vstart --variant "$VD" $VBASE
+D_PID=$VPID; D_OD="$VOD"
+i=0; while [ ! -e "$HD/held" ] && valive "$D_PID" && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+GAP22=0
+if [ ! -e "$HD/held" ] && valive "$D_PID"; then
+  t_bad "AC22 setup: the runner neither paused before re-taking the lock nor ended" "still running after 30 s; stderr: $(cat "$D_OD/stderr" 2>/dev/null)"
+  kill -KILL "$D_PID" 2>/dev/null; wait "$D_PID" 2>/dev/null
+else
+  LIVE22=""
+  if [ -e "$HD/held" ]; then   # the runner is in the gap: runner B (a live pid) claims the lock now
+    GAP22=1
+    sleep 120 & LIVE22=$!
+    if mkdir "$VL22" 2>/dev/null; then
+      printf '%s\n' "$LIVE22" > "$VL22/pid"; mkdir -p "$VL22/snap/playbook"; printf 'LIVE-SNAP\n' > "$VL22/snap/playbook/VERSION"
+    fi
+    : > "$HD/go"
+  fi
+  VOD="$D_OD"; vfinish "$D_PID"
+  assert_rc "AC22 the runner that took the stale lock over finishes (exit 0)" 0
+  assert_not_contains "AC22 it was not refused as 'another variant run'" "$ERR" "another variant run"
+  assert_contains "AC22 it restored the stale snapshot" "$ERR" "variant: restored a stale snapshot left by pid $DEAD22"
+  assert_contains "AC22 its eval ran with the variant installed" "$(vlog)" "run ver=1.2.3-variant"
+  if [ "$GAP22" = 1 ]; then
+    assert_eq "AC22 the lock claimed in the gap was not taken over or installed over (pid and snapshot are still B's)" "$LIVE22 LIVE-SNAP" "$(tr -d '[:space:]' < "$VL22/pid" 2>/dev/null) $(cat "$VL22/snap/playbook/VERSION" 2>/dev/null)"
+    kill "$LIVE22" 2>/dev/null; wait "$LIVE22" 2>/dev/null
+    rm -rf "$VL22"   # B's claim, made by this test inside its own temp home
+  fi
+  expect_restored "AC22 at the end" "$B_22"
+fi
 
 t_summary
