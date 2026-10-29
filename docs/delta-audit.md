@@ -1,4 +1,4 @@
-# Δ audit of the behaviour rules (v0.29.0)
+# Δ audit of the behaviour rules (v0.30.0)
 
 The RUBRIC gate says a rule is kept only when its scenario shows Δ > 0 (with arm minus without arm, `tools/eval-delta.sh`).
 This audit applies that gate to what the playbook already ships. Every number comes from
