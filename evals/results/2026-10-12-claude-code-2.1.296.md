@@ -879,3 +879,32 @@ Every 95% interval of the drops contains 0. The candidate's E3 and E26 misses ar
 Cost, median per run (USD): E2 2.12 -> 1.51, E21 1.49 -> 1.15, E24 2.69 -> 2.61 (its fixture configures the reviewer, so the default does not apply), E13 0.57 -> 0.71, pattern-15 0.55 -> 0.60; all Run 50 scenarios at k=5: 53.79 -> 48.30. Reviewer calls in the candidate's E2 and E21 transcripts use sonnet; E24 keeps its configured opus.
 
 **Decision:** lane c2 accepted (no KEEP check fell, opus Full runs cheaper). Merged into v0.30.0.
+
+## Run 51 (2026-10-29): first real --variant run (v0.31 lane, ff2ec42)
+
+Setup: run51.sh, Windows home (a copy install of v0.30.0), runner = export of ff2ec42, variant = the same export with VERSION 0.30.0-variant, `--harness claude --model claude-sonnet-5-5 --arm with --scenarios E4 --variant <dir>`.
+Result: stderr "variant: installed ... (0.30.0-variant, no git)" and "variant: restored the snapshot of /c/Users/Lenovo"; md "Variant: ... (0.30.0-variant, no git), snapshot restored" and a "Conf models:" line listing model_reviewer_claude=opus among others; E4 4/4 PASS, 0.14 USD. md5 of .agents/playbook, .claude/skills/playbook-* and .claude/CLAUDE.md: f264a902... before and after; VERSION 0.30.0 after; no lock left.
+
+## Run 52 (2026-10-29): R26 placement re-measured with --variant (v0.31 lane, runner 7b790bf)
+
+Setup: run52.sh, Windows home (copy install of v0.30.0), `--harness claude --model claude-sonnet-5-5 --arm with --variant <dir>`.
+base = export of v0.29.0 (c677137), candidate = the same tree with the R26 text moved out of playbook-tdd SKILL.md (6e6af51).
+The two sides ran one after the other (one variant per home). E3 and E29 at k=10, then E4, E16, E21, E24 at k=5.
+The home's VERSION was 0.30.0 before and after, and no lock was left.
+
+| Check | base | R26 moved | Δ base - moved [95% CI] |
+|---|---|---|---|
+| E29 [UNVERIFIED] label | 8/10 | 4/10 | +0.40 [-0.02, 0.67] |
+| E29 no direction without log, label or question | 10/10 | 7/10 | +0.30 [-0.04, 0.60] |
+| E29 direction logged | 9/10 | 6/10 | +0.30 [-0.08, 0.60] |
+| E29 assumption not used as the oracle | 7/10 | 5/10 | +0.20 [-0.20, 0.53] |
+| E3 test kept | 8/10 | 9/10 | -0.10 |
+| E21 spec has an Understanding section / names report.js / written before the first src/ edit | 3/5 each | 0/5 each | +0.60 |
+| E16 sub-agent use | 4/5 | 2/5 | +0.40 |
+| E16 reply names the Full weight | 4/5 | 4/5 | 0 |
+| E4 (4 checks) | 5/5 | 5/5 | 0 |
+| E24 Models: line | 1/5 | incomplete (3 graded, 2 ERROR: adapter exited 1) | - |
+
+Reading: no single interval excludes 0, but every check that moves, moves the same way: four E29 checks, three E21 spec checks and E16
+sub-agent use are all lower with R26 moved; only E3 (one run) goes the other way. Decision: R26 stays in SKILL.md. The cut of
+playbook-tdd needs other candidates, measured the same way.

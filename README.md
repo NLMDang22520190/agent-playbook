@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.30.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-21436-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.31.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-22147-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -175,7 +175,7 @@ The merge needs node. Without it the script changes nothing and prints the JSON 
 
 Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
 
-Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but the playbook (v0.29.0) does not install them yet, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
+Codex has hooks as well ([learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks): PreToolUse, SessionStart, Stop), but the playbook does not install them yet, so Codex gets the text rule only. OpenCode plugins can refuse a tool call from `tool.execute.before` ([opencode.ai/docs/plugins](https://opencode.ai/docs/plugins/)), but no plugin ships yet: text rule only. On both, `learn.sh init --link-agents` adds a pointer to `.agents/LEARNINGS.md` in the project's `AGENTS.md`; that pointer is how their agents learn about the file.
 
 ### Limits
 
@@ -222,11 +222,13 @@ evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-eval
 
 The presets do not sandbox the agent, and the opencode preset approves its own actions, so run them only in a throwaway workroot or a VM, never inside a real repo. Score the MANUAL items with [`evals/RUBRIC.md`](evals/RUBRIC.md).
 
+`--variant DIR` (in `run-evals.sh` and `run-outcome.sh`) measures another tree of the playbook: the with arm otherwise loads the installed playbook, so the runner installs DIR into the harness home for the run and puts the snapshot of the previous install back afterwards. Other sessions on that home see the variant meanwhile; the headers of both scripts have the details.
+
 ## Quality, measured
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **21436 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **22147 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 39 / 60 lines · 4,584 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
@@ -259,7 +261,7 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  21436 tests, run in sandboxes, never touch the real HOME
+├── tests/                  22147 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E43) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md

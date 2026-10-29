@@ -70,9 +70,9 @@ PROCESS-ONLY or ZERO there is not Δ evidence for keeping a rule.
 
 Copy this table to `results/<YYYY-MM-DD>-<harness>-<HHMMSS>.md` for each run.
 
-## Δ status (v0.29.0)
+## Δ status (v0.30.0)
 
-From [`docs/delta-audit.md`](../docs/delta-audit.md) (Runs 25 to 44 and the Codex Run C1). A marked scenario does not count as Δ evidence for the
+From [`docs/delta-audit.md`](../docs/delta-audit.md) (Runs 25 to 45 and the Codex Run C1). A marked scenario does not count as Δ evidence for the
 gate above until a new run with both arms at k >= 3 shows Δ > 0 on a behaviour or outcome check.
 
 - **PROCESS-ONLY** (only a ceremony check differs; the outcome passes in both arms): E1, E15, E16, E19 (labels, skill loaded,
@@ -97,12 +97,12 @@ E23, E24, E25, E26, E27, E28, E29, E30, E31, E32, E33, E34, E35, E36, E37, E38, 
 - Adapter contract: the command is called once per scenario as `COMMAND <workdir> <prompt-file>`.
   `<workdir>` is a fresh fixture (`make-fixture.sh <workdir>`); stdout and stderr become the
   transcript `<workroot>/<E>.log`.
-- Presets: `opencode` runs `opencode run --auto`, `claude` runs `claude -p`, `codex` runs `codex exec`,
-  each inside the workdir with the prompt text.
-  - `opencode`: verified from `opencode run --help` (v2.0.18, Windows).
-  - `claude`, `codex`: unverified guesses (their CLIs were not available to check the flags).
-    `claude -p` may need a permission flag before it can edit files headless (unverified); without
-    one the edits may be refused and E1/E3/E15 then FAIL.
+- Presets: `opencode` runs `opencode run --auto`, `claude` runs `claude -p --output-format stream-json --verbose`,
+  `codex` runs `evals/codex-adapter.sh` (`codex exec --json`), each inside the workdir with the prompt text.
+  - `opencode`: verified from `opencode run --help` (v2.0.18, Windows); no eval run yet.
+  - `claude`: used for Runs 25 to 50 (Claude Code 2.1.296). Headless edits depend on the caller's Claude Code
+    permission settings; a setup that refuses edits makes E1/E3/E15 FAIL.
+  - `codex`: used for Run C1 and, through the adapter, both arms since v0.30.0.
 - Safety: the `opencode` preset auto-approves the agent's actions (`--auto`); the others may or may not,
   depending on flags (unverified). None of them sandbox the agent: `cd` into the workdir is the only
   confinement. Run them only in a throw-away workroot or a VM, never inside a real repo.
