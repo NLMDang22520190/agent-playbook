@@ -34,6 +34,10 @@ fi
 printf 'run ver=%s cskills=%s askills=%s varskill=[%s] block=%s bk=%s\n' "$ver" "$cs" "$as" "$vs" "$blk" "$bk" >> "$VFAKE_LOG"
 if [ -n "${VFAKE_TAMPER:-}" ]; then printf '0.0.0-tampered\n' > "$H/.agents/playbook/VERSION"; fi
 if [ -n "${VFAKE_EDIT:-}" ]; then printf 'USER EDIT\n' >> "$VFAKE_EDIT"; fi   # the user edits a block file while the run is on
+if [ -n "${VFAKE_BKNEW:-}" ]; then   # someone else makes a backup in the home's backup dir while the run is on
+  mkdir -p "$H/.agents/playbook-backups/$VFAKE_BKNEW-dir"; printf 'foreign\n' > "$H/.agents/playbook-backups/$VFAKE_BKNEW"; printf 'foreign\n' > "$H/.agents/playbook-backups/$VFAKE_BKNEW-dir/f"
+fi
+if [ -n "${VFAKE_CREATE:-}" ]; then mkdir -p "$(dirname "$VFAKE_CREATE")"; printf 'MINE created in the run\n' > "$VFAKE_CREATE"; fi   # the user creates or overwrites a file while the run is on
 if [ -n "${VFAKE_SLEEP:-}" ]; then
   echo $$ > "$VFAKE_DIR/sleeper.pid"; : > "$VFAKE_DIR/started"
   exec sleep 120
@@ -453,6 +457,19 @@ VSHIM="$(mk_tmp)"
 cat > "$VSHIM/shim" <<'EOF'
 #!/usr/bin/env bash
 n="${0##*/}"; hold=0; prev=""; last=""
+if [ "$n" = tr ] && [ -n "${VSHIM_TR_DIR:-}" ]; then   # pause right after the n-th read of the lock's pid file (stdin is that file)
+  case "$(readlink "/proc/$$/fd/0" 2>/dev/null)" in
+    */.pb-variant.lock/pid)
+      PATH="${PATH#"$VW_SHIM":}"
+      out="$(tr "$@")"
+      c=$(( $(cat "$VSHIM_TR_DIR/count" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$VSHIM_TR_DIR/count"
+      if [ "$c" = "${VSHIM_TR_NTH:-1}" ] && mkdir "$VSHIM_TR_DIR/claimed" 2>/dev/null; then
+        : > "$VSHIM_TR_DIR/held"
+        i=0; while [ ! -e "$VSHIM_TR_DIR/go" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+      fi
+      printf '%s' "$out"; exit 0 ;;
+  esac
+fi
 for a in "$@"; do prev="$last"; last="$a"; done
 if [ -n "${VSHIM_HOLD:-}" ]; then
   case "${VSHIM_MODE:-}:$n" in
@@ -467,7 +484,7 @@ fi
 PATH="${PATH#"$VW_SHIM":}"
 exec "$n" "$@"
 EOF
-chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"
+chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"; cp "$VSHIM/shim" "$VSHIM/tr"
 vhold_new() { VHOLD="$(mk_tmp)"; }
 # vwait_exit PID [TENTHS]: true when the process is gone (not a zombie) within the time
 vwait_exit() { local i=0; while [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null && [ "$i" -lt "${2:-300}" ]; do sleep 0.1; i=$((i + 1)); done; ! { [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null; }; }
@@ -755,5 +772,186 @@ vrun --variant "$VD" $VBASE
 assert_rc "AC16 [exit 3] exit 3" 3
 assert_no_path "AC16 [exit 3] the new backup file is gone" "$VH/.agents/playbook-backups/CLAUDE.md.bak-new"
 expect_restored "AC16 [exit 3]" "$B_BK3"
+
+# ================= Rework round 2 (AC19-AC21) =================
+# fake claude extras (see its head): VFAKE_BKNEW=<name> makes the entry <name> (a file) and <name>-dir/f in H/.agents/playbook-backups
+# while the run is on (someone else's backup); VFAKE_CREATE=<file> writes <file> (any content) while the run is on.
+# PATH shim extra: VSHIM_TR_DIR=<dir> VSHIM_TR_NTH=<n> pauses the runner right after its n-th read of H/.agents/.pb-variant.lock/pid
+# (the read is done by "tr") until <dir>/go exists, and writes <dir>/held; deterministic, no timing guess.
+vls() { ls -A "$1" 2>/dev/null | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'; }
+nobk() { tree_sig "$1" | grep -v 'playbook-backups'; }
+valive() { [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null; }
+
+# ---- AC19: only the backups of the runner's own install are removed ----
+echo "AC19 an entry someone else puts in playbook-backups during the run survives; the install's own backups are removed"
+mk_variant; : > "$VD/.m-backup"; VH="$(mk_vhome)"
+mkdir -p "$VH/.agents/playbook-backups"; printf 'old backup\n' > "$VH/.agents/playbook-backups/old-backup"
+B_19="$(nobk "$VH")"
+VFAKE_BKNEW=foreign vrun --variant "$VD" $VBASE
+assert_rc "AC19 [dir existed] exit 0" 0
+assert_contains "AC19 [dir existed] setup: the install made its backups during the run" "$(vlog)" "CLAUDE.md.bak-new"
+assert_eq "AC19 [dir existed] the backups dir holds the old and the foreign entries only" "foreign foreign-dir old-backup" "$(vls "$VH/.agents/playbook-backups")"
+assert_eq "AC19 [dir existed] the foreign file keeps its content" "foreign" "$(cat "$VH/.agents/playbook-backups/foreign" 2>/dev/null)"
+assert_file "AC19 [dir existed] the foreign dir keeps its file" "$VH/.agents/playbook-backups/foreign-dir/f"
+assert_no_path "AC19 [dir existed] the install's own backup file is removed" "$VH/.agents/playbook-backups/CLAUDE.md.bak-new"
+assert_no_path "AC19 [dir existed] the install's own backup dir is removed" "$VH/.agents/playbook-backups/dir-new"
+assert_eq "AC19 [dir existed] the rest of the home is restored exactly" "$B_19" "$(nobk "$VH")"
+assert_no_path "AC19 [dir existed] the lock is removed" "$VH/.agents/.pb-variant.lock"
+
+echo "AC19 the backups dir was absent at the start: a foreign entry made during the run survives, the install's own backups go"
+mk_variant; : > "$VD/.m-backup"; VH="$(mk_vhome)"; B_19b="$(nobk "$VH")"
+VFAKE_BKNEW=foreign vrun --variant "$VD" $VBASE
+assert_rc "AC19 [dir absent] exit 0" 0
+assert_contains "AC19 [dir absent] setup: the install made its backups during the run" "$(vlog)" "CLAUDE.md.bak-new"
+assert_eq "AC19 [dir absent] only the foreign entries are left" "foreign foreign-dir" "$(vls "$VH/.agents/playbook-backups")"
+assert_eq "AC19 [dir absent] the foreign file keeps its content" "foreign" "$(cat "$VH/.agents/playbook-backups/foreign" 2>/dev/null)"
+assert_file "AC19 [dir absent] the foreign dir keeps its file" "$VH/.agents/playbook-backups/foreign-dir/f"
+assert_eq "AC19 [dir absent] the rest of the home is restored exactly" "$B_19b" "$(nobk "$VH")"
+
+echo "AC19 stale path: a backup the user made after the crash survives, the crashed run's own install backups are removed"
+for kind in present absent; do
+  mk_variant; : > "$VD/.m-backup"; VH="$(mk_vhome)"
+  if [ "$kind" = present ]; then mkdir -p "$VH/.agents/playbook-backups"; printf 'old backup\n' > "$VH/.agents/playbook-backups/old-backup"; fi
+  B_19s="$(nobk "$VH")"
+  VFAKE_SLEEP=1 vstart --variant "$VD" $VBASE
+  K_PID=$VPID; K_FD="$VFD"
+  if vwait_file "$K_FD/started"; then
+    kill -KILL "$K_PID" 2>/dev/null; wait "$K_PID" 2>/dev/null
+    kill "$(cat "$K_FD/sleeper.pid")" 2>/dev/null
+    unset VFAKE_SLEEP
+    assert_file "AC19 [stale, dir $kind] setup: the crashed run's install backup is there" "$VH/.agents/playbook-backups/CLAUDE.md.bak-new"
+    mkdir -p "$VH/.agents/playbook-backups"; printf 'made after the crash\n' > "$VH/.agents/playbook-backups/user-bk"
+    mk_variant
+    vrun --variant "$VD" $VBASE
+    assert_rc "AC19 [stale, dir $kind] the next run goes on (exit 0)" 0
+    assert_contains "AC19 [stale, dir $kind] it restored the stale snapshot" "$ERR" "variant: restored a stale snapshot left by pid $K_PID"
+    if [ "$kind" = present ]; then WANT="old-backup user-bk"; else WANT="user-bk"; fi
+    assert_eq "AC19 [stale, dir $kind] the backups dir holds only what was not the crashed run's" "$WANT" "$(vls "$VH/.agents/playbook-backups")"
+    assert_eq "AC19 [stale, dir $kind] the backup made after the crash keeps its content" "made after the crash" "$(cat "$VH/.agents/playbook-backups/user-bk" 2>/dev/null)"
+    assert_no_path "AC19 [stale, dir $kind] the crashed run's install backup file is removed" "$VH/.agents/playbook-backups/CLAUDE.md.bak-new"
+    assert_no_path "AC19 [stale, dir $kind] the crashed run's install backup dir is removed" "$VH/.agents/playbook-backups/dir-new"
+    assert_eq "AC19 [stale, dir $kind] the rest of the home is restored exactly" "$B_19s" "$(nobk "$VH")"
+  else
+    t_bad "AC19 [stale, dir $kind] setup: the first runner reached its adapter" "no 'started' file"
+    kill -KILL "$K_PID" 2>/dev/null; wait "$K_PID" 2>/dev/null
+    [ -f "$K_FD/sleeper.pid" ] && kill "$(cat "$K_FD/sleeper.pid")" 2>/dev/null
+  fi
+  unset VFAKE_SLEEP
+done
+
+# ---- AC20: a block file absent at the start is removed only when it is what the install wrote ----
+echo "AC20 a block file absent before and created during the run with other content stays in place with that content (codex, opencode, in a claude run)"
+for which in codex opencode; do
+  case "$which" in codex) BF_REL=".codex/AGENTS.md" ;; *) BF_REL=".config/opencode/AGENTS.md" ;; esac
+  mk_variant; VH="$(mk_vhome)"; B_20="$(tree_sig "$VH")"
+  VFAKE_CREATE="$VH/$BF_REL" vrun --variant "$VD" $VBASE
+  assert_rc "AC20 [$which, user-made] exit 0" 0
+  assert_eq "AC20 [$which, user-made] the file is still there with the user's content" "MINE created in the run" "$(cat "$VH/$BF_REL" 2>/dev/null)"
+  assert_contains "AC20 [$which, user-made] stderr: variant: <file> was created during the run; left in place" "$ERR" "variant: $VH/$BF_REL was created during the run; left in place"
+  assert_eq "AC20 [$which, user-made] the rest of the home is restored exactly" "$B_20" "$(tree_sig "$VH" | grep -vF "$BF_REL")"
+  assert_no_path "AC20 [$which, user-made] the lock is removed" "$VH/.agents/.pb-variant.lock"
+done
+echo "AC20 the install wrote the file, the user then changed it during the run: it stays with the user's content"
+mk_variant; : > "$VD/.m-extra"; VH="$(mk_vhome)"; B_20c="$(tree_sig "$VH")"
+VFAKE_CREATE="$VH/.codex/AGENTS.md" vrun --variant "$VD" $VBASE
+assert_rc "AC20 [install wrote, user changed] exit 0" 0
+assert_eq "AC20 [install wrote, user changed] the file keeps the user's content" "MINE created in the run" "$(cat "$VH/.codex/AGENTS.md" 2>/dev/null)"
+assert_contains "AC20 [install wrote, user changed] stderr: variant: <file> was created during the run; left in place" "$ERR" "variant: $VH/.codex/AGENTS.md was created during the run; left in place"
+assert_no_path "AC20 [install wrote, user changed] the file nobody changed (opencode) is removed" "$VH/.config/opencode/AGENTS.md"
+assert_eq "AC20 [install wrote, user changed] the rest of the home is restored exactly" "$B_20c" "$(tree_sig "$VH" | grep -vF '.codex/AGENTS.md')"
+echo "AC20 control (passes before the rework; guards an always-keep implementation): block files the install wrote and nobody changed are removed, silently"
+mk_variant; : > "$VD/.m-extra"; VH="$(mk_vhome)"; B_20d="$(tree_sig "$VH")"
+vrun --variant "$VD" $VBASE
+assert_rc "AC20 control: exit 0" 0
+assert_no_path "AC20 control: the codex block file the install wrote is removed" "$VH/.codex/AGENTS.md"
+assert_no_path "AC20 control: the opencode block file the install wrote is removed" "$VH/.config/opencode/AGENTS.md"
+assert_not_contains "AC20 control: no 'was created during the run' line" "$ERR" "was created during the run"
+expect_restored "AC20 control" "$B_20d"
+echo "AC20 the harness block file itself is absent before, the install writes it, the user edits it during the run: it stays in place (claude, codex)"
+for which in claude codex; do
+  mk_variant; VH="$(mk_vhome)"
+  if [ "$which" = claude ]; then BF_REL=".claude/CLAUDE.md"; rm -f "$VH/.claude/CLAUDE.md"; else BF_REL=".codex/AGENTS.md"; fi
+  B_20e="$(tree_sig "$VH")"
+  VFAKE_EDIT="$VH/$BF_REL" vrun --variant "$VD" --harness "$which" --scenarios E8
+  assert_rc "AC20 [$which block, edited] exit 0" 0
+  assert_file "AC20 [$which block, edited] the file is still at its path" "$VH/$BF_REL"
+  assert_contains "AC20 [$which block, edited] it holds the user's edit" "$(cat "$VH/$BF_REL" 2>/dev/null)" "USER EDIT"
+  assert_contains "AC20 [$which block, edited] stderr: variant: <file> was created during the run; left in place" "$ERR" "variant: $VH/$BF_REL was created during the run; left in place"
+  assert_eq "AC20 [$which block, edited] the rest of the home is restored exactly" "$B_20e" "$(tree_sig "$VH" | grep -vF "$BF_REL")"
+done
+echo "AC20 control (passes before the rework): the harness block file absent before, written by the install, not edited: removed, silently"
+mk_variant; VH="$(mk_vhome)"; rm -f "$VH/.claude/CLAUDE.md"; B_20f="$(tree_sig "$VH")"
+vrun --variant "$VD" $VBASE
+assert_rc "AC20 control [claude block] exit 0" 0
+assert_no_path "AC20 control [claude block] the block file is removed" "$VH/.claude/CLAUDE.md"
+assert_not_contains "AC20 control [claude block] no 'was created during the run' line" "$ERR" "was created during the run"
+expect_restored "AC20 control [claude block]" "$B_20f"
+
+# ---- AC21: the stale takeover guards ----
+echo "AC21 two runners read the same dead pid: only one takes the stale lock over, the other does not install in the meantime"
+mk_variant; VH="$(mk_vhome)"; B_21="$(tree_sig "$VH")"; vmk_stale "$VH"; DEAD21="$(cat "$VL/pid")"
+HA="$(mk_tmp)"; HB="$(mk_tmp)"
+mk_variant; VDA="$VD"
+VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HA" VSHIM_TR_NTH=2 vstart --variant "$VDA" $VBASE   # A: stops after its claim and its second pid read
+A_PID=$VPID; A_OD="$VOD"
+if vwait_file "$HA/held"; then
+  mk_variant; VDB="$VD"
+  VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HB" VSHIM_TR_NTH=1 vstart --variant "$VDB" $VBASE   # B: stops after its first pid read (the dead pid)
+  B_PID=$VPID; B_OD="$VOD"
+  if vwait_file "$HB/held"; then
+    : > "$HB/go"   # both runners now hold the same dead pid; B goes on while A is between its claim and its pid replacement
+    i=0; while [ "$i" -lt 40 ]; do
+      [ -s "$VDB/.calls" ] && break
+      valive "$B_PID" || break
+      sleep 0.1; i=$((i + 1))
+    done
+    if [ -s "$VDB/.calls" ]; then t_bad "AC21 the second runner did not install while the first held the stale lock" "install.sh of B was called: $(head -n 1 "$VDB/.calls")"
+    else t_ok "AC21 the second runner did not install while the first held the stale lock"; fi
+    assert_eq "AC21 the second runner ran no harness in the meantime" "" "$(cat "$B_OD/claude.log" 2>/dev/null)"
+    assert_not_contains "AC21 the second runner did not report taking the stale lock over" "$(cat "$B_OD/stderr" 2>/dev/null)" "restored a stale snapshot left by pid"
+    : > "$HA/go"
+    VOD="$A_OD"; vfinish "$A_PID"
+    A_RC=$RC; A_ERR="$ERR"
+    if [ "$A_RC" = 0 ]; then t_ok "AC21 the first runner finishes (exit 0)"; else t_bad "AC21 the first runner finishes (exit 0)" "rc $A_RC; stderr: $A_ERR"; fi
+    assert_contains "AC21 the first runner restored the stale snapshot" "$A_ERR" "variant: restored a stale snapshot left by pid $DEAD21"
+    vwait_exit "$B_PID" 300 || { kill -KILL "$B_PID" 2>/dev/null; t_bad "AC21 the second runner ends once the first is done" "still running after 30 s"; }
+    VOD="$B_OD"; vfinish "$B_PID"
+    case "$RC" in 0|2) t_ok "AC21 the second runner ends with 0 (it went after the first) or 2 (live lock)" ;; *) t_bad "AC21 the second runner ends with 0 or 2" "rc $RC; stderr: $ERR" ;; esac
+    assert_eq "AC21 exactly one runner took the stale lock over" "1" "$(printf '%s\n%s\n' "$A_ERR" "$ERR" | grep -c 'variant: restored a stale snapshot left by pid')"
+    expect_restored "AC21 after both runners ended" "$B_21"
+  else
+    t_bad "AC21 setup: the second runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$B_OD/stderr" 2>/dev/null)"
+    : > "$HB/go"; : > "$HA/go"; kill -KILL "$B_PID" "$A_PID" 2>/dev/null; wait "$B_PID" "$A_PID" 2>/dev/null
+  fi
+else
+  t_bad "AC21 setup: the first runner reached its second pid read" "no 'held' file after 20 s; stderr: $(cat "$A_OD/stderr" 2>/dev/null)"
+  : > "$HA/go"; kill -KILL "$A_PID" 2>/dev/null; wait "$A_PID" 2>/dev/null
+fi
+
+echo "AC21 a stale lock replaced by a live runner's lock between the pid read and the claim is not taken over"
+mk_variant; VH="$(mk_vhome)"; B_21b="$(tree_sig "$VH")"; vmk_stale "$VH"; VL21="$VL"
+sleep 120 & LIVE21=$!
+HC="$(mk_tmp)"
+VW_SHIM="$VSHIM" VSHIM_TR_DIR="$HC" VSHIM_TR_NTH=1 vstart --variant "$VD" $VBASE   # stops after reading the dead pid
+C_PID=$VPID; C_OD="$VOD"
+if vwait_file "$HC/held"; then
+  rm -rf "$VL21"; mkdir -p "$VL21/snap/playbook"; printf 'LIVE-SNAP\n' > "$VL21/snap/playbook/VERSION"; printf '%s\n' "$LIVE21" > "$VL21/pid"
+  : > "$HC/go"
+  VOD="$C_OD"; vfinish "$C_PID"
+  assert_rc "AC21 [replaced lock] the runner is refused on the live lock (exit 2)" 2
+  assert_contains "AC21 [replaced lock] the refusal names the live pid" "$ERR" "$LIVE21"
+  assert_no_path "AC21 [replaced lock] no install.sh call" "$VD/.calls"
+  assert_eq "AC21 [replaced lock] no harness run" "" "$(vlog)"
+  assert_eq "AC21 [replaced lock] the live runner's pid is still in the lock" "$LIVE21" "$(tr -d '[:space:]' < "$VL21/pid" 2>/dev/null)"
+  assert_eq "AC21 [replaced lock] its snapshot was not touched" "LIVE-SNAP" "$(cat "$VL21/snap/playbook/VERSION" 2>/dev/null)"
+  assert_eq "AC21 [replaced lock] no takeover claim is left in the lock" "" "$(ls -A "$VL21" 2>/dev/null | grep '^takeover\.')"
+  assert_eq "AC21 [replaced lock] the rest of the home is as before" "$B_21b" "$(tree_sig "$VH" | grep -v '\.pb-variant\.lock')"
+else
+  t_bad "AC21 [replaced lock] setup: the runner read the lock pid" "no 'held' file after 20 s; stderr: $(cat "$C_OD/stderr" 2>/dev/null)"
+  : > "$HC/go"; kill -KILL "$C_PID" 2>/dev/null; wait "$C_PID" 2>/dev/null
+fi
+kill "$LIVE21" 2>/dev/null; wait "$LIVE21" 2>/dev/null
+rm -rf "$VL21"
+
 
 t_summary
