@@ -44,8 +44,9 @@
 # check failed, or the VERSION changed during the run; 5: the snapshot could not be put back ("variant: RESTORE FAILED, snapshot kept
 # at <path>"; 5 wins over every other code). There is no --real-home flag here.
 # Also: a block file that is a symbolic link is refused (exit 2) before anything is touched; a block file you edit during the run is
-# kept as <file>.pb-variant-kept.<UTC time> and the snapshot is restored (stderr says where); the backups the install made in
-# H/.agents/playbook-backups are removed after the restore (older ones stay); a lock path that is not a directory or a H/.agents
+# kept as <file>.pb-variant-kept.<UTC time> and the snapshot is restored (stderr says where); a block file created during the run
+# that the install did not write (or you changed) stays in place ("was created during the run; left in place"); of the backups in
+# H/.agents/playbook-backups only those the runner's own install and doctor calls made are removed after the restore; a lock path that is not a directory or a H/.agents
 # that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models").
 # --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so

@@ -496,27 +496,32 @@ EOF
   return 0
 }
 
-# pbh_variant_backups_clean LOCKDIR H: remove the entries of H/.agents/playbook-backups that were not there at begin (the install's own backups)
+# pbh_variant_backups_clean LOCKDIR H: remove only the entries recorded in LOCKDIR/bkown (what the runner's own install and doctor calls
+# added to H/.agents/playbook-backups); nothing else in the dir is deleted. A dir that was absent at begin is removed when it is empty.
 pbh_variant_backups_clean() {
   local l="$1" bk="$2/.agents/playbook-backups" n
-  [ -f "$l/bk0" ] || [ -f "$l/bk0.absent" ] || return 0
   [ -d "$bk" ] || return 0
-  if [ -f "$l/bk0" ]; then
-    while IFS= read -r n; do
-      [ -n "$n" ] || continue
-      grep -Fxq -- "$n" "$l/bk0" || rm -rf "${bk:?}/$n"
-    done <<EOF
-$(ls -A "$bk")
-EOF
-  else
+  if [ -f "$l/bkown" ]; then
     while IFS= read -r n; do
       [ -n "$n" ] || continue
       rm -rf "${bk:?}/$n"
-    done <<EOF
+    done < "$l/bkown"
+  fi
+  [ -f "$l/bk0.absent" ] && rmdir "$bk" 2>/dev/null
+  return 0
+}
+
+# pbh_variant_bk_record LOCKDIR H: store in LOCKDIR/bkown the entries of H/.agents/playbook-backups that are not in LOCKDIR/bk0
+pbh_variant_bk_record() {
+  local l="$1" bk="$2/.agents/playbook-backups" n
+  : > "$l/bkown"
+  [ -d "$bk" ] || return 0
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    grep -Fxq -- "$n" "$l/bk0" || printf '%s\n' "$n" >> "$l/bkown"
+  done <<EOF
 $(ls -A "$bk")
 EOF
-    rmdir "$bk" 2>/dev/null
-  fi
   return 0
 }
 
@@ -527,6 +532,7 @@ pbh_variant_restore_dir() {
   if [ -e "$l/installing" ]; then
     for id in claude codex opencode; do   # a block file edited since the install is kept, never overwritten
       f="$(pbh_variant_block_file "$h" "$id")"
+      pbh_variant_exists "$snap/blocks/$id" || continue   # absent at begin: handled below
       [ -f "$l/post/$id" ] && [ -f "$f" ] && [ ! -L "$f" ] || continue
       cmp -s "$l/post/$id" "$f" && continue
       p="$f.pb-variant-kept.$(date -u +%Y%m%d%H%M%S)"; e=0
@@ -552,8 +558,13 @@ EOF
     for id in claude codex opencode; do
       pbh_variant_exists "$snap/blocks/$id" && continue
       f="$(pbh_variant_block_file "$h" "$id")"
-      rm -f "$f" 2>/dev/null
-      pbh_variant_exists "$f" && bad=1
+      pbh_variant_exists "$f" || continue
+      if [ -f "$l/post/$id" ] && [ -f "$f" ] && [ ! -L "$f" ] && cmp -s "$l/post/$id" "$f"; then
+        rm -f "$f" 2>/dev/null
+        pbh_variant_exists "$f" && bad=1
+      else
+        printf 'variant: %s was created during the run; left in place\n' "$f" >&2
+      fi
     done
     [ "$bad" = 0 ] || return 1
     rm -f "$l/installing" || return 1
@@ -660,15 +671,16 @@ pbh_variant_begin() {
   PBV_STATE=active
   printf '%s\n' "$dir" > "$PBV_L/tree"
   pbh_variant_names "$dir" > "$PBV_L/names"
-  if [ -d "$h/.agents/playbook-backups" ]; then ls -A "$h/.agents/playbook-backups" > "$PBV_L/bk0"; else : > "$PBV_L/bk0.absent"; fi
+  if [ -d "$h/.agents/playbook-backups" ]; then ls -A "$h/.agents/playbook-backups" > "$PBV_L/bk0"; else : > "$PBV_L/bk0"; : > "$PBV_L/bk0.absent"; fi
   pbh_variant_snapshot "$h" || { printf 'variant: cannot move the install targets of %s into the snapshot\n' "$h" >&2; return 3; }
   : > "$PBV_L/installing" || return 3
   reg="$(mktemp "${TMPDIR:-/tmp}/pb-evreg.XXXXXX")" || { printf 'variant: cannot create a temp registry\n' >&2; return 3; }
   PBV_REGTMP="$reg"
   PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" install --home "$h" --copy --harness "$har" --yes </dev/null >&2 ||
-    { printf 'variant: install.sh install failed for %s\n' "$dir" >&2; return 3; }
+    { pbh_variant_bk_record "$PBV_L" "$h"; printf 'variant: install.sh install failed for %s\n' "$dir" >&2; return 3; }
   PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" doctor --home "$h" --harness "$har" </dev/null >&2 ||
-    { printf 'variant: install.sh doctor failed for %s\n' "$dir" >&2; return 3; }
+    { pbh_variant_bk_record "$PBV_L" "$h"; printf 'variant: install.sh doctor failed for %s\n' "$dir" >&2; return 3; }
+  pbh_variant_bk_record "$PBV_L" "$h"
   mkdir -p "$PBV_L/post" || return 3
   for id in claude codex opencode; do   # what the install wrote; a difference at the restore is the user's edit
     f="$(pbh_variant_block_file "$h" "$id")"
