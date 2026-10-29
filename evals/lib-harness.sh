@@ -527,8 +527,9 @@ EOF
 
 # pbh_variant_restore_dir LOCKDIR H: remove what the install placed at the targets (only once "installing" is set), then put the
 # snapshot back and remove the lock dir. Two phases: nothing is put back while a removal failed, and a second pass is safe.
+# With a third argument (keep) the lock dir and its pid file stay and everything else in it is cleared: the stale takeover path.
 pbh_variant_restore_dir() {
-  local l="$1" h="$2" snap="$1/snap" bad=0 tag sd id f p e
+  local l="$1" h="$2" snap="$1/snap" bad=0 tag sd id f p e keep="${3:-}"
   if [ -e "$l/installing" ]; then
     for id in claude codex opencode; do   # a block file edited since the install is kept, never overwritten
       f="$(pbh_variant_block_file "$h" "$id")"
@@ -586,6 +587,14 @@ EOF
   done
   [ "$bad" = 0 ] || return 1
   pbh_variant_backups_clean "$l" "$h"
+  if [ -n "$keep" ]; then
+    for e in "$l"/* "$l"/.[!.]*; do
+      { [ -e "$e" ] || [ -L "$e" ]; } && [ "$e" != "$l/pid" ] || continue
+      chmod -R u+rwx "$e" 2>/dev/null; rm -rf "$e" 2>/dev/null
+      { [ -e "$e" ] || [ -L "$e" ]; } && return 1
+    done
+    return 0
+  fi
   rm -rf "$l" 2>/dev/null
   if pbh_variant_exists "$l"; then chmod -R u+rwx "$l" 2>/dev/null; rm -rf "$l" 2>/dev/null; fi
   pbh_variant_exists "$l" && return 1
@@ -635,8 +644,10 @@ pbh_variant_lock() {
     if [ "$pid2" != "$pid" ]; then rmdir "$l/takeover.$pid" 2>/dev/null; continue; fi   # it was a different lock by now
     printf '%s\n' "$$" > "$l/pid.new" && mv "$l/pid.new" "$l/pid" ||
       { printf 'variant: cannot take over %s\n' "$l" >&2; return 3; }
-    if pbh_variant_restore_dir "$l" "$h"; then
+    if pbh_variant_restore_dir "$l" "$h" keep; then
+      PBV_L="$l"
       printf 'variant: restored a stale snapshot left by pid %s\n' "$pid" >&2
+      return 0
     else
       printf 'variant: RESTORE FAILED, snapshot kept at %s\n' "$l/snap" >&2
       return 5
