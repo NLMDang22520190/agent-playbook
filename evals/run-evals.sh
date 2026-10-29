@@ -2,7 +2,7 @@
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD] [--real-home]
-#                [--model M] [--arm with|without|both] [--repeat K] [--hooks]
+#                [--model M] [--arm with|without|both] [--repeat K] [--hooks] [--variant DIR]
 # Each prompt ends with a non-interactive note (--interactive: none; with --arm or --repeat a note that does not name the playbook, the
 # same in both arms); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
@@ -62,6 +62,23 @@
 # summed turn.completed usage goes to the run's "usage" field and a "<label> USAGE" line (the cost stays unknown).
 # tools/eval-delta.sh reads the JSON of a pinned run with both arms and prints the delta per check, with Wilson and
 # Newcombe 95% intervals; it pools several JSON files of the same model, harness and commit.
+# --variant DIR (needs --harness claude, codex or opencode; not --cmd, not --real-home, not --arm without alone) measures another tree
+# of the playbook: the with arm always loads whatever is installed in the harness home H (HOME, or PB_VARIANT_HOME when set), so the
+# runner installs DIR there for the run. First it takes the lock H/.agents/.pb-variant.lock (pid and snapshot inside), then moves the
+# install targets of H into a snapshot in that lock (H/.agents/playbook, the playbook-* skills and the skills named like DIR/skills/*/ in
+# H/.claude/skills and H/.agents/skills; the block files H/.claude/CLAUDE.md, H/.codex/AGENTS.md and H/.config/opencode/AGENTS.md are
+# copied), runs `bash DIR/install.sh install --home H --copy --harness <h> --yes` and `doctor` (PLAYBOOK_REGISTRY is yours or a temp
+# file, never DIR's), checks that the installed VERSION is DIR's, and only then starts the leak probe and the runs. After the last run
+# it checks the VERSION again, removes what the install placed and puts the snapshot back exactly (symlinks, modes, content; a target
+# that was absent stays absent), also on an error, INT, TERM or HUP (ignored while restoring). The results record the tree, version and
+# git sha ("Variant:" line, JSON "variant") and the md says "snapshot restored". Other sessions on the same home see the variant while
+# the run lasts, and hooks that call H/.agents/playbook/scripts find nothing between the snapshot and the install. SIGKILL cannot
+# be handled: the variant then stays installed and the lock (holding the snapshot) stays; the next --variant run restores that stale
+# snapshot first ("variant: restored a stale snapshot left by pid N"), a run without --variant only warns. A live lock (running pid)
+# refuses a second variant run. Exit 2: refused (--cmd, --real-home, --arm without alone, DIR without install.sh or VERSION, live
+# lock); 3: install, doctor or VERSION check failed, or the VERSION changed during the run; 5: the snapshot could not be put back
+# ("variant: RESTORE FAILED, snapshot kept at <path>"; 5 wins over every other code).
+# Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models"); they are not stripped.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
@@ -116,9 +133,11 @@ cleanup_tmp() { # [quiet]
 # backticks replaced, so it fits in one line of output and inside backticks
 clean_name() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C tr '`' "'"; }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
-trap 'cleanup_home; cleanup_tmp; cleanup_set' EXIT
-trap 'stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; exit 130' INT
-trap 'stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; exit 143' TERM
+# --variant: the snapshot is put back first of all on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
+on_exit() { cleanup_home; cleanup_tmp; cleanup_set; pbh_variant_finalize || exit 5; }
+on_signal() { stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }
+set_traps() { trap 'on_exit' EXIT; trap 'on_signal 130' INT; trap 'on_signal 143' TERM; trap 'on_signal 129' HUP; }
+set_traps
 # keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
 keep_tree() {
   local src="$1" dest="$2" rel
@@ -130,12 +149,13 @@ keep_tree() {
 }
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
+VARIANT=""; VARIANT_SET=0
 MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat)
+    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -153,6 +173,7 @@ while [ $# -gt 0 ]; do
     --interactive) INTERACTIVE=1 ;;
     --real-home) REAL_HOME=1 ;;
     --hooks)     HOOKS=1 ;;
+    --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -207,6 +228,16 @@ if [ "$REPEAT_SET" = 1 ]; then
     [1-9] | [1-9][0-9]) REPEAT="$REPEAT_OPT" ;;
     *) pb_die "--repeat needs a whole number from 1 to 99, got: $REPEAT_OPT" 2 ;;
   esac
+fi
+# --variant: refusals before anything is touched (exit 2); a run without it only warns about a locked home
+if [ "$VARIANT_SET" = 1 ]; then
+  [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
+  [ "$REAL_HOME" = 0 ] || pb_die "--variant cannot be used with --real-home (it installs the variant into the home the run uses)" 2
+  [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
+  vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
+  case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
+else
+  pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file); LABELED: runs are named <E>.<arm>.<k>
 SET_MODE=0; LABELED=0
@@ -323,6 +354,11 @@ run_json() {
 }
 [ -n "$OUT" ] || OUT="$EVALS/results/${NOW% *}-$LABEL-${NOW#* }.md"
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
+# --variant: lock, snapshot, install, doctor and verify, before the leak probe and every run
+if [ "$VARIANT_SET" = 1 ]; then
+  pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?
+  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names")"
+fi
 # the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
 DROPPED=0
 # PB_HEADLESS of every run (AC-C2): evals set it explicitly, so the guard's headless rules apply without CI=true
@@ -2537,6 +2573,17 @@ MANUAL (score with RUBRIC.md):
 $S_MANUAL"
 done
 
+# --variant: end check, then the restore (before the results, so they can say it was done)
+VAR_RC=0; VAR_END=ok; VAR_RESTORED=1
+if [ "$VARIANT_SET" = 1 ]; then
+  if ! pbh_variant_end_check; then
+    VAR_END=changed; VAR_RC=3
+    printf 'variant: the installed VERSION changed during the run (not %s any more)\n' "$PBV_VER" >&2
+  fi
+  if ! pbh_variant_restore; then VAR_RESTORED=0; VAR_RC=5; fi
+  set_traps
+fi
+
 # the JSON results (AC5.1): top-level fields, then one line per run, through pbh_results_json
 JF="${OUT%.md}.json"
 jnum() { awk -v v="$1" 'BEGIN { printf "%.10g", v + 0 }'; }
@@ -2547,9 +2594,11 @@ JMAX=null; [ "$MAX_COST_SET" = 1 ] && JMAX="$(jnum "$MAX_COST")"
 JARMS=""; for a in $ARMS; do JARMS="$JARMS${JARMS:+,}\"$a\""; done
 JINT=false; [ "$INTERACTIVE" = 1 ] && JINT=true
 JHOOKS=false; [ "$HOOKS" = 1 ] && JHOOKS=true
+JVAR=null; [ "$VARIANT_SET" = 1 ] && JVAR="$(pbh_variant_json "$VAR_END")"
+JCONF="$(pbh_conf_models_json "$SRC_CONF")"
 ND_FILE="$(mktemp "${TMPDIR:-/tmp}/pb-evnd.XXXXXX")" || pb_die "mktemp failed" 3
-{ printf '{"playbook_commit":%s,"playbook_version":%s,"harness":%s,"model":%s,"arms":[%s],"repeat":%s,"max_cost":%s,"interactive":%s,"hooks":%s,"started":"%s","workroot":%s}\n' \
-    "$PCOMMIT" "$PVER" "$(pbh_json_str "$LABEL")" "$JMODEL" "$JARMS" "$REPEAT" "$JMAX" "$JINT" "$JHOOKS" "$STARTED" "$(pbh_json_str "$WORKROOT")"
+{ printf '{"playbook_commit":%s,"playbook_version":%s,"harness":%s,"model":%s,"arms":[%s],"repeat":%s,"max_cost":%s,"interactive":%s,"hooks":%s,"started":"%s","workroot":%s,"variant":%s,"conf_models":%s}\n' \
+    "$PCOMMIT" "$PVER" "$(pbh_json_str "$LABEL")" "$JMODEL" "$JARMS" "$REPEAT" "$JMAX" "$JINT" "$JHOOKS" "$STARTED" "$(pbh_json_str "$WORKROOT")" "$JVAR" "$JCONF"
   printf '%s' "$ND_RUNS"
 } > "$ND_FILE" && pbh_results_json "$ND_FILE" "$JF"
 jrc=$?; rm -f "$ND_FILE"
@@ -2576,6 +2625,14 @@ process.stdout.write(o);' "$JF"
     printf 'Hooks: on (with arm)\n'
     printf 'Note: evals set PB_HEADLESS=%s explicitly; a user who runs `claude -p` locally without PB_HEADLESS=1 (and without CI=true) is only warned by the guard, not blocked.\n' "$HEADLESS"
   else printf 'Hooks: off\n'; fi
+  printf 'Conf models: %s\n' "$(pbh_conf_models_md "$SRC_CONF")"
+  if [ "$VARIANT_SET" = 1 ]; then
+    printf 'Variant: %s (%s, %s), ' "$VARIANT" "$PBV_VER" "${PBV_SHORT:-no git}"
+    if [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
+    if [ "$VAR_END" != ok ]; then printf ', end check FAILED'; fi
+    printf '\n'
+    if [ "$VAR_END" != ok ]; then printf 'Note: variant changed during the run (the installed VERSION is no longer %s); these results do not measure the variant.\n' "$PBV_VER"; fi
+  fi
   printf '\n'
   [ -n "$TIMEOUT" ] && [ "$USE_TIMEOUT" = 0 ] && printf "Note: 'timeout' was not available; ran without a time limit.\n\n"
   printf '| Scenario | Auto passed / total | Manual items | Cost (USD) |\n|---|---|---|---|\n%s' "$SUMMARY"
@@ -2587,5 +2644,7 @@ process.stdout.write(o);' "$JF"
 } > "$OUT" || pb_die "cannot write $OUT" 3
 printf 'results: %s\n' "$OUT"
 printf 'json: %s\n' "$JF"
+[ "$VAR_RC" = 5 ] && exit 5
+[ "$VAR_RC" = 3 ] && exit 3
 [ "$ANY_ERROR" = 1 ] && exit 4
 exit "$ANY_FAIL"

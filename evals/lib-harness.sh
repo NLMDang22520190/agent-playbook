@@ -406,3 +406,258 @@ EOF
   printf '%s\n' "$sum"
   [ -z "$files" ] || printf '%s' "$files" | LC_ALL=C sort
 }
+
+# ---- variant mode (v0.31): install a variant tree into the harness home, run, put the snapshot back ----
+# Shared by evals/run-evals.sh and evals/run-outcome.sh (--variant DIR). State lives in PBV_* globals:
+#   PBV_STATE  "" (nothing started), active (lock taken, snapshot started, not restored), done, failed (restore failed, snapshot kept)
+#   PBV_H, PBV_L (lock dir), PBV_DIR, PBV_VER, PBV_SHA, PBV_SHORT, PBV_REGTMP
+# The lock dir H/.agents/.pb-variant.lock holds: pid (the runner's $$), tree, names (skill names of DIR/skills/*/ with a SKILL.md),
+# snap/ (playbook, skills-claude/, skills-agents/, blocks/<claude|codex|opencode>) and, once the install may have started, "installing".
+#   pbh_variant_home                 H: PB_VARIANT_HOME, else HOME
+#   pbh_variant_check DIR            0, or prints why DIR is not a variant tree (no dir, no install.sh, no VERSION) and returns 2
+#   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked
+#   pbh_variant_begin DIR H HARNESS  lock, snapshot, install, doctor, verify; returns 0, 2 (live lock), 3 (install or verify failed)
+#                                    or 5 (stale snapshot not restorable); on 3 the caller exits and pbh_variant_finalize restores
+#   pbh_variant_end_check            0 when the installed VERSION still is DIR's, else 1
+#   pbh_variant_restore              restores the snapshot (INT, TERM, HUP ignored); returns 1 and keeps it when that fails
+#   pbh_variant_finalize             restore when still active, remove the temp registry; returns 1 when the restore failed
+#   pbh_variant_names DIR            the skill names of DIR/skills/*/ that hold a SKILL.md, one per line
+#   pbh_variant_sha_short / _full DIR  git short or full HEAD of DIR when it is a git tree, else nothing
+#   pbh_conf_models FILE             the model_* lines of a conf as key=value; pbh_conf_models_md / pbh_conf_models_json format them
+PBV_STATE=""; PBV_H=""; PBV_L=""; PBV_DIR=""; PBV_VER=""; PBV_SHA=""; PBV_SHORT=""; PBV_REGTMP=""
+
+pbh_variant_home() { printf '%s' "${PB_VARIANT_HOME:-$HOME}"; }
+pbh_variant_version() { tr -d '[:space:]' < "$1" 2>/dev/null; }
+pbh_variant_check() {
+  [ -d "${1:-}" ] || { printf '%s' "--variant: no such directory: ${1:-}"; return 2; }
+  [ -f "$1/install.sh" ] || { printf '%s' "--variant: $1 has no install.sh"; return 2; }
+  [ -f "$1/VERSION" ] || { printf '%s' "--variant: $1 has no VERSION file"; return 2; }
+  return 0
+}
+pbh_variant_names() {
+  local s
+  for s in "$1"/skills/*/; do
+    s="${s%/}"
+    [ -f "$s/SKILL.md" ] && printf '%s\n' "${s##*/}"
+  done
+  return 0
+}
+pbh_variant_sha_short() { [ -e "$1/.git" ] && git -C "$1" rev-parse --short HEAD 2>/dev/null; return 0; }
+pbh_variant_sha_full() { [ -e "$1/.git" ] && git -C "$1" rev-parse HEAD 2>/dev/null; return 0; }
+# pbh_variant_json -> the "variant" object ("end_check": ok or changed); END is the first argument
+pbh_variant_json() {
+  local sha=null
+  [ -n "$PBV_SHA" ] && sha="$(pbh_json_str "$PBV_SHA")"
+  printf '{"tree":%s,"version":%s,"sha":%s,"end_check":%s}' "$(pbh_json_str "$PBV_DIR")" "$(pbh_json_str "$PBV_VER")" "$sha" "$(pbh_json_str "$1")"
+}
+# the paths the variant install writes to: skills dirs (tag claude or agents) and the block files (id claude, codex, opencode)
+pbh_variant_skills_dir() { case "$2" in claude) printf '%s/.claude/skills' "$1" ;; *) printf '%s/.agents/skills' "$1" ;; esac; }
+pbh_variant_block_file() {
+  case "$2" in
+    claude) printf '%s/.claude/CLAUDE.md' "$1" ;;
+    codex) printf '%s/.codex/AGENTS.md' "$1" ;;
+    *) printf '%s/.config/opencode/AGENTS.md' "$1" ;;
+  esac
+}
+# pbh_variant_entries SKILLS-DIR NAMES-FILE: the existing entries of the dir named playbook-* or listed in the names file
+pbh_variant_entries() {
+  local p n
+  {
+    for p in "$1"/playbook-*; do { [ -e "$p" ] || [ -L "$p" ]; } && printf '%s\n' "$p"; done
+    if [ -f "$2" ]; then
+      while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        p="$1/$n"; { [ -e "$p" ] || [ -L "$p" ]; } && printf '%s\n' "$p"
+      done < "$2"
+    fi
+  } | LC_ALL=C sort -u
+  return 0
+}
+pbh_variant_exists() { [ -e "$1" ] || [ -L "$1" ]; }
+
+# pbh_variant_snapshot H: move the install targets into PBV_L/snap (symlinks, modes and content kept), copy the block files
+pbh_variant_snapshot() {
+  local h="$1" snap="$PBV_L/snap" tag sd id f p
+  mkdir -p "$snap/skills-claude" "$snap/skills-agents" "$snap/blocks" || return 1
+  if pbh_variant_exists "$h/.agents/playbook"; then mv "$h/.agents/playbook" "$snap/playbook" || return 1; fi
+  for tag in claude agents; do
+    sd="$(pbh_variant_skills_dir "$h" "$tag")"
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      mv "$p" "$snap/skills-$tag/" || return 1
+    done <<EOF
+$(pbh_variant_entries "$sd" "$PBV_L/names")
+EOF
+  done
+  for id in claude codex opencode; do
+    f="$(pbh_variant_block_file "$h" "$id")"
+    if pbh_variant_exists "$f"; then cp -a "$f" "$snap/blocks/$id" || return 1; fi
+  done
+  return 0
+}
+
+# pbh_variant_restore_dir LOCKDIR H: remove what the install placed at the targets (only once "installing" is set), then put the
+# snapshot back and remove the lock dir. Two phases: nothing is put back while a removal failed, and a second pass is safe.
+pbh_variant_restore_dir() {
+  local l="$1" h="$2" snap="$1/snap" bad=0 tag sd id f p e
+  if [ -e "$l/installing" ]; then
+    rm -rf "$h/.agents/playbook" 2>/dev/null
+    pbh_variant_exists "$h/.agents/playbook" && bad=1
+    for tag in claude agents; do
+      sd="$(pbh_variant_skills_dir "$h" "$tag")"
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        rm -rf "$p" 2>/dev/null
+        pbh_variant_exists "$p" && bad=1
+      done <<EOF
+$(pbh_variant_entries "$sd" "$l/names")
+EOF
+    done
+    for id in claude codex opencode; do
+      pbh_variant_exists "$snap/blocks/$id" && continue
+      f="$(pbh_variant_block_file "$h" "$id")"
+      rm -f "$f" 2>/dev/null
+      pbh_variant_exists "$f" && bad=1
+    done
+    [ "$bad" = 0 ] || return 1
+    rm -f "$l/installing" || return 1
+  fi
+  if pbh_variant_exists "$snap/playbook"; then mv "$snap/playbook" "$h/.agents/playbook" || bad=1; fi
+  for tag in claude agents; do
+    sd="$(pbh_variant_skills_dir "$h" "$tag")"
+    for e in "$snap/skills-$tag"/*; do
+      pbh_variant_exists "$e" || continue
+      mkdir -p "$sd" && mv "$e" "$sd/" || bad=1
+    done
+  done
+  for id in claude codex opencode; do
+    pbh_variant_exists "$snap/blocks/$id" || continue
+    f="$(pbh_variant_block_file "$h" "$id")"
+    mkdir -p "$(dirname "$f")" && rm -f "$f" && cp -a "$snap/blocks/$id" "$f" || bad=1
+  done
+  [ "$bad" = 0 ] || return 1
+  rm -rf "$l" 2>/dev/null
+  if pbh_variant_exists "$l"; then chmod -R u+rwx "$l" 2>/dev/null; rm -rf "$l" 2>/dev/null; fi
+  pbh_variant_exists "$l" && return 1
+  return 0
+}
+
+# pbh_variant_lock H: take H/.agents/.pb-variant.lock; a stale one (dead pid) is renamed (atomic, so only one runner wins), restored and replaced
+pbh_variant_lock() {
+  local h="$1" l="$1/.agents/.pb-variant.lock" pid i st
+  mkdir -p "$h/.agents" || { printf 'variant: cannot create %s/.agents\n' "$h" >&2; return 3; }
+  while :; do
+    if mkdir "$l" 2>/dev/null; then
+      PBV_L="$l"
+      printf '%s\n' "$$" > "$l/pid" || { rm -rf "$l"; PBV_L=""; return 3; }
+      return 0
+    fi
+    pid=""; i=0
+    while [ "$i" -lt 20 ]; do   # a runner that just made the dir is about to write its pid
+      pid="$(tr -d '[:space:]' < "$l/pid" 2>/dev/null)"
+      [ -n "$pid" ] && break
+      [ -d "$l" ] || break
+      sleep 0.1; i=$((i + 1))
+    done
+    [ -d "$l" ] || continue
+    case "$pid" in
+      "" | *[!0-9]*) printf 'variant: %s has no usable pid file; if no variant run is active, restore it by hand and remove it\n' "$l" >&2; return 2 ;;
+    esac
+    if kill -0 "$pid" 2>/dev/null; then
+      printf 'variant: another variant run (pid %s) has %s installed or is installing in it (lock %s); nothing touched\n' "$pid" "$h" "$l" >&2
+      return 2
+    fi
+    st="$l.stale.$$.$i.$RANDOM"
+    mv "$l" "$st" 2>/dev/null || continue
+    if pbh_variant_restore_dir "$st" "$h"; then
+      printf 'variant: restored a stale snapshot left by pid %s\n' "$pid" >&2
+    else
+      mv "$st" "$l" 2>/dev/null && st="$l"
+      printf 'variant: RESTORE FAILED, snapshot kept at %s\n' "$st/snap" >&2
+      return 5
+    fi
+  done
+}
+
+# pbh_variant_warn H: for a run without --variant
+pbh_variant_warn() {
+  local pid
+  pid="$(tr -d '[:space:]' < "$1/.agents/.pb-variant.lock/pid" 2>/dev/null)"
+  [ -d "$1/.agents/.pb-variant.lock" ] || return 0
+  printf 'WARNING a variant run (pid %s) has another tree installed in %s\n' "${pid:-unknown}" "$1" >&2
+  return 0
+}
+
+# pbh_variant_begin DIR H HARNESS
+pbh_variant_begin() {
+  local dir="$1" h="$2" har="$3" rc reg
+  PBV_DIR="$dir"; PBV_H="$h"
+  PBV_VER="$(pbh_variant_version "$dir/VERSION")"
+  PBV_SHA="$(pbh_variant_sha_full "$dir")"; PBV_SHORT="$(pbh_variant_sha_short "$dir")"
+  pbh_variant_lock "$h"; rc=$?
+  [ "$rc" = 0 ] || return "$rc"
+  PBV_STATE=active
+  printf '%s\n' "$dir" > "$PBV_L/tree"
+  pbh_variant_names "$dir" > "$PBV_L/names"
+  pbh_variant_snapshot "$h" || { printf 'variant: cannot move the install targets of %s into the snapshot\n' "$h" >&2; return 3; }
+  : > "$PBV_L/installing" || return 3
+  reg="${PLAYBOOK_REGISTRY:-}"
+  if [ -z "$reg" ]; then
+    reg="$(mktemp "${TMPDIR:-/tmp}/pb-evreg.XXXXXX")" || { printf 'variant: cannot create a temp registry\n' >&2; return 3; }
+    PBV_REGTMP="$reg"
+  fi
+  PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" install --home "$h" --copy --harness "$har" --yes </dev/null >&2 ||
+    { printf 'variant: install.sh install failed for %s\n' "$dir" >&2; return 3; }
+  PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" doctor --home "$h" --harness "$har" </dev/null >&2 ||
+    { printf 'variant: install.sh doctor failed for %s\n' "$dir" >&2; return 3; }
+  if [ "$(pbh_variant_version "$h/.agents/playbook/VERSION")" != "$PBV_VER" ]; then
+    printf 'variant: the installed VERSION (%s) is not the variant'"'"'s (%s)\n' "$(pbh_variant_version "$h/.agents/playbook/VERSION")" "$PBV_VER" >&2
+    return 3
+  fi
+  printf 'variant: installed %s (%s, %s)\n' "$dir" "$PBV_VER" "${PBV_SHORT:-no git}" >&2
+  return 0
+}
+
+pbh_variant_end_check() { [ "$(pbh_variant_version "$PBV_H/.agents/playbook/VERSION")" = "$PBV_VER" ]; }
+
+pbh_variant_restore() {
+  [ "$PBV_STATE" = active ] || return 0
+  trap '' INT TERM HUP
+  if pbh_variant_restore_dir "$PBV_L" "$PBV_H"; then
+    PBV_STATE=done
+    printf 'variant: restored the snapshot of %s\n' "$PBV_H" >&2
+    return 0
+  fi
+  PBV_STATE=failed
+  printf 'variant: RESTORE FAILED, snapshot kept at %s\n' "$PBV_L/snap" >&2
+  return 1
+}
+pbh_variant_finalize() {
+  local rc=0
+  pbh_variant_restore || rc=1
+  if [ -n "$PBV_REGTMP" ]; then rm -f "$PBV_REGTMP"; PBV_REGTMP=""; fi
+  return "$rc"
+}
+
+# ---- the model_* keys of the playbook conf a with-arm run gets (recorded, never stripped) ----
+pbh_conf_models() {
+  [ -f "${1:-}" ] || return 0
+  sed -n 's/^[[:space:]]*\(model_[A-Za-z0-9_]*\)[[:space:]]*=[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1=\2/p' "$1" | tr -d '\r'
+  return 0
+}
+pbh_conf_models_md() {
+  local out
+  out="$(pbh_conf_models "$1" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')"
+  printf '%s' "${out:-none}"
+}
+pbh_conf_models_json() {
+  local l o="" k v
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    k="${l%%=*}"; v="${l#*=}"
+    o="$o${o:+,}$(pbh_json_str "$k"):$(pbh_json_str "$v")"
+  done <<EOF
+$(pbh_conf_models "$1")
+EOF
+  printf '{%s}' "$o"
+}
