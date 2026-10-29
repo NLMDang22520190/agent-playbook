@@ -879,3 +879,8 @@ Every 95% interval of the drops contains 0. The candidate's E3 and E26 misses ar
 Cost, median per run (USD): E2 2.12 -> 1.51, E21 1.49 -> 1.15, E24 2.69 -> 2.61 (its fixture configures the reviewer, so the default does not apply), E13 0.57 -> 0.71, pattern-15 0.55 -> 0.60; all Run 50 scenarios at k=5: 53.79 -> 48.30. Reviewer calls in the candidate's E2 and E21 transcripts use sonnet; E24 keeps its configured opus.
 
 **Decision:** lane c2 accepted (no KEEP check fell, opus Full runs cheaper). Merged into v0.30.0.
+
+## Run 51 (2026-10-29): first real --variant run (v0.31 lane, ff2ec42)
+
+Setup: run51.sh, Windows home (a copy install of v0.30.0), runner = export of ff2ec42, variant = the same export with VERSION 0.30.0-variant, `--harness claude --model claude-sonnet-5-5 --arm with --scenarios E4 --variant <dir>`.
+Result: stderr "variant: installed ... (0.30.0-variant, no git)" and "variant: restored the snapshot of /c/Users/Lenovo"; md "Variant: ... (0.30.0-variant, no git), snapshot restored" and a "Conf models:" line listing model_reviewer_claude=opus among others; E4 4/4 PASS, 0.14 USD. md5 of .agents/playbook, .claude/skills/playbook-* and .claude/CLAUDE.md: f264a902... before and after; VERSION 0.30.0 after; no lock left.
