@@ -701,7 +701,7 @@ pbh_variant_restore() {
   [ "${PBV_STATE:-}" = active ] || return 0
   trap '' INT TERM HUP
   if pbh_variant_restore_dir "$PBV_L" "$PBV_H"; then
-    PBV_STATE=done
+    PBV_STATE='done'
     printf 'variant: restored the snapshot of %s\n' "$PBV_H" >&2
     return 0
   fi
