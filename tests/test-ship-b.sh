@@ -298,6 +298,7 @@ eg_fx() { # TAG(yes|no) FILE
   fi
   printf 'v2\n' > "$w/$2"
   ( cd "$w" && git add -A && GITID commit -qm "change $2" && git push -q origin HEAD:main 2>/dev/null ) || { echo "eval guard change failed"; exit 3; }
+  pr_on_new_main   # AC9: the PR head must sit on the new main, or ship refuses before the merge
   unset PLAYBOOK_HARNESS
 }
 lineno() { printf '%s\n' "$OUT" | grep -n -- "$1" | cut -d: -f1; }   # all line numbers matching a fixed text
@@ -363,6 +364,7 @@ eg_fx yes skills/fixt/SKILL.md
 # replace the guard on origin's main (the commit ship pulls) with one that fails
 printf '#!/usr/bin/env bash\necho "guard broke" >&2\nexit 7\n' > "$F/work/tools/eval-guard.sh"
 ( cd "$F/work" && git add -A && GITID commit -qm "broken guard on main" && git push -q origin HEAD:main 2>/dev/null )
+pr_on_new_main   # main moved again: keep the PR head on top of it (AC9)
 sh_run 12 v1.2.3 --yes
 assert_rc "v22.4 AC2.3 eval-guard.sh exits 7: ship still exits 0" 0
 assert_eq "v22.4 AC2.3 eval-guard.sh exits 7: the whole flow ran" "$FULL_YES" "$(steps)"
