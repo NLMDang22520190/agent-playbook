@@ -169,3 +169,5 @@ test-guard-ps.sh 300
 test-evals-codex.sh 60
 test-evals-variant.sh 400
 test-outcome-variant.sh 400
+# v0.32.0 lane S2 estimate until a CI run measures it (L-0009): test-release-gate-check.sh 60 (about 16 fixture repos, pure git and node).
+test-release-gate-check.sh 60
