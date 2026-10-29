@@ -331,7 +331,7 @@ side_commit() {
 }
 # v0.32.0 AC9 helpers
 gate_calls() { grep '^release-gate.sh' "$FAKE_LOG"; }
-pr_head() { git -C "$F/origin.git" rev-parse "refs/pull/${FAKE_PR:-12}/head" 2>/dev/null || git -C "$F/origin.git" rev-parse refs/heads/feat/x; }
+pr_head() { git -C "$F/origin.git" rev-parse -q --verify "refs/pull/${FAKE_PR:-12}/head" 2>/dev/null || git -C "$F/origin.git" rev-parse refs/heads/feat/x; }
 # origin_advance -> origin's main moves on (a commit made through the work clone); the repo's origin/main is NOT refreshed
 origin_advance() {
   ( cd "$F/work" && git pull -q --ff-only origin main >/dev/null 2>&1 &&
@@ -340,8 +340,8 @@ origin_advance() {
 }
 # pr_on_new_main -> the PR head (origin refs/pull/N/head) is a commit ON TOP of origin's current main
 pr_on_new_main() {
-  ( cd "$F/work" && git switch -q -c prb origin/main 2>/dev/null && echo prfile > pr-file.txt && git add -A && GITID commit -qm "pr commit" &&
-    git push -q origin "HEAD:refs/pull/${FAKE_PR:-12}/head" >/dev/null 2>&1 && git switch -q main ) || { echo "fixture setup failed: pr_on_new_main"; exit 3; }
+  ( cd "$F/work" && git fetch -q origin && git switch -q -C prb origin/main 2>/dev/null && echo prfile > pr-file.txt && git add -A && GITID commit -qm "pr commit" &&
+    git push -q -f origin "HEAD:refs/pull/${FAKE_PR:-12}/head" >/dev/null 2>&1 && git switch -q main ) || { echo "fixture setup failed: pr_on_new_main"; exit 3; }
 }
 # pr_ahead -> the PR head has one commit of its own on top of the init commit (main did not move)
 pr_ahead() {
