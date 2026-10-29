@@ -43,7 +43,7 @@ usage() { sed -n '2,/^set -u/p' "$0" | sed '/^set -u/d' | sed 's/^# \{0,1\}//' >
 die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -51,6 +51,7 @@ while [ $# -gt 0 ]; do
     --json) JSON=1 ;;
     --dry-run) DRY=1 ;;
     --pool-only) POOL=1 ;;
+    --check) CHECK=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
@@ -58,11 +59,16 @@ while [ $# -gt 0 ]; do
         --tasks) TASKS="$2" ;; --out-dir) OD="$2" ;; --max-cost) MAXC="$2" ;; --timeout) TMO="$2" ;;
       esac
       shift ;;
-    *) die 2 "unknown option: $1 (see --help)" ;;
+    -*) die 2 "unknown option: $1 (see --help)" ;;
+    *) POS+=("$1") ;;
   esac
   shift
 done
+[ "${#POS[@]}" -eq 0 ] || [ "$CHECK" = 1 ] || die 2 "unknown option: ${POS[0]} (see --help)"
+[ "${#POS[@]}" -le 1 ] || die 2 "--check takes one REV, got: ${POS[*]}"
+REV="${POS[0]:-}"
 
+if [ "$CHECK" = 0 ]; then
 if [ -n "$HARNESS" ] && [ -n "$CMD" ]; then die 2 "use either --harness or --cmd, not both"; fi
 case "$HARNESS" in
   "") [ -n "$CMD" ] || die 2 "--harness or --cmd is required"; LABEL=custom ;;
@@ -118,6 +124,7 @@ show() {
   printf '%s' "$out"
 }
 B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
+fi
 
 # jdoc POOLED SKIPPED DELTA_RC DELTA_OUT B_RC O_RC -> the pb-gate/1 object on stdout
 jdoc() {
@@ -174,6 +181,72 @@ process.stdout.write(JSON.stringify({
   pooled: lines(e.PG_POOLED), skipped, delta_rc: num(e.PG_DRC), ...V, rows }, null, 2) + "\n");
 '
 }
+
+# --check [REV] (v0.32.0): reads only the committed tree of REV, spends nothing, calls no runner
+if [ "$CHECK" = 1 ]; then
+  command -v git >/dev/null 2>&1 || die 3 "git is required"
+  command -v node >/dev/null 2>&1 || die 3 "node (>= 18) is required"
+  G=(git -c core.quotepath=off -C "$ROOT")
+  RV="$("${G[@]}" rev-parse --verify -q "${REV:-HEAD}^{commit}" 2>/dev/null)" || die 3 "not a commit: ${REV:-HEAD}"
+  CT="$(mktemp -d "${TMPDIR:-/tmp}/pbcheck.XXXXXX")" || die 3 "cannot make a temp dir"
+  trap 'rm -rf "$CT"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  VER=""; LABEL=""; TREE=clean; B_SHOW=""; O_SHOW=""; SCEN=""; TASKS=""; OD=""; MODEL=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    mkdir -p "$CT/x/${f%/*}" && "${G[@]}" show "$RV:$f" > "$CT/x/$f" || die 3 "cannot read $f at $RV"
+  done <<EOT
+$("${G[@]}" ls-tree -r --name-only "$RV" evals/results 2>/dev/null | grep '^evals/results/gate-[^/]*/[^/]*\.json$')
+EOT
+  # one line per pb-evals/1 file: dir, playbook_commit, harness, model, file name
+  GL="$(PG_X="$CT/x/evals/results" node -e '
+const fs = require("fs"), b = process.env.PG_X, ls = d => { try { return fs.readdirSync(d).sort(); } catch (x) { return []; } };
+for (const d of ls(b).filter(n => /^gate-/.test(n))) for (const n of ls(b + "/" + d).filter(n => n.endsWith(".json") && n !== "gate.json")) {
+  let j = null;
+  try { j = JSON.parse(fs.readFileSync(b + "/" + d + "/" + n, "utf8")); } catch (x) { }
+  if (j && j.schema === "pb-evals/1" && Array.isArray(j.runs))
+    console.log(["evals/results/" + d, j.playbook_commit, j.harness, j.model, n].map(String).join("\t"));
+}')" || die 3 "node failed while grouping"
+  TAB="$(printf '\t')"; WHY=""
+  while IFS="$TAB" read -r d c h m; do
+    [ -n "$d" ] || continue
+    C12="$(printf '%s' "$c" | cut -c1-12)"; R=""
+    if ! "${G[@]}" cat-file -e "$c^{commit}" 2>/dev/null; then R="gate commit $c is not in this repository"$'\n'
+    else
+      "${G[@]}" merge-base --is-ancestor "$c" "$RV" || R="gate commit $C12 is neither REV nor an ancestor of it"$'\n'
+      X="$("${G[@]}" diff --name-only "$c" "$RV" | grep -v '^evals/results/' | head -n 1)"
+      [ -z "$X" ] || R="${R}changes outside evals/results since $C12: $X"$'\n'
+      AUTO="$("${G[@]}" show "$c:evals/run-evals.sh" 2>/dev/null | sed -n 's/^AUTO="\(.*\)"$/\1/p' | head -n 1)"
+      DEFAULT_TASKS="$("${G[@]}" show "$c:tools/release-gate.sh" 2>/dev/null | sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' | head -n 1)"
+      if [ -z "$AUTO" ] || [ -z "$DEFAULT_TASKS" ]; then R="${R}no AUTO list or DEFAULT_TASKS at $C12"$'\n'
+      else
+        FILES=()
+        while IFS= read -r f; do FILES+=("$CT/x/$d/$f"); done <<EOT
+$(printf '%s\n' "$GL" | awk -F'\t' -v k="$d	$c	$h	$m" '$1 "\t" $2 "\t" $3 "\t" $4 == k { print $5 }')
+EOT
+        DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
+        SHA="$c"; LABEL="$h"; MODEL="$m"
+        VR="$(jdoc "$(printf '%s\n' "${FILES[@]}")" "" "$DRC" "$DOUT" "" "" | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(j.verdict);console.log(j.min_graded);j.verdict_reasons.forEach(r=>console.log(r))')" || die 3 "node failed while computing the verdict"
+        MING="$(printf '%s\n' "$VR" | sed -n 2p)"
+        if [ "$(printf '%s\n' "$VR" | head -n 1)" != pass ]; then
+          R="$R$(printf '%s\n' "$VR" | sed '1,2d')"$'\n'
+          GV="$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).verdict))}catch(x){}' "$CT/x/$d/gate.json")"
+          [ "$GV" != pass ] || R="${R}gate.json says pass, the recomputed verdict is fail"$'\n'
+        fi
+      fi
+    fi
+    if [ -z "$R" ]; then
+      printf 'release gate: pass (commit %s, harness %s, model %s, min graded %s per arm, %s)\n' "$c" "$h" "$m" "$MING" "$d"
+      exit 0
+    fi
+    WHY="$WHY$(printf '%s' "$R" | sed "s|^|$d (commit $C12, harness $h, model $m): |")"$'\n'
+  done <<EOT
+$(printf '%s\n' "$GL" | cut -f1-4 | sort -u)
+EOT
+  if [ -n "$WHY" ]; then printf '%s' "$WHY"; else printf 'no gate result under evals/results/gate-*/ at REV\n'; fi
+  exit 1
+fi
 
 if [ "$DRY" = 1 ]; then
   if [ "$JSON" = 1 ]; then jdoc "" "" "" "" "" ""; exit $?; fi
