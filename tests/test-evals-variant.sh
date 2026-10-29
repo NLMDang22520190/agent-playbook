@@ -158,7 +158,7 @@ expect_restored() {
   assert_eq "$1: the home is restored exactly (files, modes, content, symlinks)" "$2" "$(tree_sig "$VH")"
   assert_no_path "$1: the lock is removed" "$VH/.agents/.pb-variant.lock"
 }
-unlock() { chmod -R u+rwx "$VH" 2>/dev/null; }
+unlock() { chmod u+rwx "$VH/.claude/skills" "$VH/.agents/skills" 2>/dev/null; }   # only the dirs the fake adapter made read-only (non-recursive: the kept snapshot in the lock dir keeps its modes)
 
 # ================= AC9 synopsis =================
 echo "AC9 --help of run-evals.sh documents --variant"
