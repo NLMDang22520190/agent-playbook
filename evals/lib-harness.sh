@@ -43,7 +43,7 @@
 #                                     (tests/...), LC_ALL=C sorted
 
 # stream-json (needs --verbose with -p) puts tool calls such as the Skill call into the transcript;
-# flags as listed by `claude --help` in Claude Code 2.1.295. DECISION[D3]: the claude and codex presets are best guesses.
+# flags as listed by `claude --help` in Claude Code 2.1.295. The claude preset ran Runs 25-50; codex goes through codex-adapter.sh.
 pbh_preset_cmd() {
   case "$1" in
     claude)   printf '%s' 'cd "$1" && claude -p --output-format stream-json --verbose "$(cat "$2")"' ;;
