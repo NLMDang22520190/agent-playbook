@@ -32,7 +32,7 @@
 # H/.agents/.pb-variant.lock (pid and snapshot inside), then moves the install targets of H into a snapshot in that lock
 # (H/.agents/playbook, the playbook-* skills and the skills named like DIR/skills/*/ in H/.claude/skills and H/.agents/skills; the block
 # files H/.claude/CLAUDE.md, H/.codex/AGENTS.md and H/.config/opencode/AGENTS.md are copied), runs
-# `bash DIR/install.sh install --home H --copy --harness <h> --yes` and `doctor` (PLAYBOOK_REGISTRY is yours or a temp file, never DIR's),
+# `bash DIR/install.sh install --home H --copy --harness <h> --yes` and `doctor` (always with a temp registry the runner makes and removes: a PLAYBOOK_REGISTRY you exported is not used and DIR's registry is never touched),
 # checks that the installed VERSION is DIR's, and only then starts the leak probe and the runs. After the last run it checks the
 # VERSION again, removes what the install placed and puts the snapshot back exactly (symlinks, modes, content; a target that was absent
 # stays absent), also on an error, INT, TERM or HUP (ignored while restoring). The results record the tree, version and git sha
@@ -43,6 +43,10 @@
 # variant run. Exit 2: refused (--cmd, --arm without alone, DIR without install.sh or VERSION, live lock); 3: install, doctor or VERSION
 # check failed, or the VERSION changed during the run; 5: the snapshot could not be put back ("variant: RESTORE FAILED, snapshot kept
 # at <path>"; 5 wins over every other code). There is no --real-home flag here.
+# Also: a block file that is a symbolic link is refused (exit 2) before anything is touched; a block file you edit during the run is
+# kept as <file>.pb-variant-kept.<UTC time> and the snapshot is restored (stderr says where); the backups the install made in
+# H/.agents/playbook-backups are removed after the restore (older ones stay); a lock path that is not a directory or a H/.agents
+# that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models").
 # --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so
 # does its leak probe (--harness claude with the without arm: exit 3 when claude still sees the playbook block); the

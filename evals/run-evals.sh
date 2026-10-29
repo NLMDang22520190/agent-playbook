@@ -67,8 +67,8 @@
 # runner installs DIR there for the run. First it takes the lock H/.agents/.pb-variant.lock (pid and snapshot inside), then moves the
 # install targets of H into a snapshot in that lock (H/.agents/playbook, the playbook-* skills and the skills named like DIR/skills/*/ in
 # H/.claude/skills and H/.agents/skills; the block files H/.claude/CLAUDE.md, H/.codex/AGENTS.md and H/.config/opencode/AGENTS.md are
-# copied), runs `bash DIR/install.sh install --home H --copy --harness <h> --yes` and `doctor` (PLAYBOOK_REGISTRY is yours or a temp
-# file, never DIR's), checks that the installed VERSION is DIR's, and only then starts the leak probe and the runs. After the last run
+# copied), runs `bash DIR/install.sh install --home H --copy --harness <h> --yes` and `doctor` (always with a temp registry the runner makes and removes: a
+# PLAYBOOK_REGISTRY you exported is not used and DIR's registry is never touched), checks that the installed VERSION is DIR's, and only then starts the leak probe and the runs. After the last run
 # it checks the VERSION again, removes what the install placed and puts the snapshot back exactly (symlinks, modes, content; a target
 # that was absent stays absent), also on an error, INT, TERM or HUP (ignored while restoring). The results record the tree, version and
 # git sha ("Variant:" line, JSON "variant") and the md says "snapshot restored". Other sessions on the same home see the variant while
@@ -78,6 +78,10 @@
 # refuses a second variant run. Exit 2: refused (--cmd, --real-home, --arm without alone, DIR without install.sh or VERSION, live
 # lock); 3: install, doctor or VERSION check failed, or the VERSION changed during the run; 5: the snapshot could not be put back
 # ("variant: RESTORE FAILED, snapshot kept at <path>"; 5 wins over every other code).
+# Also: a block file that is a symbolic link is refused (exit 2) before anything is touched; a block file you edit during the run is
+# kept as <file>.pb-variant-kept.<UTC time> and the snapshot is restored (stderr says where); the backups the install made in
+# H/.agents/playbook-backups are removed after the restore (older ones stay); a lock path that is not a directory or a H/.agents
+# that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models"); they are not stripped.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home).
