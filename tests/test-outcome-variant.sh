@@ -146,6 +146,16 @@ mk_vhome() {
 }
 # fmode FILE -> octal permission bits (rwx triples, e.g. 640), read from ls -l so it works on GNU and BSD/macOS alike
 fmode() { ls -ld "$1" | awk '{ s = substr($1, 2, 9); m = ""; for (i = 0; i < 3; i++) { r = substr(s, i * 3 + 1, 3); v = 0; if (substr(r, 1, 1) == "r") v += 4; if (substr(r, 2, 1) == "w") v += 2; if (substr(r, 3, 1) ~ /[xst]/) v += 1; m = m v }; print m }'; }
+# Capability probes (what this file system and user can do), so the assertions that need a capability are skipped, not failed, where it is missing:
+#   VDIRPERM=0: a directory made read-only (chmod 555) can still be written (root, or NTFS under Git Bash)
+#   VMODEKEEP=0: chmod modes 640 / 600 are not read back as set (NTFS under Git Bash)
+VDIRPERM=1; VMODEKEEP=1
+VPROBE="$(mk_tmp)"; mkdir "$VPROBE/d"; chmod 555 "$VPROBE/d"
+if ( : > "$VPROBE/d/x" ) 2>/dev/null; then VDIRPERM=0; fi
+chmod 755 "$VPROBE/d"
+if [ "$(id -u)" = 0 ]; then VDIRPERM=0; fi
+printf 'x\n' > "$VPROBE/m"; chmod 640 "$VPROBE/m"; [ "$(fmode "$VPROBE/m")" = 640 ] || VMODEKEEP=0
+chmod 600 "$VPROBE/m"; [ "$(fmode "$VPROBE/m")" = 600 ] || VMODEKEEP=0
 # tree_sig DIR -> every regular file (mode, md5) and symlink (target) under DIR, sorted; directories are not listed
 tree_sig() {
   (cd "$1" && find . -mindepth 1 \( -type f -o -type l \) | LC_ALL=C sort | while IFS= read -r p; do
@@ -204,7 +214,9 @@ expect_restored "AC3 normal end" "$B_MAIN"
 assert_no_path "AC3 a target absent before stays absent: \$H/.codex/AGENTS.md" "$VH/.codex/AGENTS.md"
 assert_no_path "AC3 a target absent before stays absent: \$H/.config/opencode/AGENTS.md" "$VH/.config/opencode/AGENTS.md"
 assert_eq "AC3 the block file is byte-equal (no trailing newline, UTF-8)" "$(printf 'my notes\n<!-- BEGIN agent-playbook base -->\nbase block \xc3\xa9 $x\n<!-- END agent-playbook -->\nlast line, no newline' | md5sum)" "$(md5sum < "$VH/.claude/CLAUDE.md")"
-assert_eq "AC3 the block file mode is back to 640" "640" "$(fmode "$VH/.claude/CLAUDE.md")"
+if [ "$VMODEKEEP" = 1 ]; then
+  assert_eq "AC3 the block file mode is back to 640" "640" "$(fmode "$VH/.claude/CLAUDE.md")"
+else t_skip 1 "AC3 the block file mode is back to 640 (chmod modes are not kept here: NTFS)"; fi
 assert_eq "AC3 the user's own varskill is back (not the variant's)" "user varskill" "$(cat "$VH/.claude/skills/varskill/SKILL.md")"
 assert_eq "AC1 the other skill (myskill) and the credentials were never touched" "mine SECRET-TOKEN" "$(cat "$VH/.claude/skills/myskill/SKILL.md") $(cat "$VH/.claude/.credentials.json")"
 # AC7 md and JSON
@@ -277,8 +289,8 @@ unset VFAKE_TAMPER
 
 # ================= AC3 restore failure =================
 echo "AC3 AC4 the restore fails: exit 5 (wins over exit 3), RESTORE FAILED, the snapshot is kept; the next run restores it as stale"
-if [ "$(id -u)" = 0 ]; then
-  t_skip 9 "AC3 restore failure (root ignores directory permissions)"
+if [ "$VDIRPERM" = 0 ]; then
+  t_skip 10 "AC3 restore failure (a read-only directory is still writable here: root or NTFS)"
 else
   mk_variant; : > "$VD/.m-lock-skills"; VH="$(mk_vhome)"; B_5="$(tree_sig "$VH")"
   vrun --variant "$VD" $VBASE
@@ -442,10 +454,29 @@ exec "$n" "$@"
 EOF
 chmod 755 "$VSHIM/shim"; cp "$VSHIM/shim" "$VSHIM/mv"; cp "$VSHIM/shim" "$VSHIM/cp"; cp "$VSHIM/shim" "$VSHIM/rm"
 vhold_new() { VHOLD="$(mk_tmp)"; }
+# valive PID: true when the process is running (not gone, not a zombie); /proc where there is one, else kill -0 and ps (macOS)
+valive() {
+  if [ -r /proc/self/status ]; then [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null; return; fi
+  kill -0 "$1" 2>/dev/null || return 1
+  case "$(ps -o stat= -p "$1" 2>/dev/null)" in Z* | X*) return 1 ;; esac
+  return 0
+}
 # vwait_exit PID [TENTHS]: true when the process is gone (not a zombie) within the time
-vwait_exit() { local i=0; while [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null && [ "$i" -lt "${2:-300}" ]; do sleep 0.1; i=$((i + 1)); done; ! { [ -d "/proc/$1" ] && ! grep -q '^State:[[:space:]]*[ZX]' "/proc/$1/status" 2>/dev/null; }; }
+vwait_exit() { local i=0; while valive "$1" && [ "$i" -lt "${2:-300}" ]; do sleep 0.1; i=$((i + 1)); done; ! valive "$1"; }
+# vtimeout20 CMD...: CMD with a 20 s limit, exit 124 when it did not finish (timeout or gtimeout when there is one, else a background kill timer: macOS has none)
+vtimeout20() {
+  local p w rc
+  if command -v timeout >/dev/null 2>&1; then timeout 20 "$@"; return; fi
+  if command -v gtimeout >/dev/null 2>&1; then gtimeout 20 "$@"; return; fi
+  "$@" & p=$!
+  ( sleep 20; : > "$VOD/timedout"; kill -TERM "$p" 2>/dev/null; sleep 1; kill -KILL "$p" 2>/dev/null ) >/dev/null 2>&1 & w=$!
+  wait "$p" 2>/dev/null; rc=$?
+  if [ -e "$VOD/timedout" ]; then rc=124; fi
+  kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  return "$rc"
+}
 # vrunt ARGS...: like vrun with a 20 s limit (exit 124 = the runner did not finish: a loop)
-vrunt() { vsetup; timeout 20 bash "$VFK/runner.sh" "$@" > "$VOD/stdout" 2> "$VOD/stderr"; RC=$?; OUT="$(cat "$VOD/stdout")"; ERR="$(cat "$VOD/stderr")"; }
+vrunt() { vsetup; vtimeout20 bash "$VFK/runner.sh" "$@" > "$VOD/stdout" 2> "$VOD/stderr"; RC=$?; OUT="$(cat "$VOD/stdout")"; ERR="$(cat "$VOD/stderr")"; }
 # vdead_pid -> the pid of a process that has finished
 vdead_pid() { local p; ( : ) & p=$!; wait "$p" 2>/dev/null; printf '%s' "$p"; }
 # vmk_stale H -> VL: a stale lock dir (dead pid) with an empty snapshot skeleton and no "installing" marker
@@ -515,8 +546,8 @@ vmsg_names "AC13 the runner's own message (a variant:/error: line) names the loc
 assert_eq "AC13 nothing touched (the file is still there, the home is as before)" "$B_13" "$(tree_sig "$VH")"
 assert_no_path "AC13 no install.sh call" "$VD/.calls"
 assert_eq "AC13 no harness run" "" "$(vlog)"
-if [ "$(id -u)" = 0 ]; then
-  t_skip 8 "AC13 H/.agents not writable (root ignores directory permissions)"
+if [ "$VDIRPERM" = 0 ]; then
+  t_skip 7 "AC13 H/.agents not writable (a read-only directory is still writable here: root or NTFS)"
 else
   mk_variant; VH="$(mk_vhome)"; B_13W="$(tree_sig "$VH")"; chmod 555 "$VH/.agents"
   vrunt --variant "$VD" $VBASE
@@ -532,8 +563,8 @@ fi
 
 # ================= AC14: exit 5 stays after a failed restore =================
 echo "AC14 after a failed end-of-run restore a later pb_die and a later TERM still exit 5"
-if [ "$(id -u)" = 0 ]; then
-  t_skip 5 "AC14 (root ignores directory permissions)"
+if [ "$VDIRPERM" = 0 ]; then
+  t_skip 5 "AC14 (a read-only directory is still writable here: root or NTFS)"
 else
   mk_variant; : > "$VD/.m-lock-skills"; VH="$(mk_vhome)"
   VRES_AS_DIR=1 vrun --variant "$VD" $VBASE
