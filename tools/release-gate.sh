@@ -22,10 +22,22 @@
 # version, harness, model, k, scenarios, tasks, out_dir, tree, dry_run, pool_only, commands, runner_rc, pooled, skipped
 # [{file, reason}], delta_rc, rows [{scenario, check, delta, lo, hi, verdict}] from the Newcombe table); the runners' output
 # then goes to DIR/<kind>-<stamp>.log.
+# Variant (v0.32.0): a real run with --harness makes a detached git worktree of HEAD under ${TMPDIR:-/tmp}, passes --variant DIR to both
+# runners (the "with" arm is that tree, so variant.sha in the results is HEAD) and removes it on every exit path (git worktree
+# remove --force + prune, also on a runner's 2 or 3 and on INT/TERM). --cmd never gets --variant (its runs have no variant and fail
+# the verdict). The environment passes through unchanged: PB_VARIANT_HOME selects the harness home the variant is installed into.
+# Verdict (one function, over the pooled files): pass needs (a) every pooled file has a variant object with end_check "ok" and
+# variant.sha = HEAD, (b) the full set: every scenario of AUTO in evals/run-evals.sh and every id of DEFAULT_TASKS below,
+# (c) at least 5 graded runs (ERROR runs do not count) per item and arm, (d) tools/eval-delta.sh exits 0, (e) no delta whose 95%
+# interval is wholly below 0. Otherwise fail, with one reason per broken rule, printed. A real run and --pool-only write
+# DIR/gate.json (pb-gate/1 + variant, full_set, min_graded, verdict, verdict_reasons) and DIR/.gitignore (only *.json, *.md and
+# .gitignore are committed), and rewrite local paths in DIR/*.json and *.md (repo root -> relative; HOME -> <home>; TMPDIR ->
+# <tmp>; the variant dir -> <variant>; POSIX and, where cygpath exists, Windows forms) so no local path is committed.
 # Real runs spend money: run it on purpose, on the release commit, after the tests pass.
-# Exit: tools/eval-delta.sh's code (0, or 1 when an isolation check FAILed) | 2 usage, unknown scenario or task, a dirty tree,
-#       nothing to pool, or a runner's 2 | 3 environment (git, node) or a runner's 3.
+# Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 |
+#       3 environment (git, node) or a runner's 3.
 set -u
+DEFAULT_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '/^set -u/d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
@@ -70,7 +82,7 @@ if [ -z "$SCEN" ]; then SCEN="$(printf '%s' "$AUTO" | tr -s ' ' ',')"; fi
 for s in $(printf '%s' "$SCEN" | tr ',' ' '); do
   case " $AUTO " in *" $s "*) ;; *) die 2 "scenario $s is not in the AUTO list of evals/run-evals.sh" ;; esac
 done
-[ -n "$TASKS" ] || TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+[ -n "$TASKS" ] || TASKS="$DEFAULT_TASKS"
 for t in $(printf '%s' "$TASKS" | tr ',' ' '); do
   case "$t" in "" | */* | .*) die 2 "bad task id: $t" ;; esac
   [ -d "$ROOT/evals/tasks/$t" ] || die 2 "unknown task: $t (no evals/tasks/$t)"
@@ -89,8 +101,13 @@ PASS=()
 [ -z "$MAXC" ] || PASS+=(--max-cost "$MAXC")
 [ -z "$TMO" ] || PASS+=(--timeout "$TMO")
 [ "$CLEAN" = 0 ] || PASS+=(--clean-env)
-B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SCEN" --out "$OD/behaviour-$STAMP.md" ${PASS[@]+"${PASS[@]}"})
-O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TASKS" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"})
+# build_args VARIANT_DIR -> B_ARGS and O_ARGS (--variant only with --harness)
+build_args() {
+  local v=(); [ -z "$HARNESS" ] || v=(--variant "$1")
+  B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SCEN" --out "$OD/behaviour-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TASKS" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+}
+build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
 # show ARGS... -> "bash ARGS..." for display, quoting only the words that need it
 show() {
   local out="bash" a
@@ -106,7 +123,8 @@ B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
 jdoc() {
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
   PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_POOLED="$1" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
-  PG_BRC="$5" PG_ORC="$6" node -e '
+  PG_BRC="$5" PG_ORC="$6" PG_AUTO="$AUTO" PG_DT="$DEFAULT_TASKS" node -e '
+const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
 const rows = [];
 let on = false;
@@ -118,12 +136,42 @@ for (const l of e.PG_DOUT.split("\n")) {
   rows.push({ scenario: c[0], check: c[1], delta: Number(c[2]), lo: m ? Number(m[1]) : null, hi: m ? Number(m[2]) : null, verdict: c[4] });
 }
 const skipped = lines(e.PG_SKIPPED).map(l => { const i = l.lastIndexOf(" ("); return { file: l.slice(0, i), reason: l.slice(i + 2, -1) }; });
+const V = {};
+if (e.PG_DRY !== "1") {
+  const bad = [], seen = {}, cnt = {}, why = [];
+  for (const f of lines(e.PG_POOLED)) {
+    let j = {};
+    try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
+    const v = j.variant;
+    if (!(v && typeof v === "object" && v.end_check === "ok" && v.sha === e.PG_SHA)) bad.push(path.basename(f));
+    for (const r of j.runs || []) {
+      seen[r.scenario] = 1;
+      if (r.status === "graded") { const c = cnt[r.scenario] || (cnt[r.scenario] = {}); c[r.arm] = (c[r.arm] || 0) + 1; }
+    }
+  }
+  const need = (e.PG_AUTO + " " + e.PG_DT).split(/[ ,]+/).filter(Boolean), miss = need.filter(s => !seen[s]), low = [];
+  let min = null;
+  for (const s of need) for (const a of ["with", "without"]) {
+    if (!seen[s]) continue;
+    const n = (cnt[s] || {})[a] || 0;
+    if (min === null || n < min) min = n;
+    if (n < 5) low.push(s + " " + a + " (" + n + ")");
+  }
+  const neg = [...new Set(rows.filter(r => r.hi !== null && r.hi < 0).map(r => r.scenario))];
+  if (bad.length) why.push("variant: " + bad.length + " pooled file(s) lack a variant object with end_check ok and variant.sha = the gate commit (" + bad.join(", ") + ")");
+  if (miss.length) why.push("full set: no runs for " + miss.join(", "));
+  if (low.length) why.push("fewer than 5 graded runs per arm: " + low.join(", "));
+  if (e.PG_DRC !== "0") why.push("tools/eval-delta.sh exited " + e.PG_DRC + " (an isolation check failed or the pooled files are unusable)");
+  if (neg.length) why.push("delta wholly below 0 (95% interval) for " + neg.join(", "));
+  Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min,
+    verdict: why.length ? "fail" : "pass", verdict_reasons: why });
+}
 process.stdout.write(JSON.stringify({
   schema: "pb-gate/1", commit: e.PG_SHA, version: e.PG_VER || null, harness: e.PG_H, model: e.PG_M, k: Number(e.PG_K),
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled: lines(e.PG_POOLED), skipped, delta_rc: num(e.PG_DRC), rows }, null, 2) + "\n");
+  pooled: lines(e.PG_POOLED), skipped, delta_rc: num(e.PG_DRC), ...V, rows }, null, 2) + "\n");
 '
 }
 
@@ -135,13 +183,58 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-B_RC=""; O_RC=""
+B_RC=""; O_RC=""; VT=""; VDIR=""
+# cleanup: remove the variant worktree (idempotent); also on every exit and on INT/TERM
+cleanup() {
+  [ -z "$VT" ] || {
+    git -C "$ROOT" worktree remove --force "$VDIR" >/dev/null 2>&1
+    git -C "$ROOT" worktree prune >/dev/null 2>&1
+    rm -rf "$VT"; VT=""
+  }
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# rewrite_paths: local absolute paths in DIR/*.json and *.md -> repo-relative or <home>/<tmp>/<variant> (POSIX and Windows forms)
+rewrite_paths() {
+  local m="" p t
+  for p in "$ROOT:." "${HOME:-}:<home>" "${TMPDIR:-/tmp}:<tmp>" "${VDIR:-}:<variant>"; do
+    t="${p%%:*}"; [ "${#t}" -gt 1 ] || continue
+    t="${t%/}"; p="$t:${p#*:}"
+    m="$m$p"$'\n'
+    if command -v cygpath >/dev/null 2>&1; then m="$m$(cygpath -m "$t"):${p#*:}"$'\n'"$(cygpath -w "$t"):${p#*:}"$'\n'; fi
+  done
+  PG_OD="$OD" PG_MAP="$m" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const pairs = [];
+for (const l of e.PG_MAP.split("\n")) {
+  const i = l.lastIndexOf(":"); if (i < 2) continue;
+  const f = l.slice(0, i), to = l.slice(i + 1);
+  pairs.push([f, to], [f.replace(/\\/g, "\\\\"), to]);
+}
+pairs.sort((a, b) => b[0].length - a[0].length);
+for (const n of fs.readdirSync(e.PG_OD)) {
+  if (!/\.(json|md)$/.test(n)) continue;
+  const f = path.join(e.PG_OD, n);
+  let s = fs.readFileSync(f, "utf8"), o = s;
+  for (const [from, to] of pairs)
+    s = s.replace(new RegExp(esc(from) + "(\\\\\\\\|[\\\\/])?", "g"), (m, sep) => (to === "." ? (sep ? "" : ".") : to + (sep ? "/" : "")));
+  if (s !== o) fs.writeFileSync(f, s);
+}' || die 3 "node failed while rewriting paths"
+}
 if [ "$POOL" = 0 ]; then
   if [ "$TREE" = dirty ]; then
     printf '%s\n' "$DIRTY" >&2
     die 2 "the working tree is not clean (changes outside evals/results): commit or stash them, so the runs belong to $SHA"
   fi
   mkdir -p "$OD" || die 3 "cannot create $OD"
+  if [ -n "$HARNESS" ]; then
+    VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
+    VDIR="$VT/variant"
+    git -C "$ROOT" worktree add -q --detach "$VDIR" HEAD >/dev/null 2>&1 || die 3 "cannot make a worktree of HEAD at $VDIR"
+    build_args "$VDIR"; B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
+  fi
   # run_one KIND ARGS... -> the runner's exit code in RC; 2 and 3 stop the gate
   run_one() {
     local kind="$1"; shift
@@ -155,13 +248,15 @@ if [ "$POOL" = 0 ]; then
   }
   run_one behaviour "${B_ARGS[@]}"; B_RC="$RC"
   run_one outcome "${O_ARGS[@]}"; O_RC="$RC"
+  cleanup
 fi
 
+[ -d "$OD" ] && rewrite_paths
 # pool: the pb-evals/1 files of this commit, harness and model
 PL="$(PG_SHA="$SHA" PG_H="$LABEL" PG_M="$MODEL" PG_OD="$OD" node -e '
 const fs = require("fs"), path = require("path"), e = process.env;
 let names = [];
-try { names = fs.readdirSync(e.PG_OD).filter(n => n.endsWith(".json")).sort(); } catch (x) { }
+try { names = fs.readdirSync(e.PG_OD).filter(n => n.endsWith(".json") && n !== "gate.json").sort(); } catch (x) { }
 for (const n of names) {
   const f = path.join(e.PG_OD, n);
   let j = null;
@@ -182,13 +277,21 @@ while IFS= read -r f; do [ -n "$f" ] && FILES+=("$f"); done <<EOF
 $POOLED
 EOF
 DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
+case "$DRC" in 0 | 1) ;; 2) exit 2 ;; *) exit 3 ;; esac
+
+printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
+jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" > "$OD/gate.json" || exit 3
+rewrite_paths
+VR="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.verdict);j.verdict_reasons.forEach(r=>console.log(r))' "$OD/gate.json")" || exit 3
 
 if [ "$JSON" = 1 ]; then
-  jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" || exit 3
+  cat "$OD/gate.json"
 else
   printf 'release gate: commit %s%s, harness %s, model %s, k=%s per arm\n' "$SHA" "${VER:+ (v$VER)}" "$LABEL" "$MODEL" "$K"
   printf '%s\n' "$POOLED" | sed 's/^/pooled: /'
   [ -z "$SKIPPED" ] || printf '%s\n' "$SKIPPED" | sed 's/^/skipped: /'
-  printf '\n%s\n' "$DOUT"
+  printf '\n%s\n\nverdict: %s\n' "$DOUT" "$(printf '%s\n' "$VR" | head -n 1)"
+  printf '%s\n' "$VR" | sed '1d; s/^/  - /'
 fi
-case "$DRC" in 0 | 1) exit "$DRC" ;; 2) exit 2 ;; *) exit 3 ;; esac
+[ "$(printf '%s\n' "$VR" | head -n 1)" = pass ] && exit 0
+exit 1
