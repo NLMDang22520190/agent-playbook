@@ -222,6 +222,8 @@ evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-eval
 
 The presets do not sandbox the agent, and the opencode preset approves its own actions, so run them only in a throwaway workroot or a VM, never inside a real repo. Score the MANUAL items with [`evals/RUBRIC.md`](evals/RUBRIC.md).
 
+`--variant DIR` (in `run-evals.sh` and `run-outcome.sh`) measures another tree of the playbook: the with arm otherwise loads the installed playbook, so the runner installs DIR into the harness home for the run and puts the snapshot of the previous install back afterwards. Other sessions on that home see the variant meanwhile; the headers of both scripts have the details.
+
 ## Quality, measured
 
 | Metric | Value | Source |
