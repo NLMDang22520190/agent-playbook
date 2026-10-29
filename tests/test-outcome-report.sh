@@ -78,12 +78,18 @@ assert_eq "AC13 claude gets no PB_EVAL_* variable" "" "$(rec_of "$FR/claude.t-ad
 assert_eq "AC13 the without run (clean stream-json) passes lane E's isolation check" "PASS" "$(chk t-add.without.1 "$ISO")"
 assert_eq "AC11 the fake's runs are graded FAIL" "FAIL FAIL" "$(chk t-add.with.1 "$HP") $(chk t-add.without.1 "$HP")"
 
-echo "S3 AC13 refusals: codex/opencode cannot run the without arm; a playbook block above the workroot"
-for h in codex opencode; do
+echo "S3 AC13 refusals: opencode cannot run the without arm; a playbook block above the workroot"
+for h in opencode; do
   ro --harness "$h" --model m-out-2 --tasks t-add --arm without
   assert_rc "AC13 --harness $h --arm without -> exit 2" 2
   assert_eq "AC13 --harness $h --arm without: nothing run" "" "$(ls "$FR" 2>/dev/null | grep "^$h\.t-add" | tr '\n' ' ')"
 done
+echo "AC8 (v0.30.0 lane g) codex runs the without arm with a fresh HOME"
+mkdir -p "$GH/.codex"; printf '{"token":"T"}\n' > "$GH/.codex/auth.json"
+ro --harness codex --model m-out-2 --tasks t-add --arm without
+assert_rc "AC8 --harness codex --arm without: graded (the fake changes nothing -> FAIL -> exit 1)" 1
+CXH="$(cat "$FR/codex.t-add.without.1.hm" 2>/dev/null)"
+if [ -n "$CXH" ] && [ "$CXH" != "$GH" ]; then t_ok "AC8 outcome codex: the without run has another HOME"; else t_bad "AC8 outcome codex: the without run has another HOME" "HOME=[$CXH]"; fi
 P="$(mk_tmp)"; printf '%s\n' '# project notes' "$PB_BLOCK_BEGIN" 'rule' > "$P/CLAUDE.md"
 rm -f "$SR"/*
 run env -u PLAYBOOK_HOME HOME="$GH" PATH="$FK:$PATH" bash "$OUTCOME" --tasks-dir "$T" --tasks t-add --cmd "bash $SA/solve.sh" --arm without --workroot "$P/a/wr" --out "$(mk_tmp)/r.md"

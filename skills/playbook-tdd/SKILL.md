@@ -129,9 +129,10 @@ touches before you fix the scope.
 
 **Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
 context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
-sentence with the ACs. Its report is its only output: the orchestrator saves it to `.agents/handoff/01b-spec-review.md` and
-runs `role-gate.sh check reviewer --base <sha before the role>`. A REVISE verdict goes back to the spec (fix it, then review again; after 2
-rounds ask the user). Only an OK lets the first tester start. Lite has no spec reviewer.
+sentence with the ACs. The orchestrator saves its report to `.agents/handoff/01b-spec-review.md` and
+runs `role-gate.sh check reviewer --base <sha before the role>`. REVISE returns to the spec (after 2
+rounds ask the user); only OK starts the first tester. Skip it for one slice whose Understanding lists no other
+reading; log it in decisions.md. Lite has no spec reviewer.
 
 Gaps, by reversibility: a reading that is ambiguous and hard to reverse is asked before any
 code, in one batched message; for the rest choose a default, log it in `.agents/handoff/decisions.md` from

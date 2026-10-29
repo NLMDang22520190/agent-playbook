@@ -355,20 +355,20 @@ D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"
 guarded 60 env PB_JOBS=1 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
 assert_eq "v24.14 no weights file, shard 1/2: the modulo set a c e starts in name order" "a c e " "$(start_order)"
 
-echo "v0.28.0 seven Windows shards: PB_SHARD=k/7 with the repo's tests/shard-weights partitions every suite exactly once"
+echo "v0.30.0 eight Windows shards: PB_SHARD=k/8 with the repo's tests/shard-weights partitions every suite exactly once"
 # stub suites carry the real suite names (hyphens become underscores: the stubs use the name in variable names)
 # and the repo's weights file (same renaming) decides the split
 REAL="$(ls "$PB_ROOT"/tests/test-*.sh | sed 's#^.*/test-##; s#\.sh$##; s/-/_/g' | tr '\n' ' ' | sed 's/ $//')"
 RW="$(grep -v '^#' "$PB_ROOT/tests/shard-weights" | sed 's/-/_/g; s/^test_/test-/' | awk '{ printf "%s\n", $0 }')"
 ALL=""
-for k in 1 2 3 4 5 6 7; do
-  wshard_run "$k/7" "$REAL" "$RW"
-  assert_rc "v0.23.3 real weights, shard $k/7 exits 0" 0
+for k in 1 2 3 4 5 6 7 8; do
+  wshard_run "$k/8" "$REAL" "$RW"
+  assert_rc "v0.23.3 real weights, shard $k/8 exits 0" 0
   r="$(ran_suites)"
-  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/7 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/7 runs at least one suite" "ran nothing"; fi
+  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/8 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/8 runs at least one suite" "ran nothing"; fi
   ALL="$ALL$r"
 done
-assert_eq "v0.23.3 real weights: the 7 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+assert_eq "v0.23.3 real weights: the 8 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
 
 echo "v0.24.21 two macOS shards: PB_SHARD=k/2 with the repo tests/shard-weights partitions every suite exactly once (both non-empty)"
 # characterization: run-all already partitions by any n; this pins the macOS split the workflow now uses (same REAL names and RW weights as above)

@@ -351,17 +351,20 @@ if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest 
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
 MATRIX_LINE="$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')"
-assert_contains "v0.28.0 the shard matrix is exactly 1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 7/7" "$MATRIX_LINE" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']"
-assert_eq "v0.28.0 the matrix line is nothing but the seven-entry list" "shard: ['1/7', '2/7', '3/7', '4/7', '5/7', '6/7', '7/7']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
-for k in 1 2 3 4 5 6 7; do
-  assert_contains "v0.28.0 the shard matrix has $k/7" "$SB" "$k/7"
+assert_contains "v0.30.0 the shard matrix is exactly 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 8/8" "$MATRIX_LINE" "shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']"
+assert_eq "v0.30.0 the matrix line is nothing but the eight-entry list" "shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
+for k in 1 2 3 4 5 6 7 8; do
+  assert_contains "v0.30.0 the shard matrix has $k/8" "$SB" "$k/8"
 done
+assert_not_contains "v0.30.0 no matrix entry ending in /7' is left" "$SB" "/7'"
 assert_not_contains "v0.28.0 no matrix entry ending in /6' is left" "$SB" "/6'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /4' is left" "$SB" "/4'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /3' is left" "$SB" "/3'"
-assert_contains "v0.24.19 AC1 the windows-shard comment says the Windows split is seven: 'split in seven'" "$SB" "split in seven"
+assert_contains "v0.30.0 the windows-shard comment says the Windows split is eight: 'split in eight'" "$SB" "split in eight"
+assert_not_contains "v0.30.0 the windows-shard comment no longer says 'split in seven'" "$SB" "split in seven"
 assert_not_contains "v0.24.19 AC1 the windows-shard comment no longer says 'split in four'" "$SB" "split in four"
-assert_contains "v0.24.19 AC1 the workflow comment says Windows runs as 'seven parallel shards'" "$(cat "$WF")" "seven parallel shards"
+assert_contains "v0.30.0 the workflow comment says Windows runs as 'eight parallel shards'" "$(cat "$WF")" "eight parallel shards"
+assert_not_contains "v0.30.0 the workflow no longer says 'seven parallel shards'" "$(cat "$WF")" "seven parallel shards"
 assert_not_contains "v0.24.19 AC1 the workflow no longer says 'four parallel shards'" "$(cat "$WF")" "four parallel shards"
 # AC7: the quoted "windows shard k/n" names of tools/ci-tree-tested.sh (the header comment has them unquoted) are exactly the matrix entries
 CIT="$PB_ROOT/tools/ci-tree-tested.sh"
@@ -390,8 +393,10 @@ MAC_MATRIX_SET="$(printf '%s\n' "$MAC_MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | 
 assert_eq "v0.24.21 AC3 ci-tree-tested.sh checks exactly the macos-shard matrix entries (same set and count)" "$MAC_MATRIX_SET" "$NEED_MAC_SET"
 if [ -n "$NEED_MAC_SET" ] && [ -n "$MAC_MATRIX_SET" ]; then t_ok "v0.24.21 AC3 both macOS sides are non-empty"; else t_bad "v0.24.21 AC3 both macOS sides are non-empty" "need [$NEED_MAC_SET] matrix [$MAC_MATRIX_SET]"; fi
 CIT_HEAD="$(sed -n '1,30p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
-assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'ten suite jobs'" "$CIT_HEAD" "ten suite jobs"
-assert_contains "v0.28.0 the ci-tree-tested.sh header counts 'twelve green jobs'" "$CIT_HEAD" "twelve green jobs"
+assert_contains "v0.30.0 the ci-tree-tested.sh header counts 'eleven suite jobs'" "$CIT_HEAD" "eleven suite jobs"
+assert_contains "v0.30.0 the ci-tree-tested.sh header counts 'thirteen green jobs'" "$CIT_HEAD" "thirteen green jobs"
+assert_not_contains "v0.30.0 the ci-tree-tested.sh header no longer says 'ten suite jobs'" "$CIT_HEAD" "ten suite jobs"
+assert_not_contains "v0.30.0 the ci-tree-tested.sh header no longer says 'twelve green jobs'" "$CIT_HEAD" "twelve green jobs"
 assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
 assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'eleven green jobs'" "$CIT_HEAD" "eleven green jobs"
 assert_not_contains "v0.24.21 AC2 the ci-tree-tested.sh header no longer says 'eight suite jobs'" "$CIT_HEAD" "eight suite jobs"
@@ -2338,5 +2343,22 @@ echo "v0.29.0 lane w T F3: README Limits name the AGENTS.global text rule and ag
 qchk "v0.29.0 T F3 Limits: the AGENTS.global.md text rule still tells agents to read LEARNINGS.md" "$K1B_LIM" 'AGENTS\.global\.md.{0,255}LEARNINGS\.md|LEARNINGS\.md.{0,255}AGENTS\.global\.md'
 qchk "v0.29.0 T F3 Limits: the trust gate covers only the automatic injection by the hook" "$K1B_LIM" 'text rule.{0,255}(trust|inject)|(trust|inject).{0,255}text rule'
 qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 'learn\.sh trust.{0,255}(agent|itself|own)|(agent|itself).{0,255}learn\.sh trust'
+
+echo "v0.30.0 lane c2 AC7: the Spec review (Full) paragraph skips a one-slice spec with no other reading"
+# the "**Spec review (Full).**" paragraph of playbook-tdd SKILL.md on one line (up to the next blank line)
+C2P="$(awk '/^\*\*Spec review \(Full\)\.\*\*/ { f = 1 } f && /^[[:space:]]*$/ { exit } f { print }' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+c2chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
+c2chk "AC7 the Spec review (Full) paragraph exists" "$C2P" 'Spec review \(Full\)'
+c2chk "AC7 the paragraph says when to skip the spec reviewer: exactly one slice" "$C2P" 'skip[^.]{0,200}(exactly one|one|single|a single) slice|(exactly one|one|single|a single) slice[^.]{0,200}skip'
+c2chk "AC7 the skip also needs an Understanding section with no other reading" "$C2P" 'Understanding[^.]{0,160}no other reading|no other reading[^.]{0,160}Understanding'
+c2chk "AC7 the skip is noted in decisions.md" "$C2P" 'skip[^.]{0,250}decisions\.md|decisions\.md[^.]{0,250}skip'
+c2chk "AC7 the paragraph keeps: Lite has no spec reviewer" "$C2P" 'Lite has no spec reviewer'
+
+echo "v0.30.0 lane c2 AC8: the docs state the claude reviewer default (sonnet) and how to undo it"
+# sentences of README.md and docs/*.md, one per line (split on '. ' after flattening)
+C2DOCS="$(cat "$PB_ROOT/README.md" "$PB_ROOT"/docs/*.md 2>/dev/null | tr '\n' ' ' | tr -s ' ' | sed 's/\. /.\n/g')"
+C2DEF="$(printf '%s\n' "$C2DOCS" | grep -i 'sonnet' | grep -i 'reviewer' | grep -i 'claude' | grep -iE 'default')"
+if [ -n "$C2DEF" ]; then t_ok "AC8 a doc sentence says the claude reviewer defaults to sonnet"; else t_bad "AC8 a doc sentence says the claude reviewer defaults to sonnet" "no sentence in README.md or docs/*.md with default + sonnet + reviewer + claude"; fi
+if printf '%s\n' "$C2DOCS" | grep -qE 'model_reviewer(_claude)?=session'; then t_ok "AC8 the docs name model_reviewer=session to undo the default"; else t_bad "AC8 the docs name model_reviewer=session to undo the default" "no model_reviewer=session in README.md or docs/*.md"; fi
 
 t_summary

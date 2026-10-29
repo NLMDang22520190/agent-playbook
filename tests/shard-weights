@@ -106,6 +106,8 @@ test-role-gate-mode.sh 39
 test-shard-weights.sh 32
 test-readme-count.sh 30
 test-eval-guard.sh 22
+test-release-gate.sh 30
+test-codex-adapter.sh 10
 test-skill-rules.sh 24
 test-pr-body.sh 13
 test-proof-check.sh 45

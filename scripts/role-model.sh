@@ -6,11 +6,14 @@
 #                                        spec_reviewer=<m>, reviewer_light=<m>, mechanical=<m>; "<m> (<effort>)" when an effort is set
 #   role-model.sh plan [--harness H]     one line: Models: tester=<m>, implementer=<m>, reviewer=<m>[, spec_reviewer=<m>] - from conf
 #                                        (spec_reviewer is shown only when it differs from the reviewer)
-#                                        (or "- session (no conf)" when no role has a key in a conf; an explicit session counts as from conf)
+#                                        (or "- session (no conf)" when no role has a key in a conf and all are session,
+#                                        "- defaults (no conf)" when a built-in default applies; an explicit session counts as from conf)
 #   role-model.sh check [--harness H]    warn about generic model_<role> keys (they apply to every
 #                                        harness) and unknown model_* keys; exit 1 if any, 0 if none
 # Lookup (project conf before global, per pb_conf_get): model_<role>_<harness>,
 # then model_<role>, else "session" (= do not override the session model).
+# Exception: with harness claude the reviewer's default is "sonnet" (so spec_reviewer and reviewer_light fall
+# back to sonnet too); any present key wins, even model_reviewer=session or model_reviewer_claude=session.
 # reviewer_light and spec_reviewer (the Full-weight spec reviewer sub-agent) fall back to the reviewer's model before
 # "session"; mechanical never falls back
 # to another role (a diff of tests/docs/skill text uses reviewer_light, release prep and counts use mechanical).
@@ -24,14 +27,15 @@ set -u
 valid_harness() { case "$1" in "" | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;; esac; return 0; }
 
 model_for() { # role harness
-  local v=""
+  local v="" d
   if [ -n "$2" ]; then v="$(pb_conf_get "model_$1_$2")" || v=""; fi
   if [ -z "$v" ]; then
     if [ "$1" = reviewer_light ] || [ "$1" = spec_reviewer ]; then
       v="$(pb_conf_get "model_$1")" || v=""
       [ -n "$v" ] || v="$(model_for reviewer "$2")"
     else
-      v="$(pb_conf_get "model_$1" session)"
+      d=session; [ "$1" = reviewer ] && [ "$2" = claude ] && d=sonnet
+      v="$(pb_conf_get "model_$1" "$d")"
     fi
   fi
   printf '%s' "$v"
@@ -142,6 +146,7 @@ elif [ "$cmd" = "plan" ]; then
     # spec_reviewer only when it differs from the reviewer (it falls back to the reviewer, so equal = no news)
     [ "$r" = spec_reviewer ] && [ "$line" = "$(role_line reviewer "$harness")" ] && continue
     out="$out$sep$r=$line"; sep=", "
+    [ "$src" != "from conf" ] && [ "$(model_for "$r" "$harness")" != session ] && src="defaults (no conf)"
   done
   printf '%s - %s\n' "$out" "$src"
 elif [ "$want_effort" = 1 ]; then
