@@ -145,11 +145,13 @@ mk_vhome() {
   printf 'test_cmd=make check\nfeedback_repo=acme/fb\nmodel_tester_claude=opus-x1\nmodel_reviewer_claude=sonnet\n' > "$h/.agents/playbook.conf"
   printf '%s\n' "$h"
 }
+# fmode FILE -> octal permission bits (rwx triples, e.g. 640), read from ls -l so it works on GNU and BSD/macOS alike
+fmode() { ls -ld "$1" | awk '{ s = substr($1, 2, 9); m = ""; for (i = 0; i < 3; i++) { r = substr(s, i * 3 + 1, 3); v = 0; if (substr(r, 1, 1) == "r") v += 4; if (substr(r, 2, 1) == "w") v += 2; if (substr(r, 3, 1) ~ /[xst]/) v += 1; m = m v }; print m }'; }
 # tree_sig DIR -> every regular file (mode, md5) and symlink (target) under DIR, sorted; directories are not listed
 tree_sig() {
   (cd "$1" && find . -mindepth 1 \( -type f -o -type l \) | LC_ALL=C sort | while IFS= read -r p; do
     if [ -L "$p" ]; then printf 'L %s -> %s\n' "$p" "$(readlink "$p")"
-    else printf 'F %s %s %s\n' "$p" "$(stat -c %a "$p")" "$(md5sum < "$p")"; fi
+    else printf 'F %s %s %s\n' "$p" "$(fmode "$p")" "$(md5sum < "$p")"; fi
   done)
 }
 # vrun ARGS... -> runs the runner (HOME=$VH, PB_VARIANT_HOME=$VHOME or $VH, registry $VREG unless VNOREG=1), sets OUT ERR RC VWR VOD VRES VFD
@@ -203,10 +205,10 @@ expect_restored "AC3 normal end" "$B_MAIN"
 assert_no_path "AC3 a target absent before stays absent: \$H/.codex/AGENTS.md" "$VH/.codex/AGENTS.md"
 assert_no_path "AC3 a target absent before stays absent: \$H/.config/opencode/AGENTS.md" "$VH/.config/opencode/AGENTS.md"
 assert_eq "AC3 the block file is byte-equal (no trailing newline, UTF-8, mode 640)" "$(printf 'my notes\n<!-- BEGIN agent-playbook base -->\nbase block \xc3\xa9 $x\n<!-- END agent-playbook -->\nlast line, no newline' | md5sum)" "$(md5sum < "$VH/.claude/CLAUDE.md")"
-assert_eq "AC3 the block file mode is back to 640" "640" "$(stat -c %a "$VH/.claude/CLAUDE.md")"
+assert_eq "AC3 the block file mode is back to 640" "640" "$(fmode "$VH/.claude/CLAUDE.md")"
 assert_eq "AC3 the user's own varskill is back (not the variant's)" "user varskill" "$(cat "$VH/.claude/skills/varskill/SKILL.md")"
-assert_eq "AC3 a private mode 600 file in a snapshot dir keeps its mode" "600" "$(stat -c %a "$VH/.claude/skills/playbook-base/sub/x.txt")"
-assert_eq "AC3 a mode 755 script keeps its mode" "755" "$(stat -c %a "$VH/.agents/playbook/scripts/base.sh")"
+assert_eq "AC3 a private mode 600 file in a snapshot dir keeps its mode" "600" "$(fmode "$VH/.claude/skills/playbook-base/sub/x.txt")"
+assert_eq "AC3 a mode 755 script keeps its mode" "755" "$(fmode "$VH/.agents/playbook/scripts/base.sh")"
 assert_no_path "AC3 the variant's playbook-vskill is gone" "$VH/.claude/skills/playbook-vskill"
 assert_eq "AC1 the other skill (myskill) and the credentials were never touched" "mine SECRET-TOKEN" "$(cat "$VH/.claude/skills/myskill/SKILL.md") $(cat "$VH/.claude/.credentials.json")"
 # AC7 md and JSON
