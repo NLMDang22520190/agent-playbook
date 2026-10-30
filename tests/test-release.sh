@@ -610,4 +610,162 @@ rpc "$D" "$B"
 assert_rc "AC5 README version badge left at 1.2.3 after the bump: exit 1" 1
 assert_contains "AC5 stale badge output names README.md" "$OUT" "README.md"
 
+echo "release PR check --gate BASE (v0.32.0 S3: AC5, AC5', AC7)"
+if command -v node >/dev/null 2>&1; then
+  . "$(dirname "$0")/release-gate-fixture.sh"
+  rpcg() { run_in "$1" bash tools/release-pr-check.sh --gate "$2"; }
+  # gmk -> a repo at VERSION 1.2.3 that ships the real gate tools (not sealed); the caller takes BASE from it
+  gmk() { local d; d="$(rpc_mk 1.2.3 "$RPC_CL3")"; rgf_prepare "$d"; rpc_commit "$d" gate-tools; printf '%s\n' "$d"; }
+  # gmk_stub RC -> as gmk, but tools/release-gate.sh is a stub that logs its arguments to "<repo>.args" and exits RC
+  gmk_stub() {
+    local d; d="$(gmk)"
+    printf '#!/usr/bin/env bash\nprintf "%%s\n" "$*" >> "%s.args"\nprintf "stub reason one\n"\nexit %s\n' "$d" "$1" > "$d/tools/release-gate.sh"
+    rpc_commit "$d" gate-stub; printf '%s\n' "$d"
+  }
+  gcalls() { if [ -f "$1.args" ]; then wc -l < "$1.args" | tr -d ' '; else echo 0; fi; }
+  rel_bump() { printf '1.2.4\n' > "$1/VERSION"; printf '%s' "$RPC_CL4" > "$1/CHANGELOG.md"; rpc_commit "$1" release; }
+
+  # AC5: a PR that does not change VERSION is not a release PR; the gate is not called
+  D="$(gmk_stub 1)"; B="$(rpc_sha "$D")"
+  printf 'other\n' > "$D/notes.txt"; rpc_commit "$D" notes
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a non-release PR (VERSION unchanged), gate stub would fail: exit 0" 0
+  assert_contains "AC5 --gate non-release: says VERSION unchanged" "$OUT" "VERSION unchanged"
+  assert_eq "AC5 --gate non-release: the gate was not called" "0" "$(gcalls "$D")"
+  assert_not_contains "AC5 --gate non-release: no failure line" "$OUT" "release PR check failed"
+  D="$(gmk)"; B="$(rpc_sha "$D")"
+  printf 'other\n' > "$D/notes.txt"; rpc_commit "$D" notes
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a non-release PR with no committed gate at all: exit 0" 0
+
+  # AC5: a release PR calls tools/release-gate.sh --check HEAD and maps its exit code
+  D="$(gmk_stub 0)"; B="$(rpc_sha "$D")"; rel_bump "$D"
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a release PR, gate exits 0: exit 0" 0
+  assert_eq "AC5 --gate release PR: the gate was called once" "1" "$(gcalls "$D")"
+  assert_contains "AC5 --gate release PR: called as 'release-gate.sh --check HEAD'" "$(cat "$D.args" 2>/dev/null)" "--check HEAD"
+  assert_not_contains "AC5 --gate release PR with a passing gate: no failure line" "$OUT" "release PR check failed"
+  D="$(gmk_stub 1)"; B="$(rpc_sha "$D")"; rel_bump "$D"
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a release PR, gate exits 1: exit 1" 1
+  assert_contains "AC5 --gate failure prints the pinned line" "$OUT" "release PR check failed: release gate"
+  assert_eq "AC5 --gate failure: the gate was called" "1" "$(gcalls "$D")"
+  assert_not_contains "AC5 --gate failure: no success line" "$OUT" "release PR check passed"
+
+  # AC5': plain `release-pr-check.sh BASE` keeps today's behaviour: it never calls the gate
+  D="$(gmk_stub 1)"; B="$(rpc_sha "$D")"; rel_bump "$D"
+  rpc "$D" "$B"
+  assert_rc "AC5' plain release-pr-check.sh BASE on a release PR with a failing gate stub: exit 0 (as before)" 0
+  assert_contains "AC5' plain: the success line" "$OUT" "release PR check passed"
+  assert_eq "AC5' plain: the gate was not called" "0" "$(gcalls "$D")"
+  D="$(gmk)"; B="$(rpc_sha "$D")"; rel_bump "$D"
+  rpc "$D" "$B"
+  assert_rc "AC5' plain: a release PR without any gate: exit 0 (the gate is the separate --gate step)" 0
+
+  # AC5 + AC7: the real gate tool and a synthetic committed gate
+  D="$(gmk)"; B="$(rpc_sha "$D")"; rel_bump "$D"; rgf_seal "$D"
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a release PR with a committed passing gate: exit 0" 0
+  assert_not_contains "AC5 passing gate: no failure line" "$OUT" "release PR check failed"
+  D="$(gmk)"; B="$(rpc_sha "$D")"; rel_bump "$D"
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate on a release PR without a gate: exit 1" 1
+  assert_contains "AC5 no gate: the pinned failure line" "$OUT" "release PR check failed: release gate"
+  assert_contains "AC5 no gate: the gate's reason is shown" "$OUT" "no gate result under evals/results/gate-*/ at REV"
+  assert_not_contains "AC5 no gate: no success line" "$OUT" "release PR check passed"
+  D="$(gmk)"; B="$(rpc_sha "$D")"; rel_bump "$D"; rgf_seal "$D"
+  printf 'late\n' > "$D/notes.txt"; rpc_commit "$D" late-change
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate: a change outside evals/results after the gate commit: exit 1" 1
+  assert_contains "AC5 stale gate: the pinned failure line" "$OUT" "release PR check failed: release gate"
+  D="$(gmk)"; B="$(rpc_sha "$D")"; rel_bump "$D"; rgf_seal "$D" E2
+  rpcg "$D" "$B"
+  assert_rc "AC5 --gate: a committed gate whose verdict is fail: exit 1" 1
+  assert_contains "AC5 failing verdict: the pinned failure line" "$OUT" "release PR check failed: release gate"
+  assert_contains "AC5 failing verdict: the failing item is named" "$OUT" "E2"
+
+  # usage and environment errors keep their codes with --gate
+  D="$(gmk)"; B="$(rpc_sha "$D")"
+  run_in "$D" bash tools/release-pr-check.sh --gate
+  assert_rc "AC5 --gate without BASE: exit 2" 2
+  assert_contains "AC5 --gate without BASE prints a usage line" "$OUT" "usage"
+  rpcg "$D" no-such-branch
+  assert_rc "AC5 --gate with an unknown BASE: exit 3" 3
+else
+  t_skip 36 "AC5 release-pr-check.sh --gate cases: node missing (the synthetic release gate needs it)"
+fi
+
+echo "release gate steps in CI (v0.32.0 S3: AC5', AC6, static)"
+if python3 -c 'import yaml' >/dev/null 2>&1; then
+  run python3 - "$WF" <<'EOF'
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1]))
+jobs = wf.get("jobs") or {}
+test = jobs.get("test") or {}
+steps = test.get("steps") or []
+GATE = "tools/release-pr-check.sh --gate"
+hits = [(i, s) for i, s in enumerate(steps) if GATE in str(s.get("run", ""))]
+print("gate-pr steps in test job: %d" % len(hits))
+print("gate-pr steps in all jobs: %d" % sum(1 for j in jobs.values() for s in (j.get("steps") or []) if GATE in str(s.get("run", ""))))
+tix = [i for i, s in enumerate(steps) if s.get("name") == "Tests and static checks"]
+old = [i for i, s in enumerate(steps) if 'bash tools/release-pr-check.sh "$BASE_SHA"' in str(s.get("run", ""))]
+if hits:
+    i, s = hits[0]
+    print("gate-pr if: %s" % str(s.get("if", "")))
+    print("gate-pr env BASE_SHA: %s" % (s.get("env") or {}).get("BASE_SHA"))
+    print("gate-pr run passes BASE_SHA: %s" % ('--gate "$BASE_SHA"' in str(s.get("run", ""))))
+    print("gate-pr after tests step: %s" % (bool(tix) and i > tix[0]))
+    print("gate-pr step continue-on-error: %s" % ("present" if "continue-on-error" in s else "absent"))
+    print("gate-pr is not the old step: %s" % (not old or old[0] != i))
+print("old release PR check step still there: %s" % (len(old) == 1))
+if old:
+    o = steps[old[0]]
+    print("old step if exact: %s" % (str(o.get("if", "")).strip() == "${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' }}"))
+    print("old step runs exactly: %s" % (str(o.get("run", "")).strip() == 'bash tools/release-pr-check.sh "$BASE_SHA"'))
+rel = jobs.get("release") or {}
+rs = rel.get("steps") or []
+co = [i for i, s in enumerate(rs) if str(s.get("uses", "")).startswith("actions/checkout")]
+print("release job checkout steps: %d" % len(co))
+if co:
+    print("release checkout fetch-depth: %s" % str((rs[co[0]].get("with") or {}).get("fetch-depth")))
+CHK = "bash tools/release-gate.sh --check HEAD"
+gi = [i for i, s in enumerate(rs) if CHK in str(s.get("run", ""))]
+cr = [i for i, s in enumerate(rs) if "gh release create" in str(s.get("run", ""))]
+print("release job gate steps: %d" % len(gi))
+print("gate steps in all jobs: %d" % sum(1 for j in jobs.values() for s in (j.get("steps") or []) if CHK in str(s.get("run", ""))))
+print("release job create steps: %d" % len(cr))
+print("gate check after checkout: %s" % (bool(gi) and bool(co) and gi[0] > co[0]))
+print("gate check before gh release create: %s" % (bool(gi) and bool(cr) and gi[0] < cr[0]))
+if gi:
+    print("gate check step continue-on-error: %s" % ("present" if "continue-on-error" in rs[gi[0]] else "absent"))
+    print("gate check step if: %s" % rs[gi[0]].get("if", "none"))
+print("release job continue-on-error: %s" % ("present" if "continue-on-error" in rel else "absent"))
+EOF
+  assert_contains "AC5' exactly one step of the test job runs tools/release-pr-check.sh --gate" "$OUT" "gate-pr steps in test job: 1"
+  assert_contains "AC5' no other job runs it" "$OUT" "gate-pr steps in all jobs: 1"
+  assert_contains "AC5' that step runs after 'Tests and static checks'" "$OUT" "gate-pr after tests step: True"
+  GPIF="$(printf '%s\n' "$OUT" | grep '^gate-pr if: ')"
+  assert_contains "AC5' that step only runs for pull_request events" "$GPIF" "github.event_name == 'pull_request'"
+  assert_contains "AC5' that step gets BASE_SHA from the PR base sha" "$OUT" 'gate-pr env BASE_SHA: ${{ github.event.pull_request.base.sha }}'
+  assert_contains "AC5' that step passes the base to --gate" "$OUT" "gate-pr run passes BASE_SHA: True"
+  assert_contains "AC5' that step cannot be made non-blocking" "$OUT" "gate-pr step continue-on-error: absent"
+  assert_contains "AC5' it is a separate step from the existing Release PR check" "$OUT" "gate-pr is not the old step: True"
+  assert_contains "AC5' the existing Release PR check step is still there" "$OUT" "old release PR check step still there: True"
+  assert_contains "AC5' the existing step keeps its condition" "$OUT" "old step if exact: True"
+  assert_contains "AC5' the existing step keeps its command (no --gate)" "$OUT" "old step runs exactly: True"
+  assert_contains "AC6 the release job has one checkout step" "$OUT" "release job checkout steps: 1"
+  assert_contains "AC6 the release job checks out with fetch-depth 0" "$OUT" "release checkout fetch-depth: 0"
+  assert_contains "AC6 the release job has one step running 'bash tools/release-gate.sh --check HEAD'" "$OUT" "release job gate steps: 1"
+  assert_contains "AC6 no other job runs that command" "$OUT" "gate steps in all jobs: 1"
+  assert_contains "AC6 the gate check runs after the checkout" "$OUT" "gate check after checkout: True"
+  assert_contains "AC6 the gate check runs before gh release create" "$OUT" "gate check before gh release create: True"
+  assert_contains "AC6 the release job still has its gh release create step" "$OUT" "release job create steps: 1"
+  assert_contains "AC6 the gate check step cannot be made non-blocking" "$OUT" "gate check step continue-on-error: absent"
+  assert_contains "AC6 the gate check step has no condition of its own" "$OUT" "gate check step if: none"
+  assert_contains "AC6 the release job has no job-level continue-on-error" "$OUT" "release job continue-on-error: absent"
+else
+  t_skip 19 "AC5'/AC6 static check of .github/workflows/test.yml: PyYAML not available"
+fi
+
+
 t_summary
