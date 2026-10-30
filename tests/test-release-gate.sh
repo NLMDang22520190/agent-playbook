@@ -191,6 +191,7 @@ SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
 TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 g() { RC=0; OUT="$(cd "$R" && bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
 ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
+pf_real_calls() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }   # v0.33.0 R1-3: lines of runners that really started
 # --- v0.32.0 helpers (S1: AC1, AC2, AC2') ---
 # assert_has_all NAME LINE PIECE... : every piece is in LINE (a displayed command: where --variant sits is not fixed by the spec)
 assert_has_all() {
@@ -638,6 +639,23 @@ ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --dry-run
 assert_rc "AC7 --dry-run does not preflight (it starts nothing) -> exit 0" 0
 ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --pool-only --out-dir evals/results/pf-pool
 assert_eq "AC7 --pool-only calls no runner, preflight included" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
+
+echo "R1-3 a real run resolves the baseline before any paid run: state noqual exits 3 with the reason and starts no runner"
+R5="$W/repo5"
+git clone -q "$R" "$R5" && ( cd "$R5" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+  git config core.autocrlf false && mkdir -p evals/results/gate-000000000000 &&
+  printf '{"schema":"pb-evals/1","playbook_commit":"0000000000000000000000000000000000000000","harness":"claude","model":"m2","runs":[],"summary":[]}\n' > evals/results/gate-000000000000/behaviour-m2.json &&
+  git add -A && git commit -qm "an earlier gate for another model" && git tag v0.32.0 && printf 'more\n' > more.txt && git add -A && git commit -qm "after the tag" ) || t_bad "fixture repo 5" "clone or commit failed"
+assert_eq "R1-3 fixture: repo 5 has tag v0.32.0 on a commit that holds a gate dir (model m2 only)" "v0.32.0" "$(git -C "$R5" tag -l 'v*')"
+GR="$R5"
+rcase r13-noqual ""
+assert_rc "R1-3 baseline state noqual (tag v0.32.0 holds a gate for model m2 only), real run for m1 -> exit 3" 3
+assert_contains "R1-3 the reason is printed (exact text)" "$OUT" "no qualifying previous release gate for harness claude model m1"
+assert_eq "R1-3 no runner was started (zero non-preflight calls; nothing was spent)" "0" "$(pf_real_calls)"
+assert_eq "R1-3 no results file of a runner exists" "0" "$(ls "$ODN" 2>/dev/null | grep -c '^behaviour-\|^outcome-')"
+assert_eq "R1-3 no worktree entry is left" "1" "$(git -C "$R5" worktree list | wc -l | tr -d ' ')"
+rcase r13-noqual-cmd ""
+GR=""
 
 echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md plus the gate: safety rows E8 and E33, v0.33.0 AC3)"
 assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1" \

@@ -430,4 +430,64 @@ run CHS_RUN status --home "$H"
 assert_not_contains "AC-B3 disableAllHooks false is not reported disabled (guard: passes before the feature too)" "$OUT" "disabled (disableAllHooks)"
 assert_state "AC-B3 disableAllHooks false: guard installed" guard "installed"
 
+
+echo "R1-5 from WSL into a Windows home: with WSL_DISTRO_NAME set and the scripts dir under /mnt/<d>/, the handler commands use <D>:/rest"
+# Seam (no change of the interface, nothing is written under /mnt): `install --home H --dry-run` prints the settings it would write, handler
+# commands included, and creates nothing. H = /mnt/c/<unlikely dir>/home does not exist; the test checks that it still does not.
+# The distro name is only a flag: the script must not need a working wsl.exe, wslpath or cygpath (cygpath present: the cases are skipped).
+if [ "$HAVE_NODE" = 1 ] && ! command -v cygpath >/dev/null 2>&1; then
+  wcmd() { printf 'bash \\"%s/%s\\"' "$1" "$2"; }   # the JSON-escaped start of a handler command
+  dry() { # dry HOME [WSL_DISTRO_NAME|-]: the dry-run install output; "-" = WSL_DISTRO_NAME unset
+    if [ "${2:--}" = "-" ]; then run env -u WSL_DISTRO_NAME bash "$CHS" install --home "$1" --dry-run
+    else run env WSL_DISTRO_NAME="$2" bash "$CHS" install --home "$1" --dry-run; fi
+  }
+  NX=/mnt/c/pbr1-dryrun-nonexistent
+  dry "$NX/home" Ubuntu-24.04
+  assert_rc "R1-5 dry-run install for a /mnt/c home exits 0" 0
+  for f in guard-irreversible.sh learnings-hook.sh; do
+    assert_contains "R1-5 WSL, /mnt/c home: the command uses C:/ and forward slashes ($f)" "$OUT" "$(wcmd "C:/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts" "$f")"
+  done
+  assert_not_contains "R1-5 WSL, /mnt/c home: no /mnt/c path is left in a command" "$OUT" '\"/mnt/c/'
+  assert_eq "R1-5 the dry run created nothing under /mnt/c" "absent" "$([ -e "$NX" ] && echo present || echo absent)"
+  # every handler (five) carries the mapped dir
+  assert_eq "R1-5 WSL, /mnt/c home: all five handler commands use the C:/ form" "5" "$(printf '%s\n' "$OUT" | grep -c 'bash \\"C:/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts/')"
+  dry /mnt/d/pbr1-dryrun-nonexistent/home Ubuntu-24.04
+  assert_contains "R1-5 WSL, /mnt/d home: the drive letter is upper case (D:/)" "$OUT" "$(wcmd "D:/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  dry "/mnt/c/pbr1 dryrun nonexistent/Some User/home" Ubuntu-24.04
+  assert_contains "R1-5 WSL: a path with spaces keeps them (C:/pbr1 dryrun nonexistent/Some User/...)" "$OUT" "$(wcmd "C:/pbr1 dryrun nonexistent/Some User/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  # unchanged cases
+  dry "$NX/home" -
+  assert_contains "R1-5 no WSL_DISTRO_NAME: the /mnt/c path is unchanged" "$OUT" "$(wcmd "$NX/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  assert_not_contains "R1-5 no WSL_DISTRO_NAME: no C:/ form" "$OUT" 'bash \"C:/'
+  dry /mnt/wsl/pbr1-dryrun-nonexistent/home Ubuntu-24.04
+  assert_contains "R1-5 WSL, /mnt/wsl (not a single drive letter): unchanged" "$OUT" "$(wcmd "/mnt/wsl/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  dry /home/pbr1-dryrun-nonexistent/home Ubuntu-24.04
+  assert_contains "R1-5 WSL, a home inside the distro: unchanged" "$OUT" "$(wcmd "/home/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  dry /mnt/cc/pbr1-dryrun-nonexistent/home Ubuntu-24.04
+  assert_contains "R1-5 WSL, /mnt/cc (two letters is not a drive): unchanged" "$OUT" "$(wcmd "/mnt/cc/pbr1-dryrun-nonexistent/home/.agents/playbook/scripts" guard-irreversible.sh)"
+  H="$(mk_home)"; run env WSL_DISTRO_NAME=Ubuntu-24.04 bash "$CHS" install --home "$H" --dry-run
+  assert_contains "R1-5 WSL, a stand-in home in the Linux tmp dir: unchanged" "$OUT" "$(wcmd "$H/.agents/playbook/scripts" guard-irreversible.sh)"
+else
+  echo "note: R1-5 mapping tests skipped (node missing, or cygpath exists: D30 form applies there)"
+fi
+
+echo "R1-5 status accepts either form: the <D>:/rest handlers are found under /mnt/<d>/ when WSL_DISTRO_NAME is set"
+# Read-only: /mnt/c/Windows/win.ini is only tested for existence (never written); skipped when this host has no such file.
+if [ -f /mnt/c/Windows/win.ini ]; then
+  mkdir_set() { # mkdir_set HOME GUARD-PATH STOP-PATH
+    mkdir -p "$1/.claude"
+    printf '{"hooks":{"PreToolUse":[{"matcher":"Bash|Write|Edit","hooks":[{"type":"command","command":"bash \\"%s\\" # agent-playbook:guard","timeout":10}]}],"Stop":[{"hooks":[{"type":"command","command":"bash \\"%s\\" --stop # agent-playbook:guard-stop","timeout":30}]}]}}\n' "$2" "$3" > "$1/.claude/settings.json"
+  }
+  H="$(mk_home)"; mkdir_set "$H" "C:/Windows/win.ini" "C:/Windows/pbr1-missing-script.sh"
+  run env WSL_DISTRO_NAME=Ubuntu-24.04 bash "$CHS" status --home "$H"
+  assert_state "R1-5 status, C:/ form, script exists under /mnt/c: guard installed" guard "installed"
+  assert_state "R1-5 status, C:/ form, script missing: guard-stop broken (script missing)" guard-stop "broken (script missing)"
+  H="$(mk_home)"; mkdir_set "$H" "/mnt/c/Windows/win.ini" "/mnt/c/Windows/pbr1-missing-script.sh"
+  run env WSL_DISTRO_NAME=Ubuntu-24.04 bash "$CHS" status --home "$H"
+  assert_state "R1-5 status, the old /mnt/c form still works: guard installed" guard "installed"
+  assert_state "R1-5 status, the old /mnt/c form: guard-stop broken (script missing)" guard-stop "broken (script missing)"
+else
+  echo "note: R1-5 status tests skipped (/mnt/c/Windows/win.ini is not readable here)"
+fi
+
 t_summary

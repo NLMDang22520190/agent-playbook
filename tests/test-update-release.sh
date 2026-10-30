@@ -87,8 +87,8 @@ head_is "AC6' plain update targets the newest RELEASED tag v0.3.0" v0.3.0
 assert_contains "D9 INFO line for the newer unreleased tag (exact text)" "$OUT" "INFO  newer tag v0.4.0 has no GitHub Release; skipped"
 assert_not_contains "D9 no INFO line for v0.3.0, the released one" "$OUT" "newer tag v0.3.0"
 assert_contains "AC6 the chosen tag is reported: GitHub Release found" "$OUT" "release tag v0.3.0: GitHub Release found"
-assert_eq "AC6' the request is exactly curl -sS -o /dev/null -w '%{http_code}' <api>/repos/<o>/<r>/releases/tags/<tag> (newest first, stops at the first 200)" \
-  "$(printf '%s\n%s\n' "-sS -o /dev/null -w %{http_code} $(U v0.4.0)" "-sS -o /dev/null -w %{http_code} $(U v0.3.0)")" "$(cat "$PB_FAKE_CURL_LOG")"
+assert_eq "AC6' the request is exactly curl -q -sS -o /dev/null -w '%{http_code}' <api>/repos/<o>/<r>/releases/tags/<tag> (newest first, stops at the first 200)" \
+  "$(printf '%s\n%s\n' "-q -sS -o /dev/null -w %{http_code} $(U v0.4.0)" "-q -sS -o /dev/null -w %{http_code} $(U v0.3.0)")" "$(cat "$PB_FAKE_CURL_LOG")"
 assert_eq "AC6 the recorded install was re-installed at v0.3.0" "BEGIN agent-playbook v0.3.0" "$(hdr "$TH/.claude/CLAUDE.md")"
 
 echo "D9 two newer tags unreleased: one INFO line each, the released v0.2.0 is taken"
@@ -160,6 +160,22 @@ base; rel v0.4.0=201 v0.3.0=302
 run SEAM UPD --yes
 assert_rc "AC6' only 200 is released: 201 and 302 are cannot-check -> exit 1" 1
 unchanged "AC6' 201/302: nothing changed"
+base; rel v0.4.0=201
+run SEAM UPD --yes
+assert_rc "R1-6 plain update, the newest tag answered 201 alone -> cannot check -> exit 1" 1
+assert_contains "R1-6 201: the reason names the answer" "$OUT" "201"
+assert_contains "R1-6 201: same hint" "$OUT" "$HINT"
+assert_not_contains "R1-6 201 is not reported as unreleased" "$OUT" "has no GitHub Release"
+unchanged "R1-6 201 alone: nothing changed"
+base; rel v0.3.0=302
+run SEAM UPD --to v0.3.0 --yes
+assert_rc "R1-6 --to v0.3.0 answered 302 alone (a redirect is not a Release) -> cannot check -> exit 1" 1
+assert_contains "R1-6 302: the reason names the answer" "$OUT" "302"
+assert_contains "R1-6 302: says nothing was changed" "$OUT" "nothing was changed"
+assert_contains "R1-6 302: same hint" "$OUT" "$HINT"
+assert_not_contains "R1-6 302 is not reported as unreleased (404)" "$OUT" "has no GitHub Release"
+assert_not_contains "R1-6 302 is not taken as released" "$OUT" "GitHub Release found"
+unchanged "R1-6 302 alone: nothing changed"
 
 echo "D5 --allow-unreleased"
 base; reld 404
@@ -259,7 +275,7 @@ for form in "https://github.com/Some-Org/agent-playbook" "https://github.com/Som
   run UPD --to v0.2.0 --yes
   assert_rc "AC6' origin $form: released -> exit 0" 0
   head_is "AC6' origin $form: v0.2.0 checked out" v0.2.0
-  assert_eq "AC6' origin $form: asks api.github.com for Some-Org/agent-playbook" "-sS -o /dev/null -w %{http_code} $GH" "$(cat "$PB_FAKE_CURL_LOG")"
+  assert_eq "AC6' origin $form: asks api.github.com for Some-Org/agent-playbook" "-q -sS -o /dev/null -w %{http_code} $GH" "$(cat "$PB_FAKE_CURL_LOG")"
 done
 base; git -C "$C" remote set-url origin "https://github.com/acme/pb.v2.git"
 printf '%s 404\n' "https://api.github.com/repos/acme/pb.v2/releases/tags/v0.2.0" > "$PB_FAKE_CURL_MAP"; export PB_FAKE_CURL_DEFAULT=200
@@ -291,15 +307,85 @@ base; git -C "$C" remote set-url origin "https://github.com/acme/pb"
 printf '%s 200\n' "$API/repos/acme/pb/releases/tags/v0.2.0" > "$PB_FAKE_CURL_MAP"; export PB_FAKE_CURL_DEFAULT=404
 run env PB_RELEASES_API="$API" bash "$C/install.sh" update --to v0.2.0 --yes < /dev/null
 assert_rc "AC6' seam without PB_RELEASES_REPO: owner/repo from the origin -> exit 0" 0
-assert_eq "AC6' seam: <api>/repos/acme/pb/..." "-sS -o /dev/null -w %{http_code} $API/repos/acme/pb/releases/tags/v0.2.0" "$(cat "$PB_FAKE_CURL_LOG")"
+assert_eq "AC6' seam: <api>/repos/acme/pb/..." "-q -sS -o /dev/null -w %{http_code} $API/repos/acme/pb/releases/tags/v0.2.0" "$(cat "$PB_FAKE_CURL_LOG")"
 base; git -C "$C" remote set-url origin "https://github.com/acme/pb"
 printf '%s 200\n' "$API/repos/zed/pb/releases/tags/v0.2.0" > "$PB_FAKE_CURL_MAP"; export PB_FAKE_CURL_DEFAULT=404
 run SEAM UPD --to v0.2.0 --yes
 assert_rc "AC6' PB_RELEASES_REPO wins over a github.com origin -> exit 0" 0
-assert_eq "AC6' seam: <api>/repos/zed/pb/..." "-sS -o /dev/null -w %{http_code} $API/repos/zed/pb/releases/tags/v0.2.0" "$(cat "$PB_FAKE_CURL_LOG")"
+assert_eq "AC6' seam: <api>/repos/zed/pb/..." "-q -sS -o /dev/null -w %{http_code} $API/repos/zed/pb/releases/tags/v0.2.0" "$(cat "$PB_FAKE_CURL_LOG")"
 base; rel v0.2.0=200
 run SEAM UPD --to v0.2.0 --yes
 assert_rc "AC6' seam with a local-path origin: the github.com origin check is skipped -> exit 0" 0
+
+echo "R1-1 tag names that are not release names (v0.5.0#hotfix, v0.5.0-rc1, v0.4.0-rc1) are never a target and never reach the API"
+# three hand tags on one commit newer than v0.4.0; the fake curl (like the real one) drops a #fragment, so the old code asked for v0.5.0
+( cd "$SRC" && printf '0.5.0\n' > VERSION && G commit -qam "r0.5.0-hand" &&
+  G tag -a 'v0.5.0#hotfix' -m hand && G tag -a v0.5.0-rc1 -m rc && G tag -a v0.4.0-rc1 -m rc4 &&
+  G push -q "$ORIGIN" --tags ) || { echo "hand tag setup failed"; exit 3; }
+HASH='v0.5.0#hotfix'
+urls_clean() {   # urls_clean NAME: the log is not empty and every logged URL (last field) matches [A-Za-z0-9._/:-]+
+  local bad n
+  n="$(grep -c . "$PB_FAKE_CURL_LOG" || true)"
+  bad="$(awk '{ print $NF }' "$PB_FAKE_CURL_LOG" | grep -vE '^[A-Za-z0-9._/:-]+$' || true)"
+  assert_eq "$1: no request URL holds a character outside [A-Za-z0-9._/:-]" "" "$bad"
+  if [ "$n" -ge 1 ]; then t_ok "$1: the log is not empty (a request was made for the real release tag)"; else t_bad "$1: the log is not empty" "no request was logged"; fi
+}
+HANDMAP="v0.4.0=200 v0.5.0=200 v0.5.0-rc1=200 v0.4.0-rc1=200"
+base; rel $HANDMAP
+run SEAM UPD --yes
+assert_rc "R1-1 plain update with hand tags newer than the released v0.4.0 -> exit 0" 0
+head_is "R1-1 plain update takes v0.4.0, not a hand tag" v0.4.0
+assert_contains "R1-1 INFO line for v0.5.0#hotfix (exact text)" "$OUT" "INFO  tag $HASH is not a release tag name; skipped"
+assert_contains "R1-1 INFO line for v0.5.0-rc1 (exact text)" "$OUT" "INFO  tag v0.5.0-rc1 is not a release tag name; skipped"
+assert_contains "R1-1 INFO line for v0.4.0-rc1 (exact text)" "$OUT" "INFO  tag v0.4.0-rc1 is not a release tag name; skipped"
+assert_not_contains "R1-1 a hand tag is not reported as 'no GitHub Release'" "$OUT" "newer tag v0.5.0"
+assert_not_contains "R1-1 the release tag itself gets no 'not a release tag name' line" "$OUT" "tag v0.4.0 is not a release tag name"
+assert_eq "R1-1 the only request is the one for v0.4.0 (no name of a hand tag is sent)" \
+  "-q -sS -o /dev/null -w %{http_code} $(U v0.4.0)" "$(cat "$PB_FAKE_CURL_LOG")"
+urls_clean "R1-1 plain update"
+assert_eq "R1-1 the installed block is v0.4.0" "BEGIN agent-playbook v0.4.0" "$(hdr "$TH/.claude/CLAUDE.md")"
+
+base; rel $HANDMAP
+run SEAM UPD --check
+assert_rc "R1-1 --check with hand tags -> exit 0" 0
+assert_contains "R1-1 --check: the update offered is v0.4.0" "$(line_with 'UPDATE AVAILABLE' 'v0.4.0')" "v0.4.0"
+assert_not_contains "R1-1 --check never offers a hand tag" "$(line_with 'UPDATE AVAILABLE' 'v0.')" "hotfix"
+assert_contains "R1-1 --check names the skipped v0.5.0#hotfix" "$OUT" "tag $HASH is not a release tag name; skipped"
+assert_contains "R1-1 --check names the skipped v0.5.0-rc1" "$OUT" "tag v0.5.0-rc1 is not a release tag name; skipped"
+assert_eq "R1-1 --check sends only the request for v0.4.0" "-q -sS -o /dev/null -w %{http_code} $(U v0.4.0)" "$(cat "$PB_FAKE_CURL_LOG")"
+urls_clean "R1-1 --check"
+assert_eq "R1-1 --check changes nothing" "$BASE" "$(git -C "$C" rev-parse HEAD)"
+git -C "$C" -c advice.detachedHead=false checkout -q v0.4.0
+run SEAM UPD --check
+assert_rc "R1-1 --check at the newest released tag -> exit 0" 0
+assert_contains "R1-1 --check at v0.4.0: up to date (not behind a hand tag)" "$OUT" "up to date"
+assert_not_contains "R1-1 --check at v0.4.0: no UPDATE AVAILABLE" "$OUT" "UPDATE AVAILABLE"
+
+for T in "$HASH" v0.5.0-rc1 v0.4.0-rc1; do
+  base; rel $HANDMAP
+  run SEAM UPD --to "$T" --yes
+  assert_rc "R1-1 --to $T -> exit 1" 1
+  assert_contains "R1-1 --to $T: exact refusal message" "$OUT" "release tag $T is not a release tag name (vMAJOR.MINOR.PATCH); nothing was changed $HINT"
+  assert_eq "R1-1 --to $T: no request is sent for it" "" "$(cat "$PB_FAKE_CURL_LOG")"
+  assert_not_contains "R1-1 --to $T: it is not reported as released" "$OUT" "GitHub Release found"
+  unchanged "R1-1 --to $T: nothing changed"
+done
+base; rel $HANDMAP
+run SEAM UPD --to "$HASH" --dry-run --yes
+assert_rc "R1-1 --dry-run --to v0.5.0#hotfix -> exit 1 too" 1
+
+base; rel $HANDMAP
+run SEAM UPD --allow-unreleased --to "$HASH" --yes
+assert_rc "R1-1 --allow-unreleased --to v0.5.0#hotfix -> exit 0 (the override still applies)" 0
+head_is "R1-1 --allow-unreleased --to $HASH: the hand tag is checked out" "$HASH"
+assert_eq "R1-1 --allow-unreleased: the check is skipped, no request is sent for it" "" "$(cat "$PB_FAKE_CURL_LOG")"
+assert_contains "R1-1 --allow-unreleased: a WARN line names the tag" "$(line_with 'WARN:' 'GitHub Release')" "$HASH"
+base; rel $HANDMAP
+run SEAM UPD --allow-unreleased --yes
+assert_rc "R1-1 plain update --allow-unreleased takes the newest v* tag, a hand tag here -> exit 0" 0
+head_is "R1-1 plain --allow-unreleased: the newest v* tag (all hand tags share this commit)" v0.5.0-rc1
+assert_eq "R1-1 plain --allow-unreleased: no request is sent for a name that is not a release name" "" "$(cat "$PB_FAKE_CURL_LOG")"
+assert_contains "R1-1 plain --allow-unreleased: a WARN line" "$(line_with 'WARN:' 'GitHub Release')" "v0."
 
 echo "AC6' usage text"
 run bash "$C/install.sh" help

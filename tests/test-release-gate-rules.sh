@@ -100,10 +100,19 @@ mkres() {
   gen "$r/evals/results/$d/behaviour-$3.json" "$c" "$3" "$4" "$5" "$6" "$7" "$8"
   gen "$r/evals/results/$d/outcome-$3.json" "$c" "$3" "$4" "${9:-none}" "$TASKS" "$7" "$8"
 }
-# mk_base REPO TAG MODEL HARNESS BHOOKS BITEMS SPEC LEGACY: a committed gate dir for the commit at HEAD, tagged TAG on the results commit
+# mk_base REPO TAG MODEL HARNESS BHOOKS BITEMS SPEC LEGACY: a committed gate dir for the commit at HEAD, tagged TAG on the results commit.
+# v0.33.0 R1-2: the dir also holds the committed gate.json of the real tool (here the fields the baseline rule reads: "commit" = the gate
+# commit and "verdict"). MKB_GJ picks it: pass (default; the verdict pass and "commit" = HEAD), fail (verdict fail), none (no gate.json),
+# other ("commit" names another commit).
 mk_base() {
-  local r="$1" d; d="gate-$(hd "$r" | cut -c1-12)"
+  local r="$1" d gc; d="gate-$(hd "$r" | cut -c1-12)"; gc="$(hd "$r")"
   mkres "$r" "$d" "$3" "$4" "$5" "$6" "$7" "$8"
+  case "${MKB_GJ:-pass}" in
+    pass) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[]}\n' "$gc" > "$r/evals/results/$d/gate.json" ;;
+    fail) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"fail","verdict_reasons":["x"]}\n' "$gc" > "$r/evals/results/$d/gate.json" ;;
+    other) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[]}\n' "0123456789abcdef0123456789abcdef01234567" > "$r/evals/results/$d/gate.json" ;;
+    none) ;;
+  esac
   gadd "$r" "evals/results/$d" "results $2" && git -C "$r" tag "$2"
   BDIR="evals/results/$d"
 }
@@ -300,6 +309,58 @@ mkres "$W/w3" now m1 claude true "E1,E13" "E1|x|both|0" 0
 pool "$W/w3" now --harness claude
 expect_pass "AC1' a tag pointing at the gate commit itself is skipped (no earlier tag: baseline null)"
 assert_eq "AC1' ... baseline null" "null" "$(gj "$GJ" j.baseline)"
+
+# ===========================================================================================================================
+echo "R1-2 a baseline tag is a release name (vX.Y.Z) whose committed gate.json says pass for the group's own commit"
+# mk_r1 NAME TAG GJ: v0.32.0 is a good baseline (E1 x 5/5); then TAG holds a REGRESSED gate (E1 x 0/5 in both arms, so its own rules
+# pass), its gate.json made as GJ (see mk_base); then one more commit. The current gate regresses too (E1 x 0/5).
+mk_r1() {
+  new_repo "$1" "$AUTO6" "E1 E13"
+  gcommit "$W/$1" "c1" README.md "# c1"
+  MKB_GJ=pass mk_base "$W/$1" v0.32.0 m1 claude true "E1,E13" "" 0
+  gcommit "$W/$1" "c2" README.md "# c2"
+  MKB_GJ="$3" mk_base "$W/$1" "$2" m1 claude true "E1,E13" "E1|x|both|0" 0
+  gcommit "$W/$1" "c3" README.md "# c3"
+  mkres "$W/$1" now m1 claude true "E1,E13" "E1|x|both|0" 0
+  pool "$W/$1" now --harness claude
+}
+RG="regression vs v0.32.0: E1 x: with 5/5 -> 0/5"
+mk_r1 r1a v0.34.0-rc1 pass
+expect_fail "R1-2 a later v0.34.0-rc1 tag on a regressed gate is never the baseline (it launders rule (f))" "$RG"
+assert_eq "R1-2 ... gate.json names v0.32.0" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
+mk_r1 r1b 'v0.33.0#hotfix' pass
+expect_fail "R1-2 a later v0.33.0#hotfix tag is never the baseline" "$RG"
+mk_r1 r1c v0.33.1 fail
+expect_fail "R1-2 a vX.Y.Z tag whose gate.json says fail does not qualify" "$RG"
+assert_eq "R1-2 ... gate.json names v0.32.0" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
+mk_r1 r1d v0.33.1 none
+expect_fail "R1-2 a vX.Y.Z tag whose gate dir has no gate.json does not qualify" "$RG"
+mk_r1 r1e v0.33.1 other
+expect_fail "R1-2 a vX.Y.Z tag whose gate.json names another commit than the group's does not qualify" "$RG"
+mk_r1 r1f v0.33.1 pass
+expect_pass "R1-2 control: a vX.Y.Z tag with a good gate.json (pass, own commit) is the baseline (x 0/5 -> 0/5)"
+assert_eq "R1-2 control: gate.json names v0.33.1" "v0.33.1" "$(gj "$GJ" j.baseline.tag)"
+# no good tag at all: the only tag fails the qualification -> tags with gate dirs exist but none qualifies
+for kind in none fail other; do
+  new_repo "r1n$kind" "$AUTO6" "E1 E13"
+  gcommit "$W/r1n$kind" "c1" README.md "# c1"
+  MKB_GJ="$kind" mk_base "$W/r1n$kind" v0.32.0 m1 claude true "E1,E13" "" 0
+  gcommit "$W/r1n$kind" "c2" README.md "# c2"
+  mkres "$W/r1n$kind" now m1 claude true "E1,E13" "" 0
+  pool "$W/r1n$kind" now --harness claude
+  expect_fail "R1-2 the only tag has gate.json [$kind]: it does not qualify -> no qualifying previous release gate" "$NOQ"
+done
+
+echo "R1-6 a results-only commit C tagged vX.Y.Z whose tree holds an earlier qualifying group: the gate at C takes the earlier tag (the tag on C is skipped)"
+new_repo tc "$AUTO6" "E1 E13"
+gcommit "$W/tc" "c1" README.md "# c1"
+mk_base "$W/tc" v0.32.0 m1 claude true "E1,E13" "" 0
+gcommit "$W/tc" "C: results only, tagged" evals/results/notes.md "# notes"
+git -C "$W/tc" tag v0.33.0
+mkres "$W/tc" now m1 claude true "E1,E13" "E1|x|both|0" 0
+pool "$W/tc" now --harness claude
+expect_fail "R1-6 tag on C: the baseline is the earlier v0.32.0 (the tag on C does not serve as its own baseline)" "$RG"
+assert_eq "R1-6 tag on C: gate.json baseline is v0.32.0, not v0.33.0" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
 
 # ===========================================================================================================================
 echo "AC2' rule (g): safety floors over the with-arm runs of an item (no baseline: the repo has no tags)"
