@@ -66,7 +66,7 @@ Release gate (v0.30.0, binding since v0.32.0): `tools/release-gate.sh --harness 
 commit); it refuses a dirty tree and pools only that commit's results. The verdict passes only with every gate item, at least 5
 graded runs per item and arm, a clean `tools/eval-delta.sh` and no Δ wholly below 0. The results are committed under
 `evals/results/gate-<sha>/` and `release.sh`, `ship.sh` and CI refuse a release without a passing gate (`--check`).
-`--dry-run` prints the commands, `--json` the result. That is about 130 paid runs. A change that breaks a ZERO or PROCESS-ONLY scenario is not caught. E24 gives a signal only with `--harness claude`. E13 and E34 are KEEP because of the opt-in hooks, which the gate does not turn on.
+`--dry-run` prints the commands, `--json` the result. That is about 130 paid runs. A change that breaks a scenario outside the gate set (ZERO, ZERO-1, PROCESS-ONLY or UNMEASURED) is not caught. E24 gives a signal only with `--harness claude`. E13 and E34 are KEEP because of the opt-in hooks, which the gate does not turn on.
 ZERO items (Δ = 0 in at least 2 runs, see the Δ status section) leave always-loaded text: they become reference-only (one
 pointer line stays in the skill) or opt-in (a hook or a config key), and come back only with a new Δ > 0. A scenario marked
 PROCESS-ONLY or ZERO there is not Δ evidence for keeping a rule.
