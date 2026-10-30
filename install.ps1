@@ -9,7 +9,8 @@ param(
   [switch]$Force,
   [switch]$Yes,
   [switch]$NoHooks,
-  [switch]$Hooks
+  [switch]$Hooks,
+  [switch]$AllowUnreleased
 )
 
 $candidates = @(
@@ -35,6 +36,7 @@ if ($Force) { $argsList += '--force' }
 if ($Yes) { $argsList += '--yes' }
 if ($NoHooks) { $argsList += "--no-hooks" }
 if ($Hooks) { $argsList += "--hooks" }
+if ($AllowUnreleased) { $argsList += "--allow-unreleased" }
 
 & $bash @argsList
 exit $LASTEXITCODE

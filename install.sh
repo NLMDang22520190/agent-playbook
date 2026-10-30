@@ -12,7 +12,7 @@ BEGIN_PREFIX='<!-- BEGIN agent-playbook'
 END_LINE='<!-- END agent-playbook -->'
 MARKER='.playbook-managed'
 
-CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0; HOOKS_FLAG=""
+CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0; ALLOW_UNRELEASED=0; HOOKS_FLAG=""
 # Every successful install is recorded here so `update` can refresh all targets
 # (WSL home, Windows home in copy mode, ...). Tests point it elsewhere.
 REGISTRY="${PLAYBOOK_REGISTRY:-$REPO/.install-targets}"
@@ -43,7 +43,7 @@ Options
   --dry-run        print what would change, change nothing
   --force          move conflicting foreign files/dirs to ~/.agents/playbook-backups
   --yes            do not ask for confirmation (required when stdin is not a terminal)
-  --to TAG         update: release to check out (rollback: --to v0.1.0)
+  --to TAG         update: release to check out (rollback: --to v0.31.0)
   --check          update: only report whether a newer release exists
   --no-hooks       install: do not install the Claude Code hooks; writes hooks_optout=yes to
                    <home>/.agents/playbook.conf, so update keeps the choice (PB_HOOKS=off skips them
@@ -52,6 +52,8 @@ Options
   --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
                    checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
                    an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
+  --allow-unreleased update: take a tag that has no GitHub Release (or when the Releases API cannot
+                   be checked): the newest v* tag, or --to TAG; the signature check still runs
 
 Release tag signatures (update)
   The tag is checked with `git verify-tag` before anything changes. Verified: reported.
@@ -92,6 +94,7 @@ while [ $# -gt 0 ]; do
     --to) [ $# -ge 2 ] || die "--to needs a tag" 2; TO="$2"; shift ;;
     --check) CHECK=1 ;;
     --allow-unsigned) ALLOW_UNSIGNED=1 ;;
+    --allow-unreleased) ALLOW_UNRELEASED=1 ;;
     --no-hooks) HOOKS_FLAG=off ;;
     --hooks) HOOKS_FLAG=on ;;
     -h|--help) usage; exit 0 ;;
@@ -719,17 +722,77 @@ verify_release_tag() {
   fi
 }
 
+# release_state TAG: is there a GitHub Release for TAG? Sets REL_WHY. Returns 0 released (HTTP 200),
+# 1 not released (404), 2 cannot check (any other answer, curl missing or failing, origin not on github.com).
+# DECISION[D9]: only 200 counts as released; the other answers are "cannot check", never "not released".
+release_state() {
+  local t="$1" api repo url code url_o rc
+  api="${PB_RELEASES_API:-https://api.github.com}"
+  if [ -n "${PB_RELEASES_API:-}" ] && [ -n "${PB_RELEASES_REPO:-}" ]; then
+    repo="$PB_RELEASES_REPO"
+  else
+    url_o="$(git -C "$REPO" remote get-url origin 2>/dev/null)" || url_o=""
+    case "$url_o" in
+      https://github.com/*) repo="${url_o#https://github.com/}" ;;
+      git@github.com:*) repo="${url_o#git@github.com:}" ;;
+      ssh://git@github.com/*) repo="${url_o#ssh://git@github.com/}" ;;
+      *) repo="" ;;
+    esac
+    repo="${repo%.git}"
+    case "$repo" in
+      */*/*|*/|/*|"" ) repo="" ;;
+      */*) ;;
+      *) repo="" ;;
+    esac
+    if [ -z "$repo" ] && [ -z "${PB_RELEASES_API:-}" ]; then
+      REL_WHY="origin is not a github.com repository (${url_o:-no origin remote})"; return 2
+    fi
+    [ -n "$repo" ] || { REL_WHY="cannot read owner/repo from origin (${url_o:-no origin remote})"; return 2; }
+  fi
+  command -v curl >/dev/null 2>&1 || { REL_WHY="curl is not installed"; return 2; }
+  url="$api/repos/$repo/releases/tags/$t"
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; rc=$?
+  if [ "$rc" -ne 0 ]; then REL_WHY="curl failed (exit $rc) for $url"; return 2; fi
+  case "$code" in
+    200) return 0 ;;
+    404) return 1 ;;
+    *) REL_WHY="the Releases API answered HTTP ${code:-none} for $url"; return 2 ;;
+  esac
+}
+
+RELEASE_HINT="(pass --allow-unreleased to update anyway)"
+
 cmd_update() {
-  local cur latest target oid commit
+  local cur latest target oid commit t rs newest_rel="" skipped="" unrel_msg="" cant=""
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
   cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
   [ -n "$cur" ] || cur="untagged ($(git -C "$REPO" rev-parse --short HEAD))"
   latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"
   [ -n "$latest" ] || die "no release tags (v*) found in $REPO" 2
-  target="${TO:-$latest}"
-  git -C "$REPO" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null 2>&1 || die "unknown release: $target (see: git -C $REPO tag -l)" 2
+  if [ -n "$TO" ]; then
+    git -C "$REPO" rev-parse -q --verify "refs/tags/$TO^{commit}" >/dev/null 2>&1 || die "unknown release: $TO (see: git -C $REPO tag -l)" 2
+  fi
+  # Newest released tag: walk newest first, stop at the first 200. For --to, only TO is checked.
+  if [ -n "$TO" ] || { [ "$ALLOW_UNRELEASED" -eq 1 ] && [ "$CHECK" -eq 0 ]; }; then
+    target="${TO:-$latest}"   # --allow-unreleased: the newest v* tag as before; only that tag is checked (for the WARN)
+    release_state "$target"; rs=$?
+    [ "$rs" -eq 2 ] && cant="$REL_WHY"
+  else
+    for t in $(git -C "$REPO" tag -l 'v*' --sort=-v:refname); do
+      release_state "$t"; rs=$?
+      if [ "$rs" -eq 0 ]; then newest_rel="$t"; break; fi
+      if [ "$rs" -eq 2 ]; then cant="$REL_WHY"; break; fi
+      skipped="$skipped $t"
+    done
+    if [ -n "$newest_rel" ]; then target="$newest_rel"; rs=0
+    else target="$latest"; [ -n "$cant" ] && rs=2 || rs=1; fi
+  fi
   if [ "$CHECK" -eq 1 ]; then
+    latest="$target"
+    if [ -n "$cant" ]; then say "cannot check GitHub Releases: $cant"; latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"; skipped=""; fi
+    for t in $skipped; do say "agent-playbook: newer tag $t has no GitHub Release; skipped"; done
+    if [ -z "$cant" ] && [ -z "$newest_rel" ] && [ -z "$TO" ]; then say "agent-playbook: no tag has a GitHub Release; reporting against $latest"; fi
     # DECISION[D1]: compare commits, not tag names (two tags can share one commit).
     if [ "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse "refs/tags/$latest^{commit}")" ]; then
       say "agent-playbook $cur: up to date"
@@ -748,6 +811,17 @@ cmd_update() {
   # (a branch or refs/T of the same name could win). DECISION[S6]: verify before the changelog, confirm and dry run.
   oid="$(git -C "$REPO" rev-parse -q --verify "refs/tags/$target")" || die "unknown release: $target" 2
   commit="$(git -C "$REPO" rev-parse -q --verify "$oid^{commit}")" || die "unknown release: $target" 2
+  if [ "$rs" -eq 0 ]; then
+    say "release tag $target: GitHub Release found"
+    for t in $skipped; do say "INFO  newer tag $t has no GitHub Release; skipped"; done
+  elif [ "$ALLOW_UNRELEASED" -eq 1 ]; then
+    if [ "$rs" -eq 1 ]; then warn "release tag $target has no GitHub Release; continuing (--allow-unreleased)"
+    else warn "release tag $target: cannot check for a GitHub Release ($cant); continuing (--allow-unreleased)"; fi
+  elif [ "$rs" -eq 1 ]; then
+    die "release tag $target has no GitHub Release (its CI release gate did not pass, or it was pushed by hand); nothing was changed $RELEASE_HINT" 1
+  else
+    die "release tag $target: cannot check for a GitHub Release ($cant); nothing was changed $RELEASE_HINT" 1
+  fi
   verify_release_tag "$target" "$oid"
   say "agent-playbook: $cur -> $target"
   say "---- CHANGELOG at $target ----"
