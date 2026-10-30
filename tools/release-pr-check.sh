@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Release PR gate: when a PR changes VERSION, run tools/check-release.sh for the new version.
-#   tools/release-pr-check.sh BASE    BASE is the commit the PR merges into (CI: the pull request base sha)
+#   tools/release-pr-check.sh [--gate] BASE    BASE is the commit the PR merges into (CI: the pull request base sha)
+# With --gate a release PR must also pass `bash tools/release-gate.sh --check HEAD` (any non-zero exit: "release PR check failed:
+# release gate", exit 1); a PR that does not change VERSION never calls the gate. Without --gate the gate is never called.
 # Compares the trimmed VERSION at BASE and at HEAD (trim as in check-release.sh). Unchanged: not a release PR, exit 0.
 # Changed: HEAD must hold X.Y.Z digits, then tools/check-release.sh vX.Y.Z runs on the checked-out tree.
 # Exit codes: 0 ok or not a release PR, 1 release check failed (any non-zero exit of check-release.sh, or a VERSION
@@ -9,7 +11,9 @@
 set -u
 cd "$(dirname "$0")/.." || exit 3
 
-usage() { echo "usage: tools/release-pr-check.sh BASE" >&2; exit 2; }
+usage() { echo "usage: tools/release-pr-check.sh [--gate] BASE" >&2; exit 2; }
+gate=0
+if [ "${1:-}" = "--gate" ]; then gate=1; shift; fi
 [ "$#" -eq 1 ] || usage
 base="$1"
 
@@ -46,6 +50,12 @@ fi
 
 if ! bash tools/check-release.sh "v$head_ver"; then
   echo "release PR check failed: tools/check-release.sh v$head_ver" >&2
+  exit 1
+fi
+
+if [ "$gate" -eq 1 ] && ! gate_out="$(bash tools/release-gate.sh --check HEAD 2>&1)"; then
+  printf '%s\n' "$gate_out" >&2
+  echo "release PR check failed: release gate" >&2
   exit 1
 fi
 

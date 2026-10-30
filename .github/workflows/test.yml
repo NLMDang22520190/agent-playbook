@@ -108,6 +108,11 @@ jobs:
         run: |
           set -o pipefail
           bash tests/run-all.sh 2>&1 | tee "$RUNNER_TEMP/run-all.log"
+      - name: Release gate (a PR that changes VERSION needs a committed passing gate)
+        if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash tools/release-pr-check.sh --gate "$BASE_SHA"
       - name: README test count (Linux only)
         # A PR that adds tests updates the README count with tools/readme-count.sh; a stale count fails here.
         if: ${{ matrix.os == 'ubuntu-latest' && !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
@@ -256,6 +261,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Release gate for the tagged commit
+        run: bash tools/release-gate.sh --check HEAD
       - name: Tag matches VERSION and CHANGELOG.md
         run: tools/check-release.sh "$GITHUB_REF_NAME"
       - name: Create the GitHub Release from CHANGELOG.md
