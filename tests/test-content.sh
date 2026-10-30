@@ -2139,7 +2139,7 @@ if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_A
 
 echo "v0.26.0 lane E AC7.1 RUBRIC.md: after the gate line, a rule is kept or added only when its scenario shows Δ > 0"
 RUBF="$PB_ROOT/evals/RUBRIC.md"
-assert_eq "v26 E AC7.1 RUBRIC.md keeps the existing gate line" "1" "$(grep -c '^Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the harness you use most\.' "$RUBF")"
+assert_eq "v26 E AC7.1 RUBRIC.md keeps a Gate before releasing a new playbook version line (its content is asserted by v0.33.0 AC3)" "1" "$(grep -c '^Gate before releasing a new playbook version' "$RUBF")"
 # the paragraph that names tools/eval-delta.sh, between the gate line and the "Copy this table" line
 DPARA="$(awk '/^Gate before releasing a new playbook version/ { f = 1; next } f && /^Copy this table/ { exit } f && /^[[:space:]]*$/ { if (p ~ /eval-delta/) { print p; exit } p = ""; next } f { p = p " " $0 } END { if (f && p ~ /eval-delta/) print p }' "$RUBF" | head -n 1)"
 if [ -n "$DPARA" ]; then t_ok "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh"; else t_bad "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh" "none between the gate line and 'Copy this table'"; fi
