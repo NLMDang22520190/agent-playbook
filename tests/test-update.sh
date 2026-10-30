@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for `install.sh update` against a throw-away origin with two tagged releases.
 . "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/releases-fixture.sh"
 
 W="$(mk_tmp)"
 SRC="$W/src"
@@ -45,6 +46,11 @@ git clone -q "$W/origin.git" "$W/client" 2>/dev/null
 C="$W/client"
 ( cd "$C" && git checkout -q v0.1.0 )
 export PLAYBOOK_REGISTRY="$W/registry"
+# v0.33.0 S4 (AC6'): update asks the GitHub Releases API whether the target tag has a Release. This suite is about the update
+# flow on a local bare origin, so it uses the test seam (PB_RELEASES_API) with a fake curl that answers 200 for every tag.
+# Its assertions keep their meaning; the Release check itself is tested in tests/test-update-release.sh.
+rf_fake_curl "$W/bin" || { echo "fake curl setup failed"; exit 3; }
+export PATH="$W/bin:$PATH" PB_RELEASES_API="http://releases.test.invalid" PB_RELEASES_REPO="test/playbook" PB_FAKE_CURL_DEFAULT=200
 # a developer's real ~/.agents/playbook.conf (e.g. require_signed_tags=yes) must not change these flows (v0.26.1 lane S)
 PLAYBOOK_HOME="$(mk_tmp)"; export PLAYBOOK_HOME
 INST() { bash "$C/install.sh" "$@" $MODEFLAG; }   # --copy where symlinks are unavailable

@@ -14,6 +14,8 @@
 # v0.29.0 lane cx estimate until a CI run measures it (L-0009): test-evals-codex.sh 60.
 # v0.31.0 lane variant estimates until a CI run measures them (L-0009): test-evals-variant.sh 400, test-outcome-variant.sh 400 (Linux ~1-2 min each, with fixed observation waits).
 # v0.32.0 lane ship estimate until a CI run measures it (L-0009): test-ship-d.sh 120 (a copy of the ship fixture per case, like test-ship-c.sh at 242).
+# v0.33.0 lane B estimate until a CI run measures it (L-0009): test-install-hooks-default.sh 90 (about 25 real installs into sandbox homes, node merges).
+# v0.33.0 lane B S4 estimate until a CI run measures it (L-0009): test-update-release.sh 90 (about 60 resets of a recorded install and 40 updates against a fake Releases API).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (median of 2-3 runs, see L-0003).
 # Every suite needs exactly one line (tools/shard-weights.sh --check, run by tests/test-shard-weights.sh); name each
 # estimated weight in this header and in the release PR (L-0009).
@@ -178,3 +180,5 @@ test-release-gate-rules.sh 90
 
 # v0.33.0 lane A estimate until a CI run measures it (L-0009): test-preflight.sh 20 (about 40 runner starts that stop at --preflight).
 test-preflight.sh 20
+test-install-hooks-default.sh 90
+test-update-release.sh 90

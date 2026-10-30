@@ -2168,23 +2168,32 @@ assert_contains "fix3 README: the paragraph names SSH (the case that stops)" "$U
 assert_contains "fix3 README: the paragraph names the allowed signers setting" "$UPAR" "gpg.ssh.allowedSignersFile"
 assert_not_contains "fix3 README: no claim that any signature that does not verify stops the update" "$UPAR" "a signature that does not verify stops the update"
 
-echo "v0.28.0 lane k1b AC-B7: setup step 4 offers the Claude Code hooks as an optional extra line (default no)"
+echo "v0.28.0 lane k1b AC-B7 (v0.33 AC5'/N1/N6 changes marked): setup step 4 offers the Claude Code hooks as an optional extra line (default ON since v0.33)"
 K1B_S4="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
 qchk "k1b AC-B7 step 4 names the install command claude-hooks.sh install" "$K1B_S4" 'claude-hooks\.sh install'
 qchk "k1b AC-B7 step 4: the hooks line is an optional extra outside the 8-question cap" "$K1B_S4" 'hooks?[^.;]{0,160}(extra|optional line|outside the 8|not count|on top)|(extra|optional line|outside the 8|on top of)[^.;]{0,160}hooks?'
 qchk "k1b AC-B7 step 4: the hooks line is for Claude Code only" "$K1B_S4" 'claude code only|only (for|in) claude code|claude code[^.]{0,60}only'
-qchk "k1b AC-B7 step 4: the hooks default to no" "$K1B_S4" 'hooks?[^.]{0,250}default no|default no[^.]{0,250}hooks?'
+qchk "k1b AC-B7 (v0.33 AC5' changed: was default no) step 4: the hooks default to on" "$K1B_S4" 'hooks?[^.]{0,250}default (on|yes|installed)|default (on|yes)[^.]{0,250}hooks?|hooks?[^.]{0,120}(on|installed) by default'
+if printf '%s' "$K1B_S4" | grep -qiE 'hooks?[^.]{0,250}default no|default no[^.]{0,250}hooks?'; then t_bad "k1b AC-B7 (v0.33 AC5') step 4 no longer says the hooks default to no" "default no is still next to hooks"; else t_ok "k1b AC-B7 (v0.33 AC5') step 4 no longer says the hooks default to no"; fi
 qchk "k1b AC-B7 step 4: the hooks go into ~/.claude/settings.json" "$K1B_S4" '~/\.claude/settings\.json'
 qchk "k1b AC-B7 step 4: says what the guard hook does" "$K1B_S4" 'guard[^.]{0,200}(irreversible|block|warn)'
 qchk "k1b AC-B7 step 4: says what the learnings hook does" "$K1B_S4" 'learnings[^.]{0,200}(session start|SessionStart|LEARNINGS)'
 qchk "k1b AC-B7 step 4: says a backup is made" "$K1B_S4" 'back(s|ed)? ?up|backup'
 qchk "k1b AC-B7 step 4: says how to remove them (claude-hooks.sh uninstall)" "$K1B_S4" 'claude-hooks\.sh uninstall'
-flat_has "k1b AC-B7 yes -> conf.sh set hooks on --global" "$SETUP" 'conf\.sh set hooks on --global'
-flat_has "k1b AC-B7 no -> hooks off" "$SETUP" 'hooks off'
-flat_has "k1b AC-B7 a non-interactive setup never installs the hooks" "$SETUP" '(non-interactive|headless)[^.]{0,250}(never|not|no)[^.]{0,40}install[^.]{0,80}hooks?|hooks?[^.]{0,250}(non-interactive|headless)[^.]{0,120}(never|not)[^.]{0,20}install'
+flat_has "k1b AC-B7 (v0.33 N6 changed: was conf.sh set hooks on) no -> conf.sh set hooks_optout yes --global" "$SETUP" 'conf\.sh set hooks_optout yes --global'
+if flat "$SETUP" | grep -qiE 'conf\.sh set hooks on|hooks off'; then t_bad "k1b AC-B7 (v0.33 N6) setup no longer writes the legacy hooks key (on/off)" "hooks on / hooks off still in SKILL.md"; else t_ok "k1b AC-B7 (v0.33 N6) setup no longer writes the legacy hooks key (on/off)"; fi
+flat_has "k1b AC-B7 (v0.33 N1 changed: was no -> hooks off) answering no writes hooks_optout yes" "$SETUP" 'no[^.]{0,80}hooks_optout yes|hooks_optout yes[^.]{0,80}\bno\b|hooks_optout'
+
+flat_has "k1b AC-B7 (v0.33 AC5' changed: was never installs) a non-interactive setup installs the hooks" "$SETUP" '(non-interactive|headless)[^.]{0,250}installs?[^.]{0,80}hooks?|hooks?[^.]{0,250}(non-interactive|headless)[^.]{0,120}install'
+if flat "$SETUP" | grep -qiE '(non-interactive|headless)[^.]{0,250}(never|not|no)[^.]{0,40}install[^.]{0,80}hooks?'; then t_bad "k1b AC-B7 (v0.33 AC5') a non-interactive setup no longer says it never installs the hooks" "the old never-install sentence is still there"; else t_ok "k1b AC-B7 (v0.33 AC5') a non-interactive setup no longer says it never installs the hooks"; fi
 K1B_S6="$(awk '/^6\. \*\*Write the values/ { f = 1 } f && /^7\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
-qchk "k1b AC-B7 step 6 lists the global key hooks (on/off)" "$K1B_S6" '`hooks` \(on ?(\||/|or) ?off'
-flat_has "k1b AC-B7 questions.md lists the optional hooks key (global)" "$QUESTIONS" '`hooks` \(global\)'
+qchk "k1b AC-B7 (v0.33 N1/N6 changed: was hooks on/off) step 6 lists the global key hooks_optout (yes/no)" "$K1B_S6" '`hooks_optout` ?\(?[^.]{0,40}yes[^.]{0,20}no'
+qchk "k1b AC-B7 (v0.33 N1) step 6 says no = hooks on, the default" "$K1B_S6" 'hooks_optout[^.]{0,200}(default no|default[^.]{0,20}on|no[^.]{0,20}hooks on)'
+if printf '%s' "$K1B_S6" | grep -qE '`hooks` \(on'; then t_bad "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)"; fi
+flat_has "k1b AC-B7 (v0.33 N1/N6 changed: was `hooks` (global)) questions.md lists the optional hooks_optout key (global)" "$QUESTIONS" '`hooks_optout` \(global\)'
+if flat "$QUESTIONS" | grep -qF '`hooks` (global)'; then t_bad "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key"; fi
+flat_has "k1b AC-B7 (v0.33 AC5') questions.md says a non-interactive setup installs the hooks (default on)" "$QUESTIONS" '(non-interactive|headless)[^.]{0,200}installs? (them|the hooks?|it)|(non-interactive|headless)[^.]{0,200}install[^.]{0,60}hooks?|hooks?[^.]{0,200}(non-interactive|headless)[^.]{0,100}install'
+if flat "$QUESTIONS" | grep -qiE 'non-interactive setup never installs'; then t_bad "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks" "old sentence still there"; else t_ok "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks"; fi
 K1B_SW="$(wc -w < "$SETUP" | tr -d ' ')"
 if [ "$K1B_SW" -le 1100 ]; then t_ok "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100) ($K1B_SW)"; else t_bad "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100)" "$K1B_SW words"; fi
 

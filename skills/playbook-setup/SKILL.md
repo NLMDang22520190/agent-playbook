@@ -48,12 +48,12 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    default and why it matters. Use the harness's structured question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip questions inspection already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
-   Claude Code only: an optional line outside the 8 offers the hooks (default no): guard warns on irreversible
+   Claude Code only: an optional line outside the 8 offers the hooks (default on): guard warns on irreversible
    actions, blocking them headless; learnings adds the lessons of trusted projects at session start. Yes:
    `bash ~/.agents/playbook/scripts/claude-hooks.sh install` (into `~/.claude/settings.json`, backup first;
-   `claude-hooks.sh uninstall` removes them), `conf.sh set hooks on --global`; no: `hooks off`.
-   With the learnings hook, offer once (default no) to trust the current project:
-   `bash ~/.agents/playbook/scripts/learn.sh trust`, run on a yes. Non-interactive: never install the hooks or trust a project.
+   `claude-hooks.sh uninstall` removes them); no: `conf.sh set hooks_optout yes --global`.
+   For learnings, offer once (default no) to trust the current project:
+   `bash ~/.agents/playbook/scripts/learn.sh trust`, run on a yes. Non-interactive: installs the hooks, never trusts a project.
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
@@ -78,7 +78,7 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    bash $C set setup done --global
    ```
    Global keys: `language`, `harness`, `subagents`, per-harness `model_<role>_<harness>` (including `model_spec_reviewer_<harness>`, `model_reviewer_light_<harness>` and `model_mechanical_<harness>`)
-   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `humanizer` (ask | always | never, default ask), `hooks` (on/off), `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
+   (the generic `model_tester`, `model_implementer`, `model_reviewer`, `model_spec_reviewer`, `model_reviewer_light`, `model_mechanical` are legacy: read as a fallback, not written), `autonomy`, `humanizer` (ask | always | never, default ask), `hooks_optout` (yes/no; no = hooks on), `confirm_models` (always | on-change | never, default on-change), `feedback_repo`, `feedback_interval_days`, `setup`. Project keys: `test_cmd`, `lint_cmd`,
    `typecheck_cmd`, `test_path_regex` (only if the default is wrong), `test_infra_regex` (test runners and
    shared helpers that get their own role; empty = off), `learnings_path`. `leak_literals` (comma-separated private strings, such as an email address or private repo name) and `leak_patterns` (ERE) work in both files; `leak-check.sh` reads them.
 

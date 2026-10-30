@@ -79,6 +79,7 @@ ALL="$*"; cmd="$1"; shift
 H=""; HAR=""
 while [ $# -gt 0 ]; do case "$1" in --home) H="$2"; shift ;; --harness) HAR="$2"; shift ;; esac; shift; done
 printf '%s|registry=%s|\n' "$cmd $ALL" "${PLAYBOOK_REGISTRY-UNSET}" >> "$D/.calls"
+printf '%s|PB_HOOKS=%s|\n' "$cmd" "${PB_HOOKS-UNSET}" >> "$D/.env"   # v0.33 AC5': what the runner exports to the install
 if [ -n "${PLAYBOOK_REGISTRY:-}" ]; then printf 'variant-write\n' >> "$PLAYBOOK_REGISTRY"; else printf 'x\n' >> "$D/.install-targets"; fi
 case "$cmd" in
   install)
@@ -210,6 +211,7 @@ assert_contains "AC2 doctor is called as: doctor --home H --harness claude" "$CA
 assert_eq "AC2 install comes before doctor" "install doctor" "$(printf '%s\n' "$CALLS" | sed 's/ .*//' | tr '\n' ' ' | sed 's/ $//')"
 assert_not_contains "AC2 AC17 (D11, was: the caller's registry) install and doctor get a runner temp registry, never the caller's PLAYBOOK_REGISTRY" "$CALLS" "registry=$VREG|"
 assert_no_path "AC2 DIR's own registry was never written" "$VD/.install-targets"
+assert_contains "AC5' the variant install runs with PB_HOOKS=off (no hooks, no conf change in the harness home)" "$(cat "$VD/.env" 2>/dev/null)" "install|PB_HOOKS=off|"
 assert_contains "AC2 stderr: variant: installed <DIR> (<VERSION>, no git)" "$ERR" "variant: installed $VD (1.2.3-variant, no git)"
 LOGM="$(vlog)"
 assert_contains "AC1 the run sees the variant installed (normalised VERSION)" "$LOGM" "run ver=1.2.3-variant"
@@ -1055,5 +1057,23 @@ else
   fi
   expect_restored "AC22 at the end" "$B_22"
 fi
+
+
+# ================= AC5': the REAL install.sh as the variant leaves settings.json and playbook.conf byte for byte =================
+echo "AC5' a variant run with the real install.sh (hooks on by default) leaves <home>/.claude/settings.json and <home>/.agents/playbook.conf byte-identical"
+fsig() { if [ -f "$1" ]; then cksum < "$1"; else echo absent; fi; }
+for kind in with-files without-files; do
+  VH="$(mk_vhome)"; unset VHOME
+  if [ "$kind" = with-files ]; then
+    printf '{\n  "model": "opus"\n}\n' > "$VH/.claude/settings.json"
+    printf 'autonomy=full\n' >> "$VH/.agents/playbook.conf"
+  fi
+  SJ0="$(fsig "$VH/.claude/settings.json")"; CF0="$(fsig "$VH/.agents/playbook.conf")"
+  vrun --variant "$PB_ROOT" $VBASE
+  assert_rc "AC5' [$kind] the real-install variant run ends with exit 0" 0
+  assert_eq "AC5' [$kind] settings.json is byte for byte as before (or still absent)" "$SJ0" "$(fsig "$VH/.claude/settings.json")"
+  assert_eq "AC5' [$kind] playbook.conf is byte for byte as before (or still absent)" "$CF0" "$(fsig "$VH/.agents/playbook.conf")"
+  assert_eq "AC5' [$kind] no settings backup is left in playbook-backups" "0" "$(ls "$VH/.agents/playbook-backups" 2>/dev/null | grep -c '^settings\.json')"
+done
 
 t_summary

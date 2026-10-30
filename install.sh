@@ -12,7 +12,7 @@ BEGIN_PREFIX='<!-- BEGIN agent-playbook'
 END_LINE='<!-- END agent-playbook -->'
 MARKER='.playbook-managed'
 
-CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0
+CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0; ALLOW_UNRELEASED=0; HOOKS_FLAG=""
 # Every successful install is recorded here so `update` can refresh all targets
 # (WSL home, Windows home in copy mode, ...). Tests point it elsewhere.
 REGISTRY="${PLAYBOOK_REGISTRY:-$REPO/.install-targets}"
@@ -43,11 +43,17 @@ Options
   --dry-run        print what would change, change nothing
   --force          move conflicting foreign files/dirs to ~/.agents/playbook-backups
   --yes            do not ask for confirmation (required when stdin is not a terminal)
-  --to TAG         update: release to check out (rollback: --to v0.1.0)
+  --to TAG         update: release to check out (rollback: --to v0.31.0)
   --check          update: only report whether a newer release exists
+  --no-hooks       install: do not install the Claude Code hooks; writes hooks_optout=yes to
+                   <home>/.agents/playbook.conf, so update keeps the choice (PB_HOOKS=off skips them
+                   for one run and persists nothing)
+  --hooks          install: install the Claude Code hooks (the default) and clear hooks_optout
   --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
                    checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
                    an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
+  --allow-unreleased update: take a tag that has no GitHub Release (or when the Releases API cannot
+                   be checked): the newest v* tag, or --to TAG; the signature check still runs
 
 Release tag signatures (update)
   The tag is checked with `git verify-tag` before anything changes. Verified: reported.
@@ -88,6 +94,9 @@ while [ $# -gt 0 ]; do
     --to) [ $# -ge 2 ] || die "--to needs a tag" 2; TO="$2"; shift ;;
     --check) CHECK=1 ;;
     --allow-unsigned) ALLOW_UNSIGNED=1 ;;
+    --allow-unreleased) ALLOW_UNRELEASED=1 ;;
+    --no-hooks) HOOKS_FLAG=off ;;
+    --hooks) HOOKS_FLAG=on ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" 2 ;;
   esac
@@ -411,6 +420,7 @@ cmd_install() {
   if want codex && [ -s "$H/.codex/AGENTS.override.md" ]; then
     warn "$H/.codex/AGENTS.override.md is non-empty: Codex reads it INSTEAD of AGENTS.md, so the always-on block will not load until you move the block there or remove the override."
   fi
+  if want claude; then install_hooks; fi
   registry_add "$H" "$HARNESS" "$([ "$COPY" -eq 1 ] && echo copy || echo link)"
   say "done. Start a NEW session in your harness (skills are discovered at startup), then say: set up the playbook"
 }
@@ -459,7 +469,51 @@ uninstall_hooks() {
   warn "hooks: the agent-playbook hooks in $s were not removed (the merge needs node). Remove by hand every handler whose command contains '# agent-playbook:'"
 }
 
-# doctor_hooks: one line on the opt-in Claude Code hooks, from claude-hooks.sh status (grep only)
+# conf_value KEY: last value of KEY in $H/.agents/playbook.conf (the --home dir, never $HOME unless they are the same)
+conf_value() {
+  local f="$H/.agents/playbook.conf" line v=""
+  [ -f "$f" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in "$1="*) v="${line#"$1="}" ;; esac
+  done < "$f"
+  printf '%s' "$v"
+}
+
+# install_hooks: the Claude Code hooks are installed by default (claude-hooks.sh install --home H). Skipped by --no-hooks (which
+# writes hooks_optout=yes), by PB_HOOKS=off (this run only) and by hooks_optout=yes in H's conf; --hooks installs and writes
+# hooks_optout=no. A legacy `hooks off` is not a choice: it earns one line when this run added the handlers (D8, N5).
+install_hooks() {
+  local skip=0 why="" out before="" legacy=""
+  if [ "$HOOKS_FLAG" = off ]; then skip=1; why="--no-hooks"
+  elif [ "$HOOKS_FLAG" != on ]; then
+    if [ "${PB_HOOKS:-}" = off ]; then skip=1; why="PB_HOOKS=off"
+    elif [ "$(conf_value hooks_optout)" = yes ]; then skip=1; why="hooks_optout yes"; fi
+  fi
+  if [ "$DRY" -eq 1 ]; then
+    if [ "$skip" -eq 1 ]; then say "  would: skip the Claude Code hooks ($why)"; else say "  would: install the Claude Code hooks (scripts/claude-hooks.sh install)"; fi
+    [ "$HOOKS_FLAG" = off ] && say "  would: set hooks_optout yes in $H/.agents/playbook.conf"
+    [ "$HOOKS_FLAG" = on ] && say "  would: set hooks_optout no in $H/.agents/playbook.conf"
+    return 0
+  fi
+  if [ "$HOOKS_FLAG" = off ]; then
+    PLAYBOOK_HOME="$H" bash "$REPO/scripts/conf.sh" set hooks_optout yes --global >/dev/null || warn "hooks: could not write hooks_optout to $H/.agents/playbook.conf"
+  elif [ "$HOOKS_FLAG" = on ]; then
+    PLAYBOOK_HOME="$H" bash "$REPO/scripts/conf.sh" set hooks_optout no --global >/dev/null || warn "hooks: could not write hooks_optout to $H/.agents/playbook.conf"
+  fi
+  if [ "$skip" -eq 1 ]; then say "  hooks: not installed ($why)"; return 0; fi
+  before="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null | sed -n 's/^guard: //p')"
+  [ "$(conf_value hooks)" = off ] && legacy=1
+  if out="$(bash "$REPO/scripts/claude-hooks.sh" install --home "$H")"; then
+    say "  hooks: $out"
+    if [ "$before" != installed ] && [ -n "$legacy" ]; then
+      say "hooks: turned on (they were off by the old default; turn off: install.sh install --no-hooks)"
+    fi
+  else
+    warn "hooks: not installed (the merge needs node; add the entries printed above by hand, or run scripts/claude-hooks.sh install once node is available)"
+  fi
+}
+
+# doctor_hooks: one line on the Claude Code hooks (on by default since v0.33), from claude-hooks.sh status (grep only)
 doctor_hooks() {
   local out ok="" broken="" miss="" dis=0 n st
   out="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null)"
@@ -475,7 +529,8 @@ doctor_hooks() {
   if [ -n "$broken" ]; then
     problem "hooks: $broken point at a missing script (run scripts/claude-hooks.sh install or uninstall)"
   elif [ -z "$ok" ]; then
-    say 'INFO  hooks: not installed (opt-in: say "set up the playbook")'
+    if [ "$(conf_value hooks_optout)" = yes ]; then say "INFO  hooks: off (hooks_optout yes; turn on: install.sh install --hooks)"
+    else say "WARN  hooks: not installed (run install.sh install, or install.sh install --no-hooks to keep them off)"; fi
   elif [ "$dis" -eq 1 ]; then
     say "INFO  hooks: installed but disabled (disableAllHooks)"
   elif [ -z "$miss" ]; then
@@ -667,17 +722,77 @@ verify_release_tag() {
   fi
 }
 
+# release_state TAG: is there a GitHub Release for TAG? Sets REL_WHY. Returns 0 released (HTTP 200),
+# 1 not released (404), 2 cannot check (any other answer, curl missing or failing, origin not on github.com).
+# DECISION[D9]: only 200 counts as released; the other answers are "cannot check", never "not released".
+release_state() {
+  local t="$1" api repo url code url_o rc
+  api="${PB_RELEASES_API:-https://api.github.com}"
+  if [ -n "${PB_RELEASES_API:-}" ] && [ -n "${PB_RELEASES_REPO:-}" ]; then
+    repo="$PB_RELEASES_REPO"
+  else
+    url_o="$(git -C "$REPO" remote get-url origin 2>/dev/null)" || url_o=""
+    case "$url_o" in
+      https://github.com/*) repo="${url_o#https://github.com/}" ;;
+      git@github.com:*) repo="${url_o#git@github.com:}" ;;
+      ssh://git@github.com/*) repo="${url_o#ssh://git@github.com/}" ;;
+      *) repo="" ;;
+    esac
+    repo="${repo%.git}"
+    case "$repo" in
+      */*/*|*/|/*|"" ) repo="" ;;
+      */*) ;;
+      *) repo="" ;;
+    esac
+    if [ -z "$repo" ] && [ -z "${PB_RELEASES_API:-}" ]; then
+      REL_WHY="origin is not a github.com repository (${url_o:-no origin remote})"; return 2
+    fi
+    [ -n "$repo" ] || { REL_WHY="cannot read owner/repo from origin (${url_o:-no origin remote})"; return 2; }
+  fi
+  command -v curl >/dev/null 2>&1 || { REL_WHY="curl is not installed"; return 2; }
+  url="$api/repos/$repo/releases/tags/$t"
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; rc=$?
+  if [ "$rc" -ne 0 ]; then REL_WHY="curl failed (exit $rc) for $url"; return 2; fi
+  case "$code" in
+    200) return 0 ;;
+    404) return 1 ;;
+    *) REL_WHY="the Releases API answered HTTP ${code:-none} for $url"; return 2 ;;
+  esac
+}
+
+RELEASE_HINT="(pass --allow-unreleased to update anyway)"
+
 cmd_update() {
-  local cur latest target oid commit
+  local cur latest target oid commit t rs newest_rel="" skipped="" unrel_msg="" cant=""
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
   cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
   [ -n "$cur" ] || cur="untagged ($(git -C "$REPO" rev-parse --short HEAD))"
   latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"
   [ -n "$latest" ] || die "no release tags (v*) found in $REPO" 2
-  target="${TO:-$latest}"
-  git -C "$REPO" rev-parse -q --verify "refs/tags/$target^{commit}" >/dev/null 2>&1 || die "unknown release: $target (see: git -C $REPO tag -l)" 2
+  if [ -n "$TO" ]; then
+    git -C "$REPO" rev-parse -q --verify "refs/tags/$TO^{commit}" >/dev/null 2>&1 || die "unknown release: $TO (see: git -C $REPO tag -l)" 2
+  fi
+  # Newest released tag: walk newest first, stop at the first 200. For --to, only TO is checked.
+  if [ -n "$TO" ] || { [ "$ALLOW_UNRELEASED" -eq 1 ] && [ "$CHECK" -eq 0 ]; }; then
+    target="${TO:-$latest}"   # --allow-unreleased: the newest v* tag as before; only that tag is checked (for the WARN)
+    release_state "$target"; rs=$?
+    [ "$rs" -eq 2 ] && cant="$REL_WHY"
+  else
+    for t in $(git -C "$REPO" tag -l 'v*' --sort=-v:refname); do
+      release_state "$t"; rs=$?
+      if [ "$rs" -eq 0 ]; then newest_rel="$t"; break; fi
+      if [ "$rs" -eq 2 ]; then cant="$REL_WHY"; break; fi
+      skipped="$skipped $t"
+    done
+    if [ -n "$newest_rel" ]; then target="$newest_rel"; rs=0
+    else target="$latest"; [ -n "$cant" ] && rs=2 || rs=1; fi
+  fi
   if [ "$CHECK" -eq 1 ]; then
+    latest="$target"
+    if [ -n "$cant" ]; then say "cannot check GitHub Releases: $cant"; latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"; skipped=""; fi
+    for t in $skipped; do say "agent-playbook: newer tag $t has no GitHub Release; skipped"; done
+    if [ -z "$cant" ] && [ -z "$newest_rel" ] && [ -z "$TO" ]; then say "agent-playbook: no tag has a GitHub Release; reporting against $latest"; fi
     # DECISION[D1]: compare commits, not tag names (two tags can share one commit).
     if [ "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse "refs/tags/$latest^{commit}")" ]; then
       say "agent-playbook $cur: up to date"
@@ -696,6 +811,17 @@ cmd_update() {
   # (a branch or refs/T of the same name could win). DECISION[S6]: verify before the changelog, confirm and dry run.
   oid="$(git -C "$REPO" rev-parse -q --verify "refs/tags/$target")" || die "unknown release: $target" 2
   commit="$(git -C "$REPO" rev-parse -q --verify "$oid^{commit}")" || die "unknown release: $target" 2
+  if [ "$rs" -eq 0 ]; then
+    say "release tag $target: GitHub Release found"
+    for t in $skipped; do say "INFO  newer tag $t has no GitHub Release; skipped"; done
+  elif [ "$ALLOW_UNRELEASED" -eq 1 ]; then
+    if [ "$rs" -eq 1 ]; then warn "release tag $target has no GitHub Release; continuing (--allow-unreleased)"
+    else warn "release tag $target: cannot check for a GitHub Release ($cant); continuing (--allow-unreleased)"; fi
+  elif [ "$rs" -eq 1 ]; then
+    die "release tag $target has no GitHub Release (its CI release gate did not pass, or it was pushed by hand); nothing was changed $RELEASE_HINT" 1
+  else
+    die "release tag $target: cannot check for a GitHub Release ($cant); nothing was changed $RELEASE_HINT" 1
+  fi
   verify_release_tag "$target" "$oid"
   say "agent-playbook: $cur -> $target"
   say "---- CHANGELOG at $target ----"

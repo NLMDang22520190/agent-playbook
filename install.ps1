@@ -7,7 +7,10 @@ param(
   [string]$Harness = '',
   [switch]$DryRun,
   [switch]$Force,
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$NoHooks,
+  [switch]$Hooks,
+  [switch]$AllowUnreleased
 )
 
 $candidates = @(
@@ -31,6 +34,9 @@ if ($Harness) { $argsList += @('--harness', $Harness) }
 if ($DryRun) { $argsList += '--dry-run' }
 if ($Force) { $argsList += '--force' }
 if ($Yes) { $argsList += '--yes' }
+if ($NoHooks) { $argsList += "--no-hooks" }
+if ($Hooks) { $argsList += "--hooks" }
+if ($AllowUnreleased) { $argsList += "--allow-unreleased" }
 
 & $bash @argsList
 exit $LASTEXITCODE
