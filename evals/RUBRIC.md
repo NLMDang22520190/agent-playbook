@@ -61,12 +61,12 @@ to drop or rewrite. An isolation FAIL in the without arm makes the Δ of that sc
 Wilson 95% interval per arm, a 95% interval for Δ (Newcombe) with the verdict "Δ>0 (interval excludes 0)", "Δ<0 (excludes
 0)" or "inconclusive", and the cost and seconds per passed run; it pools several JSON files of the same model, harness and
 commit (`tools/eval-delta.sh a.json b.json c.json`), so with k=3 an inconclusive Δ is re-run and pooled before it is read.
-Release gate (v0.30.0, binding since v0.32.0): `tools/release-gate.sh --harness H --model M` runs every AUTO scenario and
-the separating outcome tasks in both arms at k >= 5 and measures HEAD through `--variant` (the with arm is the release
-commit); it refuses a dirty tree and pools only that commit's results. The verdict passes only with the full set, at least 5
+Release gate (v0.30.0, binding since v0.32.0): `tools/release-gate.sh --harness H --model M` runs the KEEP and INCONCLUSIVE scenarios of
+`docs/delta-audit.md` (E2 E3 E4 E6 E13 E14 E24 E26 E29 E34) and the three default outcome tasks in both arms at k >= 5 and measures HEAD through `--variant` (the with arm is the release
+commit); it refuses a dirty tree and pools only that commit's results. The verdict passes only with every gate item, at least 5
 graded runs per item and arm, a clean `tools/eval-delta.sh` and no Δ wholly below 0. The results are committed under
 `evals/results/gate-<sha>/` and `release.sh`, `ship.sh` and CI refuse a release without a passing gate (`--check`).
-`--dry-run` prints the commands, `--json` the result.
+`--dry-run` prints the commands, `--json` the result. That is about 130 paid runs. A change that breaks a ZERO or PROCESS-ONLY scenario is not caught. E24 gives a signal only with `--harness claude`. E13 and E34 are KEEP because of the opt-in hooks, which the gate does not turn on.
 ZERO items (Δ = 0 in at least 2 runs, see the Δ status section) leave always-loaded text: they become reference-only (one
 pointer line stays in the skill) or opt-in (a hook or a config key), and come back only with a new Δ > 0. A scenario marked
 PROCESS-ONLY or ZERO there is not Δ evidence for keeping a rule.
