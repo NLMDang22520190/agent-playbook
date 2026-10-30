@@ -114,6 +114,20 @@ repo (windows): $rm_/evals
 fi
 mkdir -p "$(dirname "$out")" "${out%.md}.evidence" "${out%.md}.runs"
 printf '# fake\nworkroot: %s\nout: %s\nhome: %s/.claude\nrepo: %s/evals\n%s' "$wr" "$out" "$HOME" "$repo" "$wins" > "$out"
+if [ -n "${FAKE_EDGE:-}" ]; then
+  { printf 'edge-neg-tmp: %s\n' "$W/tmpfoo/x"
+    printf 'edge-neg-root: %s\n' "$repo-other/y"
+    printf 'edge-neg-home: %s\n' "$W/homework/z"
+    printf 'edge-pos-tmp-slash: %s\n' "$W/tmp/p1"
+    printf 'edge-pos-tmp-quote: "%s"\n' "$W/tmp"
+    printf 'edge-pos-tmp-space: %s tail\n' "$W/tmp"
+    printf 'edge-pos-tmp-paren: (%s)\n' "$W/tmp"
+    printf 'edge-pos-tmp-end: %s\n' "$W/tmp"
+    printf 'edge-pos-root-slash: %s\n' "$repo/evals/z"
+    printf 'edge-pos-root-quote: "%s"\n' "$repo"
+    printf 'edge-pos-root-end: %s\n' "$repo"
+    printf 'edge-pos-home-end: %s\n' "$HOME"; } >> "$out"
+fi
 printf 'x\n' > "${out%.md}.evidence/ev.txt"; printf '{"schema":"pb-evals/1"}\n' > "${out%.md}.evidence/inner.json"
 printf 'x\n' > "${out%.md}.runs/r.md"; printf 'log\n' > "${out%.md}.log"
 printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"%s","model":"%s","arms":["with","without"],"repeat":%s,"max_cost":null,"interactive":false,"started":"2026-10-27T10:00:00Z","workroot":"%s","out":"%s","home_note":"%s/.claude","repo_note":"%s/evals"%s,"variant":%s,"runs":[%s],"summary":[]}\n' \
@@ -417,6 +431,24 @@ assert_eq "AC2' the rewrite keeps playbook_commit, variant sha, version, end_che
 assert_eq "AC2' the rewrite keeps runs and checks" "E1.with.1|PASS|E1.without.1|FAIL" \
   "$(gj "$ODN/$BJ" '[j.runs[0].label,j.runs[0].checks[0].result,j.runs[1].label,j.runs[1].checks[0].result].join("|")')"
 assert_eq "AC2' variant.tree is still a string (a relative path or a placeholder)" "string" "$(gj "$ODN/$BJ" 'typeof j.variant.tree')"
+
+echo "AC13 the path rewrite replaces a path only as a whole path prefix (/tmpfoo and <ROOT>-other stay; a path before / quote space ) or the end is replaced)"
+rcase edge "FAKE_EDGE=1"
+assert_rc "AC13 fixture: the run with edge strings passes -> exit 0" 0
+EM="$(cat "$ODN"/behaviour-*.md 2>/dev/null)"
+assert_contains "AC13 a string that only starts with the temp dir (/tmpfoo) is not rewritten" "$EM" "edge-neg-tmp: $W/tmpfoo/x"
+assert_contains "AC13 a string that only starts with the repo root (<ROOT>-other) is not rewritten" "$EM" "edge-neg-root: $R-other/y"
+assert_contains "AC13 a string that only starts with HOME (/homework) is not rewritten" "$EM" "edge-neg-home: $W/homework/z"
+assert_contains "AC13 temp dir followed by / -> <tmp>/" "$EM" "edge-pos-tmp-slash: <tmp>/p1"
+assert_contains "AC13 temp dir followed by a quote -> <tmp>" "$EM" 'edge-pos-tmp-quote: "<tmp>"'
+assert_contains "AC13 temp dir followed by whitespace -> <tmp>" "$EM" "edge-pos-tmp-space: <tmp> tail"
+assert_contains "AC13 temp dir followed by ) -> <tmp>" "$EM" "edge-pos-tmp-paren: (<tmp>)"
+assert_contains "AC13 temp dir at the end of the line -> <tmp>" "$EM" "edge-pos-tmp-end: <tmp>"
+assert_contains "AC13 repo root followed by / -> relative path" "$EM" "edge-pos-root-slash: evals/z"
+assert_contains "AC13 repo root followed by a quote -> ." "$EM" 'edge-pos-root-quote: "."'
+assert_contains "AC13 repo root at the end of the line -> ." "$EM" "edge-pos-root-end: ."
+assert_contains "AC13 HOME at the end of the line -> <home>" "$EM" "edge-pos-home-end: <home>"
+ODN="$R/evals/results/paths"; GJ="$ODN/gate.json"   # the later AC2' sections read the "paths" run
 
 echo "AC2' --pool-only writes gate.json too, runs no runner, and the rewritten files still pass"
 rm -f "$GJ"; : > "$OBS"

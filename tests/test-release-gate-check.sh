@@ -156,6 +156,51 @@ nopass "D1 no pass line" "$OUT"
 chk "$W/a" "$RA"
 assert_rc "AC3 an explicit older REV (before the outside change) still passes -> exit 0" 0
 
+echo "AC10 D1 follows renames and deletions: moving a file into evals/results, or deleting one outside it, is a change outside"
+new_repo rn "E1 E2 E3"
+gcommit "$W/rn" "c1" skills/a/SKILL.md "rule one"
+printf 'rule two\nrule three\n' >> "$W/rn/skills/a/SKILL.md"; git -C "$W/rn" add -A && git -C "$W/rn" commit -qm "c1b"
+mkgate "$W/rn" gate-rn m1; gadd "$W/rn" evals/results/gate-rn "results rn"
+chk "$W/rn"
+assert_rc "AC10 fixture: before the move the gate passes -> exit 0" 0
+mkdir -p "$W/rn/evals/results/moved" && git -C "$W/rn" mv skills/a/SKILL.md evals/results/moved/SKILL.md && git -C "$W/rn" commit -qm "drop a skill by moving it"
+chk "$W/rn"
+assert_rc "AC10 git mv of a tracked file from outside into evals/results -> exit 1" 1
+L="$(printf '%s\n' "$OUT" | grep 'changes outside evals/results since')"
+assert_contains "AC10 ... the line names the source path of the move" "$L" "skills/a/SKILL.md"
+nopass "AC10 ... no pass line" "$OUT"
+new_repo dl "E1 E2 E3"
+gcommit "$W/dl" "c1" skills/b/SKILL.md "rule one"
+mkgate "$W/dl" gate-dl m1; gadd "$W/dl" evals/results/gate-dl "results dl"
+chk "$W/dl"
+assert_rc "AC10 fixture: before the deletion the gate passes -> exit 0" 0
+git -C "$W/dl" rm -q skills/b/SKILL.md && git -C "$W/dl" commit -qm "delete a skill"
+chk "$W/dl"
+assert_rc "AC10 deleting a tracked file outside evals/results -> exit 1" 1
+L="$(printf '%s\n' "$OUT" | grep 'changes outside evals/results since')"
+assert_contains "AC10 ... the line names the deleted path" "$L" "skills/b/SKILL.md"
+nopass "AC10 ... no pass line" "$OUT"
+
+echo "AC11 the ancestor rule on its own: same tree outside evals/results, but the commit does not contain C"
+new_repo an "E1 E2 E3"
+gcommit "$W/an" "c1" README.md "# c1"
+CN="$(hd "$W/an")"
+mkgate "$W/an" gate-an m1; gadd "$W/an" evals/results/gate-an "results an"
+RN="$(hd "$W/an")"; BN="$(git -C "$W/an" rev-parse --abbrev-ref HEAD)"
+chk "$W/an" "$RN"
+assert_rc "AC11 fixture: on the real history the gate passes -> exit 0" 0
+git -C "$W/an" checkout -q -b noanc "$CN~1"
+printf '# c1\n' > "$W/an/README.md"; git -C "$W/an" checkout "$RN" -- evals/results
+git -C "$W/an" add -A && git -C "$W/an" commit -qm "same tree, other history"
+assert_eq "AC11 fixture: the tree differs from C only under evals/results" "" "$(git -C "$W/an" diff --name-only "$CN" HEAD | grep -v '^evals/results/' || true)"
+assert_eq "AC11 fixture: C is not an ancestor of this commit" "1" "$(git -C "$W/an" merge-base --is-ancestor "$CN" HEAD && echo 0 || echo 1)"
+chk "$W/an"
+assert_rc "AC11 a commit that does not contain C -> exit 1" 1
+assert_contains "AC11 ... the reason names the ancestor rule" "$OUT" "neither REV nor an ancestor"
+assert_not_contains "AC11 ... only the ancestor rule fires (nothing outside evals/results changed)" "$OUT" "changes outside evals/results"
+nopass "AC11 ... no pass line" "$OUT"
+git -C "$W/an" checkout -q "$BN"
+
 echo "AC3 C must be an ancestor of REV"
 git -C "$W/a" checkout -q -b other "$(git -C "$W/a" rev-list --max-parents=0 HEAD | head -n 1)"
 gcommit "$W/a" "other work" other.txt "o"

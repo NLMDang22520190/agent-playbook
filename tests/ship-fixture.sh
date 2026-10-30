@@ -330,6 +330,8 @@ side_commit() {
   MC="$(git -C "$F/work" rev-parse HEAD)"
 }
 # v0.32.0 AC9 helpers
+# merge_call -> the logged gh pr merge call without a --match-head-commit <sha> pair (AC12 asserts that pair in test-ship-d.sh)
+merge_call() { grep '^gh pr merge' "$FAKE_LOG" | sed 's/ --match-head-commit [0-9a-fA-F]*//'; }
 gate_calls() { grep '^release-gate.sh' "$FAKE_LOG"; }
 pr_head() { git -C "$F/origin.git" rev-parse -q --verify "refs/pull/${FAKE_PR:-12}/head" 2>/dev/null || git -C "$F/origin.git" rev-parse refs/heads/feat/x; }
 # origin_advance -> origin's main moves on (a commit made through the work clone); the repo's origin/main is NOT refreshed

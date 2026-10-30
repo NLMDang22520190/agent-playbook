@@ -18,7 +18,7 @@ for st in BLOCKED UNSTABLE; do
   export FAKE_GH_MERGE_STATE="$st"
   sh_run 12 v1.2.3 --yes --auto
   assert_rc "AC2.1 OPEN/$st with --auto: exit 0" 0
-  assert_eq "AC2.1 OPEN/$st with --auto: exactly one merge call, '$AUTO_MERGE_CALL'" "$AUTO_MERGE_CALL" "$(grep '^gh pr merge' "$FAKE_LOG")"
+  assert_eq "AC2.1 OPEN/$st with --auto: exactly one merge call, '$AUTO_MERGE_CALL'" "$AUTO_MERGE_CALL" "$(merge_call)"
   assert_eq "AC2.1 OPEN/$st with --auto: only the PR check and the auto-merge call (no release, CI wait or install)" "view merge" "$(steps)"
   assert_eq "AC2.1 OPEN/$st with --auto: no release.sh and no install.sh call" "0" "$(logged '^release.sh\|^install.sh')"
   assert_eq "AC2.1 OPEN/$st with --auto: no tag was created" "" "$(git -C "$F/repo" tag)"
@@ -33,19 +33,19 @@ fx
 export FAKE_PR=345 FAKE_TAG=v10.20.30 FAKE_GH_MERGE_STATE=BLOCKED
 sh_run --auto 345 v10.20.30 --yes   # the option may come first; another PR and tag
 assert_rc "AC2.1 --auto before the arguments, PR 345: exit 0" 0
-assert_eq "AC2.1 --auto PR 345: the merge call carries PR 345" "gh pr merge 345 --auto --merge --delete-branch" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_eq "AC2.1 --auto PR 345: the merge call carries PR 345" "gh pr merge 345 --auto --merge --delete-branch" "$(merge_call)"
 assert_contains "AC2.1 --auto PR 345: the run-again command names PR 345 and v10.20.30" "$OUT" "tools/ship.sh 345 v10.20.30"
 fx
 export FAKE_GH_MERGE_STATE=BLOCKED
 sh_run 12 v1.2.3 --auto --yes
 assert_rc "AC2.1 '--auto --yes' (either order): exit 0" 0
-assert_eq "AC2.1 '--auto --yes': one auto-merge call" "$AUTO_MERGE_CALL" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_eq "AC2.1 '--auto --yes': one auto-merge call" "$AUTO_MERGE_CALL" "$(merge_call)"
 echo "AC2.1 --auto on a CLEAN PR merges and releases as usual; without --auto a non-CLEAN PR is still refused"
 fx
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC2.1 CLEAN PR with --auto: exit 0" 0
 assert_eq "AC2.1 CLEAN PR with --auto: the whole flow ran" "$FULL_YES" "$(steps)"
-assert_eq "AC2.1 CLEAN PR with --auto: a plain merge call, no --auto in it" "gh pr merge 12 --merge --delete-branch" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_eq "AC2.1 CLEAN PR with --auto: a plain merge call, no --auto in it" "gh pr merge 12 --merge --delete-branch" "$(merge_call)"
 assert_eq "AC2.1 CLEAN PR with --auto: released from main with the merge pulled" "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 for st in BLOCKED UNSTABLE; do
   fx

@@ -93,7 +93,7 @@ export FAKE_GH_MERGE_STATE=BLOCKED
 HEAD5="$(pr_head)"
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC9' --auto, gate ok + up to date: exit 0" 0
-assert_eq "AC9' --auto, gate ok: the auto-merge call is made as before" "$AUTO_MERGE_CALL" "$(grep '^gh pr merge' "$FAKE_LOG")"
+assert_eq "AC9' --auto, gate ok: the auto-merge call is made as before" "$AUTO_MERGE_CALL" "$(merge_call)"
 assert_eq "AC9' --auto, gate ok: the gate was called with '--check <PR head sha>'" "release-gate.sh --check $HEAD5" "$(gate_calls)"
 before "AC9' --auto: the gate runs before the auto-merge is armed" '^release-gate.sh' '^gh pr merge'
 fx
@@ -111,6 +111,26 @@ assert_rc "AC9' --auto, PR not up to date: exit 1" 1
 assert_contains "AC9' --auto, PR not up to date: 'ship refused: PR is not up to date with main'" "$OUT" "ship refused: PR is not up to date with main"
 assert_eq "AC9' --auto, PR not up to date: no gh pr merge call at all (auto-merge not armed)" "0" "$(logged '^gh pr merge')"
 assert_not_contains "AC9' --auto, PR not up to date: does not say auto-merge was enabled" "$OUT" "auto-merge enabled"
+
+echo "AC12 ship pins the merge to the head it checked: --match-head-commit <PR head sha> on the direct merge and on --auto"
+fx
+pr_ahead
+HEADP="$(pr_head)"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC12 direct merge: exit 0" 0
+assert_eq "AC12 direct merge: exactly one gh pr merge call" "1" "$(logged '^gh pr merge')"
+assert_contains "AC12 direct merge: the call carries --match-head-commit <PR head sha>" "$(grep '^gh pr merge' "$FAKE_LOG")" "--match-head-commit $HEADP"
+assert_eq "AC12 direct merge: the pinned sha is the one the gate was asked about" "release-gate.sh --check $HEADP" "$(gate_calls)"
+assert_eq "AC12 direct merge: the rest of the call is unchanged" "gh pr merge 12 --merge --delete-branch" "$(merge_call)"
+fx
+pr_ahead
+export FAKE_GH_MERGE_STATE=BLOCKED
+HEADQ="$(pr_head)"
+sh_run 12 v1.2.3 --yes --auto
+assert_rc "AC12 --auto: exit 0" 0
+assert_eq "AC12 --auto: exactly one gh pr merge call" "1" "$(logged '^gh pr merge')"
+assert_contains "AC12 --auto: the call carries --match-head-commit <PR head sha>" "$(grep '^gh pr merge' "$FAKE_LOG")" "--match-head-commit $HEADQ"
+assert_eq "AC12 --auto: the rest of the call is unchanged" "$AUTO_MERGE_CALL" "$(merge_call)"
 
 echo "AC9' an already MERGED PR is not checked by ship (release.sh's own check covers the tag)"
 fx
