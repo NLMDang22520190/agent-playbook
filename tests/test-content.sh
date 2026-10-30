@@ -2361,7 +2361,7 @@ C2DEF="$(printf '%s\n' "$C2DOCS" | grep -i 'sonnet' | grep -i 'reviewer' | grep 
 if [ -n "$C2DEF" ]; then t_ok "AC8 a doc sentence says the claude reviewer defaults to sonnet"; else t_bad "AC8 a doc sentence says the claude reviewer defaults to sonnet" "no sentence in README.md or docs/*.md with default + sonnet + reviewer + claude"; fi
 if printf '%s\n' "$C2DOCS" | grep -qE 'model_reviewer(_claude)?=session'; then t_ok "AC8 the docs name model_reviewer=session to undo the default"; else t_bad "AC8 the docs name model_reviewer=session to undo the default" "no model_reviewer=session in README.md or docs/*.md"; fi
 
-echo "v0.32.0 S6 AC16/AC16'/AC16'': the gate set (GATE_SCENARIOS) is in AUTO and follows the Scenarios table of docs/delta-audit.md"
+echo "v0.32.0 S6 AC16/AC16'/AC16'' and v0.33.0 AC3/AC3': the gate set (GATE_SCENARIOS) is in AUTO and follows the Scenarios table of docs/delta-audit.md (KEEP, INCONCLUSIVE and gate: safety rows)"
 S6GATE="$PB_ROOT/tools/release-gate.sh"
 S6RUN="$PB_ROOT/evals/run-evals.sh"
 S6AUDIT="$PB_ROOT/docs/delta-audit.md"
@@ -2369,14 +2369,15 @@ S6AUDIT="$PB_ROOT/docs/delta-audit.md"
 s6_gate() { sed -n 's/^GATE_SCENARIOS="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
 # s6_auto FILE: the ids of the AUTO="..." line of run-evals.sh, one per line, sorted
 s6_auto() { sed -n 's/^AUTO="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
-# s6_rows FILE: the scenario rows of the table under "## Scenarios" whose first cell matches E[0-9]+ and whose 5th cell (Verdict),
-# trimmed, is exactly KEEP, "KEEP (k=2)" or INCONCLUSIVE (exact match: "ZERO-1 (MIXED at k=2)" or "KEEP-ish" do not match); sorted ids
+# s6_rows FILE: the scenario rows of the table under "## Scenarios" whose first cell matches E[0-9]+ and either whose 5th cell (Verdict),
+# trimmed, is exactly KEEP, "KEEP (k=2)" or INCONCLUSIVE (exact match: "ZERO-1 (MIXED at k=2)" or "KEEP-ish" do not match), or whose LAST
+# cell contains the text "gate: safety" (v0.33.0 AC3': the E8 and E33 rows; the marker in any other cell does not count); sorted ids
 s6_rows() {
   awk -F'|' '
     /^## / { ins = ($0 ~ /^## Scenarios[ \t]*$/); next }
     ins && /^\|/ {
-      c = $2; v = $6; gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", v)
-      if (c ~ /^E[0-9]+$/ && (v == "KEEP" || v == "KEEP (k=2)" || v == "INCONCLUSIVE")) print c
+      c = $2; v = $6; l = $(NF - 1); gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (c ~ /^E[0-9]+$/ && (v == "KEEP" || v == "KEEP (k=2)" || v == "INCONCLUSIVE" || index(l, "gate: safety") > 0)) print c
     }' "$1" 2>/dev/null | LC_ALL=C sort -u
 }
 # s6_in_auto GATEFILE RUNFILE: prints the gate ids that are not in AUTO; exit 1 when there are some or the gate has no GATE_SCENARIOS line
@@ -2403,12 +2404,12 @@ s6_same() {
 S6N="$(grep -c '^GATE_SCENARIOS="' "$S6GATE" 2>/dev/null || true)"
 if [ "$S6N" = 1 ]; then t_ok "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line"; else t_bad "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line" "found $S6N"; fi
 S6M="$(s6_in_auto "$S6GATE" "$S6RUN")" && t_ok "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" || t_bad "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" "$S6M"
-S6D="$(s6_same "$S6GATE" "$S6AUDIT")" && t_ok "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" || t_bad "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" "$S6D"
+S6D="$(s6_same "$S6GATE" "$S6AUDIT")" && t_ok "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows plus the gate: safety rows of docs/delta-audit.md (## Scenarios)" || t_bad "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows plus the gate: safety rows of docs/delta-audit.md (## Scenarios)" "$S6D"
 
 # the checks themselves, on synthetic files (these pass before and after the gate gains its line): they must catch drift
 S6X="$(mk_tmp)"
-printf 'GATE_SCENARIOS="E2 E3 E5"\n' > "$S6X/gate.sh"
-printf 'AUTO="E1 E2 E3 E5 E7"\n' > "$S6X/run.sh"
+printf 'GATE_SCENARIOS="E2 E3 E4 E5"\n' > "$S6X/gate.sh"
+printf 'AUTO="E1 E2 E3 E4 E5 E7"\n' > "$S6X/run.sh"
 cat > "$S6X/audit.md" <<'S6EOF'
 # Audit
 
@@ -2425,29 +2426,56 @@ cat > "$S6X/audit.md" <<'S6EOF'
 | E1 | one | c | d | PROCESS-ONLY | labels |
 | E2 | two | c | d | KEEP | stays |
 | E3 | three | c | d | KEEP (k=2) | stays |
-| E4 | four | c | d | ZERO-1 (MIXED at k=2) | stays |
+| E4 | four | c | d | ZERO-1 (MIXED at k=2) | stays (security; gate: safety) |
 | E5 | five | c | d | INCONCLUSIVE | stays |
 | E6 | six | c | d | KEEP-ish | a prefix is not a match |
 | ZERO-1 | not a scenario id | c | d | KEEP | stays |
 | E7 | seven | c | d | UNMEASURED | stays |
+| E8 | eight, gate: safety in the title only | c | d | ZERO | stays |
+| E10 | ten | gate: safety | d | ZERO | stays |
 
 ## Rules and references
 
 | E8 | after the section | c | d | KEEP | stays |
 S6EOF
-assert_eq "AC16'' the audit parser takes the Scenarios table only, exact verdicts only (KEEP, KEEP (k=2), INCONCLUSIVE)" "E2 E3 E5" "$(s6_rows "$S6X/audit.md" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "AC16'' the audit parser takes the Scenarios table only, exact verdicts (KEEP, KEEP (k=2), INCONCLUSIVE) plus a last cell holding gate: safety (not another cell)" "E2 E3 E4 E5" "$(s6_rows "$S6X/audit.md" | tr '\n' ' ' | sed 's/ $//')"
 if s6_same "$S6X/gate.sh" "$S6X/audit.md" >/dev/null; then t_ok "AC16' the equality check passes on a matching gate line and audit"; else t_bad "AC16' the equality check passes on a matching gate line and audit" "$(s6_same "$S6X/gate.sh" "$S6X/audit.md")"; fi
 sed 's/| E2 | two | c | d | KEEP |/| E2 | two | c | d | ZERO |/' "$S6X/audit.md" > "$S6X/audit-drift.md"
 if s6_same "$S6X/gate.sh" "$S6X/audit-drift.md" >/dev/null; then t_bad "AC16' drift: a row whose verdict changed to ZERO is caught" "the check still passed"; else t_ok "AC16' drift: a row whose verdict changed to ZERO is caught"; fi
-sed 's/| E4 | four | c | d | ZERO-1 (MIXED at k=2) |/| E4 | four | c | d | KEEP |/' "$S6X/audit.md" > "$S6X/audit-drift2.md"
-if s6_same "$S6X/gate.sh" "$S6X/audit-drift2.md" >/dev/null; then t_bad "AC16' drift: a row that became KEEP but is not in the gate line is caught" "the check still passed"; else t_ok "AC16' drift: a row that became KEEP but is not in the gate line is caught"; fi
-printf 'GATE_SCENARIOS="E2 E3"\n' > "$S6X/gate-short.sh"
+sed 's/| E7 | seven | c | d | UNMEASURED |/| E7 | seven | c | d | KEEP |/' "$S6X/audit.md" > "$S6X/audit-drift2.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift2.md" >/dev/null; then t_bad "AC16' drift: a row (E7) that became KEEP but is not in the gate line is caught" "the check still passed"; else t_ok "AC16' drift: a row (E7) that became KEEP but is not in the gate line is caught"; fi
+printf 'GATE_SCENARIOS="E2 E3 E4"\n' > "$S6X/gate-short.sh"
 if s6_same "$S6X/gate-short.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' drift: a gate line that lost E5 is caught" "the check still passed"; else t_ok "AC16' drift: a gate line that lost E5 is caught"; fi
+sed 's/ZERO-1 (MIXED at k=2) | stays (security; gate: safety) |/ZERO-1 (MIXED at k=2) | stays (security) |/' "$S6X/audit.md" > "$S6X/audit-drift3.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift3.md" >/dev/null; then t_bad "AC3' drift: a gate: safety row that lost its marker (E4) is caught" "the check still passed"; else t_ok "AC3' drift: a gate: safety row that lost its marker (E4) is caught"; fi
+sed 's/| E7 | seven | c | d | UNMEASURED | stays |/| E7 | seven | c | d | UNMEASURED | stays, gate: safety |/' "$S6X/audit.md" > "$S6X/audit-drift4.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift4.md" >/dev/null; then t_bad "AC3' drift: a row that gained the gate: safety marker (E7) but is not in the gate line is caught" "the check still passed"; else t_ok "AC3' drift: a row that gained the gate: safety marker (E7) but is not in the gate line is caught"; fi
 printf '# no gate line\nDEFAULT_TASKS="x"\n' > "$S6X/gate-none.sh"
 if s6_same "$S6X/gate-none.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' a gate script without the line fails the equality check" "the check still passed"; else t_ok "AC16' a gate script without the line fails the equality check"; fi
 if s6_in_auto "$S6X/gate.sh" "$S6X/run.sh" >/dev/null; then t_ok "AC16 the AUTO check passes when every gate id is in AUTO"; else t_bad "AC16 the AUTO check passes when every gate id is in AUTO" "$(s6_in_auto "$S6X/gate.sh" "$S6X/run.sh")"; fi
 printf 'AUTO="E1 E2 E3 E7"\n' > "$S6X/run-short.sh"
 if s6_in_auto "$S6X/gate.sh" "$S6X/run-short.sh" >/dev/null; then t_bad "AC16 a gate id (E5) missing from AUTO is caught" "the check still passed"; else t_ok "AC16 a gate id (E5) missing from AUTO is caught"; fi
 if s6_in_auto "$S6X/gate-none.sh" "$S6X/run.sh" >/dev/null; then t_bad "AC16 a gate script without the line fails the AUTO check" "the check still passed"; else t_ok "AC16 a gate script without the line fails the AUTO check"; fi
+
+echo "v0.33.0 AC3 the gate set of the real files: E8 and E33 carry the marker, the gate line names the 12 scenarios, RUBRIC.md states the gate as it is"
+assert_eq "AC3 GATE_SCENARIOS is the 12 scenarios (KEEP, INCONCLUSIVE and the E8, E33 safety rows)" "E2 E3 E4 E6 E8 E13 E14 E24 E26 E29 E33 E34" "$(s6_gate "$S6GATE" | LC_ALL=C sort -t E -k2,2n | tr '\n' ' ' | sed 's/ $//')"
+S6SAFE="$(awk -F'|' '/^## / { ins = ($0 ~ /^## Scenarios[ \t]*$/); next } ins && /^\|/ { c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c); if ((c == "E8" || c == "E33") && index($(NF - 1), "gate: safety") > 0) print c }' "$S6AUDIT" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "AC3' the E8 and E33 rows of docs/delta-audit.md end with the text gate: safety" "E33 E8" "$S6SAFE"
+S6RUB="$PB_ROOT/evals/RUBRIC.md"
+# the gate text: from the "Gate before releasing" line (RUBRIC.md:52 in v0.32) to the "ZERO items" paragraph
+S6RT="$(awk '/^Gate before releasing/ { f = 1 } /^ZERO items/ { f = 0 } f { print }' "$S6RUB" | tr '\n' ' ' | tr -s ' ')"
+S6R1="$(awk '/^Gate before releasing/ { f = 1; print; next } f && /^$/ { exit } f { print }' "$S6RUB" | tr '\n' ' ' | tr -s ' ')"
+if [ -n "$S6RT" ]; then t_ok "AC3 evals/RUBRIC.md has the gate text (Gate before releasing ... ZERO items)"; else t_bad "AC3 evals/RUBRIC.md has the gate text (Gate before releasing ... ZERO items)" "no such section"; fi
+assert_not_contains "AC3 RUBRIC.md: the stale hand-written 'no 0 on E3, E4, E5 or E8' gate is gone" "$S6RT" "no 0 on E3, E4, E5 or E8"
+assert_not_contains "AC3 RUBRIC.md: the stale 10-scenario list of v0.32 is gone" "$S6RT" "E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"
+assert_not_contains "AC3 RUBRIC.md: no stale 'which the gate does not turn on' (the gate runs with --hooks)" "$S6RT" "which the gate does not turn on"
+if printf '%s' "$S6R1" | grep -Eq 'E[0-9]+(, | or | )E[0-9]+'; then t_bad "AC3 RUBRIC.md: the gate sentence lists no scenario ids (it points at docs/delta-audit.md and GATE_SCENARIOS)" "$S6R1"; else t_ok "AC3 RUBRIC.md: the gate sentence lists no scenario ids (it points at docs/delta-audit.md and GATE_SCENARIOS)"; fi
+if printf '%s' "$S6RT" | grep -Eq 'E[0-9]+ E[0-9]+ E[0-9]+'; then t_bad "AC3 RUBRIC.md: the gate text holds no scenario id list" "$S6RT"; else t_ok "AC3 RUBRIC.md: the gate text holds no scenario id list"; fi
+assert_contains "AC3 RUBRIC.md: the gate text names GATE_SCENARIOS" "$S6RT" "GATE_SCENARIOS"
+assert_contains "AC3 RUBRIC.md: the gate text names the gate: safety marker" "$S6RT" "gate: safety"
+if printf '%s' "$S6RT" | grep -Eq '(rule|rules)? ?\(f\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (f)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (f)" "no (f) in the gate text"; fi
+if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (g)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (g)" "no (g) in the gate text"; fi
+assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
+assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
 
 t_summary

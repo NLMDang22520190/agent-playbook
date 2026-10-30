@@ -41,7 +41,7 @@ done
 # Per-case controls (environment): FAKE_VARIANT=null|nullsha|badsha|changed, FAKE_SKIP=ID,ID (no runs for these items),
 # FAKE_ERR=ID:ARM:N (the first N runs of that item and arm are ERROR runs), FAKE_INVERT=ID (with fails, without passes),
 # FAKE_ISOFAIL=ID (the without-arm isolation check FAILs for that item), FAKE_HANG=NAME (waits for $W/release),
-# FAKE_HOOKS=false|none (v0.33.0 N3: the file says "hooks": false, or has no hooks field; default true). Every run also has the PASS
+# FAKE_PF_FAIL=NAME (v0.33.0 AC7: that runner's --preflight exits 3), FAKE_HOOKS=false|none (v0.33.0 N3: the file says "hooks": false, or has no hooks field; default true). Every run also has the PASS
 # check "nothing written outside the workdir" (rule (g) needs it in every item).
 # It also writes local paths (workroot, --out, HOME, the repo; and their Windows forms where cygpath exists) into the json and
 # the md, and evidence/log files next to them, so the tests can look for what the gate must rewrite or leave uncommitted.
@@ -54,6 +54,15 @@ NAME=$1; LISTFLAG=$2; CALLS='$CALLS'; OBS='$OBS'; W='$W'
 EOF
   cat >> "$R/evals/$1" <<'EOF'
 printf '%s %s\n' "$NAME" "$*" >> "$CALLS"
+# v0.33.0 AC7 (interface defined by the tests): `--preflight` = a no-cost check of what the runner would refuse with exit 3 for the
+# selection on its command line: exit 0 with no output and no file when ready, exit 3 with the reason on stderr when not.
+# FAKE_PF_FAIL=NAME makes this fake refuse (NAME = run-evals.sh or run-outcome.sh).
+for a in "$@"; do
+  if [ "$a" = --preflight ]; then
+    if [ "${FAKE_PF_FAIL:-}" = "$NAME" ]; then echo "error: preflight: $NAME cannot start (fake: python3 is required)" >&2; exit 3; fi
+    exit 0
+  fi
+done
 out=""; model=""; harness="custom"; list=""; k=1; prev=""; vdir=""
 for a in "$@"; do
   case "$prev" in
@@ -181,7 +190,7 @@ mk_fake run-outcome.sh --tasks
 SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
 TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 g() { RC=0; OUT="$(cd "$R" && bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
-ncalls() { grep -c "^$1 " "$CALLS" 2>/dev/null || true; }
+ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
 # --- v0.32.0 helpers (S1: AC1, AC2, AC2') ---
 # assert_has_all NAME LINE PIECE... : every piece is in LINE (a displayed command: where --variant sits is not fixed by the spec)
 assert_has_all() {
@@ -596,9 +605,43 @@ assert_contains "AC4 --cmd: run-evals.sh got --hooks" "$(grep '^run-evals.sh ' "
 fail_case hk-off "FAKE_HOOKS=false" "hooks off in .*behaviour-"
 fail_case hk-none "FAKE_HOOKS=none" "hooks off in .*behaviour-"
 
-echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md)"
+echo "AC7 preflight: a real gate run asks each runner (--preflight, same selection) before the first runner starts; a refusal exits 3 and starts nothing"
+# pf_real: the non-preflight lines of $CALLS, and the line numbers of the first real run and the last preflight
+pf_real() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }
+rcase pf-ok ""
+assert_rc "AC7 both preflights ready -> the run goes on, exit 0" 0
+assert_eq "AC7 run-evals.sh was asked --preflight once" "1" "$(grep '^run-evals.sh ' "$CALLS" | grep -c -- ' --preflight')"
+assert_eq "AC7 run-outcome.sh was asked --preflight once" "1" "$(grep '^run-outcome.sh ' "$CALLS" | grep -c -- ' --preflight')"
+assert_eq "AC7 and both runners ran after that (one real call each)" "1 1" "$(ncalls run-evals.sh) $(ncalls run-outcome.sh)"
+PF_LAST="$(grep -n -- ' --preflight' "$CALLS" | tail -n 1 | cut -d: -f1)"
+PF_FIRSTREAL="$(grep -vn -- ' --preflight' "$CALLS" | head -n 1 | cut -d: -f1)"
+if [ -n "$PF_LAST" ] && [ -n "$PF_FIRSTREAL" ] && [ "$PF_LAST" -lt "$PF_FIRSTREAL" ]; then t_ok "AC7 both runners were preflighted before the first real run started"; else t_bad "AC7 both runners were preflighted before the first real run started" "last preflight line [$PF_LAST], first real line [$PF_FIRSTREAL]: $(cat "$CALLS")"; fi
+PFE="$(grep '^run-evals.sh ' "$CALLS" | grep -- ' --preflight')"; PFO="$(grep '^run-outcome.sh ' "$CALLS" | grep -- ' --preflight')"
+assert_has_all "AC7 the run-evals.sh preflight carries the selection (harness, scenarios)" "$PFE" "--harness claude" "--scenarios E1,E2,E3"
+assert_has_all "AC7 the run-outcome.sh preflight carries the selection (harness, tasks)" "$PFO" "--harness claude" "--tasks pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+: > "$CALLS"
+ge "" --cmd "bash /x/adapter.sh" --model m1 --out-dir evals/results/pf-ok-cmd2
+assert_contains "AC7 --cmd: the run-outcome.sh preflight carries --cmd and the tasks" "$(grep '^run-outcome.sh ' "$CALLS" | grep -- ' --preflight')" "--cmd bash /x/adapter.sh"
+for who in run-evals.sh run-outcome.sh; do
+  rcase "pf-fail-$who" "FAKE_PF_FAIL=$who"
+  assert_rc "AC7 $who refuses (exit 3) -> the gate exits 3" 3
+  assert_contains "AC7 $who refuses: the output carries the runner's reason" "$OUT" "$who cannot start (fake: python3 is required)"
+  assert_eq "AC7 $who refuses: no runner started (zero non-preflight calls)" "0" "$(pf_real)"
+  assert_eq "AC7 $who refuses: no worktree entry is left" "1" "$(git -C "$R" worktree list | wc -l | tr -d ' ')"
+  if [ -f "$GJ" ]; then assert_not_contains "AC7 $who refuses: gate.json is not a pass verdict" "$(cat "$GJ")" '"verdict": "pass"'; else t_ok "AC7 $who refuses: no gate.json is written"; fi
+  assert_eq "AC7 $who refuses: no results file of a runner exists" "0" "$(ls "$ODN" 2>/dev/null | grep -c '^behaviour-\|^outcome-')"
+done
+rcase pf-fail-outcome-only "FAKE_PF_FAIL=run-outcome.sh"
+assert_eq "AC7 run-outcome.sh alone refuses: run-evals.sh did not start either (nothing is spent before the outcome runner is known to start)" "0" "$(ncalls run-evals.sh)"
+: > "$CALLS"
+ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --dry-run
+assert_rc "AC7 --dry-run does not preflight (it starts nothing) -> exit 0" 0
+ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --pool-only --out-dir evals/results/pf-pool
+assert_eq "AC7 --pool-only calls no runner, preflight included" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
+
+echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md plus the gate: safety rows E8 and E33, v0.33.0 AC3)"
 assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1" \
-  "$(grep -c '^GATE_SCENARIOS="E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"$' "$GATE" 2>/dev/null || true)"
+  "$(grep -c '^GATE_SCENARIOS="E2 E3 E4 E6 E8 E13 E14 E24 E26 E29 E33 E34"$' "$GATE" 2>/dev/null || true)"
 
 # R3: its fake AUTO is E1..E5, its GATE_SCENARIOS is E2 E3: the default list, the AUTO check and the verdict can be told apart.
 R3="$W/repo3"

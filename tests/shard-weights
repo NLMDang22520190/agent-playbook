@@ -175,3 +175,6 @@ test-release-gate-check.sh 60
 test-ship-d.sh 120
 # v0.33.0 lane A estimate until a CI run measures it (L-0009): test-release-gate-rules.sh 90 (about 30 fixture repos, pure git and node).
 test-release-gate-rules.sh 90
+
+# v0.33.0 lane A estimate until a CI run measures it (L-0009): test-preflight.sh 20 (about 40 runner starts that stop at --preflight).
+test-preflight.sh 20
