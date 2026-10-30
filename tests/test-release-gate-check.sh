@@ -23,11 +23,23 @@ mk_runner() {
     printf 'printf "%%s %%s\\n" "$0" "$*" >> '"'%s'"'\nexit 0\n' "$CALLS"; } > "$1"
   chmod 755 "$1"
 }
-# new_repo NAME AUTO -> $W/NAME: tools, fake runners (AUTO line), task dirs, one base commit
+# gate_scen FILE LIST (v0.32.0 S6, AC7''): the fixture's copy of the gate gets GATE_SCENARIOS="LIST" (LIST NONE: no such line). The line is
+# replaced when the script has one, else inserted before DEFAULT_TASKS (a no-op for a script that does not read it yet).
+gate_scen() {
+  local f="$1" l="$2" t
+  t="$(mktemp)" || return 1
+  if [ "$l" = NONE ]; then grep -v '^GATE_SCENARIOS=' "$f" > "$t" || true
+  elif grep -q '^GATE_SCENARIOS=' "$f"; then sed "s/^GATE_SCENARIOS=.*/GATE_SCENARIOS=\"$l\"/" "$f" > "$t"
+  else awk -v l="$l" '/^DEFAULT_TASKS=/ && !d { print "GATE_SCENARIOS=\"" l "\""; d = 1 } { print }' "$f" > "$t"; fi
+  cat "$t" > "$f"; rm -f "$t"
+}
+# new_repo NAME AUTO [GATE] -> $W/NAME: tools, fake runners (AUTO line), task dirs, one base commit. GATE (default: AUTO, a subset
+# of it trivially; AC7'') is the GATE_SCENARIOS line of the repo's copy of the gate; NONE removes the line.
 new_repo() {
   local r="$W/$1"
   mkdir -p "$r/tools" "$r/evals/tasks" "$r/skills"
   cp -p "$GATE" "$r/tools/release-gate.sh"
+  gate_scen "$r/tools/release-gate.sh" "${3:-$2}"
   cp -p "$PB_ROOT/tools/eval-delta.sh" "$r/tools/eval-delta.sh"
   local t
   for t in $(printf '%s' "$TASKS" | tr ',' ' '); do mkdir -p "$r/evals/tasks/$t"; printf 'x\n' > "$r/evals/tasks/$t/prompt.md"; done
@@ -120,11 +132,17 @@ chk "$W/a"
 assert_rc "AC3 REV defaults to HEAD, not to a branch: HEAD at the gate commit -> exit 1" 1
 git -C "$W/a" checkout -q "$BA"
 
-echo "AC3'/m-b the AUTO list and the default tasks come from C, not from the work tree"
+echo "AC3'/m-b the gate set (GATE_SCENARIOS) and the default tasks come from C, not from the work tree (AC15')"
 sed 's/^AUTO="E1 E2 E3"$/AUTO="E1 E2 E3 E4"/' "$W/a/evals/run-evals.sh" > "$W/auto.tmp" && cat "$W/auto.tmp" > "$W/a/evals/run-evals.sh"
 chk "$W/a" "$RA"
 assert_rc "AC3' an uncommitted AUTO edit in the work tree does not change the result -> exit 0" 0
 assert_contains "AC3' ... the pass line is the same" "$OUT" "release gate: pass (commit $CA12"
+git -C "$W/a" checkout -q -- .
+sed 's/^GATE_SCENARIOS="E1 E2 E3"$/GATE_SCENARIOS="E1 E2 E3 E4"/' "$W/a/tools/release-gate.sh" > "$W/gs.tmp" && cat "$W/gs.tmp" > "$W/a/tools/release-gate.sh"
+assert_eq "AC15' fixture: the work-tree gate line now has E4 (the committed one has not)" "1|1" "$(grep -c '^GATE_SCENARIOS="E1 E2 E3 E4"$' "$W/a/tools/release-gate.sh")|$(git -C "$W/a" show "$CA:tools/release-gate.sh" | grep -c '^GATE_SCENARIOS="E1 E2 E3"$')"
+chk "$W/a" "$RA"
+assert_rc "AC15' an uncommitted GATE_SCENARIOS edit in the work tree does not change the result -> exit 0 (the list is read from C)" 0
+assert_contains "AC15' ... the pass line is the same" "$OUT" "release gate: pass (commit $CA12"
 git -C "$W/a" checkout -q -- .
 sed 's/^DEFAULT_TASKS="\(.*\)"$/DEFAULT_TASKS="\1,pattern-01-option-value-label"/' "$W/a/tools/release-gate.sh" > "$W/dt.tmp" && cat "$W/dt.tmp" > "$W/a/tools/release-gate.sh"
 chk "$W/a" "$RA"
@@ -135,8 +153,40 @@ gcommit "$W/l" "c1" README.md "# c1"
 mkgate "$W/l" gate-l m1 "" "E1,E2,E3"
 gadd "$W/l" evals/results/gate-l "results l"
 chk "$W/l"
-assert_rc "AC3' AUTO at C has E4 but the files do not -> exit 1" 1
+assert_rc "AC3' AUTO and GATE_SCENARIOS at C have E4 (AC7'': GATE defaults to AUTO) but the files do not -> exit 1" 1
 assert_contains "AC3' ... the reason names E4" "$OUT" "E4"
+
+echo "AC15 rule (b) at C: GATE_SCENARIOS and DEFAULT_TASKS, not the whole AUTO list"
+new_repo gs "E1 E2 E3 E4 E5" "E1 E2"
+gcommit "$W/gs" "c1" README.md "# c1"
+GS12="$(hd "$W/gs" | cut -c1-12)"
+mkgate "$W/gs" gate-gs m1 "" "E1,E2"
+gadd "$W/gs" evals/results/gate-gs "results gs"
+assert_eq "AC15 fixture: AUTO has 5 scenarios, the gate line 2, the pooled files cover the 2" "1|1" "$(grep -c '^AUTO="E1 E2 E3 E4 E5"$' "$W/gs/evals/run-evals.sh")|$(git -C "$W/gs" show "HEAD~1:tools/release-gate.sh" | grep -c '^GATE_SCENARIOS="E1 E2"$')"
+chk "$W/gs"
+assert_rc "AC15 a pooled set that covers GATE_SCENARIOS but not every AUTO scenario -> exit 0" 0
+assert_contains "AC15 ... the pass line names the commit" "$OUT" "release gate: pass (commit $GS12"
+new_repo gm "E1 E2 E3 E4 E5" "E1 E2 E3"
+gcommit "$W/gm" "c1" README.md "# c1"
+mkgate "$W/gm" gate-gm m1 "" "E1,E3"
+gadd "$W/gm" evals/results/gate-gm "results gm"
+chk "$W/gm"
+assert_rc "AC15 a GATE_SCENARIOS id (E2) without runs -> exit 1" 1
+GL="$(printf '%s\n' "$OUT" | grep 'full set: no runs for')"
+if printf '%s\n' "$GL" | grep -Eq 'full set: no runs for E2$'; then t_ok "AC15 the reason is exactly 'full set: no runs for E2' (the AUTO-only E4, E5 are not named)"; else t_bad "AC15 the reason is exactly 'full set: no runs for E2'" "got [$GL]"; fi
+nopass "AC15 ... no pass line" "$OUT"
+
+echo "AC15' a C without a GATE_SCENARIOS line fails with the reason, same shape as the DEFAULT_TASKS one"
+new_repo gn "E1 E2 E3" NONE
+gcommit "$W/gn" "c1" README.md "# c1"
+GN12="$(hd "$W/gn" | cut -c1-12)"
+assert_eq "AC15' fixture: the copy of the gate at C has no GATE_SCENARIOS line" "0" "$(git -C "$W/gn" show "HEAD:tools/release-gate.sh" | grep -c '^GATE_SCENARIOS=' || true)"
+mkgate "$W/gn" gate-gn m1
+gadd "$W/gn" evals/results/gate-gn "results gn"
+chk "$W/gn"
+assert_rc "AC15' no GATE_SCENARIOS at C -> exit 1" 1
+assert_contains "AC15' ... the reason is 'no GATE_SCENARIOS or DEFAULT_TASKS at <C12>'" "$OUT" "no GATE_SCENARIOS or DEFAULT_TASKS at $GN12"
+nopass "AC15' ... no pass line" "$OUT"
 
 echo "D1 nothing outside evals/results may change between C and REV"
 git -C "$W/a" checkout -q -b okres "$RA"

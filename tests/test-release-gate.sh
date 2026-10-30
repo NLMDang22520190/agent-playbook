@@ -18,7 +18,18 @@ W="$(mk_tmp)"
 CALLS="$W/calls.log"; : > "$CALLS"
 OBS="$W/obs.log"; : > "$OBS"
 R="$W/repo"; mkdir -p "$R/tools" "$R/evals/tasks" "$R/skills"
+# v0.32.0 S6 (AC7''): the fixture's copy of the gate gets GATE_SCENARIOS="E1 E2 E3" (a subset of the fake AUTO) before the base commit.
+# The line is replaced when the script has one, else inserted before DEFAULT_TASKS (no-op for a script that does not read it yet).
+gate_scen() { # FILE LIST
+  local f="$1" l="$2" t
+  [ -f "$f" ] || return 0
+  t="$(mktemp)" || return 1
+  if grep -q '^GATE_SCENARIOS=' "$f"; then sed "s/^GATE_SCENARIOS=.*/GATE_SCENARIOS=\"$l\"/" "$f" > "$t"
+  else awk -v l="$l" '/^DEFAULT_TASKS=/ && !d { print "GATE_SCENARIOS=\"" l "\""; d = 1 } { print }' "$f" > "$t"; fi
+  cat "$t" > "$f"; rm -f "$t"
+}
 [ -f "$GATE" ] && cp -p "$GATE" "$R/tools/release-gate.sh"
+gate_scen "$R/tools/release-gate.sh" "E1 E2 E3"
 cp -p "$PB_ROOT/tools/eval-delta.sh" "$R/tools/eval-delta.sh"
 for t in pattern-15-erase-account-ambiguous pattern-24-merge-duplicate-customers pattern-26-consistent-price-rounding pattern-01-option-value-label; do
   mkdir -p "$R/evals/tasks/$t"; printf 'x\n' > "$R/evals/tasks/$t/prompt.md"
@@ -229,7 +240,7 @@ g --harness claude --model m1 --dry-run
 assert_rc "AC2 --dry-run -> exit 0" 0
 assert_eq "AC2 --dry-run calls no runner" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
 assert_contains "AC2 the commit is the full HEAD sha" "$OUT" "$SHA"
-assert_has_all "AC2 the behaviour command: AUTO set, both arms, k=5 (AC7': now with --variant)" "$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')" "evals/run-evals.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--variant "
+assert_has_all "AC2 the behaviour command: the GATE_SCENARIOS set (AC14; the fixture's equals its AUTO), both arms, k=5 (AC7': now with --variant)" "$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')" "evals/run-evals.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--variant "
 assert_has_all "AC2 the outcome command: the separating tasks, both arms, k=5 (AC7': now with --variant)" "$(printf '%s\n' "$OUT" | grep 'evals/run-outcome.sh')" "evals/run-outcome.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--tasks $TASKS" "--variant "
 assert_contains "AC2 the default out dir is evals/results/gate-<sha12>" "$OUT" "evals/results/gate-$SHA12/"
 assert_contains "AC3 a clean tree is reported" "$OUT" "tree: clean"
@@ -539,9 +550,13 @@ fail_case b-skip "FAKE_SKIP=E3" "$(idre E3)"
 fail_case b-skip-task "FAKE_SKIP=pattern-24-merge-duplicate-customers" "pattern-24-merge-duplicate-customers"
 R2="$W/repo2"
 git clone -q "$R" "$R2" && ( cd "$R2" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
-  git config core.autocrlf false && sed 's/^AUTO="E1 E2 E3"$/AUTO="E1 E2 E3 E4"/' evals/run-evals.sh > "$W/auto.tmp" && cat "$W/auto.tmp" > evals/run-evals.sh &&
-  git add -A && git commit -qm "AUTO gains E4" ) || t_bad "fixture repo 2" "clone or commit failed"
+  git config core.autocrlf false && sed 's/^GATE_SCENARIOS="E1 E2 E3"$/GATE_SCENARIOS="E1 E2 E3 E4"/' tools/release-gate.sh > "$W/auto.tmp" && cat "$W/auto.tmp" > tools/release-gate.sh &&
+  git add -A && git commit -qm "GATE_SCENARIOS gains E4" ) || t_bad "fixture repo 2" "clone or commit failed"
+assert_eq "AC14'' fixture: repo 2's gate line gained E4 (AC7'': the b-auto case is now GATE_SCENARIOS, not AUTO)" "1" "$(grep -c '^GATE_SCENARIOS="E1 E2 E3 E4"$' "$R2/tools/release-gate.sh")"
+# AC14'' (S6 revision 2): the AUTO check covers the list in use (here --scenarios E1,E2,E3, all in AUTO), so a GATE_SCENARIOS id that is
+# only in the gate line is a verdict failure (exit 1, "full set: no runs for E4"), not a usage error (exit 2).
 GR="$R2"; fail_case b-auto "" "$(idre E4)" --scenarios E1,E2,E3; GR=""
+assert_eq "AC14'' b-auto: the reason is exactly 'full set: no runs for E4' (it is the gate line that gained E4)" "full set: no runs for E4" "$(gj "$R2/evals/results/b-auto/gate.json" 'j.verdict_reasons[0]')"
 
 echo "AC2 (c) at least 5 graded runs per (item, arm); ERROR runs do not count; another batch fixes it"
 fail_case c-err "FAKE_ERR=E1:without:1" "$(idre E1)"
@@ -557,6 +572,84 @@ fail_case d-iso "FAKE_ISOFAIL=E1" "eval-delta|isolation"
 
 echo "AC2 (e) no Δ row with its 95% interval wholly below 0"
 fail_case e-neg "FAKE_INVERT=E2" "$(idre E2)"
+
+echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md)"
+assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1" \
+  "$(grep -c '^GATE_SCENARIOS="E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"$' "$GATE" 2>/dev/null || true)"
+
+# R3: its fake AUTO is E1..E5, its GATE_SCENARIOS is E2 E3: the default list, the AUTO check and the verdict can be told apart.
+R3="$W/repo3"
+git clone -q "$R" "$R3" && ( cd "$R3" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+  git config core.autocrlf false && sed 's/^AUTO="E1 E2 E3"$/AUTO="E1 E2 E3 E4 E5"/' evals/run-evals.sh > "$W/auto3.tmp" && cat "$W/auto3.tmp" > evals/run-evals.sh &&
+  gate_scen tools/release-gate.sh "E2 E3" && git add -A && git commit -qm "scope: AUTO E1..E5, GATE_SCENARIOS E2 E3" ) || t_bad "fixture repo 3" "clone or commit failed"
+assert_eq "AC14 fixture: repo 3 has AUTO E1..E5 and GATE_SCENARIOS E2 E3" "1|1" \
+  "$(grep -c '^AUTO="E1 E2 E3 E4 E5"$' "$R3/evals/run-evals.sh")|$(grep -c '^GATE_SCENARIOS="E2 E3"$' "$R3/tools/release-gate.sh")"
+GR="$R3"
+ge "" --harness claude --model m1 --dry-run
+assert_rc "AC14 --dry-run with GATE_SCENARIOS E2 E3 (AUTO E1..E5) -> exit 0" 0
+RE="$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')"
+assert_contains "AC14 --dry-run: the behaviour command carries the GATE_SCENARIOS list" "$RE" "--scenarios E2,E3"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E1 is not in the behaviour command" "$RE" "E1"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E5 is not in the behaviour command" "$RE" "E5"
+ge "" --harness claude --model m1 --dry-run --json
+assert_rc "AC14 --dry-run --json -> exit 0" 0
+printf '%s\n' "$OUT" > "$W/dry3.json"
+assert_eq "AC14 --json: scenarios is the GATE_SCENARIOS list, not AUTO" "E2,E3" "$(gj "$W/dry3.json" 'j.scenarios.join(",")')"
+ge "" --harness claude --model m1 --scenarios E1,E4 --dry-run --json
+assert_rc "AC14 an explicit --scenarios (E1,E4: in AUTO, not in GATE_SCENARIOS) -> exit 0" 0
+printf '%s\n' "$OUT" > "$W/dry3b.json"
+assert_eq "AC14 an explicit --scenarios still overrides the default" "E1,E4" "$(gj "$W/dry3b.json" 'j.scenarios.join(",")')"
+rcase ac14-real ""
+assert_rc "AC14 a real run on the default list (the fakes run E2,E3 and the tasks) -> exit 0" 0
+RE="$(grep '^run-evals.sh ' "$CALLS")"
+assert_contains "AC14 a real run: run-evals.sh gets the GATE_SCENARIOS list as --scenarios" "$RE" "--scenarios E2,E3"
+assert_not_contains "AC14 a real run: run-evals.sh does not get the AUTO-only scenario E5" "$RE" "E5"
+assert_eq "AC14 a real run: gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
+GR=""
+
+echo "AC15 verdict rule (b): GATE_SCENARIOS and the default tasks, not the whole AUTO list"
+GR="$R3"
+rcase ac15-pass "" --scenarios E2,E3
+assert_rc "AC15 pooled runs cover GATE_SCENARIOS (E2,E3) and the tasks but not every AUTO scenario -> exit 0" 0
+assert_eq "AC15 gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
+assert_eq "AC15 gate.json full_set (the gate set) is true" "true" "$(gj "$GJ" j.full_set)"
+rcase ac15-extra "" --scenarios E1,E2,E3
+assert_rc "AC15 extra scenarios (E1) beside the gate set are allowed -> exit 0" 0
+assert_eq "AC15 extra scenarios: gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
+rcase ac15-miss "" --scenarios E2
+assert_rc "AC15 a GATE_SCENARIOS id without runs (E3) -> exit 1" 1
+assert_eq "AC15 gate.json verdict is fail" "fail" "$(gj "$GJ" j.verdict)"
+assert_eq "AC15 the one reason names exactly the missing gate id (not the AUTO-only ids)" "full set: no runs for E3" "$(gj "$GJ" 'j.verdict_reasons.join("|")')"
+assert_eq "AC15 gate.json full_set is false" "false" "$(gj "$GJ" j.full_set)"
+rcase ac15-task "" --scenarios E2,E3 --tasks pattern-01-option-value-label
+assert_rc "AC15 a default task without runs -> exit 1 (rule (b) still needs DEFAULT_TASKS)" 1
+assert_contains "AC15 the reason names the missing task" "$(gj "$GJ" 'j.verdict_reasons.join("|")')" "pattern-15-erase-account-ambiguous"
+GR=""
+
+echo "AC14' every id of GATE_SCENARIOS is checked against AUTO (usage error, exit 2) as --scenarios is; the gate never reads docs/delta-audit.md"
+R4="$W/repo4"
+git clone -q "$R3" "$R4" && ( cd "$R4" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+  git config core.autocrlf false && gate_scen tools/release-gate.sh "E2 E9" && git add -A && git commit -qm "GATE_SCENARIOS names E9, which is not in AUTO" ) || t_bad "fixture repo 4" "clone or commit failed"
+assert_eq "AC14' fixture: repo 4 gate line names E9 (not in its AUTO E1..E5)" "1|0" "$(grep -c '^GATE_SCENARIOS="E2 E9"$' "$R4/tools/release-gate.sh")|$(grep -c 'E9' "$R4/evals/run-evals.sh")"
+assert_eq "AC14' fixture repos have no docs/delta-audit.md" "no" "$([ -e "$R4/docs/delta-audit.md" ] && echo yes || echo no)"
+GR="$R4"
+ge "" --harness claude --model m1 --dry-run
+assert_rc "AC14' --dry-run with a GATE_SCENARIOS id outside AUTO -> exit 2" 2
+assert_contains "AC14' --dry-run: the message names the scenario and the AUTO list" "$OUT" "scenario E9 is not in the AUTO list of evals/run-evals.sh"
+ge "" --harness claude --model m1 --dry-run --json
+assert_rc "AC14' --dry-run --json with such an id -> exit 2" 2
+assert_contains "AC14' --dry-run --json: the same message" "$OUT" "scenario E9 is not in the AUTO list of evals/run-evals.sh"
+: > "$CALLS"
+ge "" --harness claude --model m1 --out-dir evals/results/ac14-bad
+assert_rc "AC14' a real run with such an id -> exit 2" 2
+assert_contains "AC14' a real run: the same message" "$OUT" "scenario E9 is not in the AUTO list of evals/run-evals.sh"
+assert_eq "AC14' a real run: no runner ran (nothing was spent)" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
+ge "" --harness claude --model m1 --scenarios E1,E2 --dry-run
+assert_rc "AC14'' with an explicit --scenarios the check covers that list only (E1,E2 in AUTO) -> exit 0" 0
+ge "" --harness claude --model m1 --scenarios E1,E9 --dry-run
+assert_rc "AC14'' an explicit --scenarios with an id outside AUTO -> exit 2" 2
+assert_contains "AC14'' ... the message names E9" "$OUT" "scenario E9 is not in the AUTO list of evals/run-evals.sh"
+GR=""
 
 echo "AC1 the help text"
 RC=0; OUT="$(bash "$GATE" --help 2>&1)" || RC=$?

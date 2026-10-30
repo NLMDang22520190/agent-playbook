@@ -10,11 +10,22 @@ RGF_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-custome
 RGF_W="$(mk_tmp)"
 mkdir -p "$RGF_W/home" "$RGF_W/tmp"
 rgf_git() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false -c core.autocrlf=false "$@"; }
-# rgf_prepare REPO: tools, task dirs and fake runners (AUTO="E1 E2 E3"); nothing is committed
+# rgf_gate_scen FILE LIST (v0.32.0 slice S6, AC7''): the fixture's copy of tools/release-gate.sh gets GATE_SCENARIOS="LIST", a subset of the
+# fixture's fake AUTO. The line is replaced when the script has one, else inserted before the DEFAULT_TASKS line (a no-op for a script that
+# does not read it yet, so the same fixture serves the script before and after the gate gains the line). The file keeps its mode.
+rgf_gate_scen() {
+  local f="$1" l="$2" t
+  t="$(mktemp)" || return 1
+  if grep -q '^GATE_SCENARIOS=' "$f"; then sed "s/^GATE_SCENARIOS=.*/GATE_SCENARIOS=\"$l\"/" "$f" > "$t"
+  else awk -v l="$l" '/^DEFAULT_TASKS=/ && !d { print "GATE_SCENARIOS=\"" l "\""; d = 1 } { print }' "$f" > "$t"; fi
+  cat "$t" > "$f"; rm -f "$t"
+}
+# rgf_prepare REPO: tools, task dirs and fake runners (AUTO="E1 E2 E3", GATE_SCENARIOS="E1 E2 E3"); nothing is committed
 rgf_prepare() {
   local r="$1" t
   mkdir -p "$r/tools" "$r/evals/tasks"
   cp -p "$PB_ROOT/tools/release-gate.sh" "$r/tools/release-gate.sh"
+  rgf_gate_scen "$r/tools/release-gate.sh" "E1 E2 E3"
   cp -p "$PB_ROOT/tools/eval-delta.sh" "$r/tools/eval-delta.sh"
   for t in $(printf '%s' "$RGF_TASKS" | tr ',' ' '); do mkdir -p "$r/evals/tasks/$t"; printf 'x\n' > "$r/evals/tasks/$t/prompt.md"; done
   printf '#!/usr/bin/env bash\nAUTO="E1 E2 E3"\necho "fixture runner called: $0 $*" >&2\nexit 99\n' > "$r/evals/run-evals.sh"
