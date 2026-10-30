@@ -215,7 +215,7 @@ for (const d of ls(b).filter(n => /^gate-/.test(n))) for (const n of ls(b + "/" 
     if ! "${G[@]}" cat-file -e "$c^{commit}" 2>/dev/null; then R="gate commit $c is not in this repository"$'\n'
     else
       "${G[@]}" merge-base --is-ancestor "$c" "$RV" || R="gate commit $C12 is neither REV nor an ancestor of it"$'\n'
-      X="$("${G[@]}" diff --name-only "$c" "$RV" | grep -v '^evals/results/' | head -n 1)"
+      X="$("${G[@]}" diff --no-renames --name-only "$c" "$RV" | grep -v '^evals/results/' | head -n 1)"
       [ -z "$X" ] || R="${R}changes outside evals/results since $C12: $X"$'\n'
       AUTO="$("${G[@]}" show "$c:evals/run-evals.sh" 2>/dev/null | sed -n 's/^AUTO="\(.*\)"$/\1/p' | head -n 1)"
       DEFAULT_TASKS="$("${G[@]}" show "$c:tools/release-gate.sh" 2>/dev/null | sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' | head -n 1)"
@@ -292,7 +292,7 @@ for (const n of fs.readdirSync(e.PG_OD)) {
   const f = path.join(e.PG_OD, n);
   let s = fs.readFileSync(f, "utf8"), o = s;
   for (const [from, to] of pairs)
-    s = s.replace(new RegExp(esc(from) + "(\\\\\\\\|[\\\\/])?", "g"), (m, sep) => (to === "." ? (sep ? "" : ".") : to + (sep ? "/" : "")));
+    s = s.replace(new RegExp(esc(from) + "(?:(\\\\\\\\|[\\\\/])|(?=$|[\"\\x27\\s)]))", "g"), (m, sep) => (to === "." ? (sep ? "" : ".") : to + (sep ? "/" : "")));
   if (s !== o) fs.writeFileSync(f, s);
 }' || die 3 "node failed while rewriting paths"
 }

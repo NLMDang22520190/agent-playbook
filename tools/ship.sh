@@ -108,8 +108,9 @@ main() {
   fi
 
   # pre-merge check (OPEN PR): the head contains origin/main and the release gate passed for that exact commit
+  head=""
   pre_merge_check() {
-    local head gout
+    local gout
     head="$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" || fail "cannot read PR #$pr head"
     git fetch -q origin main || fail "cannot fetch origin main"
     git fetch -q origin "refs/pull/$pr/head" 2>/dev/null || git fetch -q origin "$(gh pr view "$pr" --json headRefName --jq .headRefName)" 2>/dev/null ||
@@ -135,7 +136,7 @@ main() {
   elif [ "$state" = OPEN ] && [ "$mstate" != CLEAN ] && [ "$auto" = 1 ]; then
     pre_merge_check
     # checks still running: let GitHub merge when they pass (auto-merge must be allowed on the repo)
-    gh pr merge "$pr" --auto --merge --delete-branch || fail "gh pr merge $pr --auto failed"
+    gh pr merge "$pr" --auto --merge --delete-branch --match-head-commit "$head" || fail "gh pr merge $pr --auto failed"
     echo "auto-merge enabled for PR #$pr: GitHub will merge when the checks pass; then run tools/ship.sh $pr $tag again to release"
     exit 0
   elif [ "$state" != OPEN ] || [ "$mstate" != CLEAN ]; then
@@ -146,7 +147,7 @@ main() {
     pre_merge_check
     ask "merge PR #$pr?" || fail "not merged (answer was not yes)"
     step "merge PR #$pr"
-    gh pr merge "$pr" --merge --delete-branch || fail "gh pr merge $pr failed"
+    gh pr merge "$pr" --merge --delete-branch --match-head-commit "$head" || fail "gh pr merge $pr failed"
   fi
 
   step "update main"
