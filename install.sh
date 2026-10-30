@@ -12,7 +12,7 @@ BEGIN_PREFIX='<!-- BEGIN agent-playbook'
 END_LINE='<!-- END agent-playbook -->'
 MARKER='.playbook-managed'
 
-CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0
+CMD=""; H="${HOME:-}"; HARNESS=""; COPY=0; DRY=0; FORCE=0; YES=0; TO=""; CHECK=0; ALLOW_UNSIGNED=0; HOOKS_FLAG=""
 # Every successful install is recorded here so `update` can refresh all targets
 # (WSL home, Windows home in copy mode, ...). Tests point it elsewhere.
 REGISTRY="${PLAYBOOK_REGISTRY:-$REPO/.install-targets}"
@@ -45,6 +45,10 @@ Options
   --yes            do not ask for confirmation (required when stdin is not a terminal)
   --to TAG         update: release to check out (rollback: --to v0.1.0)
   --check          update: only report whether a newer release exists
+  --no-hooks       install: do not install the Claude Code hooks; writes hooks_optout=yes to
+                   <home>/.agents/playbook.conf, so update keeps the choice (PB_HOOKS=off skips them
+                   for one run and persists nothing)
+  --hooks          install: install the Claude Code hooks (the default) and clear hooks_optout
   --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
                    checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
                    an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
@@ -88,6 +92,8 @@ while [ $# -gt 0 ]; do
     --to) [ $# -ge 2 ] || die "--to needs a tag" 2; TO="$2"; shift ;;
     --check) CHECK=1 ;;
     --allow-unsigned) ALLOW_UNSIGNED=1 ;;
+    --no-hooks) HOOKS_FLAG=off ;;
+    --hooks) HOOKS_FLAG=on ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" 2 ;;
   esac
@@ -411,6 +417,7 @@ cmd_install() {
   if want codex && [ -s "$H/.codex/AGENTS.override.md" ]; then
     warn "$H/.codex/AGENTS.override.md is non-empty: Codex reads it INSTEAD of AGENTS.md, so the always-on block will not load until you move the block there or remove the override."
   fi
+  if want claude; then install_hooks; fi
   registry_add "$H" "$HARNESS" "$([ "$COPY" -eq 1 ] && echo copy || echo link)"
   say "done. Start a NEW session in your harness (skills are discovered at startup), then say: set up the playbook"
 }
@@ -459,7 +466,51 @@ uninstall_hooks() {
   warn "hooks: the agent-playbook hooks in $s were not removed (the merge needs node). Remove by hand every handler whose command contains '# agent-playbook:'"
 }
 
-# doctor_hooks: one line on the opt-in Claude Code hooks, from claude-hooks.sh status (grep only)
+# conf_value KEY: last value of KEY in $H/.agents/playbook.conf (the --home dir, never $HOME unless they are the same)
+conf_value() {
+  local f="$H/.agents/playbook.conf" line v=""
+  [ -f "$f" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in "$1="*) v="${line#"$1="}" ;; esac
+  done < "$f"
+  printf '%s' "$v"
+}
+
+# install_hooks: the Claude Code hooks are installed by default (claude-hooks.sh install --home H). Skipped by --no-hooks (which
+# writes hooks_optout=yes), by PB_HOOKS=off (this run only) and by hooks_optout=yes in H's conf; --hooks installs and writes
+# hooks_optout=no. A legacy `hooks off` is not a choice: it earns one line when this run added the handlers (D8, N5).
+install_hooks() {
+  local skip=0 why="" out before="" legacy=""
+  if [ "$HOOKS_FLAG" = off ]; then skip=1; why="--no-hooks"
+  elif [ "$HOOKS_FLAG" != on ]; then
+    if [ "${PB_HOOKS:-}" = off ]; then skip=1; why="PB_HOOKS=off"
+    elif [ "$(conf_value hooks_optout)" = yes ]; then skip=1; why="hooks_optout yes"; fi
+  fi
+  if [ "$DRY" -eq 1 ]; then
+    if [ "$skip" -eq 1 ]; then say "  would: skip the Claude Code hooks ($why)"; else say "  would: install the Claude Code hooks (scripts/claude-hooks.sh install)"; fi
+    [ "$HOOKS_FLAG" = off ] && say "  would: set hooks_optout yes in $H/.agents/playbook.conf"
+    [ "$HOOKS_FLAG" = on ] && say "  would: set hooks_optout no in $H/.agents/playbook.conf"
+    return 0
+  fi
+  if [ "$HOOKS_FLAG" = off ]; then
+    PLAYBOOK_HOME="$H" bash "$REPO/scripts/conf.sh" set hooks_optout yes --global >/dev/null || warn "hooks: could not write hooks_optout to $H/.agents/playbook.conf"
+  elif [ "$HOOKS_FLAG" = on ]; then
+    PLAYBOOK_HOME="$H" bash "$REPO/scripts/conf.sh" set hooks_optout no --global >/dev/null || warn "hooks: could not write hooks_optout to $H/.agents/playbook.conf"
+  fi
+  if [ "$skip" -eq 1 ]; then say "  hooks: not installed ($why)"; return 0; fi
+  before="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null | sed -n 's/^guard: //p')"
+  [ "$(conf_value hooks)" = off ] && legacy=1
+  if out="$(bash "$REPO/scripts/claude-hooks.sh" install --home "$H")"; then
+    say "  hooks: $out"
+    if [ "$before" != installed ] && [ -n "$legacy" ]; then
+      say "hooks: turned on (they were off by the old default; turn off: install.sh install --no-hooks)"
+    fi
+  else
+    warn "hooks: not installed (the merge needs node; add the entries printed above by hand, or run scripts/claude-hooks.sh install once node is available)"
+  fi
+}
+
+# doctor_hooks: one line on the Claude Code hooks (on by default since v0.33), from claude-hooks.sh status (grep only)
 doctor_hooks() {
   local out ok="" broken="" miss="" dis=0 n st
   out="$(bash "$REPO/scripts/claude-hooks.sh" status --home "$H" 2>/dev/null)"
@@ -475,7 +526,8 @@ doctor_hooks() {
   if [ -n "$broken" ]; then
     problem "hooks: $broken point at a missing script (run scripts/claude-hooks.sh install or uninstall)"
   elif [ -z "$ok" ]; then
-    say 'INFO  hooks: not installed (opt-in: say "set up the playbook")'
+    if [ "$(conf_value hooks_optout)" = yes ]; then say "INFO  hooks: off (hooks_optout yes; turn on: install.sh install --hooks)"
+    else say "WARN  hooks: not installed (run install.sh install, or install.sh install --no-hooks to keep them off)"; fi
   elif [ "$dis" -eq 1 ]; then
     say "INFO  hooks: installed but disabled (disableAllHooks)"
   elif [ -z "$miss" ]; then

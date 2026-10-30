@@ -687,7 +687,7 @@ pbh_variant_begin() {
   : > "$PBV_L/installing" || return 3
   reg="$(mktemp "${TMPDIR:-/tmp}/pb-evreg.XXXXXX")" || { printf 'variant: cannot create a temp registry\n' >&2; return 3; }
   PBV_REGTMP="$reg"
-  PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" install --home "$h" --copy --harness "$har" --yes </dev/null >&2 ||
+  PB_HOOKS=off PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" install --home "$h" --copy --harness "$har" --yes </dev/null >&2 ||
     { pbh_variant_bk_record "$PBV_L" "$h"; printf 'variant: install.sh install failed for %s\n' "$dir" >&2; return 3; }
   PLAYBOOK_REGISTRY="$reg" bash "$dir/install.sh" doctor --home "$h" --harness "$har" </dev/null >&2 ||
     { pbh_variant_bk_record "$PBV_L" "$h"; printf 'variant: install.sh doctor failed for %s\n' "$dir" >&2; return 3; }
