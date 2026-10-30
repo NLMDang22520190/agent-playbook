@@ -7,6 +7,9 @@
 # Exit: 0 ok, 1 a non-zero failed count in the log, no summary line, or (--check) a mismatch.
 # Everything runs in a sandbox copy of the repository layout; the real README.md is never touched.
 . "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/release-gate-fixture.sh"
+# the skip count is the whole file (passed+failed+skipped of a real run)
+command -v node >/dev/null 2>&1 || { t_skip 56 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
 TOOL="$PB_ROOT/tools/readme-count.sh"
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 
@@ -140,6 +143,7 @@ mkdir -p "$C/tools" "$C/tests" "$C/scripts"
 cp "$PB_ROOT/tools/check-release.sh" "$PB_ROOT/tools/release.sh" "$C/tools/"
 [ -f "$TOOL" ] && cp "$TOOL" "$C/tools/readme-count.sh"
 cp "$PB_ROOT/scripts/lib.sh" "$C/scripts/"
+rgf_prepare "$C"   # v0.32.0 AC7: release.sh checks the release gate; the fixture ships the gate tool and gets a committed passing gate (rgf_seal below)
 printf '#!/usr/bin/env bash\necho "test-a.sh: 5 passed, 0 failed"\necho "test-b.sh: 3 passed, 0 failed, 2 skipped"\nprintf "test-c.sh: 1 passed, 0 failed"\nexit 0\n' > "$C/tests/run-all.sh"
 printf '1.2.3\n' > "$C/VERSION"
 printf '# Changelog\n\n## 1.2.3 - 2026-01-01\n- thing\n' > "$C/CHANGELOG.md"
@@ -149,6 +153,7 @@ run_in "$C" bash tools/readme-count.sh "$W/suite.log"
 assert_rc "AC6.1 release sandbox: readme-count.sh on the suite log: exit 0" 0
 assert_contains "AC6.1 release sandbox: total 11" "$OUT" "README: 11 tests (passed + skipped)"
 ( cd "$C" && git init -q && git checkout -q -b main && G add -A && G commit -qm init && git remote add origin "$O" && git push -q origin main ) || echo "fixture setup failed"
+rgf_seal "$C" && ( cd "$C" && git push -q origin main ) || echo "fixture gate failed"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC6.1 release.sh --dry-run accepts the README that readme-count.sh wrote (same total): exit 0" 0
 run_in "$C" bash tools/readme-count.sh --check "$W/suite.log"

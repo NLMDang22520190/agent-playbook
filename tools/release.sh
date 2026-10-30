@@ -2,15 +2,19 @@
 # Cut a release of this repository (maintainers only): verify, run the suite, tag, push the tag.
 #   tools/release.sh vX.Y.Z [--dry-run]
 # Refuses unless tools/check-release.sh passes, the work tree is clean (untracked files count),
-# HEAD is branch main and equals origin/main. Then runs tests/run-all.sh. With --dry-run it prints
+# HEAD is branch main and equals origin/main, and the release gate passes (`tools/release-gate.sh --check HEAD`: exit 0 goes on,
+# 1 refuses with "release refused: release gate: <its first output line>", any other code exits 3; its output is printed, so
+# --dry-run shows the gate outcome and exits 1 when it fails). The gate is checked before the suite and before any tag.
+# Then runs tests/run-all.sh. With --dry-run it prints
 # the steps it would take (would tag, would push) and changes nothing; otherwise it creates the
 # tag and pushes it (CI then creates the release). Repo root = the parent of this script's directory.
 # Signing: with a non-empty effective user.signingkey the tag is a signed annotated tag (git tag -s,
 # format from gpg.format); if signing fails it exits 3 with no tag and nothing pushed, never an
 # unsigned fallback. Without a key the tag is lightweight and one line says it is unsigned.
 # It only reads the signing settings and never generates keys. See docs/development.md, "Signing release tags".
-# Exit codes: 0 ok, 1 refused (check, tree, branch, origin or suite), 2 usage (not vX.Y.Z, extra
-#             or unknown arguments), 3 environment (not a git repo, no origin, git failure, signing failed).
+# Exit codes: 0 ok, 1 refused (check, tree, branch, origin, gate or suite), 2 usage (not vX.Y.Z, extra
+#             or unknown arguments), 3 environment (not a git repo, no origin, git failure, signing failed, release gate exit
+#             code other than 0 or 1).
 set -u
 cd "$(dirname "$0")/.." || exit 3
 
@@ -41,6 +45,13 @@ remote_main="$(git ls-remote origin refs/heads/main 2>/dev/null | cut -f1)"
 [ -n "$remote_main" ] || { echo "cannot read main from origin" >&2; exit 3; }
 [ "$(git rev-parse HEAD)" = "$remote_main" ] || refuse "main is not equal to origin/main"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null && refuse "tag $tag already exists"
+
+gate_out="$(bash tools/release-gate.sh --check HEAD 2>&1)"; gate_rc=$?
+case "$gate_rc" in
+  0) printf '%s\n' "$gate_out" ;;
+  1) refuse "release gate: $(printf '%s\n' "$gate_out" | head -n 1)" ;;
+  *) echo "release gate exited $gate_rc: $(printf '%s\n' "$gate_out" | head -n 1)" >&2; exit 3 ;;
+esac
 
 suite_log="$(mktemp "${TMPDIR:-/tmp}/pbrelease.XXXXXX")" || { echo "mktemp failed" >&2; exit 3; }
 trap 'rm -f "$suite_log"' EXIT

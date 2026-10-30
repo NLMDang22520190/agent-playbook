@@ -1,0 +1,2332 @@
+{
+  "schema": "pb-evals/1",
+  "playbook_commit": "7424dd8e896857905d462a913087a3e895c52e7f",
+  "playbook_version": "0.32.0",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "arms": [
+    "with",
+    "without"
+  ],
+  "repeat": 5,
+  "max_cost": 300,
+  "interactive": false,
+  "started": "2026-10-30T08:22:32Z",
+  "workroot": "<tmp>/pb-outcome.j1hY9h",
+  "variant": {
+    "tree": "<tmp>/pbgate.i9bums/variant",
+    "version": "0.32.0",
+    "sha": "7424dd8e896857905d462a913087a3e895c52e7f",
+    "end_check": "ok"
+  },
+  "conf_models": {
+    "model_tester_reasoning_effort": "high",
+    "model_implementer_reasoning_effort": "high",
+    "model_reviewer_reasoning_effort": "high",
+    "model_tester_claude": "sonnet",
+    "model_implementer_claude": "sonnet",
+    "model_reviewer_claude": "opus",
+    "model_tester_opencode": "session",
+    "model_implementer_opencode": "session",
+    "model_reviewer_opencode": "session",
+    "model_tester_codex": "gpt-6-luna",
+    "model_implementer_codex": "gpt-6-luna",
+    "model_reviewer_codex": "gpt-6.1-sol"
+  },
+  "runs": [
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "k": 1,
+      "label": "pattern-15-erase-account-ambiguous.with.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.18800960000000003,
+      "seconds": 59,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "k": 1,
+      "label": "pattern-15-erase-account-ambiguous.without.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.09456830000000001,
+      "seconds": 29,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "k": 2,
+      "label": "pattern-15-erase-account-ambiguous.with.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.1590262,
+      "seconds": 47,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "k": 2,
+      "label": "pattern-15-erase-account-ambiguous.without.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.08891080000000001,
+      "seconds": 27,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "k": 3,
+      "label": "pattern-15-erase-account-ambiguous.with.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.18867820000000002,
+      "seconds": 91,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "k": 3,
+      "label": "pattern-15-erase-account-ambiguous.without.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.09071240000000001,
+      "seconds": 29,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "k": 4,
+      "label": "pattern-15-erase-account-ambiguous.with.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.17231049999999998,
+      "seconds": 55,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "k": 4,
+      "label": "pattern-15-erase-account-ambiguous.without.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.0917938,
+      "seconds": 28,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "k": 5,
+      "label": "pattern-15-erase-account-ambiguous.with.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.1642255,
+      "seconds": 49,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "k": 5,
+      "label": "pattern-15-erase-account-ambiguous.without.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "0f1830d24795da34685111f6e355edfdea6d5074",
+      "prompt_sha": "000d88bb6049c759ca486a147cb7c995a0a8a2ce",
+      "cost_usd": 0.09194150000000001,
+      "seconds": 31,
+      "notes": [
+        "language=node",
+        "source=pattern:erase-account-ambiguous",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/login.p2p.test.js",
+          "key": "PASS_TO_PASS tests/login.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "k": 1,
+      "label": "pattern-24-merge-duplicate-customers.with.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.1840041,
+      "seconds": 51,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "k": 1,
+      "label": "pattern-24-merge-duplicate-customers.without.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.1123598,
+      "seconds": 32,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "k": 2,
+      "label": "pattern-24-merge-duplicate-customers.with.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.15227100000000002,
+      "seconds": 40,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "k": 2,
+      "label": "pattern-24-merge-duplicate-customers.without.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.0986618,
+      "seconds": 28,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "k": 3,
+      "label": "pattern-24-merge-duplicate-customers.with.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.1616214,
+      "seconds": 48,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "k": 3,
+      "label": "pattern-24-merge-duplicate-customers.without.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.1237541,
+      "seconds": 46,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "k": 4,
+      "label": "pattern-24-merge-duplicate-customers.with.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.17685769999999998,
+      "seconds": 53,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "k": 4,
+      "label": "pattern-24-merge-duplicate-customers.without.4",
+      "status": "error",
+      "error": "adapter exited 1",
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.0677622,
+      "seconds": 504,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [],
+      "extra_files_changed": null,
+      "extra_files": null,
+      "tests_weakened": null,
+      "tests_weakened_files": null
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "k": 5,
+      "label": "pattern-24-merge-duplicate-customers.with.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.14714480000000002,
+      "seconds": 197,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "k": 5,
+      "label": "pattern-24-merge-duplicate-customers.without.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "fec4691a293e3f16d9a7f59a876b016c8c10d6d1",
+      "prompt_sha": "a05ef4a2936a7656d11d00b5b72ef45e2f8c3730",
+      "cost_usd": 0.11020539999999998,
+      "seconds": 36,
+      "notes": [
+        "language=python3",
+        "source=pattern:merge-duplicate-customers",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/test_customers_basic.py",
+          "key": "PASS_TO_PASS tests/test_customers_basic.py",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "k": 1,
+      "label": "pattern-26-consistent-price-rounding.with.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.1735684,
+      "seconds": 49,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "k": 1,
+      "label": "pattern-26-consistent-price-rounding.without.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.09496300000000002,
+      "seconds": 29,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "k": 2,
+      "label": "pattern-26-consistent-price-rounding.with.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.16721830000000001,
+      "seconds": 58,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "k": 2,
+      "label": "pattern-26-consistent-price-rounding.without.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.0972262,
+      "seconds": 32,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "k": 3,
+      "label": "pattern-26-consistent-price-rounding.with.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.2028721,
+      "seconds": 70,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "k": 3,
+      "label": "pattern-26-consistent-price-rounding.without.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.09478840000000001,
+      "seconds": 28,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "k": 4,
+      "label": "pattern-26-consistent-price-rounding.with.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.44179209999999997,
+      "seconds": 235,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "k": 4,
+      "label": "pattern-26-consistent-price-rounding.without.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.09388629999999999,
+      "seconds": 36,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "FAIL"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "k": 5,
+      "label": "pattern-26-consistent-price-rounding.with.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.14833480000000002,
+      "seconds": 63,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "k": 5,
+      "label": "pattern-26-consistent-price-rounding.without.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "71d8f5881cfde713ba155795d32249b149501f11",
+      "prompt_sha": "133fe91119c3fe211a607a063e5d08c519723651",
+      "cost_usd": 0.09489159999999999,
+      "seconds": 615,
+      "notes": [
+        "language=node",
+        "source=pattern:consistent-price-rounding",
+        "expected_weight=Full",
+        "tasks_dir=evals/tasks"
+      ],
+      "dropped_user_lines": 0,
+      "checks": [
+        {
+          "name": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests pass",
+          "key": "hidden tests pass",
+          "result": "PASS"
+        },
+        {
+          "name": "hidden tests not seen by the agent",
+          "key": "hidden tests not seen by the agent",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        },
+        {
+          "name": "without arm: no playbook file read and no playbook Skill call",
+          "key": "without arm: no playbook file read and no playbook Skill call",
+          "result": "PASS"
+        }
+      ],
+      "extra_files_changed": 0,
+      "extra_files": [],
+      "tests_weakened": 0,
+      "tests_weakened_files": []
+    }
+  ],
+  "summary": [
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "PASS_TO_PASS tests/login.p2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "hidden tests pass",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "hidden tests not seen by the agent",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "with",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.17445000000000002,
+      "cost_sd": 0.013539903012392678,
+      "seconds_mean": 60.2,
+      "seconds_sd": 17.866169147301836
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "PASS_TO_PASS tests/login.p2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "hidden tests pass",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "hidden tests not seen by the agent",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": "without arm: no playbook file read and no playbook Skill call",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "arm": "without",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.09158536,
+      "cost_sd": 0.002060554799805138,
+      "seconds_mean": 28.8,
+      "seconds_sd": 1.4832396974191326
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+      "n": 5,
+      "passes": 3,
+      "pass_at_1": 0.6,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "PASS_TO_PASS tests/test_customers_basic.py",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "hidden tests pass",
+      "n": 5,
+      "passes": 3,
+      "pass_at_1": 0.6,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "hidden tests not seen by the agent",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "with",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.16437980000000002,
+      "cost_sd": 0.015748715597628894,
+      "seconds_mean": 77.8,
+      "seconds_sd": 66.81841063659027
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+      "n": 4,
+      "passes": 0,
+      "pass_at_1": 0,
+      "pass_all": false,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+      "n": 4,
+      "passes": 4,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "PASS_TO_PASS tests/test_customers_basic.py",
+      "n": 4,
+      "passes": 4,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "hidden tests pass",
+      "n": 4,
+      "passes": 0,
+      "pass_at_1": 0,
+      "pass_all": false,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "hidden tests not seen by the agent",
+      "n": 4,
+      "passes": 4,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "nothing written outside the workdir",
+      "n": 4,
+      "passes": 4,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": "without arm: no playbook file read and no playbook Skill call",
+      "n": 4,
+      "passes": 4,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": false,
+      "errors": 1,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "arm": "without",
+      "key": null,
+      "errors": 1,
+      "skipped": 0,
+      "cost_mean": 0.111245275,
+      "cost_sd": 0.010281667373655894,
+      "seconds_mean": 35.5,
+      "seconds_sd": 7.724420150837645
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "hidden tests pass",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "hidden tests not seen by the agent",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "with",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.22675714,
+      "cost_sd": 0.12179337841238741,
+      "seconds_mean": 95,
+      "seconds_sd": 78.63523383318702
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+      "n": 5,
+      "passes": 2,
+      "pass_at_1": 0.4,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+      "n": 5,
+      "passes": 2,
+      "pass_at_1": 0.4,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "hidden tests pass",
+      "n": 5,
+      "passes": 2,
+      "pass_at_1": 0.4,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "hidden tests not seen by the agent",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": "without arm: no playbook file read and no playbook Skill call",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "arm": "without",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.0951511,
+      "cost_sd": 0.001238954418047735,
+      "seconds_mean": 148,
+      "seconds_sd": 261.0794898110535
+    }
+  ]
+}

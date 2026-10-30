@@ -2361,4 +2361,93 @@ C2DEF="$(printf '%s\n' "$C2DOCS" | grep -i 'sonnet' | grep -i 'reviewer' | grep 
 if [ -n "$C2DEF" ]; then t_ok "AC8 a doc sentence says the claude reviewer defaults to sonnet"; else t_bad "AC8 a doc sentence says the claude reviewer defaults to sonnet" "no sentence in README.md or docs/*.md with default + sonnet + reviewer + claude"; fi
 if printf '%s\n' "$C2DOCS" | grep -qE 'model_reviewer(_claude)?=session'; then t_ok "AC8 the docs name model_reviewer=session to undo the default"; else t_bad "AC8 the docs name model_reviewer=session to undo the default" "no model_reviewer=session in README.md or docs/*.md"; fi
 
+echo "v0.32.0 S6 AC16/AC16'/AC16'': the gate set (GATE_SCENARIOS) is in AUTO and follows the Scenarios table of docs/delta-audit.md"
+S6GATE="$PB_ROOT/tools/release-gate.sh"
+S6RUN="$PB_ROOT/evals/run-evals.sh"
+S6AUDIT="$PB_ROOT/docs/delta-audit.md"
+# s6_gate FILE: the ids of the top-level GATE_SCENARIOS="..." line of a gate script, one per line, sorted (empty without the line)
+s6_gate() { sed -n 's/^GATE_SCENARIOS="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
+# s6_auto FILE: the ids of the AUTO="..." line of run-evals.sh, one per line, sorted
+s6_auto() { sed -n 's/^AUTO="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
+# s6_rows FILE: the scenario rows of the table under "## Scenarios" whose first cell matches E[0-9]+ and whose 5th cell (Verdict),
+# trimmed, is exactly KEEP, "KEEP (k=2)" or INCONCLUSIVE (exact match: "ZERO-1 (MIXED at k=2)" or "KEEP-ish" do not match); sorted ids
+s6_rows() {
+  awk -F'|' '
+    /^## / { ins = ($0 ~ /^## Scenarios[ \t]*$/); next }
+    ins && /^\|/ {
+      c = $2; v = $6; gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (c ~ /^E[0-9]+$/ && (v == "KEEP" || v == "KEEP (k=2)" || v == "INCONCLUSIVE")) print c
+    }' "$1" 2>/dev/null | LC_ALL=C sort -u
+}
+# s6_in_auto GATEFILE RUNFILE: prints the gate ids that are not in AUTO; exit 1 when there are some or the gate has no GATE_SCENARIOS line
+s6_in_auto() {
+  local g a miss
+  g="$(s6_gate "$1")"; a="$(s6_auto "$2")"
+  [ -n "$g" ] || { echo "no GATE_SCENARIOS line"; return 1; }
+  [ -n "$a" ] || { echo "no AUTO line"; return 1; }
+  miss="$(printf '%s\n' "$g" | LC_ALL=C comm -23 - <(printf '%s\n' "$a"))"
+  [ -z "$miss" ] || { printf '%s\n' "$miss" | tr '\n' ' '; return 1; }
+  return 0
+}
+# s6_same GATEFILE AUDITFILE: prints the difference between the gate ids and the audit rows; exit 1 when they differ or both are empty
+s6_same() {
+  local g r d
+  g="$(s6_gate "$1")"; r="$(s6_rows "$2")"
+  [ -n "$g" ] || { echo "no GATE_SCENARIOS line"; return 1; }
+  [ -n "$r" ] || { echo "no KEEP/INCONCLUSIVE scenario rows in the audit"; return 1; }
+  d="$(diff <(printf '%s\n' "$g") <(printf '%s\n' "$r") | grep '^[<>]' | sed 's/^< /gate-only /; s/^> /audit-only /' | tr '\n' ' ')"
+  [ -z "$d" ] || { printf '%s' "$d"; return 1; }
+  return 0
+}
+
+S6N="$(grep -c '^GATE_SCENARIOS="' "$S6GATE" 2>/dev/null || true)"
+if [ "$S6N" = 1 ]; then t_ok "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line"; else t_bad "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line" "found $S6N"; fi
+S6M="$(s6_in_auto "$S6GATE" "$S6RUN")" && t_ok "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" || t_bad "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" "$S6M"
+S6D="$(s6_same "$S6GATE" "$S6AUDIT")" && t_ok "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" || t_bad "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" "$S6D"
+
+# the checks themselves, on synthetic files (these pass before and after the gate gains its line): they must catch drift
+S6X="$(mk_tmp)"
+printf 'GATE_SCENARIOS="E2 E3 E5"\n' > "$S6X/gate.sh"
+printf 'AUTO="E1 E2 E3 E5 E7"\n' > "$S6X/run.sh"
+cat > "$S6X/audit.md" <<'S6EOF'
+# Audit
+
+## Verdicts
+
+| Scenario | Title | Check | Delta | Verdict | Action |
+|---|---|---|---|---|---|
+| E9 | Outside the Scenarios section | x | y | KEEP | stays |
+
+## Scenarios
+
+| Scenario | Title | Check with Δ != 0 | Δ per run | Verdict | Action |
+|---|---|---|---|---|---|
+| E1 | one | c | d | PROCESS-ONLY | labels |
+| E2 | two | c | d | KEEP | stays |
+| E3 | three | c | d | KEEP (k=2) | stays |
+| E4 | four | c | d | ZERO-1 (MIXED at k=2) | stays |
+| E5 | five | c | d | INCONCLUSIVE | stays |
+| E6 | six | c | d | KEEP-ish | a prefix is not a match |
+| ZERO-1 | not a scenario id | c | d | KEEP | stays |
+| E7 | seven | c | d | UNMEASURED | stays |
+
+## Rules and references
+
+| E8 | after the section | c | d | KEEP | stays |
+S6EOF
+assert_eq "AC16'' the audit parser takes the Scenarios table only, exact verdicts only (KEEP, KEEP (k=2), INCONCLUSIVE)" "E2 E3 E5" "$(s6_rows "$S6X/audit.md" | tr '\n' ' ' | sed 's/ $//')"
+if s6_same "$S6X/gate.sh" "$S6X/audit.md" >/dev/null; then t_ok "AC16' the equality check passes on a matching gate line and audit"; else t_bad "AC16' the equality check passes on a matching gate line and audit" "$(s6_same "$S6X/gate.sh" "$S6X/audit.md")"; fi
+sed 's/| E2 | two | c | d | KEEP |/| E2 | two | c | d | ZERO |/' "$S6X/audit.md" > "$S6X/audit-drift.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift.md" >/dev/null; then t_bad "AC16' drift: a row whose verdict changed to ZERO is caught" "the check still passed"; else t_ok "AC16' drift: a row whose verdict changed to ZERO is caught"; fi
+sed 's/| E4 | four | c | d | ZERO-1 (MIXED at k=2) |/| E4 | four | c | d | KEEP |/' "$S6X/audit.md" > "$S6X/audit-drift2.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift2.md" >/dev/null; then t_bad "AC16' drift: a row that became KEEP but is not in the gate line is caught" "the check still passed"; else t_ok "AC16' drift: a row that became KEEP but is not in the gate line is caught"; fi
+printf 'GATE_SCENARIOS="E2 E3"\n' > "$S6X/gate-short.sh"
+if s6_same "$S6X/gate-short.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' drift: a gate line that lost E5 is caught" "the check still passed"; else t_ok "AC16' drift: a gate line that lost E5 is caught"; fi
+printf '# no gate line\nDEFAULT_TASKS="x"\n' > "$S6X/gate-none.sh"
+if s6_same "$S6X/gate-none.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' a gate script without the line fails the equality check" "the check still passed"; else t_ok "AC16' a gate script without the line fails the equality check"; fi
+if s6_in_auto "$S6X/gate.sh" "$S6X/run.sh" >/dev/null; then t_ok "AC16 the AUTO check passes when every gate id is in AUTO"; else t_bad "AC16 the AUTO check passes when every gate id is in AUTO" "$(s6_in_auto "$S6X/gate.sh" "$S6X/run.sh")"; fi
+printf 'AUTO="E1 E2 E3 E7"\n' > "$S6X/run-short.sh"
+if s6_in_auto "$S6X/gate.sh" "$S6X/run-short.sh" >/dev/null; then t_bad "AC16 a gate id (E5) missing from AUTO is caught" "the check still passed"; else t_ok "AC16 a gate id (E5) missing from AUTO is caught"; fi
+if s6_in_auto "$S6X/gate-none.sh" "$S6X/run.sh" >/dev/null; then t_bad "AC16 a gate script without the line fails the AUTO check" "the check still passed"; else t_ok "AC16 a gate script without the line fails the AUTO check"; fi
+
 t_summary

@@ -17,7 +17,7 @@ cat > "$BIN/gh" <<'EOF'
 # fake gh. Env: FAKE_LOG, FAKE_GH_STATE, FAKE_GH_MERGE_STATE, FAKE_GH_MERGE_COMMIT (sha of the PR's merge commit, empty = none),
 # FAKE_GH_FAIL (words: prview merge runlist runwatch relview shardlist shardview shardlog),
 # FAKE_SHARD_LOG (none = the job log has no suite timings),
-# FAKE_ORIGIN_WORK (clone of origin used to simulate the merge),
+# FAKE_ORIGIN_WORK (clone of origin used to simulate the merge), FAKE_ORIGIN_GIT (the bare origin: headRefOid is read from it),
 # FAKE_SHARD_LIST (empty|null: the main push run lookup finds nothing), FAKE_MAIN_RUN (its id, default 7777),
 # FAKE_SHARDS (comma list of "windows shard" job seconds, "running" = no finish time, "none" = no jobs, "bad" = not JSON).
 echo "gh $*" >> "$FAKE_LOG"
@@ -36,6 +36,9 @@ val() { # field -> value for the PR (kind=pr) or the run (kind=run)
     title) echo "fake pull request" ;;
     url) echo "https://example.invalid/pull/12" ;;
     headRefName) echo "feat/x" ;;
+    # v0.32.0 AC9: the PR head sha is the tip of origin's refs/pull/N/head, else of the head branch feat/x
+    headRefOid) git --git-dir="${FAKE_ORIGIN_GIT:-/nonexistent}" rev-parse -q --verify "refs/pull/${FAKE_PR:-12}/head^{commit}" 2>/dev/null ||
+                git --git-dir="${FAKE_ORIGIN_GIT:-/nonexistent}" rev-parse -q --verify "refs/heads/feat/x^{commit}" 2>/dev/null || echo "" ;;
     baseRefName) echo "main" ;;
     mergeable) echo "MERGEABLE" ;;
     databaseId) echo "${RUNID:-4242}" ;;
@@ -211,7 +214,17 @@ echo "ci-tree-tested.sh $*" >> "$FAKE_LOG"
 [ -n "${FAKE_TREE_RUN:-}" ] && echo "$FAKE_TREE_RUN"
 exit "${FAKE_TREE_RC:-0}"
 EOF
-chmod +x "$BIN/gh" "$W/release.stub" "$W/install.stub" "$W/ci.stub"
+# ---- stub tools/release-gate.sh (v0.32.0 AC9): logs its arguments; exit code $FAKE_GATE_RC (default 0); on a failure prints $FAKE_GATE_MSG ----
+cat > "$W/gate.stub" <<'EOF'
+#!/usr/bin/env bash
+echo "release-gate.sh $*" >> "$FAKE_LOG"
+if [ "${FAKE_GATE_RC:-0}" != 0 ]; then
+  echo "${FAKE_GATE_MSG:-gate stub: no passing result}"
+  echo "${FAKE_GATE_MSG:-gate stub: no passing result}" >&2
+fi
+exit "${FAKE_GATE_RC:-0}"
+EOF
+chmod +x "$BIN/gh" "$W/gate.stub" "$W/release.stub" "$W/install.stub" "$W/ci.stub"
 
 # ---- fake git front: real git, plus a faithful "git pull rewrites the running script in place" ----
 # git normally replaces a file by unlinking it and creating a new one, so a bash that already has the old
@@ -252,12 +265,14 @@ fx_build() { # DIR -> the fixture in DIR
   mkdir -p "$F/repo/tests"
   printf '# old weights, run 1\ntest-big.sh 50\n' > "$F/repo/tests/shard-weights"
   cp -p "$W/release.stub" "$F/repo/tools/release.sh"
+  cp -p "$W/gate.stub" "$F/repo/tools/release-gate.sh"
   cp -p "$W/install.stub" "$F/repo/install.sh"
   cp -p "$W/ci.stub" "$F/repo/tools/ci-tree-tested.sh"
   printf '1.2.3\n' > "$F/repo/VERSION"
   ( cd "$F/repo" && git symbolic-ref HEAD refs/heads/main && git add -A &&
     GITID commit -qm init && git push -q -u origin main 2>/dev/null &&
-    git switch -q -c feat/x ) || { echo "fixture setup failed"; exit 3; }
+    git switch -q -c feat/x &&
+    git push -q origin feat/x:refs/heads/feat/x feat/x:refs/pull/12/head 2>/dev/null ) || { echo "fixture setup failed"; exit 3; }
   git clone -q "$F/origin.git" "$F/work" 2>/dev/null
 }
 fx() {
@@ -270,7 +285,7 @@ fx() {
   git -C "$F/repo" remote set-url origin "$F/origin.git"
   git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
-  export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
+  export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_ORIGIN_GIT="$F/origin.git" FAKE_GATE_RC=0 FAKE_GATE_MSG="" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
   export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS= FAKE_SHARD_LOG= FAKE_TREE_RUN= FAKE_TREE_RC=0
   unset FAKE_SHARDS_7777 FAKE_SHARDS_5555 FAKE_SHARDS_9191
   export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
@@ -313,6 +328,27 @@ side_commit() {
   ( cd "$F/work" && git switch -q -c side && echo side > side.txt && git add -A && GITID commit -qm side &&
     git push -q origin side >/dev/null 2>&1 ) || { echo "fixture setup failed: side commit"; exit 3; }
   MC="$(git -C "$F/work" rev-parse HEAD)"
+}
+# v0.32.0 AC9 helpers
+# merge_call -> the logged gh pr merge call without a --match-head-commit <sha> pair (AC12 asserts that pair in test-ship-d.sh)
+merge_call() { grep '^gh pr merge' "$FAKE_LOG" | sed 's/ --match-head-commit [0-9a-fA-F]*//'; }
+gate_calls() { grep '^release-gate.sh' "$FAKE_LOG"; }
+pr_head() { git -C "$F/origin.git" rev-parse -q --verify "refs/pull/${FAKE_PR:-12}/head" 2>/dev/null || git -C "$F/origin.git" rev-parse refs/heads/feat/x; }
+# origin_advance -> origin's main moves on (a commit made through the work clone); the repo's origin/main is NOT refreshed
+origin_advance() {
+  ( cd "$F/work" && git pull -q --ff-only origin main >/dev/null 2>&1 &&
+    echo moved > main-moved.txt && git add -A && GITID commit -qm "main moved" &&
+    git push -q origin HEAD:main >/dev/null 2>&1 ) || { echo "fixture setup failed: origin_advance"; exit 3; }
+}
+# pr_on_new_main -> the PR head (origin refs/pull/N/head) is a commit ON TOP of origin's current main
+pr_on_new_main() {
+  ( cd "$F/work" && git fetch -q origin && git switch -q -C prb origin/main 2>/dev/null && echo prfile > pr-file.txt && git add -A && GITID commit -qm "pr commit" &&
+    git push -q -f origin "HEAD:refs/pull/${FAKE_PR:-12}/head" >/dev/null 2>&1 && git switch -q main ) || { echo "fixture setup failed: pr_on_new_main"; exit 3; }
+}
+# pr_ahead -> the PR head has one commit of its own on top of the init commit (main did not move)
+pr_ahead() {
+  ( cd "$F/repo" && echo prfile > pr-file.txt && git add -A && GITID commit -qm "pr commit" &&
+    git push -q -f origin "HEAD:refs/pull/${FAKE_PR:-12}/head" feat/x:refs/heads/feat/x >/dev/null 2>&1 ) || { echo "fixture setup failed: pr_ahead"; exit 3; }
 }
 origin_merges() { git -C "$F/origin.git" ls-tree -r --name-only main | grep -c '^merged-'; }
 shard_calls() { grep '^gh run list .*--branch main ' "$FAKE_LOG"; }

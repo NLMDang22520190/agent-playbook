@@ -65,6 +65,16 @@ run bash "$CHECK" "$REP/r1.md"
 assert_rc "new untracked file: exit 1" 1
 assert_contains "new untracked file: stale" "$OUT" "stale: unit"
 
+echo "stale: same-size edit whose stat matches the index cache"
+RC="$(mk_tmp)"; mk_repo "$RC"
+( cd "$RC" && git config core.trustctime false && git config core.checkStat minimal &&
+  touch -d "2020-01-01 00:00:00" src/app.js && git update-index --refresh >/dev/null )
+( cd "$RC" && bash "$PROOF" --label racy -- true > "$REP/racy.md" )
+( cd "$RC" && printf 'module.exports = 2;\n' > src/app.js && touch -d "2020-01-01 00:00:00" src/app.js )
+run_in "$RC" bash "$CHECK" "$REP/racy.md"
+assert_rc "same-size edit with unchanged mtime: exit 1" 1
+assert_contains "same-size edit with unchanged mtime: stale" "$OUT" "stale: racy"
+
 echo "missing"
 printf '### Evidence: old\n- command: `true`\n- exit: 0\n- git: abc1234\n' > "$REP/old.md"
 run bash "$CHECK" "$REP/old.md"

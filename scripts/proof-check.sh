@@ -23,9 +23,13 @@ tree_fp() (
   # Inside the git dir: git prints it in its own path syntax, so the temp index needs no conversion on Git Bash.
   tmp="$(mktemp "$gd/pbtree.XXXXXX" 2>/dev/null)" || tmp="$(mktemp "${TMPDIR:-/tmp}/pbtree.XXXXXX")" || exit 3
   tobj=""
-  trap 'rm -f "$tmp" "$tmp.lock"; [ -z "$tobj" ] || rm -rf "$tobj"' EXIT
-  if [ -f "$real" ]; then cp "$real" "$tmp" || exit 3; else rm -f "$tmp"; fi
+  trap 'rm -f "$tmp" "$tmp.lock" "$tmp.ent"; [ -z "$tobj" ] || rm -rf "$tobj"' EXIT
+  # Entries are rebuilt from the real index without their cached stat data (git ls-files -s | update-index --index-info),
+  # so git add -A re-hashes every file: a plain copy would let a same-size edit with an unchanged mtime keep its old blob.
+  if [ -f "$real" ]; then git ls-files -s -z > "$tmp.ent" || { rm -f "$tmp.ent"; exit 3; }; fi
+  rm -f "$tmp"
   GIT_INDEX_FILE="$tmp"; export GIT_INDEX_FILE
+  if [ -f "$tmp.ent" ]; then git update-index -z --index-info < "$tmp.ent" || exit 3; fi
   # A temporary object directory inside the repository's own one, so its alternates entry ".." (relative to it) is that
   # directory, in git's path syntax on every platform; git add -A and write-tree store their new objects there only.
   objs="$(git rev-parse --git-path objects)" || exit 3

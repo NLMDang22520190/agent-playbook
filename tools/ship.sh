@@ -3,7 +3,8 @@
 #   tools/ship.sh PR vX.Y.Z [--yes] [--auto]
 # --auto: an OPEN PR whose checks are still running gets GitHub auto-merge and ship stops; run it again
 # after GitHub merged. A PR that is already MERGED is released when its merge commit is on origin/main.
-# Steps: PR must be OPEN and CLEAN (checks green, mergeable) -> ask, merge (merge commit, delete branch)
+# Steps: PR must be OPEN and CLEAN (checks green, mergeable) -> pre-merge gate: PR contains origin/main and
+# tools/release-gate.sh --check <PR head> passes (also before arming --auto) -> ask, merge (merge commit, delete branch)
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
 # Questions need a terminal on stdin; --yes answers them (use only when the user already said yes).
@@ -106,6 +107,19 @@ main() {
     git switch -q main || fail "cannot switch to main (checked out in another worktree?)"
   fi
 
+  # pre-merge check (OPEN PR): the head contains origin/main and the release gate passed for that exact commit
+  head=""
+  pre_merge_check() {
+    local gout
+    head="$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" || fail "cannot read PR #$pr head"
+    git fetch -q origin main || fail "cannot fetch origin main"
+    git fetch -q origin "refs/pull/$pr/head" 2>/dev/null || git fetch -q origin "$(gh pr view "$pr" --json headRefName --jq .headRefName)" 2>/dev/null ||
+      fail "cannot fetch the head of PR #$pr"
+    git merge-base --is-ancestor origin/main "$head" 2>/dev/null ||
+      fail "PR is not up to date with main: update it and re-run the gate"
+    gout="$(bash tools/release-gate.sh --check "$head" 2>&1)" || fail "release gate: $(printf %s "$gout" | head -n 1)"
+  }
+
   step "check PR #$pr"
   st="$(gh pr view "$pr" --json state,mergeStateStatus,mergeCommit --jq '.state + " " + .mergeStateStatus + " " + (.mergeCommit.oid // "")')" || fail "cannot read PR #$pr"
   set -- $st
@@ -120,8 +134,9 @@ main() {
     step "PR #$pr already merged (merge commit $oid is on origin/main)"
     merged=1
   elif [ "$state" = OPEN ] && [ "$mstate" != CLEAN ] && [ "$auto" = 1 ]; then
+    pre_merge_check
     # checks still running: let GitHub merge when they pass (auto-merge must be allowed on the repo)
-    gh pr merge "$pr" --auto --merge --delete-branch || fail "gh pr merge $pr --auto failed"
+    gh pr merge "$pr" --auto --merge --delete-branch --match-head-commit "$head" || fail "gh pr merge $pr --auto failed"
     echo "auto-merge enabled for PR #$pr: GitHub will merge when the checks pass; then run tools/ship.sh $pr $tag again to release"
     exit 0
   elif [ "$state" != OPEN ] || [ "$mstate" != CLEAN ]; then
@@ -129,9 +144,10 @@ main() {
   fi
 
   if [ "$merged" = 0 ]; then
+    pre_merge_check
     ask "merge PR #$pr?" || fail "not merged (answer was not yes)"
     step "merge PR #$pr"
-    gh pr merge "$pr" --merge --delete-branch || fail "gh pr merge $pr failed"
+    gh pr merge "$pr" --merge --delete-branch --match-head-commit "$head" || fail "gh pr merge $pr failed"
   fi
 
   step "update main"

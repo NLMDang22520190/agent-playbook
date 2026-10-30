@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Tests for tools/release.sh (AC4) against a throw-away clone with its own bare origin.
+# v0.32.0 (S3, AC7): every fixture clone ships tools/release-gate.sh and holds a committed passing synthetic gate (see
+# tests/release-gate-fixture.sh), so the success cases keep their meaning now that release.sh checks the gate (AC4); a change to
+# the fixture after setup is re-sealed with `reseal`. The gate cases are at the end of this file.
 . "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/release-gate-fixture.sh"
+# the skip count is the whole file: 200 assertions (passed+failed+skipped of a real run)
+command -v node >/dev/null 2>&1 || { t_skip 200 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
 REL_SRC="$PB_ROOT/tools/release.sh"
 export PLAYBOOK_HOME="$(mk_tmp)"
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
@@ -15,12 +21,16 @@ setup() {
   cp "$PB_ROOT/tools/check-release.sh" "$C/tools/"
   cp "$PB_ROOT/scripts/lib.sh" "$C/scripts/"
   [ -f "$REL_SRC" ] && cp "$REL_SRC" "$C/tools/release.sh"
+  rgf_prepare "$C"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$C/tests/run-all.sh"
   printf '1.2.3\n' > "$C/VERSION"
   printf '# Changelog\n\n## 1.2.3 - 2026-01-01\n- thing\n' > "$C/CHANGELOG.md"
   ( cd "$C" && git init -q && git checkout -q -b main && G add -A && G commit -qm init &&
     git remote add origin "$O" && git push -q origin main ) || { echo "fixture setup failed"; exit 3; }
+  [ "${NOGATE:-0}" = 1 ] || reseal || { echo "fixture gate failed"; exit 3; }
 }
+# reseal: a committed passing gate for the current HEAD of $C, pushed (a later commit outside evals/results needs a new one)
+reseal() { rgf_seal "$C" && ( cd "$C" && git push -q origin main ); }
 tags_of() { git -C "$1" tag -l | tr '\n' ' '; }
 origin_tags() { git -C "$O" tag -l | tr '\n' ' '; }
 
@@ -35,7 +45,7 @@ assert_rc "AC4 refuses on VERSION mismatch -> exit 1" 1
 assert_eq "AC4 VERSION mismatch creates no tag" "" "$(tags_of "$C")$(origin_tags)"
 
 setup
-printf '1.2.4\n' > "$C/VERSION"; ( cd "$C" && G commit -qam bump && git push -q origin main )
+printf '1.2.4\n' > "$C/VERSION"; ( cd "$C" && G commit -qam bump && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.4
 assert_rc "AC4 refuses on missing CHANGELOG entry -> exit 1" 1
 assert_eq "AC4 CHANGELOG refusal creates no tag" "" "$(tags_of "$C")$(origin_tags)"
@@ -60,7 +70,7 @@ assert_rc "AC4 refuses when not on main -> exit 1" 1
 assert_eq "AC4 not-on-main creates no tag" "" "$(tags_of "$C")$(origin_tags)"
 
 setup
-( cd "$C" && printf 'x\n' > extra.txt && G add -A && G commit -qm local-only )
+( cd "$C" && printf 'x\n' > extra.txt && G add -A && G commit -qm local-only ) && rgf_seal "$C"
 run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC4 refuses when main is ahead of origin/main -> exit 1" 1
 assert_eq "AC4 ahead-of-origin creates no tag" "" "$(tags_of "$C")$(origin_tags)"
@@ -76,7 +86,7 @@ assert_eq "AC4 behind-origin creates no tag" "" "$(tags_of "$C")$(origin_tags)"
 
 setup
 printf '#!/usr/bin/env bash\nexit 1\n' > "$C/tests/run-all.sh"
-( cd "$C" && G commit -qam red-suite && git push -q origin main )
+( cd "$C" && G commit -qam red-suite && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC4 refuses when tests/run-all.sh fails -> exit 1" 1
 assert_eq "AC4 red suite creates no tag" "" "$(tags_of "$C")$(origin_tags)"
@@ -154,7 +164,7 @@ echo "run-checks: all ok"
 echo "ALL GREEN"
 exit 0
 STUB
-  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main )
+  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main ) && reseal
 }
 README_OK='# demo
 ![tests](https://img.shields.io/badge/tests-11-1F9D63)
@@ -221,14 +231,14 @@ assert_rc "AC7.2 no README.md at all: no check, exit 0" 0
 
 setup; printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "test-b.sh: 6 passed, 0 failed, 1 skipped"\nexit 1\n' > "$C/tests/run-all.sh"
 printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G add -A && G commit -qm red && git push -q origin main )
+( cd "$C" && G add -A && G commit -qm red && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC7.2 a failing suite is refused before (and regardless of) the README check" 1
 
 setup
 printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "test-b.sh: 6 passed, 0 failed, 1 skipped"\nexit 0\n' > "$C/tests/run-all.sh"
 printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G add -A && G commit -qm other-totals && git push -q origin main )
+( cd "$C" && G add -A && G commit -qm other-totals && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC7.2 totals are summed over suite lines (4+6+1 = 11): exit 0" 0
 
@@ -237,7 +247,7 @@ echo "v0.10.0 AC8.1 the suite output is streamed, the exit status is run-all's"
 # a stub that prints, then reports its own status; messages are distinctive
 setup
 printf '#!/usr/bin/env bash\necho "STUB-LINE-ONE"\necho "STUB-LINE-TWO"\necho "STUB-STDERR-LINE" >&2\nexit 0\n' > "$C/tests/run-all.sh"
-( cd "$C" && G commit -qam stub-out && git push -q origin main )
+( cd "$C" && G commit -qam stub-out && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC8.1 a printing stub that passes: dry run exit 0" 0
 assert_contains "AC8.1 stub stdout appears in the release output" "$OUT" "STUB-LINE-ONE"
@@ -248,7 +258,7 @@ assert_contains "AC8.1 the dry run still ends with 'would tag'" "$OUT" "would ta
 
 setup
 printf '#!/usr/bin/env bash\necho "STUB-FAIL-OUT"\nexit 1\n' > "$C/tests/run-all.sh"
-( cd "$C" && G commit -qam stub-red && git push -q origin main )
+( cd "$C" && G commit -qam stub-red && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC8.1 a failing stub that prints is refused (status from run-all, not tee): exit 1" 1
 assert_contains "AC8.1 the failing stub's output is still shown" "$OUT" "STUB-FAIL-OUT"
@@ -260,7 +270,7 @@ assert_not_contains "AC8.1 refused dry run does not print 'would tag'" "$OUT" "w
 
 setup
 printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "STUB-SEVEN"\nexit 7\n' > "$C/tests/run-all.sh"
-( cd "$C" && G commit -qam stub-seven && git push -q origin main )
+( cd "$C" && G commit -qam stub-seven && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC8.1 a stub exiting 7 is refused with 1 (the release.sh refusal code)" 1
 assert_eq "AC8.1 a stub exiting 7 creates no tag" "" "$(tags_of "$C")$(origin_tags)"
@@ -269,11 +279,11 @@ assert_eq "AC8.1 a stub exiting 7 creates no tag" "" "$(tags_of "$C")$(origin_ta
 setup
 printf '#!/usr/bin/env bash\necho "test-a.sh: 5 passed, 0 failed"\necho "test-b.sh: 3 passed, 0 failed, 2 skipped"\nprintf "test-c.sh: 1 passed, 0 failed"\nexit 0\n' > "$C/tests/run-all.sh"
 printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G add -A && G commit -qm count-ok && git push -q origin main )
+( cd "$C" && G add -A && G commit -qm count-ok && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC8.1 count check works on streamed output (5+3+2+1 = 11, last line unterminated): exit 0" 0
 printf '![tests](https://img.shields.io/badge/tests-10-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G commit -qam count-bad && git push -q origin main )
+( cd "$C" && G commit -qam count-bad && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC8.1 count check still refuses a wrong README number on streamed output: exit 1" 1
 assert_contains "AC8.1 the refusal names the README number" "$OUT" "10"
@@ -291,7 +301,7 @@ while [ ! -e "$GO" ] && [ \$i -lt 600 ]; do sleep 0.1; i=\$((i + 1)); done
 echo "LIVE-SECOND"
 exit 0
 STUB
-( cd "$C" && G commit -qam live-stub && git push -q origin main )
+( cd "$C" && G commit -qam live-stub && git push -q origin main ) && reseal
 LOUT="$(mk_tmp)/out"; : > "$LOUT"
 ( cd "$C" && bash tools/release.sh v1.2.3 --dry-run > "$LOUT" 2>&1; echo $? > "$LOUT.rc" ) &
 LPID=$!
@@ -319,7 +329,7 @@ echo "test-a.sh: 10 passed, 0 failed"
 echo "ALL GREEN"
 exit 0
 STUB
-  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main )
+  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main ) && reseal
 }
 setup; set_readme_assert '# demo
 ![tests](https://img.shields.io/badge/tests-10-1F9D63)
@@ -372,7 +382,7 @@ setup_full() {  # setup + install.sh and scripts/ committed, so a clone of origi
   setup
   mkdir -p "$C/skills/stub" && echo "# stub" > "$C/skills/stub/SKILL.md" &&
     cp "$PB_ROOT/install.sh" "$C/install.sh" && cp -R "$PB_ROOT/scripts/." "$C/scripts/" &&
-    ( cd "$C" && G add -A && G commit -qm installer && git push -q origin main ) || { echo "setup_full failed"; exit 3; }
+    ( cd "$C" && G add -A && G commit -qm installer && git push -q origin main ) && reseal || { echo "setup_full failed"; exit 3; }
 }
 probe_ssh_sign() {   # can this git + ssh-keygen sign a tag and verify it against an allowed signers file? (L-0004)
   local p
@@ -509,5 +519,95 @@ assert_contains "AC-S6 it says release.sh signs when a key is configured" "$(pri
 assert_contains "AC-S6 it says to watch the main-ci job of the first signed release" "$DEVMD" "main-ci"
 assert_contains "AC-S6 it names the recovery (gh release create by hand)" "$DEVMD" "gh release create"
 assert_contains "AC-S6 it names the GITHUB_SHA tag-object risk" "$DEVMD" "GITHUB_SHA"
+
+echo "AC4: release.sh checks the release gate (tools/release-gate.sh --check HEAD) before the suite and before any tag (v0.32.0 S3)"
+# suite_mark: tests/run-all.sh becomes a stub that records that it ran (in $MARK); committed and pushed, NOT re-sealed
+suite_mark() {
+  MARK="$(mk_tmp)/suite-ran"
+  printf '#!/usr/bin/env bash\necho ran >> "%s"\nexit 0\n' "$MARK" > "$C/tests/run-all.sh"
+  ( cd "$C" && G commit -qam mark-suite && git push -q origin main )
+}
+suite_runs() { if [ -f "$MARK" ]; then wc -l < "$MARK" | tr -d ' '; else echo 0; fi; }
+# gate_stub RC: tools/release-gate.sh becomes a stub that logs its arguments to $GLOG, prints two reason lines and exits RC
+gate_stub() {
+  GLOG="$(mk_tmp)/gate-args"
+  printf '#!/usr/bin/env bash\nprintf "%%s\n" "$*" >> "%s"\nprintf "stub reason one\nstub reason two\n"\nexit %s\n' "$GLOG" "$1" > "$C/tools/release-gate.sh"
+  ( cd "$C" && G commit -qam "gate-stub-$1" && git push -q origin main )
+}
+
+NOGATE=1 setup; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4 no gate result committed: refused, exit 1" 1
+assert_contains "AC4 the refusal carries the gate's first reason line" "$OUT" "release refused: release gate: no gate result under evals/results/gate-*/ at REV"
+assert_eq "AC4 no gate: no tag, nothing pushed" "" "$(tags_of "$C")$(origin_tags)"
+assert_eq "AC4 no gate: refused before the test suite runs" "0" "$(suite_runs)"
+assert_not_contains "AC4 no gate: it does not claim a release" "$OUT" "released v1.2.3"
+
+NOGATE=1 setup; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC4 --dry-run without a gate -> exit 1" 1
+assert_contains "AC4 --dry-run prints the gate outcome" "$OUT" "release gate: no gate result under evals/results/gate-*/ at REV"
+assert_not_contains "AC4 --dry-run without a gate does not print 'would tag'" "$OUT" "would tag"
+assert_eq "AC4 --dry-run without a gate: no tag" "" "$(tags_of "$C")$(origin_tags)"
+assert_eq "AC4 --dry-run without a gate: the suite did not run" "0" "$(suite_runs)"
+
+# a gate sealed for an older commit is stale once a file outside evals/results changed after it (the suite_mark commit)
+setup; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4 a gate for an older commit (a change outside evals/results since) -> exit 1" 1
+assert_contains "AC4 the refusal names the gate" "$OUT" "release refused: release gate:"
+assert_contains "AC4 the reason says what changed" "$OUT" "changes outside evals/results since"
+assert_eq "AC4 stale gate: no tag, nothing pushed" "" "$(tags_of "$C")$(origin_tags)"
+assert_eq "AC4 stale gate: the suite did not run" "0" "$(suite_runs)"
+
+# a committed gate whose recomputed verdict is fail (item E2 has a negative delta)
+NOGATE=1 setup; suite_mark
+rgf_seal "$C" E2 && ( cd "$C" && git push -q origin main )
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4 a committed gate with verdict fail -> exit 1" 1
+assert_contains "AC4 the refusal names the gate" "$OUT" "release refused: release gate:"
+assert_contains "AC4 the refusal names the failing item" "$(printf '%s\n' "$OUT" | grep 'release refused: release gate:')" "E2"
+assert_eq "AC4 failing gate: no tag, nothing pushed" "" "$(tags_of "$C")$(origin_tags)"
+assert_eq "AC4 failing gate: the suite did not run" "0" "$(suite_runs)"
+
+# a committed passing gate: the old behaviour
+NOGATE=1 setup; suite_mark; reseal
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC4 passing committed gate, --dry-run -> exit 0" 0
+assert_contains "AC4 --dry-run prints the gate outcome (pass)" "$OUT" "release gate: pass"
+assert_contains "AC4 --dry-run still reaches 'would tag'" "$OUT" "would tag"
+assert_eq "AC4 --dry-run with a passing gate still runs the suite once" "1" "$(suite_runs)"
+NOGATE=1 setup; suite_mark; reseal
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4 passing committed gate: release exit 0" 0
+assert_contains "AC4 passing gate: the tag is in the origin" "$(origin_tags)" "v1.2.3"
+assert_eq "AC4 passing gate: the suite ran once" "1" "$(suite_runs)"
+
+echo "AC4': release.sh maps the exit codes of --check (0 goes on, 1 refuses, anything else is an environment error)"
+NOGATE=1 setup; gate_stub 0; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4' --check exit 0 goes on: release exit 0" 0
+assert_contains "AC4' the tag exists in the origin" "$(origin_tags)" "v1.2.3"
+assert_eq "AC4' the suite ran once" "1" "$(suite_runs)"
+assert_contains "AC4' the tool was called as 'release-gate.sh --check HEAD'" "$(cat "$GLOG")" "--check HEAD"
+NOGATE=1 setup; gate_stub 1; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC4' --check exit 1 refuses: release exit 1" 1
+assert_contains "AC4' the refusal carries the first reason line only" "$(printf '%s\n' "$OUT" | grep 'release refused: release gate:')" "release refused: release gate: stub reason one"
+assert_not_contains "AC4' the refusal line does not carry the second reason line" "$(printf '%s\n' "$OUT" | grep 'release refused: release gate:')" "stub reason two"
+assert_eq "AC4' exit 1: no tag, nothing pushed" "" "$(tags_of "$C")$(origin_tags)"
+assert_eq "AC4' exit 1: the suite did not run" "0" "$(suite_runs)"
+for GRC in 2 3 4; do
+  NOGATE=1 setup; gate_stub "$GRC"; suite_mark
+  run_in "$C" bash tools/release.sh v1.2.3
+  assert_rc "AC4' --check exit $GRC is an environment error: release exit 3" 3
+  assert_eq "AC4' exit $GRC: no tag, nothing pushed" "" "$(tags_of "$C")$(origin_tags)"
+  assert_eq "AC4' exit $GRC: the suite did not run" "0" "$(suite_runs)"
+  assert_not_contains "AC4' exit $GRC: it does not claim a release" "$OUT" "released v1.2.3"
+done
+NOGATE=1 setup; gate_stub 3; suite_mark
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC4' --dry-run with --check exit 3 -> exit 3" 3
+
 
 t_summary
