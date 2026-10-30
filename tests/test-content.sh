@@ -2204,9 +2204,9 @@ qchk "k1b AC-B8 step 8 offers the pointer for Codex and OpenCode" "$K1B_S8" 'cod
 qchk "k1b AC-B8 step 8 says the pointer is how those agents learn about the file" "$K1B_S8" 'pointer.{0,150}(is how|is the way|is what)'
 flat_has "k1b AC-B8 README: Codex/OpenCode learn about LEARNINGS.md through learn.sh init --link-agents" "$README" '(codex|opencode).{0,250}link-agents|link-agents.{0,250}(codex|opencode)'
 
-echo "v0.28.0 lane k1b AC-B9: README section Hooks (Claude Code, opt-in) with handlers, PB_HEADLESS, the Stop check and Limits"
-exact_heading "k1b AC-B9 README has the heading ## Hooks (Claude Code, opt-in)" "$README" '## Hooks (Claude Code, opt-in)'
-K1B_HK="$(awk '/^## Hooks \(Claude Code, opt-in\)$/ { f = 1; print; next } f && /^## / { exit } f { print }' "$README")"
+echo "v0.28.0 lane k1b AC-B9: README section Hooks (Claude Code, on by default) with handlers, PB_HEADLESS, the Stop check and Limits"
+exact_heading "k1b AC-B9 README has the heading ## Hooks (Claude Code, on by default)" "$README" '## Hooks (Claude Code, on by default)'
+K1B_HK="$(awk '/^## Hooks \(Claude Code, on by default\)$/ { f = 1; print; next } f && /^## / { exit } f { print }' "$README")"
 K1B_HKF="$(printf '%s\n' "$K1B_HK" | tr '\n' ' ' | tr -s ' ')"
 for k1b_n in 'guard-irreversible\.sh' 'learnings-hook\.sh' 'PreToolUse' 'SessionStart' 'Stop' 'claude-hooks\.sh uninstall' 'export PB_HEADLESS=1' 'claude -p' 'CI=true'; do
   qchk "k1b AC-B9 hooks section names $k1b_n" "$K1B_HKF" "$k1b_n"
@@ -2220,7 +2220,7 @@ qchk "k1b AC-B9 OpenCode: tool.execute.before exists (cited)" "$K1B_HKF" 'openco
 qchk "k1b AC-B9 OpenCode: cites opencode.ai/docs/plugins" "$K1B_HKF" 'opencode\.ai/docs/plugins'
 qchk "k1b AC-B9 OpenCode: no plugin ships, text rule only" "$K1B_HKF" 'opencode.{0,250}text rule only'
 K1B_LIM="$(printf '%s\n' "$K1B_HK" | awk '/^###+ Limits/ { f = 1 } f { print }' | tr '\n' ' ' | tr -s ' ')"
-if [ -n "$K1B_LIM" ]; then t_ok "k1b AC-B9 the hooks section has a Limits subsection"; else t_bad "k1b AC-B9 the hooks section has a Limits subsection" "no ### Limits heading inside ## Hooks (Claude Code, opt-in)"; fi
+if [ -n "$K1B_LIM" ]; then t_ok "k1b AC-B9 the hooks section has a Limits subsection"; else t_bad "k1b AC-B9 the hooks section has a Limits subsection" "no ### Limits heading inside ## Hooks (Claude Code, on by default)"; fi
 for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group' 'here-doc' 'node -e' 'python -c' 'perl -e' 'git alias' 'find -delete' 'xargs rm' '\\u' 'concatenat' 'PowerShell' 'NotebookEdit' 'MCP' 'disableAllHooks' 'settings\.local\.json' 'guard itself' 'non-git|not a git|outside (a )?git' 'script[^.]{0,60}(written|writes)[^.]{0,60}(then )?run' 'backstop'; do
   qchk "k1b AC-B9 Limits lists $k1b_n" "$K1B_LIM" "$k1b_n"
 done
