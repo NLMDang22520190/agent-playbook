@@ -5,7 +5,7 @@
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
 #                         [--json] [--dry-run | --pool-only]
 # Runs, from the repository root:
-#   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <AUTO list of run-evals.sh> --out DIR/behaviour-<stamp>.md
+#   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
 # with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner). K defaults to 5; less than 5 is
 # refused, because with k=3 per arm most 95% intervals include 0. The separating tasks are the outcome tasks whose Δ excluded 0
@@ -27,7 +27,7 @@
 # remove --force + prune, also on a runner's 2 or 3 and on INT/TERM). --cmd never gets --variant (its runs have no variant and fail
 # the verdict). The environment passes through unchanged: PB_VARIANT_HOME selects the harness home the variant is installed into.
 # Verdict (one function, over the pooled files): pass needs (a) every pooled file has a variant object with end_check "ok" and
-# variant.sha = HEAD, (b) the full set: every scenario of AUTO in evals/run-evals.sh and every id of DEFAULT_TASKS below,
+# variant.sha = HEAD, (b) the full set: every scenario of GATE_SCENARIOS and every id of DEFAULT_TASKS below,
 # (c) at least 5 graded runs (ERROR runs do not count) per item and arm, (d) tools/eval-delta.sh exits 0, (e) no delta whose 95%
 # interval is wholly below 0. Otherwise fail, with one reason per broken rule, printed. A real run and --pool-only write
 # DIR/gate.json (pb-gate/1 + variant, full_set, min_graded, verdict, verdict_reasons) and DIR/.gitignore (only *.json, *.md and
@@ -37,6 +37,9 @@
 # Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 |
 #       3 environment (git, node) or a runner's 3.
 set -u
+# The gate set: the KEEP and INCONCLUSIVE scenario rows of docs/delta-audit.md (each must be in the AUTO list of evals/run-evals.sh),
+# plus DEFAULT_TASKS. They are the default scenarios of a run, and the set the verdict and --check require.
+GATE_SCENARIOS="E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"
 DEFAULT_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '/^set -u/d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
@@ -84,7 +87,7 @@ command -v node >/dev/null 2>&1 || die 3 "node (>= 18) is required"
 
 AUTO="$(sed -n 's/^AUTO="\(.*\)"$/\1/p' "$ROOT/evals/run-evals.sh" | head -n 1)"
 [ -n "$AUTO" ] || die 3 "no AUTO list in evals/run-evals.sh"
-if [ -z "$SCEN" ]; then SCEN="$(printf '%s' "$AUTO" | tr -s ' ' ',')"; fi
+if [ -z "$SCEN" ]; then SCEN="$(printf '%s' "$GATE_SCENARIOS" | tr -s ' ' ',')"; fi
 for s in $(printf '%s' "$SCEN" | tr ',' ' '); do
   case " $AUTO " in *" $s "*) ;; *) die 2 "scenario $s is not in the AUTO list of evals/run-evals.sh" ;; esac
 done
@@ -136,7 +139,7 @@ $1
 EOJ
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
   PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
-  PG_BRC="$5" PG_ORC="$6" PG_AUTO="$AUTO" PG_DT="$DEFAULT_TASKS" node -e '
+  PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
 const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
 const pooled = process.argv.slice(1);
@@ -224,9 +227,9 @@ for (const d of ls(b).filter(n => /^gate-/.test(n))) for (const n of ls(b + "/" 
       "${G[@]}" merge-base --is-ancestor "$c" "$RV" || R="gate commit $C12 is neither REV nor an ancestor of it"$'\n'
       X="$("${G[@]}" diff --no-renames --name-only "$c" "$RV" | grep -v '^evals/results/' | head -n 1)"
       [ -z "$X" ] || R="${R}changes outside evals/results since $C12: $X"$'\n'
-      AUTO="$("${G[@]}" show "$c:evals/run-evals.sh" 2>/dev/null | sed -n 's/^AUTO="\(.*\)"$/\1/p' | head -n 1)"
+      GATE_SCENARIOS="$("${G[@]}" show "$c:tools/release-gate.sh" 2>/dev/null | sed -n 's/^GATE_SCENARIOS="\(.*\)"$/\1/p' | head -n 1)"
       DEFAULT_TASKS="$("${G[@]}" show "$c:tools/release-gate.sh" 2>/dev/null | sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' | head -n 1)"
-      if [ -z "$AUTO" ] || [ -z "$DEFAULT_TASKS" ]; then R="${R}no AUTO list or DEFAULT_TASKS at $C12"$'\n'
+      if [ -z "$GATE_SCENARIOS" ] || [ -z "$DEFAULT_TASKS" ]; then R="${R}no GATE_SCENARIOS or DEFAULT_TASKS at $C12"$'\n'
       else
         FILES=()
         while IFS= read -r f; do FILES+=("$CT/x/$d/$f"); done <<EOT
