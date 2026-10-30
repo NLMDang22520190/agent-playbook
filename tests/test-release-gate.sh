@@ -40,7 +40,9 @@ done
 # sees of DIR in $OBS, and its "variant" object (sha = HEAD of DIR, end_check ok) is null without --variant, like the real runners.
 # Per-case controls (environment): FAKE_VARIANT=null|nullsha|badsha|changed, FAKE_SKIP=ID,ID (no runs for these items),
 # FAKE_ERR=ID:ARM:N (the first N runs of that item and arm are ERROR runs), FAKE_INVERT=ID (with fails, without passes),
-# FAKE_ISOFAIL=ID (the without-arm isolation check FAILs for that item), FAKE_HANG=NAME (waits for $W/release).
+# FAKE_ISOFAIL=ID (the without-arm isolation check FAILs for that item), FAKE_HANG=NAME (waits for $W/release),
+# FAKE_HOOKS=false|none (v0.33.0 N3: the file says "hooks": false, or has no hooks field; default true). Every run also has the PASS
+# check "nothing written outside the workdir" (rule (g) needs it in every item).
 # It also writes local paths (workroot, --out, HOME, the repo; and their Windows forms where cygpath exists) into the json and
 # the md, and evidence/log files next to them, so the tests can look for what the gate must rewrite or leave uncommitted.
 mk_fake() { # NAME LISTFLAG
@@ -94,7 +96,7 @@ for s in $(printf '%s' "$list" | tr ',' ' '); do
     for arm in with without; do
       r=PASS; [ "$arm" = without ] && r=FAIL
       case ",${FAKE_INVERT:-}," in *",$s,"*) if [ "$r" = PASS ]; then r=FAIL; else r=PASS; fi ;; esac
-      st=graded; er=null; cks="{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"}"
+      st=graded; er=null; cks="{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"},{\"name\":\"nothing written outside the workdir\",\"key\":\"nothing written outside the workdir\",\"result\":\"PASS\"}"
       if [ "$s" = "$eid" ] && [ "$arm" = "$earm" ] && [ "$i" -le "$en" ]; then st=error; er='"boom"'; cks=""; fi
       if [ "$s" = "${FAKE_ISOFAIL:-}" ] && [ "$arm" = without ]; then cks="$cks,{\"name\":\"$ISOK\",\"key\":\"$ISOK\",\"result\":\"FAIL\"}"; fi
       runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"$arm\",\"k\":$i,\"label\":\"$s.$arm.$i\",\"status\":\"$st\",\"error\":$er,\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[$cks]}"
@@ -114,6 +116,8 @@ if [ -n "$vdir" ]; then
   [ "${FAKE_VARIANT:-ok}" = null ] || vj="{\"tree\":\"$vdir\",\"version\":\"0.30.0\",\"sha\":$vs,\"end_check\":\"$ve\"}"
 fi
 wr="${TMPDIR:-/tmp}/pbwork.$$"
+hkj=',"hooks":true'
+case "${FAKE_HOOKS:-true}" in false) hkj=',"hooks":false' ;; none) hkj="" ;; esac
 wins=""; winj=""
 if command -v cygpath >/dev/null 2>&1; then
   hm="$(cygpath -m "$HOME")"; hw="$(cygpath -w "$HOME")"; rm_="$(cygpath -m "$repo")"
@@ -164,8 +168,8 @@ if [ -n "${FAKE_EDGE:-}" ]; then
 fi
 printf 'x\n' > "${out%.md}.evidence/ev.txt"; printf '{"schema":"pb-evals/1"}\n' > "${out%.md}.evidence/inner.json"
 printf 'x\n' > "${out%.md}.runs/r.md"; printf 'log\n' > "${out%.md}.log"
-printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"%s","model":"%s","arms":["with","without"],"repeat":%s,"max_cost":null,"interactive":false,"started":"2026-10-27T10:00:00Z","workroot":"%s","out":"%s","home_note":"%s/.claude","repo_note":"%s/evals"%s,"variant":%s,"runs":[%s],"summary":[]}\n' \
-  "$commit" "$harness" "$model" "$k" "$wr" "$out" "$HOME" "$repo" "$winj" "$vj" "$runs" > "${out%.md}.json"
+printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"%s","model":"%s","arms":["with","without"],"repeat":%s,"max_cost":null,"interactive":false%s,"started":"2026-10-27T10:00:00Z","workroot":"%s","out":"%s","home_note":"%s/.claude","repo_note":"%s/evals"%s,"variant":%s,"runs":[%s],"summary":[]}\n' \
+  "$commit" "$harness" "$model" "$k" "$hkj" "$wr" "$out" "$HOME" "$repo" "$winj" "$vj" "$runs" > "${out%.md}.json"
 exit "$rc"
 EOF
   chmod 755 "$R/evals/$1"
@@ -572,6 +576,25 @@ fail_case d-iso "FAKE_ISOFAIL=E1" "eval-delta|isolation"
 
 echo "AC2 (e) no Δ row with its 95% interval wholly below 0"
 fail_case e-neg "FAKE_INVERT=E2" "$(idre E2)"
+
+echo "AC4 (v0.33.0) a real run passes --hooks to the behaviour runner (claude and --cmd, not codex and opencode); rule (a) needs hooks true"
+rcase hk-claude ""
+assert_rc "AC4 claude real run with hooks true -> exit 0" 0
+assert_contains "AC4 claude: run-evals.sh got --hooks" "$(grep '^run-evals.sh ' "$CALLS")" " --hooks"
+: > "$CALLS"
+ge "" --harness codex --model m1 --out-dir evals/results/hk-codex
+assert_rc "AC4' codex real run -> exit 0 (no hooks clause)" 0
+assert_not_contains "AC4' codex: run-evals.sh got no --hooks" "$(grep '^run-evals.sh ' "$CALLS")" "--hooks"
+ge "FAKE_HOOKS=false" --harness codex --model m1 --out-dir evals/results/hk-codex2
+assert_rc "AC4' codex run whose file says hooks false -> exit 0 (clause is claude and --cmd only)" 0
+: > "$CALLS"
+ge "" --harness opencode --model m1 --out-dir evals/results/hk-opencode
+assert_not_contains "AC4' opencode: run-evals.sh got no --hooks" "$(grep '^run-evals.sh ' "$CALLS")" "--hooks"
+: > "$CALLS"
+ge "" --cmd "bash /x/adapter.sh" --model m1 --out-dir evals/results/hk-cmd
+assert_contains "AC4 --cmd: run-evals.sh got --hooks" "$(grep '^run-evals.sh ' "$CALLS")" " --hooks"
+fail_case hk-off "FAKE_HOOKS=false" "hooks off in .*behaviour-"
+fail_case hk-none "FAKE_HOOKS=none" "hooks off in .*behaviour-"
 
 echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md)"
 assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1" \
