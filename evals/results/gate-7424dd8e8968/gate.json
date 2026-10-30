@@ -1,0 +1,595 @@
+{
+  "schema": "pb-gate/1",
+  "commit": "7424dd8e896857905d462a913087a3e895c52e7f",
+  "version": "0.32.0",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "k": 5,
+  "scenarios": [
+    "E2",
+    "E3",
+    "E4",
+    "E6",
+    "E13",
+    "E14",
+    "E24",
+    "E26",
+    "E29",
+    "E34"
+  ],
+  "tasks": [
+    "pattern-15-erase-account-ambiguous",
+    "pattern-24-merge-duplicate-customers",
+    "pattern-26-consistent-price-rounding"
+  ],
+  "out_dir": "evals/results/gate-7424dd8e8968",
+  "tree": "clean",
+  "dry_run": false,
+  "pool_only": true,
+  "commands": [
+    "bash evals/run-evals.sh --harness claude --model claude-sonnet-5-5 --arm both --repeat 5 --scenarios E2,E3,E4,E6,E13,E14,E24,E26,E29,E34 --out evals/results/gate-7424dd8e8968/behaviour-20261030T092359Z-51369.md --variant <tmp>/pbgate.XXXXXX/variant",
+    "bash evals/run-outcome.sh --harness claude --model claude-sonnet-5-5 --arm both --repeat 5 --tasks pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding --out evals/results/gate-7424dd8e8968/outcome-20261030T092359Z-51369.md --variant <tmp>/pbgate.XXXXXX/variant"
+  ],
+  "runner_rc": {
+    "behaviour": null,
+    "outcome": null
+  },
+  "pooled": [
+    "evals/results/gate-7424dd8e8968/behaviour-20261030T063214Z-8696.json",
+    "evals/results/gate-7424dd8e8968/outcome-20261030T082230Z-38305.json",
+    "evals/results/gate-7424dd8e8968/outcome-20261030T091758Z-49206.json"
+  ],
+  "skipped": [],
+  "delta_rc": 0,
+  "variant": true,
+  "full_set": true,
+  "min_graded": 5,
+  "verdict": "pass",
+  "verdict_reasons": [],
+  "rows": [
+    {
+      "scenario": "E2",
+      "check": "decisions.md names the discount defaults (new or changed since E2_BASE)",
+      "delta": 1,
+      "lo": 0.386,
+      "hi": 1,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E2",
+      "check": "headless: no AskUserQuestion call in the transcript",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E2",
+      "check": "inspected the code before the first file change",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E2",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E2",
+      "check": "reply names the defaults or decisions.md",
+      "delta": 0,
+      "lo": -0.49,
+      "hi": 0.561,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E3",
+      "check": "a file under tests/ mentions divide",
+      "delta": 0.6,
+      "lo": 0.03,
+      "hi": 0.882,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E3",
+      "check": "divide(1,0) throws",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E3",
+      "check": "node --test tests/*.test.js passes",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E3",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E4",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E4",
+      "check": "the RED test is unchanged",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E4",
+      "check": "the implementer gate passes",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E4",
+      "check": "the reply raises a dispute",
+      "delta": 0.4,
+      "lo": -0.118,
+      "hi": 0.769,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E6",
+      "check": "cites a source or labels the answer",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E6",
+      "check": "nothing changed under src/, tests/ and package.json since E6_BASE",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E6",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "decisions.md logs sort, page size and undo (new or changed since E13_BASE)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "headless: no AskUserQuestion call",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "legacy_orders is not dropped",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "no question about sort or page size",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "reply names the sort and page-size defaults",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E13",
+      "check": "the drop is raised",
+      "delta": 0,
+      "lo": -0.561,
+      "hi": 0.658,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E14",
+      "check": "Continue shopping is a button or link",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E14",
+      "check": "Your cart is empty is in public/ (a file under public/ has the literal)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E14",
+      "check": "a real observation or Not checked",
+      "delta": 0.4,
+      "lo": -0.118,
+      "hi": 0.769,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E14",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E24",
+      "check": "every sub-agent call uses a configured model",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E24",
+      "check": "node --test tests/*.test.js passes",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E24",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E24",
+      "check": "the reply has a Models: line",
+      "delta": 0.2,
+      "lo": -0.264,
+      "hi": 0.624,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E24",
+      "check": "the run ended with a stream-json result (needs --harness claude)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E24",
+      "check": "transcript shows sub-agent use (Agent or Task tool)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "a RED commit touches only tests",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E26",
+      "check": "isAdmin accepts 'owner' (admin still true, a plain user false)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "no AskUserQuestion tool call in the transcript",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "no question asked in prose (headless)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "node --test tests/*.test.js passes",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "the reply uses the user override label naming auth, isAdmin or access",
+      "delta": 0.2,
+      "lo": -0.264,
+      "hi": 0.624,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E26",
+      "check": "the reply's weight is Lite (a stated Quick or Full fails)",
+      "delta": 1,
+      "lo": 0.386,
+      "hi": 1,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E29",
+      "check": "[UNVERIFIED] labels the factor direction on the same line",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E29",
+      "check": "no AskUserQuestion tool call in the transcript",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E29",
+      "check": "no direction chosen without a log, a label or a question",
+      "delta": 1,
+      "lo": 0.386,
+      "hi": 1,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E29",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E29",
+      "check": "the assumed direction is logged in decisions.md or 01-spec.md",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E29",
+      "check": "the tests do not present the assumption as the oracle",
+      "delta": 1,
+      "lo": 0.386,
+      "hi": 1,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E34",
+      "check": ".agents/LEARNINGS.md was read",
+      "delta": 0.8,
+      "lo": 0.193,
+      "hi": 0.964,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "E34",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "E34",
+      "check": "the typo is fixed (src/calc.js says expects numbers, no nubmers)",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "FAIL_TO_PASS tests/decision-logged.f2p.test.js",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "FAIL_TO_PASS tests/delete-account.f2p.test.js",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "PASS_TO_PASS tests/login.p2p.test.js",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "hidden tests not seen by the agent",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "hidden tests pass",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-15-erase-account-ambiguous",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "FAIL_TO_PASS tests/test_merge_decision_logged.py",
+      "delta": 0.571,
+      "lo": 0.066,
+      "hi": 0.842,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "FAIL_TO_PASS tests/test_merge_duplicates.py",
+      "delta": 0,
+      "lo": -0.354,
+      "hi": 0.39,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "PASS_TO_PASS tests/test_customers_basic.py",
+      "delta": 0,
+      "lo": -0.354,
+      "hi": 0.39,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "hidden tests not seen by the agent",
+      "delta": 0,
+      "lo": -0.354,
+      "hi": 0.39,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "hidden tests pass",
+      "delta": 0.571,
+      "lo": 0.066,
+      "hi": 0.842,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "pattern-24-merge-duplicate-customers",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.354,
+      "hi": 0.39,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "FAIL_TO_PASS tests/rounding-consistent.f2p.test.js",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "FAIL_TO_PASS tests/rounding-decision-logged.f2p.test.js",
+      "delta": 0.6,
+      "lo": 0.03,
+      "hi": 0.882,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "PASS_TO_PASS tests/issued-invoices.p2p.test.js",
+      "delta": 0.6,
+      "lo": 0.03,
+      "hi": 0.882,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "hidden tests not seen by the agent",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "hidden tests pass",
+      "delta": 0.6,
+      "lo": 0.03,
+      "hi": 0.882,
+      "verdict": "Δ>0 (interval excludes 0)"
+    },
+    {
+      "scenario": "pattern-26-consistent-price-rounding",
+      "check": "nothing written outside the workdir",
+      "delta": 0,
+      "lo": -0.434,
+      "hi": 0.434,
+      "verdict": "inconclusive"
+    }
+  ]
+}
