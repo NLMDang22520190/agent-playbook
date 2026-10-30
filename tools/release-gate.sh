@@ -292,7 +292,7 @@ for (const n of fs.readdirSync(e.PG_OD)) {
   const f = path.join(e.PG_OD, n);
   let s = fs.readFileSync(f, "utf8"), o = s;
   for (const [from, to] of pairs)
-    s = s.replace(new RegExp(esc(from) + "(?:(\\\\\\\\|[\\\\/])|(?=$|[\"\\x27\\s)]))", "g"), (m, sep) => (to === "." ? (sep ? "" : ".") : to + (sep ? "/" : "")));
+    s = s.replace(new RegExp(esc(from) + "(?:(\\\\\\\\|[\\\\/])|(?![A-Za-z0-9_-]|\\.[A-Za-z0-9_-]))", "g"), (m, sep) => (to === "." ? (sep ? "" : ".") : to + (sep ? "/" : "")));
   if (s !== o) fs.writeFileSync(f, s);
 }' || die 3 "node failed while rewriting paths"
 }
