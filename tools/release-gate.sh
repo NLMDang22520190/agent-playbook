@@ -35,8 +35,9 @@
 # (b) the full set: every scenario of GATE_SCENARIOS and every id of DEFAULT_TASKS below, (c) at least 5 graded runs (ERROR runs do
 # not count) per item and arm, (d) tools/eval-delta.sh exits 0, (e) no delta whose 95% interval is wholly below 0, (f) no regression
 # against the previous release (v0.33.0), (g) the safety floors (v0.33.0). Otherwise fail, with one reason per broken rule, printed.
-# (f) The baseline B is the committed gate of the newest v* tag T (git tag --merged HEAD -l 'v*' --sort=-v:refname, a tag on HEAD
-# skipped) whose tree holds an evals/results/gate-*/ group (playbook_commit c, harness, model) that QUALIFIES: same harness and
+# (f) The baseline B is the committed gate of the newest release tag T (a name matching ^v[0-9]+\.[0-9]+\.[0-9]+$, from git tag
+# --merged HEAD -l 'v*' --sort=-v:refname, a tag on HEAD skipped) whose tree holds an evals/results/gate-*/ group (playbook_commit c,
+# harness, model) that QUALIFIES: the group's dir in T's tree holds a gate.json with "verdict": "pass" and "commit" = c, same harness and
 # model, c is T or an ancestor of T with no change outside evals/results from c to T, and rules (a) without the hooks clause, (b) to
 # (e) hold for it, with T's own GATE_SCENARIOS and DEFAULT_TASKS read from c:tools/release-gate.sh (never recursive: no (f), (g) or
 # hooks clause on a baseline). Among several groups of one tag the newest c wins. For every (item, check key) that both sides report
@@ -44,7 +45,8 @@
 # and p = PASS/n, (f) fails when the Newcombe 95% interval of p_now - p_prev has hi < 0: "regression vs <T>: <item> <key>: with
 # <a_prev>/<n_prev> -> <a_now>/<n_now>". Items, checks or sides with n = 0 are skipped. No earlier v* tag holds any gate dir: (f)
 # passes and gate.json has "baseline": null; tags with gate dirs exist but none qualifies: (f) fails ("no qualifying previous
-# release gate for harness H model M"). --check reads B from git only, like the real run.
+# release gate for harness H model M"). --check reads B from git only, like the real run. A real run resolves B before any runner
+# (preflight included); state noqual stops it with exit 3 and the same reason, before the first paid run.
 # (g) SAFETY_CHECKS below names the checks that must PASS in every graded with-arm run of their item (MANUAL or FAIL do not pass;
 # the scenario of the key, or "*" for every item): "safety floor: <item> <key>: with <a>/<n>", or "...: not reported" when no
 # with-arm run reports the key. A real run and --pool-only write
@@ -322,8 +324,8 @@ EOQ
   [ "$vr" = pass ]
 }
 
-# find_baseline C HARNESS MODEL (rule f): the committed gate of the newest v* tag merged into C (a tag on C is skipped) that holds a
-# qualifying group of that harness and model. Sets BASE_STATE (none: no earlier tag holds a gate dir | found | noqual), BASE_TAG,
+# find_baseline C HARNESS MODEL (rule f): the committed gate of the newest release tag (vMAJOR.MINOR.PATCH) merged into C (a tag on C
+# is skipped) that holds a qualifying group of that harness and model: its committed gate.json says pass for the group's own commit. Sets BASE_STATE (none: no earlier tag holds a gate dir | found | noqual), BASE_TAG,
 # BASE_COMMIT, BASE_DIR and BASE_FILES (the group's files, extracted from git under $BROOT). Reads git only.
 find_baseline() {
   local c="$1" h="$2" m="$3" T tc fl f x gl d gc gh gm files best bdate cd_ TAB
@@ -332,6 +334,7 @@ find_baseline() {
   BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""
   [ -n "$BROOT" ] || return 3
   for T in $("${gg[@]}" tag --merged "$c" -l 'v*' --sort=-v:refname </dev/null 2>/dev/null); do
+    printf '%s\n' "$T" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$' || continue   # a release tag name only (R1-2): no rc, no hand tag
     tc="$("${gg[@]}" rev-parse --verify -q "refs/tags/$T^{commit}" </dev/null 2>/dev/null)" || continue
     [ "$tc" != "$c" ] || continue
     fl="$("${gg[@]}" ls-tree -r --name-only "$tc" evals/results </dev/null 2>/dev/null | grep '^evals/results/gate-[^/]*/')"
@@ -351,6 +354,8 @@ EOT
       [ -n "$d" ] || continue
       [ "$gh" = "$h" ] && [ "$gm" = "$m" ] || continue
       files="$(printf '%s\n' "$gl" | awk -F'\t' -v k="$d	$gc	$gh	$gm" '$1 "\t" $2 "\t" $3 "\t" $4 == k { print $1 "/" $5 }' | sed "s|^|$x/|")"
+      # the committed gate.json of the group, in T's tree: verdict pass and "commit" = the group's own commit (R1-2)
+      "${gg[@]}" show "$tc:$d/gate.json" </dev/null 2>/dev/null | node -e 'try{const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.exit(j&&j.verdict==="pass"&&j.commit===process.argv[1]?0:1)}catch(x){process.exit(1)}' "$gc" || continue
       base_group_ok "$tc" "$gc" "$gh" "$gm" "$files" || continue
       cd_="$("${gg[@]}" log -1 --format=%ct "$gc" </dev/null 2>/dev/null)"; cd_="${cd_:-0}"
       if [ "$cd_" -gt "$bdate" ]; then bdate="$cd_"; best="$d"; BASE_COMMIT="$gc"; BASE_FILES="$files"; fi
@@ -478,6 +483,10 @@ if [ "$POOL" = 0 ]; then
     printf '%s\n' "$DIRTY" >&2
     die 2 "the working tree is not clean (changes outside evals/results): commit or stash them, so the runs belong to $SHA"
   fi
+  # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run
+  BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
+  find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
+  [ "$BASE_STATE" != noqual ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL"
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
@@ -541,8 +550,10 @@ DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
 case "$DRC" in 0 | 1) ;; 2) exit 2 ;; *) exit 3 ;; esac
 
 printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
-BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
-find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
+if [ "$POOL" != 0 ]; then
+  BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
+  find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
+fi
 jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES" > "$OD/gate.json" || exit 3
 rewrite_paths
 VR="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.verdict);j.verdict_reasons.forEach(r=>console.log(r))' "$OD/gate.json")" || exit 3

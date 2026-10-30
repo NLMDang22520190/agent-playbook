@@ -722,11 +722,17 @@ verify_release_tag() {
   fi
 }
 
+# is_release_name TAG: a release tag name is vMAJOR.MINOR.PATCH, digits only. Any other v* tag (v0.34.0-rc1, v0.33.0#hotfix)
+# is never sent to the Releases API: a character such as # or ? would change which release the URL asks about.
+is_release_name() { printf '%s\n' "$1" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; }
+
 # release_state TAG: is there a GitHub Release for TAG? Sets REL_WHY. Returns 0 released (HTTP 200),
-# 1 not released (404), 2 cannot check (any other answer, curl missing or failing, origin not on github.com).
+# 1 not released (404, or a name that is not a release tag name: no request is sent), 2 cannot check (any other answer, curl missing
+# or failing, origin not on github.com).
 # DECISION[D9]: only 200 counts as released; the other answers are "cannot check", never "not released".
 release_state() {
   local t="$1" api repo url code url_o rc
+  is_release_name "$t" || { REL_WHY="tag $t is not a release tag name"; return 1; }
   api="${PB_RELEASES_API:-https://api.github.com}"
   if [ -n "${PB_RELEASES_API:-}" ] && [ -n "${PB_RELEASES_REPO:-}" ]; then
     repo="$PB_RELEASES_REPO"
@@ -751,7 +757,7 @@ release_state() {
   fi
   command -v curl >/dev/null 2>&1 || { REL_WHY="curl is not installed"; return 2; }
   url="$api/repos/$repo/releases/tags/$t"
-  code="$(curl -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; rc=$?
+  code="$(curl -q -sS -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; rc=$?
   if [ "$rc" -ne 0 ]; then REL_WHY="curl failed (exit $rc) for $url"; return 2; fi
   case "$code" in
     200) return 0 ;;
@@ -763,7 +769,7 @@ release_state() {
 RELEASE_HINT="(pass --allow-unreleased to update anyway)"
 
 cmd_update() {
-  local cur latest target oid commit t rs newest_rel="" skipped="" unrel_msg="" cant=""
+  local cur latest target oid commit t rs newest_rel="" skipped="" badname="" unrel_msg="" cant=""
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
   cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
@@ -772,6 +778,9 @@ cmd_update() {
   [ -n "$latest" ] || die "no release tags (v*) found in $REPO" 2
   if [ -n "$TO" ]; then
     git -C "$REPO" rev-parse -q --verify "refs/tags/$TO^{commit}" >/dev/null 2>&1 || die "unknown release: $TO (see: git -C $REPO tag -l)" 2
+    if [ "$ALLOW_UNRELEASED" -eq 0 ] && ! is_release_name "$TO"; then
+      die "release tag $TO is not a release tag name (vMAJOR.MINOR.PATCH); nothing was changed $RELEASE_HINT" 1
+    fi
   fi
   # Newest released tag: walk newest first, stop at the first 200. For --to, only TO is checked.
   if [ -n "$TO" ] || { [ "$ALLOW_UNRELEASED" -eq 1 ] && [ "$CHECK" -eq 0 ]; }; then
@@ -780,6 +789,7 @@ cmd_update() {
     [ "$rs" -eq 2 ] && cant="$REL_WHY"
   else
     for t in $(git -C "$REPO" tag -l 'v*' --sort=-v:refname); do
+      if ! is_release_name "$t"; then badname="$badname $t"; continue; fi
       release_state "$t"; rs=$?
       if [ "$rs" -eq 0 ]; then newest_rel="$t"; break; fi
       if [ "$rs" -eq 2 ]; then cant="$REL_WHY"; break; fi
@@ -790,7 +800,8 @@ cmd_update() {
   fi
   if [ "$CHECK" -eq 1 ]; then
     latest="$target"
-    if [ -n "$cant" ]; then say "cannot check GitHub Releases: $cant"; latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"; skipped=""; fi
+    if [ -n "$cant" ]; then say "cannot check GitHub Releases: $cant"; latest="$(git -C "$REPO" tag -l 'v*' --sort=-v:refname | head -n 1)"; skipped=""; badname=""; fi
+    for t in $badname; do say "agent-playbook: tag $t is not a release tag name; skipped"; done
     for t in $skipped; do say "agent-playbook: newer tag $t has no GitHub Release; skipped"; done
     if [ -z "$cant" ] && [ -z "$newest_rel" ] && [ -z "$TO" ]; then say "agent-playbook: no tag has a GitHub Release; reporting against $latest"; fi
     # DECISION[D1]: compare commits, not tag names (two tags can share one commit).
@@ -814,6 +825,7 @@ cmd_update() {
   if [ "$rs" -eq 0 ]; then
     say "release tag $target: GitHub Release found"
     for t in $skipped; do say "INFO  newer tag $t has no GitHub Release; skipped"; done
+    for t in $badname; do say "INFO  tag $t is not a release tag name; skipped"; done
   elif [ "$ALLOW_UNRELEASED" -eq 1 ]; then
     if [ "$rs" -eq 1 ]; then warn "release tag $target has no GitHub Release; continuing (--allow-unreleased)"
     else warn "release tag $target: cannot check for a GitHub Release ($cant); continuing (--allow-unreleased)"; fi
