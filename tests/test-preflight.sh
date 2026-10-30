@@ -13,6 +13,10 @@ RUNOC="$PB_ROOT/evals/run-outcome.sh"
 BASH_BIN="$(command -v bash)"
 REAL_NODE="$(command -v node 2>/dev/null)"; REAL_GIT="$(command -v git 2>/dev/null)"; REAL_PY="$(command -v python3 2>/dev/null)"
 [ -n "$REAL_NODE" ] && [ -n "$REAL_GIT" ] || { t_skip 1 "node or git missing"; t_summary; exit $?; }
+# the python3 the test links must really run (the Windows runner's python3 can be a stub that exits non-zero); the cases that
+# need a working python3 are skipped otherwise, the refusal and stub cases always run
+PY_OK=0; [ -n "$REAL_PY" ] && "$REAL_PY" -c 'import sys' >/dev/null 2>&1 && PY_OK=1
+PY_SKIP="the host python3 does not run (Windows runner stub)"
 
 # BASE: every executable of the usual bin dirs except the tools under test, so the runners find sed, awk, mktemp, ...
 BASE="$(mk_tmp)"
@@ -65,8 +69,10 @@ OD="$(mk_tmp)"
 echo "AC7 run-outcome.sh --preflight: ready -> exit 0 and silent"
 P="$(mkpath node git python3)"
 pre "$RUNOC" "$P" --tasks-dir "$TD" --tasks t-bash,t-py --cmd "bash /x/adapter.sh" --arm both --repeat 5 --out "$OD/o1.md"
-assert_rc "AC7 node, git and a working python3 -> exit 0" 0
-assert_eq "AC7 ... and it prints nothing" "" "$OUT"
+if [ "$PY_OK" = 1 ]; then
+  assert_rc "AC7 node, git and a working python3 -> exit 0" 0
+  assert_eq "AC7 ... and it prints nothing" "" "$OUT"
+else t_skip 2 "$PY_SKIP (AC7 ready with a working python3)"; fi
 assert_no_path "AC7 --preflight writes no --out file" "$OD/o1.md"
 assert_no_path "AC7 --preflight writes no evidence dir next to --out" "$OD/o1.runs"
 
@@ -112,7 +118,7 @@ echo "AC7 run-outcome.sh --preflight leaves --workroot alone"
 WRK="$(mk_tmp)"; : > "$WRK/.pb-eval-workroot"; printf 'mine\n' > "$WRK/keep.txt"
 P="$(mkpath node git python3)"
 pre "$RUNOC" "$P" --tasks-dir "$TD" --tasks t-bash,t-py --cmd "bash /x/adapter.sh" --workroot "$WRK" --out "$OD/o9.md"
-assert_rc "AC7 with --workroot -> exit 0" 0
+if [ "$PY_OK" = 1 ]; then assert_rc "AC7 with --workroot -> exit 0" 0; else t_skip 1 "$PY_SKIP (AC7 --workroot with a working python3)"; fi
 assert_eq "AC7 the workroot holds what it held (no <label> dir, no log)" ".pb-eval-workroot keep.txt" "$(ls -A "$WRK" | tr '\n' ' ' | sed 's/ $//')"
 
 echo "AC7 run-evals.sh --preflight: ready -> exit 0 and silent"
