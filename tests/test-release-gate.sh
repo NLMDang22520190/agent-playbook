@@ -126,7 +126,30 @@ if [ -n "${FAKE_EDGE:-}" ]; then
     printf 'edge-pos-root-slash: %s\n' "$repo/evals/z"
     printf 'edge-pos-root-quote: "%s"\n' "$repo"
     printf 'edge-pos-root-end: %s\n' "$repo"
-    printf 'edge-pos-home-end: %s\n' "$HOME"; } >> "$out"
+    printf 'edge-pos-home-end: %s\n' "$HOME"
+    printf 'edge-pos-tmp-comma: a %s, b\n' "$W/tmp"
+    printf 'edge-pos-tmp-semi: x=%s;\n' "$W/tmp"
+    printf 'edge-pos-tmp-colon: %s:other\n' "$W/tmp"
+    printf 'edge-pos-tmp-bracket: [%s]\n' "$W/tmp"
+    printf 'edge-pos-tmp-brace: {%s}\n' "$W/tmp"
+    printf 'edge-pos-tmp-gt: <%s>\n' "$W/tmp"
+    printf 'edge-pos-tmp-tick: `%s`\n' "$W/tmp"
+    printf 'edge-pos-tmp-dot-end: see %s.\n' "$W/tmp"
+    printf 'edge-pos-tmp-dot-space: see %s. Next\n' "$W/tmp"
+    printf 'edge-pos-root-comma: %s,\n' "$repo"
+    printf 'edge-pos-root-bracket: [%s]\n' "$repo"
+    printf 'edge-pos-root-dot-end: see %s.\n' "$repo"
+    printf 'edge-pos-home-comma: %s, x\n' "$HOME"
+    printf 'edge-pos-home-semi: %s;\n' "$HOME"
+    printf 'edge-neg-tmp-dash: %s\n' "$W/tmp-x"
+    printf 'edge-neg-tmp-under: %s\n' "$W/tmp_x"
+    printf 'edge-neg-tmp-dotname: %s\n' "$W/tmp.d"
+    printf 'edge-neg-root-dash: %s\n' "$repo-x"
+    printf 'edge-neg-root-under: %s\n' "${repo}_x"
+    printf 'edge-neg-root-dotname: %s\n' "$repo.d"
+    printf 'edge-neg-home-dash: %s\n' "$HOME-x"
+    printf 'edge-neg-home-dotname: %s\n' "$HOME.d"; } >> "$out"
+  winj="$winj,\"edge_json\":[\"$W/tmp,\",\"$W/tmp;\",\"$W/tmp]\",\"$W/tmp-x\",\"$W/tmp_x\",\"$W/tmp.d\"]"
 fi
 printf 'x\n' > "${out%.md}.evidence/ev.txt"; printf '{"schema":"pb-evals/1"}\n' > "${out%.md}.evidence/inner.json"
 printf 'x\n' > "${out%.md}.runs/r.md"; printf 'log\n' > "${out%.md}.log"
@@ -448,6 +471,35 @@ assert_contains "AC13 repo root followed by / -> relative path" "$EM" "edge-pos-
 assert_contains "AC13 repo root followed by a quote -> ." "$EM" 'edge-pos-root-quote: "."'
 assert_contains "AC13 repo root at the end of the line -> ." "$EM" "edge-pos-root-end: ."
 assert_contains "AC13 HOME at the end of the line -> <home>" "$EM" "edge-pos-home-end: <home>"
+assert_contains "AC13' temp dir followed by , is rewritten" "$EM" 'edge-pos-tmp-comma: a <tmp>, b'
+assert_contains "AC13' temp dir followed by ; is rewritten" "$EM" 'edge-pos-tmp-semi: x=<tmp>;'
+assert_contains "AC13' temp dir followed by : is rewritten" "$EM" 'edge-pos-tmp-colon: <tmp>:other'
+assert_contains "AC13' temp dir followed by ] is rewritten" "$EM" 'edge-pos-tmp-bracket: [<tmp>]'
+assert_contains "AC13' temp dir followed by } is rewritten" "$EM" 'edge-pos-tmp-brace: {<tmp>}'
+assert_contains "AC13' temp dir followed by > is rewritten" "$EM" 'edge-pos-tmp-gt: <<tmp>>'
+assert_contains "AC13' temp dir followed by a backtick is rewritten" "$EM" 'edge-pos-tmp-tick: `<tmp>`'
+assert_contains "AC13' temp dir followed by a sentence-end dot at the end of the line is rewritten" "$EM" 'edge-pos-tmp-dot-end: see <tmp>.'
+assert_contains "AC13' temp dir followed by a sentence-end dot and a space is rewritten" "$EM" 'edge-pos-tmp-dot-space: see <tmp>. Next'
+assert_contains "AC13' repo root followed by , is rewritten" "$EM" 'edge-pos-root-comma: .,'
+assert_contains "AC13' repo root followed by ] is rewritten" "$EM" 'edge-pos-root-bracket: [.]'
+assert_contains "AC13' repo root followed by a sentence-end dot is rewritten" "$EM" 'edge-pos-root-dot-end: see ..'
+assert_contains "AC13' HOME followed by , is rewritten" "$EM" 'edge-pos-home-comma: <home>, x'
+assert_contains "AC13' HOME followed by ; is rewritten" "$EM" 'edge-pos-home-semi: <home>;'
+assert_contains "AC13' /tmp-x (dash) is not rewritten" "$EM" "edge-neg-tmp-dash: $W/tmp-x"
+assert_contains "AC13' /tmp_x (underscore) is not rewritten" "$EM" "edge-neg-tmp-under: $W/tmp_x"
+assert_contains "AC13' /tmp.d (dot and a letter) is not rewritten" "$EM" "edge-neg-tmp-dotname: $W/tmp.d"
+assert_contains "AC13' <ROOT>-x (dash) is not rewritten" "$EM" "edge-neg-root-dash: $R-x"
+assert_contains "AC13' <ROOT>_x (underscore) is not rewritten" "$EM" "edge-neg-root-under: ${R}_x"
+assert_contains "AC13' <ROOT>.d (dot and a letter) is not rewritten" "$EM" "edge-neg-root-dotname: $R.d"
+assert_contains "AC13' HOME-x (dash) is not rewritten" "$EM" "edge-neg-home-dash: $W/home-x"
+assert_contains "AC13' HOME.d (dot and a letter) is not rewritten" "$EM" "edge-neg-home-dotname: $W/home.d"
+EJ="$(cat "$ODN"/behaviour-*.json 2>/dev/null)"
+assert_contains "AC13' json: temp dir followed by , is rewritten" "$EJ" '"<tmp>,"'
+assert_contains "AC13' json: temp dir followed by ; is rewritten" "$EJ" '"<tmp>;"'
+assert_contains "AC13' json: temp dir followed by ] is rewritten" "$EJ" '"<tmp>]"'
+assert_contains "AC13' json: /tmp-x is not rewritten" "$EJ" "\"$W/tmp-x\""
+assert_contains "AC13' json: /tmp_x is not rewritten" "$EJ" "\"$W/tmp_x\""
+assert_contains "AC13' json: /tmp.d is not rewritten" "$EJ" "\"$W/tmp.d\""
 ODN="$R/evals/results/paths"; GJ="$ODN/gate.json"   # the later AC2' sections read the "paths" run
 
 echo "AC2' --pool-only writes gate.json too, runs no runner, and the rewritten files still pass"
