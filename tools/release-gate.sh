@@ -127,12 +127,19 @@ B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
 fi
 
 # jdoc POOLED SKIPPED DELTA_RC DELTA_OUT B_RC O_RC -> the pb-gate/1 object on stdout
+# The pooled paths go to node as one argument each: Git Bash (MSYS) converts a POSIX path in an argument, but in a multi-line
+# env var it converts only the first line, so node on Windows could not read the other files.
 jdoc() {
+  local pf=() l
+  while IFS= read -r l; do [ -z "$l" ] || pf+=("$l"); done <<EOJ
+$1
+EOJ
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
-  PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_POOLED="$1" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
+  PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$AUTO" PG_DT="$DEFAULT_TASKS" node -e '
 const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
+const pooled = process.argv.slice(1);
 const rows = [];
 let on = false;
 for (const l of e.PG_DOUT.split("\n")) {
@@ -146,7 +153,7 @@ const skipped = lines(e.PG_SKIPPED).map(l => { const i = l.lastIndexOf(" ("); re
 const V = {};
 if (e.PG_DRY !== "1") {
   const bad = [], seen = {}, cnt = {}, why = [];
-  for (const f of lines(e.PG_POOLED)) {
+  for (const f of pooled) {
     let j = {};
     try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
     const v = j.variant;
@@ -178,8 +185,8 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled: lines(e.PG_POOLED), skipped, delta_rc: num(e.PG_DRC), ...V, rows }, null, 2) + "\n");
-'
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, rows }, null, 2) + "\n");
+' ${pf[@]+"${pf[@]}"}
 }
 
 # --check [REV] (v0.32.0): reads only the committed tree of REV, spends nothing, calls no runner
@@ -277,11 +284,12 @@ rewrite_paths() {
     m="$m$p"$'\n'
     if command -v cygpath >/dev/null 2>&1; then m="$m$(cygpath -m "$t"):${p#*:}"$'\n'"$(cygpath -w "$t"):${p#*:}"$'\n'; fi
   done
-  PG_OD="$OD" PG_MAP="$m" node -e '
+  # the map goes on stdin: MSYS rewrites a multi-line env var that looks like a path list ("/c/x:." -> "C:\x;.")
+  printf '%s' "$m" | PG_OD="$OD" node -e '
 const fs = require("fs"), path = require("path"), e = process.env;
 const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const pairs = [];
-for (const l of e.PG_MAP.split("\n")) {
+for (const l of fs.readFileSync(0, "utf8").split("\n")) {
   const i = l.lastIndexOf(":"); if (i < 2) continue;
   const f = l.slice(0, i), to = l.slice(i + 1);
   pairs.push([f, to], [f.replace(/\\/g, "\\\\"), to]);
