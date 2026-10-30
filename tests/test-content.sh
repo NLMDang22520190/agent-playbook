@@ -2211,7 +2211,7 @@ K1B_HKF="$(printf '%s\n' "$K1B_HK" | tr '\n' ' ' | tr -s ' ')"
 for k1b_n in 'guard-irreversible\.sh' 'learnings-hook\.sh' 'PreToolUse' 'SessionStart' 'Stop' 'claude-hooks\.sh uninstall' 'export PB_HEADLESS=1' 'claude -p' 'CI=true'; do
   qchk "k1b AC-B9 hooks section names $k1b_n" "$K1B_HKF" "$k1b_n"
 done
-qchk "k1b AC-B9 hooks section: opt-in through setup" "$K1B_HKF" 'set up the playbook|playbook-setup'
+qchk "k1b AC-B9 hooks section: names setup (on by default, opt-out there)" "$K1B_HKF" 'set up the playbook|playbook-setup'
 qchk "k1b AC-B9 hooks section: PB_HEADLESS=0 forces warn-only" "$K1B_HKF" 'PB_HEADLESS=0[^.]{0,120}warn'
 qchk "k1b AC-B9 hooks section: the Stop check asks to revert and report" "$K1B_HKF" 'Stop.{0,250}revert.{0,250}(report|pending)'
 qchk "k1b AC-B9 Codex: hooks exist (cited) but are not installed" "$K1B_HKF" 'codex.{0,250}(learn\.chatgpt\.com/docs/hooks|developers\.openai\.com/codex/hooks)'

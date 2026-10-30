@@ -52,8 +52,9 @@ Options
   --allow-unsigned update: continue with an unsigned tag (or one whose signature cannot be
                    checked, a failing PGP/x509 signature included) although require_signed_tags=yes;
                    an SSH signature that fails against gpg.ssh.allowedSignersFile still stops it
-  --allow-unreleased update: take a tag that has no GitHub Release (or when the Releases API cannot
-                   be checked): the newest v* tag, or --to TAG; the signature check still runs
+  --allow-unreleased update: take a tag that has no GitHub Release, whose name is not vX.Y.Z (no request
+                   is sent for it), or whose Release cannot be checked: the newest v* tag, or --to TAG;
+                   the signature check still runs
 
 Release tag signatures (update)
   The tag is checked with `git verify-tag` before anything changes. Verified: reported.
