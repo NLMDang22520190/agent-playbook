@@ -51,7 +51,7 @@ Release flow: each lane or item ends with its hand-off files. The release PR bod
 3. On that exact commit, with a clean tree, run `tools/release-gate.sh --harness claude --model <model>`. It spends money (about 420 paid runs). It measures HEAD through `--variant` in a detached worktree. Set `PB_VARIANT_HOME` to install the variant into another harness home. Exit 0 means pass; 1 means fail and prints the reasons.
 4. Commit only `evals/results/gate-<sha>/` (the `.gitignore` in it keeps transcripts out) and push.
 5. Nothing else may merge into main before ship. If main moves, update the PR branch, re-run the gate on the new head and commit its results; ship refuses a PR that does not contain origin/main or whose head has no passing gate.
-6. Open the PR (`gh pr create --body-file pr-body.md`) and run `tools/ship.sh PR vX.Y.Z`, which checks the gate, merges, tags and installs.
+6. Open the PR with the `scripts/pr-body.sh` output as its body (`gh pr create --body-file pr-body.md`) and run `tools/ship.sh PR vX.Y.Z`, which checks the gate, merges, tags and installs.
 
 The gate is the binding check: `tools/release-gate.sh --check` runs in `release.sh`, in `ship.sh` before any merge, in CI for a PR that changes VERSION and in the tag's release job. The eval-guard line that ship prints is advice only. The gate binds against a missing or failing result, not against forged `pb-evals` records, and `--pool-only` and `--check` cannot show that the tree was clean when the runs were made.
 
