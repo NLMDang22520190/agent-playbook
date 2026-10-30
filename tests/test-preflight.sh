@@ -13,10 +13,6 @@ RUNOC="$PB_ROOT/evals/run-outcome.sh"
 BASH_BIN="$(command -v bash)"
 REAL_NODE="$(command -v node 2>/dev/null)"; REAL_GIT="$(command -v git 2>/dev/null)"; REAL_PY="$(command -v python3 2>/dev/null)"
 [ -n "$REAL_NODE" ] && [ -n "$REAL_GIT" ] || { t_skip 1 "node or git missing"; t_summary; exit $?; }
-# the python3 the test links must really run (the Windows runner's python3 can be a stub that exits non-zero); the cases that
-# need a working python3 are skipped otherwise, the refusal and stub cases always run
-PY_OK=0; [ -n "$REAL_PY" ] && "$REAL_PY" -c 'import sys' >/dev/null 2>&1 && PY_OK=1
-PY_SKIP="the host python3 does not run (Windows runner stub)"
 
 # BASE: every executable of the usual bin dirs except the tools under test, so the runners find sed, awk, mktemp, ...
 BASE="$(mk_tmp)"
@@ -46,6 +42,12 @@ mkpath() {
   done
   printf '%s' "$d"
 }
+# the cases use the python3 that mkpath links into a dir (on the Windows runner that link is a copy that cannot run), so the probe
+# runs exactly that linked python3 with the PATH the cases use; the cases that need a working python3 are skipped otherwise, the
+# refusal and stub cases always run
+PYD="$(mkpath python3)"
+PY_OK=0; [ -n "$REAL_PY" ] && [ -e "$PYD/python3" ] && PATH="$PYD:$BASE" "$PYD/python3" -c 'import sys' >/dev/null 2>&1 && PY_OK=1
+PY_SKIP="the host python3 does not run (Windows runner stub)"
 HM="$(mk_tmp)"   # a HOME with no playbook conf
 # pre RUNNER P-DIR ARGS... -> OUT, RC of `RUNNER ARGS... --preflight` with PATH = P-DIR:BASE
 pre() {
