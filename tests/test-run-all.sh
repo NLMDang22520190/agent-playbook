@@ -265,7 +265,8 @@ wshard_run() {
   D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "$names"
   printf '#!/usr/bin/env bash\necho x > "%s/rc-ran"\necho "run-checks: all ok"\n' "$D" > "$D/evals/run-checks.sh"
   printf '%b' "$w" > "$D/tests/shard-weights"
-  guarded 60 env PB_JOBS=2 PB_SHARD="$sh" bash "$D/tests/run-all.sh"
+  # hang guard, not a speed check: about 150 stub suites of 0.2 s each split in two (macOS) took over 60 s on the Windows runner
+  guarded 180 env PB_JOBS=2 PB_SHARD="$sh" bash "$D/tests/run-all.sh"
 }
 # a=100 b=60 c=50 d=40 e=10 (file order scrambled). Greedy, 2 shards: a->1(100) b->2(60) c->2(110) d->1(140) e->2(120)
 W1='test-e.sh 10\ntest-c.sh 50\ntest-a.sh 100\ntest-d.sh 40\ntest-b.sh 60\n'
