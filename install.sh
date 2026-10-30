@@ -770,7 +770,7 @@ release_state() {
 RELEASE_HINT="(pass --allow-unreleased to update anyway)"
 
 cmd_update() {
-  local cur latest target oid commit t rs newest_rel="" skipped="" badname="" unrel_msg="" cant=""
+  local cur latest target oid commit t rs newest_rel="" skipped="" badname="" cant=""
   git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "$REPO is not a git checkout; update needs git" 3
   git -C "$REPO" fetch --quiet --tags origin 2>/dev/null || warn "could not fetch from origin (offline?); using the tags already present"
   cur="$(git -C "$REPO" tag --points-at HEAD -l 'v*' --sort=-v:refname | head -n 1)"   # newest tag when several share HEAD
