@@ -3,7 +3,12 @@
 # only by the task's hidden tests: every fail_to_pass file must pass and every pass_to_pass file must still pass.
 #   run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks-dir DIR] [--tasks id1,id2]
 #                  [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
-#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR]
+#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR] [--preflight]
+# --preflight (v0.33.0): checks, without cost, what this command line would refuse with exit 3 (node, git, for --harness the CLI of the
+# harness on PATH, and a python3 that really runs when a selected task has language=python3), then exits 0 with no output, or exits 3
+# with the reason on stderr. It starts no run, makes no workdir, writes no --out file or evidence dir, leaves --workroot alone and never
+# calls the harness CLI. tools/release-gate.sh asks it before its paid runs.
+# Every run gets PB_EVAL_HOOKS=1 (both arms, also a plain run), whatever the caller exported, so hooks a user installed stand aside.
 # --clean-env: drop every CLAUDE* variable and ANTHROPIC_BASE_URL first, as in evals/run-evals.sh (a desktop or nested
 # Claude session leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
 # --tasks-dir defaults to evals/tasks next to this script, --tasks to every task directory in it. Each run has the label
@@ -100,7 +105,7 @@ set_traps
 
 HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0; CLEAN_ENV=0
 VARIANT=""; VARIANT_SET=0
-MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0
+MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any run replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
@@ -123,6 +128,7 @@ while [ $# -gt 0 ]; do
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
     --interactive) INTERACTIVE=1 ;;
     --clean-env) CLEAN_ENV=1 ;;
+    --preflight) PREFLIGHT=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -169,7 +175,7 @@ if [ "$VARIANT_SET" = 1 ]; then
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
   case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
-else
+elif [ "$PREFLIGHT" = 0 ]; then   # a --preflight prints nothing when the runner could start
   pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file, the prompt note is arm-neutral)
@@ -180,7 +186,7 @@ if [ -n "$HARNESS" ] && [ "$SET_MODE" = 1 ] && [ "$MODEL_SET" = 0 ]; then
 fi
 case " $ARMS " in
   *" without "*)
-    if [ -n "$HARNESS" ]; then
+    if [ -n "$HARNESS" ] && [ "$PREFLIGHT" = 0 ]; then   # --preflight checks the environment only, not the selection
       why="$(pbh_arm_supported "$HARNESS" without)" || pb_die "the without arm is not supported for $HARNESS: $why; use --arm with, or --cmd with your own isolation" 2
     fi ;;
 esac
@@ -235,6 +241,10 @@ fi
 command -v node >/dev/null 2>&1 || pb_die "node (>= 18) is required" 3
 command -v git  >/dev/null 2>&1 || pb_die "git is required" 3
 if [ "$NEED_PY" = 1 ] && ! python3 -c 'import sys' >/dev/null 2>&1; then pb_die "python3 is required by a selected task (python3 -c 'import sys' failed)" 3; fi
+if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no workdir, no --out file, the harness CLI is only looked up
+  if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
+  exit 0
+fi
 USE_TIMEOUT=0
 if [ -n "$TIMEOUT" ]; then
   if command -v timeout >/dev/null 2>&1; then USE_TIMEOUT=1
@@ -513,6 +523,7 @@ for RUN in $RUNS; do
     cd "$WD" || exit 1
     # PB_EVAL_* reach --cmd adapters only; a preset gets the model flag and --settings as arguments
     unset PB_EVAL_ARM PB_EVAL_MODEL PB_EVAL_SETTINGS
+    PB_EVAL_HOOKS=1; export PB_EVAL_HOOKS   # hooks a user installed stand aside, as in evals/run-evals.sh (whatever the caller exported)
     set -- adapter "$WD" "$PF"
     if [ -z "$HARNESS" ]; then
       if [ "$MODEL_SET" = 1 ]; then PB_EVAL_MODEL="$MODEL"; export PB_EVAL_MODEL; fi

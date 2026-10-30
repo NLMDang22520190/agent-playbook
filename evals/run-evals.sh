@@ -2,7 +2,7 @@
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD] [--real-home]
-#                [--model M] [--arm with|without|both] [--repeat K] [--hooks] [--variant DIR]
+#                [--model M] [--arm with|without|both] [--repeat K] [--hooks] [--variant DIR] [--preflight]
 # Each prompt ends with a non-interactive note (--interactive: none; with --arm or --repeat a note that does not name the playbook, the
 # same in both arms); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
@@ -48,6 +48,9 @@
 # OpenCode and --real-home cannot run the without arm (exit 2), nor can
 # a workroot under a directory whose CLAUDE.md, AGENTS.md or rules file holds the playbook block, or a user rules file
 # (~/.claude/rules) that holds it. The helpers live in evals/lib-harness.sh (also sourced by run-outcome.sh).
+# --preflight (v0.33.0): checks, without cost, what this command line would refuse with exit 3 (node, git, and for --harness the CLI of
+# the harness on PATH), then exits 0 with no output, or exits 3 with the reason on stderr. It starts no run, makes no workdir, writes no
+# --out file or evidence dir, leaves --workroot alone and never calls the harness CLI. tools/release-gate.sh asks it before its paid runs.
 # --hooks (needs --arm or --repeat, and --harness claude or --cmd): the with arm's settings file also gets the guard and learnings
 # hooks (PreToolUse, SessionStart, Stop: the runner repo's scripts/guard-irreversible.sh and scripts/learnings-hook.sh with --eval);
 # the without arm never has hooks. Every run gets PB_EVAL_HOOKS=1 (hooks a user installed stand aside), PB_EVAL_HOOK_LOG=
@@ -155,7 +158,7 @@ keep_tree() {
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
 VARIANT=""; VARIANT_SET=0
-MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0
+MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0; PREFLIGHT=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
@@ -178,6 +181,7 @@ while [ $# -gt 0 ]; do
     --interactive) INTERACTIVE=1 ;;
     --real-home) REAL_HOME=1 ;;
     --hooks)     HOOKS=1 ;;
+    --preflight) PREFLIGHT=1 ;;
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
@@ -241,7 +245,7 @@ if [ "$VARIANT_SET" = 1 ]; then
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
   case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
-else
+elif [ "$PREFLIGHT" = 0 ]; then   # a --preflight prints nothing when the runner could start
   pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file); LABELED: runs are named <E>.<arm>.<k>
@@ -263,7 +267,7 @@ fi
 case " $ARMS " in
   *" without "*)
     [ "$REAL_HOME" = 0 ] || pb_die "--real-home keeps the playbook home; it cannot run the without arm" 2
-    if [ -n "$HARNESS" ]; then
+    if [ -n "$HARNESS" ] && [ "$PREFLIGHT" = 0 ]; then   # --preflight checks the environment only, not the selection
       why="$(pbh_arm_supported "$HARNESS" without)" || pb_die "the without arm is not supported for $HARNESS: $why; use --arm with, or --cmd with your own isolation" 2
     fi ;;
 esac
@@ -285,6 +289,10 @@ done
 
 command -v node >/dev/null 2>&1 || pb_die "node (>= 18) is required for the graders" 3
 command -v git  >/dev/null 2>&1 || pb_die "git is required" 3
+if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no workdir, no --out file, the harness CLI is only looked up
+  if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
+  exit 0
+fi
 
 USE_TIMEOUT=0
 if [ -n "$TIMEOUT" ]; then

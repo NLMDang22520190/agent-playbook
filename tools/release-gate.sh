@@ -17,6 +17,9 @@
 # commit, other harness, other model). The pooled files go to tools/eval-delta.sh in one call, whose tables follow (Wilson
 # 95% per arm, Newcombe 95% for Δ with its verdict, cost per passed run). Another batch on the same commit adds to n.
 # A real run refuses a working tree with any change outside evals/results (tracked or untracked): the runs must belong to HEAD.
+# Preflight (v0.33.0): a real run (not --dry-run, not --pool-only) first calls both runners with --preflight and the same selection
+# arguments, before the first real runner; a runner's 3 (node, git, the harness CLI, a python3 that really runs for a python3 task)
+# stops the gate with exit 3 and the reason, with no paid run started and no worktree or results file left.
 # --dry-run prints the commit, the tree state ("tree: clean" or "tree: dirty") and both commands, and runs nothing.
 # --pool-only runs no harness and pools what DIR holds. --json prints one JSON object instead (schema pb-gate/1: commit,
 # version, harness, model, k, scenarios, tasks, out_dir, tree, dry_run, pool_only, commands, runner_rc, pooled, skipped
@@ -55,9 +58,10 @@
 # Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 |
 #       3 environment (git, node) or a runner's 3.
 set -u
-# The gate set: the KEEP and INCONCLUSIVE scenario rows of docs/delta-audit.md (each must be in the AUTO list of evals/run-evals.sh),
+# The gate set: the KEEP and INCONCLUSIVE scenario rows of docs/delta-audit.md plus the rows whose last cell says "gate: safety" (E8, E33;
+# v0.33.0), each in the AUTO list of evals/run-evals.sh,
 # plus DEFAULT_TASKS. They are the default scenarios of a run, and the set the verdict and --check require.
-GATE_SCENARIOS="E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"
+GATE_SCENARIOS="E2 E3 E4 E6 E8 E13 E14 E24 E26 E29 E33 E34"
 DEFAULT_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 # Rule (g): ITEM:check key entries separated by "|" (the key as evals/run-evals.sh records it, without its "(detail: ...)" group);
 # ITEM "*" means every item. Each must PASS in every graded with-arm run of the item.
@@ -474,13 +478,24 @@ if [ "$POOL" = 0 ]; then
     printf '%s\n' "$DIRTY" >&2
     die 2 "the working tree is not clean (changes outside evals/results): commit or stash them, so the runs belong to $SHA"
   fi
-  mkdir -p "$OD" || die 3 "cannot create $OD"
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
     git -C "$ROOT" worktree add -q --detach "$VDIR" HEAD >/dev/null 2>&1 || die 3 "cannot make a worktree of HEAD at $VDIR"
     build_args "$VDIR"; B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
   fi
+  # Preflight (v0.33.0): ask both runners, with the same selection, whether they could start, before the first paid run (a runner's
+  # 3 stops the gate with its reason; nothing was started, and cleanup removes the worktree)
+  for pf in B O; do
+    if [ "$pf" = B ]; then pa=("${B_ARGS[@]}"); else pa=("${O_ARGS[@]}"); fi
+    (cd "$ROOT" && bash "${pa[@]}" --preflight); RC=$?
+    case "$RC" in
+      0) ;;
+      2) die 2 "preflight: ${pa[0]##*/} refused the selection (exit 2); the gate stops before any run" ;;
+      *) die 3 "preflight: ${pa[0]##*/} cannot start (exit $RC); the gate stops before any run" ;;
+    esac
+  done
+  mkdir -p "$OD" || die 3 "cannot create $OD"
   # run_one KIND ARGS... -> the runner's exit code in RC; 2 and 3 stop the gate
   run_one() {
     local kind="$1"; shift
