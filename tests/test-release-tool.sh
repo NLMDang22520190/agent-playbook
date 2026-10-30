@@ -5,7 +5,8 @@
 # the fixture after setup is re-sealed with `reseal`. The gate cases are at the end of this file.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/release-gate-fixture.sh"
-command -v node >/dev/null 2>&1 || { t_skip 1 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
+# the skip count is the whole file: 200 assertions (passed+failed+skipped of a real run)
+command -v node >/dev/null 2>&1 || { t_skip 200 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
 REL_SRC="$PB_ROOT/tools/release.sh"
 export PLAYBOOK_HOME="$(mk_tmp)"
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }

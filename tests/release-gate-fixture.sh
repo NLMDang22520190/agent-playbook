@@ -48,6 +48,9 @@ rgf_seal() {
   items="$(sed -n 's/^AUTO="\(.*\)"$/\1/p' "$r/evals/run-evals.sh" | head -n 1 | tr -s ' ' ',')"
   rgf_jfile "$d/behaviour-m1.json" "$c" m1 "$items" "$inv"
   rgf_jfile "$d/outcome-m1.json" "$c" m1 "$RGF_TASKS" "$inv"
-  ( cd "$r" && env HOME="$RGF_W/home" TMPDIR="$RGF_W/tmp" bash tools/release-gate.sh --harness claude --model m1 --pool-only --out-dir "evals/results/${d##*/}" >/dev/null 2>&1 ) || return 1
+  # A passing verdict exits 0; a failing one (INVERT set) exits 1 and is still committed. Any other code is a fixture error.
+  local rc=0
+  ( cd "$r" && env HOME="$RGF_W/home" TMPDIR="$RGF_W/tmp" bash tools/release-gate.sh --harness claude --model m1 --pool-only --out-dir "evals/results/${d##*/}" >/dev/null 2>&1 ) || rc=$?
+  if [ -n "$inv" ]; then [ "$rc" -eq 1 ] || return 1; else [ "$rc" -eq 0 ] || return 1; fi
   rgf_git -C "$r" add -- "evals/results/${d##*/}" && rgf_git -C "$r" commit -qm "gate results for ${c%"${c#????????????}"}"
 }

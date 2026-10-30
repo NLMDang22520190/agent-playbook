@@ -692,7 +692,8 @@ if command -v node >/dev/null 2>&1; then
   rpcg "$D" no-such-branch
   assert_rc "AC5 --gate with an unknown BASE: exit 3" 3
 else
-  t_skip 36 "AC5 release-pr-check.sh --gate cases: node missing (the synthetic release gate needs it)"
+  # 31 assertions in the block above (real run 231 total, node forced missing 200 + this skip)
+  t_skip 31 "AC5 release-pr-check.sh --gate cases: node missing (the synthetic release gate needs it)"
 fi
 
 echo "release gate steps in CI (v0.32.0 S3: AC5', AC6, static)"
