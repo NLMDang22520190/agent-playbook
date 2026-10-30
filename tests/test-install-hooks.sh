@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for the install.sh side of the opt-in Claude Code hooks (v0.28.0 lane k1b, AC-B5, AC-B6): doctor reports the
-# hooks, uninstall removes ours (also the way install.ps1 calls it), install never adds or removes them. Everything runs
+# hooks, uninstall removes ours (also the way install.ps1 calls it); since v0.33.0 install adds them by default (AC5) unless --no-hooks / PB_HOOKS=off / hooks_optout yes, and never removes them. Everything runs
 # against throw-away --home sandboxes and a stand-in HOME; the real home directory is never touched. The hook scripts
 # belong to other lanes: the settings fixtures point at stub scripts in a temp dir.
 . "$(dirname "$0")/lib.sh"
@@ -166,7 +166,8 @@ else t_skip 7 "AC-B5 uninstall removes hooks (no node)"; fi
 
 echo "AC-B5 uninstall on a home without settings.json creates none"
 H="$(mk_home)"
-INST install --home "$H" --harness claude --yes >/dev/null 2>&1
+INST install --home "$H" --harness claude --yes --no-hooks >/dev/null 2>&1   # since v0.33.0 a plain install writes settings.json (AC5'); opt out so the home really has none
+assert_no_path "AC-B5 precondition: --no-hooks install left no settings.json" "$H/.claude/settings.json"
 run INST uninstall --home "$H" --harness claude --yes
 assert_rc "uninstall (claude) without settings.json exits 0" 0
 assert_no_path "AC-B5 uninstall creates no settings.json (characterization: true before k1b too)" "$H/.claude/settings.json"
