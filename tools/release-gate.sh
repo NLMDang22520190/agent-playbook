@@ -7,7 +7,7 @@
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
-# with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner CALL: a gate that confirms a flag, see below, calls a runner twice and can spend up to about twice the cap). K defaults to 5; less than 5 is
+# with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner CALL: a gate that confirms a flag, see below, makes up to four capped runner calls, two first and up to two confirmations, so it can spend up to about four times the cap). K defaults to 5; less than 5 is
 # refused, because with k=3 per arm most 95% intervals include 0. The separating tasks are the outcome tasks whose Δ excluded 0
 # in v0.29.0: pattern-15-erase-account-ambiguous, pattern-24-merge-duplicate-customers, pattern-26-consistent-price-rounding.
 # DIR defaults to evals/results/gate-<first 12 hex of HEAD>. A runner that exits 0, 1 (a FAIL) or 4 (ERROR runs, left out of
