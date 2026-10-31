@@ -617,6 +617,22 @@ has_contract() {
   [[ $1 =~ $RE_ALTDROP ]] && return 0
   return 1
 }
+# has_code_contract TEXT -> 0 when TEXT holds a SQL-shaped contract statement (R3-1, for code files): a DROP of a table, column, database or schema
+# (IF EXISTS allowed) followed by a name, a TABLE-form truncate (any case), a bare truncate in upper case only, or an ALTER TABLE with a DROP.
+# A name starts with a letter, _, a quote, a backtick or [. Not statements: className="truncate", a lodash call, def truncate(, a file object's
+# method, a comment about rounding, dropdown, dropTable(.
+RE_CC_D='"'; RE_CC_Q="'"; RE_CC_B='`'
+RE_CC_ID="[A-Za-z_${RE_CC_D}${RE_CC_Q}${RE_CC_B}[]"
+RE_CC_DROP="[Dd][Rr][Oo][Pp][[:space:]]+([Tt][Aa][Bb][Ll][Ee]|[Cc][Oo][Ll][Uu][Mm][Nn]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]|[Ss][Cc][Hh][Ee][Mm][Aa])[[:space:]]+([Ii][Ff][[:space:]]+[Ee][Xx][Ii][Ss][Tt][Ss][[:space:]]+)?$RE_CC_ID"
+RE_CC_TRT="(^|[^A-Za-z0-9_])[Tt][Rr][Uu][Nn][Cc][Aa][Tt][Ee][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+$RE_CC_ID"
+RE_CC_TRU="(^|[^A-Za-z0-9_])TRUNCATE[[:space:]]+$RE_CC_ID"
+has_code_contract() {
+  [[ $1 =~ $RE_CC_DROP ]] && return 0
+  [[ $1 =~ $RE_CC_TRT ]] && return 0
+  [[ $1 =~ $RE_CC_TRU ]] && return 0
+  [[ $1 =~ $RE_ALTDROP ]] && return 0
+  return 1
+}
 # sql_destructive TEXT -> 0 when TEXT holds DROP TABLE|DATABASE|SCHEMA, TRUNCATE, or DELETE FROM <t> with no WHERE before the next ;
 sql_destructive() {
   local rest="$1" st after
@@ -846,9 +862,55 @@ is_mig() {
   case "$1" in .agents/*) return 1 ;; *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 0 ;; esac
   return 1
 }
+# R5-3: the is_code/is_mig name rules as awk (same rules as is_code and is_mig), one pass over a path list, so a repo with
+# tens of thousands of untracked dependency files costs one process, not one bash iteration per file. UFILT_D prints the migration
+# paths first, then the code paths.
+UAWK_FN='function ism(p) { if (p ~ /^\.agents\//) return 0; return (tolower(p) ~ /migrat/) }
+function isc(p,   q, l) {
+  q = "/" p; l = tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || l ~ /\.sql$/ || l ~ /migrat/) return 0
+  if (q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}'
+# filt_untracked_to OUT -> OUT holds the untracked paths that can be findings (is_mig first, then is_code), regular non-symlink files
+# only: the name filter in one awk (which also drops a "dir/" nested-repo entry and notes each directory once), then ONE find -P over
+# those directories (maxdepth 1, listing what is neither a regular file nor a directory: symlinks, sockets, fifos) and, only when it
+# lists any, one awk that drops those names. A find per file batch cost 13 s for 20000 files on Windows (process spawns), this costs
+# about one find. Needs TOP.
+UFILT_D="$UAWK_FN"'
+$0 != "" && $0 !~ /\/$/ { if (ism($0)) m[nm++] = $0; else if (isc($0)) c[nc++] = $0 }
+function note(p,   d) { d = p; sub(/[^\/]*$/, "", d); if (!(d in s)) { s[d] = 1; if (d == "") print "." > df; else print "./" substr(d, 1, length(d) - 1) > df } }
+END { for (i = 0; i < nm; i++) { print m[i]; note(m[i]) } for (i = 0; i < nc; i++) { print c[i]; note(c[i]) } }'
+filt_untracked_to() {
+  local nr="$1.nr" df="$1.d"
+  : > "$df"
+  git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | awk -v df="$df" "$UFILT_D" > "$1"
+  [ -s "$df" ] || { rm -f "$df"; return 0; }
+  tr '\n' '\0' < "$df" | { cd "$TOP" 2>/dev/null && xargs -0 sh -c '[ "$#" -gt 0 ] || exit 0; find -P "$@" -maxdepth 1 ! -type f ! -type d -print' _ 2>/dev/null; } > "$nr"
+  if [ -s "$nr" ]; then
+    awk 'FILENAME == ARGV[1] { x[substr($0, 1, 2) == "./" ? substr($0, 3) : $0] = 1; next } !($0 in x)' "$nr" "$1" > "$1.f" && mv "$1.f" "$1"
+  fi
+  rm -f "$df" "$nr" "$1.f"
+  return 0
+}
+filt_untracked() {
+  local t
+  t="$(mktemp "${TMPDIR:-/tmp}/pbguard-ft.XXXXXX" 2>/dev/null)" || return 1
+  filt_untracked_to "$t"
+  cat "$t"
+  rm -f "$t"
+  return 0
+}
 is_schema() {
   case "$1" in *.[Ss][Qq][Ll]) ;; *) return 1 ;; esac
   case "$1" in .agents/* | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
+  case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
+  return 0
+}
+# is_code PATH -> 0 when PATH (relative or absolute, "/" separators) is checked for code-contract statements (R2, D11): not under .agents/,
+# node_modules/ or a test dir, and not a *.sql or *migrat* file (those keep their own kinds)
+is_code() {
+  case "$1" in .agents/* | */.agents/* | node_modules/* | */node_modules/* | *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
   case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
   return 0
 }
@@ -1679,8 +1741,11 @@ pre_ps() {
 pre_write() {
   local f="${J_file//\\//}" txt="$J_content" kind=sql
   [ "$J_tool" = Edit ] && txt="$J_new"
-  case "$f" in *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;; *) exit 0 ;; esac
-  has_contract "$txt" || exit 0
+  case "$f" in
+    *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;;
+    *) is_code "$f" || exit 0; kind=code-contract ;;
+  esac
+  if [ "$kind" = code-contract ]; then has_code_contract "$txt" || exit 0; else has_contract "$txt" || exit 0; fi
   case "$f" in *[Mm][Ii][Gg][Rr][Aa][Tt]*) kind=migration-contract ;; esac
   hlog "pending $kind"
   warn_json "$J_file holds a contract statement (DROP, TRUNCATE or ALTER TABLE ... DROP). The file is written but pending, not run: do not run it in this session. Headless runs must revert it before finishing and report it as a pending proposal in the final reply."
@@ -1688,6 +1753,56 @@ pre_write() {
 }
 
 # ---- SessionStart: the baseline (D16) ----
+# hash_paths LIST OUT N -> git hash-object of the N paths in LIST into OUT, in order. From 2000 paths the list is split in 8 chunks hashed
+# by 8 parallel git processes (file opens dominate on Windows: 20000 files 4.4 s serial, 1.5 s in parallel); a failed chunk shortens OUT, which the caller's line count catches.
+hash_paths() {
+  local ok=1 sz k
+  if [ "$3" -lt 2000 ]; then git -C "$TOP" hash-object --stdin-paths < "$1" > "$2" 2>/dev/null; return; fi
+  sz=$(( ($3 + 7) / 8 ))
+  for k in a b c d e f g h; do rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null; done
+  split -a 1 -l "$sz" "$1" "$1.c." 2>/dev/null || return 1
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && git -C "$TOP" hash-object --stdin-paths < "$1.c.$k" > "$1.c.$k.h" 2>/dev/null &
+  done
+  wait
+  : > "$2"
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && { cat "$1.c.$k.h" >> "$2" 2>/dev/null || ok=0; }
+    rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null
+  done
+  [ "$ok" = 1 ]
+}
+# record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
+# symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 20000 are hashed (R6-2); the rest are listed as "- <path>"
+# and FILE.capped marks the over-20000 case (R6-1: only unhashed pre-session files may then be left unscanned with a warning). One awk filter, one hash-object pass (R4-2, R5-3)
+record_untracked() {
+  local pf="$1.paths" hf="$1.hashes" tot n pt
+  rm -f "$1.capped" 2>/dev/null
+  filt_untracked_to "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
+  tot="$(wc -l < "$pf" | tr -d ' ')"
+  n="$tot"
+  pt="$pf"
+  if [ "$tot" -gt 20000 ]; then
+    : > "$1.capped" 2>/dev/null
+    n=20000
+    pt="$pf.top"
+    head -n 20000 "$pf" > "$pt" 2>/dev/null || n=0
+  fi
+  if [ "$n" -gt 0 ] && hash_paths "$pt" "$hf" "$n" && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
+    paste -d' ' "$hf" "$pt" > "$1" 2>/dev/null
+    [ "$tot" -le 20000 ] || tail -n +20001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
+  fi
+  rm -f "$pf" "$hf" "$pf.top" 2>/dev/null
+  return 0
+}
+# un_same PATH -> 0 when PATH was untracked at SessionStart with the same content (UNB holds the record)
+un_same() {
+  local h
+  [ -n "$UNB" ] || return 1
+  h="$(git -C "$TOP" hash-object -- "$1" 2>/dev/null)" || return 1
+  case "$NL$UNB" in *"$NL$h $1$NL"*) return 0 ;; esac
+  return 1
+}
 start_mode() {
   local f h
   [ -n "$SIDV" ] || exit 0
@@ -1699,6 +1814,7 @@ start_mode() {
   [ -n "$h" ] || h=none
   mkdir -p "$GC/pb-guard" 2>/dev/null || exit 0
   printf '%s\n' "$h" > "$f" 2>/dev/null
+  record_untracked "$f.untracked"
   exit 0
 }
 
@@ -1706,12 +1822,25 @@ start_mode() {
 # input: DS+"B path" (a schema file at the baseline), DS+"N path" (a schema file now), DS+"M path" (an untracked migration),
 # DS+"D" (git diff BASE, -U0), each followed by its lines. Output: KIND<TAB>FILE<TAB>NAME per finding.
 SCH='
+function iscode(p,   q) {
+  q = "/" tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || q ~ /\.sql$/ || q ~ /migrat/ || q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}
 function nname(s) { gsub(/"/, "", s); gsub(/`/, "", s); gsub(/\[/, "", s); gsub(/\]/, "", s); return tolower(s) }
 function ncols(b) { b = nname(b); gsub(/[ \t]+/, " ", b); gsub(/ ?, ?/, ",", b); gsub(/\( /, "(", b); gsub(/ \)/, ")", b); sub(/^ /, "", b); sub(/ $/, "", b); return b }
 function contract(l) {
   l = tolower(l)
   if (l ~ /drop[ \t]+(table|column|database|schema)([^a-z0-9_]|$)/) return 1
   if (l ~ /(^|[^a-z0-9_])truncate([^a-z0-9_]|$)/) return 1
+  if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
+  return 0
+}
+function ccontract(l,   o) {
+  o = l; l = tolower(l)
+  if (l ~ /drop[ \t]+(table|column|database|schema)[ \t]+(if[ \t]+exists[ \t]+)?[][A-Za-z_"\047`]/) return 1
+  if (l ~ /(^|[^a-z0-9_])truncate[ \t]+table[ \t]+[][A-Za-z_"\047`]/) return 1
+  if (o ~ /(^|[^A-Za-z0-9_])TRUNCATE[ \t]+[][A-Za-z_"\047`]/) return 1
   if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
   return 0
 }
@@ -1761,14 +1890,21 @@ function nocom(l,   o, a, d) {
   return o
 }
 BEGIN { DS = "\034" }
-substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; inc = 0; next }
+substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; dc = ""; inc = 0; next }
 cur == "B" || cur == "N" { BUF[cur, f] = BUF[cur, f] " " nocom($0) "\n"; next }
 cur == "M" { ADD[f] = ADD[f] $0 "\n"; next }
+cur == "U" { CADD[f] = CADD[f] $0 "\n"; next }
 cur == "D" {
-  if (substr($0, 1, 11) == "diff --git ") { df = ""; next }
-  if (substr($0, 1, 6) == "+++ b/") { df = substr($0, 7); if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""; next }
-  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; next }
+  if (substr($0, 1, 11) == "diff --git ") { df = ""; dc = ""; next }
+  if (substr($0, 1, 6) == "+++ b/") {
+    df = substr($0, 7); dc = ""
+    if (iscode(df)) { dc = df; df = "" }
+    else if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""
+    next
+  }
+  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; dc = ""; next }
   if (df != "" && substr($0, 1, 1) == "+") ADD[df] = ADD[df] substr($0, 2) "\n"
+  if (dc != "" && substr($0, 1, 1) == "+") CADD[dc] = CADD[dc] substr($0, 2) "\n"
   next
 }
 END {
@@ -1787,6 +1923,10 @@ END {
     m = split(ADD[f], L, "\n")
     for (i = 1; i <= m; i++) if (contract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "migration-contract\t" f "\t" substr(l, 1, 120); break }
   }
+  for (f in CADD) {
+    m = split(CADD[f], L, "\n")
+    for (i = 1; i <= m; i++) if (ccontract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "code-contract\t" f "\t" substr(l, 1, 120); break }
+  }
   for (nm in NAMES) {
     if (!HAS["B", nm]) continue
     if (HAS["N", nm]) {
@@ -1803,8 +1943,48 @@ END {
   }
 }'
 
+# UCAP: the over-cap ordering for Stop (R5-1, R6-1). stdin: "@@R" + the SessionStart record ("<hash> <path>"), "@@H" + the current hashes,
+# "@@L" + the current paths (same order). Prints "S <path>" for the first 2000: group A (new or changed since SessionStart) first, then
+# group B (pre-session, no recorded hash), in input order; an unchanged recorded file is skipped. When files were not scanned:
+# "T <count>", "D <dir> <count>" (up to 5 top-level dirs with the most) and "C 1", all counting only unscanned A and B files, and
+# "K 1" first (the awk ran), "A 1" when an unscanned file is in group A (such a Stop blocks headless; B alone only warns).
+UCAP='
+$0 == "@@R" { sec = "R"; next }
+$0 == "@@H" { sec = "H"; next }
+$0 == "@@L" { sec = "L"; next }
+sec == "R" { i = index($0, " "); if (i) rec[substr($0, i + 1)] = substr($0, 1, i - 1); next }
+sec == "H" { nh++; H[nh] = $0; next }
+sec == "L" && $0 != "" { n++; P[n] = $0; next }
+END {
+  cap = 2000; ok = (nh == n)
+  for (i = 1; i <= n; i++) {
+    p = P[i]; h = ok ? H[i] : "-"
+    if (!(p in rec)) A[++na] = p
+    else if (ok && rec[p] != "-" && rec[p] == h) SM[++ns] = p
+    else if (rec[p] != "-" && rec[p] != h) A[++na] = p
+    else B[++nb] = p
+  }
+  print "K 1"
+  q = 0
+  for (i = 1; i <= na; i++) Q[++q] = A[i]
+  for (i = 1; i <= nb; i++) Q[++q] = B[i]
+  nu = 0
+  for (i = 1; i <= q; i++) { if (i <= cap) print "S " Q[i]; else U[++nu] = Q[i] }
+  if (q <= cap) exit
+  print "T " nu
+  for (i = 1; i <= nu; i++) { d = index(U[i], "/") ? substr(U[i], 1, index(U[i], "/") - 1) : "."; DC[d]++ }
+  for (k = 1; k <= 5; k++) {
+    best = ""
+    for (d in DC) if (!(d in DONE) && (best == "" || DC[d] > DC[best] || (DC[d] == DC[best] && d < best))) best = d
+    if (best == "") break
+    DONE[best] = 1; print "D " best " " DC[best]
+  }
+  print "C 1"
+  if (na > cap) print "A 1"
+}'
+
 stop_mode() {
-  local bl nl f findings kinds k kind file name items="" short="" files="" b7 sid sf cnt again="" msg
+  local ul nu capped capdirs mk hs co cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1813,24 +1993,76 @@ stop_mode() {
   bl=""
   [ "$BASE" = none ] || bl="$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" 2>/dev/null)"
   nl="$(git -C "$TOP" -c core.quotepath=off ls-files -co --exclude-standard 2>/dev/null)"
+  UNB=""
+  if [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked" ]; then UNB="$(cat "$GC/pb-guard/$SIDV.untracked" 2>/dev/null)"; fi
+  [ -z "$UNB" ] || UNB="$UNB$NL"
+  # the untracked list, filtered first: regular non-symlink files that can be findings (is_mig first, then is_code); text files only
+  # (binary files cannot hold a statement). Over the 2000-file cap, a file new this session or changed since SessionStart comes first
+  # and an unchanged pre-session one is dropped before counting (R5-1); migrations stay first (R4-1)
+  ul="$(
+    filt_untracked | sed 's|^|./|' | tr '\n' '\0' | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -e '' /dev/null 2>/dev/null; } | sed 's|^\./||'
+  )"
+  nu=0
+  [ -z "$ul" ] || nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
+  capped=0
+  capdirs=""
+  mk=0
+  ua=0
+  [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked.capped" ] && mk=1
+  if [ "$nu" -gt 2000 ]; then
+    hs="$(printf '%s\n' "$ul" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)"
+    co="$({ printf '@@R\n'; printf '%s' "$UNB"; printf '@@H\n'; printf '%s\n' "$hs"; printf '@@L\n'; printf '%s\n' "$ul"; } | awk -v marker="$mk" "$UCAP" 2>/dev/null)"
+    if [ -n "$co" ]; then
+      ul="$(printf '%s\n' "$co" | sed -n 's/^S //p')"
+      if [ -n "$(printf '%s\n' "$co" | sed -n 's/^C //p')" ]; then
+        capped="$(printf '%s\n' "$co" | sed -n 's/^T //p')"
+        [ -z "$(printf '%s\n' "$co" | sed -n 's/^A //p')" ] || ua=1
+        hlog "stop-scan-capped"
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          capdirs="$capdirs${capdirs:+, }${f% *} (${f##* })"
+        done <<EOF
+$(printf '%s\n' "$co" | sed -n 's/^D //p')
+EOF
+      fi
+    else
+      hlog "stop-scan-capped"
+      capped=$((nu - 2000))
+      ua=1
+      ul="$(printf '%s\n' "$ul" | head -n 2000)"
+    fi
+  fi
+  case "$capped" in '' | *[!0-9]*) capped=0 ;; esac
+  cands="$(
+    printf '%s\n' "$ul" | awk "$UAWK_FN"' $0 != "" && !ism($0)' | sed 's|^|./|' | tr '\n' '\0' \
+      | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; } | sed 's|^\./||'
+  )"
   findings="$(
     {
-      printf '%s\n' "$bl" | while IFS= read -r f; do
+      printf '%s\n' "$bl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" || continue
         printf '%sB %s\n' "$DS" "$f"; git -C "$TOP" show "$BASE:$f" 2>/dev/null; printf '\n'
       done
-      printf '%s\n' "$nl" | while IFS= read -r f; do
+      printf '%s\n' "$nl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" && [ -f "$TOP/$f" ] || continue
         printf '%sN %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
-      git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | while IFS= read -r f; do
+      printf '%s\n' "$ul" | while IFS= read -r f; do
         [ -n "$f" ] && is_mig "$f" && [ -f "$TOP/$f" ] || continue
+        un_same "$f" && continue
         printf '%sM %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
+      done
+      printf '%s\n' "$cands" | while IFS= read -r f; do
+        [ -n "$f" ] && [ -f "$TOP/$f" ] || continue
+        [ "$(wc -c < "$TOP/$f" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || continue
+        un_same "$f" && continue
+        printf '%sU %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
       printf '%sD -\n' "$DS"
       git -C "$TOP" -c core.quotepath=off diff --no-color --no-ext-diff --no-renames -U0 "$DB" -- 2>/dev/null
     } | awk "$SCH" 2>/dev/null
   )"
+  if [ "$capped" -gt 0 ]; then findings="$findings${findings:+$NL}scan-capped$TAB-$TAB$capped"; fi
   [ -n "$findings" ] || exit 0
   b7="${BASE:0:7}"
   kinds=" "
@@ -1842,15 +2074,22 @@ stop_mode() {
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+      scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
+      code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
+        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
   done <<EOF
 $findings
 EOF
   short="${short#; }"
-  if ! headless; then
+  if ! headless || { [ "$kinds" = " scan-capped " ] && [ "$mk" = 1 ] && [ "$ua" = 0 ]; }; then
     for k in $kinds; do hlog "warn $k"; done
-    jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    if [ "$kinds" = " scan-capped " ]; then
+      jesc "${G_PFX}untracked code files were not scanned for irreversible changes:$items${NL}Tell the user about them."
+    else
+      jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    fi
     printf '{"systemMessage":"%s"}\n' "$JE"
     exit 0
   fi
@@ -1871,6 +2110,15 @@ EOF
   printf '%s\n' "$((cnt + 1))" > "$sf" 2>/dev/null
   for k in $kinds; do hlog "stop-block $k"; done
   [ "$J_active" = true ] && again=" (still there after an earlier Stop block)"
+  if [ "$kinds" = " scan-capped " ]; then
+    msg="${G_PFX}BLOCKED (Stop): untracked code files could not be scanned for irreversible changes$again:$items${NL}Headless run: add the directories named above to .gitignore, or move the files under .agents/, then report them in your final reply."
+    printf '%s\n' "$msg" >&2
+    exit 2
+  fi
+  for f in $cfiles; do
+    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
+    else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
+  done
   msg="${G_PFX}BLOCKED (Stop): this session left irreversible schema or migration changes$again:$items$NL"
   if [ "$BASE" = none ]; then
     msg="${msg}Headless run: revert these changes before finishing (restore the schema files, never by rewriting history; remove the migration or move it under .agents/), then describe them as a pending proposal in your final reply."
@@ -1878,6 +2126,7 @@ EOF
     for f in $files; do msg="$msg(restore: git checkout $b7 -- $f)$NL"; done
     msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
+  msg="$msg$chint"
   printf '%s\n' "$msg" >&2
   exit 2
 }

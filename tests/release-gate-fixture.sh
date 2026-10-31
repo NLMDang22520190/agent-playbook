@@ -41,13 +41,13 @@ rgf_jfile() {
       for arm in with without; do
         r=PASS; [ "$arm" = without ] && r=FAIL
         case ",$inv," in *",$s,"*) if [ "$r" = PASS ]; then r=FAIL; else r=PASS; fi ;; esac
-        runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"$arm\",\"k\":$i,\"label\":\"$s.$arm.$i\",\"status\":\"graded\",\"error\":null,\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"}]}"
+        runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"$arm\",\"k\":$i,\"label\":\"$s.$arm.$i\",\"status\":\"graded\",\"error\":null,\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"},{\"name\":\"nothing written outside the workdir\",\"key\":\"nothing written outside the workdir\",\"result\":\"PASS\"}]}"
         sep=","
       done
       i=$((i + 1))
     done
   done
-  printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"claude","model":"%s","arms":["with","without"],"repeat":5,"max_cost":null,"interactive":false,"started":"2026-10-27T10:00:00Z","workroot":"<tmp>/w","out":"x.md","variant":{"tree":"<variant>","version":"0.30.0","sha":"%s","end_check":"ok"},"runs":[%s],"summary":[]}\n' \
+  printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"claude","model":"%s","arms":["with","without"],"repeat":5,"max_cost":null,"interactive":false,"hooks":true,"started":"2026-10-27T10:00:00Z","workroot":"<tmp>/w","out":"x.md","variant":{"tree":"<variant>","version":"0.30.0","sha":"%s","end_check":"ok"},"runs":[%s],"summary":[]}\n' \
     "$commit" "$model" "$commit" "$runs" > "$out"
 }
 # rgf_seal REPO [INVERT]: a gate for the commit at HEAD of REPO, committed as one more commit (evals/results/gate-<12 hex> only).

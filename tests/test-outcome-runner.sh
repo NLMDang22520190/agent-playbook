@@ -99,6 +99,24 @@ assert_rc "AC4 auth marker -> exit 4" 4
 assert_eq "AC4 auth marker: JSON status error" '"error"' "$(rfield t-add.with.1 status)"
 assert_eq "AC4 auth marker: no hidden test ran" "" "$(leftovers "$GR")"
 
+echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
+ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
+assert_rc "N4 --arm both with the solving stub -> exit 0" 0
+for L in t-add.with.1 t-add.without.1; do
+  assert_contains "N4 $L: the adapter sees PB_EVAL_HOOKS=1" "$(cat "$SR/$L.env" 2>/dev/null)" "PB_EVAL_HOOKS=1"
+done
+ro --cmd "bash $SA/solve.sh" --tasks t-add
+assert_rc "N4 without --arm/--repeat (one with run) -> exit 0" 0
+assert_contains "N4 a plain run (no --arm, no --repeat): the adapter sees PB_EVAL_HOOKS=1" "$(cat "$SR/t-add.with.1.env" 2>/dev/null)" "PB_EVAL_HOOKS=1"
+# a value the caller already had in its environment does not leak the other way: the runner sets 1 whatever the caller exported
+rm -f "$SR"/* "$GR"/* "$FR"/*
+WP="$(mk_tmp)"; WR="$WP/wr"; mkdir -p "$WR"; : > "$WR/.pb-eval-workroot"; OD="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$GH" PATH="$FK:$PATH" PB_EVAL_HOOKS=0 bash "$OUTCOME" --tasks-dir "$T" --tasks t-add --workroot "$WR" --out "$OD/r.md" --cmd "bash $SA/solve.sh" --arm both --repeat 1
+assert_rc "N4 a caller that exports PB_EVAL_HOOKS=0 -> exit 0" 0
+for L in t-add.with.1 t-add.without.1; do
+  assert_contains "N4 $L: PB_EVAL_HOOKS is 1 whatever the caller exported" "$(cat "$SR/$L.env" 2>/dev/null)" "PB_EVAL_HOOKS=1"
+done
+
 echo "S1 AC4 an adapter that runs past --timeout is ERROR"
 if [ "$HAS_TIMEOUT" = 1 ]; then
   ro --cmd "bash $SA/slow.sh" --tasks t-add --timeout 1

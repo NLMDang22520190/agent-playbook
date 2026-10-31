@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for the install.sh side of the opt-in Claude Code hooks (v0.28.0 lane k1b, AC-B5, AC-B6): doctor reports the
-# hooks, uninstall removes ours (also the way install.ps1 calls it), install never adds or removes them. Everything runs
+# hooks, uninstall removes ours (also the way install.ps1 calls it); since v0.33.0 install adds them by default (AC5) unless --no-hooks / PB_HOOKS=off / hooks_optout yes, and never removes them. Everything runs
 # against throw-away --home sandboxes and a stand-in HOME; the real home directory is never touched. The hook scripts
 # belong to other lanes: the settings fixtures point at stub scripts in a temp dir.
 . "$(dirname "$0")/lib.sh"
@@ -61,26 +61,28 @@ mk_settings() {
 }
 ALL4="guard guard-start guard-stop learnings"            # the v0.28 set
 ALL5="guard guard-ps guard-start guard-stop learnings"   # the v0.29 set (guard-ps: the PowerShell tool)
-NOT_INSTALLED='INFO  hooks: not installed (opt-in: say "set up the playbook")'
+# v0.33 AC5' (was NOT_INSTALLED, an INFO "opt-in" line): hooks are on by default, so "not installed" is a WARN, never a problem
+NOT_INSTALLED='WARN  hooks: not installed (run install.sh install, or install.sh install --no-hooks to keep them off)'
 
 SD="$(cd "$(mk_tmp)" && pwd -P)"; mk_stubs "$SD" "guard-irreversible.sh learnings-hook.sh"; PS="$(pform "$SD")"
 
-echo "AC-B5 install.sh install never adds hooks"
+echo "AC5 (changed from AC-B5) PB_HOOKS=off: install adds no hooks (the default install adds them: tests/test-install-hooks-default.sh)"
 H="$(mk_home)"
-run INST install --home "$H" --harness claude --yes
-assert_rc "install (claude) exits 0" 0
-assert_no_path "AC-B5 install.sh install creates no ~/.claude/settings.json (characterization: true before k1b too)" "$H/.claude/settings.json"
+run env PB_HOOKS=off bash "$PB_ROOT/install.sh" install --home "$H" --harness claude --yes $MODEFLAG
+assert_rc "install (claude) with PB_HOOKS=off exits 0" 0
+assert_no_path "AC5 (was AC-B5, changed: only with PB_HOOKS=off) install creates no ~/.claude/settings.json" "$H/.claude/settings.json"
 
 echo "AC-B6 doctor reports the hooks (claude)"
 run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor on a healthy install without hooks exits 0" 0
-has_line "AC-B6 doctor without hooks: INFO not installed (opt-in)" "$OUT" "$NOT_INSTALLED"
+has_line "AC5' (was AC-B6, changed) doctor without hooks and without hooks_optout: WARN not installed, never a problem line" "$OUT" "$NOT_INSTALLED"
+assert_not_contains "AC5' doctor without hooks: no PROBLEM line for hooks" "$OUT" "PROBLEM: hooks"
 assert_contains "AC-B6 doctor without hooks: still healthy" "$OUT" "doctor: healthy"
 
 mk_settings "$H/.claude/settings.json" "$PS" ""
 run INST doctor --home "$H" --harness claude
 assert_rc "AC-B6 doctor with only foreign hooks exits 0" 0
-has_line "AC-B6 doctor with only foreign hooks: INFO not installed" "$OUT" "$NOT_INSTALLED"
+has_line "AC5' (was AC-B6, changed) doctor with only foreign hooks: WARN not installed" "$OUT" "$NOT_INSTALLED"
 
 mk_settings "$H/.claude/settings.json" "$PS" "$ALL5"
 run INST doctor --home "$H" --harness claude
@@ -95,10 +97,16 @@ has_re "AC-H4 four v0.28 handlers: INFO partly installed" "$OUT" '^INFO  hooks: 
 assert_contains "AC-H4 four v0.28 handlers: names the missing PowerShell handler guard-ps" "$OUT" "guard-ps"
 has_re "AC-H4 four v0.28 handlers: says the fix, claude-hooks.sh install" "$OUT" 'claude-hooks\.sh install'
 
+# AC5' (changed from AC-B5 "install never touches hooks"): the default install runs claude-hooks.sh install, which is idempotent. With
+# the handlers already pointing at THIS home's scripts the re-install leaves settings.json byte for byte, foreign hook kept.
+mk_settings "$H/.claude/settings.json" "$(pform "$H/.agents/playbook/scripts")" "$ALL5"
 S0="$(ck "$H/.claude/settings.json")"
 run INST install --home "$H" --harness claude --yes
 assert_rc "re-install (claude) with hooks present exits 0" 0
-assert_eq "AC-B5 install.sh install leaves the hooks alone (settings.json byte-identical)" "$S0" "$(ck "$H/.claude/settings.json")"
+if [ "$HAVE_NODE" = 1 ]; then
+  assert_eq "AC5' (was AC-B5, changed) a re-install with all five handlers in place leaves settings.json byte-identical" "$S0" "$(ck "$H/.claude/settings.json")"
+else t_skip 1 "AC5' re-install idempotent (no node)"; fi
+assert_contains "AC5' re-install keeps the foreign hook" "$(cat "$H/.claude/settings.json")" "/usr/local/bin/audit-bash.sh"
 
 mk_settings "$H/.claude/settings.json" "$PS" "learnings"
 run INST doctor --home "$H" --harness claude
@@ -121,6 +129,19 @@ INST install --home "$H2" --harness codex --yes >/dev/null 2>&1
 mk_settings "$H2/.claude/settings.json" "$PS" "$ALL5"
 run INST doctor --home "$H2" --harness codex
 assert_not_contains "AC-B6 doctor for codex only has no hooks line (characterization)" "$OUT" "hooks:"
+
+echo "AC5' doctor: INFO off by choice, WARN for the legacy hooks=off key, never a problem"
+H="$(mk_home)"
+run env PB_HOOKS=off bash "$PB_ROOT/install.sh" install --home "$H" --harness claude --yes $MODEFLAG
+mkdir -p "$H/.agents"; printf 'hooks_optout=yes\n' > "$H/.agents/playbook.conf"
+run INST doctor --home "$H" --harness claude
+assert_rc "AC5' doctor with hooks_optout yes exits 0" 0
+has_line "AC5' doctor with hooks_optout yes: INFO off" "$OUT" "INFO  hooks: off (hooks_optout yes; turn on: install.sh install --hooks)"
+printf 'hooks=off\n' > "$H/.agents/playbook.conf"
+run INST doctor --home "$H" --harness claude
+assert_rc "AC5' doctor with only the legacy hooks=off exits 0" 0
+has_line "AC5' D8 legacy hooks=off is not a choice: WARN not installed" "$OUT" "$NOT_INSTALLED"
+assert_not_contains "AC5' D8 legacy hooks=off: no INFO off line" "$OUT" "INFO  hooks: off"
 
 echo "AC-B5 install.sh uninstall removes our hooks and keeps foreign ones"
 if [ "$HAVE_NODE" = 1 ]; then
@@ -145,7 +166,8 @@ else t_skip 7 "AC-B5 uninstall removes hooks (no node)"; fi
 
 echo "AC-B5 uninstall on a home without settings.json creates none"
 H="$(mk_home)"
-INST install --home "$H" --harness claude --yes >/dev/null 2>&1
+INST install --home "$H" --harness claude --yes --no-hooks >/dev/null 2>&1   # since v0.33.0 a plain install writes settings.json (AC5'); opt out so the home really has none
+assert_no_path "AC-B5 precondition: --no-hooks install left no settings.json" "$H/.claude/settings.json"
 run INST uninstall --home "$H" --harness claude --yes
 assert_rc "uninstall (claude) without settings.json exits 0" 0
 assert_no_path "AC-B5 uninstall creates no settings.json (characterization: true before k1b too)" "$H/.claude/settings.json"

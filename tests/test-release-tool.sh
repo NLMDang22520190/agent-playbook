@@ -5,6 +5,7 @@
 # the fixture after setup is re-sealed with `reseal`. The gate cases are at the end of this file.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/release-gate-fixture.sh"
+. "$(dirname "$0")/releases-fixture.sh"
 # the skip count is the whole file: 200 assertions (passed+failed+skipped of a real run)
 command -v node >/dev/null 2>&1 || { t_skip 200 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
 REL_SRC="$PB_ROOT/tools/release.sh"
@@ -490,12 +491,16 @@ if [ "$SSH_SIGN" = 1 ]; then
   # AC-S5: a fresh client of the origin runs install.sh's own verify path on the tag release.sh signed
   D="$SW/client"; git clone -q "$O" "$D" 2>/dev/null || { echo "client clone failed"; exit 3; }
   : > "$SW/registry"
+  # v0.33.0 S4 (AC6'): update checks the GitHub Release of the tag first; this case is about the signature, so it uses the test
+  # seam (PB_RELEASES_API) with a fake curl that answers 200 (the Release check is tested in tests/test-update-release.sh).
+  rf_fake_curl "$SW/bin" || { echo "fake curl setup failed"; exit 3; }
+  UPDR() { ( cd "$D" && PATH="$SW/bin:$PATH" PB_RELEASES_API="http://releases.test.invalid" PB_RELEASES_REPO="test/playbook" PB_FAKE_CURL_DEFAULT=200 PLAYBOOK_REGISTRY="$SW/registry" bash install.sh update --yes < /dev/null 2>&1 ); }
   git config --file "$GC" gpg.ssh.allowedSignersFile "$SW/allowed"
-  UOUT="$(cd "$D" && PLAYBOOK_REGISTRY="$SW/registry" bash install.sh update --yes < /dev/null 2>&1)"; URC=$?
+  UOUT="$(UPDR)"; URC=$?
   assert_eq "AC-S5 install.sh update on the signed release -> exit 0" "0" "$URC"
   assert_contains "AC-S5 install.sh update reports the signature verified" "$UOUT" "release tag v1.2.3: signature verified"
   git config --file "$GC" --unset gpg.ssh.allowedSignersFile
-  UOUT="$(cd "$D" && PLAYBOOK_REGISTRY="$SW/registry" bash install.sh update --yes < /dev/null 2>&1)"
+  UOUT="$(UPDR)"
   assert_not_contains "AC-S5 control: without an allowed signers file install.sh does not say verified" "$UOUT" "signature verified"
   # a signing key set only in the repo config (not global) is honoured too (effective config)
   cfg_reset; git config --file "$GC" gpg.format ssh
