@@ -863,7 +863,7 @@ is_mig() {
   return 1
 }
 # R5-3: the is_code/is_mig name rules as awk (same rules as is_code and is_mig), one pass over a path list, so a repo with
-# tens of thousands of untracked dependency files costs one process, not one bash iteration per file. UFILT prints the migration
+# tens of thousands of untracked dependency files costs one process, not one bash iteration per file. UFILT_D prints the migration
 # paths first, then the code paths.
 UAWK_FN='function ism(p) { if (p ~ /^\.agents\//) return 0; return (tolower(p) ~ /migrat/) }
 function isc(p,   q, l) {
@@ -872,14 +872,34 @@ function isc(p,   q, l) {
   if (q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
   return 1
 }'
-UFILT="$UAWK_FN"'
-$0 != "" { if (ism($0)) m[nm++] = $0; else if (isc($0)) c[nc++] = $0 }
-END { for (i = 0; i < nm; i++) print m[i]; for (i = 0; i < nc; i++) print c[i] }'
-# filt_untracked -> the untracked paths that can be findings (is_mig first, then is_code), regular non-symlink files only: the name
-# filter in one awk, then one find -P per xargs batch (a symlink is not -type f). Needs TOP.
+# filt_untracked_to OUT -> OUT holds the untracked paths that can be findings (is_mig first, then is_code), regular non-symlink files
+# only: the name filter in one awk (which also drops a "dir/" nested-repo entry and notes each directory once), then ONE find -P over
+# those directories (maxdepth 1, listing what is neither a regular file nor a directory: symlinks, sockets, fifos) and, only when it
+# lists any, one awk that drops those names. A find per file batch cost 13 s for 20000 files on Windows (process spawns), this costs
+# about one find. Needs TOP.
+UFILT_D="$UAWK_FN"'
+$0 != "" && $0 !~ /\/$/ { if (ism($0)) m[nm++] = $0; else if (isc($0)) c[nc++] = $0 }
+function note(p,   d) { d = p; sub(/[^\/]*$/, "", d); if (!(d in s)) { s[d] = 1; if (d == "") print "." > df; else print "./" substr(d, 1, length(d) - 1) > df } }
+END { for (i = 0; i < nm; i++) { print m[i]; note(m[i]) } for (i = 0; i < nc; i++) { print c[i]; note(c[i]) } }'
+filt_untracked_to() {
+  local nr="$1.nr" df="$1.d"
+  : > "$df"
+  git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | awk -v df="$df" "$UFILT_D" > "$1"
+  [ -s "$df" ] || { rm -f "$df"; return 0; }
+  tr '\n' '\0' < "$df" | { cd "$TOP" 2>/dev/null && xargs -0 sh -c '[ "$#" -gt 0 ] || exit 0; find -P "$@" -maxdepth 1 ! -type f ! -type d -print' _ 2>/dev/null; } > "$nr"
+  if [ -s "$nr" ]; then
+    awk 'FILENAME == ARGV[1] { x[substr($0, 1, 2) == "./" ? substr($0, 3) : $0] = 1; next } !($0 in x)' "$nr" "$1" > "$1.f" && mv "$1.f" "$1"
+  fi
+  rm -f "$df" "$nr" "$1.f"
+  return 0
+}
 filt_untracked() {
-  git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | awk "$UFILT" | sed 's|^|./|' | tr '\n' '\0' \
-    | { cd "$TOP" 2>/dev/null && xargs -0 sh -c '[ "$#" -gt 0 ] || exit 0; find -P "$@" -maxdepth 0 -type f -print' _ 2>/dev/null; } | sed 's|^\./||'
+  local t
+  t="$(mktemp "${TMPDIR:-/tmp}/pbguard-ft.XXXXXX" 2>/dev/null)" || return 1
+  filt_untracked_to "$t"
+  cat "$t"
+  rm -f "$t"
+  return 0
 }
 is_schema() {
   case "$1" in *.[Ss][Qq][Ll]) ;; *) return 1 ;; esac
@@ -1733,25 +1753,43 @@ pre_write() {
 }
 
 # ---- SessionStart: the baseline (D16) ----
+# hash_paths LIST OUT N -> git hash-object of the N paths in LIST into OUT, in order. From 2000 paths the list is split in 8 chunks hashed
+# by 8 parallel git processes (file opens dominate on Windows: 20000 files 4.4 s serial, 1.5 s in parallel); a failed chunk shortens OUT, which the caller's line count catches.
+hash_paths() {
+  local ok=1 sz k
+  if [ "$3" -lt 2000 ]; then git -C "$TOP" hash-object --stdin-paths < "$1" > "$2" 2>/dev/null; return; fi
+  sz=$(( ($3 + 7) / 8 ))
+  for k in a b c d e f g h; do rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null; done
+  split -a 1 -l "$sz" "$1" "$1.c." 2>/dev/null || return 1
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && git -C "$TOP" hash-object --stdin-paths < "$1.c.$k" > "$1.c.$k.h" 2>/dev/null &
+  done
+  wait
+  : > "$2"
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && { cat "$1.c.$k.h" >> "$2" 2>/dev/null || ok=0; }
+    rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null
+  done
+  [ "$ok" = 1 ]
+}
 # record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
 # symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 20000 are hashed (R6-2); the rest are listed as "- <path>"
 # and FILE.capped marks the over-20000 case (R6-1: only unhashed pre-session files may then be left unscanned with a warning). One awk filter, one hash-object pass (R4-2, R5-3)
 record_untracked() {
-  local pf="$1.paths" hf="$1.hashes" tot n
+  local pf="$1.paths" hf="$1.hashes" tot n pt
   rm -f "$1.capped" 2>/dev/null
-  filt_untracked > "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
+  filt_untracked_to "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
   tot="$(wc -l < "$pf" | tr -d ' ')"
   n="$tot"
+  pt="$pf"
   if [ "$tot" -gt 20000 ]; then
     : > "$1.capped" 2>/dev/null
     n=20000
-    head -n 20000 "$pf" > "$pf.top" 2>/dev/null || n=0
-  else
-    cp "$pf" "$pf.top" 2>/dev/null || n=0
+    pt="$pf.top"
+    head -n 20000 "$pf" > "$pt" 2>/dev/null || n=0
   fi
-  if [ "$n" -gt 0 ] && git -C "$TOP" hash-object --stdin-paths < "$pf.top" > "$hf" 2>/dev/null \
-    && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
-    paste -d' ' "$hf" "$pf.top" > "$1" 2>/dev/null
+  if [ "$n" -gt 0 ] && hash_paths "$pt" "$hf" "$n" && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
+    paste -d' ' "$hf" "$pt" > "$1" 2>/dev/null
     [ "$tot" -le 20000 ] || tail -n +20001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
   fi
   rm -f "$pf" "$hf" "$pf.top" 2>/dev/null
