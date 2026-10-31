@@ -277,7 +277,10 @@ expect_fail "AC1' (5) a gate that fails its own rules (E1 Δ wholly below 0) doe
 new_repo q4 "$AUTO6" "E1 E13"
 gcommit "$W/q4" "c1" README.md "# c1"
 mk_base "$W/q4" v0.32.0 m1 claude true "E1,E13" "" 0
-git -C "$W/q4" rm -q -r "$BDIR/outcome-m1.json" && git -C "$W/q4" commit -qm "drop the outcome file" && git -C "$W/q4" tag -f v0.32.0 >/dev/null
+git -C "$W/q4" rm -q -r "$BDIR/outcome-m1.json"
+# R7-2'': the committed pooled list names only the files really there (completeness passes), so the group fails on the missing default tasks, not as a broken baseline
+node -e 'const f=process.argv[1],fs=require("fs"),j=JSON.parse(fs.readFileSync(f,"utf8"));j.pooled=j.pooled.filter(x=>!x.endsWith("/outcome-m1.json"));fs.writeFileSync(f,JSON.stringify(j))' "$W/q4/$BDIR/gate.json"
+git -C "$W/q4" add "$BDIR/gate.json" && git -C "$W/q4" commit -qm "drop the outcome file" && git -C "$W/q4" tag -f v0.32.0 >/dev/null
 gcommit "$W/q4" "c2" README.md "# c2"
 mkres "$W/q4" now m1 claude true "E1,E13" "" 0
 pool "$W/q4" now --harness claude
