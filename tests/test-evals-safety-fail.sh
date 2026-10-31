@@ -106,4 +106,73 @@ assert_file "R2-3 (labeled) safety-fail.md is in results.E13.with.2.evidence" "$
 assert_contains "R2-3 (labeled) it names the failed key" "$(cat "$XW/results.E13.with.1.evidence/safety-fail.md" 2>/dev/null)" "$KSAFE13"
 assert_no_path "R2-3 (labeled) no plain-id evidence dir is made" "$XW/results.E13.evidence/safety-fail.md"
 
+
+# ---- Fix round R3 (spec "## Revision 6", R3-4 and R3-5) ----
+echo "R3-4 absolute paths planted in the diff, an untracked file and the hook log come out as <workdir>, <workroot> and <home>"
+# The agent body learns the work dir and the workroot at run time (the runner starts it in the work dir; the workroot is its parent).
+# HOME is the test's own HOME, spelled into the body now.
+R34_HOME="${HOME:-/nonexistent-home}"
+hr E13 paths on "$PRE5
+W=\"\$(pwd -P)\"; WR=\"\$(dirname \"\$W\")\"
+$DROPJS
+printf '%s\n' \"// planted \$W/src/orders.js and \$WR/results.md and $R34_HOME/.cache/x\" >> src/orders.js
+printf '%s\n' \"untracked note: \$W/notes and \$WR/other and $R34_HOME/.ssh/config\" > notes.txt
+HLOG \"guard note \$W/src \$WR/log $R34_HOME/hooklog\"
+JRES 'Done.'"
+assert_eq "R3-4 the legacy_orders check FAILed (the premise)" "FAIL" "$(e_state E13 "$KSAFE13")"
+assert_file "R3-4 safety-fail.md is written" "$(EVD E13)/safety-fail.md"
+S="$(SF E13)"
+WRP="$(cd "$XW" && pwd -P)"
+assert_contains "R3-4 the diff holds <workdir>/src/orders.js" "$S" "planted <workdir>/src/orders.js"
+assert_contains "R3-4 the diff holds <workroot>/results.md" "$S" "<workroot>/results.md"
+assert_contains "R3-4 the diff holds <home>/.cache/x" "$S" "<home>/.cache/x"
+assert_contains "R3-4 the untracked file holds <workdir>/notes" "$S" "untracked note: <workdir>/notes"
+assert_contains "R3-4 the untracked file holds <workroot>/other" "$S" "<workroot>/other"
+assert_contains "R3-4 the untracked file holds <home>/.ssh/config" "$S" "<home>/.ssh/config"
+assert_contains "R3-4 the hook log holds <workdir>/src" "$S" "guard note <workdir>/src"
+assert_contains "R3-4 the hook log holds <workroot>/log" "$S" "<workroot>/log"
+assert_contains "R3-4 the hook log holds <home>/hooklog" "$S" "<home>/hooklog"
+assert_not_contains "R3-4 no absolute workdir path" "$S" "$WRP/E13"
+assert_not_contains "R3-4 no absolute workroot path" "$S" "$WRP"
+assert_not_contains "R3-4 no workroot path as spelled in the test" "$S" "$XW"
+assert_not_contains "R3-4 no HOME path" "$S" "$R34_HOME/"
+
+EVU8() { iconv -f UTF-8 -t UTF-8 "$1" > /dev/null 2>&1; }
+r35_check() { # LABEL FILE
+  local f="$2" sz
+  if [ ! -f "$f" ]; then t_bad "$1: safety-fail.md exists" "missing"; return; fi
+  sz="$(wc -c < "$f" | tr -d ' ')"
+  if [ "$sz" -le 204800 ]; then t_ok "$1: the file stays <= 200 KB ($sz bytes)"; else t_bad "$1: the file stays <= 200 KB" "$sz bytes"; fi
+  assert_contains "$1: it says truncated" "$(tail -n 3 "$f")" "truncated"
+  if command -v iconv > /dev/null 2>&1; then
+    if EVU8 "$f"; then t_ok "$1: valid UTF-8"; else t_bad "$1: valid UTF-8" "iconv rejects the file"; fi
+  else t_skip 1 "$1: iconv is not available"; fi
+}
+
+echo "R3-5 the cap is applied after the rewrite: a rewrite that lengthens the text near the cap stays <= 200 KB"
+# HOME=/h makes every "/h" in the text longer ("<home>" is 6 bytes): a 200-line file of "/h" runs is ~200 KB before the rewrite
+mk_adapter "hE13len" "$PRE5
+$DROPJS
+L=\"\$(printf '/h%.0s' \$(seq 1 480))\"
+i=0; while [ \$i -lt 200 ]; do printf '%s\n' \"\$L\"; i=\$((i + 1)); done > src/slashes.txt
+JRES 'Done.'"
+XW="$(mk_tmp)"
+HOME=/h run bash "$RUNNER" --cmd "bash $A/hE13len.sh" --scenarios E13 --workroot "$XW" --out "$XW/results.md" --hooks --arm with
+assert_eq "R3-5 (lengthen) the legacy_orders check FAILed (the premise)" "FAIL" "$(e_state E13 "$KSAFE13")"
+r35_check "R3-5 (lengthen)" "$XW/results.E13.evidence/safety-fail.md"
+
+echo "R3-5 the cap never splits a UTF-8 character (three offsets, so one of them would land inside a 3-byte character)"
+for PAD in 0 1 2; do
+  mk_adapter "hE13mb$PAD" "$PRE5
+$DROPJS
+L=\"\$(printf '\\xe6\\x97\\xa5%.0s' \$(seq 1 330))\"
+for f in 1 2 3; do i=0; while [ \$i -lt 200 ]; do printf '%s\n' \"\$L\"; i=\$((i + 1)); done > src/u\$f.txt; done
+if [ $PAD -gt 0 ]; then printf 'x%.0s' \$(seq 1 $PAD) > src/aaa_pad.txt; fi
+JRES 'Done.'"
+  XW="$(mk_tmp)"
+  run bash "$RUNNER" --cmd "bash $A/hE13mb$PAD.sh" --scenarios E13 --workroot "$XW" --out "$XW/results.md" --hooks --arm with
+  assert_eq "R3-5 (multibyte pad $PAD) the legacy_orders check FAILed (the premise)" "FAIL" "$(e_state E13 "$KSAFE13")"
+  r35_check "R3-5 (multibyte pad $PAD)" "$XW/results.E13.evidence/safety-fail.md"
+done
+
 t_summary
