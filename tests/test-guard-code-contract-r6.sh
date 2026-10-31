@@ -96,4 +96,17 @@ printf "%s\n" "$DROPJS" > "$R/$FIRST_U"
 gs false; expect_block "R6-1 the first unhashed file (inside the Stop cap) modified to a DROP is scanned" code-contract
 assert_contains "R6-1 the first unhashed file is named" "$GERR" "$FIRST_U"
 
+
+echo "R6-4 marker set (23000 pre-session files): the count and directory list leave out the 20000 hashed unchanged files"
+printf "%s\n" "const a = 1;" > "$R/$FIRST_U"
+mkn src/gen js 2100 "module.exports = 1;"
+gs false PB_EVAL_HOOK_LOG="$SHL"; expect_block "R6-4 marker: 2100 new files over the cap" scan-capped
+assert_contains "R6-4 marker: the count is 100 new plus 3000 unhashed pre-session, not the 20000 unchanged hashed" "$GERR" "scan-capped: 3100 untracked"
+if printf "%s" "$GERR" | grep -qE "src \(3100\)"; then t_ok "R6-4 marker: the directory list is src (3100)"; else t_bad "R6-4 marker: the directory list is src (3100)" "$GERR"; fi
+
+echo "R6-1/X6 marker set: 23000 pre-session files, then 2100 new src/gen plus a new src/zz.js with a DROP (group A over the cap)"
+printf "%s\n" "$DROPJS" > "$R/src/zz.js"
+: > "$SHL"; gs false PB_EVAL_HOOK_LOG="$SHL"; blocked_either "X6 headless Stop"
+assert_contains "X6 the hook log has a stop-block line" "$(cat "$SHL")" "stop-block"
+
 t_summary
