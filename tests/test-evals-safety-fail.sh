@@ -137,16 +137,41 @@ assert_not_contains "R3-4 no absolute workroot path" "$S" "$WRP"
 assert_not_contains "R3-4 no workroot path as spelled in the test" "$S" "$XW"
 assert_not_contains "R3-4 no HOME path" "$S" "$R34_HOME/"
 
-EVU8() { iconv -f UTF-8 -t UTF-8 "$1" > /dev/null 2>&1; }
+# Strict UTF-8 validator, independent of any read-buffer size. macOS iconv (libiconv/citrus) rejected valid multibyte files on CI run 41166785572
+# (a 3-byte character spanning its internal buffer boundary), so iconv is the last resort: python3, then perl, then iconv.
+EVU8_TOOL=""
+if command -v python3 > /dev/null 2>&1; then EVU8_TOOL="python3"
+elif command -v perl > /dev/null 2>&1 && perl -MEncode -e 1 > /dev/null 2>&1; then EVU8_TOOL="perl"
+elif command -v iconv > /dev/null 2>&1; then EVU8_TOOL="iconv"; fi
+EVU8() { # FILE: exit 0 when FILE is strictly valid UTF-8 (no overlongs, no surrogates, no split characters)
+  case "$EVU8_TOOL" in
+    python3) python3 -c 'import sys; open(sys.argv[1], "rb").read().decode("utf-8")' "$1" > /dev/null 2>&1 ;;
+    perl) perl -MEncode -e 'local $/; open(my $h, "<:raw", $ARGV[0]) or exit 2; my $s = <$h>; Encode::decode("UTF-8", $s, Encode::FB_CROAK); exit 0' "$1" > /dev/null 2>&1 ;;
+    iconv) iconv -f UTF-8 -t UTF-8 "$1" > /dev/null 2>&1 ;;
+    *) return 2 ;;
+  esac
+}
+# Self-test of the validator, so a no-op validator cannot pass: a valid 3-byte character is accepted; a split one and a stray continuation byte are rejected.
+if [ -n "$EVU8_TOOL" ]; then
+  V8="$(mk_tmp)"
+  printf 'a\xe6\x97\xa5b\n' > "$V8/good.txt"
+  printf 'a\xe6\x97\n' > "$V8/split.txt"
+  printf 'a\xe6\x97' > "$V8/split-eof.txt"
+  printf 'a\x97b\n' > "$V8/stray.txt"
+  if EVU8 "$V8/good.txt"; then t_ok "R3-5 validator ($EVU8_TOOL) accepts a valid 3-byte character"; else t_bad "R3-5 validator ($EVU8_TOOL) accepts a valid 3-byte character" "rejected"; fi
+  if EVU8 "$V8/split.txt"; then t_bad "R3-5 validator ($EVU8_TOOL) rejects a split 3-byte character" "accepted"; else t_ok "R3-5 validator ($EVU8_TOOL) rejects a split 3-byte character"; fi
+  if EVU8 "$V8/split-eof.txt"; then t_bad "R3-5 validator ($EVU8_TOOL) rejects a character cut at end of file" "accepted"; else t_ok "R3-5 validator ($EVU8_TOOL) rejects a character cut at end of file"; fi
+  if EVU8 "$V8/stray.txt"; then t_bad "R3-5 validator ($EVU8_TOOL) rejects a stray continuation byte" "accepted"; else t_ok "R3-5 validator ($EVU8_TOOL) rejects a stray continuation byte"; fi
+fi
 r35_check() { # LABEL FILE
   local f="$2" sz
   if [ ! -f "$f" ]; then t_bad "$1: safety-fail.md exists" "missing"; return; fi
   sz="$(wc -c < "$f" | tr -d ' ')"
   if [ "$sz" -le 204800 ]; then t_ok "$1: the file stays <= 200 KB ($sz bytes)"; else t_bad "$1: the file stays <= 200 KB" "$sz bytes"; fi
   assert_contains "$1: it says truncated" "$(tail -n 3 "$f")" "truncated"
-  if command -v iconv > /dev/null 2>&1; then
-    if EVU8 "$f"; then t_ok "$1: valid UTF-8"; else t_bad "$1: valid UTF-8" "iconv rejects the file"; fi
-  else t_skip 1 "$1: iconv is not available"; fi
+  if [ -n "$EVU8_TOOL" ]; then
+    if EVU8 "$f"; then t_ok "$1: valid UTF-8"; else t_bad "$1: valid UTF-8" "$EVU8_TOOL rejects the file"; fi
+  else t_skip 1 "$1: no UTF-8 validator (python3, perl, iconv) is available"; fi
 }
 
 echo "R3-5 the cap is applied after the rewrite: a rewrite that lengthens the text near the cap stays <= 200 KB"
