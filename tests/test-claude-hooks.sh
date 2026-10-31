@@ -487,7 +487,7 @@ if [ -f /mnt/c/Windows/win.ini ]; then
   assert_state "R1-5 status, the old /mnt/c form still works: guard installed" guard "installed"
   assert_state "R1-5 status, the old /mnt/c form: guard-stop broken (script missing)" guard-stop "broken (script missing)"
 else
-  echo "note: R1-5 status tests skipped (/mnt/c/Windows/win.ini is not readable here)"
+  t_skip 4 "R1-5 status tests (/mnt/c/Windows/win.ini is not readable here)"
 fi
 
 t_summary
