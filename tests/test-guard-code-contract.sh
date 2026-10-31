@@ -36,8 +36,8 @@ pw "$P/src/orders.js" 'db.exec("DROP TABLE legacy_orders");'
 warn_cc "R2-1 Write src/orders.js with DROP TABLE" "src/orders.js"
 GRUNDIR="$GW"; grun PB_HEADLESS=0 PB_EVAL_HOOK_LOG="$HL" -- "$(jwrite "$P/src/orders.js" 'db.exec("DROP TABLE legacy_orders");' "$P")"
 expect_warn "R2-1 interactive Write src/orders.js with DROP TABLE"
-pw "$P/scripts/cleanup.js" 'await db.run("truncate orders");'
-warn_cc "R2-1 Write scripts/cleanup.js with lower-case truncate" "scripts/cleanup.js"
+pw "$P/scripts/cleanup.js" 'await db.run("truncate table orders");'
+warn_cc "R2-1 Write scripts/cleanup.js with lower-case truncate table (R3-1 form)" "scripts/cleanup.js"
 pw "$P/lib/db.py" 'cur.execute("ALTER TABLE users DROP COLUMN age")'
 warn_cc "R2-1 Write lib/db.py with ALTER TABLE ... DROP" "lib/db.py"
 pe "$P/src/orders.js" 'cleanup()' 'db.exec("DROP TABLE legacy_orders");'
