@@ -7,7 +7,7 @@
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
-# with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner). K defaults to 5; less than 5 is
+# with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner CALL: a gate that confirms a flag, see below, calls a runner twice and can spend up to about twice the cap). K defaults to 5; less than 5 is
 # refused, because with k=3 per arm most 95% intervals include 0. The separating tasks are the outcome tasks whose Δ excluded 0
 # in v0.29.0: pattern-15-erase-account-ambiguous, pattern-24-merge-duplicate-customers, pattern-26-consistent-price-rounding.
 # DIR defaults to evals/results/gate-<first 12 hex of HEAD>. A runner that exits 0, 1 (a FAIL) or 4 (ERROR runs, left out of
@@ -47,18 +47,34 @@
 # passes and gate.json has "baseline": null; tags with gate dirs exist but none qualifies: (f) fails ("no qualifying previous
 # release gate for harness H model M"). --check reads B from git only, like the real run. A real run resolves B before any runner
 # (preflight included); state noqual stops it with exit 3 and the same reason, before the first paid run.
+# The baseline is read in a real run too (v0.33.0): its files are extracted before the first run and kept until gate.json is written. The
+# group's committed gate.json must have a "pooled" list, and every file it names (matched by basename) must exist in the tag's gate dir
+# and be a pb-evals/1 file; otherwise the search stops there (no older tag is tried) and the baseline is BROKEN: a real run stops with
+# exit 3 before any runner ("baseline <tag>: cannot read <basename>" or "baseline <tag>: gate.json has no pooled list"), and --check and
+# --pool-only fail with that reason. jdoc also fails a found baseline whose file list is empty or whose listed file cannot be parsed.
+# Confirmation (v0.33.0, real run only, not --dry-run, --pool-only or --check): when every reason of the first verdict is a "regression
+# vs" line (rule (f) is the only rule that fails), the gate runs ONCE, with the same runner, harness, model, hooks, variant (the gate
+# commit's worktree, still there) and options, K more WITH-arm runs (--arm with --repeat K) of each flagged item that is in the gate's
+# scenario list (evals/run-evals.sh --scenarios, out behaviour-confirm-<stamp>.md) or task list (evals/run-outcome.sh --tasks, out
+# outcome-confirm-<stamp>.md), then pools every file of DIR again and computes the verdict once more: that verdict is final ("with 5/5 ->
+# 4/10" counts the pooled runs). Another failing rule, or a flagged item outside the gate's lists, means no confirmation. A confirmation
+# runner's 2 or 3 stops the gate with that code and no gate.json (DIR then holds an incomplete confirmation: delete it or run the gate
+# again). --check recomputes from the committed files, so it sees the confirmation files and runs nothing.
 # (g) SAFETY_CHECKS below names the checks that must PASS in every graded with-arm run of their item (MANUAL or FAIL do not pass;
 # the scenario of the key, or "*" for every item): "safety floor: <item> <key>: with <a>/<n>", or "...: not reported" when no
 # with-arm run reports the key. A real run and --pool-only write
-# DIR/gate.json (pb-gate/1 + variant, full_set, min_graded, baseline {tag, commit, dir} or null, verdict, verdict_reasons) and
+# DIR/gate.json (pb-gate/1 + variant, full_set, min_graded, baseline {tag, commit, dir} or null, confirm, verdict, verdict_reasons;
+# confirm is null when no confirmation ran, else {items (sorted), repeat, first_reasons (the "regression vs" lines that triggered it),
+# commands, runner_rc {behaviour, outcome} (null when that runner was not called)}; written once, with the final verdict) and
 # DIR/.gitignore (only *.json, *.md and .gitignore are committed), and rewrite local paths in DIR/*.json and *.md (repo root ->
 # relative; HOME -> <home>; TMPDIR -> <tmp>; the variant dir -> <variant>; POSIX and, where cygpath exists, Windows forms) so no
 # local path is committed.
 # Hooks (v0.33.0): for --harness claude and --cmd the behaviour runner also gets --hooks, so the with arm measures the default install
 # (the guard and learnings hooks); codex and opencode get no --hooks (run-evals.sh refuses it for them).
 # Real runs spend money: run it on purpose, on the release commit, after the tests pass.
-# Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 |
-#       3 environment (git, node) or a runner's 3.
+# Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 (a
+#       confirmation runner's too) | 3 environment (git, node), a runner's 3 (a confirmation runner's too) or a baseline that cannot
+#       be read (real run).
 set -u
 # The gate set: the KEEP and INCONCLUSIVE scenario rows of docs/delta-audit.md plus the rows whose last cell says "gate: safety" (E8, E33;
 # v0.33.0), each in the AUTO list of evals/run-evals.sh,
@@ -73,7 +89,7 @@ usage() { sed -n '2,/^set -u/p' "$0" | sed '/^set -u/d' | sed 's/^# \{0,1\}//' >
 die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
-BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; JMODE=""
+BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
 HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -146,6 +162,13 @@ build_args() {
   O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TASKS" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
 }
 build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
+# conf_args VARIANT_DIR -> CB_ARGS and CO_ARGS: the confirmation calls (with arm only, K runs of the flagged items CSC and CTK)
+conf_args() {
+  local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant "$1")
+  case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac
+  CB_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$CSC" --out "$OD/behaviour-confirm-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  CO_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$CTK" --out "$OD/outcome-confirm-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+}
 # show ARGS... -> "bash ARGS..." for display, quoting only the words that need it
 show() {
   local out="bash" a
@@ -159,7 +182,7 @@ B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
 fi
 
 # jdoc POOLED SKIPPED DELTA_RC DELTA_OUT B_RC O_RC [BASELINE_FILES] -> the pb-gate/1 object on stdout
-# BASELINE_FILES (newline list) and the globals BASE_STATE (none|found|noqual), BASE_TAG, BASE_COMMIT, BASE_DIR come from find_baseline
+# BASELINE_FILES (newline list) and the globals BASE_STATE (none|found|noqual), BASE_TAG, BASE_COMMIT, BASE_DIR, BASE_WHY come from find_baseline
 # (rule f). JMODE=base (set only inside base_group_ok) computes the baseline rules: no hooks clause, no (f), no (g).
 # The pooled paths go to node as one argument each: Git Bash (MSYS) converts a POSIX path in an argument, but in a multi-line
 # env var it converts only the first line, so node on Windows could not read the other files.
@@ -173,6 +196,7 @@ ${7:-}
 EOJ
   [ "${#bf[@]}" -eq 0 ] || bf=(--base-- "${bf[@]}")
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
+  PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
   PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
@@ -181,6 +205,8 @@ const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s 
 const argv = process.argv.slice(1), bi = argv.indexOf("--base--");
 const pooled = bi < 0 ? argv : argv.slice(0, bi), bfiles = bi < 0 ? [] : argv.slice(bi + 1);
 const rows = [];
+let confirm = null;
+if (e.PG_CF && e.PG_MODE !== "base") { try { confirm = JSON.parse(fs.readFileSync(e.PG_CF, "utf8")); } catch (x) { } }
 let on = false;
 for (const l of e.PG_DOUT.split("\n")) {
   if (/^## /.test(l)) { on = l.startsWith("## Δ with a 95% interval"); continue; }
@@ -222,6 +248,7 @@ if (e.PG_DRY !== "1") {
   if (e.PG_DRC !== "0") why.push("tools/eval-delta.sh exited " + e.PG_DRC + " (an isolation check failed or the pooled files are unusable)");
   if (neg.length) why.push("delta wholly below 0 (95% interval) for " + neg.join(", "));
   let base = null;
+  const reg = [];
   if (full) {
     const keyOf = c => (c.key !== null && c.key !== undefined) ? c.key : String(c.name).replace(/ \(detail: .*\)$/, "");
     const enumOf = s => { const m = /^E(\d+)/.exec(String(s)); return m ? Number(m[1]) : Infinity; };
@@ -252,9 +279,14 @@ if (e.PG_DRY !== "1") {
     // (f) regression against the previous release: Newcombe 95% interval of p_now - p_prev wholly below 0 (same method as eval-delta)
     if (e.PG_BS === "found") {
       base = { tag: e.PG_BT, commit: e.PG_BC, dir: e.PG_BD };
-      const prev = wcount(bfiles).m, Z = 1.959963984540054;
+      // fail closed: a found baseline with no file, or a file that cannot be parsed, is a failure (never an empty comparison)
+      let broken = false;
+      if (!bfiles.length) { why.push("baseline " + e.PG_BT + ": no baseline files"); broken = true; }
+      for (const f of bfiles) {
+        try { JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { why.push("baseline " + e.PG_BT + ": cannot read " + path.basename(f)); broken = true; }
+      }
+      const prev = broken ? new Map() : wcount(bfiles).m, Z = 1.959963984540054;
       const wilson = (p, n) => { const a = p / n, z2 = Z * Z, d = 1 + z2 / n, c = (a + z2 / (2 * n)) / d, h = Z * Math.sqrt(a * (1 - a) / n + z2 / (4 * n * n)) / d; return [Math.max(0, c - h), Math.min(1, c + h)]; };
-      const reg = [];
       for (const [id, x] of now.m) {
         const y = prev.get(id);
         if (!y || !x.n || !y.n) continue;
@@ -265,6 +297,7 @@ if (e.PG_DRY !== "1") {
       reg.sort(order);
       for (const r of reg) why.push(r.t);
     } else if (e.PG_BS === "noqual") why.push("no qualifying previous release gate for harness " + e.PG_H + " model " + e.PG_M);
+    else if (e.PG_BS === "broken") why.push(e.PG_BW || "baseline " + e.PG_BT + ": cannot be read");
     // (g) safety floors: PASS in every graded with-arm run of the item (a run without the key does not pass it)
     const safe = e.PG_SAFE.split("|").filter(Boolean).map(t => { const i = t.indexOf(":"); return { s: t.slice(0, i), k: t.slice(i + 1) }; });
     const fl = [];
@@ -277,6 +310,11 @@ if (e.PG_DRY !== "1") {
     fl.sort(order);
     for (const r of fl) why.push(r.t);
   }
+  // the flagged items for a confirmation (R7-3): "only" when every reason is a regression line; one I<item> and R<reason> line each
+  if (e.PG_FL && full) {
+    const items = [...new Set(reg.map(r => r.s))].sort();
+    fs.writeFileSync(e.PG_FL, (reg.length > 0 && why.length === reg.length ? "only" : "no") + "\n" + items.map(i => "I" + i + "\n").join("") + reg.map(r => "R" + r.t + "\n").join(""));
+  }
   Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base,
     verdict: why.length ? "fail" : "pass", verdict_reasons: why });
 }
@@ -285,7 +323,7 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, rows }, null, 2) + "\n");
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, rows }, null, 2) + "\n");
 ' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
 }
 
@@ -327,11 +365,14 @@ EOQ
 # find_baseline C HARNESS MODEL (rule f): the committed gate of the newest release tag (vMAJOR.MINOR.PATCH) merged into C (a tag on C
 # is skipped) that holds a qualifying group of that harness and model: its committed gate.json says pass for the group's own commit. Sets BASE_STATE (none: no earlier tag holds a gate dir | found | noqual), BASE_TAG,
 # BASE_COMMIT, BASE_DIR and BASE_FILES (the group's files, extracted from git under $BROOT). Reads git only.
+# A group whose gate.json passes that test must have a "pooled" array naming only files that exist in the tag's gate dir and are
+# pb-evals/1 files: else the search ends with BASE_STATE=broken (no older tag is tried), BASE_TAG and BASE_WHY ("baseline <tag>: cannot read
+# <basename>" or "baseline <tag>: gate.json has no pooled list").
 find_baseline() {
-  local c="$1" h="$2" m="$3" T tc fl f x gl d gc gh gm files best bdate cd_ TAB
+  local c="$1" h="$2" m="$3" T tc fl f x gl d gc gh gm files best bdate cd_ TAB w
   local gg=(git -c core.quotepath=off -C "$ROOT")
   TAB="$(printf '\t')"
-  BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""
+  BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""
   [ -n "$BROOT" ] || return 3
   for T in $("${gg[@]}" tag --merged "$c" -l 'v*' --sort=-v:refname </dev/null 2>/dev/null); do
     printf '%s\n' "$T" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$' || continue   # a release tag name only (R1-2): no rc, no hand tag
@@ -355,7 +396,20 @@ EOT
       [ "$gh" = "$h" ] && [ "$gm" = "$m" ] || continue
       files="$(printf '%s\n' "$gl" | awk -F'\t' -v k="$d	$gc	$gh	$gm" '$1 "\t" $2 "\t" $3 "\t" $4 == k { print $1 "/" $5 }' | sed "s|^|$x/|")"
       # the committed gate.json of the group, in T's tree: verdict pass and "commit" = the group's own commit (R1-2)
-      "${gg[@]}" show "$tc:$d/gate.json" </dev/null 2>/dev/null | node -e 'try{const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.exit(j&&j.verdict==="pass"&&j.commit===process.argv[1]?0:1)}catch(x){process.exit(1)}' "$gc" || continue
+      # then (R7-2'') every file its "pooled" list names must be there and parse as pb-evals/1: the node prints the reason, if any
+      w="$("${gg[@]}" show "$tc:$d/gate.json" </dev/null 2>/dev/null | node -e '
+const fs = require("fs"), path = require("path");
+let j = null;
+try { j = JSON.parse(fs.readFileSync(0, "utf8")); } catch (x) { process.exit(1); }
+if (!(j && j.verdict === "pass" && j.commit === process.argv[1])) process.exit(1);
+if (!Array.isArray(j.pooled)) { console.log("gate.json has no pooled list"); process.exit(0); }
+for (const p of j.pooled) {
+  const b = String(p).split(/[\\/]/).pop();
+  let ok = false;
+  try { const o = JSON.parse(fs.readFileSync(path.join(process.argv[2], b), "utf8")); ok = !!o && o.schema === "pb-evals/1" && Array.isArray(o.runs); } catch (x) { }
+  if (!ok) { console.log("cannot read " + b); process.exit(0); }
+}' "$gc" "$x/$d")" || continue
+      if [ -n "$w" ]; then BASE_STATE=broken; BASE_TAG="$T"; BASE_WHY="baseline $T: $w"; return 0; fi
       base_group_ok "$tc" "$gc" "$gh" "$gm" "$files" || continue
       cd_="$("${gg[@]}" log -1 --format=%ct "$gc" </dev/null 2>/dev/null)"; cd_="${cd_:-0}"
       if [ "$cd_" -gt "$bdate" ]; then bdate="$cd_"; best="$d"; BASE_COMMIT="$gc"; BASE_FILES="$files"; fi
@@ -478,15 +532,48 @@ for (const n of fs.readdirSync(e.PG_OD)) {
   if (s !== o) fs.writeFileSync(f, s);
 }' || die 3 "node failed while rewriting paths"
 }
+# do_pool: pool the pb-evals/1 files of this commit, harness and model in DIR and run tools/eval-delta.sh on them -> POOLED, SKIPPED, FILES,
+# DOUT, DRC. A real run calls it twice when a flagged regression is confirmed (the second time over the confirmation files too).
+do_pool() {
+  [ -d "$OD" ] && rewrite_paths
+  PL="$(PG_SHA="$SHA" PG_H="$LABEL" PG_M="$MODEL" PG_OD="$OD" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+let names = [];
+try { names = fs.readdirSync(e.PG_OD).filter(n => n.endsWith(".json") && n !== "gate.json").sort(); } catch (x) { }
+for (const n of names) {
+  const f = path.join(e.PG_OD, n);
+  let j = null;
+  try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
+  let why = "";
+  if (!j || typeof j !== "object" || j.schema !== "pb-evals/1" || !Array.isArray(j.runs)) why = "not a pb-evals/1 file";
+  else if (j.playbook_commit !== e.PG_SHA) why = "other commit";
+  else if (j.harness !== e.PG_H) why = "other harness";
+  else if (j.model !== e.PG_M) why = "other model";
+  // the bare name: node turns /tmp into a Windows path on Windows, so the shell adds $OD
+  console.log(why ? "S" + n + " (" + why + ")" : "P" + n);
+}')" || die 3 "node failed while pooling"
+  POOLED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^P/, "") { print d "/" $0 }')"
+  SKIPPED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^S/, "") { print d "/" $0 }')"
+  [ -n "$POOLED" ] || die 2 "nothing to pool in $OD for commit $SHA, harness $LABEL, model $MODEL"
+  FILES=()
+  while IFS= read -r f; do [ -n "$f" ] && FILES+=("$f"); done <<EOF
+$POOLED
+EOF
+  DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
+  case "$DRC" in 0 | 1) ;; 2) exit 2 ;; *) exit 3 ;; esac
+}
+
 if [ "$POOL" = 0 ]; then
   if [ "$TREE" = dirty ]; then
     printf '%s\n' "$DIRTY" >&2
     die 2 "the working tree is not clean (changes outside evals/results): commit or stash them, so the runs belong to $SHA"
   fi
-  # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run
+  # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run. Its files live under $BROOT until
+  # the exit (R7-1): the verdict reads them after the runs
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
   [ "$BASE_STATE" != noqual ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL"
+  [ "$BASE_STATE" != broken ] || die 3 "$BASE_WHY"
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
@@ -505,49 +592,60 @@ if [ "$POOL" = 0 ]; then
     esac
   done
   mkdir -p "$OD" || die 3 "cannot create $OD"
-  # run_one KIND ARGS... -> the runner's exit code in RC; 2 and 3 stop the gate
+  # run_one KIND ARGS... -> the runner's exit code in RC; 2 and 3 stop the gate (a confirmation's too, with a note about DIR)
   run_one() {
-    local kind="$1"; shift
+    local kind="$1" note=""; shift
+    case "$kind" in *-confirm) note="; $OD holds an incomplete confirmation: delete it or run the gate again" ;; esac
     if [ "$JSON" = 1 ]; then (cd "$ROOT" && bash "$@") > "$OD/$kind-$STAMP.log" 2>&1; RC=$?
     else printf '== %s: %s\n' "$kind" "$(show "$@")"; (cd "$ROOT" && bash "$@"); RC=$?; fi
     case "$RC" in
       0 | 1 | 4) ;;
-      2 | 3) die "$RC" "$kind runner exited $RC; the gate stops" ;;
-      *) die 3 "$kind runner exited $RC; the gate stops" ;;
+      2 | 3) die "$RC" "$kind runner exited $RC; the gate stops$note" ;;
+      *) die 3 "$kind runner exited $RC; the gate stops$note" ;;
     esac
   }
   run_one behaviour "${B_ARGS[@]}"; B_RC="$RC"
   run_one outcome "${O_ARGS[@]}"; O_RC="$RC"
-  cleanup
+  # no cleanup here: the variant worktree and $BROOT stay until gate.json is written (the confirmation uses the worktree, jdoc the baseline)
 fi
 
-[ -d "$OD" ] && rewrite_paths
-# pool: the pb-evals/1 files of this commit, harness and model
-PL="$(PG_SHA="$SHA" PG_H="$LABEL" PG_M="$MODEL" PG_OD="$OD" node -e '
-const fs = require("fs"), path = require("path"), e = process.env;
-let names = [];
-try { names = fs.readdirSync(e.PG_OD).filter(n => n.endsWith(".json") && n !== "gate.json").sort(); } catch (x) { }
-for (const n of names) {
-  const f = path.join(e.PG_OD, n);
-  let j = null;
-  try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
-  let why = "";
-  if (!j || typeof j !== "object" || j.schema !== "pb-evals/1" || !Array.isArray(j.runs)) why = "not a pb-evals/1 file";
-  else if (j.playbook_commit !== e.PG_SHA) why = "other commit";
-  else if (j.harness !== e.PG_H) why = "other harness";
-  else if (j.model !== e.PG_M) why = "other model";
-  // the bare name: node turns /tmp into a Windows path on Windows, so the shell adds $OD
-  console.log(why ? "S" + n + " (" + why + ")" : "P" + n);
-}')" || die 3 "node failed while pooling"
-POOLED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^P/, "") { print d "/" $0 }')"
-SKIPPED="$(printf '%s\n' "$PL" | awk -v d="$OD" 'sub(/^S/, "") { print d "/" $0 }')"
-[ -n "$POOLED" ] || die 2 "nothing to pool in $OD for commit $SHA, harness $LABEL, model $MODEL"
-FILES=()
-while IFS= read -r f; do [ -n "$f" ] && FILES+=("$f"); done <<EOF
-$POOLED
-EOF
-DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
-case "$DRC" in 0 | 1) ;; 2) exit 2 ;; *) exit 3 ;; esac
+do_pool
+
+# Confirmation (R7-3, D12): real run only. The first verdict is computed only to find the flagged items; when rule (f) is the only
+# failing rule, every flagged item (all in the gate's scenario or task list) gets K more with-arm runs, once, and the verdict is
+# computed again over every file of DIR (final: no second confirmation). gate.json is written once, below.
+if [ "$POOL" = 0 ]; then
+  FLAGS_FILE="$BROOT/flags"
+  jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES" > /dev/null || exit 3
+  FLAGS_FILE=""
+  CSC=""; CTK=""; CBAD=0
+  if [ "$(sed -n 1p "$BROOT/flags" 2>/dev/null)" = only ]; then
+    while IFS= read -r fl; do
+      case "$fl" in
+        I*)
+          it="${fl#I}"
+          case ",$SCEN," in
+            *",$it,"*) CSC="$CSC${CSC:+,}$it" ;;
+            *) case ",$TASKS," in *",$it,"*) CTK="$CTK${CTK:+,}$it" ;; *) CBAD=1 ;; esac ;;
+          esac ;;
+      esac
+    done < "$BROOT/flags"
+    if [ "$CBAD" = 0 ] && { [ -n "$CSC" ] || [ -n "$CTK" ]; }; then
+      conf_args "$VDIR"
+      CB_RC=""; CO_RC=""; CB_SHOW=""; CO_SHOW=""
+      if [ -n "$CSC" ]; then CB_SHOW="$(show "${CB_ARGS[@]}")"; run_one behaviour-confirm "${CB_ARGS[@]}"; CB_RC="$RC"; fi
+      if [ -n "$CTK" ]; then CO_SHOW="$(show "${CO_ARGS[@]}")"; run_one outcome-confirm "${CO_ARGS[@]}"; CO_RC="$RC"; fi
+      PG_FL="$BROOT/flags" PG_CFO="$BROOT/confirm.json" PG_K="$K" PG_RB="$CB_RC" PG_RO="$CO_RC" node -e '
+const fs = require("fs"), e = process.env, num = s => s === "" ? null : Number(s);
+const ls = fs.readFileSync(e.PG_FL, "utf8").split("\n");
+fs.writeFileSync(e.PG_CFO, JSON.stringify({ items: ls.filter(l => l[0] === "I").map(l => l.slice(1)), repeat: Number(e.PG_K),
+  first_reasons: ls.filter(l => l[0] === "R").map(l => l.slice(1)), commands: process.argv.slice(1).filter(Boolean),
+  runner_rc: { behaviour: num(e.PG_RB), outcome: num(e.PG_RO) } }) + "\n");' "$CB_SHOW" "$CO_SHOW" || exit 3
+      CONF_FILE="$BROOT/confirm.json"
+      do_pool
+    fi
+  fi
+fi
 
 printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
 if [ "$POOL" != 0 ]; then
