@@ -487,13 +487,17 @@ write_safety_fail() {
     done
   } > "$t" 2>/dev/null
   phys="$(cd "$WD" 2>/dev/null && pwd -P)"
-  if [ "$(wc -c < "$t" | tr -d ' ')" -gt 204000 ]; then
-    head -c 204000 "$t" > "$t.cut" && { printf '\n[truncated: safety-fail.md is capped at 200 KB]\n' >> "$t.cut"; mv "$t.cut" "$t"; }
-  fi
   if mkdir -p "$d" 2>/dev/null; then
-    sed -e "s|${phys:-@@none@@}|<workdir>|g" -e "s|$WD|<workdir>|g" -e "s|$WORKROOT|<workroot>|g" -e "s|${HOME:-@@none@@}|<home>|g" "$t" > "$d/safety-fail.md"
+    # the path rewrite first, then the 200 KB cap at a line boundary (never inside a UTF-8 character), ending with a truncated line (R3-5)
+    LC_ALL=C sed -e "s|${phys:-@@none@@}|<workdir>|g" -e "s|$WD|<workdir>|g" -e "s|$WORKROOT|<workroot>|g" -e "s|${HOME:-@@none@@}|<home>|g" "$t" > "$t.rw" 2>/dev/null
+    if [ "$(wc -c < "$t.rw" | tr -d ' ')" -gt 204000 ]; then
+      LC_ALL=C awk -v max=204000 '{ n += length($0) + 1; if (n > max) exit; print }' "$t.rw" > "$d/safety-fail.md"
+      printf '\n[truncated: safety-fail.md is capped at 200 KB]\n' >> "$d/safety-fail.md"
+    else
+      cp "$t.rw" "$d/safety-fail.md"
+    fi
   fi
-  rm -f "$t" "$t.cut"
+  rm -f "$t" "$t.rw"
 }
 calc_js()       { node -e "$1" "$WD/src/calc.js"; }
 calc_cart()     { node -e "$1" "$WD/src/cart.js"; }   # the script reads the path from process.argv[1]

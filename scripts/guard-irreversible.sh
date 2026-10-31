@@ -617,6 +617,22 @@ has_contract() {
   [[ $1 =~ $RE_ALTDROP ]] && return 0
   return 1
 }
+# has_code_contract TEXT -> 0 when TEXT holds a SQL-shaped contract statement (R3-1, for code files): a DROP of a table, column, database or schema
+# (IF EXISTS allowed) followed by a name, a TABLE-form truncate (any case), a bare truncate in upper case only, or an ALTER TABLE with a DROP.
+# A name starts with a letter, _, a quote, a backtick or [. Not statements: className="truncate", a lodash call, def truncate(, a file object's
+# method, a comment about rounding, dropdown, dropTable(.
+RE_CC_D='"'; RE_CC_Q="'"; RE_CC_B='`'
+RE_CC_ID="[A-Za-z_${RE_CC_D}${RE_CC_Q}${RE_CC_B}[]"
+RE_CC_DROP="[Dd][Rr][Oo][Pp][[:space:]]+([Tt][Aa][Bb][Ll][Ee]|[Cc][Oo][Ll][Uu][Mm][Nn]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]|[Ss][Cc][Hh][Ee][Mm][Aa])[[:space:]]+([Ii][Ff][[:space:]]+[Ee][Xx][Ii][Ss][Tt][Ss][[:space:]]+)?$RE_CC_ID"
+RE_CC_TRT="(^|[^A-Za-z0-9_])[Tt][Rr][Uu][Nn][Cc][Aa][Tt][Ee][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+$RE_CC_ID"
+RE_CC_TRU="(^|[^A-Za-z0-9_])TRUNCATE[[:space:]]+$RE_CC_ID"
+has_code_contract() {
+  [[ $1 =~ $RE_CC_DROP ]] && return 0
+  [[ $1 =~ $RE_CC_TRT ]] && return 0
+  [[ $1 =~ $RE_CC_TRU ]] && return 0
+  [[ $1 =~ $RE_ALTDROP ]] && return 0
+  return 1
+}
 # sql_destructive TEXT -> 0 when TEXT holds DROP TABLE|DATABASE|SCHEMA, TRUNCATE, or DELETE FROM <t> with no WHERE before the next ;
 sql_destructive() {
   local rest="$1" st after
@@ -1690,7 +1706,7 @@ pre_write() {
     *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;;
     *) is_code "$f" || exit 0; kind=code-contract ;;
   esac
-  has_contract "$txt" || exit 0
+  if [ "$kind" = code-contract ]; then has_code_contract "$txt" || exit 0; else has_contract "$txt" || exit 0; fi
   case "$f" in *[Mm][Ii][Gg][Rr][Aa][Tt]*) kind=migration-contract ;; esac
   hlog "pending $kind"
   warn_json "$J_file holds a contract statement (DROP, TRUNCATE or ALTER TABLE ... DROP). The file is written but pending, not run: do not run it in this session. Headless runs must revert it before finishing and report it as a pending proposal in the final reply."
@@ -1698,6 +1714,39 @@ pre_write() {
 }
 
 # ---- SessionStart: the baseline (D16) ----
+# record_untracked FILE -> one "<git hash-object> <path>" line per untracked file at SessionStart (at most 2000, regular files); Stop skips an unchanged one (R3-3)
+record_untracked() {
+  local ul="" u hs h n=0 m=0 out=""
+  ul="$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | head -n 2000)"
+  [ -n "$ul" ] || return 0
+  hs=""
+  while IFS= read -r u; do
+    [ -n "$u" ] && [ -f "$TOP/$u" ] && [ ! -L "$TOP/$u" ] || continue
+    hs="$hs$u$NL"; n=$((n + 1))
+  done <<EOF
+$ul
+EOF
+  [ "$n" -gt 0 ] || return 0
+  h="$(printf '%s' "$hs" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)" || return 0
+  m="$(printf '%s\n' "$h" | wc -l | tr -d ' ')"
+  [ "$m" = "$n" ] || return 0
+  while IFS= read -r u; do
+    out="$out${h%%"$NL"*} $u$NL"
+    case "$h" in *"$NL"*) h="${h#*"$NL"}" ;; *) h="" ;; esac
+  done <<EOF
+$hs
+EOF
+  printf '%s' "$out" > "$1" 2>/dev/null
+  return 0
+}
+# un_same PATH -> 0 when PATH was untracked at SessionStart with the same content (UNB holds the record)
+un_same() {
+  local h
+  [ -n "$UNB" ] || return 1
+  h="$(git -C "$TOP" hash-object -- "$1" 2>/dev/null)" || return 1
+  case "$NL$UNB" in *"$NL$h $1$NL"*) return 0 ;; esac
+  return 1
+}
 start_mode() {
   local f h
   [ -n "$SIDV" ] || exit 0
@@ -1709,6 +1758,7 @@ start_mode() {
   [ -n "$h" ] || h=none
   mkdir -p "$GC/pb-guard" 2>/dev/null || exit 0
   printf '%s\n' "$h" > "$f" 2>/dev/null
+  record_untracked "$f.untracked"
   exit 0
 }
 
@@ -1727,6 +1777,14 @@ function contract(l) {
   l = tolower(l)
   if (l ~ /drop[ \t]+(table|column|database|schema)([^a-z0-9_]|$)/) return 1
   if (l ~ /(^|[^a-z0-9_])truncate([^a-z0-9_]|$)/) return 1
+  if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
+  return 0
+}
+function ccontract(l,   o) {
+  o = l; l = tolower(l)
+  if (l ~ /drop[ \t]+(table|column|database|schema)[ \t]+(if[ \t]+exists[ \t]+)?[][A-Za-z_"\047`]/) return 1
+  if (l ~ /(^|[^a-z0-9_])truncate[ \t]+table[ \t]+[][A-Za-z_"\047`]/) return 1
+  if (o ~ /(^|[^A-Za-z0-9_])TRUNCATE[ \t]+[][A-Za-z_"\047`]/) return 1
   if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
   return 0
 }
@@ -1811,7 +1869,7 @@ END {
   }
   for (f in CADD) {
     m = split(CADD[f], L, "\n")
-    for (i = 1; i <= m; i++) if (contract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "code-contract\t" f "\t" substr(l, 1, 120); break }
+    for (i = 1; i <= m; i++) if (ccontract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "code-contract\t" f "\t" substr(l, 1, 120); break }
   }
   for (nm in NAMES) {
     if (!HAS["B", nm]) continue
@@ -1830,7 +1888,7 @@ END {
 }'
 
 stop_mode() {
-  local bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
+  local ul nu cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1839,6 +1897,24 @@ stop_mode() {
   bl=""
   [ "$BASE" = none ] || bl="$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" 2>/dev/null)"
   nl="$(git -C "$TOP" -c core.quotepath=off ls-files -co --exclude-standard 2>/dev/null)"
+  UNB=""
+  if [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked" ]; then UNB="$(cat "$GC/pb-guard/$SIDV.untracked" 2>/dev/null)"; fi
+  [ -z "$UNB" ] || UNB="$UNB$NL"
+  # the untracked list: at most 2000 files; candidates for the code scan found in one grep pass (R3-2)
+  ul="$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | head -n 2001)"
+  nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
+  if [ "$nu" -gt 2000 ]; then
+    hlog "stop-scan-capped"
+    ul="$(printf '%s\n' "$ul" | head -n 2000)"
+  fi
+  cands="$(
+    while IFS= read -r f; do
+      [ -n "$f" ] && is_code "$f" && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
+      printf '%s\0' "$f"
+    done <<EOF | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; }
+$ul
+EOF
+  )"
   findings="$(
     {
       printf '%s\n' "$bl" | while IFS= read -r f; do
@@ -1849,14 +1925,15 @@ stop_mode() {
         [ -n "$f" ] && is_schema "$f" && [ -f "$TOP/$f" ] || continue
         printf '%sN %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
-      git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | while IFS= read -r f; do
+      printf '%s\n' "$ul" | while IFS= read -r f; do
         [ -n "$f" ] && is_mig "$f" && [ -f "$TOP/$f" ] || continue
+        un_same "$f" && continue
         printf '%sM %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
-      git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | while IFS= read -r f; do
-        [ -n "$f" ] && is_code "$f" && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
+      printf '%s\n' "$cands" | while IFS= read -r f; do
+        [ -n "$f" ] && [ -f "$TOP/$f" ] || continue
         [ "$(wc -c < "$TOP/$f" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || continue
-        [ "$(LC_ALL=C tr -d '\000' < "$TOP/$f" | wc -c | tr -d ' ')" = "$(wc -c < "$TOP/$f" | tr -d ' ')" ] || continue
+        un_same "$f" && continue
         printf '%sU %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
       printf '%sD -\n' "$DS"
