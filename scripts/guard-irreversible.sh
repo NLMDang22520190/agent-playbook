@@ -852,6 +852,13 @@ is_schema() {
   case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
   return 0
 }
+# is_code PATH -> 0 when PATH (relative or absolute, "/" separators) is checked for code-contract statements (R2, D11): not under .agents/,
+# node_modules/ or a test dir, and not a *.sql or *migrat* file (those keep their own kinds)
+is_code() {
+  case "$1" in .agents/* | */.agents/* | node_modules/* | */node_modules/* | *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
+  case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
+  return 0
+}
 # mig_pending DIR -> 0 when a migration file new or changed since the baseline holds a contract statement (MIG_FILE)
 mig_pending() {
   local list f c
@@ -1679,7 +1686,10 @@ pre_ps() {
 pre_write() {
   local f="${J_file//\\//}" txt="$J_content" kind=sql
   [ "$J_tool" = Edit ] && txt="$J_new"
-  case "$f" in *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;; *) exit 0 ;; esac
+  case "$f" in
+    *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;;
+    *) is_code "$f" || exit 0; kind=code-contract ;;
+  esac
   has_contract "$txt" || exit 0
   case "$f" in *[Mm][Ii][Gg][Rr][Aa][Tt]*) kind=migration-contract ;; esac
   hlog "pending $kind"
@@ -1706,6 +1716,11 @@ start_mode() {
 # input: DS+"B path" (a schema file at the baseline), DS+"N path" (a schema file now), DS+"M path" (an untracked migration),
 # DS+"D" (git diff BASE, -U0), each followed by its lines. Output: KIND<TAB>FILE<TAB>NAME per finding.
 SCH='
+function iscode(p,   q) {
+  q = "/" tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || q ~ /\.sql$/ || q ~ /migrat/ || q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}
 function nname(s) { gsub(/"/, "", s); gsub(/`/, "", s); gsub(/\[/, "", s); gsub(/\]/, "", s); return tolower(s) }
 function ncols(b) { b = nname(b); gsub(/[ \t]+/, " ", b); gsub(/ ?, ?/, ",", b); gsub(/\( /, "(", b); gsub(/ \)/, ")", b); sub(/^ /, "", b); sub(/ $/, "", b); return b }
 function contract(l) {
@@ -1761,14 +1776,21 @@ function nocom(l,   o, a, d) {
   return o
 }
 BEGIN { DS = "\034" }
-substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; inc = 0; next }
+substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; dc = ""; inc = 0; next }
 cur == "B" || cur == "N" { BUF[cur, f] = BUF[cur, f] " " nocom($0) "\n"; next }
 cur == "M" { ADD[f] = ADD[f] $0 "\n"; next }
+cur == "U" { CADD[f] = CADD[f] $0 "\n"; next }
 cur == "D" {
-  if (substr($0, 1, 11) == "diff --git ") { df = ""; next }
-  if (substr($0, 1, 6) == "+++ b/") { df = substr($0, 7); if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""; next }
-  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; next }
+  if (substr($0, 1, 11) == "diff --git ") { df = ""; dc = ""; next }
+  if (substr($0, 1, 6) == "+++ b/") {
+    df = substr($0, 7); dc = ""
+    if (iscode(df)) { dc = df; df = "" }
+    else if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""
+    next
+  }
+  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; dc = ""; next }
   if (df != "" && substr($0, 1, 1) == "+") ADD[df] = ADD[df] substr($0, 2) "\n"
+  if (dc != "" && substr($0, 1, 1) == "+") CADD[dc] = CADD[dc] substr($0, 2) "\n"
   next
 }
 END {
@@ -1787,6 +1809,10 @@ END {
     m = split(ADD[f], L, "\n")
     for (i = 1; i <= m; i++) if (contract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "migration-contract\t" f "\t" substr(l, 1, 120); break }
   }
+  for (f in CADD) {
+    m = split(CADD[f], L, "\n")
+    for (i = 1; i <= m; i++) if (contract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "code-contract\t" f "\t" substr(l, 1, 120); break }
+  }
   for (nm in NAMES) {
     if (!HAS["B", nm]) continue
     if (HAS["N", nm]) {
@@ -1804,7 +1830,7 @@ END {
 }'
 
 stop_mode() {
-  local bl nl f findings kinds k kind file name items="" short="" files="" b7 sid sf cnt again="" msg
+  local bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1827,6 +1853,12 @@ stop_mode() {
         [ -n "$f" ] && is_mig "$f" && [ -f "$TOP/$f" ] || continue
         printf '%sM %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
+      git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | while IFS= read -r f; do
+        [ -n "$f" ] && is_code "$f" && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
+        [ "$(wc -c < "$TOP/$f" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || continue
+        [ "$(LC_ALL=C tr -d '\000' < "$TOP/$f" | wc -c | tr -d ' ')" = "$(wc -c < "$TOP/$f" | tr -d ' ')" ] || continue
+        printf '%sU %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
+      done
       printf '%sD -\n' "$DS"
       git -C "$TOP" -c core.quotepath=off diff --no-color --no-ext-diff --no-renames -U0 "$DB" -- 2>/dev/null
     } | awk "$SCH" 2>/dev/null
@@ -1842,6 +1874,8 @@ stop_mode() {
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+      code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
+        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
   done <<EOF
@@ -1871,6 +1905,10 @@ EOF
   printf '%s\n' "$((cnt + 1))" > "$sf" 2>/dev/null
   for k in $kinds; do hlog "stop-block $k"; done
   [ "$J_active" = true ] && again=" (still there after an earlier Stop block)"
+  for f in $cfiles; do
+    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
+    else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
+  done
   msg="${G_PFX}BLOCKED (Stop): this session left irreversible schema or migration changes$again:$items$NL"
   if [ "$BASE" = none ]; then
     msg="${msg}Headless run: revert these changes before finishing (restore the schema files, never by rewriting history; remove the migration or move it under .agents/), then describe them as a pending proposal in your final reply."
@@ -1878,6 +1916,7 @@ EOF
     for f in $files; do msg="$msg(restore: git checkout $b7 -- $f)$NL"; done
     msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
+  msg="$msg$chint"
   printf '%s\n' "$msg" >&2
   exit 2
 }
