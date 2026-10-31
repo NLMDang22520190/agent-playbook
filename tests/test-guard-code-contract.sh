@@ -152,7 +152,7 @@ printf '%s\n' 'DROP TABLE a;' > "$R/spec/a.js"; printf '%s\n' 'DROP TABLE b;' > 
 gs; expect_pass "R2-2 new files under spec/, fixtures/, test/ (exempt)"
 crepo; mkdir -p "$R/node_modules/x"; printf '%s\n' 'DROP TABLE a;' > "$R/node_modules/x/i.js"
 gs; expect_pass "R2-2 an untracked file under node_modules/ (exempt)"
-crepo; printf 'DROP TABLE a;\000\001binary\n' > "$R/src/blob.dat"
+crepo; printf 'DROP TABLE a;\000binary\n' > "$R/src/blob.dat"
 gs; expect_pass "R2-2 a binary file is skipped"
 crepo; { printf '%s\n' 'DROP TABLE big;'; head -c 1200000 /dev/zero | tr '\0' 'a'; printf '\n'; } > "$R/src/huge.js"
 gs; expect_pass "R2-2 a file over 1 MB is skipped"
