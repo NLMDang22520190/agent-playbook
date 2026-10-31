@@ -4,7 +4,7 @@
 #      upper-case TRUNCATE <ident>, alter table ... drop); Tailwind `truncate`, _.truncate(, def truncate(, f.truncate(0), os.Truncate(, a
 #      comment saying "never truncate to whole cents", dropdown and knex dropTable( are not. *.sql and *migrat* keep today's rule.
 # R3-2 the Stop untracked scan is bounded: at most 2000 untracked files and 1 MB per file; over 2000 files the hook log gets
-#      `guard stop-scan-capped`; 2000 small clean files finish fast (bound 10 s here, the spec says 3 s, to avoid flakes).
+#      `guard stop-scan-capped`; 2000 small clean files finish fast (bound 10 s here, the spec says 3 s, to avoid flakes). (R4-1: over 2000 filtered files a headless Stop now blocks scan-capped.)
 # R3-3 untracked files present at SessionStart with the same content are not findings; a changed one is; no SessionStart record: as today.
 # Hook input shapes as in tests/guard-fixture.sh.
 . "$(dirname "$0")/lib.sh"
@@ -116,7 +116,7 @@ if [ "$DT" -le 10 ]; then t_ok "R3-2 headless Stop with 2000 clean untracked fil
 assert_not_contains "R3-2 2000 files is within the cap: no stop-scan-capped" "$(cat "$SHL")" "stop-scan-capped"
 srepo; mkmany 2100
 : > "$SHL"; T0=$SECONDS; gs false PB_EVAL_HOOK_LOG="$SHL"; DT=$((SECONDS - T0))
-expect_pass "R3-2 2100 small clean untracked .js files"
+expect_block "R3-2 2100 small clean untracked .js files fail closed under R4-1 (was PASS in R3)" scan-capped
 assert_contains "R3-2 over 2000 files the hook log says stop-scan-capped" "$(cat "$SHL")" "guard stop-scan-capped"
 if [ "$DT" -le 10 ]; then t_ok "R3-2 2100 files took ${DT}s (<= 10 s)"; else t_bad "R3-2 2100 files took ${DT}s (<= 10 s)" "too slow"; fi
 srepo; mkmany 1500; printf '%s\n' 'db.exec("DROP TABLE legacy_orders");' > "$R/src/a_dirty.js"
