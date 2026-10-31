@@ -1,11 +1,14 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 41112509219.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
 # Suites the cancelled shard 3/8 did not time keep their weight from the previous file.
+# Estimated (not measured) until the next refresh: the R2-R6 guard suites build up to 30000 files.
 test-evals-variant.sh 1017
+test-guard-code-contract-r6.sh 900
 test-evals-grade9b.sh 889
 test-evals-grade6-b.sh 875
 test-evals-grade14.sh 824
 test-evals-grade16.sh 711
+test-guard-code-contract-r5.sh 700
 test-evals-grade4-b.sh 688
 test-outcome-variant.sh 680
 test-outcome-corpus.sh 670
@@ -14,6 +17,8 @@ test-evals-grade9.sh 647
 test-evals-grade6.sh 624
 test-evals-grade.sh 615
 test-tdd-step-d.sh 609
+test-guard-code-contract-r4.sh 600
+test-guard-code-contract-r3.sh 600
 test-evals-grade8c.sh 591
 test-release-tool.sh 589
 test-evals-budget.sh 526
@@ -50,6 +55,8 @@ test-role-model-b.sh 329
 test-evals-grade12b.sh 323
 test-tdd-step-c.sh 310
 test-ship-c.sh 303
+test-guard-code-contract.sh 300
+test-evals-safety-fail.sh 300
 test-tdd-step-e.sh 297
 test-ci-tree-tested.sh 295
 test-tdd-step-k.sh 285
