@@ -1734,25 +1734,25 @@ pre_write() {
 
 # ---- SessionStart: the baseline (D16) ----
 # record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
-# symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 2000 are hashed; the rest are listed as "- <path>" and
-# FILE.capped marks the over-cap case (R5-1: such a set never makes Stop block). One awk filter, one hash-object pass (R4-2, R5-3)
+# symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 20000 are hashed (R6-2); the rest are listed as "- <path>"
+# and FILE.capped marks the over-20000 case (R6-1: only unhashed pre-session files may then be left unscanned with a warning). One awk filter, one hash-object pass (R4-2, R5-3)
 record_untracked() {
   local pf="$1.paths" hf="$1.hashes" tot n
   rm -f "$1.capped" 2>/dev/null
   filt_untracked > "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
   tot="$(wc -l < "$pf" | tr -d ' ')"
   n="$tot"
-  if [ "$tot" -gt 2000 ]; then
+  if [ "$tot" -gt 20000 ]; then
     : > "$1.capped" 2>/dev/null
-    n=2000
-    head -n 2000 "$pf" > "$pf.top" 2>/dev/null || n=0
+    n=20000
+    head -n 20000 "$pf" > "$pf.top" 2>/dev/null || n=0
   else
     cp "$pf" "$pf.top" 2>/dev/null || n=0
   fi
   if [ "$n" -gt 0 ] && git -C "$TOP" hash-object --stdin-paths < "$pf.top" > "$hf" 2>/dev/null \
     && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
     paste -d' ' "$hf" "$pf.top" > "$1" 2>/dev/null
-    [ "$tot" -le 2000 ] || tail -n +2001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
+    [ "$tot" -le 20000 ] || tail -n +20001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
   fi
   rm -f "$pf" "$hf" "$pf.top" 2>/dev/null
   return 0
@@ -1905,10 +1905,11 @@ END {
   }
 }'
 
-# UCAP: the over-cap ordering for Stop (R5-1). stdin: "@@R" + the SessionStart record ("<hash> <path>"), "@@H" + the current hashes,
-# "@@L" + the current paths (same order). Prints "S <path>" for the first 2000 (new or changed files first, in input order), then,
-# when files were not scanned, "T <count>", "D <dir> <count>" (up to 5 top-level dirs with the most) and "C 1". An unchanged
-# pre-session file is dropped before counting; it counts as unscanned only when SessionStart was over the cap too (marker).
+# UCAP: the over-cap ordering for Stop (R5-1, R6-1). stdin: "@@R" + the SessionStart record ("<hash> <path>"), "@@H" + the current hashes,
+# "@@L" + the current paths (same order). Prints "S <path>" for the first 2000: group A (new or changed since SessionStart) first, then
+# group B (pre-session, no recorded hash), in input order; an unchanged recorded file is skipped. When files were not scanned:
+# "T <count>", "D <dir> <count>" (up to 5 top-level dirs with the most) and "C 1", all counting only unscanned A and B files, and
+# "K 1" first (the awk ran), "A 1" when an unscanned file is in group A (such a Stop blocks headless; B alone only warns).
 UCAP='
 $0 == "@@R" { sec = "R"; next }
 $0 == "@@H" { sec = "H"; next }
@@ -1925,14 +1926,13 @@ END {
     else if (rec[p] != "-" && rec[p] != h) A[++na] = p
     else B[++nb] = p
   }
+  print "K 1"
   q = 0
   for (i = 1; i <= na; i++) Q[++q] = A[i]
   for (i = 1; i <= nb; i++) Q[++q] = B[i]
   nu = 0
   for (i = 1; i <= q; i++) { if (i <= cap) print "S " Q[i]; else U[++nu] = Q[i] }
-  over = (q > cap)
-  if (marker + 0 && n > cap) for (i = 1; i <= ns; i++) U[++nu] = SM[i]
-  if (!over && !(marker + 0 && n > cap)) exit
+  if (q <= cap) exit
   print "T " nu
   for (i = 1; i <= nu; i++) { d = index(U[i], "/") ? substr(U[i], 1, index(U[i], "/") - 1) : "."; DC[d]++ }
   for (k = 1; k <= 5; k++) {
@@ -1942,6 +1942,7 @@ END {
     DONE[best] = 1; print "D " best " " DC[best]
   }
   print "C 1"
+  if (na > cap) print "A 1"
 }'
 
 stop_mode() {
@@ -1968,6 +1969,7 @@ stop_mode() {
   capped=0
   capdirs=""
   mk=0
+  ua=0
   [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked.capped" ] && mk=1
   if [ "$nu" -gt 2000 ]; then
     hs="$(printf '%s\n' "$ul" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)"
@@ -1976,6 +1978,7 @@ stop_mode() {
       ul="$(printf '%s\n' "$co" | sed -n 's/^S //p')"
       if [ -n "$(printf '%s\n' "$co" | sed -n 's/^C //p')" ]; then
         capped="$(printf '%s\n' "$co" | sed -n 's/^T //p')"
+        [ -z "$(printf '%s\n' "$co" | sed -n 's/^A //p')" ] || ua=1
         hlog "stop-scan-capped"
         while IFS= read -r f; do
           [ -n "$f" ] || continue
@@ -1987,6 +1990,7 @@ EOF
     else
       hlog "stop-scan-capped"
       capped=$((nu - 2000))
+      ua=1
       ul="$(printf '%s\n' "$ul" | head -n 2000)"
     fi
   fi
@@ -2041,7 +2045,7 @@ EOF
 $findings
 EOF
   short="${short#; }"
-  if ! headless || { [ "$kinds" = " scan-capped " ] && [ "$mk" = 1 ]; }; then
+  if ! headless || { [ "$kinds" = " scan-capped " ] && [ "$mk" = 1 ] && [ "$ua" = 0 ]; }; then
     for k in $kinds; do hlog "warn $k"; done
     if [ "$kinds" = " scan-capped " ]; then
       jesc "${G_PFX}untracked code files were not scanned for irreversible changes:$items${NL}Tell the user about them."
