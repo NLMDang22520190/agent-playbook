@@ -1714,29 +1714,25 @@ pre_write() {
 }
 
 # ---- SessionStart: the baseline (D16) ----
-# record_untracked FILE -> one "<git hash-object> <path>" line per untracked file at SessionStart (at most 2000, regular files); Stop skips an unchanged one (R3-3)
+# record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
+# symlink; at most 2000) at SessionStart; Stop skips an unchanged one (R3-3). Linear: one hash-object pass paired with the path list (R4-2)
 record_untracked() {
-  local ul="" u hs h n=0 m=0 out=""
-  ul="$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | head -n 2000)"
-  [ -n "$ul" ] || return 0
-  hs=""
+  local u n=0 pf="$1.paths" hf="$1.hashes"
+  : > "$pf" 2>/dev/null || return 0
   while IFS= read -r u; do
     [ -n "$u" ] && [ -f "$TOP/$u" ] && [ ! -L "$TOP/$u" ] || continue
-    hs="$hs$u$NL"; n=$((n + 1))
+    is_mig "$u" || is_code "$u" || continue
+    printf '%s\n' "$u" >> "$pf"
+    n=$((n + 1))
+    [ "$n" -lt 2000 ] || break
   done <<EOF
-$ul
+$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null)
 EOF
-  [ "$n" -gt 0 ] || return 0
-  h="$(printf '%s' "$hs" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)" || return 0
-  m="$(printf '%s\n' "$h" | wc -l | tr -d ' ')"
-  [ "$m" = "$n" ] || return 0
-  while IFS= read -r u; do
-    out="$out${h%%"$NL"*} $u$NL"
-    case "$h" in *"$NL"*) h="${h#*"$NL"}" ;; *) h="" ;; esac
-  done <<EOF
-$hs
-EOF
-  printf '%s' "$out" > "$1" 2>/dev/null
+  if [ "$n" -gt 0 ] && git -C "$TOP" hash-object --stdin-paths < "$pf" > "$hf" 2>/dev/null \
+    && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
+    paste -d' ' "$hf" "$pf" > "$1" 2>/dev/null
+  fi
+  rm -f "$pf" "$hf" 2>/dev/null
   return 0
 }
 # un_same PATH -> 0 when PATH was untracked at SessionStart with the same content (UNB holds the record)
@@ -1888,7 +1884,7 @@ END {
 }'
 
 stop_mode() {
-  local ul nu cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
+  local ul nu capped cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1900,16 +1896,30 @@ stop_mode() {
   UNB=""
   if [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked" ]; then UNB="$(cat "$GC/pb-guard/$SIDV.untracked" 2>/dev/null)"; fi
   [ -z "$UNB" ] || UNB="$UNB$NL"
-  # the untracked list: at most 2000 files; candidates for the code scan found in one grep pass (R3-2)
-  ul="$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | head -n 2001)"
-  nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
+  # the untracked list, filtered first: regular non-symlink files that can be findings (is_mig first, then is_code); text files only
+  # (binary files cannot hold a statement); the 2000-file cap applies to that filtered list, migrations kept first (R4-1)
+  ul="$(
+    git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | {
+      while IFS= read -r f; do
+        [ -n "$f" ] && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
+        if is_mig "$f"; then printf 'M %s\n' "$f"; elif is_code "$f"; then printf 'C %s\n' "$f"; fi
+      done
+    } | {
+      all="$(cat)"
+      { printf '%s\n' "$all" | grep '^M '; printf '%s\n' "$all" | grep '^C '; } | cut -c3- | tr '\n' '\0'
+    } | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -e '' /dev/null 2>/dev/null; }
+  )"
+  nu=0
+  [ -z "$ul" ] || nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
+  capped=0
   if [ "$nu" -gt 2000 ]; then
     hlog "stop-scan-capped"
+    capped=$((nu - 2000))
     ul="$(printf '%s\n' "$ul" | head -n 2000)"
   fi
   cands="$(
     while IFS= read -r f; do
-      [ -n "$f" ] && is_code "$f" && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
+      [ -n "$f" ] && ! is_mig "$f" || continue
       printf '%s\0' "$f"
     done <<EOF | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; }
 $ul
@@ -1940,6 +1950,7 @@ EOF
       git -C "$TOP" -c core.quotepath=off diff --no-color --no-ext-diff --no-renames -U0 "$DB" -- 2>/dev/null
     } | awk "$SCH" 2>/dev/null
   )"
+  if [ "$capped" -gt 0 ]; then findings="$findings${findings:+$NL}scan-capped$TAB-$TAB$capped"; fi
   [ -n "$findings" ] || exit 0
   b7="${BASE:0:7}"
   kinds=" "
@@ -1951,6 +1962,7 @@ EOF
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+      scan-capped) items="$items$NL- $kind: $name untracked code files could not be scanned (over the 2000-file cap); remove or ignore them (.gitignore), or move them under .agents/"; short="$short; $kind $name files not scanned" ;;
       code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
         case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
