@@ -105,12 +105,14 @@ mkres() {
 # commit and "verdict"). MKB_GJ picks it: pass (default; the verdict pass and "commit" = HEAD), fail (verdict fail), none (no gate.json),
 # other ("commit" names another commit).
 mk_base() {
-  local r="$1" d gc; d="gate-$(hd "$r" | cut -c1-12)"; gc="$(hd "$r")"
+  local r="$1" d gc pl; d="gate-$(hd "$r" | cut -c1-12)"; gc="$(hd "$r")"
   mkres "$r" "$d" "$3" "$4" "$5" "$6" "$7" "$8"
+  # v0.33.0 R7-2'': the committed gate.json also has the "pooled" list (the group's files, repo-relative) that the baseline check reads
+  pl="[\"evals/results/$d/behaviour-$3.json\",\"evals/results/$d/outcome-$3.json\"]"
   case "${MKB_GJ:-pass}" in
-    pass) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[]}\n' "$gc" > "$r/evals/results/$d/gate.json" ;;
-    fail) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"fail","verdict_reasons":["x"]}\n' "$gc" > "$r/evals/results/$d/gate.json" ;;
-    other) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[]}\n' "0123456789abcdef0123456789abcdef01234567" > "$r/evals/results/$d/gate.json" ;;
+    pass) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[],"pooled":%s}\n' "$gc" "$pl" > "$r/evals/results/$d/gate.json" ;;
+    fail) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"fail","verdict_reasons":["x"],"pooled":%s}\n' "$gc" "$pl" > "$r/evals/results/$d/gate.json" ;;
+    other) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[],"pooled":%s}\n' "0123456789abcdef0123456789abcdef01234567" "$pl" > "$r/evals/results/$d/gate.json" ;;
     none) ;;
   esac
   gadd "$r" "evals/results/$d" "results $2" && git -C "$r" tag "$2"
