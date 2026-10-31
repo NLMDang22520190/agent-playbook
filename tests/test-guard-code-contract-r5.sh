@@ -21,12 +21,12 @@ gs() { local a="${1:-false}"; [ "$#" -gt 0 ] && shift; grun PB_HEADLESS=1 "$@" -
 mkn() { mkdir -p "$R/$1"; seq -f "$R/$1/f%04g.$2" 1 "$3" | CONTENT="$4" xargs -n 500 sh -c "for f; do printf \"%s\n\" \"\$CONTENT\" > \"\$f\"; done" _; }
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 
-echo "R5-1 pre-session untracked files over the cap only warn"
+echo "R5-1 pre-session untracked files over the cap (R6: all hashed now, so all skipped as unchanged)"
 nrepo; mkn .venv/lib py 2100 "x = 1"; sstart
 : > "$SHL"; gs false PB_EVAL_HOOK_LOG="$SHL"
 if [ "$RC" = 0 ]; then t_ok "R5-1 pre-session 2100 .venv/lib/*.py: headless Stop exits 0"; else t_bad "R5-1 pre-session 2100 .venv/lib/*.py: headless Stop exits 0" "rc=$RC $OUT"; fi
-assert_contains "R5-1 stop-scan-capped is logged" "$(cat "$SHL")" "guard stop-scan-capped"
-if has "$GOUTN" "\"systemMessage\":\"" && has "$GOUT$GERR" scan; then t_ok "R5-1 a systemMessage warning mentions the scan"; else t_bad "R5-1 a systemMessage warning mentions the scan" "$OUT"; fi
+assert_not_contains "R5-1 (R6-1/R6-2) no stop-scan-capped is logged: unchanged hashed files are skipped" "$(cat "$SHL")" "scan-capped"
+assert_not_contains "R5-1 (R6) no scan warning on stdout" "$GOUTN" "systemMessage"
 assert_not_contains "R5-1 no stop-block line in the hook log" "$(cat "$SHL")" "stop-block"
 if [ ! -e "$(gcd "$R")/pb-guard/$SID.stops" ]; then t_ok "R5-1 no .stops file (not counted)"; else t_bad "R5-1 no .stops file (not counted)" "exists: $(cat "$(gcd "$R")/pb-guard/$SID.stops")"; fi
 
