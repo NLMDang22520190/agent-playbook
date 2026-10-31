@@ -862,6 +862,25 @@ is_mig() {
   case "$1" in .agents/*) return 1 ;; *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 0 ;; esac
   return 1
 }
+# R5-3: the is_code/is_mig name rules as awk (same rules as is_code and is_mig), one pass over a path list, so a repo with
+# tens of thousands of untracked dependency files costs one process, not one bash iteration per file. UFILT prints the migration
+# paths first, then the code paths.
+UAWK_FN='function ism(p) { if (p ~ /^\.agents\//) return 0; return (tolower(p) ~ /migrat/) }
+function isc(p,   q, l) {
+  q = "/" p; l = tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || l ~ /\.sql$/ || l ~ /migrat/) return 0
+  if (q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}'
+UFILT="$UAWK_FN"'
+$0 != "" { if (ism($0)) m[nm++] = $0; else if (isc($0)) c[nc++] = $0 }
+END { for (i = 0; i < nm; i++) print m[i]; for (i = 0; i < nc; i++) print c[i] }'
+# filt_untracked -> the untracked paths that can be findings (is_mig first, then is_code), regular non-symlink files only: the name
+# filter in one awk, then one find -P per xargs batch (a symlink is not -type f). Needs TOP.
+filt_untracked() {
+  git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | awk "$UFILT" | sed 's|^|./|' | tr '\n' '\0' \
+    | { cd "$TOP" 2>/dev/null && xargs -0 sh -c '[ "$#" -gt 0 ] || exit 0; find -P "$@" -maxdepth 0 -type f -print' _ 2>/dev/null; } | sed 's|^\./||'
+}
 is_schema() {
   case "$1" in *.[Ss][Qq][Ll]) ;; *) return 1 ;; esac
   case "$1" in .agents/* | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
@@ -1715,24 +1734,27 @@ pre_write() {
 
 # ---- SessionStart: the baseline (D16) ----
 # record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
-# symlink; at most 2000) at SessionStart; Stop skips an unchanged one (R3-3). Linear: one hash-object pass paired with the path list (R4-2)
+# symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 2000 are hashed; the rest are listed as "- <path>" and
+# FILE.capped marks the over-cap case (R5-1: such a set never makes Stop block). One awk filter, one hash-object pass (R4-2, R5-3)
 record_untracked() {
-  local u n=0 pf="$1.paths" hf="$1.hashes"
-  : > "$pf" 2>/dev/null || return 0
-  while IFS= read -r u; do
-    [ -n "$u" ] && [ -f "$TOP/$u" ] && [ ! -L "$TOP/$u" ] || continue
-    is_mig "$u" || is_code "$u" || continue
-    printf '%s\n' "$u" >> "$pf"
-    n=$((n + 1))
-    [ "$n" -lt 2000 ] || break
-  done <<EOF
-$(git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null)
-EOF
-  if [ "$n" -gt 0 ] && git -C "$TOP" hash-object --stdin-paths < "$pf" > "$hf" 2>/dev/null \
-    && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
-    paste -d' ' "$hf" "$pf" > "$1" 2>/dev/null
+  local pf="$1.paths" hf="$1.hashes" tot n
+  rm -f "$1.capped" 2>/dev/null
+  filt_untracked > "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
+  tot="$(wc -l < "$pf" | tr -d ' ')"
+  n="$tot"
+  if [ "$tot" -gt 2000 ]; then
+    : > "$1.capped" 2>/dev/null
+    n=2000
+    head -n 2000 "$pf" > "$pf.top" 2>/dev/null || n=0
+  else
+    cp "$pf" "$pf.top" 2>/dev/null || n=0
   fi
-  rm -f "$pf" "$hf" 2>/dev/null
+  if [ "$n" -gt 0 ] && git -C "$TOP" hash-object --stdin-paths < "$pf.top" > "$hf" 2>/dev/null \
+    && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
+    paste -d' ' "$hf" "$pf.top" > "$1" 2>/dev/null
+    [ "$tot" -le 2000 ] || tail -n +2001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
+  fi
+  rm -f "$pf" "$hf" "$pf.top" 2>/dev/null
   return 0
 }
 # un_same PATH -> 0 when PATH was untracked at SessionStart with the same content (UNB holds the record)
@@ -1883,8 +1905,47 @@ END {
   }
 }'
 
+# UCAP: the over-cap ordering for Stop (R5-1). stdin: "@@R" + the SessionStart record ("<hash> <path>"), "@@H" + the current hashes,
+# "@@L" + the current paths (same order). Prints "S <path>" for the first 2000 (new or changed files first, in input order), then,
+# when files were not scanned, "T <count>", "D <dir> <count>" (up to 5 top-level dirs with the most) and "C 1". An unchanged
+# pre-session file is dropped before counting; it counts as unscanned only when SessionStart was over the cap too (marker).
+UCAP='
+$0 == "@@R" { sec = "R"; next }
+$0 == "@@H" { sec = "H"; next }
+$0 == "@@L" { sec = "L"; next }
+sec == "R" { i = index($0, " "); if (i) rec[substr($0, i + 1)] = substr($0, 1, i - 1); next }
+sec == "H" { nh++; H[nh] = $0; next }
+sec == "L" && $0 != "" { n++; P[n] = $0; next }
+END {
+  cap = 2000; ok = (nh == n)
+  for (i = 1; i <= n; i++) {
+    p = P[i]; h = ok ? H[i] : "-"
+    if (!(p in rec)) A[++na] = p
+    else if (ok && rec[p] != "-" && rec[p] == h) SM[++ns] = p
+    else if (rec[p] != "-" && rec[p] != h) A[++na] = p
+    else B[++nb] = p
+  }
+  q = 0
+  for (i = 1; i <= na; i++) Q[++q] = A[i]
+  for (i = 1; i <= nb; i++) Q[++q] = B[i]
+  nu = 0
+  for (i = 1; i <= q; i++) { if (i <= cap) print "S " Q[i]; else U[++nu] = Q[i] }
+  over = (q > cap)
+  if (marker + 0 && n > cap) for (i = 1; i <= ns; i++) U[++nu] = SM[i]
+  if (!over && !(marker + 0 && n > cap)) exit
+  print "T " nu
+  for (i = 1; i <= nu; i++) { d = index(U[i], "/") ? substr(U[i], 1, index(U[i], "/") - 1) : "."; DC[d]++ }
+  for (k = 1; k <= 5; k++) {
+    best = ""
+    for (d in DC) if (!(d in DONE) && (best == "" || DC[d] > DC[best] || (DC[d] == DC[best] && d < best))) best = d
+    if (best == "") break
+    DONE[best] = 1; print "D " best " " DC[best]
+  }
+  print "C 1"
+}'
+
 stop_mode() {
-  local ul nu capped cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
+  local ul nu capped capdirs mk hs co cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1897,41 +1958,50 @@ stop_mode() {
   if [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked" ]; then UNB="$(cat "$GC/pb-guard/$SIDV.untracked" 2>/dev/null)"; fi
   [ -z "$UNB" ] || UNB="$UNB$NL"
   # the untracked list, filtered first: regular non-symlink files that can be findings (is_mig first, then is_code); text files only
-  # (binary files cannot hold a statement); the 2000-file cap applies to that filtered list, migrations kept first (R4-1)
+  # (binary files cannot hold a statement). Over the 2000-file cap, a file new this session or changed since SessionStart comes first
+  # and an unchanged pre-session one is dropped before counting (R5-1); migrations stay first (R4-1)
   ul="$(
-    git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | {
-      while IFS= read -r f; do
-        [ -n "$f" ] && [ -f "$TOP/$f" ] && [ ! -L "$TOP/$f" ] || continue
-        if is_mig "$f"; then printf 'M %s\n' "$f"; elif is_code "$f"; then printf 'C %s\n' "$f"; fi
-      done
-    } | {
-      all="$(cat)"
-      { printf '%s\n' "$all" | grep '^M '; printf '%s\n' "$all" | grep '^C '; } | cut -c3- | tr '\n' '\0'
-    } | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -e '' /dev/null 2>/dev/null; }
+    filt_untracked | sed 's|^|./|' | tr '\n' '\0' | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -e '' /dev/null 2>/dev/null; } | sed 's|^\./||'
   )"
   nu=0
   [ -z "$ul" ] || nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
   capped=0
+  capdirs=""
+  mk=0
+  [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked.capped" ] && mk=1
   if [ "$nu" -gt 2000 ]; then
-    hlog "stop-scan-capped"
-    capped=$((nu - 2000))
-    ul="$(printf '%s\n' "$ul" | head -n 2000)"
-  fi
-  cands="$(
-    while IFS= read -r f; do
-      [ -n "$f" ] && ! is_mig "$f" || continue
-      printf '%s\0' "$f"
-    done <<EOF | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; }
-$ul
+    hs="$(printf '%s\n' "$ul" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)"
+    co="$({ printf '@@R\n'; printf '%s' "$UNB"; printf '@@H\n'; printf '%s\n' "$hs"; printf '@@L\n'; printf '%s\n' "$ul"; } | awk -v marker="$mk" "$UCAP" 2>/dev/null)"
+    if [ -n "$co" ]; then
+      ul="$(printf '%s\n' "$co" | sed -n 's/^S //p')"
+      if [ -n "$(printf '%s\n' "$co" | sed -n 's/^C //p')" ]; then
+        capped="$(printf '%s\n' "$co" | sed -n 's/^T //p')"
+        hlog "stop-scan-capped"
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          capdirs="$capdirs${capdirs:+, }${f% *} (${f##* })"
+        done <<EOF
+$(printf '%s\n' "$co" | sed -n 's/^D //p')
 EOF
+      fi
+    else
+      hlog "stop-scan-capped"
+      capped=$((nu - 2000))
+      ul="$(printf '%s\n' "$ul" | head -n 2000)"
+    fi
+  fi
+  case "$capped" in '' | *[!0-9]*) capped=0 ;; esac
+  cands="$(
+    printf '%s\n' "$ul" | awk "$UAWK_FN"' $0 != "" && !ism($0)' | sed 's|^|./|' | tr '\n' '\0' \
+      | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; } | sed 's|^\./||'
   )"
   findings="$(
     {
-      printf '%s\n' "$bl" | while IFS= read -r f; do
+      printf '%s\n' "$bl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" || continue
         printf '%sB %s\n' "$DS" "$f"; git -C "$TOP" show "$BASE:$f" 2>/dev/null; printf '\n'
       done
-      printf '%s\n' "$nl" | while IFS= read -r f; do
+      printf '%s\n' "$nl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" && [ -f "$TOP/$f" ] || continue
         printf '%sN %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
@@ -1962,7 +2032,7 @@ EOF
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
         case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
-      scan-capped) items="$items$NL- $kind: $name untracked code files could not be scanned (over the 2000-file cap); remove or ignore them (.gitignore), or move them under .agents/"; short="$short; $kind $name files not scanned" ;;
+      scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
       code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
         case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
@@ -1971,9 +2041,13 @@ EOF
 $findings
 EOF
   short="${short#; }"
-  if ! headless; then
+  if ! headless || { [ "$kinds" = " scan-capped " ] && [ "$mk" = 1 ]; }; then
     for k in $kinds; do hlog "warn $k"; done
-    jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    if [ "$kinds" = " scan-capped " ]; then
+      jesc "${G_PFX}untracked code files were not scanned for irreversible changes:$items${NL}Tell the user about them."
+    else
+      jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    fi
     printf '{"systemMessage":"%s"}\n' "$JE"
     exit 0
   fi
@@ -1994,6 +2068,11 @@ EOF
   printf '%s\n' "$((cnt + 1))" > "$sf" 2>/dev/null
   for k in $kinds; do hlog "stop-block $k"; done
   [ "$J_active" = true ] && again=" (still there after an earlier Stop block)"
+  if [ "$kinds" = " scan-capped " ]; then
+    msg="${G_PFX}BLOCKED (Stop): untracked code files could not be scanned for irreversible changes$again:$items${NL}Headless run: add the directories named above to .gitignore, or move the files under .agents/, then report them in your final reply."
+    printf '%s\n' "$msg" >&2
+    exit 2
+  fi
   for f in $cfiles; do
     if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
     else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
