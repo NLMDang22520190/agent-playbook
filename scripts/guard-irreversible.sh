@@ -168,9 +168,9 @@ function endw() {
   if (inw) {
     if (pend == "h") { nhd++; HD[nhd] = w; HDT[nhd] = hdtab; hdg++; HDI[nhd] = hdg; HB[hdg] = ""; emit("h" hdg) }
     else if (pend == "r") emit("r" w)
-    else if (pend == "o") emit("o" w)
+    else if (pend == "o") emit("o" (dup ? "&" : "") w)
     else emit("w" w)
-    pend = ""
+    pend = ""; dup = 0
   }
   w = ""; inw = 0
 }
@@ -238,7 +238,7 @@ function heredocs(i,   h, k, ln) {
   return i
 }
 function tokenize(s,   i, c, k) {
-  str = s; m = split(s, T, ""); i = 1; w = ""; inw = 0; pend = ""; nhd = 0; TOK = ""
+  str = s; m = split(s, T, ""); i = 1; w = ""; inw = 0; pend = ""; nhd = 0; TOK = ""; dup = 0
   while (i <= m) {
     c = T[i]
     if (c == " " || c == "\t" || c == "\r") { endw(); i++; continue }
@@ -246,12 +246,15 @@ function tokenize(s,   i, c, k) {
     if (c == "|" && T[i + 1] != "|") { endw(); emit("s|"); i++; if (T[i] == "&") i++; continue }
     if (c == "|") { sepw(); i += 2; continue }
     if (c == "(" || c == ")") { endw(); emit("s" c); i++; continue }
+    # DECISION[D15]: &> and &>> redirect to a file (one redirection, not a separator); a dup (>&2) is marked with a & in the token
+    if (c == "&" && T[i + 1] == ">") { endw(); i += 2; if (T[i] == ">") i++; pend = "o"; continue }
     if (c == ";" || c == "&") { sepw(); i++; continue }
     if (c == "<" || c == ">") {
       if (inw && pend == "" && w ~ /^[0-9]+$/) { w = ""; inw = 0 } else endw()
       if (c == "<" && T[i + 1] == "<" && T[i + 2] == "<") { pend = "r"; i += 3; continue }
       if (c == "<" && T[i + 1] == "<") { i += 2; hdtab = 0; if (T[i] == "-") { hdtab = 1; i++ } pend = "h"; continue }
       i++
+      dup = (c == ">" && T[i] == "&")
       if (T[i] == ">" || T[i] == "&" || T[i] == "|") i++
       pend = (c == ">") ? "o" : "r"; continue
     }
@@ -284,6 +287,7 @@ function psvar(nm,   l) {
   if (l == "env:claude_project_dir") return "CLAUDE_PROJECT_DIR"
   if (l == "true") return "PS_TRUE"
   if (l == "false") return "PS_FALSE"
+  if (l == "null") return "PS_NULL"   # DECISION[D15]: so that >$null can be told from a redirect to an unknown variable
   return "("
 }
 # qs(i) / qd(i): the length of the single / double quote character at T[i] (0 when none): the ASCII one, or a curly one (UTF-8 bytes):
@@ -936,6 +940,46 @@ EOF
 
 # ---- PreToolUse: Bash ----
 SEGW=()   # the words of the current command (type prefix kept)
+# DECISION[D15] (R9): what may surround the restore. RPRE stays 1 while every segment before the current one is on the allow-list (cd or
+# Set-Location with one literal dir, read-only git status/diff/log/show with literal words, or an earlier allowed restore); RCLS is the
+# verdict for the segment about to run, RRES says the segment just run was an allowed restore, GITW is the index of its git word.
+RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0
+# rpre_cls: RCLS=0 when SEGW (as tokenized, before any parsing) is one segment the restore may follow
+rpre_cls() {
+  local n="${#SEGW[@]}" t i w c a
+  RCLS=1
+  [ "$n" -ge 1 ] || return 0
+  for t in "${SEGW[@]}"; do
+    case "$t" in w*) ;; *) return 0 ;; esac
+  done
+  w="${SEGW[0]#?}"
+  c="$w"
+  if [ "$IS_PS" = 1 ]; then lower "$w"; c="$LW"; fi
+  if [ "$c" = cd ] || { [ "$IS_PS" = 1 ] && { [ "$c" = sl ] || [ "$c" = set-location ]; }; }; then
+    if [ "$n" = 2 ]; then
+      a="${SEGW[1]#?}"
+      case "$a" in '' | -* | *"$DS"* | *"$BQ"* | *[\*\?\[]*) ;; *) RCLS=0 ;; esac
+    fi
+    return 0
+  fi
+  if [ "$IS_PS" = 1 ]; then w="${w##*[/\\]}"; lower "${w%.[Ee][Xx][Ee]}"; c="$LW"; fi
+  [ "$c" = git ] && [ "$n" -ge 2 ] || return 0
+  case "${SEGW[1]#?}" in status | diff | log | show) ;; *) return 0 ;; esac
+  i=2
+  while [ "$i" -lt "$n" ]; do
+    a="${SEGW[$i]#?}"; i=$((i + 1))
+    case "$a" in *"$DS"* | *"$BQ"* | --output*) return 0 ;; esac
+  done
+  RCLS=0
+}
+# rredir_ok TOKEN -> 0 for a redirection the restore segment may carry: a dup (>&2, 2>&1), /dev/null, $null
+rredir_ok() {
+  case "$1" in
+    o/dev/null | 'o&'[0-9] | 'o&'[0-9][0-9] | 'o&-') return 0 ;;
+    o"${DS}PS_NULL$US") return 0 ;;
+  esac
+  return 1
+}
 # DECISION[D13] (R8): the guard lets through the git checkout / git restore its own headless Stop block asked for, and only that.
 # restore_ok SUB START GDIR GOPT -> 0 when the command (words from START on) restores only literal paths the latest headless Stop block
 # named in a restore hint (<sid>.restore), none of which had a tracked change at session start (<sid>.dirty), from BASE or the index, in
@@ -946,6 +990,19 @@ restore_ok() {
   local -a ps
   ps=()
   [ "$4" = 1 ] && [ "$GITENV" = 0 ] && [ -n "$SIDV" ] || return 1
+  # DECISION[D15]: the segments before were on the allow-list, and this one has no assignment prefix, no wrapper (only a plain
+  # git, a path to git, command git) and only the redirections rredir_ok names
+  [ "$RPRE" = 1 ] && [ "$GITW" -ge 0 ] || return 1
+  if [ "$IS_PS" = 1 ]; then [ "$PS_RHS" = 0 ] || return 1; fi
+  t=0
+  while [ "$t" -lt "$GITW" ]; do
+    a="${SEGW[$t]}"; t=$((t + 1))
+    case "$a" in
+      wcommand) ;;
+      w*) return 1 ;;
+      *) rredir_ok "$a" || return 1 ;;
+    esac
+  done
   for v in DIR WORK_TREE INDEX_FILE COMMON_DIR OBJECT_DIRECTORY ALTERNATE_OBJECT_DIRECTORIES NAMESPACE CONFIG_COUNT CONFIG_PARAMETERS \
     CONFIG_GLOBAL CONFIG_SYSTEM ICASE_PATHSPECS LITERAL_PATHSPECS GLOB_PATHSPECS NOGLOB_PATHSPECS PREFIX; do
     v="GIT_$v"
@@ -953,7 +1010,7 @@ restore_ok() {
   done
   while [ "$i" -lt "$n" ]; do
     t="${SEGW[$i]}"; i=$((i + 1))
-    case "$t" in w*) ;; *) return 1 ;; esac
+    case "$t" in w*) ;; *) rredir_ok "$t" && continue; return 1 ;; esac
     a="${t#?}"
     if [ "$dd" = 1 ]; then ps[${#ps[@]}]="$a"; continue; fi
     case "$sub:$a" in
@@ -1006,6 +1063,44 @@ restore_ok() {
     [ "$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" -- "$rel" 2>/dev/null)" = "$rel" ] || return 1
   done
   return 0
+}
+# DECISION[D15]: while a restore list is armed (the headless Stop block named a restore), a restore-shaped command the guard cannot judge
+# (a cwd it cannot resolve, a repo it cannot read, git handed to eval, xargs, a shell, Start-Process, Invoke-Expression) blocks.
+# restore_armed -> 0 when <sid>.restore exists for the repo of the hook's cwd
+restore_armed() {
+  [ -n "$SIDV" ] || return 1
+  repo_info "${J_cwd:-$PWD}" || return 1
+  [ -f "$GC/pb-guard/$SIDV.restore" ]
+}
+# armed_block SUB MODE -> 0 (HIT set) when this is a tracked-file checkout/restore the guard cannot judge while a restore list is armed
+armed_block() {
+  { [ "$2" = tracked ] && { [ "$1" = checkout ] || [ "$1" = restore ]; } && restore_armed; } || return 1
+  HIT=git-discard
+  HINT=" The Stop block's restore runs only as a plain git checkout or git restore, alone or after cd or read-only git; this command could not be checked."
+  return 0
+}
+# seg_wrapped: the command in SEGW hands git checkout / git restore to another command (eval, xargs, a shell, Start-Process, ...)
+seg_wrapped() {
+  local t a hg=0 hr=0 out l
+  for t in "${SEGW[@]}"; do
+    case "$t" in w*) ;; *) continue ;; esac
+    a="${t#?}"
+    case "$a" in git | git.exe | */git | *\\git.exe | *"git "* | *"git$TAB"*) hg=1 ;; esac
+    case "$a" in *checkout* | *restore*) hr=1 ;; esac
+  done
+  [ "$hg" = 1 ] && [ "$hr" = 1 ] && restore_armed || return 1
+  HIT=git-discard
+  HINT=" The Stop block's restore runs only as a plain git checkout or git restore; handing it to another command is not allowed."
+  [ "$CWD_OK" = 1 ] || return 0
+  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$CWD" status --porcelain 2>/dev/null)" || return 0
+  HIT=""; HINT=""
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    case "$l" in '??'* | '!!'*) ;; *) HIT=git-discard; HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."; return 0 ;; esac
+  done <<EOF
+$out
+EOF
+  return 1
 }
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
@@ -1076,14 +1171,16 @@ seg_git() {
       done
       if [ "$force" = 1 ] && [ "$dry" = 0 ]; then mode=clean; fi ;;
   esac
-  [ -n "$mode" ] && [ "$gok" = 1 ] || return 1
+  [ -n "$mode" ] || return 1
+  if [ "$gok" != 1 ]; then armed_block "$sub" "$mode"; return; fi
   if [ "$mode" = tracked ] && { [ "$sub" = checkout ] || [ "$sub" = restore ]; } && restore_ok "$sub" "$si" "$gdir" "$gopt"; then
     hlog "allow restore-flagged"
+    RRES=1
     return 1
   fi
   if [ "$mode" = clean ] && { [ "$cx" = 1 ] || [ "$cX" = 1 ]; }; then ign=--ignored; fi
   # shellcheck disable=SC2086
-  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$gdir" status --porcelain $ign 2>/dev/null)" || return 1
+  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$gdir" status --porcelain $ign 2>/dev/null)" || { armed_block "$sub" "$mode"; return; }
   while IFS= read -r l; do
     [ -n "$l" ] || continue
     case "$mode" in
@@ -1236,7 +1333,8 @@ seg() {
       done
       return 1 ;;
     cd) seg_cd $((i + 1)); return 1 ;;
-    git) seg_git $((i + 1)); return ;;
+    git) GITW="$i"; seg_git $((i + 1)); return ;;
+    eval | xargs | builtin | bash | sh | dash | zsh | ksh) seg_wrapped; return ;;
     rm) seg_rm $((i + 1)); return ;;
   esac
   args=()
@@ -1369,14 +1467,17 @@ pre_bash() {
     case "$t" in
       s | 's|' | 's(' | 's)')
         if [ "${#SEGW[@]}" -gt 0 ]; then
+          rpre_cls
           seg && break
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
         fi
         SEGW=()
         case "$t" in
           s) PLT="" ;;
-          's(') GD=$((GD + 1)) ;;
+          's(') GD=$((GD + 1)); RPRE=0 ;;
           's)') if [ "$GD" -gt 0 ]; then gclose; else PLT=""; fi ;;
         esac ;;
       'w{' | 'w}')
@@ -1775,7 +1876,8 @@ ps_seg() {
   ps_cw || return 1
   case "$LW" in
     "$CALLM"*) ps_unk "$((PS_I + 1))"; return ;;
-    git) seg_git "$((PS_I + 1))"; return ;;
+    git) GITW="$PS_I"; seg_git "$((PS_I + 1))"; return ;;
+    start-process | start | saps | invoke-expression | iex | invoke-command | icm | pwsh | powershell | bash | sh | wsl | cmd) seg_wrapped; return ;;
     cd | sl | chdir | set-location | pushd | push-location) ps_cd "$((PS_I + 1))"; return 1 ;;
     popd | pop-location) CWD_OK=0; return 1 ;;
   esac
@@ -1795,17 +1897,20 @@ pre_ps() {
     case "$t" in
       s | 's|' | 's(' | 's)')
         if [ "${#SEGW[@]}" -gt 0 ]; then
+          rpre_cls
           if ps_seg; then
             # a delete whose target is unresolved (a $(...) group) is reported after the commands that run inside that group: their hit wins
             if [ "$UNRES" = 1 ] && [ "$HIT" = rm-outside ] && [ -z "$DEFH" ]; then DEFH="$HIT"; DEFT="$HINT"; HIT=""; HINT=""; else break; fi
           fi
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
         fi
         SEGW=()
         case "$t" in
           s) PLT="" ;;
-          's(') GD=$((GD + 1)) ;;
+          's(') GD=$((GD + 1)); RPRE=0 ;;
           's)') if [ "$GD" -gt 0 ]; then gclose; else PLT=""; fi ;;
         esac ;;
       *) SEGW[${#SEGW[@]}]="$t" ;;
@@ -2249,6 +2354,7 @@ EOF
   for k in $kinds; do hlog "stop-block $k"; done
   [ "$J_active" = true ] && again=" (still there after an earlier Stop block)"
   if [ "$kinds" = " scan-capped " ]; then
+    [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null   # DECISION[D15]: no restore hint in this block
     msg="${G_PFX}BLOCKED (Stop): untracked code files could not be scanned for irreversible changes$again:$items${NL}Headless run: add the directories named above to .gitignore, or move the files under .agents/, then report them in your final reply."
     printf '%s\n' "$msg" >&2
     exit 2
@@ -2268,7 +2374,8 @@ EOF
   # DECISION[D13]: the paths the hints above name (BASE known), so the PreToolUse check lets that restore through
   if [ -n "$SIDV" ]; then
     [ "$BASE" != none ] || rl=""
-    { printf 'top %s\n' "$TOP"; printf '%s' "$rl"; } > "$GC/pb-guard/$SIDV.restore" 2>/dev/null
+    if [ -n "$rl" ]; then { printf 'top %s\n' "$TOP"; printf '%s' "$rl"; } > "$GC/pb-guard/$SIDV.restore" 2>/dev/null
+    else rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null; fi   # DECISION[D15]: a block with no restore hint removes the old list
   fi
   printf '%s\n' "$msg" >&2
   exit 2
