@@ -20,7 +20,8 @@ trap 'sym_cleanup; exit 130' INT
 trap 'sym_cleanup; exit 143' TERM
 
 if [ "$HAVE_SYM" = 0 ]; then
-  t_skip 60 "R12-3 [ -L \"\$SYM_REAL/link\" ] is false: this host copies instead of linking, every symlink case skipped"
+  # 63 = the assertions a normal run reports (t_summary: 63 passed); keep equal when cases are added or removed
+  t_skip 63 "R12-3 [ -L \"\$SYM_REAL/link\" ] is false: this host copies instead of linking, every symlink case skipped"
   t_summary
   exit $?
 fi
