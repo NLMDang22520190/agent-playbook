@@ -94,12 +94,17 @@ rnew; printf 'CREATE TABLE e1 (id INTEGER);\nCREATE TABLE e2 (id INTEGER);\n' > 
 fxg "$R" add -A; fxg "$R" commit -qm acute; printf -- '-- user\n' >> "$R/db/$E_ACUTE.sql"; rstart
 assert_line "R8-1 [today FAIL] a non-ASCII dirty path is listed as raw bytes" "$ST/$SID.dirty" "db/$E_ACUTE.sql"
 # a tracked path holding a newline: not listed, the file says unknown (N6)
-rnew; NLF="db/a"$'\n'"b.sql"; printf 'CREATE TABLE t (id INTEGER);\n' > "$R/$NLF"; fxg "$R" add -A; fxg "$R" commit -qm nl
-printf -- '-- user\n' >> "$R/$NLF"; rstart
-assert_line "R8-1 [today FAIL] a dirty tracked path with a newline gives the line 'unknown'" "$ST/$SID.dirty" unknown
-flag "R8-1 newline path"
-ck_no "R8-1 [guard-rail] with 'unknown' every restore blocks: git checkout <b7> -- $SC" "git checkout $B7 -- $SC"
-ck_no "R8-1 [guard-rail] with 'unknown' every restore blocks: git restore $SC" "git restore $SC"
+rnew; NLF="db/a"$'\n'"b.sql"; printf 'CREATE TABLE t (id INTEGER);\n' > "$R/$NLF" 2>/dev/null
+if [ -f "$R/$NLF" ]; then
+  fxg "$R" add -A; fxg "$R" commit -qm nl
+  printf -- '-- user\n' >> "$R/$NLF"; rstart
+  assert_line "R8-1 [today FAIL] a dirty tracked path with a newline gives the line 'unknown'" "$ST/$SID.dirty" unknown
+  flag "R8-1 newline path"
+  ck_no "R8-1 [guard-rail] with 'unknown' every restore blocks: git checkout <b7> -- $SC" "git checkout $B7 -- $SC"
+  ck_no "R8-1 [guard-rail] with 'unknown' every restore blocks: git restore $SC" "git restore $SC"
+else
+  t_skip 6 "R8-1 newline-in-file-name case: this filesystem cannot hold a newline in a file name (NTFS)"
+fi
 
 echo "R8-2 the headless Stop block writes <sid>.restore"
 rboot; flag "R8-2"
