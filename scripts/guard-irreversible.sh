@@ -1047,7 +1047,11 @@ restore_ok() {
     r="$(git -C "$gdir" rev-parse -q --verify --end-of-options "$src^{commit}" 2>/dev/null)" || return 1
     [ "$r" = "$BASE" ] || return 1
   fi
-  norm_path "$TOP" /; topn="$NP"
+  # DECISION[D13] R11-1: compare physically. TOP is git's physical toplevel (/private/var/... on macOS, C:/Users/... on Windows)
+  # while the hook cwd may reach it through a symlink (/var/...) or in the /c/... form; resolve TOP and each pathspec's parent dir
+  # with cd -P / pwd -P (bash builtins, one subshell each), so a symlinked dir that leads outside TOP still blocks.
+  topn="$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$topn" ] && [ "$topn" != / ] || return 1
   for a in "${ps[@]}"; do
     case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
     # DECISION[D13] N5: a backslash is a path separator only in a PowerShell command
@@ -1055,6 +1059,10 @@ restore_ok() {
     expand "$a" || return 1
     case "$EXP" in '' | :* | *[*?[]*) return 1 ;; esac
     norm_path "$EXP" "$gdir"; np="$NP"
+    case "$np" in /?*/*) ;; *) return 1 ;; esac
+    r="$(cd -P -- "${np%/*}" 2>/dev/null && pwd -P)" || return 1
+    [ -n "$r" ] || return 1
+    if [ "$r" = / ]; then np="/${np##*/}"; else np="$r/${np##*/}"; fi
     case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
     case "$rel" in '' | *"$NL"*) return 1 ;; esac
     [ ! -d "$TOP/$rel" ] || return 1
@@ -1988,10 +1996,14 @@ un_same() {
   return 1
 }
 # DECISION[D13] (R8): tracked_changes -> TCH (the tracked-change paths, one per line, raw bytes, TOP-relative; a rename or copy gives both
-# paths) and TCU=1 when a path holds a newline (it cannot be listed). Needs TOP.
+# paths) and TCU=1 when a path holds a newline (it cannot be listed). Needs TOP. tracked_changes SCRATCH: one git status written to the
+# scratch file and read back with bash builtins (DECISION[D15] R11-4: no process substitution, no per-line subprocess; SessionStart
+# with 20000 files must stay under the R6-2 budget on a slow-fork host such as Windows).
 tracked_changes() {
-  local e xy tp skip=0
+  local e xy tp skip=0 sf="$1"
   TCH=""; TCU=0
+  GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno > "$sf" 2>/dev/null
+  [ -f "$sf" ] || { TCU=1; return 0; }
   while IFS= read -r -d '' e; do
     if [ "$skip" = 1 ]; then
       skip=0; tp="$e"
@@ -2003,12 +2015,13 @@ tracked_changes() {
     fi
     case "$tp" in *"$NL"*) TCU=1; continue ;; esac
     TCH="$TCH$tp$NL"
-  done < <(GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno 2>/dev/null)
+  done < "$sf"
+  rm -f "$sf" 2>/dev/null
   return 0
 }
 # write_dirty FILE -> the session-start record of tracked changes: "top <TOP>", the paths, "unknown" when it cannot list them
 write_dirty() {
-  tracked_changes
+  tracked_changes "$1.st"
   { printf 'top %s\n' "$TOP"; printf '%s' "$TCH"; [ "$TCU" = 0 ] || printf 'unknown\n'; } > "$1" 2>/dev/null
 }
 # union_dirty FILE -> resume or clear: the current tracked changes are added (DECISION[D13] N2); another top, or a path that cannot be
@@ -2021,7 +2034,7 @@ union_dirty() {
     grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null
     return 0
   fi
-  tracked_changes
+  tracked_changes "$1.st"
   if [ "$TCU" = 1 ]; then grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null; fi
   while IFS= read -r p; do
     [ -n "$p" ] || continue
