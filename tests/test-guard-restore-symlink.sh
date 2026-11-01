@@ -92,5 +92,13 @@ rboot; flag "R11 missing parent"
 ck_no "R11 [guard-rail] a pathspec whose parent dir does not exist (nodir/x.sql) blocks" "git checkout $B7 -- nodir/x.sql"
 rboot; rm -rf "$R/db"
 gs; expect_block "R11 rm -rf db: the Stop block" schema-drop
-ck_no "R11 [guard-rail] the whole db dir deleted: the pathspec's parent is missing, so it blocks (Revision 14)" "git checkout $B7 -- $SC"
+ck_ok "R11-1' [today FAIL, spec fix D16] the whole db dir deleted: the nearest existing ancestor is the top, missing components are appended, so the hinted restore passes" "git checkout $B7 -- $SC"
+rboot; rm -rf "$R/db"
+gs; expect_block "R11-1' rm -rf db: the Stop block (git restore)" schema-drop
+ck_ok "R11-1' [today FAIL, spec fix D16] the whole db dir deleted: git restore $SC passes" "git restore $SC"
+echo "R11-1' nearest existing ancestor is a symlink to outside, tail missing"
+rboot; flag "R11-1' symlink ancestor"
+OUTE="$(mk_tmp)/elsewhere2"; mkdir -p "$OUTE"
+mv "$R/db" "$OUTE/db" && ln -s "$OUTE/db" "$R/db"
+ck_no "R11-1' [guard-rail] db -> outside, missing tail db/gone/x.sql blocks" "git checkout $B7 -- db/gone/x.sql"
 t_summary
