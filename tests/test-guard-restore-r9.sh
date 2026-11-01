@@ -208,6 +208,7 @@ mkmany 2100
 gs; expect_block "R9-4 the next headless Stop blocks with scan-capped only" scan-capped
 assert_not_contains "R9-4 the block has no restore hint" "$GERR" "(restore:"
 assert_no_path "R9-4 [R9] a scan-capped-only block removes the stale <sid>.restore" "$ST/$SID.restore"
+drop   # the tracked tree was cleaned by the user restore above: dirty the flagged path again, else no git-discard rule has anything to fire on
 ck_no "R9-4 [R9] ...so the old restore command blocks again after the scan-capped Stop" "git checkout $B7 -- $SC"
 # migration only
 rboot; flag "R9-4 migration"
