@@ -1,6 +1,6 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 41202615481.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
-# Estimated (not measured) until the next refresh: test-release-gate-confirm.sh (29 s in WSL, x8 as the other gate suites), test-guard-restore.sh (about 60 s in WSL, x8).
+# Estimated (not measured) until the next refresh: test-release-gate-confirm.sh (29 s in WSL, x8 as the other gate suites), test-guard-restore.sh (about 60 s in WSL, x8), test-guard-restore-r9.sh (about 20 s in WSL, x8).
 test-evals-variant.sh 1091
 test-release-tool.sh 980
 test-evals-grade6-b.sh 880
@@ -32,6 +32,7 @@ test-evals-grade9.sh 503
 test-evals-grade15.sh 494
 test-evals-grade7.sh 491
 test-guard-restore.sh 480
+test-guard-restore-r9.sh 160
 test-evals-grade7b.sh 477
 test-evals-keys.sh 474
 test-evals-grade2-e20.sh 471
