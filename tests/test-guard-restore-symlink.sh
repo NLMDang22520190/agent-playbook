@@ -6,8 +6,12 @@
 # through the symlink) and replays the restore cases. "[today FAIL]" = fails before R11 is implemented; "[guard-rail]" = blocked
 # today and must stay blocked.
 SYM_REAL="$(mktemp -d "${TMPDIR:-/tmp}/pbsymreal.XXXXXX")" || exit 3
-mkdir "$SYM_REAL/real" && ln -s "$SYM_REAL/real" "$SYM_REAL/link" || { echo "cannot make a symlink here"; rm -rf "$SYM_REAL"; exit 3; }
-export TMPDIR="$SYM_REAL/link"
+# R12-3: a host that makes a copy instead of a symlink (Git Bash without native symlinks) skips the symlink cases, never fails
+HAVE_SYM=1
+mkdir "$SYM_REAL/real" || { echo "cannot make a dir here"; rm -rf "$SYM_REAL"; exit 3; }
+ln -s "$SYM_REAL/real" "$SYM_REAL/link" 2>/dev/null
+[ -L "$SYM_REAL/link" ] || HAVE_SYM=0
+[ "$HAVE_SYM" = 1 ] && export TMPDIR="$SYM_REAL/link"
 . "$(dirname "$0")/lib.sh"
 . "$PB_ROOT/tests/guard-fixture.sh"
 sym_cleanup() { t_cleanup; case "$SYM_REAL" in /*/pbsymreal.*) rm -rf "$SYM_REAL" ;; esac; }
@@ -15,6 +19,11 @@ trap sym_cleanup EXIT
 trap 'sym_cleanup; exit 130' INT
 trap 'sym_cleanup; exit 143' TERM
 
+if [ "$HAVE_SYM" = 0 ]; then
+  t_skip 60 "R12-3 [ -L \"\$SYM_REAL/link\" ] is false: this host copies instead of linking, every symlink case skipped"
+  t_summary
+  exit $?
+fi
 HL="$GW/symlink-hook.log"
 SN=0
 SC="db/schema.sql"
@@ -41,7 +50,7 @@ flag() { printf '%s\n' "$S_HEAD" "$S_ORD" > "$R/$SC"; gs; expect_block "$1: the 
 echo "R11 fixture: the repo is reached through a symlink, git resolves it"
 rboot
 case "$R" in "$SYM_REAL/link"/*) t_ok "R11 the repo path goes through the symlink" ;; *) t_bad "R11 the repo path goes through the symlink" "R=[$R] link=[$SYM_REAL/link]" ;; esac
-assert_eq "R11 git's top is the physical path (differs from the hook cwd spelling)" "$SYM_REAL/real/$(basename "$(dirname "$R")")/repo" "$TOP"
+assert_eq "R12-2 [today FAIL when TMPDIR is itself a symlink] git's top is the physical path (cd -P && pwd -P)" "$(cd -P -- "$SYM_REAL/real" && pwd -P)/$(basename "$(dirname "$R")")/repo" "$TOP"
 case "$PB_TMPBASE" in "$SYM_REAL/link") t_ok "R11 PB_TMPBASE is the symlink" ;; *) t_bad "R11 PB_TMPBASE is the symlink" "[$PB_TMPBASE]" ;; esac
 
 echo "R11 E13 end to end through the symlink"
@@ -84,10 +93,12 @@ pk_ok "R11 [today FAIL] PowerShell Set-Location db; git checkout <b7> -- schema.
 echo "R11 blocked: a symlink inside the repo that leads outside, and a missing parent dir"
 rboot; flag "R11 db symlink"
 OUTD="$(mk_tmp)/elsewhere"; mkdir -p "$OUTD"
-mv "$R/db" "$OUTD/db" && ln -s "$OUTD/db" "$R/db"
+mv "$R/db" "$OUTD/db" && ln -s "$OUTD/db" "$R/db" 2>/dev/null
+if [ -L "$R/db" ]; then
 ck_no "R11 [guard-rail or today FAIL] db -> outside the repo: git checkout <b7> -- $SC blocks" "git checkout $B7 -- $SC"
 ck_no "R11 db -> outside the repo: git restore $SC blocks" "git restore $SC"
 ck_no "R11 db -> outside the repo: cd db && git checkout <b7> -- schema.sql blocks" "cd db && git checkout $B7 -- schema.sql"
+else t_skip 6 "R12-3 db is not a symlink here"; fi
 rboot; flag "R11 missing parent"
 ck_no "R11 [guard-rail] a pathspec whose parent dir does not exist (nodir/x.sql) blocks" "git checkout $B7 -- nodir/x.sql"
 rboot; rm -rf "$R/db"
@@ -99,6 +110,8 @@ ck_ok "R11-1' [today FAIL, spec fix D16] the whole db dir deleted: git restore $
 echo "R11-1' nearest existing ancestor is a symlink to outside, tail missing"
 rboot; flag "R11-1' symlink ancestor"
 OUTE="$(mk_tmp)/elsewhere2"; mkdir -p "$OUTE"
-mv "$R/db" "$OUTE/db" && ln -s "$OUTE/db" "$R/db"
+mv "$R/db" "$OUTE/db" && ln -s "$OUTE/db" "$R/db" 2>/dev/null
+if [ -L "$R/db" ]; then
 ck_no "R11-1' [guard-rail] db -> outside, missing tail db/gone/x.sql blocks" "git checkout $B7 -- db/gone/x.sql"
+else t_skip 2 "R12-3 db is not a symlink here"; fi
 t_summary
