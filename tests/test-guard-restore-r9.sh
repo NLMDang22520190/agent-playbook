@@ -227,4 +227,25 @@ rboot; flag "R9-4 hint kept"; mkmany 2100
 gs; expect_block "R9-4 a Stop with a schema-drop hint and scan-capped" schema-drop
 assert_line "R9-4 [guard-rail] a block that has a restore hint keeps the list" "$ST/$SID.restore" "$SC"
 
+echo "R10 (Revision 13): file redirections on the restore segment, and no restore list armed"
+# R10-1: `>&FILE` / `>& FILE` is a file write (not an fd duplication), so the restore segment carries a forbidden redirection
+rboot; flag "R10 setup"
+ck_no "R10-1 [guard-rail] git checkout <b7> -- schema.sql >&f.txt blocks" "git checkout $B7 -- $SC >&f.txt"
+ck_no "R10-1 [guard-rail] git checkout <b7> -- schema.sql >& f.txt blocks" "git checkout $B7 -- $SC >& f.txt"
+ck_ok "R10-1 [guard-rail] git checkout <b7> -- schema.sql >&2 still passes (fd dup)" "git checkout $B7 -- $SC >&2"
+# review MINOR 4: no <sid>.restore at all (the user was never flagged). Wrappers get the verdict the guard gave at cf7ccc2: rc=0, no hit
+rboot; drop
+assert_no_path "R10-4 setup: no <sid>.restore exists" "$ST/$SID.restore"
+ck_nolist() { local n="$1"; gx "$2"; expect_pass "$n"; assert_eq "$n: no allow restore-flagged line" 0 "$(nallow)"; }
+ck_nolist "R10-4 [guard-rail] no list, dirty tree: bash -c 'git checkout -- db/schema.sql'" "bash -c 'git checkout -- $SC'"
+ck_nolist "R10-4 [guard-rail] no list, dirty tree: eval 'git checkout -- db/schema.sql'" "eval 'git checkout -- $SC'"
+ck_nolist "R10-4 [guard-rail] no list, dirty tree: bash -c 'git checkout <b7> -- db/schema.sql'" "bash -c 'git checkout $B7 -- $SC'"
+gx "git checkout -- $SC"; expect_block "R10-4 [guard-rail] no list: the plain discard blocks" git-discard
+assert_eq "R10-4 no allow restore-flagged line for the plain discard" 0 "$(nallow)"
+gx "git checkout $B7 -- $SC"; expect_block "R10-4 [guard-rail] no list: the plain restore blocks (nothing was flagged)" git-discard
+assert_eq "R10-4 no allow restore-flagged line for the plain restore" 0 "$(nallow)"
+pk_psno() { gp "$2"; expect_pass "$1"; assert_eq "$1: no allow restore-flagged line" 0 "$(nallow)"; }
+pk_psno "R10-4 [guard-rail] no list, PS iex 'git checkout -- db/schema.sql'" "iex 'git checkout -- db\schema.sql'"
+gp "git checkout -- db\schema.sql"; expect_block "R10-4 [guard-rail] no list, PS: the plain discard blocks" git-discard
+
 t_summary

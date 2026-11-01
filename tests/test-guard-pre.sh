@@ -549,4 +549,17 @@ done
 mkdir -p "$GQ/exist"
 gallow "G R2 pin: cp into an existing directory, client reads the directory path" "cp drop.sql exist; sqlite3 db < exist"
 
+# ---- R10 (Revision 13, R10-1): a Bash `>&` is an fd duplication only when its target is all digits or `-`; `>&word` is a file write ----
+echo "G R10 >&FILE stays a file write (blocked as at cf7ccc2); &> and >&1 pinned"
+for c in "cat drop.sql >&f.sql; sqlite3 db < f.sql"   "cat drop.sql >& f.sql; sqlite3 db < f.sql"   "printf 'DROP TABLE t;\n' >&f.txt; sqlite3 db < f.txt"   "echo 'DROP TABLE orders;' >& f.txt; sqlite3 db < f.txt"   "cat drop.sql >&f.sql; psql -f f.sql"   "cat drop.sql >&f.sql; sqlite3 db \".read f.sql\""; do
+  gblock "G R10-1 [R10] >&FILE writes the file, the client reads DROP" "$c"
+done
+# pinned new verdicts (cf7ccc2 let `&>` through; the guard now follows it): &> is one redirection to a file
+gblock "G R10-1 [pin] &> FILE is followed as a file write" "echo 'DROP TABLE orders;' &> f.sql; sqlite3 db < f.sql"
+gblock "G R10-1 [pin] a client with &> out still reads its < file" "sqlite3 db &> out < drop.sql"
+# fd duplications to a digit or - are not file writes: file named 1 is never written
+gallow "G R10-1 [pin] >&1 is an fd duplication, no file 1 is written" "cat drop.sql >&1; sqlite3 db < 1"
+gallow "G R10-1 [guard-rail] 2>&1 is an fd duplication" "cat drop.sql 2>&1; sqlite3 db < 1"
+gallow "G R10-1 [guard-rail] >&2 is an fd duplication" "cat drop.sql >&2; sqlite3 db < 2"
+
 t_summary
