@@ -538,6 +538,7 @@ END {
   print "J_sid=" q(TOP["session_id"])
   print "J_cwd=" q(TOP["cwd"])
   print "J_active=" q(TOP["stop_hook_active"])
+  print "J_source=" q(TOP["source"])
   print "J_cmd=" q(TI["command"])
   print "J_file=" q(TI["file_path"])
   print "J_content=" q(TI["content"])
@@ -553,7 +554,7 @@ END {
   print "J_ok=1"
 }'
 
-J_ok=0; J_tool=""; J_sid=""; J_cwd=""; J_active=""; J_cmd=""; J_file=""; J_content=""; J_new=""
+J_ok=0; J_tool=""; J_sid=""; J_cwd=""; J_active=""; J_source=""; J_cmd=""; J_file=""; J_content=""; J_new=""
 W=()
 H=()
 PARSED="$(awk "$JP" 2>/dev/null)" || exit 0
@@ -714,6 +715,7 @@ var_value() {
 assign() {
   local name="${1%%=*}"
   case "$name" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
+  case "$name" in GIT_*) GITENV=1 ;; esac   # DECISION[D13]: a GIT_* assignment in the command keeps the restore exemption off
   if expand "${1#*=}"; then printf -v "GV_$name" '%s' "$EXP"; printf -v "GS_$name" '%s' 1
   else printf -v "GS_$name" '%s' 0; fi
   return 0
@@ -934,23 +936,95 @@ EOF
 
 # ---- PreToolUse: Bash ----
 SEGW=()   # the words of the current command (type prefix kept)
+# DECISION[D13] (R8): the guard lets through the git checkout / git restore its own headless Stop block asked for, and only that.
+# restore_ok SUB START GDIR GOPT -> 0 when the command (words from START on) restores only literal paths the latest headless Stop block
+# named in a restore hint (<sid>.restore), none of which had a tracked change at session start (<sid>.dirty), from BASE or the index, in
+# the worktree the two lists name, with git's global options limited to -C and no GIT_* variable in play. Anything else: 1, so the
+# git-discard check runs as before. DECISION[D14]: every doubtful reading blocks (--no-pager, env GIT_*, restore -S, no pathspec).
+restore_ok() {
+  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np topn rf df tl v r
+  local -a ps
+  ps=()
+  [ "$4" = 1 ] && [ "$GITENV" = 0 ] && [ -n "$SIDV" ] || return 1
+  for v in DIR WORK_TREE INDEX_FILE COMMON_DIR OBJECT_DIRECTORY ALTERNATE_OBJECT_DIRECTORIES NAMESPACE CONFIG_COUNT CONFIG_PARAMETERS \
+    CONFIG_GLOBAL CONFIG_SYSTEM ICASE_PATHSPECS LITERAL_PATHSPECS GLOB_PATHSPECS NOGLOB_PATHSPECS PREFIX; do
+    v="GIT_$v"
+    [ -z "${!v+x}" ] || return 1
+  done
+  while [ "$i" -lt "$n" ]; do
+    t="${SEGW[$i]}"; i=$((i + 1))
+    case "$t" in w*) ;; *) return 1 ;; esac
+    a="${t#?}"
+    if [ "$dd" = 1 ]; then ps[${#ps[@]}]="$a"; continue; fi
+    case "$sub:$a" in
+      *:--) dd=1 ;;
+      checkout:-*) return 1 ;;
+      checkout:*) [ "$hs" = 0 ] || return 1; hs=1; src="$a" ;;
+      restore:-S | restore:--staged) return 1 ;;
+      restore:-W | restore:--worktree) ;;
+      restore:-s | restore:--source)
+        [ "$hs" = 0 ] && [ "$i" -lt "$n" ] || return 1
+        case "${SEGW[$i]}" in w*) ;; *) return 1 ;; esac
+        hs=1; src="${SEGW[$i]#?}"; i=$((i + 1)) ;;
+      restore:--source=*) [ "$hs" = 0 ] || return 1; hs=1; src="${a#--source=}" ;;
+      restore:--*) return 1 ;;
+      restore:-s?*) [ "$hs" = 0 ] || return 1; hs=1; src="${a#-s}" ;;
+      restore:-*) return 1 ;;
+      restore:*) ps[${#ps[@]}]="$a" ;;
+    esac
+  done
+  [ "${#ps[@]}" -gt 0 ] || return 1
+  [ "$sub" = restore ] || [ "$dd" = 1 ] || return 1
+  repo_info "$gdir" || return 1
+  base_of
+  case "$BASE" in none | '') return 1 ;; esac
+  rf="$GC/pb-guard/$SIDV.restore"; df="$GC/pb-guard/$SIDV.dirty"
+  [ -f "$rf" ] && [ -f "$df" ] || return 1
+  IFS= read -r tl < "$rf" || return 1
+  [ "$tl" = "top $TOP" ] || return 1
+  IFS= read -r tl < "$df" || return 1
+  [ "$tl" = "top $TOP" ] || return 1
+  if grep -Fxq unknown "$df" 2>/dev/null; then return 1; fi
+  if [ "$hs" = 1 ]; then
+    case "$src" in '' | -*) return 1 ;; esac
+    r="$(git -C "$gdir" rev-parse -q --verify --end-of-options "$src^{commit}" 2>/dev/null)" || return 1
+    [ "$r" = "$BASE" ] || return 1
+  fi
+  norm_path "$TOP" /; topn="$NP"
+  for a in "${ps[@]}"; do
+    case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
+    # DECISION[D13] N5: a backslash is a path separator only in a PowerShell command
+    if [ "$IS_PS" != 1 ]; then case "$a" in *\\*) return 1 ;; esac; fi
+    expand "$a" || return 1
+    case "$EXP" in '' | :* | *[*?[]*) return 1 ;; esac
+    norm_path "$EXP" "$gdir"; np="$NP"
+    case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
+    case "$rel" in '' | *"$NL"*) return 1 ;; esac
+    [ ! -d "$TOP/$rel" ] || return 1
+    tail -n +2 "$rf" | grep -Fxq -- "$rel" || return 1
+    if tail -n +2 "$df" | grep -Fxq -- "$rel"; then return 1; fi
+    [ "$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" -- "$rel" 2>/dev/null)" = "$rel" ] || return 1
+  done
+  return 0
+}
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
-  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign=""
+  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si
   while [ "$i" -lt "$n" ]; do
     w="${SEGW[$i]#?}"
     case "$w" in
       -C)
         i=$((i + 1)); a="${SEGW[$i]#?}"
         if expand "$a"; then norm_path "$EXP" "$gdir"; gdir="$NP"; else gok=0; fi ;;
-      -c | --git-dir | --work-tree | --namespace | --exec-path | --config-env) i=$((i + 1)) ;;
-      -*) ;;
+      -c | --git-dir | --work-tree | --namespace | --exec-path | --config-env) gopt=0; i=$((i + 1)) ;;
+      -*) gopt=0 ;;
       *) break ;;
     esac
     i=$((i + 1))
   done
   sub="${SEGW[$i]#?}"
   i=$((i + 1))
+  si="$i"
   case "$sub" in
     push)
       while [ "$i" -lt "$n" ]; do
@@ -1003,6 +1077,10 @@ seg_git() {
       if [ "$force" = 1 ] && [ "$dry" = 0 ]; then mode=clean; fi ;;
   esac
   [ -n "$mode" ] && [ "$gok" = 1 ] || return 1
+  if [ "$mode" = tracked ] && { [ "$sub" = checkout ] || [ "$sub" = restore ]; } && restore_ok "$sub" "$si" "$gdir" "$gopt"; then
+    hlog "allow restore-flagged"
+    return 1
+  fi
   if [ "$mode" = clean ] && { [ "$cx" = 1 ] || [ "$cX" = 1 ]; }; then ign=--ignored; fi
   # shellcheck disable=SC2086
   out="$(GIT_OPTIONAL_LOCKS=0 git -C "$gdir" status --porcelain $ign 2>/dev/null)" || return 1
@@ -1128,7 +1206,7 @@ seg() {
           w="${SEGW[$i]#?}"
           case "$pf:$w" in
             sudo:-[ugpCDhrtTU] | env:-[uCS] | nice:-n | timeout:-[sk] | time:-[fo] | exec:-a) i=$((i + 2)) ;;
-            *:-* | *:[A-Za-z_]*=*) i=$((i + 1)) ;;
+            *:-* | *:[A-Za-z_]*=*) case "$w" in GIT_*=*) GITENV=1 ;; esac; i=$((i + 1)) ;;
             *) break ;;
           esac
         done
@@ -1279,7 +1357,7 @@ gclose() {
 }
 pre_bash() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1447,6 +1525,7 @@ ps_cd() {
 }
 # ps_unres NAME: an assignment changed the variable (NAME as renamed by psvar): it stays unresolved for the rest of the command
 ps_unres() {
+  case "$1" in GIT_* | *:GIT_*) GITENV=1 ;; esac   # DECISION[D13]
   case "$1" in HOME | PWD | PS_TEMP | PS_TMP | TMPDIR | CLAUDE_PROJECT_DIR) printf -v "GS_$1" '%s' 0 ;; esac
 }
 # ps_vn NAME -> PV: the psvar name of a variable named NAME in Set-Item / Set-Variable (env:TEMP, HOME ...); 1 when none
@@ -1704,7 +1783,7 @@ ps_seg() {
 }
 pre_ps() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""
+  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1803,18 +1882,66 @@ un_same() {
   case "$NL$UNB" in *"$NL$h $1$NL"*) return 0 ;; esac
   return 1
 }
+# DECISION[D13] (R8): tracked_changes -> TCH (the tracked-change paths, one per line, raw bytes, TOP-relative; a rename or copy gives both
+# paths) and TCU=1 when a path holds a newline (it cannot be listed). Needs TOP.
+tracked_changes() {
+  local e xy tp skip=0
+  TCH=""; TCU=0
+  while IFS= read -r -d '' e; do
+    if [ "$skip" = 1 ]; then
+      skip=0; tp="$e"
+    else
+      xy="${e:0:2}"
+      case "$xy" in '??' | '!!') continue ;; esac
+      case "$xy" in R* | C* | ?R | ?C) skip=1 ;; esac
+      tp="${e:3}"
+    fi
+    case "$tp" in *"$NL"*) TCU=1; continue ;; esac
+    TCH="$TCH$tp$NL"
+  done < <(GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno 2>/dev/null)
+  return 0
+}
+# write_dirty FILE -> the session-start record of tracked changes: "top <TOP>", the paths, "unknown" when it cannot list them
+write_dirty() {
+  tracked_changes
+  { printf 'top %s\n' "$TOP"; printf '%s' "$TCH"; [ "$TCU" = 0 ] || printf 'unknown\n'; } > "$1" 2>/dev/null
+}
+# union_dirty FILE -> resume or clear: the current tracked changes are added (DECISION[D13] N2); another top, or a path that cannot be
+# listed, makes the record "unknown"
+union_dirty() {
+  local tl p
+  [ -f "$1" ] || { write_dirty "$1"; return 0; }
+  IFS= read -r tl < "$1" || tl=""
+  if [ "$tl" != "top $TOP" ]; then
+    grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null
+    return 0
+  fi
+  tracked_changes
+  if [ "$TCU" = 1 ]; then grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null; fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    tail -n +2 "$1" | grep -Fxq -- "$p" || printf '%s\n' "$p" >> "$1" 2>/dev/null
+  done <<EOF
+$TCH
+EOF
+  return 0
+}
 start_mode() {
   local f h
   [ -n "$SIDV" ] || exit 0
   hook_dir
   repo_info "$HDIR" || exit 0
   f="$GC/pb-guard/$SIDV"
-  [ -e "$f" ] && exit 0
+  if [ -e "$f" ]; then
+    case "$J_source" in resume | clear) union_dirty "$f.dirty" ;; esac
+    exit 0
+  fi
   h="$(git -C "$TOP" rev-parse -q --verify HEAD 2>/dev/null)" || h=none
   [ -n "$h" ] || h=none
   mkdir -p "$GC/pb-guard" 2>/dev/null || exit 0
   printf '%s\n' "$h" > "$f" 2>/dev/null
   record_untracked "$f.untracked"
+  write_dirty "$f.dirty"
   exit 0
 }
 
@@ -1983,8 +2110,14 @@ END {
   if (na > cap) print "A 1"
 }'
 
+# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths and never from a word-split string: once, and
+# not when it holds whitespace or is empty (DECISION[D13] N4)
+rl_add() {
+  case "$1" in '' | *[[:space:]]*) return 0 ;; esac
+  case "$NL$rl" in *"$NL$1$NL"*) ;; *) rl="$rl$1$NL" ;; esac
+}
 stop_mode() {
-  local ul nu capped capdirs mk hs co cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg
+  local ul nu capped capdirs mk hs co cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg rl=""
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -2063,7 +2196,8 @@ EOF
     } | awk "$SCH" 2>/dev/null
   )"
   if [ "$capped" -gt 0 ]; then findings="$findings${findings:+$NL}scan-capped$TAB-$TAB$capped"; fi
-  [ -n "$findings" ] || exit 0
+  # DECISION[D13]: a Stop that finds nothing removes the restore list (the restore it asked for is done)
+  if [ -z "$findings" ]; then [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null; exit 0; fi
   b7="${BASE:0:7}"
   kinds=" "
   while IFS="$TAB" read -r kind file name; do
@@ -2071,12 +2205,15 @@ EOF
     case "$kinds" in *" $kind "*) ;; *) kinds="$kinds$kind " ;; esac
     case "$kind" in
       schema-drop) items="$items$NL- $kind: $file: table $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        rl_add "$file" ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        rl_add "$file" ;;
       scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
       code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
-        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac ;;
+        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac
+        if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$file"; then rl_add "$file"; fi ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
   done <<EOF
@@ -2100,6 +2237,7 @@ EOF
   case "$cnt" in '' | *[!0-9]*) cnt=0 ;; esac
   if [ "$cnt" -ge 3 ]; then
     for k in $kinds; do hlog "stop-giveup $k"; done
+    [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null
     msg="${G_PFX}gave up after 3 Stop blocks; unresolved irreversible changes: $short. Report them to the user."
     printf '%s\n' "$msg" >&2
     jesc "$msg"
@@ -2127,6 +2265,11 @@ EOF
     msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
   msg="$msg$chint"
+  # DECISION[D13]: the paths the hints above name (BASE known), so the PreToolUse check lets that restore through
+  if [ -n "$SIDV" ]; then
+    [ "$BASE" != none ] || rl=""
+    { printf 'top %s\n' "$TOP"; printf '%s' "$rl"; } > "$GC/pb-guard/$SIDV.restore" 2>/dev/null
+  fi
   printf '%s\n' "$msg" >&2
   exit 2
 }
