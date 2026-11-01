@@ -95,8 +95,11 @@ fxg "$R" add -A; fxg "$R" commit -qm acute; printf -- '-- user\n' >> "$R/db/$E_A
 assert_line "R8-1 [today FAIL] a non-ASCII dirty path is listed as raw bytes" "$ST/$SID.dirty" "db/$E_ACUTE.sql"
 # a tracked path holding a newline: not listed, the file says unknown (N6)
 rnew; NLF="db/a"$'\n'"b.sql"; printf 'CREATE TABLE t (id INTEGER);\n' > "$R/$NLF" 2>/dev/null
-if [ -f "$R/$NLF" ]; then
-  fxg "$R" add -A; fxg "$R" commit -qm nl
+NLOK=0; if [ -f "$R/$NLF" ]; then   # Git Bash maps a newline to a private-use char: ask git what it records
+  fxg "$R" add -A; [ "$(git -C "$R" ls-files -z | tr '\0' '\n' | grep -c '^db/a$')" -ge 1 ] && NLOK=1
+fi
+if [ "$NLOK" = 1 ]; then
+  fxg "$R" commit -qm nl
   printf -- '-- user\n' >> "$R/$NLF"; rstart
   assert_line "R8-1 [today FAIL] a dirty tracked path with a newline gives the line 'unknown'" "$ST/$SID.dirty" unknown
   flag "R8-1 newline path"

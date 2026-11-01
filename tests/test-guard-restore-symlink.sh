@@ -5,7 +5,8 @@
 # symlink to it, points TMPDIR at the symlink BEFORE lib.sh loads (so PB_TMPBASE, the fixture repo and the hook cwd all go
 # through the symlink) and replays the restore cases. "[today FAIL]" = fails before R11 is implemented; "[guard-rail]" = blocked
 # today and must stay blocked.
-SYM_REAL="$(mktemp -d "${TMPDIR:-/tmp}/pbsymreal.XXXXXX")" || exit 3
+SYM_TB="${TMPDIR:-/tmp}"; while [ "${#SYM_TB}" -gt 1 ] && [ "${SYM_TB%/}" != "$SYM_TB" ]; do SYM_TB="${SYM_TB%/}"; done   # macOS TMPDIR ends with "/": lib.sh squeezes it, so build the link path the same way
+SYM_REAL="$(mktemp -d "$SYM_TB/pbsymreal.XXXXXX")" || exit 3
 # R12-3: a host that makes a copy instead of a symlink (Git Bash without native symlinks) skips the symlink cases, never fails
 HAVE_SYM=1
 mkdir "$SYM_REAL/real" || { echo "cannot make a dir here"; rm -rf "$SYM_REAL"; exit 3; }
