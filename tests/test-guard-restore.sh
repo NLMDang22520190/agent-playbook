@@ -154,7 +154,7 @@ assert_contains "R8-2 [today FAIL] ...and that content is the earlier list (name
 
 echo "R8-3 E13 end to end: Stop block, the restore it names passes, the next Stop passes"
 rboot
-sed -i '3,4d' "$R/db/schema.sql"   # the E13 implementer's own edit (Run 28 with.1 t21)
+_SCH="$(sed '3,4d' "$R/db/schema.sql"; printf x)"; printf '%s' "${_SCH%x}" > "$R/db/schema.sql"   # portable in-place delete (no sed -i, no .bak); the E13 implementer's own edit (Run 28 with.1 t21)
 gs; expect_block "R8-3 E13: headless Stop blocks on the schema drop" schema-drop
 assert_contains "R8-3 E13: the block names the file" "$GERR" "$SC"
 assert_contains "R8-3 E13: the block names the table" "$GERR" "legacy_orders"
