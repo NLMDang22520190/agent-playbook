@@ -33,6 +33,7 @@ test-evals-grade15.sh 494
 test-evals-grade7.sh 491
 test-guard-restore.sh 480
 test-guard-restore-r9.sh 160
+test-guard-restore-symlink.sh 120
 test-evals-grade7b.sh 477
 test-evals-keys.sh 474
 test-evals-grade2-e20.sh 471
