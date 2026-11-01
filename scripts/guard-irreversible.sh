@@ -986,7 +986,7 @@ rredir_ok() {
 # the worktree the two lists name, with git's global options limited to -C and no GIT_* variable in play. Anything else: 1, so the
 # git-discard check runs as before. DECISION[D14]: every doubtful reading blocks (--no-pager, env GIT_*, restore -S, no pathspec).
 restore_ok() {
-  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np rt topn rf df tl v r
+  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np rt pg topn rf df tl v r
   local -a ps
   ps=()
   [ "$4" = 1 ] && [ "$GITENV" = 0 ] && [ -n "$SIDV" ] || return 1
@@ -1052,13 +1052,17 @@ restore_ok() {
   # with cd -P / pwd -P (bash builtins, one subshell each), so a symlinked dir that leads outside TOP still blocks.
   topn="$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" || return 1
   [ -n "$topn" ] && [ "$topn" != / ] || return 1
+  # DECISION[D16] R12-1: git joins a relative pathspec to the PHYSICAL directory it runs in, so ".." folds against that, not against
+  # the hook's (possibly symlinked) path; a directory that does not resolve blocks
+  pg="$(cd -P -- "$gdir" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$pg" ] || return 1
   for a in "${ps[@]}"; do
     case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
     # DECISION[D13] N5: a backslash is a path separator only in a PowerShell command
     if [ "$IS_PS" != 1 ]; then case "$a" in *\\*) return 1 ;; esac; fi
     expand "$a" || return 1
     case "$EXP" in '' | :* | *[*?[]*) return 1 ;; esac
-    norm_path "$EXP" "$gdir"; np="$NP"
+    norm_path "$EXP" "$pg"; np="$NP"
     case "$np" in /?*/*) ;; *) return 1 ;; esac
     # DECISION[D16] R11-1': the nearest EXISTING ancestor is resolved physically; the missing components (a deleted dir) are
     # appended literally, since a missing component cannot be a symlink
@@ -2006,7 +2010,7 @@ un_same() {
 tracked_changes() {
   local e xy tp skip=0 sf="$1"
   TCH=""; TCU=0
-  GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno > "$sf" 2>/dev/null
+  GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno > "$sf" 2>/dev/null || { rm -f "$sf" 2>/dev/null; TCU=1; return 0; }  # DECISION[D16] R12-4: a failed status is "unknown"
   [ -f "$sf" ] || { TCU=1; return 0; }
   while IFS= read -r -d '' e; do
     if [ "$skip" = 1 ]; then
