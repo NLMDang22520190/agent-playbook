@@ -168,7 +168,7 @@ function endw() {
   if (inw) {
     if (pend == "h") { nhd++; HD[nhd] = w; HDT[nhd] = hdtab; hdg++; HDI[nhd] = hdg; HB[hdg] = ""; emit("h" hdg) }
     else if (pend == "r") emit("r" w)
-    else if (pend == "o") emit("o" (dup ? "&" : "") w)
+    else if (pend == "o") emit("o" (dup && w ~ /^([0-9]+|-)$/ ? "&" : "") w)
     else emit("w" w)
     pend = ""; dup = 0
   }
@@ -246,7 +246,7 @@ function tokenize(s,   i, c, k) {
     if (c == "|" && T[i + 1] != "|") { endw(); emit("s|"); i++; if (T[i] == "&") i++; continue }
     if (c == "|") { sepw(); i += 2; continue }
     if (c == "(" || c == ")") { endw(); emit("s" c); i++; continue }
-    # DECISION[D15]: &> and &>> redirect to a file (one redirection, not a separator); a dup (>&2) is marked with a & in the token
+    # DECISION[D15]: &> and &>> redirect to a file (one redirection, not a separator); a dup (>&2, >&-, target all digits or -) is marked with a & in the token; >&word is a file write
     if (c == "&" && T[i + 1] == ">") { endw(); i += 2; if (T[i] == ">") i++; pend = "o"; continue }
     if (c == ";" || c == "&") { sepw(); i++; continue }
     if (c == "<" || c == ">") {
