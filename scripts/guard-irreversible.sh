@@ -986,7 +986,7 @@ rredir_ok() {
 # the worktree the two lists name, with git's global options limited to -C and no GIT_* variable in play. Anything else: 1, so the
 # git-discard check runs as before. DECISION[D14]: every doubtful reading blocks (--no-pager, env GIT_*, restore -S, no pathspec).
 restore_ok() {
-  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np topn rf df tl v r
+  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np rt topn rf df tl v r
   local -a ps
   ps=()
   [ "$4" = 1 ] && [ "$GITENV" = 0 ] && [ -n "$SIDV" ] || return 1
@@ -1060,9 +1060,13 @@ restore_ok() {
     case "$EXP" in '' | :* | *[*?[]*) return 1 ;; esac
     norm_path "$EXP" "$gdir"; np="$NP"
     case "$np" in /?*/*) ;; *) return 1 ;; esac
-    r="$(cd -P -- "${np%/*}" 2>/dev/null && pwd -P)" || return 1
+    # DECISION[D16] R11-1': the nearest EXISTING ancestor is resolved physically; the missing components (a deleted dir) are
+    # appended literally, since a missing component cannot be a symlink
+    rt="${np##*/}"; r="${np%/*}"
+    while [ -n "$r" ] && [ ! -d "$r" ]; do rt="${r##*/}/$rt"; r="${r%/*}"; done
+    r="$(cd -P -- "${r:-/}" 2>/dev/null && pwd -P)" || return 1
     [ -n "$r" ] || return 1
-    if [ "$r" = / ]; then np="/${np##*/}"; else np="$r/${np##*/}"; fi
+    if [ "$r" = / ]; then np="/$rt"; else np="$r/$rt"; fi
     case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
     case "$rel" in '' | *"$NL"*) return 1 ;; esac
     [ ! -d "$TOP/$rel" ] || return 1
