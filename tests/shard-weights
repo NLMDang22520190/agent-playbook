@@ -1,13 +1,14 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs): the per-suite median of runs 41321750489, 41229467008 and 41202615481 (latest run 41321750489).
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (one run per file, --out), then take the median.
 # Measured in fewer than 3 runs (median of those): test-guard-restore-r12.sh (1), test-guard-restore-r9.sh (1), test-guard-restore-symlink.sh (1), test-guard-restore.sh (1), test-release-gate-confirm.sh (2).
-test-evals-variant.sh 1146
+# Estimated (not measured): test-evals-variant.sh and test-evals-variant-b.sh share the measured 1146 s of the old test-evals-variant.sh (v0.34.0 split) in the ratio of their local run times (25 s : 45 s); replace with CI timings at the next refresh.
 test-release-tool.sh 975
 test-evals-grade6-b.sh 858
 test-evals-grade9b.sh 839
 test-evals-grade.sh 824
 test-outcome-corpus.sh 776
 test-guard-ps.sh 751
+test-evals-variant-b.sh 737
 test-ci-tree-tested-steps.sh 722
 test-evals-grade4-b.sh 690
 test-evals-grade4.sh 688
@@ -42,6 +43,7 @@ test-outcome-report.sh 435
 test-ship-b.sh 431
 test-tdd-step-c.sh 424
 test-ci-tree-tested.sh 422
+test-evals-variant.sh 409
 test-tdd-step-l.sh 408
 test-evals-grade10b.sh 392
 test-evals-grade8.sh 382
