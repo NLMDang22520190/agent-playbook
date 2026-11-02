@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Static checks for the playbook itself (no model needed). Exit 1 on any problem.
 #   evals/run-checks.sh [--only SECTION]
-# --only runs one check group (dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets) and prints only its lines plus the summary;
+# --only runs one check group (dupmax|sed|gnu|soh|skipnote|shellcheck|skills|scenarios|modes|files|budgets) and prints only its lines plus the summary;
 # budgets is the word-budget checks alone (AGENTS.global.md, every skills/*/SKILL.md, stale table entries): the skills group still runs its own,
 # so --only skills keeps them; a full run runs each once. A missing or unknown SECTION exits 2. Without --only everything runs; the always-on checks only then.
 set -u
@@ -11,10 +11,10 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; P=$((P + 1)); }
 ONLY=""
 if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets]" >&2; exit 2; }
+  [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|skipnote|shellcheck|skills|scenarios|modes|files|budgets]" >&2; exit 2; }
   case "$2" in
     dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes | files | budgets) ONLY="$2" ;;
-    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|shellcheck|skills|scenarios|modes|files|budgets)" >&2; exit 2 ;;
+    *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|skipnote|shellcheck|skills|scenarios|modes|files|budgets)" >&2; exit 2 ;;
   esac
 fi
 # want NAME: this group runs (always without --only)
@@ -528,6 +528,22 @@ elif [ "$grc" -ne 0 ]; then
 elif [ -z "${gsoh// /}" ]; then ok "no SOH byte (octal 001) spelled in scripts (bash 3.2)"
 else bad "SOH byte (octal 001) spelled in a script (bash 3.2 on macOS treats it as CTLESC; use the 034 field separator or build the fixture from pieces) at: $gsoh"; fi
 [ "$sohe" = /dev/null ] || rm -f "$sohe"
+fi
+
+if want skipnote; then
+nofiles 'tests/*.sh'
+# An env-dependent skip must be t_skip N (the README test count adds the skipped assertions up); a "note: ... skipped" print
+# (echo or printf, any quoting) hides them. Refused in tests/*.sh outside whole-line comments; a t_skip line or a note that
+# does not say skipped is fine. Not covered: a message split over lines or built from variables.
+gsn="$(awk '
+  /^[[:space:]]*#/ { next }
+  /(^|[^[:alnum:]_])(echo|printf)([^[:alnum:]_]|$)/ && /note:.*skipped/ { out = out FILENAME ":" FNR " " }
+  END { print out }' tests/*.sh 2>/dev/null)"
+gsnrc=$?
+gsn="$(printf '%s' "$gsn" | tr -s ' ')"
+if [ "$gsnrc" -ne 0 ]; then bad "skip-note scan failed (awk exit $gsnrc; a missing or unreadable file in tests/?)"
+elif [ -z "${gsn// /}" ]; then ok "no 'note: ... skipped' print in tests (use t_skip N)"
+else bad "a 'note: ... skipped' print in a test hides the skip from the README count; use t_skip N \"why\" at: $gsn"; fi
 fi
 
 if want modes; then
