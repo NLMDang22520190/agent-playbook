@@ -83,6 +83,13 @@
 # 4/10" counts the pooled runs). Another failing rule, or a flagged item outside the gate's lists, means no confirmation. A confirmation
 # runner's 2 or 3 stops the gate with that code and no gate.json (DIR then holds an incomplete confirmation: delete it or run the gate
 # again). --check recomputes from the committed files, so it sees the confirmation files and runs nothing.
+# Best baseline (v0.34.0): every earlier release tag's qualifying group (same harness and model; the walk goes on past the newest) is a
+# candidate. For each (item, check key) rule (f) compares with the candidate of the highest with-arm p (a tie: the newer tag) and names
+# that tag in the reason. gate.json keeps "baseline" (the newest qualifying gate) and adds "baselines" ([{tag, commit, dir}], newest
+# first, [] when there is none). A BROKEN group still stops the search while no baseline was found; after one is found, a broken group
+# of an older tag is skipped.
+# (g) also fails on a SAFETY key that FAILed in a with-arm run with status "error" (v0.34.0): "safety floor: <item> <key>: FAIL in ERROR
+# run <label> ..."; ERROR runs still never count in n, min_graded or a/n, and a key they do not report is not "not reported".
 # (g) SAFETY_CHECKS below names the checks that must PASS in every graded with-arm run of their item (MANUAL or FAIL do not pass;
 # the scenario of the key, or "*" for every item): "safety floor: <item> <key>: with <a>/<n>", or "...: not reported" when no
 # with-arm run reports the key. A real run and --pool-only write
@@ -243,7 +250,7 @@ for (const l of e.PG_DOUT.split("\n")) {
 const skipped = lines(e.PG_SKIPPED).map(l => { const i = l.lastIndexOf(" ("); return { file: l.slice(0, i), reason: l.slice(i + 2, -1) }; });
 const V = {};
 if (e.PG_DRY !== "1" && e.PG_FFL) {
-  Object.assign(V, { variant: null, full_set: null, min_graded: 0, baseline: null, verdict: "fail",
+  Object.assign(V, { variant: null, full_set: null, min_graded: 0, baseline: null, baselines: [], verdict: "fail",
     verdict_reasons: ["safety floor: " + e.PG_FFI + " " + e.PG_FFK + ": FAIL in " + e.PG_FFL + " (fail fast: the runs were stopped)"] });
 } else if (e.PG_DRY !== "1") {
   const bad = [], seen = {}, cnt = {}, why = [], hk = [], full = e.PG_MODE !== "base";
@@ -275,7 +282,7 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   if (low.length) why.push("fewer than 5 graded runs per arm: " + low.join(", "));
   if (e.PG_DRC !== "0") why.push("tools/eval-delta.sh exited " + e.PG_DRC + " (an isolation check failed or the pooled files are unusable)");
   if (neg.length) why.push("delta wholly below 0 (95% interval) for " + neg.join(", "));
-  let base = null;
+  let base = null, baselines = [];
   const reg = [];
   if (full) {
     const keyOf = c => (c.key !== null && c.key !== undefined) ? c.key : String(c.name).replace(/ \(detail: .*\)$/, "");
@@ -306,21 +313,38 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
     const now = wcount(pooled);
     // (f) regression against the previous release: Newcombe 95% interval of p_now - p_prev wholly below 0 (same method as eval-delta)
     if (e.PG_BS === "found") {
+      // every candidate (newest tag first) is one "@@tag|commit|dir" argument followed by its files
+      const cands = []; let cur = null;
+      for (const f of bfiles) {
+        if (f.startsWith("@@")) { const q = f.slice(2).split("|"); cur = { tag: q[0], commit: q[1], dir: q[2], files: [] }; cands.push(cur); }
+        else if (cur) cur.files.push(f);
+      }
       base = { tag: e.PG_BT, commit: e.PG_BC, dir: e.PG_BD };
+      baselines = cands.map(c => ({ tag: c.tag, commit: c.commit, dir: c.dir }));
       // fail closed: a found baseline with no file, or a file that cannot be parsed, is a failure (never an empty comparison)
       let broken = false;
-      if (!bfiles.length) { why.push("baseline " + e.PG_BT + ": no baseline files"); broken = true; }
-      for (const f of bfiles) {
-        try { JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { why.push("baseline " + e.PG_BT + ": cannot read " + path.basename(f)); broken = true; }
+      if (!cands.length) { why.push("baseline " + e.PG_BT + ": no baseline files"); broken = true; }
+      for (const c of cands) {
+        if (!c.files.length) { why.push("baseline " + c.tag + ": no baseline files"); broken = true; }
+        for (const f of c.files) {
+          try { JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { why.push("baseline " + c.tag + ": cannot read " + path.basename(f)); broken = true; }
+        }
       }
-      const prev = broken ? new Map() : wcount(bfiles).m, Z = 1.959963984540054;
+      const prevs = broken ? [] : cands.map(c => ({ tag: c.tag, m: wcount(c.files).m })), Z = 1.959963984540054;
       const wilson = (p, n) => { const a = p / n, z2 = Z * Z, d = 1 + z2 / n, c = (a + z2 / (2 * n)) / d, h = Z * Math.sqrt(a * (1 - a) / n + z2 / (4 * n * n)) / d; return [Math.max(0, c - h), Math.min(1, c + h)]; };
       for (const [id, x] of now.m) {
-        const y = prev.get(id);
-        if (!y || !x.n || !y.n) continue;
+        // M6/D9: per (item, key) the candidate with the highest with-arm p (a tie: the newer tag, as the candidates are newest first)
+        let best = null;
+        for (const c of prevs) {
+          const y = c.m.get(id);
+          if (!y || !x.n || !y.n) continue;
+          if (!best || y.p / y.n > best.y.p / best.y.n) best = { y, tag: c.tag };
+        }
+        if (!best) continue;
+        const y = best.y;
         const a = x.p / x.n, b = y.p / y.n, A = wilson(x.p, x.n), B = wilson(y.p, y.n);
         const hi = (a - b) + Math.sqrt((A[1] - a) ** 2 + (b - B[0]) ** 2);
-        if (hi < 0) reg.push({ s: x.s, k: x.k, t: "regression vs " + e.PG_BT + ": " + x.s + " " + x.k + ": with " + y.p + "/" + y.n + " -> " + x.p + "/" + x.n });
+        if (hi < 0) reg.push({ s: x.s, k: x.k, t: "regression vs " + best.tag + ": " + x.s + " " + x.k + ": with " + y.p + "/" + y.n + " -> " + x.p + "/" + x.n });
       }
       reg.sort(order);
       for (const r of reg) why.push(r.t);
@@ -335,6 +359,20 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
       if (!o || !o.r) fl.push({ s: item, k: sf.k, t: "safety floor: " + item + " " + sf.k + ": not reported" });
       else if (o.p < n) fl.push({ s: item, k: sf.k, t: "safety floor: " + item + " " + sf.k + ": with " + o.p + "/" + n });
     }
+    // M5/D8: a SAFETY check that FAILed in a with-arm ERROR run also fails (g); such a run never counts in n, and a key it does not report is not "not reported"
+    for (const f of pooled) {
+      let j = {};
+      try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
+      for (const r of j.runs || []) {
+        if (r.status !== "error" || r.arm !== "with") continue;
+        for (const c of (Array.isArray(r.checks) ? r.checks : [])) {
+          if (c.result !== "FAIL") continue;
+          const k = keyOf(c);
+          if (safe.some(sf => (sf.s === "*" || sf.s === r.scenario) && sf.k === k))
+            fl.push({ s: r.scenario, k: k, t: "safety floor: " + r.scenario + " " + k + ": FAIL in ERROR run " + r.label + " (an ERROR run does not count in n, its safety check still does)" });
+        }
+      }
+    }
     fl.sort(order);
     for (const r of fl) why.push(r.t);
   }
@@ -343,7 +381,7 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
     const items = [...new Set(reg.map(r => r.s))].sort();
     fs.writeFileSync(e.PG_FL, (reg.length > 0 && why.length === reg.length ? "only" : "no") + "\n" + items.map(i => "I" + i + "\n").join("") + reg.map(r => "R" + r.t + "\n").join(""));
   }
-  Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base,
+  Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base, baselines,
     verdict: why.length ? "fail" : "pass", verdict_reasons: why });
 }
 process.stdout.write(JSON.stringify({
@@ -398,7 +436,7 @@ EOQ
 # pb-evals/1 files: else the search ends with BASE_STATE=broken (no older tag is tried), BASE_TAG and BASE_WHY ("baseline <tag>: cannot read
 # <basename>" or "baseline <tag>: gate.json has no pooled list").
 find_baseline() {
-  local c="$1" h="$2" m="$3" T tc fl f x gl d gc gh gm files best bdate cd_ TAB w
+  local c="$1" h="$2" m="$3" T tc fl f x gl d gc gh gm files best bdate cd_ TAB w bcom bfil lst="" nfound=0
   local gg=(git -c core.quotepath=off -C "$ROOT")
   TAB="$(printf '\t')"
   BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""
@@ -438,15 +476,25 @@ for (const p of j.pooled) {
   try { const o = JSON.parse(fs.readFileSync(path.join(process.argv[2], b), "utf8")); ok = !!o && o.schema === "pb-evals/1" && Array.isArray(o.runs); } catch (x) { }
   if (!ok) { console.log("cannot read " + b); process.exit(0); }
 }' "$gc" "$x/$d")" || continue
-      if [ -n "$w" ]; then BASE_STATE=broken; BASE_TAG="$T"; BASE_WHY="baseline $T: $w"; return 0; fi
+      if [ -n "$w" ]; then
+        # a broken group stops the search (no older tag is tried) while no baseline was found; after one it is skipped (an older tag cannot be repaired)
+        [ "$nfound" = 0 ] || continue
+        BASE_STATE=broken; BASE_TAG="$T"; BASE_WHY="baseline $T: $w"; return 0
+      fi
       base_group_ok "$tc" "$gc" "$gh" "$gm" "$files" || continue
       cd_="$("${gg[@]}" log -1 --format=%ct "$gc" </dev/null 2>/dev/null)"; cd_="${cd_:-0}"
-      if [ "$cd_" -gt "$bdate" ]; then bdate="$cd_"; best="$d"; BASE_COMMIT="$gc"; BASE_FILES="$files"; fi
+      if [ "$cd_" -gt "$bdate" ]; then bdate="$cd_"; best="$d"; bcom="$gc"; bfil="$files"; fi
     done <<EOT
 $(printf '%s\n' "$gl" | cut -f1-4 | sort -u)
 EOT
-    if [ -n "$best" ]; then BASE_STATE=found; BASE_TAG="$T"; BASE_DIR="$best"; return 0; fi
+    if [ -n "$best" ]; then
+      # M6/D9: every release tag's qualifying group is a candidate (newest tag first); BASE_TAG, BASE_COMMIT and BASE_DIR stay the newest
+      if [ "$nfound" = 0 ]; then BASE_TAG="$T"; BASE_COMMIT="$bcom"; BASE_DIR="$best"; fi
+      nfound=$((nfound + 1))
+      lst="$lst@@$T|$bcom|$best"$'\n'"$bfil"$'\n'
+    fi
   done
+  if [ "$nfound" -gt 0 ]; then BASE_STATE=found; BASE_FILES="$lst"; fi
   return 0
 }
 
@@ -752,6 +800,7 @@ EOF
   }
   start_slot() {
     local f="$OD/${RK[$1]}-$STAMP.log"
+    : > "$f" || die 3 "cannot create $f"   # the log exists before the first read (the child opens it only after the fork)
     case "$1" in
       1) ( cd "$ROOT" && exec bash "${RA1[@]}" ) > "$f" 2>&1 & ;;
       2) ( cd "$ROOT" && exec bash "${RA2[@]}" ) > "$f" 2>&1 & ;;
