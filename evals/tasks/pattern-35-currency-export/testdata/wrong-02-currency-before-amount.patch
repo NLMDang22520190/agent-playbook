@@ -1,0 +1,47 @@
+diff --git a/src/export_csv.py b/src/export_csv.py
+index 8eec69f..c4909e7 100644
+--- a/src/export_csv.py
++++ b/src/export_csv.py
+@@ -1,12 +1,13 @@
+ """The daily sales export (docs/export-format.md)."""
+ from src.fmt import format_amount
+ 
+-HEADER = ["day", "item", "amount"]
++HEADER = ["day", "item", "currency", "amount"]
+ 
+ 
+ def export(sales):
+-    """CSV text: the header, then one line per sale, "\\n" line ends."""
++    """CSV text: the header, then one line per sale, "\\n" line ends. The amount is printed with the decimals of the
++    sale's currency, next to its currency."""
+     lines = [",".join(HEADER)]
+     for s in sales:
+-        lines.append(",".join([s.day, s.item, format_amount(s.amount_minor)]))
++        lines.append(",".join([s.day, s.item, s.currency, format_amount(s.amount_minor, s.currency)]))
+     return "\n".join(lines) + "\n"
+diff --git a/src/fmt.py b/src/fmt.py
+index f124728..9b80011 100644
+--- a/src/fmt.py
++++ b/src/fmt.py
+@@ -1,8 +1,17 @@
+ """Printing amounts (docs/currencies.md)."""
+ 
++# minor-unit digits per currency (ISO 4217)
++MINOR_DIGITS = {"USD": 2, "EUR": 2, "VND": 0, "JPY": 0, "KWD": 3}
+ 
+-def format_amount(minor):
+-    """An amount in cents printed with 2 decimals: 1999 -> "19.99", -500 -> "-5.00"."""
++
++def format_amount(minor, currency="USD"):
++    """An amount in the currency's minor unit printed with that currency's decimals: 1999 -> "19.99",
++    (150000, "VND") -> "150000", (1234, "KWD") -> "1.234", -500 -> "-5.00". An unknown currency raises ValueError."""
++    if currency not in MINOR_DIGITS:
++        raise ValueError("unknown currency: %r" % (currency,))
++    digits = MINOR_DIGITS[currency]
+     sign = "-" if minor < 0 else ""
+-    cents = abs(minor)
+-    return "%s%d.%02d" % (sign, cents // 100, cents % 100)
++    units, rest = divmod(abs(minor), 10 ** digits)
++    if digits == 0:
++        return "%s%d" % (sign, units)
++    return "%s%d.%0*d" % (sign, units, digits, rest)

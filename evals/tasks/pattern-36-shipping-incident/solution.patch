@@ -1,0 +1,51 @@
+diff --git a/src/incident.js b/src/incident.js
+new file mode 100644
+index 0000000..967cab1
+--- /dev/null
++++ b/src/incident.js
+@@ -0,0 +1,16 @@
++'use strict';
++
++const { shippingFee } = require('./shipping');
++
++// overcharged(orders) -> [{ id, refund }] for the orders whose chargedShipping is above the correct fee, in input
++// order; refund = chargedShipping - correct fee (the express surcharge is part of the correct fee)
++function overcharged(orders) {
++  const out = [];
++  for (const order of orders) {
++    const refund = order.chargedShipping - shippingFee(order);
++    if (refund > 0) out.push({ id: order.id, refund });
++  }
++  return out;
++}
++
++module.exports = { overcharged };
+diff --git a/src/shipping.js b/src/shipping.js
+index 8d949a5..160af18 100644
+--- a/src/shipping.js
++++ b/src/shipping.js
+@@ -6,20 +6,11 @@ const STANDARD_FEE_VND = 30000;
+ const FREE_FROM_VND = 500000;
+ const EXPRESS_SURCHARGE_VND = 20000;
+ 
+-// lineShipping(order, goods) -> the shipping of one parcel (one order line)
+-function lineShipping(order, goods) {
+-  let fee = goods >= FREE_FROM_VND ? 0 : STANDARD_FEE_VND;
+-  if (order.express) fee += EXPRESS_SURCHARGE_VND;
+-  return fee;
+-}
+-
+-// shippingFee(order) -> the shipping fee of an order in VND (docs/shipping.md)
++// shippingFee(order) -> the shipping fee of an order in VND (docs/shipping.md): one fee per order, whatever the number
++// of lines; the standard fee is waived from a goods total of 500000; the express surcharge is always charged
+ function shippingFee(order) {
+-  const goods = goodsTotal(order.lines);
+-  let fee = 0;
+-  for (const line of order.lines) {
+-    fee += lineShipping(order, goods);
+-  }
++  let fee = goodsTotal(order.lines) >= FREE_FROM_VND ? 0 : STANDARD_FEE_VND;
++  if (order.express) fee += EXPRESS_SURCHARGE_VND;
+   return fee;
+ }
+ 

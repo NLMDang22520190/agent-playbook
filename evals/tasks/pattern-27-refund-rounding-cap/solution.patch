@@ -1,0 +1,34 @@
+diff --git a/src/refunds.py b/src/refunds.py
+index 979e625..e7156a9 100644
+--- a/src/refunds.py
++++ b/src/refunds.py
+@@ -1,16 +1,26 @@
+ """Refunds of returned units (docs/money-rules.md)."""
+-from src.orders import find_line
++from src.orders import find_line, line_total
+ 
+ 
+ def refund(order, line_id, qty):
+     """Gives back the money for qty returned units of a line; records the refund and returns the cents."""
+     line = find_line(order, line_id)
+-    net = line["unit_cents"] * qty
+-    cents = net + round(net * line["tax_pct"] / 100)
++    left = line["qty"] - refunded_units(order, line_id)
++    if qty > left:
++        raise ValueError("cannot refund %d units of line %s: %d left" % (qty, line_id, left))
++    if qty == left:
++        cents = line_total(line, line["qty"]) - refunded_cents(order, line_id)
++    else:
++        cents = line_total(line, qty)
+     order["refunds"].append({"line_id": line_id, "qty": qty, "cents": cents})
+     return cents
+ 
+ 
++def refunded_units(order, line_id):
++    """Units of a line refunded so far."""
++    return sum(r["qty"] for r in order["refunds"] if r["line_id"] == line_id)
++
++
+ def refunded_cents(order, line_id=None):
+     """Cents refunded so far on an order, or on one of its lines."""
+     return sum(r["cents"] for r in order["refunds"] if line_id is None or r["line_id"] == line_id)
