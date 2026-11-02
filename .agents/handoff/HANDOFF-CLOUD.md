@@ -1,0 +1,16 @@
+# Hand-off (cloud session, v0.34.0)
+
+Read `.agents/handoff/01-spec.md`, `decisions.md` and `state.md` first. This file is force-added on the branch and removed
+in the last commit before the gate.
+
+## Log
+- 2026-11-02 · setup: branch feat/v0.34.0 from main b9f407a; playbook installed; baseline 5 env-only failing suites (guard-restore x4, release-tool), see spec Constraints · sha b9f407a · open: none
+- 2026-11-02 · spec + decisions D0-D12 written; spec review running · sha b9f407a · open: none
+- 2026-11-02 · spec review OK (round 2); lanes A,C1,D,E,F testers started in separate worktrees (branches lane/<x>) · sha b9f407a · open: none
+- 2026-11-02 · lane E green 76b77b3, lane F green 2c4cf07 (H2 text moved to references/harnesses.md, D16), lane D red 8f83cc7 (impl running), lane A red 259653a (impl running), lane C1 tester running · open: a stray dir at the container root from a tester slip (cloud container only)
+- 2026-11-02 · lanes A (+variant suite split D18), D (3 review rounds), E, F reviewed and green; C1 implementer and B1 tester running · lane heads: a=b40d1f6 d=c0db6f4 e=b2ccb19 f=c918546 · open: stray container dir (cloud only) at container root
+- 2026-11-02 · merged A D E F into feat/v0.34.0 (7d86fea) + word-pin fix ac14420; full run on merge: only env failures (test-conf reads the session project conf test_cmd; release-tool signing); C1 green c583c75 (D20 private workroots), B1 green c41b291; lane b merged feat + lane c (934aa8e, shard-weights conflict resolved by hand); C2 and B2 testers running · open: stray container dir (cloud only)
+- 2026-11-02 · (rate-limit pause 05:00-05:30 UTC) C2 green a6da656 (dispute: old ERROR asserts updated per D8); lane C review running; B2 green 433eaa2 (dispute: old gate suites follow D6; runner_rc bug fixed); lane c merged into b fe78755; B3 tester ((f) best, (g) ERROR) running; next B4 = T4 reuse · open: stray container dir (cloud only)
+- 2026-11-02 · lane C reviewed APPROVE + fixes a6db9b2; B3 green 3904ecc (dispute: D9 newest-only cases); lane b = B1..B3 + lane c + B4 RED (5f4b23c); B4 (T4) implementer running · next: lane B review, merge lane b into feat, VERSION/CHANGELOG/README, full run, PR
+- 2026-11-02 · B4 green e038263 (pbh_tree_sha in-repo bug found and fixed); lane B review CHANGES (2 majors: double reuse, grader_sha scope) -> RED d62e983, implementer running · next: green, merge lane b into feat, close-out
+- 2026-11-02 · lane B review APPROVE (round 2); merged lane b into feat b80a9b5; full run env -i: 25672 passed, 6 failed (env only: test-conf reads the session project conf; release-tool signing; run-all AC5.2 fails at b9f407a too in this container), 272 skipped; release commit fed010c (README count 25950 = passed+failed+skipped, CI readme-count --check verifies) · open: stray container dir (cloud only)
