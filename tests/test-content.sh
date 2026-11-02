@@ -2492,10 +2492,11 @@ assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "s
 # into one line and hides dots that do not end a sentence (e.g., i.e., decisions.md, .agents) so [^.] stays inside a sentence.
 v35_flat() { section "$1" "$2" | tr '\n' ' ' | sed -E 's/e\.g\./eg/g; s/i\.e\./ie/g; s/\.([A-Za-z0-9_])/_\1/g'; }
 # v35_sent TEXT REGEX: each sentence matching REGEX, joined with the sentence after it (a rule may run over two sentences)
-# (awk only splits; the match is grep -E on the first sentence, so interval expressions work on any awk)
+# (awk only splits; the match is grep -E on the first sentence, so interval expressions work on any awk; the two sentences are
+# joined by the field separator 034, not 001, which bash 3.2 uses internally as CTLESC)
 v35_sent() {
-  printf '%s\n' "$1" | awk '{ n = split($0, a, /\. /); for (i = 1; i <= n; i++) print a[i] "\001" a[i + 1] }' |
-    grep -iE -- "^[^$(printf '\001')]*($2)" | tr '\001' ' '
+  printf '%s\n' "$1" | awk '{ n = split($0, a, /\. /); for (i = 1; i <= n; i++) print a[i] "\034" a[i + 1] }' |
+    grep -iE -- "^[^$(printf '\034')]*($2)" | tr '\034' ' '
 }
 # v35_chk NAME TEXT REGEX
 v35_chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
