@@ -2487,4 +2487,50 @@ if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate te
 assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
 assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
 
+# ---- v0.35.0 slice F (S3, AC12 / AC13, spec Revision 1 R1-6): the E13 / E14 wording of AGENTS.global.md ----
+# Meaning is pinned with tolerant regexes on one sentence (plus the next one), not on exact wording. v35_flat joins a section
+# into one line and hides dots that do not end a sentence (e.g., i.e., decisions.md, .agents) so [^.] stays inside a sentence.
+v35_flat() { section "$1" "$2" | tr '\n' ' ' | sed -E 's/e\.g\./eg/g; s/i\.e\./ie/g; s/\.([A-Za-z0-9_])/_\1/g'; }
+# v35_sent TEXT REGEX: each sentence matching REGEX, joined with the sentence after it (a rule may run over two sentences)
+# (awk only splits; the match is grep -E on the first sentence, so interval expressions work on any awk)
+v35_sent() {
+  printf '%s\n' "$1" | awk '{ n = split($0, a, /\. /); for (i = 1; i <= n; i++) print a[i] "\001" a[i + 1] }' |
+    grep -iE -- "^[^$(printf '\001')]*($2)" | tr '\001' ' '
+}
+# v35_chk NAME TEXT REGEX
+v35_chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
+V35CLR="$(v35_flat "$AGLOBAL" '^### Clarify before changing')"
+V35PRF="$(v35_flat "$AGLOBAL" '^### Proof for claims that matter')"
+if [ -n "$V35CLR" ] && [ -n "$V35PRF" ]; then t_ok "v35 fixture: found the Clarify and Proof sections of AGENTS.global.md"; else t_bad "v35 fixture: found the Clarify and Proof sections of AGENTS.global.md" "a section is empty"; fi
+
+echo "v0.35.0 AC12 (E13) Clarify: a step that needs approval does not block the reversible rest; filled-in details are defaults"
+V35STEP="$(v35_sent "$V35CLR" '(step|action)[^.]{0,80}(approval|hard.to.reverse|irreversible)')"
+v35_chk "v35 AC12 Clarify: when one step needs approval, the reversible rest of the task is done first" "$V35STEP" '(^|[^a-z])(rest|remainder)[^.]{0,80}(first|before)'
+v35_chk "v35 AC12 Clarify: then ask about that step only (the whole task is not blocked)" "$V35STEP" 'ask[^.]{0,40}(about )?(that|the|this|one) step[^.]{0,10}only|ask only about (that|the|this|one) step|(not|never|without) block[a-z]*[^.]{0,40}(whole|entire|rest of the) task'
+V35OPEN='(leaves?|left) open|(does not|doesn.t|did not) (say|specify|state|fix)|unspecified|not specified'
+V35DEF="$(v35_sent "$V35CLR" "$V35OPEN")"
+v35_chk "v35 AC12 Clarify: every detail the request leaves open that you fill in yourself is a default" "$V35DEF" '(every|each|any) (detail|choice|value)[^.]{0,200}(is|counts as|are) (also )?a default'
+v35_chk "v35 AC12 Clarify: the examples of such defaults include a sort order" "$V35DEF" '(^|[^a-z])(sort|order)'
+v35_chk "v35 AC12 Clarify: the examples of such defaults include a page size or limit" "$V35DEF" 'page size|limit'
+v35_chk "v35 AC12 Clarify: such defaults are logged in .agents/handoff/decisions.md with how to undo" "$V35DEF" '_agents/handoff/decisions_md[^.]{0,120}undo|undo[^.]{0,120}_agents/handoff/decisions_md'
+v35_chk "v35 AC12 Clarify: such defaults are listed in the reply" "$V35DEF" '(list|name|state|repeat)[a-z]*[^.]{0,60}(your|the) (reply|answer)'
+
+echo "v0.35.0 AC13 (E14) Proof: a user-visible change needs one real observation this session, else a Not checked line in the reply"
+V35OBS="$(v35_sent "$V35PRF" 'user-visible')"
+v35_chk "v35 AC13 Proof: a user-visible change needs one real observation in this session" "$V35OBS" 'user-visible[^.]{0,250}observ[a-z]*[^.]{0,80}this session|user-visible[^.]{0,250}this session[^.]{0,80}observ'
+V35KINDS=0
+for k in '(page|UI)' 'HTTP API' 'CLI' 'file format'; do printf '%s' "$V35OBS" | grep -qE -- "$k" && V35KINDS=$((V35KINDS + 1)); done
+assert_eq "v35 AC13 Proof: the user-visible kinds are named: page/UI, HTTP API, CLI output, file format" "4" "$V35KINDS"
+v35_chk "v35 AC13 Proof: the way to observe is to start it and curl it or take a screenshot" "$V35OBS" '(start|run|launch|serve)[a-z]*[^.]{0,80}(curl|screenshot)'
+v35_chk "v35 AC13 Proof: reading the source file is not an observation" "$V35OBS" '(read|reading)( the| its)? (source|html|code)( file)?[^.]{0,40}(is not|isn.t|does not count|doesn.t count|not (one|an observation|enough))'
+v35_chk "v35 AC13 Proof: if it cannot be observed, a Not checked: line is written" "$V35OBS" '(cannot|can.t|could not|unable)[^.]{0,120}Not checked:'
+v35_chk "v35 AC13 Proof: the Not checked: line goes in the reply itself" "$V35OBS" 'Not checked:[^.]{0,80}(your|the) (reply|answer)|(reply|answer)[^.]{0,80}Not checked:'
+
+echo "v0.35.0 AC12/AC13 graders unchanged: evals/run-evals.sh, evals/facts.js, evals/scenarios.md equal main at branch start (b9f407a)"
+if git -C "$PB_ROOT" cat-file -e b9f407a^{commit} 2>/dev/null && git -C "$PB_ROOT" diff --quiet b9f407a -- evals/run-evals.sh evals/facts.js evals/scenarios.md; then
+  t_ok "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to b9f407a"
+else
+  t_bad "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to b9f407a" "$(git -C "$PB_ROOT" diff --stat b9f407a -- evals/run-evals.sh evals/facts.js evals/scenarios.md 2>&1 | tail -n 3)"
+fi
+
 t_summary
