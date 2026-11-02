@@ -604,8 +604,9 @@ EOT
         SHA="$c"; LABEL="$h"; MODEL="$m"
         find_baseline "$c" "$h" "$m" || die 3 "cannot read the baseline gate from git"
         VR="$(jdoc "$(printf '%s\n' "${FILES[@]}")" "" "$DRC" "$DOUT" "" "" "$BASE_FILES" | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(j.verdict);console.log(j.min_graded);j.verdict_reasons.forEach(r=>console.log(r))')" || die 3 "node failed while computing the verdict"
-        MING="$(printf '%s\n' "$VR" | sed -n 2p)"
-        if [ "$(printf '%s\n' "$VR" | head -n 1)" != pass ]; then
+        VR1="${VR%%$'\n'*}"; MING=""
+        case "$VR" in *$'\n'*) MING="${VR#*$'\n'}"; MING="${MING%%$'\n'*}" ;; esac
+        if [ "$VR1" != pass ]; then
           R="$R$(printf '%s\n' "$VR" | sed '1,2d')"$'\n'
           GV="$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).verdict))}catch(x){}' "$CT/x/$d/gate.json")"
           [ "$GV" != pass ] || R="${R}gate.json says pass, the recomputed verdict is fail"$'\n'
@@ -1098,8 +1099,8 @@ else
   printf 'release gate: commit %s%s, harness %s, model %s, k=%s per arm\n' "$SHA" "${VER:+ (v$VER)}" "$LABEL" "$MODEL" "$K"
   printf '%s\n' "$POOLED" | sed 's/^/pooled: /'
   [ -z "$SKIPPED" ] || printf '%s\n' "$SKIPPED" | sed 's/^/skipped: /'
-  printf '\n%s\n\nverdict: %s\n' "$DOUT" "$(printf '%s\n' "$VR" | head -n 1)"
+  printf '\n%s\n\nverdict: %s\n' "$DOUT" "${VR%%$'\n'*}"
   printf '%s\n' "$VR" | sed '1d; s/^/  - /'
 fi
-[ "$(printf '%s\n' "$VR" | head -n 1)" = pass ] && exit 0
+[ "${VR%%$'\n'*}" = pass ] && exit 0
 exit 1
