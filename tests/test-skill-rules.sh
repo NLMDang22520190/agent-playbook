@@ -323,6 +323,23 @@ chk "v0.24.30 G-fix size header: a production symlink that it cannot count is an
 if printf '%s' "$SZH" | grep -qE -- 'dangling symlink[^.;]{0,20}keep'; then t_bad "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count" "the header still lists it with those that keep their count"; else t_ok "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count"; fi
 if printf '%s %s %s' "$HSEC" "$RGH" "$TDH" | grep -qE -- '(^|[^A-Za-z0-9])E(19|20)([^0-9]|$)'; then t_bad "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)" "an E19 or E20 id is present"; else t_ok "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)"; fi
 
+echo "H2 playbook-tdd: when the main agent delegates to the mechanical (haiku) sub-agent (named phrases, whole SKILL.md on one line)"
+H2="$(tr '\n' ' ' < "$SKILL")"
+chk "H2 the existing mechanical-model sentence is still there" "$H2" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
+chk "H2 delegate only a fully specified step" "$H2" 'only a fully specified[^.]{0,40}step'
+chk "H2 the step is output-heavy" "$H2" 'output-heavy'
+chk "H2 kind: bulk or repeated edits across files" "$H2" 'bulk or repeated edits across files'
+chk "H2 kind: boilerplate from an exact spec" "$H2" 'boilerplate from an exact spec'
+chk "H2 kind: running a long command and summarising its log" "$H2" 'running a long command and summari[sz]ing its log'
+chk "H2 kind: gathering path:line context" "$H2" 'gathering path:line context'
+chk "H2 one-line edits and single tool calls stay inline" "$H2" 'one-line edits[^.]{0,60}single tool calls?[^.]{0,40}stay inline'
+chk "H2 every delegated result is checked cheaply before building on it" "$H2" 'delegated result[^.]{0,40}checked cheaply[^.]{0,80}before building on it'
+chk "H2 the cheap check names git diff --stat" "$H2" 'checked cheaply[^.]{0,80}git diff --stat'
+chk "H2 the cheap check names the test or grep that proves it" "$H2" 'checked cheaply[^.]{0,160}the test or grep that proves it'
+chk "H2 never for the tester, implementer or reviewer at Full" "$H2" 'never[^.]{0,60}tester, implementer or reviewer at Full'
+chk "H2 never for the spec reviewer" "$H2" 'never[^.]{0,120}the spec reviewer'
+chk "H2 never for ask or irreversible decisions" "$H2" 'never[^.]{0,200}ask or irreversible decisions'
+
 TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
 if [ -n "$TB" ] && [ "$TW" -le "$TB" ]; then t_ok "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23): $TW <= $TB"; else t_bad "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23)" "$TW words, cap [$TB]"; fi
 WANT=$(( (TW + 49) / 50 * 50 ))

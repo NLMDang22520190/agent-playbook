@@ -332,11 +332,28 @@ done
 reset
 role reviewer;                        assert_eq "AC4 reviewer without a harness -> session" "session" "$OUT"
 
-echo "v0.30.0 c2 AC5: tester, implementer and mechanical are unchanged under claude"
+echo "v0.30.0 c2 AC5: tester and implementer are unchanged under claude"
 reset
-for r in tester implementer mechanical; do
+for r in tester implementer; do
   role "$r" --harness claude; assert_eq "AC5 $r --harness claude with no conf -> session" "session" "$OUT"
 done
+
+echo "H1: mechanical defaults to haiku under --harness claude (intentional change of the old AC5 mechanical=session)"
+reset
+role mechanical --harness claude;  assert_eq "H1 mechanical --harness claude with no conf -> haiku" "haiku" "$OUT"
+role mechanical --harness claude --effort; assert_eq "H1 the haiku default adds no effort" "" "$OUT"
+for h in codex opencode claude-code; do
+  role mechanical --harness "$h"; assert_eq "H1 mechanical --harness $h with no conf stays session" "session" "$OUT"
+done
+role mechanical;                   assert_eq "H1 mechanical without a harness stays session" "session" "$OUT"
+printf 'model_mechanical=gen\n' > "$G"
+role mechanical --harness claude;  assert_eq "H1 a generic model_mechanical key beats the haiku default" "gen" "$OUT"
+printf 'model_mechanical=gen\nmodel_mechanical_claude=mc\n' > "$G"
+role mechanical --harness claude;  assert_eq "H1 model_mechanical_claude beats model_mechanical and the default" "mc" "$OUT"
+printf 'model_mechanical_claude=session\n' > "$G"
+role mechanical --harness claude;  assert_eq "H1 an explicit model_mechanical_claude=session beats the haiku default" "session" "$OUT"
+printf 'model_reviewer=r\nmodel_reviewer_light=l\nmodel_tester=t\nmodel_implementer=i\n' > "$G"
+role mechanical --harness claude;  assert_eq "H1 mechanical still never falls back to another role's key (haiku, not r/l/t/i)" "haiku" "$OUT"
 
 echo "v0.30.0 c2 AC6: plan and list show the default and do not claim it came from conf"
 reset
@@ -351,7 +368,7 @@ assert_eq "AC6 list --harness claude: spec_reviewer=sonnet" "spec_reviewer=sonne
 assert_eq "AC6 list --harness claude: reviewer_light=sonnet" "reviewer_light=sonnet" "$(printf '%s\n' "$OUT" | grep -x 'reviewer_light=.*')"
 assert_eq "AC6 list --harness claude: tester=session" "tester=session" "$(printf '%s\n' "$OUT" | grep -x 'tester=.*')"
 assert_eq "AC6 list --harness claude: implementer=session" "implementer=session" "$(printf '%s\n' "$OUT" | grep -x 'implementer=.*')"
-assert_eq "AC6 list --harness claude: mechanical=session" "mechanical=session" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
+assert_eq "AC6 list --harness claude: mechanical=haiku (H1)" "mechanical=haiku" "$(printf '%s\n' "$OUT" | grep -x 'mechanical=.*')"
 assert_not_contains "AC6 list --harness claude does not claim conf" "$OUT" "conf"
 printf 'model_spec_reviewer_claude=session\n' > "$G"
 role plan --harness claude
