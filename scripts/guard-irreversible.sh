@@ -583,7 +583,10 @@ hlogc() {
   [ -n "${PB_EVAL_HOOK_LOG:-}" ] || return 0
   local c="$2"
   c="${c//[[:cntrl:]]/ }"
-  c="$(printf '%s' "$c" | pb_redact 2>/dev/null)" || c=""
+  # also masked: URL userinfo (://user:pw@) and a curl-style -u / --user user:pw credential
+  c="$(printf '%s' "$c" | pb_redact 2>/dev/null | sed -E \
+    -e 's#(://)[^/@[:space:]]*:[^/@[:space:]]*@#\1[REDACTED]@#g' \
+    -e 's#(^|[[:space:]])(-u|--user)([[:space:]]+|=)[^[:space:]]*:[^[:space:]]*#\1\2\3[REDACTED]#g' 2>/dev/null)" || c=""
   hlog "$1 ${c:0:400}"
 }
 # jesc TEXT -> JE: TEXT as the body of a JSON string
@@ -978,7 +981,8 @@ rpre_cls() {
   i=2
   while [ "$i" -lt "$n" ]; do
     a="${SEGW[$i]#?}"; i=$((i + 1))
-    # DECISION[D-M11] --outp, --outpu and --output (git accepts an abbreviation of a long option) all count as --output
+    # DECISION[D-M11] --outp, --outpu and --output all count as --output. git itself rejects --outp= as ambiguous, so this is the safe
+    # side; the prefix also matches --output-indicator-new= and the like (a read-only check that returns "not judged", also safe)
     case "$a" in *"$DS"* | *"$BQ"* | --outp*) return 0 ;; esac
   done
   RCLS=0
@@ -1175,6 +1179,8 @@ seg_git() {
           --) dd=1 ;;
           .) mode=tracked ;;
           -b* | -B* | --orphan* | --detach | -d) cnew=1 ;;
+          # DECISION[D-M8b] the separate-word value of --conflict / --pathspec-from-file is not a path (the =value form is one word)
+          --conflict | --pathspec-from-file) i=$((i + 1)) ;;
           -*) ;;
           *) if [ "$dd" = 1 ]; then mode=tracked; else cop=$((cop + 1)); fi ;;
         esac
