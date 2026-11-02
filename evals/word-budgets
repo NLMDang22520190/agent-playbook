@@ -6,9 +6,10 @@
 # v0.24.10 lowered the budgets of playbook-proof and playbook-tdd to their new counts rounded up to the next 50.
 # v0.24.13 moved the harness and model plumbing of playbook-tdd to references/harnesses.md and lowered its budget the same way.
 # v0.24.13 review round 1 raised it to 3600 to restore the binding none-mode rule moved out in lane R (see CHANGELOG).
-AGENTS.global.md 730   # user decision 2026-10-25, v0.25.0 writing line (660 words at v0.24.8)
+# v0.35.0 cut AGENTS.global.md and playbook-tdd to their new counts; detail moved to references (revertable commit)
+AGENTS.global.md 700   # v0.35.0 cut: 692 words (730 by user decision 2026-10-25, v0.25.0 writing line; 660 words at v0.24.8)
 skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
 skills/playbook-proof/SKILL.md 700   # raised 650 -> 700 by user decision 2026-10-25 (v0.25.0 writing guide pointer); 647 words at v0.24.10 (697 at v0.24.8)
 skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
-skills/playbook-tdd/SKILL.md 3700   # raised 3650 -> 3700 by user decision 2026-10-23 (v0.24.29 lane O); 3639 words at v0.24.25 (oracle rule, +50 allowed by D3), 3577 words at v0.24.13 (3525 after lane R, 3791 at v0.24.10, 4044 at v0.24.8)
+skills/playbook-tdd/SKILL.md 2750   # v0.35.0 cut: 2720 words, detail in references/mechanics.md and weight.md; 3700 before (raised 3650 -> 3700 by user decision 2026-10-23, v0.24.29 lane O); 3639 words at v0.24.25 (oracle rule, +50 allowed by D3), 3577 words at v0.24.13 (3525 after lane R, 3791 at v0.24.10, 4044 at v0.24.8)
