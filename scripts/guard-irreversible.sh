@@ -586,7 +586,7 @@ hlogc() {
   # also masked: URL userinfo (://user:pw@) and a curl-style -u / --user user:pw credential
   c="$(printf '%s' "$c" | pb_redact 2>/dev/null | sed -E \
     -e 's#(://)[^/@[:space:]]*:[^/@[:space:]]*@#\1[REDACTED]@#g' \
-    -e 's#(^|[[:space:]])(-u|--user)([[:space:]]+|=)[^[:space:]]*:[^[:space:]]*#\1\2\3[REDACTED]#g' 2>/dev/null)" || c=""
+    -e 's#(^|[[:space:]])(--user([[:space:]]+|=)|-u[[:space:]]*)[^[:space:]]*:[^[:space:]]*#\1\2[REDACTED]#g' 2>/dev/null)" || c=""
   hlog "$1 ${c:0:400}"
 }
 # jesc TEXT -> JE: TEXT as the body of a JSON string
@@ -1179,8 +1179,11 @@ seg_git() {
           --) dd=1 ;;
           .) mode=tracked ;;
           -b* | -B* | --orphan* | --detach | -d) cnew=1 ;;
-          # DECISION[D-M8b] the separate-word value of --conflict / --pathspec-from-file is not a path (the =value form is one word)
-          --conflict | --pathspec-from-file) i=$((i + 1)) ;;
+          # DECISION[D-M8b] the separate-word value of --conflict is not a path (the =value form is one word)
+          --conflict) i=$((i + 1)) ;;
+          # --pathspec-from-file (either form) names the paths in a file: path mode, a tracked discard
+          --pathspec-from-file) mode=tracked; i=$((i + 1)) ;;
+          --pathspec-from-file=*) mode=tracked ;;
           -*) ;;
           *) if [ "$dd" = 1 ]; then mode=tracked; else cop=$((cop + 1)); fi ;;
         esac
