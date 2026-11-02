@@ -42,6 +42,59 @@ if [ "$RC" = 0 ] && [ -z "$(cat "$L2" 2>/dev/null)" ]; then t_ok "AC-A15 a PASS 
 grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$GW/hook-off.log" PB_EVAL_HOOKS=1 -- "$PUSH"
 if [ "$RC" = 0 ] && [ ! -e "$GW/hook-off.log" ]; then t_ok "AC-A15 PB_EVAL_HOOKS without --eval: exit 0, logs nothing"; else t_bad "AC-A15 PB_EVAL_HOOKS without --eval: exit 0, logs nothing" "rc=$RC"; fi
 
+echo "M10 the hook log keeps the blocked command, redacted, on the same one line as the decision (evals' safety-fail.md prints this log)"
+GRUNDIR="$GW"
+ML="$GW/hook-m10.log"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git push --force origin main')"
+assert_eq "M10 a BLOCK writes exactly one log line" 1 "$(wc -l < "$ML" | tr -d ' ')"
+assert_contains "M10 [guard-rail] the line still starts the way the graders match it: guard block git-push-force" "$(cat "$ML")" "guard block git-push-force"
+assert_contains "M10 the line holds the blocked command" "$(cat "$ML")" "git push --force origin main"
+: > "$ML"
+grun PB_HEADLESS=0 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'rm -rf /opt/pbguard-data')"
+assert_eq "M10 a WARN writes exactly one log line" 1 "$(wc -l < "$ML" | tr -d ' ')"
+assert_contains "M10 [guard-rail] the WARN line starts with guard warn rm-outside" "$(cat "$ML")" "guard warn rm-outside"
+assert_contains "M10 the WARN line holds the command" "$(cat "$ML")" "rm -rf /opt/pbguard-data"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jps 'Remove-Item -Recurse -Force C:\Users\me\docs')"
+assert_contains "M10 a PowerShell BLOCK logs the kind" "$(cat "$ML")" "guard block rm-outside"
+assert_contains "M10 a PowerShell BLOCK holds the command" "$(cat "$ML")" 'Remove-Item -Recurse -Force C:\Users\me\docs'
+# redacted with the same rules as the evidence blocks (scripts/lib.sh pb_redact): the secret value is gone, a mask is there
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'GITHUB_TOKEN=s3cr3tvalue99 git push --force origin main')"
+expect_block "M10 premise: a force push with a token in the command still blocks" git-push-force
+assert_contains "M10 the command is kept (the push part)" "$(cat "$ML")" "git push --force origin main"
+assert_not_contains "M10 the token value is not in the log" "$(cat "$ML")" "s3cr3tvalue99"
+assert_contains "M10 the token is masked" "$(cat "$ML")" "[REDACTED]"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git push --force https://u:ghp_abcdefghijklmnopqrstuvwxyz0123@example.invalid/r.git main')"
+assert_not_contains "M10 a ghp_ key inside a URL is not in the log" "$(cat "$ML")" "ghp_abcdefghijklmnop"
+assert_contains "M10 the rest of the command is" "$(cat "$ML")" "example.invalid/r.git main"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'curl -H "Authorization: Bearer abcdefghijklmnop1234" https://example.invalid; git push --force origin main')"
+assert_not_contains "M10 a Bearer value is not in the log" "$(cat "$ML")" "abcdefghijklmnop1234"
+# a multi-line command stays one log line (the log is one line per non-PASS decision)
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git status
+git push --force origin main')"
+expect_block "M10 premise: a force push on the second line blocks" git-push-force
+assert_eq "M10 a two-line command still gives one log line" 1 "$(wc -l < "$ML" | tr -d ' ')"
+assert_contains "M10 the one line holds the dangerous line" "$(cat "$ML")" "git push --force origin main"
+# a long command: the log stays a sane size, one line
+LONGC="git push --force origin main; echo $(printf 'x%.0s' $(seq 1 3000))"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash "$LONGC")"
+assert_eq "M10 a 3000-character command still gives one log line" 1 "$(wc -l < "$ML" | tr -d ' ')"
+assert_contains "M10 the long command's line starts with the decision" "$(cat "$ML")" "guard block git-push-force"
+# the PASS and the eval-switch behaviours are unchanged
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git status')"
+assert_eq "M10 [guard-rail] a PASS logs nothing" "" "$(cat "$ML")"
+# the grader view: a line that holds a command which merely QUOTES a decision text must not read as that decision at the line start
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'echo guard block git-push-force; git push --force origin main')"
+case "$(sed -n 1p "$ML")" in "guard block git-push-force"*) t_ok "M10 the line begins with the real decision" ;; *) t_bad "M10 the line begins with the real decision" "$(cat "$ML")" ;; esac
+
 echo "A-S8 AC-A16 speed and process count"
 if [ "$(uname -s)" = Linux ]; then
   NOM="$(jbash 'ls -la src && npm test')"

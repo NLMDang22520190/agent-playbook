@@ -411,11 +411,12 @@ printf 'CREATE TABLE s1 (id INTEGER);\n' > "$R/db/my schema.sql"
 drop
 gs; expect_block "R8-3 N4 whitespace path plus db/schema.sql: the Stop block" schema-drop
 assert_contains "R8-3 N4 the block names the whitespace path" "$GERR" "db/my schema.sql"
-assert_no_line "R8-3 N4 the whitespace path is not in the list" "$ST/$SID.restore" "db/my schema.sql"
+assert_line "R8-3 N4/M9 [M9] the whitespace path is in the list as ONE whole line (its hint quotes it, so it can be restored)" "$ST/$SID.restore" "db/my schema.sql"
 assert_no_line "R8-3 N4 no word-split piece 'db/my' in the list" "$ST/$SID.restore" "db/my"
 assert_no_line "R8-3 N4 no word-split piece 'schema.sql' in the list" "$ST/$SID.restore" "schema.sql"
 assert_line "R8-3 N4 [today FAIL] the plain path IS in the list" "$ST/$SID.restore" "$SC"
-ck_no "R8-3 N4 the whitespace path's own restore blocks" "git checkout $B7 -- 'db/my schema.sql'"
+ck_ok "R8-3 N4/M9 [M9] the whitespace path's own quoted restore passes" "git checkout $B7 -- 'db/my schema.sql'"
+ck_ok "R8-3 N4/M9 [M9] ...also with double quotes" "git checkout $B7 -- \"db/my schema.sql\""
 ck_no "R8-3 N4 its restore with two words blocks" "git checkout $B7 -- db/my schema.sql"
 printf -- '-- later edit\n' >> "$R/schema.sql"
 ck_no "R8-3 N4 a clean top-level schema.sql (piece of the split) with a later edit blocks" "git checkout $B7 -- schema.sql"
@@ -448,5 +449,128 @@ assert_not_contains "R8-3 an allowed restore does not log a git-discard block" "
 gx "git checkout ."
 assert_contains "R8-3 [guard-rail] a blocked discard logs 'block git-discard'" "$(cat "$HL")" "block git-discard"
 assert_not_contains "R8-3 a blocked discard does not log 'allow restore-flagged'" "$(cat "$HL")" "allow restore-flagged"
+
+
+echo "M9 the Stop hint does not word-split a path with a space: it quotes it, the printed command is valid and restores that file"
+rnew; printf 'CREATE TABLE s1 (id INTEGER);\nCREATE TABLE s2 (id INTEGER);\n' > "$R/db/my schema.sql"
+fxg "$R" add -A; fxg "$R" commit -qm spaces; rstart
+printf 'CREATE TABLE s1 (id INTEGER);\n' > "$R/db/my schema.sql"
+gs; expect_block "M9 a table removed from 'db/my schema.sql': the Stop block" schema-drop
+HINTS="$(printf '%s\n' "$GERR" | sed -n 's/.*(restore: \(.*\))$/\1/p')"
+WSH="$(printf '%s\n' "$HINTS" | grep -F 'my' | sed -n 1p)"
+if printf '%s\n' "$HINTS" | grep -Fxq "git checkout $B7 -- db/my"; then t_bad "M9 no hint names the split piece 'db/my' alone" "$HINTS"; else t_ok "M9 no hint names the split piece 'db/my' alone"; fi
+if printf '%s\n' "$HINTS" | grep -Fxq "git checkout $B7 -- schema.sql"; then t_bad "M9 no hint names the split piece 'schema.sql' alone (a file that does not exist)" "$HINTS"; else t_ok "M9 no hint names the split piece 'schema.sql' alone (a file that does not exist)"; fi
+if [ -n "$WSH" ]; then t_ok "M9 the block prints a restore hint for the path with a space"; else t_bad "M9 the block prints a restore hint for the path with a space" "hints=[$HINTS]"; fi
+case "$WSH" in
+  *"-- db/my schema.sql") t_bad "M9 the hint is not the word-split form (path unquoted)" "[$WSH]" ;;
+  *) t_ok "M9 the hint is not the word-split form (path unquoted)" ;;
+esac
+assert_contains "M9 the hint keeps the whole path text 'db/my schema.sql' together" "$WSH" "db/my schema.sql"
+assert_contains "M9 the hint names the baseline" "$WSH" "$B7"
+ck_ok "M9 [M7] the printed hint itself passes the PreToolUse check" "$WSH"
+# the printed command, run for real in this throwaway repo, puts back exactly the baseline content (a split hint names two missing paths and fails)
+runin "$WSH"
+assert_eq "M9 running the printed hint restores db/my schema.sql from the baseline" "$(printf 'CREATE TABLE s1 (id INTEGER);\nCREATE TABLE s2 (id INTEGER);')" "$(cat "$R/db/my schema.sql" 2>/dev/null)"
+# a path with an apostrophe and a space: the hint must still be one valid command
+rnew; printf 'CREATE TABLE q1 (id INTEGER);\nCREATE TABLE q2 (id INTEGER);\n' > "$R/db/it's mine.sql"
+fxg "$R" add -A; fxg "$R" commit -qm quote; rstart
+printf 'CREATE TABLE q1 (id INTEGER);\n' > "$R/db/it's mine.sql"
+gs; expect_block "M9 a path with an apostrophe and a space: the Stop block" schema-drop
+QH="$(printf '%s\n' "$GERR" | sed -n 's/.*(restore: \(.*\))$/\1/p' | grep -F 'mine' | sed -n 1p)"
+if [ -n "$QH" ]; then
+  runin "$QH"
+  assert_eq "M9 the hint for an apostrophe-and-space path is a valid command that restores the file" "$(printf 'CREATE TABLE q1 (id INTEGER);\nCREATE TABLE q2 (id INTEGER);')" "$(cat "$R/db/it's mine.sql" 2>/dev/null)"
+else t_bad "M9 the block prints a restore hint for db/it's mine.sql" "$GERR"; fi
+# a code-contract file with a space gets the same quoting through the other hint
+rnew; mkdir -p "$R/src"; printf 'module.exports = 1;\n' > "$R/src/my orders.js"
+fxg "$R" add -A; fxg "$R" commit -qm cc; rstart
+printf 'db.exec("DROP TABLE legacy_orders");\n' >> "$R/src/my orders.js"
+gs; expect_block "M9 a code-contract line in 'src/my orders.js': the Stop block" code-contract
+CH="$(printf '%s\n' "$GERR" | sed -n 's/.*(restore: \(.*\))$/\1/p' | grep -F 'orders.js' | sed -n 1p)"
+case "$CH" in
+  '') t_bad "M9 the code-contract block prints a restore hint for src/my orders.js" "$GERR" ;;
+  *"-- src/my orders.js") t_bad "M9 the code-contract hint is not word-split" "[$CH]" ;;
+  *) t_ok "M9 the code-contract hint is not word-split"; ck_ok "M9 [M7] the code-contract hint passes the PreToolUse check" "$CH" ;;
+esac
+
+echo "M7 every hint the guard prints is a command the guard passes (restore hints taken from the block text)"
+rboot; drop; printf '%s\n' 'db.exec("DROP TABLE legacy_orders");' >> "$R/src/orders.js"
+gs; expect_block "M7 schema drop plus a code-contract line: the Stop block" schema-drop
+HINTS="$(printf '%s\n' "$GERR" | sed -n 's/.*(restore: \(.*\))$/\1/p')"
+assert_contains "M7 a restore hint names the schema file" "$HINTS" "git checkout $B7 -- $SC"
+assert_contains "M7 a restore hint names the code file" "$HINTS" "git checkout $B7 -- src/orders.js"
+NH=0
+while IFS= read -r h; do
+  [ -n "$h" ] || continue
+  NH=$((NH + 1))
+  ck_ok "M7 the printed hint passes the PreToolUse check [$h]" "$h"
+done <<EOF
+$HINTS
+EOF
+if [ "$NH" -ge 2 ]; then t_ok "M7 at least two hints were fed through the guard ($NH)"; else t_bad "M7 at least two hints were fed through the guard" "$NH"; fi
+gp "$(printf '%s\n' "$HINTS" | sed -n 1p)"; expect_pass "M7 PowerShell: the first printed hint passes too"
+
+echo "M7 the 'new file' and migration hints of the Stop block: remove it or move it under .agents/"
+rboot; printf '%s\n' 'db.exec("DROP TABLE legacy_orders");' > "$R/src/cleanup.js"
+gs; expect_block "M7 an untracked code file with a drop line: the Stop block" code-contract
+NEWF="$(printf '%s\n' "$GERR" | sed -n 's/.*(\([^()]*\) is new: remove the new file or move it under \.agents\/)$/\1/p' | sed -n 1p)"
+assert_eq "M7 the hint names the new file" "src/cleanup.js" "$NEWF"
+if [ -n "$NEWF" ]; then
+  gx "rm $NEWF"; expect_pass "M7 the hinted removal [rm $NEWF] passes"
+  gx "rm -f $NEWF"; expect_pass "M7 the hinted removal [rm -f $NEWF] passes"
+  gx "mv $NEWF .agents/cleanup.js"; expect_pass "M7 the hinted move [mv $NEWF .agents/cleanup.js] passes"
+  gx "mkdir -p .agents && mv $NEWF .agents/cleanup.js"; expect_pass "M7 the hinted move with mkdir -p .agents passes"
+  gp "Remove-Item $NEWF"; expect_pass "M7 PowerShell: Remove-Item $NEWF passes"
+  gp "Move-Item $NEWF .agents/cleanup.js"; expect_pass "M7 PowerShell: Move-Item $NEWF .agents/cleanup.js passes"
+else t_bad "M7 the new-file hint was found, so its commands could be fed through" "$GERR"; fi
+rboot; mkdir -p "$R/db/migrations"; printf 'DROP TABLE legacy_orders;\n' > "$R/db/migrations/001_drop_legacy.sql"
+gs; expect_block "M7 a new contract migration: the Stop block" migration-contract
+assert_contains "M7 the block says to remove the migration or move it under .agents/" "$GERR" "move it under"
+gx "rm db/migrations/001_drop_legacy.sql"; expect_pass "M7 the hinted removal of the migration passes"
+gx "mkdir -p .agents/proposals && mv db/migrations/001_drop_legacy.sql .agents/proposals/001_drop_legacy.sql"; expect_pass "M7 the hinted move of the migration under .agents/ passes"
+gx "git mv db/migrations/001_drop_legacy.sql .agents/001_drop_legacy.sql"; expect_pass "M7 git mv of the migration under .agents/ passes"
+gx "git revert --no-edit HEAD"; expect_pass "M7 the 'revert commit' option of the schema hint passes"
+# the scan-capped hint: add the directories to .gitignore or move them under .agents/
+gx "printf 'gen/\\n' >> .gitignore"; expect_pass "M7 the scan-capped hint: append a directory to .gitignore passes"
+gx "echo gen/ >> .gitignore"; expect_pass "M7 the scan-capped hint: echo gen/ >> .gitignore passes"
+gx "mv gen .agents/gen"; expect_pass "M7 the scan-capped hint: move the directory under .agents/ passes"
+# the rm-outside hint: use a literal path inside the project or a temp dir
+rboot
+gx 'rm -rf "$M7_UNSET/build"' CLAUDE_PROJECT_DIR="$R"; expect_block "M7 premise: a target that cannot be resolved blocks" rm-outside
+assert_contains "M7 the rm hint asks for a literal path inside the project" "$GERR" "literal path inside the project"
+gx "rm -rf $R/build" CLAUDE_PROJECT_DIR="$R"; expect_pass "M7 the hinted literal path inside the project passes (absolute)"
+gx "rm -rf build" CLAUDE_PROJECT_DIR="$R"; expect_pass "M7 the hinted literal path inside the project passes (relative)"
+gx "rm -rf $GT/build" CLAUDE_PROJECT_DIR="$R"; expect_pass "M7 the hinted literal path in a temp dir passes"
+gp 'Remove-Item -Recurse -Force $M7_UNSET\build' CLAUDE_PROJECT_DIR="$R"; expect_block "M7 premise: PowerShell unresolved target blocks" rm-outside
+assert_contains "M7 the PowerShell rm hint asks for a literal path inside the project" "$GERR" "literal path inside the project"
+gp "Remove-Item -Recurse -Force $R/build" CLAUDE_PROJECT_DIR="$R"; expect_pass "M7 PowerShell: the hinted literal path inside the project passes"
+
+echo "M11 git diff --outp=x (an abbreviation of --output) is a write like --output=x: it does not ride before the restore"
+rboot; flag "M11"
+RS="git checkout $B7 -- $SC"
+ck_no "M11 [guard-rail] git diff --output=x; <restore>" "git diff --output=x; $RS"
+ck_no "M11 git diff --outp=x; <restore>" "git diff --outp=x; $RS"
+ck_no "M11 git diff --outpu=x; <restore>" "git diff --outpu=x; $RS"
+ck_no "M11 git diff --stat --outp=x && <restore>" "git diff --stat --outp=x && $RS"
+ck_no "M11 git diff --outp=x HEAD -- db; <restore>" "git diff --outp=x HEAD -- db; $RS"
+ck_no "M11 git log -p --outp=x; <restore>" "git log -p --outp=x; $RS"
+ck_no "M11 git show --outp=x; <restore>" "git show --outp=x; $RS"
+ck_ok "M11 [control] git diff --stat; <restore> still passes" "git diff --stat; $RS"
+ck_ok "M11 [control] git diff --name-only HEAD; <restore> still passes" "git diff --name-only HEAD; $RS"
+pk_no "M11 PowerShell: git diff --outp=x; <restore>" "git diff --outp=x; $RS"
+pk_no "M11 [guard-rail] PowerShell: git diff --output=x; <restore>" "git diff --output=x; $RS"
+pk_ok "M11 [control] PowerShell: git diff --stat; <restore>" "git diff --stat; $RS"
+
+echo "M12 the restore segment and the fd redirections: >& 2 (space) is a dup like >&2, >&2x writes a file"
+RS="git checkout $B7 -- $SC"
+ck_ok "M12 [control] <restore> >&2" "$RS >&2"
+ck_ok "M12 <restore> >& 2 (space)" "$RS >& 2"
+ck_ok "M12 <restore> 2>& 1 (space)" "$RS 2>& 1"
+ck_no "M12 <restore> >&2x (a file named 2x is written)" "$RS >&2x"
+ck_no "M12 <restore> >& 2x (a file named 2x is written)" "$RS >& 2x"
+pk_ok "M12 PowerShell <restore> *>&1" "$RS *>&1"
+pk_ok "M12 PowerShell <restore> *>&2" "$RS *>&2"
+pk_no "M12 PowerShell <restore> *> out.txt (a file write)" "$RS *> out.txt"
+
 
 t_summary

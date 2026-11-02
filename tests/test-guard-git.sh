@@ -136,4 +136,54 @@ done
 gb 'npx prisma db push'; expect_pass "AC-A7 prisma db push without --accept-data-loss"
 gb 'npx prisma generate'; expect_pass "AC-A7 prisma generate"
 
+echo "M8 git checkout <rev> <path> without -- is a discard like git checkout <rev> -- <path>"
+fresh
+for c in 'git checkout HEAD src/app.js' 'git checkout HEAD -- src/app.js' 'git checkout HEAD~0 src/app.js' 'git checkout HEAD src' 'git -C . checkout HEAD src/app.js'; do
+  gb "$c"; expect_pass "M8 clean tree, nothing to lose [$c]"
+done
+printf 'module.exports = 4;\n' > "$R/src/app.js"
+SHA="$(git -C "$R" rev-parse HEAD)"
+for c in 'git checkout HEAD -- src/app.js' 'git checkout HEAD src/app.js' 'git checkout HEAD~0 src/app.js' "git checkout $SHA src/app.js" "git checkout ${SHA%??????????????????????????????} src/app.js" \
+  'git checkout HEAD src' 'git checkout HEAD src/app.js README.md' 'git checkout -f HEAD src/app.js' 'git -C . checkout HEAD src/app.js' 'git stash list && git checkout HEAD src/app.js'; do
+  gb "$c"; expect_block "M8 unstaged change [$c]" git-discard
+done
+gb 'git checkout HEAD src/app.js'
+assert_contains "M8 the message suggests git stash -u first" "$GERR" "git stash -u"
+gb 'git checkout HEAD src/app.js' PB_HEADLESS=0
+expect_warn "M8 interactive: checkout <rev> <path> with changes only warns"
+# forms that keep the work tree: a branch switch or a branch creation (two positional words, no path) must stay PASS with a change present
+for c in 'git checkout -b feature HEAD' 'git checkout -B feature HEAD' 'git checkout --detach HEAD' 'git checkout -b feature' 'git checkout --orphan fresh' \
+  'git checkout --track -b x origin/main' 'git switch -c feature HEAD'; do
+  gb "$c"; expect_pass "M8 [guard-rail] a branch form keeps the work tree [$c]"
+done
+fresh
+printf 'tmp\n' > "$R/scratch.txt"
+gb 'git checkout HEAD src/app.js'; expect_pass "M8 only an untracked file: a tracked-only discard loses nothing"
+fresh
+printf 'module.exports = 5;\n' > "$R/src/app.js"
+git -C "$R" add src/app.js
+gb 'git checkout HEAD src/app.js'; expect_block "M8 a staged change is lost too" git-discard
+fresh
+printf 'module.exports = 6;\n' > "$R/src/app.js"
+grun PB_HEADLESS=1 -- "$(jps 'git checkout HEAD src/app.js' "$R")"; expect_block "M8 PowerShell: git checkout HEAD src/app.js" git-discard
+grun PB_HEADLESS=1 -- "$(jps 'git checkout -b feature HEAD' "$R")"; expect_pass "M8 [guard-rail] PowerShell: git checkout -b feature HEAD"
+
+echo "M7 the commands the git-discard hint suggests pass the guard"
+fresh
+printf 'module.exports = 7;\n' > "$R/src/app.js"
+printf 'scratch\n' > "$R/notes.txt"
+for c in 'git reset --hard' 'git checkout -- .' 'git clean -fd' 'git restore .'; do
+  gb "$c"; expect_block "M7 premise: the discard blocks [$c]" git-discard
+  HINTCMD="$(printf '%s' "$GERR" | grep -o 'git stash -u' | sed -n 1p)"
+  assert_eq "M7 the hint names a command [$c]" "git stash -u" "$HINTCMD"
+  gb "$HINTCMD"; expect_pass "M7 the hinted [$HINTCMD] passes the guard (tracked change and untracked file present) after [$c]"
+done
+grun PB_HEADLESS=1 -- "$(jps 'git reset --hard' "$R")"; expect_block "M7 premise: PowerShell git reset --hard" git-discard
+HINTCMD="$(printf '%s' "$GERR" | grep -o 'git stash -u' | sed -n 1p)"
+grun PB_HEADLESS=1 -- "$(jps "$HINTCMD" "$R")"; expect_pass "M7 PowerShell: the hinted [$HINTCMD] passes the guard"
+gb 'git reset --hard' PB_HEADLESS=0
+HINTCMD="$(printf '%s' "$GOUT" | grep -o 'git stash -u' | sed -n 1p)"
+assert_eq "M7 the interactive warning names the same command" "git stash -u" "$HINTCMD"
+gb "$HINTCMD" PB_HEADLESS=0; expect_pass "M7 interactive: the hinted command passes"
+
 t_summary
