@@ -256,8 +256,8 @@ run bash "$TOOL" --check
 assert_rc "AC4 the real tests/shard-weights weights every suite exactly once" 0
 [ "$RC" -eq 0 ] || printf '%s\n' "$OUT" | sed 's/^/       /'
 
-echo "v0.34.0 A2 the repo's tests/shard-weights header names the CI run it was refreshed from (run 41438166964, the first with the v0.34.0 code on ten shards)"
+echo "v0.34.0 A2 the repo's tests/shard-weights header names the CI run it was refreshed from (run 41443543742, all ten shards complete)"
 SWH="$(grep '^#' "$PB_ROOT/tests/shard-weights" | head -n 3)"
-assert_contains "A2 the header's first line names run 41438166964 as its source" "$(printf '%s\n' "$SWH" | head -n 1)" "run 41438166964"
+assert_contains "A2 the header's first line names run 41443543742 as its source" "$(printf '%s\n' "$SWH" | head -n 1)" "run 41443543742"
 assert_not_contains "A2 the header no longer names only the old run 41202615481 as its source" "$(printf '%s\n' "$SWH" | head -n 1)" "run 41202615481."
 t_summary

@@ -228,10 +228,11 @@ obs_dir_of() { sed -n "s/^OBS $1 dir=\([^ ]*\) .*/\1/p" "$OBS" | head -n 1; }
 idre() { printf '(^|[^A-Za-z0-9])%s([^A-Za-z0-9]|$)' "$1"; }
 mkdir -p "$W/home" "$W/tmp"
 # ge "ENV=v ENV2=w" ARGS... -> OUT, RC. HOME and TMPDIR are inside $W, so every local path the run writes is one this suite knows.
+# GE_PATH, when set, is the PATH of the run, passed as one word (a PATH holds spaces on Windows; "ENV" is word-split).
 # GR is the repository to run in (default $R).
 ge() {
   local e="$1"; shift
-  RC=0; OUT="$(cd "${GR:-$R}" && env $e HOME="$W/home" TMPDIR="$W/tmp" bash tools/release-gate.sh "$@" 2>&1)" || RC=$?
+  RC=0; OUT="$(cd "${GR:-$R}" && env $e ${GE_PATH+"PATH=$GE_PATH"} HOME="$W/home" TMPDIR="$W/tmp" bash tools/release-gate.sh "$@" 2>&1)" || RC=$?
 }
 # rcase NAME "ENV" ARGS... -> a real --harness claude run into evals/results/NAME; ODN is that dir, GJ its gate.json
 rcase() {
@@ -886,7 +887,7 @@ for d in $(printf '%s' "$PATH" | tr ':' ' '); do
   [ -d "$d" ] || continue
   for f in "$d"/*; do [ -x "$f" ] && [ -f "$f" ] && [ "${f##*/}" != gh ] && [ ! -e "$NOGH/${f##*/}" ] && ln -s "$f" "$NOGH/${f##*/}"; done
 done
-rgf_gh_green; rcase g1-nogh "PATH=$NOGH"
+rgf_gh_green; GE_PATH="$NOGH" rcase g1-nogh ""
 assert_eq "D4 fixture: gh is not on the stripped PATH" "0" "$(env PATH="$NOGH" bash -c 'command -v gh >/dev/null 2>&1 && echo 1 || echo 0')"
 rc_short "D4 gh is not installed -> exit 3" 3
 no_start "D4 gh missing"
@@ -949,7 +950,7 @@ assert_eq "G2 gate.json ci_check.skipped is true" "true" "$(gj "$GJ" j.ci_check.
 # that records a call and fails like a missing command; --skip-ci-check must not call it.
 DEADGH="$W/deadgh"; mkdir -p "$DEADGH"; : > "$W/deadgh.calls"
 printf '#!/bin/sh\necho call >> "%s"\nexit 127\n' "$W/deadgh.calls" > "$DEADGH/gh"; chmod +x "$DEADGH/gh"
-rcase g2-skip-nogh "PATH=$DEADGH:$PATH" --skip-ci-check
+GE_PATH="$DEADGH:$PATH" rcase g2-skip-nogh "" --skip-ci-check
 assert_rc "G2 --skip-ci-check needs no gh: gh missing -> exit 0" 0
 assert_eq "G2 --skip-ci-check never called the unusable gh" "0" "$(grep -c call "$W/deadgh.calls" || true)"
 assert_eq "G2 gate.json ci_check.skipped is true (no gh)" "true" "$(gj "$GJ" j.ci_check.skipped)"
