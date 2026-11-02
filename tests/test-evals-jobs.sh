@@ -11,7 +11,7 @@ JOBS_RUNNER="$RUNNER"; JOBS_TASKS=""
 
 # ---- the concurrency adapter (a good adapter that also records its overlap), driven by files in $CJ (outside the workroot) ----
 # $CJ/mode: seq (no waiting) or par; $CJ/barrier: labels that wait until $CJ/want runs are active (at most 5 s); E1 then also waits
-# until another run has finished, so that the runs end in another order than their labels; $CJ/stray: a label that writes ../stray-<label>.
+# until another run has finished, so that the runs end in another order than their labels; $CJ/stray: a label that writes ../stray-<label> (then creates $CJ/strayed; the other runs wait for it, so they end after the stray exists).
 CJ="$(mk_tmp)"; export CJ
 mk_adapter conc "
 : > \"\$CJ/active.\$e\"
@@ -25,7 +25,10 @@ if [ \"\$(cat \"\$CJ/mode\")\" = par ]; then
   esac
   if [ \"\$e\" = E1 ]; then i=0; while [ \"\$(ls \"\$CJ\" | grep -c '^fin\\.')\" -lt 1 ] && [ \"\$i\" -lt 50 ]; do sleep 0.1; i=\$((i + 1)); done; fi
 fi
-if [ -f \"\$CJ/stray\" ] && [ \"\$e\" = \"\$(cat \"\$CJ/stray\")\" ]; then echo x > \"../stray-\$e\"; fi
+if [ -f \"\$CJ/stray\" ]; then
+  if [ \"\$e\" = \"\$(cat \"\$CJ/stray\")\" ]; then echo x > \"../stray-\$e\"; : > \"\$CJ/strayed\"
+  else i=0; while [ ! -f \"\$CJ/strayed\" ] && [ \"\$i\" -lt 50 ]; do sleep 0.1; i=\$((i + 1)); done; fi
+fi
 $GOOD_BODY
 rm -f \"\$CJ/active.\$e\"; : > \"\$CJ/fin.\$e\""
 
@@ -41,11 +44,11 @@ jr() {
 }
 # norm_md FILE WORKROOT -> the headings and table rows of the md with the workroot path and the date stamps replaced
 norm_md() { grep -E '^(#|\|)' "$1" | sed -e "s|$2|WORKROOT|g" -e 's/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}/DATE/g'; }
-# norm_json FILE -> the JSON without what changes between runs (stamps, paths, seconds, costs, commit), keys in order
+# norm_json FILE -> the JSON without what changes between runs (stamps, paths, seconds, times, costs, commit), keys in order
 norm_json() { node -e '
 const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
 delete j.started; delete j.workroot; delete j.playbook_commit;
-const strip=(o)=>{ if(Array.isArray(o)) return o.map(strip); if(o&&typeof o==="object"){ const n={}; for(const k of Object.keys(o)){ if(/^(seconds|cost_usd|cost|total_cost|started|workroot)$/.test(k)) n[k]=null; else n[k]=strip(o[k]); } return n; } return o; };
+const strip=(o)=>{ if(Array.isArray(o)) return o.map(strip); if(o&&typeof o==="object"){ const n={}; for(const k of Object.keys(o)){ if(/(seconds|cost|time|started|workroot)/i.test(k)) n[k]=null; else n[k]=strip(o[k]); } return n; } return o; };
 process.stdout.write(JSON.stringify(strip(j),null,1));' "$1"; }
 # labels_of OUT -> the run label each output line belongs to ("== E1: running..." and "E1 PASS ..." both give E1), in order
 labels_of() { printf '%s\n' "$1" | sed -n -e 's/^== \(E[0-9][0-9]*\): .*/\1/p' -e 's/^\(E[0-9][0-9]*\) [A-Z][A-Z]* .*/\1/p'; }
@@ -146,7 +149,14 @@ jr --scenarios E1,E3,E8,E15 --jobs 3
 assert_rc "D7 --jobs 3 with a stray write: exit 1" 1
 assert_eq "D7 the run that wrote ../stray-E8 FAILs the stray check" "FAIL" "$(e_state E8 'nothing written outside the workdir')"
 assert_contains "D7 the FAIL line of E8 names the stray entry" "$(printf '%s\n' "$OUT" | grep '^E8 FAIL')" "stray-E8"
-assert_eq "D7 the md records the FAIL of the stray check" "1" "$(grep -c 'nothing written outside the workdir | FAIL' "$R")"
+# E8's own section has exactly one such row; every other run ends after the stray was written and still PASSes (D20: private roots under --jobs)
+assert_eq "D7 the md section of E8 records the FAIL of the stray check, naming stray-E8" "1" "$(awk '/^## /{s=$2} s=="E8"' "$R" | grep -cF 'nothing written outside the workdir (new in the workroot: stray-E8) | FAIL')"
+assert_file "D7 the stray was written before the other runs ended" "$CJ/strayed"
+for e in E1 E3 E15; do
+  assert_eq "D20 --jobs 3: $e PASSes the stray check although E8 wrote ../stray-E8 meanwhile" "PASS" "$(e_state "$e" 'nothing written outside the workdir')"
+  assert_eq "D20 --jobs 3: the md section of $e has no stray FAIL row" "0" "$(awk '/^## /{s=$2} s=="'"$e"'"' "$R" | grep -c 'nothing written outside the workdir.*| FAIL')"
+done
+assert_eq "D20 --jobs 3: only E8 has a stray FAIL row in the whole md" "1" "$(grep -c 'nothing written outside the workdir.*| FAIL' "$R")"
 
 # ================= --max-cost =================
 echo "D7 --max-cost with --jobs: checked before each run starts against the finished runs; later runs are still skipped"

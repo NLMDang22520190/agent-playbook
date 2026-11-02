@@ -12,7 +12,7 @@ JOBS_RUNNER="$OUTCOME"; JOBS_TASKS="$T"
 
 # ---- the concurrency stub (solves the task, and records its overlap), driven by files in $CJ (outside the workroot) ----
 # $CJ/mode: seq (no waiting) or par; $CJ/barrier: labels that wait until $CJ/want runs are active (at most 5 s); t-add then also waits
-# until another run has finished, so that the runs end in another order than their labels; $CJ/stray: a label that writes ../stray-<label>.txt.
+# until another run has finished, so that the runs end in another order than their labels; $CJ/stray: a label that writes ../stray-<label>.txt (then creates $CJ/strayed; the other runs wait for it, so they end after the stray exists).
 CJ="$(mk_tmp)"; export CJ
 mk_stub conc ': > "$CJ/active.$l"
 ls "$CJ" | grep -c "^active\." >> "$CJ/seen"
@@ -23,7 +23,10 @@ if [ "$(cat "$CJ/mode")" = par ]; then
   esac
   if [ "$l" = t-add.with.1 ]; then i=0; while [ "$(ls "$CJ" | grep -c "^fin\.")" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; fi
 fi
-if [ -f "$CJ/stray" ] && [ "$l" = "$(cat "$CJ/stray")" ]; then echo x > "$(dirname "$wd")/stray-$l.txt"; fi
+if [ -f "$CJ/stray" ]; then
+  if [ "$l" = "$(cat "$CJ/stray")" ]; then echo x > "$(dirname "$wd")/stray-$l.txt"; : > "$CJ/strayed"
+  else i=0; while [ ! -f "$CJ/strayed" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; fi
+fi
 solve
 rm -f "$CJ/active.$l"; : > "$CJ/fin.$l"'
 
@@ -136,6 +139,11 @@ ro --cmd "bash $SA/conc.sh" --tasks t-add,t-two,t-node --jobs 3
 assert_rc "D7 --jobs 3 with a stray write: exit 1" 1
 assert_eq "D7 the run that wrote stray-t-two.with.1.txt FAILs the stray check" "FAIL" "$(chk t-two.with.1 'nothing written outside the workdir')"
 assert_contains "D7 the NOTE of that run names the stray entry" "$(printf '%s\n' "$OUT" | grep '^t-two.with.1 ')" "stray-t-two.with.1.txt"
+assert_file "D7 the stray was written before the other runs ended" "$CJ/strayed"
+for l in t-add.with.1 t-node.with.1; do
+  assert_eq "D20 --jobs 3: $l PASSes the stray check although t-two wrote a stray meanwhile" "PASS" "$(chk "$l" 'nothing written outside the workdir')"
+done
+assert_eq "D20 --jobs 3: exactly one stray FAIL in the JSON checks (t-two's)" "1" "$(jget "$JF" '(j.runs||[]).reduce((n,r)=>n+(r.checks||[]).filter(c=>c.name==="nothing written outside the workdir"&&c.result==="FAIL").length,0)')"
 
 # ================= --max-cost =================
 echo "D7 --max-cost with --jobs: checked before each run starts against the finished runs; later runs are still skipped"
