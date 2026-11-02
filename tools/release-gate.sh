@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only]
+#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch]
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -20,6 +20,19 @@
 # Preflight (v0.33.0): a real run (not --dry-run, not --pool-only) first calls both runners with --preflight and the same selection
 # arguments, before the first real runner; a runner's 3 (node, git, the harness CLI, a python3 that really runs for a python3 task)
 # stops the gate with exit 3 and the reason, with no paid run started and no worktree or results file left.
+# CI check (v0.34.0): a real run first reads the CI check runs of HEAD (after the clean-tree test, before the baseline, the worktree, the
+# preflight and any runner) with `gh api --paginate repos/OWNER/REPO/commits/SHA/check-runs`, never `gh pr checks`. OWNER/REPO is
+# PB_GATE_REPO, else parsed from `git remote get-url origin`. The gate runs only when CI is green: every check run is completed with
+# success, neutral or skipped. A check run that failed only in its "Release gate" step (the step of this very gate, which a PR that
+# changes VERSION cannot pass before the gate is committed) also counts as green: its Actions job (id = the check run id) is read at
+# `gh api repos/OWNER/REPO/actions/jobs/ID` and every failed step must start with "Release gate". Anything else red, a pending check run
+# (queued, in progress), or no check run at all stops the gate with exit 2 naming the check runs, with no runner and nothing created.
+# gh missing, an API error or an unknown repository stops it with exit 3. --skip-ci-check skips the read (no gh needed): the run goes
+# on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion}]} (null for
+# --pool-only). --dry-run, --pool-only and --check never read the CI.
+# Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
+# gate.json, because a second batch silently adds to n. --add-batch says the batch is meant to be added to the earlier ones. A DIR that
+# is missing, empty or holds only other files is fine. --dry-run and --pool-only never refuse.
 # --dry-run prints the commit, the tree state ("tree: clean" or "tree: dirty") and both commands, and runs nothing.
 # --pool-only runs no harness and pools what DIR holds. --json prints one JSON object instead (schema pb-gate/1: commit,
 # version, harness, model, k, scenarios, tasks, out_dir, tree, dry_run, pool_only, commands, runner_rc, pooled, skipped
@@ -90,7 +103,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=()
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; CI_JSON=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -99,6 +112,8 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --pool-only) POOL=1 ;;
     --check) CHECK=1 ;;
+    --skip-ci-check) SKIPCI=1 ;;
+    --add-batch) ADDB=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
@@ -198,7 +213,7 @@ EOJ
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
   PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
-  PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
+  PG_CI="${CI_JSON:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
 const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
@@ -323,7 +338,7 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, rows }, null, 2) + "\n");
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check: e.PG_CI ? JSON.parse(e.PG_CI) : null, rows }, null, 2) + "\n");
 ' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
 }
 
@@ -563,11 +578,79 @@ EOF
   case "$DRC" in 0 | 1) ;; 2) exit 2 ;; *) exit 3 ;; esac
 }
 
+# used_dir: M1 - the out DIR already holds a pb-evals/1 file or a gate.json (prints their names, one per line)
+used_dir() {
+  PG_OD="$OD" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+let names = [];
+try { names = fs.readdirSync(e.PG_OD).filter(n => n.endsWith(".json")).sort(); } catch (x) { }
+for (const n of names) {
+  if (n === "gate.json") { console.log(n); continue; }
+  try { if (JSON.parse(fs.readFileSync(path.join(e.PG_OD, n), "utf8")).schema === "pb-evals/1") console.log(n); } catch (x) { }
+}'
+}
+# ci_check: G1 - read the check runs of HEAD through the REST API; sets CI_JSON (the ci_check object of gate.json) or stops the gate
+ci_check() {
+  local repo url runs rc=0 cls ans id nm cc job bad="" state=green tab=$'\t' lines=()
+  if [ "$SKIPCI" = 1 ]; then CI_JSON="{\"skipped\":true,\"sha\":\"$SHA\",\"state\":\"skipped\",\"checks\":[]}"; return 0; fi
+  repo="${PB_GATE_REPO:-}"
+  if [ -z "$repo" ]; then
+    url="$(git -C "$ROOT" remote get-url origin 2>/dev/null)"
+    repo="$(printf '%s' "$url" | sed -n 's#^.*github\.com[:/]\([^/][^/]*/[^/][^/]*\)$#\1#p' | sed 's#\.git$##; s#/$##')"
+  fi
+  [ -n "$repo" ] || die 3 "cannot tell the GitHub repository (set PB_GATE_REPO=OWNER/REPO or add an origin remote), or pass --skip-ci-check"
+  command -v gh >/dev/null 2>&1 || die 3 "gh is required to read the CI check runs (install it, or pass --skip-ci-check)"
+  runs="$(gh api --paginate "repos/$repo/commits/$SHA/check-runs" --jq '.check_runs[]' </dev/null)" || rc=$?
+  [ "$rc" = 0 ] || die 3 "cannot read the check runs of $SHA in $repo (gh api failed); pass --skip-ci-check to go on without CI"
+  cls="$(printf '%s\n' "$runs" | node -e '
+const lines = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean);
+const g = new Set(["success", "neutral", "skipped"]);
+for (const l of lines) {
+  let r; try { r = JSON.parse(l); } catch (x) { console.log("X"); continue; }
+  const n = String(r.name).replace(/[\t\n]/g, " ");
+  if (r.status !== "completed") console.log("P\t" + r.id + "\t" + n + "\t" + r.status);
+  else if (g.has(r.conclusion)) console.log("G\t" + r.id + "\t" + n + "\t" + r.conclusion);
+  else console.log("R\t" + r.id + "\t" + n + "\t" + r.conclusion);
+}')" || die 3 "node failed while reading the check runs"
+  case "$cls" in *X*) die 3 "unreadable check run data from gh" ;; esac
+  [ -n "$cls" ] || die 2 "no CI check runs for $SHA in $repo yet (CI has not started): push, open the PR and wait for CI, then run the gate (or pass --skip-ci-check)"
+  while IFS= read -r ans; do [ -n "$ans" ] && lines+=("$ans"); done <<EOF
+$cls
+EOF
+  for ans in "${lines[@]}"; do
+    IFS="$tab" read -r cls id nm cc <<EOF
+$ans
+EOF
+    case "$cls" in
+      P) bad="$bad  - $nm (still $cc)"$'\n' ;;
+      R)
+        if [ "$cc" = failure ]; then
+          job="$(gh api "repos/$repo/actions/jobs/$id" </dev/null)" || die 3 "cannot read the job $id ($nm) in $repo (gh api failed); pass --skip-ci-check to go on without CI"
+          if printf '%s' "$job" | node -e '
+let j; try { j = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch (x) { process.exit(2); }
+const f = (Array.isArray(j.steps) ? j.steps : []).filter(s => s.conclusion === "failure");
+process.exit(f.length > 0 && f.every(s => /^Release gate/.test(String(s.name))) ? 0 : 1)'; then state=green-except-release-gate
+          else bad="$bad  - $nm ($cc)"$'\n'; fi
+        else bad="$bad  - $nm ($cc)"$'\n'; fi ;;
+    esac
+  done
+  [ -z "$bad" ] || die 2 "CI of $SHA is not green (a check run that failed only in its Release gate step counts as green):"$'\n'"${bad%$'\n'}"$'\n'"wait for CI, fix it, or pass --skip-ci-check"
+  CI_JSON="$(printf '%s\n' "${lines[@]}" | SHA="$SHA" ST="$state" node -e '
+const L = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(l => l.split("\t"));
+process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
+}
+
 if [ "$POOL" = 0 ]; then
   if [ "$TREE" = dirty ]; then
     printf '%s\n' "$DIRTY" >&2
     die 2 "the working tree is not clean (changes outside evals/results): commit or stash them, so the runs belong to $SHA"
   fi
+  # M1: a used DIR is refused unless --add-batch; G1: the CI of HEAD must be green (both before the baseline, worktree, preflight, runners)
+  if [ "$ADDB" = 0 ]; then
+    UF="$(used_dir)" || die 3 "node failed while reading $OD"
+    [ -z "$UF" ] || die 2 "$OD already holds results of an earlier run ($(printf '%s' "$UF" | tr '\n' ' ' | sed 's/ $//')): a second batch adds to n; pass --add-batch to add one on purpose, or use another --out-dir"
+  fi
+  ci_check
   # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run. Its files live under $BROOT until
   # the exit (R7-1): the verdict reads them after the runs
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
