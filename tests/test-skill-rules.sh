@@ -323,9 +323,11 @@ chk "v0.24.30 G-fix size header: a production symlink that it cannot count is an
 if printf '%s' "$SZH" | grep -qE -- 'dangling symlink[^.;]{0,20}keep'; then t_bad "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count" "the header still lists it with those that keep their count"; else t_ok "v0.24.30 G-fix size header: a dangling symlink no longer keeps its count"; fi
 if printf '%s %s %s' "$HSEC" "$RGH" "$TDH" | grep -qE -- '(^|[^A-Za-z0-9])E(19|20)([^0-9]|$)'; then t_bad "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)" "an E19 or E20 id is present"; else t_ok "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)"; fi
 
-echo "H2 playbook-tdd: when the main agent delegates to the mechanical (haiku) sub-agent (named phrases, whole SKILL.md on one line)"
-H2="$(tr '\n' ' ' < "$SKILL")"
-chk "H2 the existing mechanical-model sentence is still there" "$H2" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
+echo "H2 playbook-tdd: when the main agent delegates to the mechanical (haiku) sub-agent (named phrases in references/harnesses.md; pointer in SKILL.md)"
+H2S="$(tr '\n' ' ' < "$SKILL")"
+chk "H2 the existing mechanical-model sentence is still there" "$H2S" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
+chk "H2 SKILL.md mechanical sentence points to references/harnesses.md for which steps" "$H2S" 'uses the `mechanical` model[^.]{0,200}\.[^.]{0,120}references/harnesses\.md|uses the `mechanical` model[^.]{0,200}references/harnesses\.md'
+H2="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
 chk "H2 delegate only a fully specified step" "$H2" 'only a fully specified[^.]{0,40}step'
 chk "H2 the step is output-heavy" "$H2" 'output-heavy'
 chk "H2 kind: bulk or repeated edits across files" "$H2" 'bulk or repeated edits across files'
