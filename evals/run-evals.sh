@@ -374,6 +374,10 @@ for r in $RUNS; do
   if [ -e "$WORKROOT/$e" ] && [ ! -f "$WORKROOT/$e/.git/pb-fixture" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
     pb_die "refusing to delete $WORKROOT/$e: not a previous fixture (.git/pb-fixture) and the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
   fi
+  # --jobs N>1: <workroot>/.jobs/<label> is cleared by the run; the same ownership rule (a previous fixture inside it also counts)
+  if [ "$JOBS" != 1 ] && [ -e "$WORKROOT/.jobs/$e" ] && [ ! -f "$WORKROOT/.jobs/$e/$e/.git/pb-fixture" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
+    pb_die "refusing to delete $WORKROOT/.jobs/$e (--jobs): not a previous fixture and the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
+  fi
 done
 NOW="$(date '+%Y-%m-%d %H%M%S')"; STARTED="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 # isolation of each run, as the md and JSON record it (AC3.3)
@@ -2652,7 +2656,7 @@ EOF
     DETAILS="$DETAILS
 ## $RL
 
-ERROR: harness failure ($herr); not graded. Transcript: \`$RL.log\`.
+ERROR: harness failure ($herr); $( [ "$ARM" = with ] && echo 'checks recorded, not counted' || echo 'not graded' ). Transcript: \`$RL.log\`.
 ${ARMLINE:+
 $ARMLINE
 }${TMPNOTE:+

@@ -83,7 +83,7 @@
 # run gets its own temp PLAYBOOK_HOME (with arm: a copy of the playbook conf without feedback_repo; without arm: empty)
 # and its own TMPDIR, removed after the run; HOME stays the real one. --cmd adapters get PB_EVAL_MODEL and, with --arm or
 # --repeat, PB_EVAL_ARM and PB_EVAL_SETTINGS.
-# An adapter that exits non-zero, times out or shows an auth failure makes the run ERROR: it is not graded and no hidden
+# An adapter that exits non-zero, times out or shows an auth failure makes the run ERROR: it is not counted (a with-arm run only gets its stray check) and no hidden
 # file is copied. ERROR and SKIPPED runs never count in n.
 # Writes a markdown results file (default evals/results/<YYYY-MM-DD>-outcome-<harness or custom>-<HHMMSS>.md) with one
 # line per arm (pass@1 over all graded runs, pass^K = share of complete tasks whose every run passed) and one row per
@@ -322,6 +322,9 @@ for r in $RUNS; do
   a="${r#*:}"; l="${r%%:*}.${a%%:*}.${a#*:}"
   if { [ -e "$WORKROOT/$l" ] || [ -e "$WORKROOT/$l.log" ] || [ -e "$WORKROOT/$l.prompt" ]; } && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
     pb_die "refusing to delete $WORKROOT/$l: the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
+  fi
+  if [ "$JOBS" != 1 ] && [ -e "$WORKROOT/.jobs/$l" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then   # --jobs N>1: the run clears its private root
+    pb_die "refusing to delete $WORKROOT/.jobs/$l (--jobs): the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
   fi
 done
 NOW="$(date '+%Y-%m-%d %H%M%S')"; STARTED="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

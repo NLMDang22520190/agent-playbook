@@ -780,7 +780,16 @@ pbh_grader_sha() {
 }
 pbh_cli_version() {
   local o
-  if command -v timeout >/dev/null 2>&1; then o="$(timeout 3 "$1" --version </dev/null 2>&1)"; else o="$("$1" --version </dev/null 2>&1)"; fi
+  local f p k
+  if command -v timeout >/dev/null 2>&1; then o="$(timeout 3 "$1" --version </dev/null 2>&1)"
+  else   # no timeout: a background kill after 3 s bounds a CLI that does not return
+    f="$(mktemp "${TMPDIR:-/tmp}/pb-evver.XXXXXX")" || return 0
+    "$1" --version </dev/null >"$f" 2>&1 &
+    p=$!; k=0
+    while [ "$k" -lt 30 ] && kill -0 "$p" 2>/dev/null; do sleep 0.1; k=$((k + 1)); done
+    kill "$p" 2>/dev/null; wait "$p" 2>/dev/null
+    o="$(cat "$f")"; rm -f "$f"
+  fi
   printf '%s\n' "$o" | sed -n 1p | tr -d '\r'
 }
 pbh_harness_sha() {
@@ -833,9 +842,10 @@ PBJ_RUN=""; PBJ_N=0; PBJ_DIR=""; PBJ_COST0=""; PBJ_T=""
 # pbh_jobs_valid VALUE -> 0 for a whole number from 1 to 16 (digits only)
 pbh_jobs_valid() { case "$1" in [1-9] | 1[0-6]) return 0 ;; esac; return 1; }
 pbh_jobs_kill() {
-  local e
-  for e in $PBJ_RUN; do kill "${e#*:}" 2>/dev/null; done
-  for e in $PBJ_RUN; do wait "${e#*:}" 2>/dev/null; done
+  local e live=""
+  for e in $PBJ_RUN; do if kill -0 "${e#*:}" 2>/dev/null; then live="$live $e"; fi; done   # live pids only (a reaped pid may be reused)
+  for e in $live; do kill "${e#*:}" 2>/dev/null; done
+  for e in $live; do wait "${e#*:}" 2>/dev/null; done
   PBJ_RUN=""; PBJ_N=0
   return 0
 }
