@@ -62,7 +62,7 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or
    low-tier, each with a reason and its relative cost. Label any sample table "example". The user
    accepts it or picks others. Store each pick with
-   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs of tests, docs or skill text and `mechanical` for release prep, counts and formatting; haiku under claude).
+   `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting).
    Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
    never write keys not documented in step 6.
 
