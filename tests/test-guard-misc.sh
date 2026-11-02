@@ -73,6 +73,18 @@ assert_contains "M10 the rest of the command is" "$(cat "$ML")" "example.invalid
 : > "$ML"
 grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'curl -H "Authorization: Bearer abcdefghijklmnop1234" https://example.invalid; git push --force origin main')"
 assert_not_contains "M10 a Bearer value is not in the log" "$(cat "$ML")" "abcdefghijklmnop1234"
+# Review round 1 finding 3: URL userinfo and curl -u carry a password without a key=value shape
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git push --force https://user:s3cretpw@example.invalid/r.git main')"
+expect_block "M10 premise: a force push to a URL with userinfo blocks" git-push-force
+assert_not_contains "M10 the password in URL userinfo is not in the log" "$(cat "$ML")" "s3cretpw"
+assert_contains "M10 the host and the rest of the command stay readable (userinfo)" "$(cat "$ML")" "example.invalid/r.git main"
+assert_contains "M10 the push part stays readable (userinfo)" "$(cat "$ML")" "git push --force"
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'curl -u admin:s3cretpw https://example.invalid/api; git push --force origin main')"
+expect_block "M10 premise: curl -u before a force push blocks" git-push-force
+assert_not_contains "M10 the curl -u password is not in the log" "$(cat "$ML")" "s3cretpw"
+assert_contains "M10 the rest of the command stays readable (curl -u)" "$(cat "$ML")" "https://example.invalid/api; git push --force origin main"
 # a multi-line command stays one log line (the log is one line per non-PASS decision)
 : > "$ML"
 grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git status

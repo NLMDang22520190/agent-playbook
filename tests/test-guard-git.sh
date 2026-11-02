@@ -156,6 +156,20 @@ for c in 'git checkout -b feature HEAD' 'git checkout -B feature HEAD' 'git chec
   'git checkout --track -b x origin/main' 'git switch -c feature HEAD'; do
   gb "$c"; expect_pass "M8 [guard-rail] a branch form keeps the work tree [$c]"
 done
+# Review round 1 finding 1 (characterization of a guard-rail: passes today; it kills the mutant that drops the redirect/operator skip
+# in the checkout loop, where the redirect target or the 2>&1 word would count as a second path word and block a branch switch)
+for c in 'git checkout other 2>/dev/null' 'git checkout other > log.txt' 'git checkout other 2>&1 | tail -1'; do
+  gb "$c"; expect_pass "M8 [guard-rail] a branch switch with a redirect or pipe keeps the work tree [$c]"
+done
+# Review round 1 finding 2: git 2.43 (throwaway repo): `git checkout --conflict merge other` and `--conflict=merge other` switch the
+# branch and carry the local change over (merge); `--conflict merge other f` is refused by git ("cannot be used when checking out
+# of a tree"), `--conflict merge -- f` re-creates f from the index (a discard). The value of --conflict is not a path.
+for c in 'git checkout --conflict merge other' 'git checkout --conflict=merge other' 'git checkout --conflict diff3 other' 'git checkout -m --conflict merge other'; do
+  gb "$c"; expect_pass "M8 [finding 2] a branch switch with --conflict keeps the work tree [$c]"
+done
+for c in 'git checkout --conflict merge HEAD src/app.js' 'git checkout --conflict=merge HEAD src/app.js' 'git checkout --conflict merge -- src/app.js'; do
+  gb "$c"; expect_block "M8 [finding 2] --conflict with a path stays a discard [$c]" git-discard
+done
 fresh
 printf 'tmp\n' > "$R/scratch.txt"
 gb 'git checkout HEAD src/app.js'; expect_pass "M8 only an untracked file: a tracked-only discard loses nothing"
