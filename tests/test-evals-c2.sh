@@ -218,6 +218,17 @@ if [ -n "$G2" ] && [ "$G2" != "$G1" ] && printf '%s' "$G2" | grep -Eq "$HEX40"; 
 same_hex "R1 those edits left scenario_sha alone" "$B8" "$(rj "$RJ" E8 r.scenario_sha)"
 ER="$RUNNER"
 
+echo "Review 2: grader_sha follows every evals file the grading and the setup use (transcript.js, facts.js, codex-jsonl.js, make-fixture.sh, codex-adapter.sh)"
+GPREV="$(rj "$RJ" E8 r.grader_sha)"
+ER="$EC/evals/run-evals.sh"
+for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do
+  case "$gf" in *.js) printf '\n// grader mutation\n' >> "$EC/evals/$gf" ;; *) printf '\n# grader mutation\n' >> "$EC/evals/$gf" ;; esac
+  er --cmd "bash $A/noop2.sh" --scenarios E8 --arm with
+  GNOW="$(rj "$RJ" E8 r.grader_sha)"
+  diff_hex "R1 run-evals: a change to evals/$gf changes grader_sha" "$GPREV" "$GNOW"
+  GPREV="$GNOW"
+done
+ER="$RUNNER"
 echo "R1 run-evals: harness_sha of --cmd follows the command string"
 mk_adapter noop3 ':'
 er --cmd "bash $A/noop2.sh" --scenarios E8 --arm with;  H1="$(rj "$RJ" E8 r.harness_sha)"
@@ -312,6 +323,16 @@ if [ "$OG2" != "$OG0" ] && printf '%s' "$OG2" | grep -Eq "$HEX40"; then t_ok "R1
 printf '\n# m2\n' >> "$EO/evals/run-outcome.sh"
 ro --cmd "bash $SA/idle.sh" --tasks t-add --arm with; OG3="$(otask_sha t-add.with.1 grader_sha)"
 if [ "$OG3" != "$OG2" ] && printf '%s' "$OG3" | grep -Eq "$HEX40"; then t_ok "R1 outcome: a change to run-outcome.sh changes grader_sha"; else t_bad "R1 outcome: a change to run-outcome.sh changes grader_sha" "$OG2 -> $OG3"; fi
+echo "Review 2: run-outcome grader_sha follows the same evals files"
+OUTCOME="$EO/evals/run-outcome.sh"
+ro --cmd "bash $SA/idle.sh" --tasks t-add --arm with; OGP="$(otask_sha t-add.with.1 grader_sha)"
+for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do
+  case "$gf" in *.js) printf '\n// grader mutation\n' >> "$EO/evals/$gf" ;; *) printf '\n# grader mutation\n' >> "$EO/evals/$gf" ;; esac
+  ro --cmd "bash $SA/idle.sh" --tasks t-add --arm with
+  OGN="$(otask_sha t-add.with.1 grader_sha)"
+  diff_hex "R1 run-outcome: a change to evals/$gf changes grader_sha" "$OGP" "$OGN"
+  OGP="$OGN"
+done
 OUTCOME="$OUTCOME_ORIG"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm with
 diff_hex "R1 outcome: another --cmd string gives another harness_sha" "$(otask_sha t-add.with.1 harness_sha)" "$OH1"

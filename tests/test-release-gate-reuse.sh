@@ -60,7 +60,7 @@ for (const item of items) for (const arm of ["with", "without"]) for (let i = 1;
   runs.push(r);
 }
 fs.writeFileSync(e.GN_OUT, JSON.stringify({ schema: "pb-evals/1", playbook_commit: e.GN_COMMIT, playbook_version: "0.33.0", harness: e.GN_HARNESS || "claude",
-  model: "m1", arms: ["with", "without"], repeat: 5, max_cost: null, interactive: false, hooks: true, started: "2026-10-31T10:00:00Z",
+  model: e.GN_MODEL || "m1", arms: ["with", "without"], repeat: 5, max_cost: null, interactive: false, hooks: true, started: "2026-10-31T10:00:00Z",
   workroot: "<tmp>/w", out: "x.md", variant: { tree: "<variant>", version: "0.33.0", sha: e.GN_COMMIT, end_check: "ok" }, runs, summary: [] }) + "\n");
 EOF
 gen() { GN_OUT="$1" GN_COMMIT="$2" GN_ITEMS="$3" node "$W/gen.js"; }
@@ -157,6 +157,10 @@ EOF
     c="$(hd "$r")"; d="$r/evals/results/gate-$(printf '%s' "$c" | cut -c1-12)"; mkdir -p "$d"
     GN_HASH="$hash" GN_HARNESS="$harn" GN_MIX="$mix" gen "$d/behaviour-m1.json" "$c" "E1,E2,E3,E8,E13"
     GN_HASH="$hash" GN_HARNESS="$harn" gen "$d/outcome-m1.json" "$c" "$TASKS"
+    if [ "${BUILD_EXTRA:-}" = 1 ]; then   # same without rows, but another model / another harness: not a legal source of reused rows
+      GN_HASH=1 GN_MODEL=m2 gen "$d/behaviour-m2.json" "$c" "E1,E2,E3,E8,E13"
+      GN_HASH=1 GN_HARNESS=custom gen "$d/behaviour-hc.json" "$c" "E1,E2,E3,E8,E13"
+    fi
     printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[],"pooled":["evals/results/%s/behaviour-m1.json","evals/results/%s/outcome-m1.json"]}\n' "$c" "${d##*/}" "${d##*/}" > "$d/gate.json"
     printf '%s\n' "$c" > "$W/$1.bc"; printf '%s\n' "evals/results/${d##*/}" > "$W/$1.bd"
     ( cd "$r" && git add -A ) && gcommit "$r" "$D1" "results $BTAG" && git -C "$r" tag "$BTAG"
@@ -235,6 +239,17 @@ for (const n of fs.readdirSync(e.PC_DIR).filter(n => n.endsWith(".json") && n !=
 const items = Object.keys(c).sort();
 console.log(items.length + " items; " + items.filter(i => c[i].with !== 5 || c[i].without !== 5).map(i => i + " " + c[i].with + "/" + c[i].without).join(", "));'
 }
+# pooled_arm DIR SHA ITEM ARM: graded runs of that item and arm over the pb-evals/1 files of the commit in DIR
+pooled_arm() {
+  PC_DIR="$1" PC_SHA="$2" PC_I="$3" PC_A="$4" node -e '
+const fs = require("fs"), e = process.env; let n = 0;
+for (const f of fs.readdirSync(e.PC_DIR).filter(f => f.endsWith(".json") && f !== "gate.json")) {
+  const j = JSON.parse(fs.readFileSync(e.PC_DIR + "/" + f, "utf8"));
+  if (j.schema !== "pb-evals/1" || j.playbook_commit !== e.PC_SHA) continue;
+  for (const r of j.runs) if (r.status === "graded" && r.scenario === e.PC_I && r.arm === e.PC_A) n++;
+}
+console.log(n);'
+}
 # tamper DIR MODE: edit the reused-without rows in place (cost | result | extra | badfile)
 tamper() {
   TP_DIR="$1" TP_MODE="$2" node -e '
@@ -248,6 +263,8 @@ for (const n of names) {
   if (e.TP_MODE === "cost") want.cost_usd = 9.99;
   if (e.TP_MODE === "result") want.checks[0].result = "PASS";
   if (e.TP_MODE === "extra") j.runs.push(Object.assign({}, want, { k: 6, label: want.scenario + ".without.6" }));
+  if (e.TP_MODE === "dup") j.runs.push(JSON.parse(JSON.stringify(want)));
+  if (/^retarget-/.test(e.TP_MODE)) { const t = e.TP_MODE === "retarget-model" ? "behaviour-m2.json" : "behaviour-hc.json"; if (want.reused_from) want.reused_from.file = t; else j.reused_from.file = t; }
   if (e.TP_MODE === "badfile") { if (want.reused_from) want.reused_from.file = "nope.json"; else j.reused_from.file = "nope.json"; }
   fs.writeFileSync(f, JSON.stringify(j) + "\n"); done = true;
 }
@@ -414,5 +431,41 @@ commit_results "$RV" "$((T0 + 4 * 86400))" "gate results forged"
 chk "$RV"
 assert_eq "R4 forged without rows (E1 without now passes): --check fails" "1" "$CHKRC"
 assert_contains "R4 forged rows: the reason" "$CHKOUT" "reused rows do not match $BTAG:"
+
+echo "Review 1: a second real run into the same DIR (--add-batch) does not reuse the baseline rows again"
+build rb tag
+RB="$W/rb"
+rr "$RB" ab "FAKE_CHG=$CHG" "PB_GATE_NOW=$NOW3" -- --harness claude
+NF1="$(ls "$ODN"/reused-without-*.json 2>/dev/null | wc -l | tr -d ' ')"
+rr "$RB" ab "FAKE_CHG=$CHG" "PB_GATE_NOW=$NOW3" -- --harness claude --add-batch
+NF2="$(ls "$ODN"/reused-without-*.json 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "R1 fixture: the first run wrote reused files, the second run (add-batch) wrote no further one" "yes|$NF1" "$([ "$NF1" -ge 1 ] && echo yes || echo no)|$NF2"
+assert_contains "R1 add-batch: the reuse item E1 says it was already reused in DIR" "$(ry E1)" "already reused in DIR"
+assert_eq "R1 add-batch: no without-arm run of E1 is requested in the second run" "w=5 o=0" "$(rq E1)"
+assert_eq "R1 add-batch: the pooled without runs of E1 stay 5 (the same baseline rows are not pooled twice)" "5" "$(pooled_arm "$ODN" "$(hd "$RB")" E1 without)"
+assert_eq "R1 add-batch: --check on the committed DIR would see one copy: no (scenario, arm, k) twice among the reused rows" "true" "$(rj "$ODN" 'const seen = new Set(); let ok = F.length > 0; for (const f of F) for (const r of f.runs) { const k = r.scenario + "|" + r.arm + "|" + r.k; if (seen.has(k)) ok = false; seen.add(k); } ok')"
+
+echo "Review 1: a hand-made reused file holding the same baseline run twice fails --check"
+tamper_case dup dup "behaviour-m1.json"
+
+echo "Review 3: reused rows whose named tag file has another model or another harness fail --check"
+BUILD_EXTRA=1 tamper_case rmodel retarget-model "behaviour-m2.json"
+BUILD_EXTRA=1 tamper_case rharn retarget-harness "behaviour-hc.json"
+
+echo "Review 4: gate.json ci_check keeps skipped: true once a batch of DIR skipped the CI check"
+build rk plain
+RK="$W/rk"
+rr "$RK" ci "PB_GATE_NOW=$NOW3" -- --harness claude --skip-ci-check
+assert_eq "R4 fixture: the first batch records ci_check.skipped true" "true" "$(gj "$GJ" 'j.ci_check && j.ci_check.skipped')"
+rr "$RK" ci "PB_GATE_NOW=$NOW3" -- --harness claude --add-batch
+assert_eq "R4 ci: a later --add-batch run on green CI keeps skipped: true" "true" "$(gj "$GJ" 'j.ci_check && j.ci_check.skipped')"
+rr "$RK" ci -- --harness claude --pool-only
+assert_eq "R4 ci: --pool-only afterwards keeps skipped: true (not null)" "true" "$(gj "$GJ" 'j.ci_check && j.ci_check.skipped')"
+
+echo "Review 6: a baseline gate commit dated after the gate's clock (negative age) is not reused"
+rr "$RA" fut "FAKE_CHG=$CHG" "PB_GATE_NOW=$((T0 - 86400))" -- --harness claude
+assert_eq "R1 future baseline: E1 is not reused" "false" "$(gj "$GJ" '(j.reuse.items.find(i => i.item === "E1") || {}).reused')"
+assert_eq "R1 future baseline: the why names the age (age or future)" "true" "$(gj "$GJ" '/age|future/i.test((j.reuse.items.find(i => i.item === "E1") || {}).why || "")')"
+assert_eq "R1 future baseline: E1 runs both arms" "w=5 o=5" "$(rq E1)"
 
 t_summary
