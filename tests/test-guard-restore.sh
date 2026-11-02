@@ -470,7 +470,7 @@ assert_contains "M9 the hint names the baseline" "$WSH" "$B7"
 ck_ok "M9 [M7] the printed hint itself passes the PreToolUse check" "$WSH"
 # the printed command, run for real in this throwaway repo, puts back exactly the baseline content (a split hint names two missing paths and fails)
 runin "$WSH"
-assert_eq "M9 running the printed hint restores db/my schema.sql from the baseline" "$(printf 'CREATE TABLE s1 (id INTEGER);\nCREATE TABLE s2 (id INTEGER);')" "$(cat "$R/db/my schema.sql" 2>/dev/null)"
+assert_eq "M9 running the printed hint restores db/my schema.sql from the baseline" "$(printf 'CREATE TABLE s1 (id INTEGER);\nCREATE TABLE s2 (id INTEGER);')" "$(tr -d '\r' < "$R/db/my schema.sql" 2>/dev/null)"
 # a path with an apostrophe and a space: the hint must still be one valid command
 rnew; printf 'CREATE TABLE q1 (id INTEGER);\nCREATE TABLE q2 (id INTEGER);\n' > "$R/db/it's mine.sql"
 fxg "$R" add -A; fxg "$R" commit -qm quote; rstart
@@ -479,7 +479,7 @@ gs; expect_block "M9 a path with an apostrophe and a space: the Stop block" sche
 QH="$(printf '%s\n' "$GERR" | sed -n 's/.*(restore: \(.*\))$/\1/p' | grep -F 'mine' | sed -n 1p)"
 if [ -n "$QH" ]; then
   runin "$QH"
-  assert_eq "M9 the hint for an apostrophe-and-space path is a valid command that restores the file" "$(printf 'CREATE TABLE q1 (id INTEGER);\nCREATE TABLE q2 (id INTEGER);')" "$(cat "$R/db/it's mine.sql" 2>/dev/null)"
+  assert_eq "M9 the hint for an apostrophe-and-space path is a valid command that restores the file" "$(printf 'CREATE TABLE q1 (id INTEGER);\nCREATE TABLE q2 (id INTEGER);')" "$(tr -d '\r' < "$R/db/it's mine.sql" 2>/dev/null)"
 else t_bad "M9 the block prints a restore hint for db/it's mine.sql" "$GERR"; fi
 # a code-contract file with a space gets the same quoting through the other hint
 rnew; mkdir -p "$R/src"; printf 'module.exports = 1;\n' > "$R/src/my orders.js"
