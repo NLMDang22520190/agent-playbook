@@ -160,7 +160,7 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
 W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
 if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) words (3700 - 3 + 3 - 19 + 10 = 3691)" "$((W0 - 3 + 3 - 19 + 10))" "$w"
+  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) + 6 (v0.34.0 F pointer to references/harnesses.md) words" "$((W0 - 3 + 3 - 19 + 10 + 6))" "$w"
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
