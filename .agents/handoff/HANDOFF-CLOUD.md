@@ -14,3 +14,6 @@
 - Push of feat/v0.35.0 refused (403: the GitHub App/account has no access to the repo for this org). Work continues as local
   commits; the user was asked to reconnect GitHub.
 - Spec review round 1: REVISE (11 findings, .agents/handoff/01b-spec-review.md); spec revised ("## Revision 1"); round 2 started.
+- Spec review round 2: REVISE (8); Revision 2; round 3: OK. Reviewer gate (base 2a68fe4): OK, 0 files.
+- Slice worktree for S1: ../ap-s1 on local branch s1-heldout (from 2a68fe4); its role commits are squashed into the one held-out commit.
+- Testers started (fresh contexts, session model): A (S4) in the main worktree, S1b (tasks 27-31) and S1c (32-36) in ../ap-s1.
