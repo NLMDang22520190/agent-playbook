@@ -1,0 +1,127 @@
+diff --git a/src/api.js b/src/api.js
+index d4e10dd..b67b181 100644
+--- a/src/api.js
++++ b/src/api.js
+@@ -1,6 +1,7 @@
+ 'use strict';
+ 
+ const { checkout } = require('./checkout');
++const { UnknownCodeError } = require('./codes');
+ 
+ function validLines(lines) {
+   return Array.isArray(lines) && lines.length > 0 &&
+@@ -12,11 +13,18 @@ function handleCheckout(body) {
+   if (!body || !validLines(body.lines) || typeof body.ratePct !== 'number' || body.ratePct < 0) {
+     return { status: 400, body: { error: 'bad_request' } };
+   }
+-  const r = checkout({ lines: body.lines, ratePct: body.ratePct });
++  let r;
++  try {
++    r = checkout({ lines: body.lines, ratePct: body.ratePct, code: body.code });
++  } catch (err) {
++    if (err instanceof UnknownCodeError) return { status: 400, body: { error: 'unknown_code' } };
++    throw err;
++  }
+   return {
+     status: 200,
+     body: {
+       subtotalCents: r.subtotalCents,
++      discountCents: r.discountCents,
+       taxCents: r.taxCents,
+       shippingCents: r.shippingCents,
+       totalCents: r.totalCents,
+diff --git a/src/checkout.js b/src/checkout.js
+index d233fb7..ea515fa 100644
+--- a/src/checkout.js
++++ b/src/checkout.js
+@@ -1,20 +1,34 @@
+ 'use strict';
+ 
+ const { subtotalCents } = require('./cart');
+-const { taxCents } = require('./tax');
++const { taxCents, percentHalfUp } = require('./tax');
+ const { shippingCents } = require('./shipping');
++const { findCode } = require('./codes');
+ 
+-// checkout({ lines, ratePct }) -> { subtotalCents, taxCents, shippingCents, totalCents } (docs/pricing.md)
+-function checkout({ lines, ratePct }) {
++// discountCents(subtotal, code) -> the discount of a code on a subtotal (docs/pricing.md): a percent discount rounds
++// half up, a fixed discount is at most the subtotal; no code -> 0; an unknown code throws UnknownCodeError
++function discountCents(subtotal, code) {
++  if (code === undefined || code === null || code === '') return 0;
++  const rule = findCode(code);
++  if (rule.percent !== undefined) return percentHalfUp(subtotal, rule.percent);
++  return Math.min(rule.fixedCents, subtotal);
++}
++
++// checkout({ lines, ratePct, code }) -> { subtotalCents, discountCents, taxCents, shippingCents, totalCents }
++// (docs/pricing.md: subtotal, discount, tax, shipping)
++function checkout({ lines, ratePct, code }) {
+   const subtotal = subtotalCents(lines);
++  const discount = discountCents(subtotal, code);
++  const discounted = subtotal - discount;
+   const tax = taxCents(subtotal, ratePct);
+   const shipping = shippingCents(subtotal);
+   return {
+     subtotalCents: subtotal,
++    discountCents: discount,
+     taxCents: tax,
+     shippingCents: shipping,
+-    totalCents: subtotal + tax + shipping,
++    totalCents: discounted + tax + shipping,
+   };
+ }
+ 
+-module.exports = { checkout };
++module.exports = { checkout, discountCents };
+diff --git a/src/codes.js b/src/codes.js
+new file mode 100644
+index 0000000..2bed0b3
+--- /dev/null
++++ b/src/codes.js
+@@ -0,0 +1,23 @@
++'use strict';
++
++// The discount codes (docs/pricing.md): a percentage of the subtotal or a fixed amount of cents.
++const CODES = {
++  SAVE10: { percent: 10 },
++  WELCOME5: { fixedCents: 500 },
++};
++
++class UnknownCodeError extends Error {
++  constructor(code) {
++    super(`unknown discount code: ${code}`);
++    this.code = 'unknown_code';
++  }
++}
++
++// findCode(code) -> the code's rule; codes are case-insensitive; an unknown code throws UnknownCodeError
++function findCode(code) {
++  const key = String(code).trim().toUpperCase();
++  if (!Object.prototype.hasOwnProperty.call(CODES, key)) throw new UnknownCodeError(code);
++  return CODES[key];
++}
++
++module.exports = { CODES, findCode, UnknownCodeError };
+diff --git a/src/receipt.js b/src/receipt.js
+index ae2a85b..673757f 100644
+--- a/src/receipt.js
++++ b/src/receipt.js
+@@ -9,12 +9,14 @@ function money(cents) {
+ 
+ // receiptLines(result) -> the printed lines of a checkout result
+ function receiptLines(result) {
+-  return [
+-    `Subtotal ${money(result.subtotalCents)}`,
++  const lines = [`Subtotal ${money(result.subtotalCents)}`];
++  if (result.discountCents) lines.push(`Discount ${money(-result.discountCents)}`);
++  lines.push(
+     `Tax ${money(result.taxCents)}`,
+     `Shipping ${money(result.shippingCents)}`,
+     `Total ${money(result.totalCents)}`,
+-  ];
++  );
++  return lines;
+ }
+ 
+ module.exports = { receiptLines, money };

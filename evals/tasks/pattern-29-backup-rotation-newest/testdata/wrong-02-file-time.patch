@@ -1,0 +1,21 @@
+diff --git a/bin/rotate-backups.sh b/bin/rotate-backups.sh
+index 3e17cff..0952592 100755
+--- a/bin/rotate-backups.sh
++++ b/bin/rotate-backups.sh
+@@ -30,13 +30,13 @@ if [ "$((10#$keep))" -lt 1 ]; then
+   exit 2
+ fi
+ 
+-# the backups of DIR, oldest first
++# the backups of DIR, oldest first (by file time: the newest backup was written last)
+ backups() {
+   local f
+-  (cd "$dir" && for f in *; do
++  (cd "$dir" && ls -tr | while IFS= read -r f; do
+     [ -f "$f" ] || continue
+     is_backup_name "$f" && printf '%s\n' "$f"
+-  done) | LC_ALL=C sort
++  done)
+ }
+ 
+ list="$(backups)"

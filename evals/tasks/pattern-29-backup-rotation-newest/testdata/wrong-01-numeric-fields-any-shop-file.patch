@@ -1,0 +1,20 @@
+diff --git a/bin/rotate-backups.sh b/bin/rotate-backups.sh
+index 3e17cff..64242fa 100755
+--- a/bin/rotate-backups.sh
++++ b/bin/rotate-backups.sh
+@@ -30,13 +30,9 @@ if [ "$((10#$keep))" -lt 1 ]; then
+   exit 2
+ fi
+ 
+-# the backups of DIR, oldest first
++# the backups of DIR, oldest first: numeric order on year, month and day
+ backups() {
+-  local f
+-  (cd "$dir" && for f in *; do
+-    [ -f "$f" ] || continue
+-    is_backup_name "$f" && printf '%s\n' "$f"
+-  done) | LC_ALL=C sort
++  (cd "$dir" && ls shop-*.tar.gz 2>/dev/null) | LC_ALL=C sort -t- -k2,2n -k3,3n -k4,4n
+ }
+ 
+ list="$(backups)"

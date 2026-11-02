@@ -1,0 +1,45 @@
+diff --git a/src/customers.py b/src/customers.py
+index 3d70e2b..c20bae6 100644
+--- a/src/customers.py
++++ b/src/customers.py
+@@ -7,5 +7,11 @@ def get_address(conn, cid):
+     return row[0] if row else None
+ 
+ 
++def city_of(conn, cid):
++    """The city of customer cid (None when the customer has no address)."""
++    row = conn.execute("SELECT city FROM customers WHERE id = ?", (cid,)).fetchone()
++    return row[0] if row else None
++
++
+ def find_by_name(conn, name):
+     return [r[0] for r in conn.execute("SELECT id FROM customers WHERE name = ? ORDER BY id", (name,))]
+diff --git a/src/migrations/003_address_parts.py b/src/migrations/003_address_parts.py
+new file mode 100644
+index 0000000..28efbd2
+--- /dev/null
++++ b/src/migrations/003_address_parts.py
+@@ -0,0 +1,23 @@
++"""street, district and city columns, filled from the address text of the existing rows (docs/address-format.md).
++The address column stays as it is."""
++VERSION = 3
++
++
++def address_parts(address):
++    """(street, district, city) of an address text; district is None with 2 parts; all None for a NULL address."""
++    if address is None:
++        return None, None, None
++    parts = [p.strip() for p in address.split(",")]
++    if len(parts) >= 3:
++        return parts[0], parts[1], parts[-1]
++    return parts[0], None, parts[-1]
++
++
++def up(conn):
++    for column in ("street", "district", "city"):
++        conn.execute("ALTER TABLE customers ADD COLUMN %s TEXT" % column)
++    rows = conn.execute("SELECT id, address FROM customers").fetchall()
++    for cid, address in rows:
++        street, district, city = address_parts(address)
++        conn.execute("UPDATE customers SET street = ?, district = ?, city = ? WHERE id = ?",
++                     (street, district, city, cid))

@@ -1,0 +1,19 @@
+diff --git a/src/refunds.py b/src/refunds.py
+index 979e625..8653865 100644
+--- a/src/refunds.py
++++ b/src/refunds.py
+@@ -1,4 +1,5 @@
+ """Refunds of returned units (docs/money-rules.md)."""
++from src.money import half_up
+ from src.orders import find_line
+ 
+ 
+@@ -6,7 +7,7 @@ def refund(order, line_id, qty):
+     """Gives back the money for qty returned units of a line; records the refund and returns the cents."""
+     line = find_line(order, line_id)
+     net = line["unit_cents"] * qty
+-    cents = net + round(net * line["tax_pct"] / 100)
++    cents = net + half_up(net * line["tax_pct"], 100)
+     order["refunds"].append({"line_id": line_id, "qty": qty, "cents": cents})
+     return cents
+ 
