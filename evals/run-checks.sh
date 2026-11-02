@@ -13,7 +13,7 @@ ONLY=""
 if [ "$#" -gt 0 ]; then
   [ "$#" -eq 2 ] && [ "$1" = "--only" ] || { echo "usage: evals/run-checks.sh [--only dupmax|sed|gnu|soh|skipnote|shellcheck|skills|scenarios|modes|files|budgets]" >&2; exit 2; }
   case "$2" in
-    dupmax | sed | gnu | soh | shellcheck | skills | scenarios | modes | files | budgets) ONLY="$2" ;;
+    dupmax | sed | gnu | soh | skipnote | shellcheck | skills | scenarios | modes | files | budgets) ONLY="$2" ;;
     *) echo "run-checks: unknown section '$2' (want dupmax|sed|gnu|soh|skipnote|shellcheck|skills|scenarios|modes|files|budgets)" >&2; exit 2 ;;
   esac
 fi
