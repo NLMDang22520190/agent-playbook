@@ -664,4 +664,26 @@ C="$(mk_wb_copy)"; wb_table "$C"
 checks "$C" budgets
 assert_not_contains "R1 no stale entry in a table of existing files" "$OUT" "in evals/word-budgets but missing"
 
+# ---- v0.34.0 M13: a "note: ... skipped" print in tests/*.sh is refused (the skip must be t_skip N, which the README count adds up) ----
+# The fixture print is built from $NT so that this file itself holds no such print line. Full run (no --only): the lint's section is the
+# implementer's choice, so the cases read only the named file:line out of the output.
+NT="note:"
+skipnote_case() { # name LINE3 fail|pass   (LINE3 is line 3 of tests/zz-skipnote.sh)
+  local d f="tests/zz-skipnote.sh"
+  d="$(mk_min_copy)"; printf '#!/usr/bin/env bash\n# fixture\n%s\n' "$2" > "$d/$f"; chmod +x "$d/$f"
+  run_in "$d" bash evals/run-checks.sh; only_problems   # only FAIL/skip lines: an "ok" line may name the file (shellcheck, bash -n)
+  if [ "$3" = fail ]; then
+    assert_contains "M13 $1: a FAIL line names file:line" "$(printf '%s\n' "$OUT" | grep '^  FAIL')" "$f:3"
+  else
+    assert_not_contains "M13 $1: the file is not reported" "$OUT" "zz-skipnote"
+  fi
+}
+skipnote_case "echo of a note ... skipped" "echo \"$NT node not found: the merge tests are skipped\"" fail
+skipnote_case "guarded echo (the old pattern)" "[ \"\$HAVE_NODE\" = 1 ] || echo \"$NT node not found: tests are skipped (D12)\"" fail
+skipnote_case "printf of a note ... skipped" "printf '%s\\n' \"$NT R1-5 mapping tests skipped\"" fail
+skipnote_case "single-quoted echo" "echo '$NT cannot build a PATH: the no-node tests are skipped'" fail
+skipnote_case "t_skip line passes" "t_skip 4 \"merge tests (no node)\"" pass
+skipnote_case "a note that is not about skipping passes" "echo \"$NT symlinks unavailable here: tests run in --copy mode\"" pass
+skipnote_case "a comment mentioning the pattern passes" "# was: echo \"$NT x are skipped\"" pass
+
 t_summary
