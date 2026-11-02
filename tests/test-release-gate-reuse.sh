@@ -465,7 +465,7 @@ assert_eq "R4 ci: --pool-only afterwards keeps skipped: true (not null)" "true" 
 echo "Review 6: a baseline gate commit dated after the gate's clock (negative age) is not reused"
 rr "$RA" fut "FAKE_CHG=$CHG" "PB_GATE_NOW=$((T0 - 86400))" -- --harness claude
 assert_eq "R1 future baseline: E1 is not reused" "false" "$(gj "$GJ" '(j.reuse.items.find(i => i.item === "E1") || {}).reused')"
-assert_eq "R1 future baseline: the why names the age (age or future)" "true" "$(gj "$GJ" '/age|future/i.test((j.reuse.items.find(i => i.item === "E1") || {}).why || "")')"
+assert_eq "R1 future baseline: the why names the age (age or future)" "true" "$(gj "$GJ" 'new RegExp("age|future", "i").test((j.reuse.items.find(i => i.item === "E1") || {}).why || "")')"
 assert_eq "R1 future baseline: E1 runs both arms" "w=5 o=5" "$(rq E1)"
 
 t_summary
