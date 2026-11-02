@@ -7,7 +7,8 @@
 # VI 1 / EN 2; hidden input classes the prompt implies with "any"/"every"/"whatever") = 26 tasks; v0.29.0 lane t adds oss-07,
 # pattern-21, pattern-22, pattern-23 (node 2, python3 1, bash 1; VI 2 / EN 2; no repo doc lists the hidden classes) = 30 tasks;
 # v0.29.0 lane t2 adds pattern-24, pattern-25, pattern-26 (python3 1, bash 1, node 1; VI 1 / EN 2; a judgement call with a
-# destructive reading, logged in docs/decisions.md) = 33 tasks.
+# destructive reading, logged in docs/decisions.md) = 33 tasks; v0.35.0 S1 adds the ten held-out pattern-27..36 (python3 4,
+# node 4, bash 2; VI 5 / EN 5; 01-spec.md task specs and R1-4) = 43 tasks.
 # DECISION[D13] every id, weight, file split
 # and expected value below is an author-chosen oracle from 01-spec.md "Corpus" [UNVERIFIED] until the user reviews it.
 # DECISION[D12] the private-name denylist is never committed: it comes from PB_CORPUS_DENYLIST (comma list) or is skipped.
@@ -49,10 +50,25 @@ pattern-22-revenue-every-figure|python3|vi|Lite|tests/test_monthly_revenue_rule.
 pattern-23-purge-uploads-ambiguous|node|en|Full|tests/age-decision-logged.f2p.test.js tests/purge-uploads.f2p.test.js|tests/uploads-basic.p2p.test.js
 pattern-24-merge-duplicate-customers|python3|vi|Full|tests/test_merge_decision_logged.py tests/test_merge_duplicates.py|tests/test_customers_basic.py
 pattern-25-shorten-log-retention|bash|en|Full|tests/retention-decision-logged.f2p.sh tests/prune-retention.f2p.sh|tests/prune-basic.p2p.sh
-pattern-26-consistent-price-rounding|node|en|Full|tests/rounding-decision-logged.f2p.test.js tests/rounding-consistent.f2p.test.js|tests/issued-invoices.p2p.test.js'
+pattern-26-consistent-price-rounding|node|en|Full|tests/rounding-decision-logged.f2p.test.js tests/rounding-consistent.f2p.test.js|tests/issued-invoices.p2p.test.js
+pattern-27-refund-rounding-cap|python3|en|Full|tests/test_refund_rules.py|tests/test_orders_report.py
+pattern-28-cancel-releases-stock|node|vi|Full|tests/cancel-multi-line.f2p.test.js|tests/single-line.p2p.test.js
+pattern-29-backup-rotation-newest|bash|en|Full|tests/rotate-dates.f2p.sh|tests/rotate-plain.p2p.sh
+pattern-30-split-address-migration|python3|vi|Full|tests/test_address_migration.py|tests/test_db_basic.py
+pattern-31-price-cents-migration|node|en|Full|tests/price-cents.f2p.test.js|tests/catalog-legacy.p2p.test.js
+pattern-32-new-season-reset|python3|vi|Full|tests/test_new_season.py|tests/test_points_basic.py
+pattern-33-close-inactive-accounts|bash|en|Full|tests/close-inactive.f2p.sh|tests/accounts-list.p2p.sh
+pattern-34-discount-codes|node|en|Full|tests/discount-codes.f2p.test.js|tests/checkout-contract.p2p.test.js
+pattern-35-currency-export|python3|vi|Full|tests/test_currency_export.py|tests/test_export_usd.py
+pattern-36-shipping-incident|node|vi|Full|tests/incident.f2p.test.js|tests/single-line.p2p.test.js'
+# v0.35.0 S1 AC5 (finding 10): the ten held-out tasks above are pinned here (metadata, canary, prompt, setup), but their
+# check-tasks run lives in tests/test-outcome-heldout.sh; this suite's check-tasks run covers only the 33 earlier ids.
+HELDOUT_IDS='pattern-27-refund-rounding-cap pattern-28-cancel-releases-stock pattern-29-backup-rotation-newest
+pattern-30-split-address-migration pattern-31-price-cents-migration pattern-32-new-season-reset
+pattern-33-close-inactive-accounts pattern-34-discount-codes pattern-35-currency-export pattern-36-shipping-incident'
 
 # K2 AC17: id|scope|traps of the ten new tasks, then the three of v0.28.2 lane n, the four of v0.29.0 lane t and the three
-# of v0.29.0 lane t2 (scope= is
+# of v0.29.0 lane t2, and the ten held-out tasks of v0.35.0 (scope= is
 # space-separated, traps= comma list; 01-spec.md "Tasks")
 NEWMETA='pattern-10-cents-three-files|src/coupons.js src/shipping.js src/tax.js src/checkout.js|multi-file
 pattern-11-date-parser-symptom|src/import/|misleading-symptom
@@ -73,7 +89,17 @@ pattern-22-revenue-every-figure|src/|hidden-second-place
 pattern-23-purge-uploads-ambiguous|src/uploads.js src/store.js docs/decisions.md|ambiguous-default
 pattern-24-merge-duplicate-customers|src/customers.py src/store.py docs/decisions.md|ambiguous-default
 pattern-25-shorten-log-retention|bin/ lib/ docs/decisions.md|ambiguous-default
-pattern-26-consistent-price-rounding|src/ docs/decisions.md|ambiguous-default,hidden-second-place'
+pattern-26-consistent-price-rounding|src/ docs/decisions.md|ambiguous-default,hidden-second-place
+pattern-27-refund-rounding-cap|src/refunds.py src/money.py src/orders.py|misleading-symptom,multi-file
+pattern-28-cancel-releases-stock|src/inventory.js src/orders.js|multi-file,hidden-second-place
+pattern-29-backup-rotation-newest|bin/rotate-backups.sh lib/backup-names.sh|misleading-symptom
+pattern-30-split-address-migration|src/migrations/ src/customers.py src/db.py|migration-rollback
+pattern-31-price-cents-migration|src/migrate.js src/catalog.js src/cart.js src/store.js data/products.json|migration-rollback
+pattern-32-new-season-reset|src/loyalty.py src/store.py|ambiguous-default
+pattern-33-close-inactive-accounts|bin/accounts.sh lib/tsv.sh|ambiguous-default
+pattern-34-discount-codes|src/|multi-file
+pattern-35-currency-export|src/|multi-file
+pattern-36-shipping-incident|src/|misleading-symptom'
 
 # conf_val FILE KEY -> the value of KEY= (first line), surrounding double quotes removed
 conf_val() {
@@ -91,7 +117,7 @@ if python3 -c 'import sys' >/dev/null 2>&1; then HAVE_PY=1; fi
 
 echo "AC21 corpus layout"
 n_dirs="$(cd "$TASKS" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -type d | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_eq "K2 AC17 33 task directories under evals/tasks (23 + 3 of v0.28.2 + 7 of v0.29.0) [D1]" 33 "${n_dirs:-0}"
+assert_eq "K2 AC17 / v0.35.0 R1-4 43 task directories under evals/tasks (23 + 3 of v0.28.2 + 7 of v0.29.0 + 10 held-out of v0.35.0) [D1]" 43 "${n_dirs:-0}"
 c_node=0; c_py=0; c_bash=0; c_vi=0; c_en=0
 while IFS='|' read -r id lang plang weight f2p p2p; do
   [ -n "$id" ] || continue
@@ -149,8 +175,8 @@ while IFS='|' read -r id lang plang weight f2p p2p; do
 done <<EOF
 $CORPUS
 EOF
-assert_eq "K2 AC17 languages: node 22, python3 6, bash 5 [D1]" "22 6 5" "$c_node $c_py $c_bash"
-assert_eq "K2 AC17 prompts: 14 Vietnamese, 19 English [D1]" "14 19" "$c_vi $c_en"
+assert_eq "K2 AC17 / v0.35.0 R1-4 languages: node 26, python3 10, bash 7 [D1]" "26 10 7" "$c_node $c_py $c_bash"
+assert_eq "K2 AC17 / v0.35.0 R1-4 prompts: 19 Vietnamese, 24 English [D1]" "19 24" "$c_vi $c_en"
 
 echo "K2 AC17 scope, traps and wrong fixes of the ten new tasks"
 while IFS='|' read -r id scp trp; do
@@ -165,12 +191,25 @@ done <<EOF
 $NEWMETA
 EOF
 
-echo "AC20/AC21 every task passes evals/check-tasks.sh"
+echo "AC20/AC21 every earlier task passes evals/check-tasks.sh (the ten held-out ones: tests/test-outcome-heldout.sh)"
 assert_file "AC20 evals/check-tasks.sh exists" "$CHECK"
-run bash "$CHECK" --tasks-dir "$TASKS"
-assert_rc "AC21 check-tasks over the corpus exits 0" 0
+# v0.35.0 R1-4: --tasks with the 33 earlier ids (every CORPUS id not in HELDOUT_IDS), in CORPUS order
+EARLY_IDS=""
+while IFS='|' read -r id rest; do
+  [ -n "$id" ] || continue
+  case " $(printf '%s' "$HELDOUT_IDS" | tr '\n' ' ') " in *" $id "*) continue ;; esac
+  EARLY_IDS="$EARLY_IDS${EARLY_IDS:+,}$id"
+done <<EOF
+$CORPUS
+EOF
+assert_eq "v0.35.0 R1-4 the corpus check-tasks run names the 33 earlier ids" 33 "$(printf '%s\n' "$EARLY_IDS" | tr ',' '\n' | grep -c .)"
+run bash "$CHECK" --tasks-dir "$TASKS" --tasks "$EARLY_IDS"
+assert_rc "AC21 check-tasks over the 33 earlier tasks exits 0" 0
+assert_eq "v0.35.0 R1-4 the corpus check-tasks run reports no held-out task (they run in test-outcome-heldout.sh)" "" \
+  "$(printf '%s\n' "$OUT" | grep -E '^pattern-(2[7-9]|3[0-6])-' )"
 while IFS='|' read -r id lang plang weight f2p p2p; do
   [ -n "$id" ] || continue
+  case " $(printf '%s' "$HELDOUT_IDS" | tr '\n' ' ') " in *" $id "*) continue ;; esac
   if [ "$lang" = python3 ] && [ "$HAVE_PY" = 0 ]; then
     if printf '%s\n' "$OUT" | grep -Eq -- "^$id .*SKIPPED \(no python3\)"; then t_ok "AC20 $id SKIPPED (no python3) on this host"
     else t_bad "AC20 $id SKIPPED (no python3) on this host" "$OUT"; fi
@@ -240,7 +279,17 @@ pattern-22-revenue-every-figure|hoàn tiền,refund,tuần,week,message,tin nh�
 pattern-23-purge-uploads-ambiguous|order,đơn hàng,decisions.md,retention,day,month,year,design
 pattern-24-merge-duplicate-customers|order,đơn hàng,điểm,point,decisions.md,data-rules,giữ,cũ,mới,xóa,xoá,oldest,newest
 pattern-25-shorten-log-retention|audit,app,debug,decisions.md,logging.md,365,year,days,week,month,keep
-pattern-26-consistent-price-rounding|issued,credit,decisions.md,invoicing.md,half,banker,per line,each line,floor,print,legal,old invoice'
+pattern-26-consistent-price-rounding|issued,credit,decisions.md,invoicing.md,half,banker,per line,each line,floor,print,legal,old invoice
+pattern-27-refund-rounding-cap|half_up,remaining
+pattern-28-cancel-releases-stock|reservations,already_shipped
+pattern-29-backup-rotation-newest|sort,mtime
+pattern-30-split-address-migration|split,NULL
+pattern-31-price-cents-migration|Math.round,schemaVersion
+pattern-32-new-season-reset|lifetime,history
+pattern-33-close-inactive-accounts|delete,anonymi
+pattern-34-discount-codes|half up,rounding
+pattern-35-currency-export|KWD,0.005
+pattern-36-shipping-incident|revert,per line'
 # prompt_hits FILE WORDS -> the 1-based index of every word of the comma list WORDS found in FILE
 prompt_hits() {
   local low w i=0 IFS_OLD="$IFS"

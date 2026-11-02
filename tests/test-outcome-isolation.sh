@@ -113,4 +113,50 @@ assert_eq "AC10 the hidden tests still pass (the FAIL comes from STRAY alone)" "
 ro --cmd "bash $SA/solve.sh" --tasks t-add
 assert_eq "AC10 a clean run: 'nothing written outside the workdir' = PASS" "PASS" "$(chk t-add.with.1 'nothing written outside the workdir')"
 
+echo "v0.35.0 AC6 the runner never puts the reference into the workdir (a real held-out task: pattern-27, one run)"
+# Characterization test: run-outcome.sh never copied solution.patch or testdata/ before this slice either; this pins it on
+# a real task of the corpus. The refsnoop stub records at its start, and prints nothing but the prelude's STUB-OUT/ERR:
+# the workdir's HEAD (prelude, $SR/<label>.head), `git status --porcelain`, every file named solution.patch or wrong-*.patch
+# under the workdir or the workroot, and every workdir/workroot file holding NEEDLE, one added line of the task's
+# solution.patch that neither setup.sh nor the setup tree holds. It does not fix the task: the run grades FAIL (exit 1).
+R27=pattern-27-refund-rounding-cap
+R27D="$PB_ROOT/evals/tasks/$R27"
+L27="$R27.with.1"
+NAC6=9
+if ! command -v git >/dev/null 2>&1; then
+  t_skip "$NAC6" "git is missing (setup.sh of $R27 builds a git repo)"
+else
+  NDIR="$(mk_tmp)"; FRESH="$(mk_tmp)/r"
+  bash "$R27D/setup.sh" "$FRESH" >/dev/null 2>&1
+  FRESH_HEAD="$(git -C "$FRESH" rev-parse HEAD 2>/dev/null)"
+  # NEEDLE: the first added line of solution.patch (at least 12 characters) found neither in setup.sh nor in the setup tree
+  NEEDLE=""
+  while IFS= read -r line; do
+    line="${line#+}"
+    [ "${#line}" -ge 12 ] || continue
+    grep -qF -- "$line" "$R27D/setup.sh" 2>/dev/null && continue
+    grep -rqF --exclude-dir=.git -- "$line" "$FRESH" 2>/dev/null && continue
+    NEEDLE="$line"; break
+  done <<EOF
+$(grep -E '^\+[^+]' "$R27D/solution.patch" 2>/dev/null)
+EOF
+  printf '%s\n' "$NEEDLE" > "$NDIR/needle"
+  if [ -n "$FRESH_HEAD" ] && [ -n "$NEEDLE" ]; then t_ok "AC6 fresh setup HEAD of $R27 and a line unique to its solution.patch"
+  else t_bad "AC6 fresh setup HEAD of $R27 and a line unique to its solution.patch" "HEAD [$FRESH_HEAD] needle [$NEEDLE]"; fi
+  mk_stub refsnoop 'wr="$(dirname "$wd")"; nf='"'$NDIR/needle'"'
+git status --porcelain > "$SR/$l.porcelain" 2>&1
+find "$wd" "$wr" \( -name solution.patch -o -name "wrong-*.patch" \) -print > "$SR/$l.refnames" 2>/dev/null
+grep -rlF -f "$nf" -- "$wd" "$wr" > "$SR/$l.refline" 2>/dev/null
+:'
+  ro --tasks-dir "$PB_ROOT/evals/tasks" --cmd "bash $SA/refsnoop.sh" --tasks "$R27" --repeat 1 --arm with
+  assert_rc "AC6 refsnoop does not fix $R27: the run grades FAIL (exit 1)" 1
+  assert_eq "AC6 $L27: the workdir HEAD at agent start is a fresh setup.sh HEAD" "$FRESH_HEAD" "$(rec_of "$SR/$L27.head")"
+  assert_eq "AC6 $L27: git status --porcelain is empty at agent start" "" "$(rec_of "$SR/$L27.porcelain")"
+  assert_eq "AC6 $L27: no file named solution.patch or wrong-*.patch under the workdir or the workroot" "" "$(rec_of "$SR/$L27.refnames")"
+  assert_eq "AC6 $L27: no workdir or workroot file holds a line unique to solution.patch" "" "$(rec_of "$SR/$L27.refline")"
+  assert_eq "AC6 $L27: 'hidden tests not seen by the agent' = PASS (the stub printed no canary)" "PASS" "$(chk "$L27" 'hidden tests not seen by the agent')"
+  assert_not_contains "AC6 $L27: its transcript holds no canary" "$(cat "$EV/$L27.log" 2>/dev/null)" "$CAN"
+  assert_contains "AC6 $L27: the transcript is the stub's (the stub really ran on the real task)" "$(cat "$EV/$L27.log" 2>/dev/null)" "STUB-OUT-$L27"
+fi
+
 t_summary
