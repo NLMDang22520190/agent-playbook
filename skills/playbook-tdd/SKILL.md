@@ -81,7 +81,7 @@ permissions, build or deploy settings), generated code that ships, "small" busin
 
 ## Slice size
 A slice is one cohesive group of behaviours, about 1 to 5 tests; no one-test slices or unrelated bundles.
-Split a slice when it touches more than one public surface (for example a CLI flag and a file format).
+Split a slice when it touches more than one public surface (e.g. a CLI flag and a file format).
 
 ## Preconditions
 - A clean tree or a known baseline (`git status`); dirty tree (snapshot, `--baseline`), concurrent tasks: `references/mechanics.md`.
@@ -127,7 +127,7 @@ For slice S:
 2. **GREEN (implementer).** Start a fresh implementer (`roles/implementer.md`, the spec slice, the RED sha). When it
    returns: `role-gate.sh check implementer --base $RED` must pass; `proof-run.sh --label green-S -- <test_cmd>` is all
    green apart from baseline failures; commit `feat(green): S - <behaviour>`.
-3. **Dispute.** If the implementer says a test is wrong, it stops and does not edit the test. Send the dispute to a
+3. **Dispute.** If the implementer says a test is wrong, it stops without editing it. Send the dispute to a
    **fresh tester**, which fixes the test or explains why it is right; at most 2 rounds, then ask the user. Never let the
    implementer resolve a dispute itself.
 4. **REFACTOR (optional, implementer).** Only on green, tests untouched (same gate, `--base $RED`), green again after.
@@ -141,8 +141,8 @@ reports and evidence logs; then run `role-gate.sh check reviewer --base <sha bef
 are dropped. Release speed rules: `references/release.md`.
 
 ### Phase 4: Close-out (orchestrator)
-- Fresh full run of test, lint and typecheck through `proof-run.sh` after the last change (sub-agents ran focused tests
-  only). If it fails, the work goes back into a new RED/GREEN round; do not report done.
+- Fresh full run of test, lint and typecheck through `proof-run.sh` after the last change.
+  If it fails, start a new RED/GREEN round; do not report done.
 - Log each role run with `cost.sh add`; the report's Cost section is `cost.sh summary` (`references/mechanics.md`).
 - `git diff --stat <base>..HEAD` must match the spec scope.
 - A user-visible change needs one real observation in this session (start it, then curl it, run the CLI or take a
@@ -155,7 +155,7 @@ are dropped. Release speed rules: `references/release.md`.
 - When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from the template with the models filled in, before `## Learnings proposed`.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
 - If a playbook rule, gate or script misfired, capture it with skill `playbook-feedback` before the final report, with
-  no need to ask: one line per misfire, with its evidence.
+  no need to ask: one line per misfire, with evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
 
 ## When the user says it is wrong
@@ -196,5 +196,5 @@ times out, the orchestrator never stops to ask; it continues at Lite in its own 
 After each phase the orchestrator updates `.agents/handoff/state.md`; on resume read it first. Detail: `references/mechanics.md`.
 
 ## Hand-off files (`.agents/handoff/`, git-ignored)
-`state.md` · `01-spec.md` · `01b-spec-review.md` · `decisions.md` · `02-tests-<slice>.md` · `03-impl-<slice>.md` · `05-review.md` · `06-final-report.md`
-· `evidence/*.log`. Templates are in `templates/`.
+`state.md`, `01-spec.md`, `01b-spec-review.md`, `decisions.md`, `02-tests-<slice>.md`, `03-impl-<slice>.md`, `05-review.md`, `06-final-report.md`,
+`evidence/*.log`. Templates are in `templates/`.
