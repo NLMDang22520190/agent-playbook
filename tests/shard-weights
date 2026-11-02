@@ -3,6 +3,7 @@
 # Measured in fewer than 3 runs (median of those): test-guard-restore-r12.sh (1), test-guard-restore-r9.sh (1), test-guard-restore-symlink.sh (1), test-guard-restore.sh (1), test-release-gate-confirm.sh (2).
 # Estimated (not measured): test-evals-variant.sh and test-evals-variant-b.sh share the measured 1146 s of the old test-evals-variant.sh (v0.34.0 split) in the ratio of their local run times (25 s : 45 s); replace with CI timings at the next refresh.
 # Estimated (not measured): test-evals-jobs.sh and test-outcome-jobs.sh (new in v0.34.0 slice C1: about 8 s locally, x8 plus the variant runs; 250 each).
+# Estimated (not measured): test-release-gate-par.sh (new in v0.34.0 slice B2: about 60 s locally with the bounded barriers and 4 s work waits; 150).
 test-release-tool.sh 975
 test-evals-grade6-b.sh 858
 test-evals-grade9b.sh 839
@@ -174,3 +175,4 @@ test-bsd-check.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-release-gate-par.sh 150
