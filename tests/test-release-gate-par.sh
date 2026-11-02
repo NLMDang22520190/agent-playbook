@@ -304,12 +304,15 @@ assert_eq "P1 TERM: neither runner is left running or finished its work" "gone|g
 assert_eq "P1 TERM: one install, one restore, the home as before, no lock" "1|1|$OLDVER|mine|nolock" "$(installs)|$(restores)|$(home_state)"
 assert_no_path "P1 TERM: no gate.json" "$GJ"
 assert_eq "P1 TERM: no temp dir left" "0" "$(leftovers)"
-# Probe: can INT be delivered to a background bash process here (not on Windows Git Bash: the process just runs on, exit 0)?
+# Probe: does INT reach a background bash that traps it while polling on a child (as the gate does)? Not so on Windows Git Bash.
 INT_OK=0
 if command -v perl >/dev/null 2>&1; then
-  ( exec perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' bash -c 'sleep 2 & wait; exit 0' ) >/dev/null 2>&1 &
-  _ipid=$!; sleep 0.5; kill -INT "$_ipid" 2>/dev/null; _irc=0; wait "$_ipid" || _irc=$?
-  [ "$_irc" -ge 128 ] && INT_OK=1
+  ( exec perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' bash -c "trap 'exit 130' INT; sleep 5 & _c=\$!; while kill -0 \$_c 2>/dev/null; do sleep 0.1; done; exit 0" ) >/dev/null 2>&1 &
+  _ipid=$!; sleep 0.5; kill -INT "$_ipid" 2>/dev/null; _ii=0
+  while kill -0 "$_ipid" 2>/dev/null && [ "$_ii" -lt 30 ]; do sleep 0.1; _ii=$((_ii + 1)); done
+  _irc=0; kill -KILL "$_ipid" 2>/dev/null
+  wait "$_ipid" || _irc=$?
+  [ "$_irc" = 130 ] && INT_OK=1
 fi
 if [ "$INT_OK" = 1 ]; then
   sigcase sigint INT
