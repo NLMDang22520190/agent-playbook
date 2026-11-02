@@ -38,9 +38,19 @@
 # version, harness, model, k, scenarios, tasks, out_dir, tree, dry_run, pool_only, commands, runner_rc, pooled, skipped
 # [{file, reason}], delta_rc, rows [{scenario, check, delta, lo, hi, verdict}] from the Newcombe table); the runners' output
 # then goes to DIR/<kind>-<stamp>.log.
-# Variant (v0.32.0): a real run with --harness makes a detached git worktree of HEAD under ${TMPDIR:-/tmp}, passes --variant DIR to both
-# runners (the "with" arm is that tree, so variant.sha in the results is HEAD) and removes it on every exit path (git worktree
-# remove --force + prune, also on a runner's 2 or 3 and on INT/TERM). --cmd never gets --variant (its runs have no variant and fail
+# Variant (v0.32.0, held since v0.34.0): a real run with --harness makes a detached git worktree of HEAD under ${TMPDIR:-/tmp}, installs it
+# ONCE into the harness home (evals/lib-harness.sh pbh_variant_begin: lock with the gate's pid, snapshot, install, verify), passes
+# --variant-held DIR to both runners and to the confirmation calls (the "with" arm is that tree, so variant.sha in the results is HEAD;
+# the runners never install or restore) and puts the snapshot back once, after the last runner (the confirmation included) and on every
+# exit path, then removes the worktree (git worktree remove --force + prune, also on a runner's 2 or 3 and on INT/TERM).
+# Parallel runs (v0.34.0): a real run starts the behaviour and the outcome runner at the same time (the confirmation calls too); the
+# gate polls their logs. Each runner's output goes to DIR/<kind>-<stamp>.log (kind behaviour, outcome, behaviour-confirm, outcome-confirm)
+# in every mode and, without --json, is also shown line by line prefixed "[behaviour] " or "[outcome] ". A runner's 2 or 3 stops the other
+# one (TERM) and the gate exits with that code, with no gate.json.
+# Fail fast (v0.34.0): a runner line "<item>.with.<k> FAIL <check>" whose check (without its " (detail: ...)" group) is a SAFETY_CHECKS key
+# of the item (or "*") stops both runners at once (TERM); gate.json then has verdict fail, the reason "safety floor: <item> <key>: FAIL in
+# <label> (fail fast: the runs were stopped)" and fail_fast {label, item, key} (null otherwise); the exit code is 1. No confirmation and
+# no pooling follow. --cmd never gets --variant (its runs have no variant and fail
 # the verdict). The environment passes through unchanged: PB_VARIANT_HOME selects the harness home the variant is installed into.
 # Verdict (one function, over the pooled files; a real run, --pool-only and --check all use it): pass needs (a) every pooled file has
 # a variant object with end_check "ok" and variant.sha = HEAD, and, for a claude or --cmd gate, "hooks": true in every pooled file
@@ -171,7 +181,7 @@ PASS=()
 [ "$CLEAN" = 0 ] || PASS+=(--clean-env)
 # build_args VARIANT_DIR -> B_ARGS and O_ARGS (--variant only with --harness)
 build_args() {
-  local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant "$1")
+  local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant-held "$1")
   case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac   # run-evals.sh --hooks: claude and --cmd only
   B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SCEN" --out "$OD/behaviour-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
   O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TASKS" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
@@ -179,7 +189,7 @@ build_args() {
 build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
 # conf_args VARIANT_DIR -> CB_ARGS and CO_ARGS: the confirmation calls (with arm only, K runs of the flagged items CSC and CTK)
 conf_args() {
-  local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant "$1")
+  local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant-held "$1")
   case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac
   CB_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$CSC" --out "$OD/behaviour-confirm-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
   CO_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$CTK" --out "$OD/outcome-confirm-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
@@ -213,7 +223,7 @@ EOJ
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
   PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
-  PG_CI="${CI_JSON:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
+  PG_CI="${CI_JSON:-}" PG_FFL="${FF_LABEL:-}" PG_FFI="${FF_ITEM:-}" PG_FFK="${FF_KEY:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
 const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
@@ -232,7 +242,10 @@ for (const l of e.PG_DOUT.split("\n")) {
 }
 const skipped = lines(e.PG_SKIPPED).map(l => { const i = l.lastIndexOf(" ("); return { file: l.slice(0, i), reason: l.slice(i + 2, -1) }; });
 const V = {};
-if (e.PG_DRY !== "1") {
+if (e.PG_DRY !== "1" && e.PG_FFL) {
+  Object.assign(V, { variant: null, full_set: null, min_graded: 0, baseline: null, verdict: "fail",
+    verdict_reasons: ["safety floor: " + e.PG_FFI + " " + e.PG_FFK + ": FAIL in " + e.PG_FFL + " (fail fast: the runs were stopped)"] });
+} else if (e.PG_DRY !== "1") {
   const bad = [], seen = {}, cnt = {}, why = [], hk = [], full = e.PG_MODE !== "base";
   const gset = new Set(e.PG_AUTO.split(/[ ,]+/).filter(Boolean));
   const hooksApply = full && (e.PG_H === "claude" || e.PG_H === "custom");
@@ -338,7 +351,8 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check: e.PG_CI ? JSON.parse(e.PG_CI) : null, rows }, null, 2) + "\n");
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check: e.PG_CI ? JSON.parse(e.PG_CI) : null,
+  fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
 ' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
 }
 
@@ -505,19 +519,41 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-B_RC=""; O_RC=""; VT=""; VDIR=""
-# cleanup: remove the variant worktree (idempotent); also on every exit and on INT/TERM
+B_RC=""; O_RC=""; VT=""; VDIR=""; VLIB=0; POOLED=""; SKIPPED=""; DOUT=""; DRC=""; FF_LABEL=""; FF_ITEM=""; FF_KEY=""
+RK=("" "" ""); RP=("" "" ""); RDONE=(1 1 1); RRC=("" "" ""); RLN=(0 0 0); RA1=(); RA2=()
+# stop_runners: TERM to every runner still running, then wait for it (KILL after 30 s)
+stop_runners() {
+  local s p i
+  for s in 1 2; do
+    p="${RP[$s]:-}"; [ -n "$p" ] && [ "${RDONE[$s]:-1}" = 0 ] && kill -TERM "$p" 2>/dev/null
+  done
+  for s in 1 2; do
+    p="${RP[$s]:-}"; { [ -n "$p" ] && [ "${RDONE[$s]:-1}" = 0 ]; } || continue
+    i=0; while kill -0 "$p" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
+    kill -0 "$p" 2>/dev/null && kill -KILL "$p" 2>/dev/null
+    wait "$p" 2>/dev/null
+    RDONE[$s]=1
+  done
+  return 0
+}
+# cleanup: stop the runners, remove the variant worktree (idempotent); also on every exit and on INT/TERM. The snapshot of the held variant
+# is put back first of all (after the runners); a restore that fails makes the exit code 3.
 cleanup() {
+  local rr=0
+  stop_runners
+  [ "$VLIB" = 0 ] || pbh_variant_finalize || rr=1
   [ -z "$VT" ] || {
     git -C "$ROOT" worktree remove --force "$VDIR" >/dev/null 2>&1
     git -C "$ROOT" worktree prune >/dev/null 2>&1
     rm -rf "$VT"; VT=""
   }
   [ -z "$BROOT" ] || { rm -rf "$BROOT"; BROOT=""; }
+  [ "$rr" = 0 ] || { printf 'error: the variant snapshot could not be restored (see above)\n' >&2; exit 3; }
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 # rewrite_paths: local absolute paths in DIR/*.json and *.md -> repo-relative or <home>/<tmp>/<variant> (POSIX and Windows forms)
 rewrite_paths() {
   local m="" p t
@@ -675,29 +711,101 @@ if [ "$POOL" = 0 ]; then
     esac
   done
   mkdir -p "$OD" || die 3 "cannot create $OD"
-  # run_one KIND ARGS... -> the runner's exit code in RC; 2 and 3 stop the gate (a confirmation's too, with a note about DIR)
-  run_one() {
-    local kind="$1" note=""; shift
-    case "$kind" in *-confirm) note="; $OD holds an incomplete confirmation: delete it or run the gate again" ;; esac
-    if [ "$JSON" = 1 ]; then (cd "$ROOT" && bash "$@") > "$OD/$kind-$STAMP.log" 2>&1; RC=$?
-    else printf '== %s: %s\n' "$kind" "$(show "$@")"; (cd "$ROOT" && bash "$@"); RC=$?; fi
-    case "$RC" in
-      0 | 1 | 4) ;;
-      2 | 3) die "$RC" "$kind runner exited $RC; the gate stops$note" ;;
-      *) die 3 "$kind runner exited $RC; the gate stops$note" ;;
+  # D6: the variant is installed once, here, and held until after the last runner (a --cmd gate has no variant)
+  if [ -n "$HARNESS" ]; then
+    . "$ROOT/evals/lib-harness.sh" || die 3 "cannot read evals/lib-harness.sh"
+    VLIB=1
+    VRC=0; pbh_variant_begin "$VDIR" "$(pbh_variant_home)" "$HARNESS" >&2 || VRC=$?
+    case "$VRC" in
+      0) ;;
+      2) die 2 "variant: another variant run holds the install lock in $(pbh_variant_home); the gate stops before any run" ;;
+      *) die 3 "variant: the install into $(pbh_variant_home) failed (exit $VRC); the gate stops before any run" ;;
     esac
+  fi
+  # ff_check LINE: 0 (and FF_*) when it is "<item>.with.<k> FAIL <check>" with a SAFETY_CHECKS key of the item (or "*")
+  ff_re='^([^ ]+)\.with\.([0-9]+) FAIL (.*)$'
+  ff_check() {
+    local l="${1%$'\r'}" item k rest key
+    [[ "$l" =~ $ff_re ]] || return 1
+    item="${BASH_REMATCH[1]}"; k="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"
+    key="${rest%% (detail: *}"
+    case "|$SAFETY_CHECKS|" in
+      *"|$item:$key|"* | *"|*:$key|"*) FF_LABEL="$item.with.$k"; FF_ITEM="$item"; FF_KEY="$key"; return 0 ;;
+    esac
+    return 1
   }
-  run_one behaviour "${B_ARGS[@]}"; B_RC="$RC"
-  run_one outcome "${O_ARGS[@]}"; O_RC="$RC"
-  # no cleanup here: the variant worktree and $BROOT stay until gate.json is written (the confirmation uses the worktree, jdoc the baseline)
+  # slot_read S FINAL: show (prefixed, without --json) and scan the lines the runner of slot S wrote since the last read
+  slot_read() {
+    local s="$1" f n chunk l
+    f="$OD/${RK[$s]}-$STAMP.log"
+    if [ "$2" = 1 ]; then n="$(awk 'END { print NR }' "$f" 2>/dev/null)"; else n="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"; fi
+    n="${n:-0}"
+    [ "$n" -gt "${RLN[$s]}" ] || return 0
+    chunk="$(sed -n "$((${RLN[$s]} + 1)),${n}p" "$f")"
+    RLN[$s]="$n"
+    while IFS= read -r l; do
+      [ "$JSON" = 1 ] || printf '[%s] %s\n' "${RK[$s]%-confirm}" "$l"
+      [ -n "$FF_LABEL" ] || ff_check "$l" || true
+    done <<EOF
+$chunk
+EOF
+  }
+  start_slot() {
+    local f="$OD/${RK[$1]}-$STAMP.log"
+    case "$1" in
+      1) ( cd "$ROOT" && exec bash "${RA1[@]}" ) > "$f" 2>&1 & ;;
+      2) ( cd "$ROOT" && exec bash "${RA2[@]}" ) > "$f" 2>&1 & ;;
+    esac
+    RP[$1]=$!
+    RDONE[$1]=0; RRC[$1]=""; RLN[$1]=0
+  }
+  # run_set: run the runners of slots 1 and 2 (RK kind, RA1/RA2 arguments; an empty RK is not run) at the same time. A runner's 2 or 3 stops
+  # the other and the gate; a safety FAIL line stops both (FF_LABEL set, return 0). The exit codes are left in RRC.
+  run_set() {
+    local s q any rc note
+    FF_LABEL=""; RRC=("" "" "")
+    for s in 1 2; do
+      [ -n "${RK[$s]}" ] || continue
+      [ "$JSON" = 1 ] || printf '== %s: %s\n' "${RK[$s]}" "$(if [ "$s" = 1 ]; then show "${RA1[@]}"; else show "${RA2[@]}"; fi)"
+    done
+    for s in 1 2; do [ -z "${RK[$s]}" ] || start_slot "$s"; done
+    while :; do
+      any=0
+      for s in 1 2; do
+        { [ -n "${RK[$s]}" ] && [ "${RDONE[$s]}" = 0 ]; } || continue
+        if kill -0 "${RP[$s]}" 2>/dev/null; then
+          slot_read "$s" 0; any=1
+        else
+          slot_read "$s" 1
+          rc=0; wait "${RP[$s]}" 2>/dev/null || rc=$?
+          RRC[$s]="$rc"; RDONE[$s]=1
+          note=""; case "${RK[$s]}" in *-confirm) note="; $OD holds an incomplete confirmation: delete it or run the gate again" ;; esac
+          case "$rc" in
+            0 | 1 | 4) ;;
+            2 | 3) stop_runners; die "$rc" "${RK[$s]} runner exited $rc; the gate stops$note" ;;
+            *) stop_runners; die 3 "${RK[$s]} runner exited $rc; the gate stops$note" ;;
+          esac
+        fi
+        [ -z "$FF_LABEL" ] || { stop_runners; for q in 1 2; do [ "${RDONE[$q]}" = 1 ] || RRC[$q]=""; done; return 0; }
+      done
+      [ "$any" = 1 ] || break
+      sleep 0.2
+    done
+    return 0
+  }
+  RK[1]=behaviour; RA1=("${B_ARGS[@]}"); RK[2]=outcome; RA2=("${O_ARGS[@]}")
+  run_set
+  B_RC="${RRC[1]}"; O_RC="${RRC[2]}"
+  # no cleanup here: the variant stays installed, and the worktree and $BROOT stay, until the confirmation is done (the confirmation
+  # uses them), jdoc reads the baseline
 fi
 
-do_pool
+[ -n "$FF_LABEL" ] || do_pool
 
 # Confirmation (R7-3, D12): real run only. The first verdict is computed only to find the flagged items; when rule (f) is the only
 # failing rule, every flagged item (all in the gate's scenario or task list) gets K more with-arm runs, once, and the verdict is
 # computed again over every file of DIR (final: no second confirmation). gate.json is written once, below.
-if [ "$POOL" = 0 ]; then
+if [ "$POOL" = 0 ] && [ -z "$FF_LABEL" ]; then
   FLAGS_FILE="$BROOT/flags"
   jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES" > /dev/null || exit 3
   FLAGS_FILE=""
@@ -716,8 +824,11 @@ if [ "$POOL" = 0 ]; then
     if [ "$CBAD" = 0 ] && { [ -n "$CSC" ] || [ -n "$CTK" ]; }; then
       conf_args "$VDIR"
       CB_RC=""; CO_RC=""; CB_SHOW=""; CO_SHOW=""
-      if [ -n "$CSC" ]; then CB_SHOW="$(show "${CB_ARGS[@]}")"; run_one behaviour-confirm "${CB_ARGS[@]}"; CB_RC="$RC"; fi
-      if [ -n "$CTK" ]; then CO_SHOW="$(show "${CO_ARGS[@]}")"; run_one outcome-confirm "${CO_ARGS[@]}"; CO_RC="$RC"; fi
+      RK=("" "" ""); RA1=(); RA2=()
+      if [ -n "$CSC" ]; then CB_SHOW="$(show "${CB_ARGS[@]}")"; RK[1]=behaviour-confirm; RA1=("${CB_ARGS[@]}"); fi
+      if [ -n "$CTK" ]; then CO_SHOW="$(show "${CO_ARGS[@]}")"; RK[2]=outcome-confirm; RA2=("${CO_ARGS[@]}"); fi
+      run_set
+      CB_RC="${RRC[1]}"; CO_RC="${RRC[2]}"
       PG_FL="$BROOT/flags" PG_CFO="$BROOT/confirm.json" PG_K="$K" PG_RB="$CB_RC" PG_RO="$CO_RC" node -e '
 const fs = require("fs"), e = process.env, num = s => s === "" ? null : Number(s);
 const ls = fs.readFileSync(e.PG_FL, "utf8").split("\n");
@@ -725,10 +836,12 @@ fs.writeFileSync(e.PG_CFO, JSON.stringify({ items: ls.filter(l => l[0] === "I").
   first_reasons: ls.filter(l => l[0] === "R").map(l => l.slice(1)), commands: process.argv.slice(1).filter(Boolean),
   runner_rc: { behaviour: num(e.PG_RB), outcome: num(e.PG_RO) } }) + "\n");' "$CB_SHOW" "$CO_SHOW" || exit 3
       CONF_FILE="$BROOT/confirm.json"
-      do_pool
+      [ -n "$FF_LABEL" ] || do_pool
     fi
   fi
 fi
+# D6: the last runner has ended: the one restore of the held variant (a failed restore stops the gate with 3)
+if [ "$VLIB" = 1 ]; then pbh_variant_finalize || die 3 "the variant snapshot could not be restored (see above)"; fi
 
 printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
 if [ "$POOL" != 0 ]; then
