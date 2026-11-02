@@ -109,6 +109,8 @@
 # checks are printed after the "<label> ERROR harness: ..." line and recorded in the run's JSON "checks" (a safety FAIL is then visible to
 # tools/release-gate.sh rule (g)). Nothing else changes: status "error", the md row "ERROR", the run is not in n or pass@1, the cost and
 # time means skip it, and the exit code is 4 (ERROR wins over a FAIL). A without-arm ERROR run is still not graded (no checks).
+# --print-hashes (v0.34, T4; tools/release-gate.sh): prints one line "<scenario> <scenario_sha> <grader_sha> <harness_sha>" per scenario of --scenarios, the
+# same hashes the runs record (one source), and exits 0: no run, no workroot, no --out file, no variant check.
 # Every run of the JSON also has scenario_sha, grader_sha and harness_sha (40 hex; evals/lib-harness.sh "Per-run hashes"): the git hash of
 # the scenario's block of evals/scenarios.md, of this script plus lib-harness.sh, and of "<harness> <CLI --version output>" ("cmd <COMMAND>"
 # for --cmd). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run of a --harness invocation.
@@ -186,7 +188,7 @@ keep_tree() {
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
 VARIANT=""; VARIANT_SET=0; VHELD=""; VHELD_SET=0; VARIANT_HELD=0; JOBS=1; JOBS_SET=0; JOBS_DIR=""
-MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0; PREFLIGHT=0
+MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0; PREFLIGHT=0; PRINTH=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
@@ -210,6 +212,7 @@ while [ $# -gt 0 ]; do
     --real-home) REAL_HOME=1 ;;
     --hooks)     HOOKS=1 ;;
     --preflight) PREFLIGHT=1 ;;
+    --print-hashes) PRINTH=1 ;;
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
     --variant-held) VHELD="$2"; VHELD_SET=1; shift ;;
     --jobs)      JOBS="$2"; JOBS_SET=1; shift ;;
@@ -278,14 +281,14 @@ if [ "$VHELD_SET" = 1 ]; then
   vwhy="$(pbh_variant_check "$VHELD")" || pb_die "--variant-held: ${vwhy#--variant: }" 2
   case "$VHELD" in /*) ;; *) VHELD="$PWD/$VHELD" ;; esac
   VARIANT="$VHELD"; VARIANT_SET=1; VARIANT_HELD=1
-  if [ "$PREFLIGHT" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
+  if [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
 elif [ "$VARIANT_SET" = 1 ]; then
   [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
   [ "$REAL_HOME" = 0 ] || pb_die "--variant cannot be used with --real-home (it installs the variant into the home the run uses)" 2
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
   case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
-elif [ "$PREFLIGHT" = 0 ]; then   # a --preflight prints nothing when the runner could start
+elif [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then   # a --preflight prints nothing when the runner could start
   pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file); LABELED: runs are named <E>.<arm>.<k>
@@ -331,6 +334,15 @@ command -v node >/dev/null 2>&1 || pb_die "node (>= 18) is required for the grad
 command -v git  >/dev/null 2>&1 || pb_die "git is required" 3
 if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no workdir, no --out file, the harness CLI is only looked up
   if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
+  exit 0
+fi
+# scenario_sha_of E -> the git hash of the block of E in scenarios.md ("## E<n> " heading line to the line before the next such heading)
+scenario_sha_of() {
+  awk -v h="## $1 " 'index($0, h) == 1 { p = 1; print; next } p && /^## E[0-9]+ / { exit } p { print }' "$EVALS/scenarios.md" | pbh_sha_stdin
+}
+if [ "$PRINTH" = 1 ]; then   # --print-hashes: "<scenario> <scenario_sha> <grader_sha> <harness_sha>" per scenario, the hashes the runs record; nothing runs
+  ph_g="$(pbh_grader_sha "$EVALS/run-evals.sh")"; ph_h="$(pbh_harness_sha "$LABEL" "$CMD")"
+  for e in $LIST; do printf '%s %s %s %s\n' "$e" "$(scenario_sha_of "$e")" "$ph_g" "$ph_h"; done
   exit 0
 fi
 
@@ -2383,10 +2395,6 @@ SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # the per-run hashes (decision D10; evals/lib-harness.sh): grader and harness once, the scenario's block per run
 GRADER_SHA="$(pbh_grader_sha "$EVALS/run-evals.sh")"
 HARNESS_SHA="$(pbh_harness_sha "$LABEL" "$CMD")"
-# scenario_sha_of E -> the git hash of the block of E in scenarios.md ("## E<n> " heading line to the line before the next such heading)
-scenario_sha_of() {
-  awk -v h="## $1 " 'index($0, h) == 1 { p = 1; print; next } p && /^## E[0-9]+ / { exit } p { print }' "$EVALS/scenarios.md" | pbh_sha_stdin
-}
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
 ' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }

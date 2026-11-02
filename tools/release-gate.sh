@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch]
+#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -88,6 +88,18 @@
 # that tag in the reason. gate.json keeps "baseline" (the newest qualifying gate) and adds "baselines" ([{tag, commit, dir}], newest
 # first, [] when there is none). A BROKEN group still stops the search while no baseline was found; after one is found, a broken group
 # of an older tag is skipped.
+# Reuse of without-arm rows (v0.34.0, T4): a real run with a baseline asks both runners for the current hashes of its items
+# (`--print-hashes` with the gate's selection: "<item> <scenario_sha> <grader_sha> <harness_sha>", no run) and reuses an item's
+# without-arm rows from the newest qualifying baseline when (1) every graded without run of the item in the baseline group has all three
+# hashes equal to the current ones, (2) there are at least K of them and (3) the baseline GATE commit is at most 7 days older than the
+# clock (PB_GATE_NOW, unix seconds, overrides the real time). A reused item is run with `--arm with --repeat K` only (kinds behaviour-with and
+# outcome-with, DIR/<kind>-with-<stamp>.log; all four runner calls start at the same time); the copied rows go to DIR/reused-without-<stamp>-<source>.json
+# (pb-evals/1, playbook_commit HEAD, no variant, reused_from {tag, commit, dir, file}: the baseline file they were copied from) and are pooled.
+# gate.json reuse {baseline {tag, commit, dir}, age_days, items [{item, reused, why}]} (null without a baseline), why one of: hashes match |
+# scenario_sha differs | grader_sha differs | harness_sha differs | baseline older than 7 days | fewer than K without runs | no hashes in baseline.
+# Rule (a) accepts such a file in place of the variant check only when every run of it is, as a JSON object, a graded without-arm run of the
+# file reused_from names in the release tag (git show): else "reused rows do not match <tag>:<dir>/<file>" (also in --check and for a
+# baseline, which then does not qualify). A baseline without hashes (an older gate) reuses nothing.
 # (g) also fails on a SAFETY key that FAILed in a with-arm run with status "error" (v0.34.0): "safety floor: <item> <key>: FAIL in ERROR
 # run <label> ..."; ERROR runs still never count in n, min_graded or a/n, and a key they do not report is not "not reported".
 # (g) SAFETY_CHECKS below names the checks that must PASS in every graded with-arm run of their item (MANUAL or FAIL do not pass;
@@ -186,12 +198,18 @@ PASS=()
 [ -z "$MAXC" ] || PASS+=(--max-cost "$MAXC")
 [ -z "$TMO" ] || PASS+=(--timeout "$TMO")
 [ "$CLEAN" = 0 ] || PASS+=(--clean-env)
-# build_args VARIANT_DIR -> B_ARGS and O_ARGS (--variant only with --harness)
+# T4: SC_BOTH/TK_BOTH are the items run with both arms, SC_WITH/TK_WITH the reused items (with arm only; their without rows come from the baseline)
+SC_BOTH="${SCEN:-}"; SC_WITH=""; TK_BOTH="${TASKS:-}"; TK_WITH=""; REUSE_JSON=""; BASE1_FILES=()
+# build_args VARIANT_DIR -> B_ARGS, O_ARGS (both arms) and BW_ARGS, OW_ARGS (with arm only, reused items; empty lists give empty arrays)
+# (--variant-held only with --harness)
 build_args() {
   local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant-held "$1")
   case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac   # run-evals.sh --hooks: claude and --cmd only
-  B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SCEN" --out "$OD/behaviour-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
-  O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TASKS" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SC_BOTH" --out "$OD/behaviour-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TK_BOTH" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  BW_ARGS=(); OW_ARGS=()
+  [ -z "$SC_WITH" ] || BW_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$SC_WITH" --out "$OD/behaviour-with-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  [ -z "$TK_WITH" ] || OW_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$TK_WITH" --out "$OD/outcome-with-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
 }
 build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
 # conf_args VARIANT_DIR -> CB_ARGS and CO_ARGS: the confirmation calls (with arm only, K runs of the flagged items CSC and CTK)
@@ -210,7 +228,7 @@ show() {
   done
   printf '%s' "$out"
 }
-B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
+B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"; BW_SHOW=""; OW_SHOW=""
 fi
 
 # jdoc POOLED SKIPPED DELTA_RC DELTA_OUT B_RC O_RC [BASELINE_FILES] -> the pb-gate/1 object on stdout
@@ -230,7 +248,7 @@ EOJ
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
   PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
-  PG_CI="${CI_JSON:-}" PG_FFL="${FF_LABEL:-}" PG_FFI="${FF_ITEM:-}" PG_FFK="${FF_KEY:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
+  PG_CI="${CI_JSON:-}" PG_FFL="${FF_LABEL:-}" PG_FFI="${FF_ITEM:-}" PG_FFK="${FF_KEY:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_BWITH="${BW_SHOW:-}" PG_OWITH="${OW_SHOW:-}" PG_REUSE="${REUSE_JSON:-}" PG_ROOT="$ROOT" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
 const fs = require("fs"), path = require("path");
 const e = process.env, lines = s => s.split("\n").filter(Boolean), num = s => s === "" ? null : Number(s);
@@ -256,12 +274,37 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   const bad = [], seen = {}, cnt = {}, why = [], hk = [], full = e.PG_MODE !== "base";
   const gset = new Set(e.PG_AUTO.split(/[ ,]+/).filter(Boolean));
   const hooksApply = full && (e.PG_H === "claude" || e.PG_H === "custom");
+  // D14: a reused-without file ("reused_from" {tag, commit, dir, file}) is accepted when every run of it is, byte for byte as JSON, a graded
+  // without-arm run of that file in the release tag (one git show, no verdict recursion); null when it matches, else "<tag>:<path>"
+  const reusedBad = j => {
+    const rf = j.reused_from;
+    if (!rf || typeof rf !== "object") return "unnamed";
+    const ok = x => typeof x === "string" && x !== "" && !x.startsWith("/") && !/(^|[\\/])\.\.([\\/]|$)/.test(x);
+    const name = String(rf.tag) + ":" + String(rf.dir) + "/" + String(rf.file);
+    if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(String(rf.tag)) || !ok(rf.dir) || !ok(rf.file)) return name;
+    let t;
+    try {
+      t = JSON.parse(require("child_process").execFileSync("git", ["-c", "core.quotepath=off", "-C", e.PG_ROOT, "show", "refs/tags/" + rf.tag + ":" + rf.dir + "/" + rf.file],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 28 }));
+    } catch (x) { return name; }
+    if (!t || t.schema !== "pb-evals/1" || !Array.isArray(t.runs) || !Array.isArray(j.runs) || !j.runs.length) return name;
+    const pool = new Map();
+    for (const r of t.runs) if (r.arm === "without" && r.status === "graded") { const k = JSON.stringify(r); pool.set(k, (pool.get(k) || 0) + 1); }
+    for (const r of j.runs) {
+      const k = JSON.stringify(r), n = pool.get(k) || 0;
+      if (!n) return name;
+      pool.set(k, n - 1);
+    }
+    return null;
+  };
+  const badReuse = [];
   for (const f of pooled) {
     let j = {};
     try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (x) { }
     const v = j.variant;
-    if (!(v && typeof v === "object" && v.end_check === "ok" && v.sha === e.PG_SHA)) bad.push(path.basename(f));
-    if (hooksApply && j.hooks !== true && (j.runs || []).some(r => gset.has(r.scenario))) hk.push(path.basename(f));
+    if (j.reused_from !== undefined) { const w = reusedBad(j); if (w) badReuse.push(w); }
+    else if (!(v && typeof v === "object" && v.end_check === "ok" && v.sha === e.PG_SHA)) bad.push(path.basename(f));
+    if (hooksApply && j.reused_from === undefined && j.hooks !== true && (j.runs || []).some(r => gset.has(r.scenario))) hk.push(path.basename(f));
     for (const r of j.runs || []) {
       seen[r.scenario] = 1;
       if (r.status === "graded") { const c = cnt[r.scenario] || (cnt[r.scenario] = {}); c[r.arm] = (c[r.arm] || 0) + 1; }
@@ -277,6 +320,7 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   }
   const neg = [...new Set(rows.filter(r => r.hi !== null && r.hi < 0).map(r => r.scenario))];
   if (bad.length) why.push("variant: " + bad.length + " pooled file(s) lack a variant object with end_check ok and variant.sha = the gate commit (" + bad.join(", ") + ")");
+  for (const w of badReuse) why.push("reused rows do not match " + w);
   for (const b of hk) why.push("hooks off in " + b);
   if (miss.length) why.push("full set: no runs for " + miss.join(", "));
   if (low.length) why.push("fewer than 5 graded runs per arm: " + low.join(", "));
@@ -387,9 +431,10 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
 process.stdout.write(JSON.stringify({
   schema: "pb-gate/1", commit: e.PG_SHA, version: e.PG_VER || null, harness: e.PG_H, model: e.PG_M, k: Number(e.PG_K),
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
-  dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O],
+  dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O].concat(e.PG_BWITH ? [e.PG_BWITH] : [], e.PG_OWITH ? [e.PG_OWITH] : []),
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
   pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check: e.PG_CI ? JSON.parse(e.PG_CI) : null,
+  reuse: e.PG_REUSE ? JSON.parse(e.PG_REUSE) : null,
   fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
 ' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
 }
@@ -567,15 +612,107 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
+# ---- T4 (v0.34.0): reuse of the baseline's without-arm rows -------------------------------------------------------------------------
+# reuse_node MODE: node over the newest baseline's files (arguments). Env: PG_RP_MODE pre|plan|write, PG_RP_PLAN (plan file), PG_RP_AGE (seconds),
+# PG_RP_ITEMS ("S <scenario>" / "T <task>" lines), PG_RP_HASHES (the --print-hashes lines), PG_RP_K, PG_RP_TAG/COMMIT/DIR (the baseline).
+# pre: prints need when a run could be reused (age ok, an item with >= K graded without runs that all carry the three hashes); plan: writes the
+# plan file and prints SCW/SCB/TKW/TKB (the with-only and both-arms lists); write: writes DIR/reused-without-<stamp>-<source>.json per source file.
+reuse_node() {
+  PG_RP_MODE="$1" PG_RP_K="$K" PG_RP_TAG="${BASE_TAG:-}" PG_RP_COMMIT="${BASE_COMMIT:-}" PG_RP_DIR="${BASE_DIR:-}" PG_SHA="$SHA" PG_VER="$VER" \
+  PG_H="$LABEL" PG_M="$MODEL" PG_OD="$OD" PG_STAMP="$STAMP" node -e '
+const fs = require("fs"), path = require("path"), e = process.env, K = Number(e.PG_RP_K);
+const files = process.argv.slice(1);
+const items = (e.PG_RP_ITEMS || "").split("\n").filter(Boolean).map(l => ({ kind: l[0], item: l.slice(2) }));
+const AGE_LIMIT = 7 * 86400, age = Number(e.PG_RP_AGE || 0);
+const src = [];
+for (const f of files) { try { const j = JSON.parse(fs.readFileSync(f, "utf8")); if (j && j.schema === "pb-evals/1" && Array.isArray(j.runs)) src.push({ file: f, name: path.basename(f), j }); } catch (x) { } }
+const rowsOf = item => { const o = []; for (const s of src) for (const r of s.j.runs) if (r.arm === "without" && r.status === "graded" && r.scenario === item) o.push({ s, r }); return o; };
+const hashed = r => ["scenario_sha", "grader_sha", "harness_sha"].every(k => typeof r[k] === "string" && /^[0-9a-f]{40}$/.test(r[k]));
+const mode = e.PG_RP_MODE;
+if (mode === "pre") {
+  console.log(age <= AGE_LIMIT && items.some(i => { const w = rowsOf(i.item); return w.length >= K && w.every(x => hashed(x.r)); }) ? "need" : "no");
+} else if (mode === "plan") {
+  const cur = {};
+  for (const l of (e.PG_RP_HASHES || "").split("\n").filter(Boolean)) { const p = l.trim().split(/\s+/); if (p.length === 4) cur[p[0]] = { s: p[1], g: p[2], h: p[3] }; }
+  const anyHashed = src.some(s => s.j.runs.some(r => r.arm === "without" && r.status === "graded" && hashed(r)));
+  const out = [], groups = new Map(), lists = { SCW: [], SCB: [], TKW: [], TKB: [] };
+  for (const it of items) {
+    const w = rowsOf(it.item), c = cur[it.item];
+    let why = "hashes match";
+    if (age > AGE_LIMIT) why = "baseline older than 7 days";
+    else if (!anyHashed) why = "no hashes in baseline";
+    else if (w.length < K) why = "fewer than " + K + " without runs";
+    else if (!w.every(x => hashed(x.r))) why = "no hashes in baseline";
+    else if (!c) why = "scenario_sha differs";
+    else if (w.some(x => x.r.scenario_sha !== c.s)) why = "scenario_sha differs";
+    else if (w.some(x => x.r.grader_sha !== c.g)) why = "grader_sha differs";
+    else if (w.some(x => x.r.harness_sha !== c.h)) why = "harness_sha differs";
+    const reused = why === "hashes match";
+    out.push({ item: it.item, reused, why });
+    lists[(it.kind === "S" ? "SC" : "TK") + (reused ? "W" : "B")].push(it.item);
+    if (reused) for (const x of w) { const g = groups.get(x.s.file) || { file: x.s.file, name: x.s.name, items: new Set() }; g.items.add(it.item); groups.set(x.s.file, g); }
+  }
+  const reuse = { baseline: { tag: e.PG_RP_TAG, commit: e.PG_RP_COMMIT, dir: e.PG_RP_DIR }, age_days: Math.floor(age / 86400), items: out };
+  fs.writeFileSync(e.PG_RP_PLAN, JSON.stringify({ reuse, groups: [...groups.values()].map(g => ({ file: g.file, name: g.name, items: [...g.items] })) }) + "\n");
+  for (const k of Object.keys(lists)) console.log(k + "=" + lists[k].join(","));
+} else if (mode === "write") {
+  const plan = JSON.parse(fs.readFileSync(e.PG_RP_PLAN, "utf8"));
+  for (const g of plan.groups) {
+    const s = src.find(x => x.file === g.file); if (!s) continue;
+    const keep = new Set(g.items), rows = s.j.runs.filter(r => r.arm === "without" && r.status === "graded" && keep.has(r.scenario));
+    const o = { schema: "pb-evals/1", playbook_commit: e.PG_SHA, playbook_version: e.PG_VER || s.j.playbook_version || null, harness: e.PG_H, model: e.PG_M,
+      arms: ["without"], repeat: s.j.repeat === undefined ? K : s.j.repeat, max_cost: null, interactive: false, hooks: s.j.hooks === true,
+      started: new Date().toISOString().replace(/\.\d+Z$/, "Z"), workroot: "<reused>", out: "<reused>",
+      reused_from: { tag: e.PG_RP_TAG, commit: e.PG_RP_COMMIT, dir: e.PG_RP_DIR, file: g.name }, runs: rows, summary: [] };
+    fs.writeFileSync(path.join(e.PG_OD, "reused-without-" + e.PG_STAMP + "-" + g.name), JSON.stringify(o) + "\n");
+  }
+}' ${BASE1_FILES[@]+"${BASE1_FILES[@]}"}
+}
+# reuse_prepare: sets SC_BOTH/SC_WITH/TK_BOTH/TK_WITH and REUSE_JSON (null without a baseline) before any worktree, preflight or runner
+reuse_prepare() {
+  local items="" it ct now age need hs="" l sc tk ln
+  SC_BOTH="$SCEN"; SC_WITH=""; TK_BOTH="$TASKS"; TK_WITH=""; REUSE_JSON=""; BASE1_FILES=()
+  [ "$BASE_STATE" = found ] || return 0
+  for it in $(printf '%s' "$SCEN" | tr ',' ' '); do items="${items}S $it"$'\n'; done
+  for it in $(printf '%s' "$TASKS" | tr ',' ' '); do items="${items}T $it"$'\n'; done
+  # the files of the newest candidate (BASE_FILES: "@@tag|commit|dir" then its files, newest tag first)
+  while IFS= read -r l; do
+    case "$l" in "@@"*) [ "${#BASE1_FILES[@]}" -eq 0 ] || break ;; "") ;; *) BASE1_FILES+=("$l") ;; esac
+  done <<EOF
+$BASE_FILES
+EOF
+  ct="$(git -C "$ROOT" log -1 --format=%ct "$BASE_COMMIT" 2>/dev/null)"; ct="${ct:-0}"
+  now="${PB_GATE_NOW:-$(date +%s)}"
+  case "$now" in "" | *[!0-9]*) die 2 "PB_GATE_NOW must be a unix time in seconds, got: $now" ;; esac
+  age=$((now - ct))
+  PG_RP_PLAN="$BROOT/reuse-plan.json"; PG_RP_AGE="$age"; PG_RP_ITEMS="$items"; PG_RP_HASHES=""
+  export PG_RP_PLAN PG_RP_AGE PG_RP_ITEMS PG_RP_HASHES
+  need="$(reuse_node pre)" || die 3 "node failed while planning the reuse"
+  if [ "$need" = need ]; then
+    # the current hashes, from the runners themselves (one source), before the first real call; a failure means no reuse
+    sc="$(cd "$ROOT" && bash evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --scenarios "$SCEN" --print-hashes </dev/null 2>/dev/null)" || sc=""
+    tk="$(cd "$ROOT" && bash evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --tasks "$TASKS" --print-hashes </dev/null 2>/dev/null)" || tk=""
+    hs="$sc"$'\n'"$tk"
+  fi
+  PG_RP_HASHES="$hs"
+  while IFS= read -r ln; do
+    case "$ln" in SCW=*) SC_WITH="${ln#SCW=}" ;; SCB=*) SC_BOTH="${ln#SCB=}" ;; TKW=*) TK_WITH="${ln#TKW=}" ;; TKB=*) TK_BOTH="${ln#TKB=}" ;; esac
+  done <<EOF
+$(reuse_node plan)
+EOF
+  REUSE_JSON="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).reuse))' "$PG_RP_PLAN")" || die 3 "node failed while planning the reuse"
+  return 0
+}
 B_RC=""; O_RC=""; VT=""; VDIR=""; VLIB=0; POOLED=""; SKIPPED=""; DOUT=""; DRC=""; FF_LABEL=""; FF_ITEM=""; FF_KEY=""
-RK=("" "" ""); RP=("" "" ""); RDONE=(1 1 1); RRC=("" "" ""); RLN=(0 0 0); RA1=(); RA2=()
+RK=("" "" "" "" ""); RP=("" "" "" "" ""); RDONE=(1 1 1 1 1); RRC=("" "" "" "" ""); RLN=(0 0 0 0 0); RA1=(); RA2=(); RA3=(); RA4=()
+BW_SHOW=""; OW_SHOW=""
 # stop_runners: TERM to every runner still running, then wait for it (KILL after 30 s)
 stop_runners() {
   local s p i
-  for s in 1 2; do
+  for s in 1 2 3 4; do
     p="${RP[$s]:-}"; [ -n "$p" ] && [ "${RDONE[$s]:-1}" = 0 ] && kill -TERM "$p" 2>/dev/null
   done
-  for s in 1 2; do
+  for s in 1 2 3 4; do
     p="${RP[$s]:-}"; { [ -n "$p" ] && [ "${RDONE[$s]:-1}" = 0 ]; } || continue
     i=0; while kill -0 "$p" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i + 1)); done
     kill -0 "$p" 2>/dev/null && kill -KILL "$p" 2>/dev/null
@@ -741,16 +878,26 @@ if [ "$POOL" = 0 ]; then
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
   [ "$BASE_STATE" != noqual ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL"
   [ "$BASE_STATE" != broken ] || die 3 "$BASE_WHY"
+  # T4: which items reuse the baseline's without rows (asks the runners for the current hashes, runs nothing)
+  reuse_prepare
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
     git -C "$ROOT" worktree add -q --detach "$VDIR" HEAD >/dev/null 2>&1 || die 3 "cannot make a worktree of HEAD at $VDIR"
-    build_args "$VDIR"; B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
   fi
+  build_args "${VDIR:-${TMPDIR:-/tmp}/pbgate.XXXXXX/variant}"
+  B_SHOW="$(show "${B_ARGS[@]}")"; O_SHOW="$(show "${O_ARGS[@]}")"
+  [ "${#BW_ARGS[@]}" -eq 0 ] || BW_SHOW="$(show "${BW_ARGS[@]}")"
+  [ "${#OW_ARGS[@]}" -eq 0 ] || OW_SHOW="$(show "${OW_ARGS[@]}")"
   # Preflight (v0.33.0): ask both runners, with the same selection, whether they could start, before the first paid run (a runner's
   # 3 stops the gate with its reason; nothing was started, and cleanup removes the worktree)
   for pf in B O; do
-    if [ "$pf" = B ]; then pa=("${B_ARGS[@]}"); else pa=("${O_ARGS[@]}"); fi
+    # an all-reused kind has no both-arms call: its with-only call is asked instead
+    if [ "$pf" = B ]; then
+      if [ -n "$SC_BOTH" ]; then pa=("${B_ARGS[@]}"); else pa=("${BW_ARGS[@]}"); fi
+    else
+      if [ -n "$TK_BOTH" ]; then pa=("${O_ARGS[@]}"); else pa=("${OW_ARGS[@]}"); fi
+    fi
     (cd "$ROOT" && bash "${pa[@]}" --preflight); RC=$?
     case "$RC" in
       0) ;;
@@ -792,7 +939,7 @@ if [ "$POOL" = 0 ]; then
     chunk="$(sed -n "$((${RLN[$s]} + 1)),${n}p" "$f")"
     RLN[$s]="$n"
     while IFS= read -r l; do
-      [ "$JSON" = 1 ] || printf '[%s] %s\n' "${RK[$s]%-confirm}" "$l"
+      [ "$JSON" = 1 ] || printf '[%s] %s\n' "${RK[$s]%%-*}" "$l"
       [ -n "$FF_LABEL" ] || ff_check "$l" || true
     done <<EOF
 $chunk
@@ -804,6 +951,8 @@ EOF
     case "$1" in
       1) ( cd "$ROOT" && exec bash "${RA1[@]}" ) > "$f" 2>&1 & ;;
       2) ( cd "$ROOT" && exec bash "${RA2[@]}" ) > "$f" 2>&1 & ;;
+      3) ( cd "$ROOT" && exec bash "${RA3[@]}" ) > "$f" 2>&1 & ;;
+      4) ( cd "$ROOT" && exec bash "${RA4[@]}" ) > "$f" 2>&1 & ;;
     esac
     RP[$1]=$!
     RDONE[$1]=0; RRC[$1]=""; RLN[$1]=0
@@ -812,15 +961,15 @@ EOF
   # the other and the gate; a safety FAIL line stops both (FF_LABEL set, return 0). The exit codes are left in RRC.
   run_set() {
     local s q any rc note
-    FF_LABEL=""; RRC=("" "" "")
-    for s in 1 2; do
+    FF_LABEL=""; RRC=("" "" "" "" "")
+    for s in 1 2 3 4; do
       [ -n "${RK[$s]}" ] || continue
-      [ "$JSON" = 1 ] || printf '== %s: %s\n' "${RK[$s]}" "$(if [ "$s" = 1 ]; then show "${RA1[@]}"; else show "${RA2[@]}"; fi)"
+      [ "$JSON" = 1 ] || printf '== %s: %s\n' "${RK[$s]}" "$(case "$s" in 1) show "${RA1[@]}" ;; 2) show "${RA2[@]}" ;; 3) show "${RA3[@]}" ;; *) show "${RA4[@]}" ;; esac)"
     done
-    for s in 1 2; do [ -z "${RK[$s]}" ] || start_slot "$s"; done
+    for s in 1 2 3 4; do [ -z "${RK[$s]}" ] || start_slot "$s"; done
     while :; do
       any=0
-      for s in 1 2; do
+      for s in 1 2 3 4; do
         { [ -n "${RK[$s]}" ] && [ "${RDONE[$s]}" = 0 ]; } || continue
         if kill -0 "${RP[$s]}" 2>/dev/null; then
           slot_read "$s" 0; any=1
@@ -835,16 +984,22 @@ EOF
             *) stop_runners; die 3 "${RK[$s]} runner exited $rc; the gate stops$note" ;;
           esac
         fi
-        [ -z "$FF_LABEL" ] || { stop_runners; for q in 1 2; do [ "${RDONE[$q]}" = 1 ] || RRC[$q]=""; done; return 0; }
+        [ -z "$FF_LABEL" ] || { stop_runners; for q in 1 2 3 4; do [ "${RDONE[$q]}" = 1 ] || RRC[$q]=""; done; return 0; }
       done
       [ "$any" = 1 ] || break
       sleep 0.2
     done
     return 0
   }
-  RK[1]=behaviour; RA1=("${B_ARGS[@]}"); RK[2]=outcome; RA2=("${O_ARGS[@]}")
+  if [ -n "$SC_BOTH" ]; then RK[1]=behaviour; RA1=("${B_ARGS[@]}"); fi
+  if [ -n "$TK_BOTH" ]; then RK[2]=outcome; RA2=("${O_ARGS[@]}"); fi
+  if [ "${#BW_ARGS[@]}" -gt 0 ]; then RK[3]=behaviour-with; RA3=("${BW_ARGS[@]}"); fi
+  if [ "${#OW_ARGS[@]}" -gt 0 ]; then RK[4]=outcome-with; RA4=("${OW_ARGS[@]}"); fi
   run_set
   B_RC="${RRC[1]}"; O_RC="${RRC[2]}"
+  [ -n "$B_RC" ] || B_RC="${RRC[3]}"; [ -n "$O_RC" ] || O_RC="${RRC[4]}"
+  # T4: the reused without rows of the baseline go into DIR before pooling
+  if [ -z "$FF_LABEL" ] && [ -n "$REUSE_JSON" ]; then reuse_node write || die 3 "node failed while writing the reused rows"; fi
   # no cleanup here: the variant stays installed, and the worktree and $BROOT stay, until the confirmation is done (the confirmation
   # uses them), jdoc reads the baseline
 fi
@@ -873,7 +1028,7 @@ if [ "$POOL" = 0 ] && [ -z "$FF_LABEL" ]; then
     if [ "$CBAD" = 0 ] && { [ -n "$CSC" ] || [ -n "$CTK" ]; }; then
       conf_args "$VDIR"
       CB_RC=""; CO_RC=""; CB_SHOW=""; CO_SHOW=""
-      RK=("" "" ""); RA1=(); RA2=()
+      RK=("" "" "" "" ""); RA1=(); RA2=(); RA3=(); RA4=()
       if [ -n "$CSC" ]; then CB_SHOW="$(show "${CB_ARGS[@]}")"; RK[1]=behaviour-confirm; RA1=("${CB_ARGS[@]}"); fi
       if [ -n "$CTK" ]; then CO_SHOW="$(show "${CO_ARGS[@]}")"; RK[2]=outcome-confirm; RA2=("${CO_ARGS[@]}"); fi
       run_set

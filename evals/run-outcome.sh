@@ -57,6 +57,8 @@
 # ERROR runs (v0.34, decision D8): a WITH-arm run whose adapter failed (ERROR) still records the check "nothing written outside the
 # workdir" (PASS or FAIL, printed after the "<label> ERROR harness: ..." line, in the run's JSON "checks"); no hidden file is copied or run
 # and there is no "hidden tests" check. Status "error", the md row, n and the exit code 4 stay as they were. A without-arm ERROR run has no checks.
+# --print-hashes (v0.34, T4; tools/release-gate.sh): prints one line "<task> <scenario_sha> <grader_sha> <harness_sha>" per task of --tasks, the same
+# hashes the runs record (one source), and exits 0: no run, no workroot, no --out file, no variant check.
 # Every run of the JSON also has scenario_sha (the hash of the task directory tree: sorted file paths and their blob hashes), grader_sha
 # (this script plus lib-harness.sh) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
 # (evals/lib-harness.sh "Per-run hashes"). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run.
@@ -135,7 +137,7 @@ set_traps
 
 HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0; CLEAN_ENV=0
 VARIANT=""; VARIANT_SET=0; VHELD=""; VHELD_SET=0; VARIANT_HELD=0; JOBS=1; JOBS_SET=0; JOBS_DIR=""
-MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0
+MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0; PRINTH=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any run replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
@@ -161,6 +163,7 @@ while [ $# -gt 0 ]; do
     --interactive) INTERACTIVE=1 ;;
     --clean-env) CLEAN_ENV=1 ;;
     --preflight) PREFLIGHT=1 ;;
+    --print-hashes) PRINTH=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -210,13 +213,13 @@ if [ "$VHELD_SET" = 1 ]; then
   vwhy="$(pbh_variant_check "$VHELD")" || pb_die "--variant-held: ${vwhy#--variant: }" 2
   case "$VHELD" in /*) ;; *) VHELD="$PWD/$VHELD" ;; esac
   VARIANT="$VHELD"; VARIANT_SET=1; VARIANT_HELD=1
-  if [ "$PREFLIGHT" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
+  if [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
 elif [ "$VARIANT_SET" = 1 ]; then
   [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
   case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
-elif [ "$PREFLIGHT" = 0 ]; then   # a --preflight prints nothing when the runner could start
+elif [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then   # a --preflight prints nothing when the runner could start
   pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file, the prompt note is arm-neutral)
@@ -284,6 +287,11 @@ command -v git  >/dev/null 2>&1 || pb_die "git is required" 3
 if [ "$NEED_PY" = 1 ] && ! python3 -c 'import sys' >/dev/null 2>&1; then pb_die "python3 is required by a selected task (python3 -c 'import sys' failed)" 3; fi
 if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no workdir, no --out file, the harness CLI is only looked up
   if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
+  exit 0
+fi
+if [ "$PRINTH" = 1 ]; then   # --print-hashes: "<task> <scenario_sha> <grader_sha> <harness_sha>" per task, the hashes the runs record; nothing runs
+  ph_g="$(pbh_grader_sha "$EVALS/run-outcome.sh")"; ph_h="$(pbh_harness_sha "$LABEL" "$CMD")"
+  for id in $IDS; do printf '%s %s %s %s\n' "$id" "$(pbh_tree_sha "$TASKS_DIR/$id")" "$ph_g" "$ph_h"; done
   exit 0
 fi
 USE_TIMEOUT=0

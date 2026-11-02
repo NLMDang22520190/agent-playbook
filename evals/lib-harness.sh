@@ -797,10 +797,15 @@ pbh_harness_sha() {
   else printf '%s %s' "$1" "$(pbh_cli_version "$1")" | pbh_sha_stdin; fi
 }
 pbh_tree_sha() {
-  local files
-  files="$(cd "$1" && find . -type f | LC_ALL=C sort)"
-  { printf '%s\n' "$files"; ( cd "$1" && printf '%s\n' "$files" | git hash-object --stdin-paths ); } | pbh_sha_stdin
+  local files base blobs
+  base="$(cd "$1" && pwd)" || { pbh_tree_sha_fail; return; }
+  files="$(cd "$1" && find . -type f | LC_ALL=C sort)" || { pbh_tree_sha_fail; return; }
+  # absolute paths: git resolves a ./relative path of --stdin-paths against the top of an enclosing repository, not the cwd, which hashed no contents
+  blobs="$(printf '%s\n' "$files" | awk -v b="$base" '{ print b substr($0, 2) }' | git hash-object --stdin-paths 2>/dev/null)" || { pbh_tree_sha_fail; return; }
+  { printf '%s\n' "$files"; printf '%s\n' "$blobs"; } | pbh_sha_stdin
 }
+# pbh_tree_sha_fail: a hashing error gives a hash that never equals another (a random one), so nothing is ever reused or matched on it
+pbh_tree_sha_fail() { printf 'tree-hash-error %s %s %s %s\n' "$$" "${RANDOM:-0}" "$(date +%s 2>/dev/null)" "$SECONDS" | pbh_sha_stdin; }
 
 # pbh_variant_held DIR H -> see the header: the --variant-held check of a runner whose outer process holds the lock and the install
 pbh_variant_held() {
