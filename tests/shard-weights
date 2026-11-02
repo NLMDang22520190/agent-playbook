@@ -5,6 +5,7 @@
 # Estimated (not measured): test-evals-jobs.sh and test-outcome-jobs.sh (new in v0.34.0 slice C1: about 8 s locally, x8 plus the variant runs; 250 each).
 # Estimated (not measured): test-release-gate-par.sh (new in v0.34.0 slice B2: about 60 s locally with the bounded barriers and 4 s work waits; 150).
 # Estimated (not measured): test-evals-c2.sh (new in v0.34.0 slice C2; 300).
+# Estimated (not measured): test-release-gate-reuse.sh (new in v0.34.0 slice B4; about 90 s locally; 200).
 test-release-tool.sh 975
 test-evals-grade6-b.sh 858
 test-evals-grade9b.sh 839
@@ -178,3 +179,4 @@ test-bsd-check.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-release-gate-reuse.sh 200
