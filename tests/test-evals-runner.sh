@@ -285,18 +285,24 @@ echo "AC2 harness errors: scenario is ERROR, not graded, exit 4"
 HE="$(mk_tmp)"
 printf '#!/usr/bin/env bash\necho "bash: opencode: command not found" >&2\nexit 127\n' > "$HE/notfound.sh"
 printf '#!/usr/bin/env bash\necho "> build"\necho "Error: invalid x-api-key"\nexit 0\n' > "$HE/authfail.sh"
+# D8 (M5): a with-arm ERROR run is still graded, its checks are printed and recorded; what stays: it is "error" in the JSON, never a graded run,
+# never counted in n, and its md row is ERROR. dead_agent_not_a_pass FILE -> 0 when no run of the json is graded and the summary counts nothing
+dead_agent_not_a_pass() { node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const r=j.runs||[];
+  process.exit(r.length>0&&r.every(x=>x.status==="error")&&!(j.summary||[]).some(e=>e.n>0)?0:1)' "$1" 2>/dev/null; }
 W30="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W30" --out "$W30/results.md"
 assert_rc "AC2.3 adapter exit 127 -> runner exit 4" 4
 assert_contains "AC2.1 E8 ERROR line names the harness failure" "$OUT" "E8 ERROR harness"
-assert_eq "AC2.1 no E8 PASS line when the adapter failed (the old false PASS)" "0" "$(count_lines E8 PASS)"
-assert_eq "AC2.1 no E8 FAIL line either" "0" "$(count_lines E8 FAIL)"
+# D8: the E8 check lines (PASS here: the dead agent changed nothing) are now printed after the ERROR line, but the dead agent must never count as a pass
+if dead_agent_not_a_pass "$W30/results.json"; then t_ok "AC2.1 D8 a dead adapter is not a pass: status error, no graded run, nothing counted in n"; else t_bad "AC2.1 D8 a dead adapter is not a pass: status error, no graded run, nothing counted in n"; fi
+assert_eq "AC2.1 D8 the md summary row of E8 is ERROR, not a pass/total row" "| E8 | ERROR | - | - |" "$(grep '^| E8 ' "$W30/results.md")"
 assert_contains "AC2.3 results table shows ERROR" "$(cat "$W30/results.md" 2>/dev/null)" "ERROR"
 W31="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/authfail.sh" --scenarios E1 --workroot "$W31" --out "$W31/results.md"
 assert_rc "AC2.2 auth error in the transcript with exit 0 -> runner exit 4" 4
 assert_contains "AC2.2 E1 marked ERROR on 'invalid x-api-key'" "$OUT" "E1 ERROR harness"
-assert_eq "AC2.2 E1 not graded after an auth error" "0" "$(count_lines E1 FAIL)"
+# D8: E1's grader lines are printed after the ERROR line; the run stays an error (never graded, never counted)
+if dead_agent_not_a_pass "$W31/results.json"; then t_ok "AC2.2 D8 an auth error is not a pass or a graded run (status error, nothing counted)"; else t_bad "AC2.2 D8 an auth error is not a pass or a graded run (status error, nothing counted)"; fi
 W32="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $A/good.sh" --scenarios E1,E3 --workroot "$W32" --out "$W32/results.md"
 assert_rc "AC2.4 healthy adapter still exits 0" 0
@@ -311,14 +317,15 @@ W33="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/notlogged.sh" --scenarios E1 --workroot "$W33" --out "$W33/results.md"
 assert_rc "AC1.1 'Not logged in · Please run /login' with exit 0 -> runner exit 4" 4
 assert_contains "AC1.1 E1 marked ERROR harness on the login message" "$OUT" "E1 ERROR harness"
-assert_eq "AC1.1 E1 not graded (no FAIL line) after the login message" "0" "$(count_lines E1 FAIL)"
-assert_eq "AC1.1 E1 not graded (no PASS line) after the login message" "0" "$(count_lines E1 PASS)"
+# D8: the grader lines of E1 are printed after the ERROR line; the run is never graded or counted
+if dead_agent_not_a_pass "$W33/results.json"; then t_ok "AC1.1 D8 the login message run is an error, not graded, nothing counted in n"; else t_bad "AC1.1 D8 the login message run is an error, not graded, nothing counted in n"; fi
 assert_contains "AC1.1 results table shows ERROR for the login message" "$(cat "$W33/results.md" 2>/dev/null)" "ERROR"
 W34="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/authjson.sh" --scenarios E3 --workroot "$W34" --out "$W34/results.md"
 assert_rc "AC1.1 JSON \"error\":\"authentication_failed\" with exit 0 -> runner exit 4" 4
 assert_contains "AC1.1 E3 marked ERROR harness on authentication_failed" "$OUT" "E3 ERROR harness"
-assert_eq "AC1.1 E3 not graded after authentication_failed" "0" "$(count_lines E3 FAIL)"
+# D8: E3's grader lines are printed after the ERROR line; the run is never graded or counted
+if dead_agent_not_a_pass "$W34/results.json"; then t_ok "AC1.1 D8 authentication_failed run is an error, not graded, nothing counted in n"; else t_bad "AC1.1 D8 authentication_failed run is an error, not graded, nothing counted in n"; fi
 W35="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/notlogged-plain.sh" --scenarios E8 --workroot "$W35" --out "$W35/results.md"
 assert_rc "AC1.1 plain 'Not logged in' with exit 0 -> runner exit 4" 4

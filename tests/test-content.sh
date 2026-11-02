@@ -2507,4 +2507,24 @@ if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate te
 assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
 assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
 
+# --- v0.34.0 B1 G3: docs/development.md "Maintainer tools": the order is push the release commit, open the PR, wait until CI is green except
+# the Release gate step, then run the gate (old order: gate first, PR last). The numbered steps of the section are read line by line.
+MT_STEPS="$(awk '/^## Maintainer tools/ { f = 1; next } /^## / { f = 0 } f && /^[0-9]+\. / { print }' "$DEVDOC")"
+mt_idx() { printf '%s\n' "$MT_STEPS" | grep -niE -- "$1" | head -n 1 | cut -d: -f1; }
+MT_PUSH="$(mt_idx 'push')"; MT_PR="$(mt_idx 'open the PR|gh pr create')"; MT_WAIT="$(mt_idx '(CI|checks?)[^.]{0,120}green|green[^.]{0,120}(CI|checks?)')"
+MT_GATE="$(mt_idx 'tools/release-gate\.sh --harness')"; MT_SHIP="$(mt_idx 'tools/ship\.sh')"
+mt_before() { # NAME A B: both steps exist and A is the same step as B or an earlier one (a step may hold two of the actions)
+  if [ -n "$2" ] && [ -n "$3" ] && [ "$2" -le "$3" ]; then t_ok "$1"; else t_bad "$1" "step indexes: [$2] before [$3] (push=$MT_PUSH pr=$MT_PR wait=$MT_WAIT gate=$MT_GATE ship=$MT_SHIP)"; fi
+}
+mt_before 'G3 development.md Maintainer tools: the release commit is pushed before the PR is opened' "$MT_PUSH" "$MT_PR"
+mt_before 'G3 development.md Maintainer tools: the PR is opened before the gate is run' "$MT_PR" "$MT_GATE"
+mt_before 'G3 development.md Maintainer tools: a step waits for CI to be green before the gate is run' "$MT_WAIT" "$MT_GATE"
+mt_before 'G3 development.md Maintainer tools: the PR is opened before the step that waits for CI' "$MT_PR" "$MT_WAIT"
+mt_before 'G3 development.md Maintainer tools: the gate is run before tools/ship.sh' "$MT_GATE" "$MT_SHIP"
+if printf '%s\n' "$MT_STEPS" | sed -n "${MT_WAIT:-0}p" | grep -qiE 'except[^.]{0,60}Release gate|Release gate[^.]{0,60}(excepted|excluded|aside)|apart from[^.]{0,60}Release gate|other than[^.]{0,60}Release gate'; then
+  t_ok 'G3 development.md Maintainer tools: the waiting step says CI must be green except the Release gate step'
+else t_bad 'G3 development.md Maintainer tools: the waiting step says CI must be green except the Release gate step' "waiting step: [$(printf '%s\n' "$MT_STEPS" | sed -n "${MT_WAIT:-0}p" | cut -c1-200)]"; fi
+sec_flat_has 'G3 development.md Maintainer tools names --skip-ci-check (the override of the gate CI check, G2)' "$DEVDOC" '^## Maintainer tools' '--skip-ci-check'
+sec_flat_has 'G3 development.md Maintainer tools names --add-batch (a used out DIR is refused, M1)' "$DEVDOC" '^## Maintainer tools' '--add-batch'
+
 t_summary

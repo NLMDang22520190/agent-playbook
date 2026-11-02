@@ -88,7 +88,8 @@ ro --cmd "bash $SA/exit7.sh" --tasks t-add
 assert_rc "AC5 any ERROR -> exit 4" 4
 assert_eq "AC4 an output line '<label> ERROR ...'" "1" "$(printf '%s\n' "$OUT" | grep -c '^t-add\.with\.1 ERROR')"
 assert_eq "AC4 JSON status error" '"error"' "$(rfield t-add.with.1 status)"
-assert_eq "AC4 the ERROR run has no checks" "0" "$(jget "$JF" '(((j.runs||[]).find(r=>r.label==="t-add.with.1")||{}).checks||[1]).length')"
+# D8 (M5): a with-arm ERROR run records only the stray check; no hidden-test check (no hidden file is copied or run)
+assert_eq "AC4 D8 the ERROR run has no hidden-test checks (only the stray check)" "nothing written outside the workdir" "$(jget "$JF" '(((j.runs||[]).find(r=>r.label==="t-add.with.1")||{}).checks||[]).map(c=>c.name).join("|")')"
 assert_eq "AC4 no hidden test ran (nothing copied, not graded)" "" "$(leftovers "$GR")"
 assert_eq "AC4 no canary under the workroot" "" "$(grep -rl "$CAN:" "$WR" 2>/dev/null)"
 assert_eq "AC4/AC10 nothing is left in the runner's TMPDIR" "" "$(leftovers "$RT")"

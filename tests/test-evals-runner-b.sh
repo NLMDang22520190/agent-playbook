@@ -95,10 +95,11 @@ W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"; echo old > "$W/old-notes.txt"; mkdir 
 run bash "$RUNNER" --cmd "bash $A/idle.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
 assert_eq "AC2.1 entries that were already in the workroot are not strays" "PASS" "$(e_state E8 "$OUTCHK")"
 assert_rc "AC2.1 pre-existing workroot entries: exit 0" 0
-# a harness error is not graded, so it has no outside-the-workdir line either
+# D8 (M5): a with-arm harness error is still checked: its outside-the-workdir line is printed (PASS here) after the ERROR line; the run stays an error
 W="$(mk_tmp)"
 run bash "$RUNNER" --cmd "bash $HE/notfound.sh" --scenarios E8 --workroot "$W" --out "$W/results.md"
-assert_eq "AC2.1 an ERROR scenario gets no outside-the-workdir line" "0" "$(printf '%s\n' "$OUT" | grep -c "$OUTCHK")"
+assert_eq "AC2.1 D8 an ERROR scenario gets its outside-the-workdir line (PASS: nothing written)" "PASS" "$(e_state E8 "$OUTCHK")"
+assert_eq "AC2.1 D8 that run is still an error, never graded" "0" "$(grep -c '"status": "graded"' "$W/results.json")"
 
 # ---- v0.18.0 AC4.1: one transcript pass per scenario (evals/transcript.js) ----
 # node evals/transcript.js LOG prints these thirteen KEY=VALUE lines (one each, nothing else; exit 0; asked= since v0.24.13, prose_q= since v0.24.21, models= since v0.24.0, last):

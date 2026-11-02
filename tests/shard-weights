@@ -2,6 +2,10 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID (one run per file, --out), then take the median.
 # Measured in fewer than 3 runs (median of those): test-guard-restore-r12.sh (1), test-guard-restore-r9.sh (1), test-guard-restore-symlink.sh (1), test-guard-restore.sh (1), test-release-gate-confirm.sh (2).
 # Estimated (not measured): test-evals-variant.sh and test-evals-variant-b.sh share the measured 1146 s of the old test-evals-variant.sh (v0.34.0 split) in the ratio of their local run times (25 s : 45 s); replace with CI timings at the next refresh.
+# Estimated (not measured): test-evals-jobs.sh and test-outcome-jobs.sh (new in v0.34.0 slice C1: about 8 s locally, x8 plus the variant runs; 250 each).
+# Estimated (not measured): test-release-gate-par.sh (new in v0.34.0 slice B2: about 60 s locally with the bounded barriers and 4 s work waits; 150).
+# Estimated (not measured): test-evals-c2.sh (new in v0.34.0 slice C2; 300).
+# Estimated (not measured): test-release-gate-reuse.sh (new in v0.34.0 slice B4; about 90 s locally; 200).
 test-release-tool.sh 975
 test-evals-grade6-b.sh 858
 test-evals-grade9b.sh 839
@@ -68,6 +72,7 @@ test-role-gate-size-exclude.sh 313
 test-mutate.sh 312
 test-evals-grade2-e20-capture.sh 306
 test-guard-code-contract-r6.sh 303
+test-evals-c2.sh 300
 test-guard-pre.sh 299
 test-role-gate-b.sh 296
 test-evals-arms-b.sh 293
@@ -84,6 +89,8 @@ test-role-gate-commits.sh 270
 test-tdd-step-v.sh 262
 test-leak-check-push.sh 257
 test-role-model.sh 256
+test-evals-jobs.sh 250
+test-outcome-jobs.sh 250
 test-tdd-step-k.sh 248
 test-evals-grade11.sh 242
 test-tdd-step-g.sh 237
@@ -114,6 +121,7 @@ test-run-checks-gnu9.sh 159
 test-tdd-step-r.sh 159
 test-evals-hooks.sh 157
 test-release-gate-check.sh 151
+test-release-gate-par.sh 150
 test-update.sh 147
 test-role-gate-committed.sh 139
 test-tdd-step-j.sh 125
@@ -171,3 +179,4 @@ test-bsd-check.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-release-gate-reuse.sh 200
