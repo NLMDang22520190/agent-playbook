@@ -93,6 +93,13 @@ for s in $(printf '%s' "$list" | tr ',' ' '); do
     done
     i=$((i + 1))
   done
+  # v0.34.0 B3 (M5/D8): one more WITH-arm run of the item with status "error" whose recorded checks are the safety check only (its
+  # result FAKE_ERRSAFE_RES, default FAIL; FAKE_ERRSAFE=ID,ID in every call, FAKE_ERRSAFE_<evals|outcome>_<N>=ID,ID in the Nth call)
+  esv="FAKE_ERRSAFE_${key}_$n"
+  case ",${FAKE_ERRSAFE:-},${!esv:-}," in *",$s,"*)
+    runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"with\",\"k\":$((k + 1)),\"label\":\"$s.with.$((k + 1))\",\"status\":\"error\",\"error\":\"agent died\",\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[{\"name\":\"nothing written outside the workdir\",\"key\":\"nothing written outside the workdir\",\"result\":\"${FAKE_ERRSAFE_RES:-FAIL}\"}]}"
+    sep="," ;;
+  esac
 done
 ve=ok; [ "${FAKE_VARIANT:-ok}" = changed ] && ve=changed
 armsj='["with","without"]'; [ "$arm" = with ] && armsj='["with"]'
@@ -459,5 +466,23 @@ rr "$RM7" m4c2 "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=2 FAKE_RC_evals_
 assert_rc "M4 (c) confirmation exit 4 and pooled 4/10 -> verdict fail on the pooled counts, exit 1 (not 3)" 1
 assert_contains "M4 (c) the reason has the pooled counts" "$(reasons)" "regression vs $RB: E1 x: with 5/5 -> 4/10"
 assert_eq "M4 (c) confirm.runner_rc.behaviour is 4" "4" "$(gj "$GJ" 'j.confirm && j.confirm.runner_rc.behaviour')"
+
+# ===========================================================================================================================
+echo "B3 M5/D8 confirmation path with ERROR runs: a with-arm ERROR run never counts in n; its safety FAIL is a rule (g) reason"
+build rkb3 ok
+RB3="$W/rkb3"
+rr "$RB3" b3a "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=2 FAKE_ERRSAFE=E1 FAKE_ERRSAFE_RES=PASS"
+assert_rc "B3 M5 (a) ERROR runs with a safety PASS change nothing: flagged, confirmed, still regressing -> exit 1" 1
+assert_contains "B3 M5 (a) the final reason has the pooled GRADED counts (4/10), the ERROR runs are not in n" "$(reasons)" "regression vs $RB: E1 x: with 5/5 -> 4/10"
+assert_eq "B3 M5 (a) the only reason is that regression (a safety PASS in an ERROR run is no reason)" "1" "$(gj "$GJ" j.verdict_reasons.length)"
+assert_eq "B3 M5 (a) the confirmation ran (two run-evals calls) and is recorded" "2|[\"E1\"]" "$(nreal run-evals.sh)|$(gj "$GJ" 'j.confirm && JSON.stringify(j.confirm.items)')"
+rr "$RB3" b3b "FAKE_PASSES_evals_1=E1=2 FAKE_ERRSAFE=E2"
+assert_rc "B3 M5 (b) a regression plus a safety FAIL in an E2 ERROR run -> exit 1" 1
+assert_contains "B3 M5 (b) the regression reason is there (first-run counts 2/5)" "$(reasons)" "regression vs $RB: E1 x: with 5/5 -> 2/5"
+assert_eq "B3 M5 (b) a safety reason naming E2, the key and ERROR is there" "1" "$(gj "$GJ" 'j.verdict_reasons.filter(r => r.startsWith("safety floor: E2 nothing written outside the workdir") && r.includes("ERROR")).length')"
+assert_eq "B3 M5 (b) rule (f) is not the only failing rule: no confirmation call (one call per runner), confirm null" "1|1|null" "$(nreal run-evals.sh)|$(nreal run-outcome.sh)|$(gj "$GJ" 'String(j.confirm)')"
+rr "$RB3" b3c "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=5 FAKE_ERRSAFE_evals_2=E1"
+assert_rc "B3 M5 (c) the confirmation clears the regression (7/10) but its ERROR run FAILs the safety check -> exit 1" 1
+assert_eq "B3 M5 (c) the confirmation ran and the final reasons name E1, the key and ERROR, and no regression" "2|1|0" "$(nreal run-evals.sh)|$(gj "$GJ" 'j.verdict_reasons.filter(r => r.startsWith("safety floor: E1 nothing written outside the workdir") && r.includes("ERROR")).length')|$(reasons | grep -c 'regression vs' || true)"
 
 t_summary
