@@ -55,6 +55,16 @@ The blind spot: a role could still write outside its scope unseen. The scope clo
 
 A separate worktree gives the same isolation without that blind spot.
 
+## Delegating to the mechanical sub-agent
+
+The main agent may hand a step to the `mechanical` sub-agent (haiku under claude). Hand over only a fully specified, output-heavy step. Typical kinds are bulk or repeated edits across files, boilerplate from an exact spec, running a long command and summarising its log, and gathering path:line context.
+
+Small work gains nothing: one-line edits and single tool calls stay inline.
+
+Every delegated result is checked cheaply before building on it: `git diff --stat`, and the test or grep that proves it.
+
+Do it never for the tester, implementer or reviewer at Full, never for the spec reviewer, and never for ask or irreversible decisions.
+
 ## Honest limit
 
 The same model in fresh contexts still shares blind spots. A different reviewer model, the mutation spot-check, and the user's own review of the AC table reduce this but do not remove it.
