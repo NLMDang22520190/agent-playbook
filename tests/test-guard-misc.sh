@@ -85,6 +85,12 @@ grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'curl -u admin:s3cretpw ht
 expect_block "M10 premise: curl -u before a force push blocks" git-push-force
 assert_not_contains "M10 the curl -u password is not in the log" "$(cat "$ML")" "s3cretpw"
 assert_contains "M10 the rest of the command stays readable (curl -u)" "$(cat "$ML")" "https://example.invalid/api; git push --force origin main"
+# Review round 2: the attached form curl -uUSER:PW
+: > "$ML"
+grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'curl -uadmin:s3cretpw https://example.invalid/api; git push --force origin main')"
+expect_block "M10 premise: attached curl -u before a force push blocks" git-push-force
+assert_not_contains "M10 the attached curl -u password is not in the log" "$(cat "$ML")" "s3cretpw"
+assert_contains "M10 the rest of the command stays readable (attached curl -u)" "$(cat "$ML")" "https://example.invalid/api; git push --force origin main"
 # a multi-line command stays one log line (the log is one line per non-PASS decision)
 : > "$ML"
 grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$ML" -- "$(jbash 'git status

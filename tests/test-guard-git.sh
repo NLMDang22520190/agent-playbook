@@ -170,6 +170,12 @@ done
 for c in 'git checkout --conflict merge HEAD src/app.js' 'git checkout --conflict=merge HEAD src/app.js' 'git checkout --conflict merge -- src/app.js'; do
   gb "$c"; expect_block "M8 [finding 2] --conflict with a path stays a discard [$c]" git-discard
 done
+# Review round 2: --pathspec-from-file makes the checkout restore the listed files (git 2.43, throwaway repo: all three forms restore
+# the file; with `other` the branch is the source rev, without it the index). Path mode, so a discard.
+printf 'src/app.js\n' > "$R/pslist"
+for c in 'git checkout --pathspec-from-file pslist other' 'git checkout --pathspec-from-file=pslist other' 'git checkout --pathspec-from-file=pslist'; do
+  gb "$c"; expect_block "M8 [round 2] pathspec-from-file restores the listed files: a discard [$c]" git-discard
+done
 fresh
 printf 'tmp\n' > "$R/scratch.txt"
 gb 'git checkout HEAD src/app.js'; expect_pass "M8 only an untracked file: a tracked-only discard loses nothing"
