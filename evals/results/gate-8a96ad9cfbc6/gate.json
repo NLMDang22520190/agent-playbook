@@ -50,7 +50,11 @@
     "commit": "7424dd8e896857905d462a913087a3e895c52e7f",
     "dir": "evals/results/gate-7424dd8e8968"
   },
-  "verdict": "pass",
+  "verdict": "voided",
+  "voided": {
+    "reason": "This run was made on 8a96ad9 before the R7-R12 changes; the code changed afterwards, so v0.33.0 was gated again on 7f9cdd8 (gate-7f9cdd89064a) and shipped there, and this run must never serve as a baseline.",
+    "date": "2026-11-02"
+  },
   "verdict_reasons": [],
   "rows": [
     {
