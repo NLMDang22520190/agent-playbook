@@ -94,7 +94,7 @@ for k in args tmp ph home; do
 done
 for l in t-add.with.1 t-two.with.1 t-node.with.1; do
   assert_file "J1 --jobs 3: $l had its PLAYBOOK_HOME as an existing dir (its files were listed)" "$SR/$l.phfiles"
-  assert_eq "J1 --jobs 3: $l: its workdir is <workroot>/$l" "$(physdir "$WR")/$l" "$(a="$(sed -n 1p "$SR/$l.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
+  assert_eq "J1 --jobs 3: $l: its workdir is <workroot>/.jobs/$l/$l (D20: a private root per run)" "$(physdir "$WR")/.jobs/$l/$l" "$(a="$(sed -n 1p "$SR/$l.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
   assert_eq "J1 --jobs 3: $l: TMPDIR and PLAYBOOK_HOME are set" "0" "$(cat "$SR/$l.tmp" "$SR/$l.ph" | grep -c '^UNSET$')"
   assert_eq "J1 --jobs 3: $l: the log is kept in <out>.runs" "1" "$(grep -c "STUB-OUT-$l" "$EV/$l.log" 2>/dev/null)"
   assert_file "J1 --jobs 3: $l: the diff is kept in <out>.runs" "$EV/$l.diff"

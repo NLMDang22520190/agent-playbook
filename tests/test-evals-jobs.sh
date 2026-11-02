@@ -106,7 +106,7 @@ for k in wd tmp ph; do
 done
 assert_eq "J1 --jobs 3: every run had its PLAYBOOK_HOME as an existing dir" "4" "$(cat "$CJ"/E*.env | grep -c '^phdir=yes$')"
 assert_eq "J1 --jobs 3: no run saw TMPDIR or PLAYBOOK_HOME unset" "0" "$(cat "$CJ"/E*.env | grep -c '=UNSET$')"
-assert_eq "J1 --jobs 3: each workdir is <workroot>/<label>" "$(for e in E1 E3 E8 E15; do printf '%s\n' "$(physdir "$W")/$e"; done)" \
+assert_eq "J1 --jobs 3: each workdir is <workroot>/.jobs/<label>/<label> (D20: a private root per run)" "$(for e in E1 E3 E8 E15; do printf '%s\n' "$(physdir "$W")/.jobs/$e/$e"; done)" \
   "$(for e in E1 E3 E8 E15; do d="$(sed -n 's/^wd=//p' "$CJ/$e.env")"; printf '%s\n' "$(physdir "$(dirname "$d")")/$(basename "$d")"; done)"
 LEFT=""; for e in E1 E3 E8 E15; do for k in ph tmp; do p="$(sed -n "s/^$k=//p" "$CJ/$e.env")"; [ -e "$p" ] && LEFT="$LEFT $p"; done; done
 assert_eq "J1 --jobs 3: the temp PLAYBOOK_HOMEs and TMPDIRs are removed after the runs" "" "$LEFT"
