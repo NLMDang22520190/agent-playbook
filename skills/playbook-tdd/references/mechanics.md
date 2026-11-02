@@ -41,8 +41,8 @@ one per parallel slice. Remove the slice worktrees once their branches are merge
 
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
   --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
-  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess) and `--rework 0` on
-  the first pass. Then put `cost.sh summary` into the
+  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess);
+  `--rework` counts the rework round (`0` on the first pass) and `--majors` the review majors found. Then put `cost.sh summary` into the
   final report's Cost section.
 - Optional: with runs logged by `--task <id>`, `cost.sh calibrate` shows per weight the review majors
   and rework rounds per task; advice only.

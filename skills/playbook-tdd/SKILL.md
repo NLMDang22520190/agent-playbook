@@ -51,9 +51,9 @@ trigger (a file:line or rule) and what is lost: no independent reviewer, no sepa
 Record `Weight: Lite (user override; Full criteria: <x>)` in decisions.md and the final report. The tests are never skipped
 (test first, seen failing, role gates, evidence); the skip-tests rule is unchanged. The override covers only the Full criteria named in the question; a new Full criterion, passing the size limit, or a test that looks wrong still escalates (ask again).
 
-**The user says "quick"**: that counts as asking for Lite; label `Weight: Lite (user said quick)`. A Full criterion goes
-through the user override. If quick work grows past the Lite size limit with no Full criterion, ask once before going to
-Full; headless, stay Lite and label it (over the size limit).
+**The user says "quick"** ("quick", "quick one", "do it quick"): run Lite at once; label `Weight: Lite (user said quick)`.
+Still test first, seen failing; the skip-tests rule is unchanged. A Full criterion goes through the user override. If
+quick work grows past the Lite size limit with no Full criterion, ask once before going to Full; headless, stay Lite and label it (over the size limit).
 
 ### Lite workflow
 1. Spec in a few lines (goal, AC with source anchors, weight + reason) in `.agents/handoff/01-spec.md`, with short
@@ -145,8 +145,8 @@ are dropped. Release speed rules: `references/release.md`.
   only). If it fails, the work goes back into a new RED/GREEN round; do not report done.
 - Log each role run with `cost.sh add`; the report's Cost section is `cost.sh summary` (`references/mechanics.md`).
 - `git diff --stat <base>..HEAD` must match the spec scope.
-- A user-visible change needs one real observation in this session (screenshot or browser read, curl, the CLI command;
-  as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
+- A user-visible change needs one real observation in this session (start it, then curl it, run the CLI or take a
+  screenshot; reading the source is not one; as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md` as the hand-off report `06-final-report.md` (request coverage, confidence per AC,
   `## Not checked`, `## Pre-mortem`, the rest as the template says).
   The Pre-mortem, the Models used line and the Playbook feedback line belong to this report only, not to the PR description.
