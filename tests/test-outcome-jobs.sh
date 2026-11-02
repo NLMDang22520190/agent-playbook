@@ -157,4 +157,15 @@ assert_file "D7 the first run's adapter ran" "$SR/t-add.with.1.args"
 # ================= --variant =================
 JOBS_OUTER_BASE="--harness claude --tasks-dir $T --tasks t-add"
 jobs_variant_suite --harness claude --tasks-dir "$T" --tasks t-add,t-two
+# ================= C3 review round: non-owned workroot =================
+echo "C3 a --workroot that is not runner-owned and holds the user's .jobs/<label> dir: --jobs 2 refuses (exit 2) and keeps the file"
+cj_reset seq 1
+X="$(mk_tmp)"; mkdir -p "$X/.jobs/t-add.with.1"; echo mine > "$X/.jobs/t-add.with.1/keep.txt"; XD="$(mk_tmp)"
+run env -u PLAYBOOK_HOME HOME="$GH" PATH="$FK:$PATH" bash "$OUTCOME" --tasks-dir "$T" --workroot "$X" --out "$XD/r.md" --cmd "bash $SA/conc.sh" --tasks t-add,t-two --jobs 2
+assert_rc "C3 refused with exit 2" 2
+assert_contains "C3 the refusal names the .jobs dir" "$OUT" ".jobs"
+assert_not_contains "C3 the refusal is not an unknown-option error" "$OUT" "unknown option"
+assert_eq "C3 the user's file is still there" "mine" "$(cat "$X/.jobs/t-add.with.1/keep.txt" 2>/dev/null)"
+assert_no_path "C3 no adapter ran" "$CJ/seen"
+assert_no_path "C3 no results file" "$XD/r.md"
 t_summary

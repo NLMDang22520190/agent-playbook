@@ -175,4 +175,27 @@ assert_contains "D7 the summary has the SKIPPED row for E15" "$(cat "$W/r.md")" 
 # ================= --variant =================
 JOBS_OUTER_BASE="--harness claude --scenarios E8"
 jobs_variant_suite --harness claude --scenarios E1,E8
+jobs_signal_suite --harness claude --scenarios E1,E8
+
+# ================= C3 review round: md wording of an ERROR run, non-owned workroot =================
+echo "C3 the md of a with-arm ERROR run says its checks are recorded, not counted (no longer 'not graded')"
+mk_adapter c3err 'rm -f tests/calc.test.js; exit 1'
+W="$(mk_tmp)"; : > "$W/.pb-eval-workroot"; RD="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/c3err.sh" --scenarios E8 --workroot "$W" --out "$RD/r.md" --jobs 2
+assert_rc "C3 the ERROR run exits 4" 4
+MDE="$(cat "$RD/r.md" 2>/dev/null)"
+assert_contains "C3 the details say 'checks recorded, not counted'" "$MDE" "checks recorded, not counted"
+assert_not_contains "C3 the details no longer say 'not graded'" "$MDE" "not graded"
+assert_contains "C3 the details still name the harness failure" "$MDE" "harness failure (adapter exited 1)"
+
+echo "C3 a --workroot that is not runner-owned and holds the user's .jobs/<label> dir: --jobs 2 refuses (exit 2) and keeps the file"
+cj_reset seq 1
+W="$(mk_tmp)"; mkdir -p "$W/.jobs/E8"; echo mine > "$W/.jobs/E8/keep.txt"; RD="$(mk_tmp)"
+run bash "$RUNNER" --cmd "bash $A/conc.sh" --scenarios E1,E8 --workroot "$W" --out "$RD/r.md" --jobs 2
+assert_rc "C3 refused with exit 2" 2
+assert_contains "C3 the refusal names the .jobs dir" "$OUT" ".jobs"
+assert_not_contains "C3 the refusal is not an unknown-option error" "$OUT" "unknown option"
+assert_eq "C3 the user's file is still there" "mine" "$(cat "$W/.jobs/E8/keep.txt" 2>/dev/null)"
+assert_no_path "C3 no adapter ran" "$CJ/seen"
+assert_no_path "C3 no results file" "$RD/r.md"
 t_summary

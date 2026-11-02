@@ -24,7 +24,7 @@ fi
 l="$(basename "$PWD")"
 printf 'run %s ver=%s\n' "$l" "$ver" >> "$VFAKE_LOG"
 if [ -n "${VFAKE_SLEEP:-}" ]; then
-  echo $$ > "$VFAKE_DIR/sleeper.pid"; : > "$VFAKE_DIR/started"
+  echo $$ > "$VFAKE_DIR/sleeper.pid"; echo $$ >> "$VFAKE_DIR/sleepers"; : > "$VFAKE_DIR/started"
   exec sleep 120
 fi
 if [ -n "${VFAKE_TASKS:-}" ] && [ -f "$VFAKE_TASKS/${l%%.*}/solution.patch" ]; then git apply "$VFAKE_TASKS/${l%%.*}/solution.patch" 2>/dev/null; fi
@@ -183,5 +183,39 @@ jobs_variant_suite() {
   fi
   kill "$(cat "$A_FD/sleeper.pid" 2>/dev/null)" 2>/dev/null
   VOD="$A_OD"; vfinish "$pidA"
+  unset VFAKE_SLEEP
+}
+
+# jobs_signal_suite BASE... -> C3 (review 05, minor): TERM and HUP to a --variant --jobs 2 runner whose runs sleep (the fake claude of this file):
+# exactly one restore line, the home as before, the lock gone, no sleeper left. BASE selects two runs.
+jobs_signal_suite() {
+  local base="$*" sig pid i n alive p sigB
+  for sig in TERM HUP; do
+    echo "C3 --variant --jobs 2: $sig after the runs started: one restore, home restored, lock gone, no stub left"
+    mk_variant; VH="$(mk_vhome)"; sigB="$(tree_sig "$VH")"
+    VFAKE_SLEEP=1 vstart --variant "$VD" $base --jobs 2
+    pid="$VPID"; i=0
+    while [ "$(wc -l < "$VFD/sleepers" 2>/dev/null || echo 0)" -lt 2 ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+    unset VFAKE_SLEEP
+    n="$(wc -l < "$VFD/sleepers" 2>/dev/null || echo 0)"
+    if [ "$n" -ge 2 ] && kill -"$sig" "$pid" 2>/dev/null; then
+      t_ok "C3 $sig: two runs were running (sleepers: $n) and the signal was delivered"
+      i=0; while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
+      vfinish "$pid"
+      assert_eq "C3 $sig: exactly one 'restored the snapshot' line" "1" "$(nlines "variant: restored the snapshot of $VH" "$ERR")"
+      assert_eq "C3 $sig: the home is back exactly as before" "$sigB" "$(tree_sig "$VH")"
+      assert_no_path "C3 $sig: the lock is gone" "$VH/.agents/.pb-variant.lock"
+      i=0; alive=""
+      while [ "$i" -lt 50 ]; do
+        alive=""; for p in $(cat "$VFD/sleepers"); do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done
+        [ -z "$alive" ] && break; sleep 0.1; i=$((i + 1))
+      done
+      assert_eq "C3 $sig: no stub process is left" "" "$alive"
+      for p in $alive; do kill "$p" 2>/dev/null; done
+    else
+      kill "$pid" 2>/dev/null; vfinish "$pid"
+      t_skip 5 "C3 $sig: the runs did not both start or the signal could not be delivered"
+    fi
+  done
   unset VFAKE_SLEEP
 }
