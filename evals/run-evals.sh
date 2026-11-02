@@ -167,7 +167,7 @@ cleanup_tmp() { # [quiet]
 # clean_name NAME -> NAME without control characters (ESC, CR, newline, every byte below 0x20 and 0x7f) and with
 # backticks replaced, so it fits in one line of output and inside backticks
 clean_name() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C tr '`' "'"; }
-stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
+stop_adapter() { if [ -n "$ADPID" ]; then pbh_kill_tree "$ADPID"; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 # --variant: the snapshot is put back first of all on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
 # --jobs: the running runs are stopped first, then their parent's temp dirs go (a run's own dirs are removed by the run, job_clean)
 cleanup_jobs() { pbh_jobs_kill; if [ -n "$JOBS_DIR" ]; then rm -rf "$JOBS_DIR"; JOBS_DIR=""; fi; }
@@ -337,7 +337,10 @@ if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no wo
   exit 0
 fi
 # scenario_sha_of E -> the git hash of the block of E in scenarios.md ("## E<n> " heading line to the line before the next such heading)
+# scenario_sha_of E -> the git hash of the block of E; the value computed once per scenario (SCSHA_<E>, filled before the first run) is reused
 scenario_sha_of() {
+  local v="SCSHA_$1"
+  case "$1" in E[0-9]*) if [ -n "${!v:-}" ]; then printf '%s\n' "${!v}"; return 0; fi ;; esac
   awk -v h="## $1 " 'index($0, h) == 1 { p = 1; print; next } p && /^## E[0-9]+ / { exit } p { print }' "$EVALS/scenarios.md" | pbh_sha_stdin
 }
 if [ "$PRINTH" = 1 ]; then   # --print-hashes: "<scenario> <scenario_sha> <grader_sha> <harness_sha>" per scenario, the hashes the runs record; nothing runs
@@ -2395,6 +2398,10 @@ SUMMARY=""; DETAILS=""; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0
 # the per-run hashes (decision D10; evals/lib-harness.sh): grader and harness once, the scenario's block per run
 GRADER_SHA="$(pbh_grader_sha "$EVALS/run-evals.sh")"
 HARNESS_SHA="$(pbh_harness_sha "$LABEL" "$CMD")"
+for r in $RUNS; do   # one awk and one git per scenario, not per run
+  e="${r%%:*}"; v="SCSHA_$e"
+  case "$e" in E[0-9]*) [ -n "${!v:-}" ] || eval "$v=\"\$(scenario_sha_of \"\$e\")\"" ;; esac
+done
 # spent_of -> the sum of the known costs so far, "%.6g" formatted
 spent_of() { printf '%s
 ' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }

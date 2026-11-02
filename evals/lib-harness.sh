@@ -773,13 +773,37 @@ EOF
   printf '{%s}' "$o"
 }
 
+# pbh_kill_tree PID: TERM to PID and every descendant of it (children first collected, so none is lost when the parent dies and its
+# children are re-parented). A runner's stop path uses it so the adapter's own children (the harness, a stub's sleep) do not outlive the
+# adapter: without GNU timeout (macOS) nothing else puts them in a group that dies with it. pgrep -P, else ps -A (macOS, Linux); with
+# neither, only PID itself is stopped.
+pbh_kill_tree() {
+  local all="$1" todo="$1" next c p
+  while [ -n "$todo" ]; do
+    next=""
+    for p in $todo; do
+      if command -v pgrep >/dev/null 2>&1; then c="$(pgrep -P "$p" 2>/dev/null)"
+      else c="$(ps -A -o pid= -o ppid= 2>/dev/null | awk -v P="$p" '$2 == P { print $1 }')"; fi
+      for c in $c; do next="$next $c"; done
+    done
+    all="$all$next"; todo="$next"
+  done
+  for p in $all; do kill "$p" 2>/dev/null; done
+  return 0
+}
+
 # ---- per-run hashes (decision D10); see the header ----
 pbh_sha_stdin() { git hash-object --stdin; }
 pbh_grader_sha() {
-  local dir f; dir="$(dirname "${BASH_SOURCE[0]}")"
-  { cat "$1"; printf '\n--lib-harness.sh--\n'; cat "$dir/lib-harness.sh"
-    # D23: the other evals files the grading and the setup use
-    for f in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do printf '\n--%s--\n' "$f"; cat "$dir/$f" 2>/dev/null; done
+  local dir f missing=""; dir="${BASH_SOURCE[0]%/*}"
+  # D23: the runner, this lib and the other evals files the grading and the setup use. One git call hashes every present file; a missing
+  # file is named in the hashed text (never skipped), so adding or removing one changes the hash. 2 processes in all.
+  set -- "$1" "$dir/lib-harness.sh" "$dir/transcript.js" "$dir/facts.js" "$dir/codex-jsonl.js" "$dir/make-fixture.sh" "$dir/codex-adapter.sh"
+  for f in "$@"; do [ -f "$f" ] || missing="$missing ${f##*/}"; done
+  # the present files, in order, are the arguments of the one git call
+  local n=$#; while [ "$n" -gt 0 ]; do f="$1"; shift; n=$((n - 1)); if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
+  { printf 'files:'; for f in "$@"; do printf ' %s' "${f##*/}"; done; printf '\nmissing:%s\n' "$missing"
+    git hash-object --no-filters -- "$@"
   } | pbh_sha_stdin
 }
 pbh_cli_version() {

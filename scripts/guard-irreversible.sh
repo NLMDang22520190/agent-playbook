@@ -2267,7 +2267,8 @@ END {
 # shq PATH -> SQ: PATH as one shell word
 shq() {
   case "$1" in
-    *[!A-Za-z0-9._/@%+=:,-]*) SQ="${1//\'/\'\\\'\'}"; SQ="'$SQ'" ;;
+    *[!A-Za-z0-9._/@%+=:,-]*)   # the quote and its replacement sit in variables: bash 3.2 reads a quote or backslash written inside ${//} differently
+      sq1="'"; sq2="'\\''"; SQ="${1//$sq1/$sq2}"; SQ="'$SQ'" ;;
     *) SQ="$1" ;;
   esac
 }

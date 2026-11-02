@@ -128,7 +128,7 @@ cleanup() {
   SET_DIR=""; JOBS_DIR=""; ND_FILE=""
 }
 job_stop() { stop_adapter; job_clean; }
-stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
+stop_adapter() { if [ -n "$ADPID" ]; then pbh_kill_tree "$ADPID"; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 # --variant: the snapshot is put back on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
 on_exit() { cleanup; pbh_variant_finalize || exit 5; }
 on_signal() { stop_adapter; cleanup; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }

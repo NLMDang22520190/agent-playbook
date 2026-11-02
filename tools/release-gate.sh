@@ -982,6 +982,15 @@ EOF
     RP[$1]=$!
     RDONE[$1]=0; RRC[$1]=""; RLN[$1]=0
   }
+  # show_slot: the printable command of slot $1 (a case inside $( ) does not parse in bash 3.2, so it lives in a function)
+  show_slot() {
+    case "$1" in
+      1) show "${RA1[@]}" ;;
+      2) show "${RA2[@]}" ;;
+      3) show "${RA3[@]}" ;;
+      *) show "${RA4[@]}" ;;
+    esac
+  }
   # run_set: run the runners of slots 1 and 2 (RK kind, RA1/RA2 arguments; an empty RK is not run) at the same time. A runner's 2 or 3 stops
   # the other and the gate; a safety FAIL line stops both (FF_LABEL set, return 0). The exit codes are left in RRC.
   run_set() {
@@ -989,7 +998,7 @@ EOF
     FF_LABEL=""; RRC=("" "" "" "" "")
     for s in 1 2 3 4; do
       [ -n "${RK[$s]}" ] || continue
-      [ "$JSON" = 1 ] || printf '== %s: %s\n' "${RK[$s]}" "$(case "$s" in 1) show "${RA1[@]}" ;; 2) show "${RA2[@]}" ;; 3) show "${RA3[@]}" ;; *) show "${RA4[@]}" ;; esac)"
+      [ "$JSON" = 1 ] || printf '== %s: %s\n' "${RK[$s]}" "$(show_slot "$s")"
     done
     for s in 1 2 3 4; do [ -z "${RK[$s]}" ] || start_slot "$s"; done
     while :; do
