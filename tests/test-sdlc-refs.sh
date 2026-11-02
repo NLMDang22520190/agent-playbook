@@ -163,10 +163,15 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # then v0.29.0 lane a: -19 (the Phase 4 report bullet points to the template; Pre-mortem and feedback line are hand-off only)
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
 # v0.35.0 slice E (S2, spec R1-5) and D13: the cut ends that arithmetic (it pinned 3681 words before the cut); the cut reached
-# 2720 words counted in the C locale (a UTF-8 locale counts 2730: wc -w differs on UTF-8 symbols), so the exact pin uses LC_ALL=C; v0.35.0 review1 re-pins it at 2744
+# 2720 words counted in the C locale (a UTF-8 locale counts 2730: wc -w differs on UTF-8 symbols), so the exact pin uses LC_ALL=C; v0.35.0 review1 re-pins it at 2744; v0.35.0 review2 re-pins it at 2730 so it fits the budget under C.UTF-8 too (2732)
 WBV="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$WB" 2>/dev/null)"
 if [ "$w" -le 2750 ]; then t_ok "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words ($w)"; else t_bad "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words" "$w words"; fi
-assert_eq "AC16 / v0.35.0 review1 SKILL.md is exactly 2744 words (LC_ALL=C wc -w)" "2744" "$(LC_ALL=C wc -w < "$SK" | tr -d ' ')"
+assert_eq "AC16 / v0.35.0 review2 SKILL.md is exactly 2730 words (LC_ALL=C wc -w)" "2730" "$(LC_ALL=C wc -w < "$SK" | tr -d ' ')"
+if [ "$(LC_ALL=C.UTF-8 locale charmap 2>/dev/null)" = "UTF-8" ]; then
+  wu="$(LC_ALL=C.UTF-8 wc -w < "$SK" | tr -d ' ')"
+  if [ -n "$WBV" ] && [ -n "$wu" ] && [ "$wu" -le "$WBV" ]; then t_ok "AC16 / v0.35.0 review2 SKILL.md at or under its evals/word-budgets value under LC_ALL=C.UTF-8 ($wu <= $WBV)"
+  else t_bad "AC16 / v0.35.0 review2 SKILL.md at or under its evals/word-budgets value under LC_ALL=C.UTF-8" "words [$wu] budget [$WBV]"; fi
+else t_skip 1 "AC16 / v0.35.0 review2 SKILL.md under LC_ALL=C.UTF-8 (locale C.UTF-8 not available)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
