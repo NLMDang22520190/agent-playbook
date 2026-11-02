@@ -162,17 +162,17 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # then v0.28.1 lanes t and p: -9 (Lite step 4 mutation note) +12 (Lite step 2 input-class line) = +3
 # then v0.29.0 lane a: -19 (the Phase 4 report bullet points to the template; Pre-mortem and feedback line are hand-off only)
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
-# v0.35.0 slice E (S2, spec R1-5): the cut ends that arithmetic (it pinned 3681 words before the cut); until the exact new count is
-# pinned after GREEN, the pin is the budget relation: at most 2000 words, and evals/word-budgets is the count rounded up to the next 50
+# v0.35.0 slice E (S2, spec R1-5) and D13: the cut ends that arithmetic (it pinned 3681 words before the cut); the cut reached
+# 2720 words counted in the C locale (a UTF-8 locale counts 2730: wc -w differs on UTF-8 symbols), so the exact pin uses LC_ALL=C
 WBV="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$WB" 2>/dev/null)"
-if [ "$w" -le 2000 ]; then t_ok "AC16 / v0.35.0 AC8 SKILL.md is at most 2000 words ($w)"; else t_bad "AC16 / v0.35.0 AC8 SKILL.md is at most 2000 words" "$w words"; fi
-assert_eq "AC16 / v0.35.0 AC10 evals/word-budgets gives SKILL.md its word count rounded up to the next 50" "$(( (w + 49) / 50 * 50 ))" "$WBV"
+if [ "$w" -le 2750 ]; then t_ok "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words ($w)"; else t_bad "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words" "$w words"; fi
+assert_eq "AC16 / v0.35.0 D13 SKILL.md is exactly 2720 words (LC_ALL=C wc -w)" "2720" "$(LC_ALL=C wc -w < "$SK" | tr -d ' ')"
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
 else t_ok "AC16 the slice-size Why line is cut"; fi
 if grep -q '^\*\*Why:\*\*' "$SK"; then t_ok "AC16 at least one **Why:** line remains (run-checks.sh)"; else t_bad "AC16 at least one **Why:** line remains (run-checks.sh)" "none"; fi
-if [ -n "$WBV" ] && [ "$WBV" -le 2000 ]; then t_ok "AC16 / v0.35.0 AC10 evals/word-budgets keeps playbook-tdd at 2000 or below (3700 until v0.35.0 S2) ($WBV)"; else t_bad "AC16 / v0.35.0 AC10 evals/word-budgets keeps playbook-tdd at 2000 or below (3700 until v0.35.0 S2)" "budget [$WBV]"; fi
+if grep -Eq '^skills/playbook-tdd/SKILL\.md 2750 ' "$WB"; then t_ok "AC16 / v0.35.0 D13 evals/word-budgets keeps playbook-tdd at exactly 2750 (3700 until v0.35.0 S2)"; else t_bad "AC16 / v0.35.0 D13 evals/word-budgets keeps playbook-tdd at exactly 2750 (3700 until v0.35.0 S2)" "budget [$WBV]"; fi
 # characterization: AGENTS.global.md stays as it is (rule freeze); these pass before and after
 if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook." "$AG"; then
   t_ok "AC16 AGENTS.global.md keeps the precedence sentence verbatim"; else t_bad "AC16 AGENTS.global.md keeps the precedence sentence verbatim" "missing"; fi
