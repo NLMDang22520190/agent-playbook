@@ -35,12 +35,28 @@ gate_scen() { # FILE LIST
 [ -f "$GATE" ] && cp -p "$GATE" "$R/tools/release-gate.sh"
 gate_scen "$R/tools/release-gate.sh" "E1 E2 E3"
 cp -p "$PB_ROOT/tools/eval-delta.sh" "$R/tools/eval-delta.sh"
+# D6 (v0.34.0 B2): with --harness the gate installs the variant once through evals/lib-harness.sh (pbh_variant_begin: lock, snapshot,
+# install.sh install + doctor, VERSION check) and hands the runners --variant-held DIR. The fixture ships the real lib and a fake install.sh.
+cp -p "$PB_ROOT/evals/lib-harness.sh" "$R/evals/lib-harness.sh"
+printf '7.7.7-fix\n' > "$R/VERSION"
+cat > "$R/install.sh" <<'IEOF'
+#!/usr/bin/env bash
+D="$(cd "$(dirname "$0")" && pwd)"
+cmd="$1"; shift
+H=""
+while [ $# -gt 0 ]; do case "$1" in --home) H="$2"; shift ;; esac; shift; done
+case "$cmd" in
+  install) rm -rf "${H:?}/.agents/playbook"; mkdir -p "$H/.agents/playbook"; cp "$D/VERSION" "$H/.agents/playbook/VERSION" ;;
+esac
+exit 0
+IEOF
+chmod 755 "$R/install.sh"
 for t in pattern-15-erase-account-ambiguous pattern-24-merge-duplicate-customers pattern-26-consistent-price-rounding pattern-01-option-value-label; do
   mkdir -p "$R/evals/tasks/$t"; printf 'x\n' > "$R/evals/tasks/$t/prompt.md"
 done
 # fake runner: records "<name> <args>", writes ${OUT%.md}.json with both arms; with passes check x, without fails it
 # FAKE_RC_<NAME> sets its exit code.
-# v0.32.0 (AC7'): the fake understands --variant DIR (the gate's detached worktree of HEAD). While it runs it records what it
+# v0.32.0 (AC7') and D6 (v0.34.0: the gate passes --variant-held DIR): the fake understands --variant-held DIR (the gate's detached worktree of HEAD). While it runs it records what it
 # sees of DIR in $OBS, and its "variant" object (sha = HEAD of DIR, end_check ok) is null without --variant, like the real runners.
 # Per-case controls (environment): FAKE_VARIANT=null|nullsha|badsha|changed, FAKE_SKIP=ID,ID (no runs for these items),
 # FAKE_ERR=ID:ARM:N (the first N runs of that item and arm are ERROR runs), FAKE_INVERT=ID (with fails, without passes),
@@ -70,7 +86,7 @@ done
 out=""; model=""; harness="custom"; list=""; k=1; prev=""; vdir=""
 for a in "$@"; do
   case "$prev" in
-    --out) out="$a" ;; --model) model="$a" ;; --harness) harness="$a" ;; --repeat) k="$a" ;; --variant) vdir="$a" ;; "$LISTFLAG") list="$a" ;;
+    --out) out="$a" ;; --model) model="$a" ;; --harness) harness="$a" ;; --repeat) k="$a" ;; --variant-held) vdir="$a" ;; "$LISTFLAG") list="$a" ;;
   esac
   prev="$a"
 done
@@ -193,7 +209,7 @@ mk_fake run-outcome.sh --tasks
   git config commit.gpgsign false && git config core.autocrlf false && git add -A && git commit -qm base ) || t_bad "fixture repo" "git init failed"
 SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
 TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
-g() { RC=0; OUT="$(cd "$R" && bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
+g() { RC=0; OUT="$(cd "$R" && env HOME="$W/home" bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
 ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
 pf_real_calls() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }   # v0.33.0 R1-3: lines of runners that really started
 # --- v0.32.0 helpers (S1: AC1, AC2, AC2') ---
@@ -258,8 +274,8 @@ g --harness claude --model m1 --dry-run
 assert_rc "AC2 --dry-run -> exit 0" 0
 assert_eq "AC2 --dry-run calls no runner" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
 assert_contains "AC2 the commit is the full HEAD sha" "$OUT" "$SHA"
-assert_has_all "AC2 the behaviour command: the GATE_SCENARIOS set (AC14; the fixture's equals its AUTO), both arms, k=5 (AC7': now with --variant)" "$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')" "evals/run-evals.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--variant "
-assert_has_all "AC2 the outcome command: the separating tasks, both arms, k=5 (AC7': now with --variant)" "$(printf '%s\n' "$OUT" | grep 'evals/run-outcome.sh')" "evals/run-outcome.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--tasks $TASKS" "--variant "
+assert_has_all "AC2 the behaviour command: the GATE_SCENARIOS set (AC14; the fixture's equals its AUTO), both arms, k=5 (AC7'/D6: now with --variant-held)" "$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')" "evals/run-evals.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--variant-held "
+assert_has_all "AC2 the outcome command: the separating tasks, both arms, k=5 (AC7'/D6: now with --variant-held)" "$(printf '%s\n' "$OUT" | grep 'evals/run-outcome.sh')" "evals/run-outcome.sh" "--harness claude" "--model m1" "--arm both --repeat 5" "--tasks $TASKS" "--variant-held "
 assert_contains "AC2 the default out dir is evals/results/gate-<sha12>" "$OUT" "evals/results/gate-$SHA12/"
 assert_contains "AC3 a clean tree is reported" "$OUT" "tree: clean"
 assert_eq "AC1 --dry-run makes no worktree" "1" "$(git -C "$R" worktree list | wc -l | tr -d ' ')"
@@ -283,7 +299,8 @@ assert_rc "AC6 --dry-run --json -> exit 0" 0
 J="$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log([j.schema,j.commit,j.harness,j.model,j.k,j.scenarios.join(","),j.tasks.join(","),j.dry_run,j.commands.length,j.tree].join("|"))}catch(e){console.log("BAD "+e.message)}})')"
 assert_eq "AC6 the JSON fields" "pb-gate/1|$SHA|claude|m1|5|E1,E2,E3|$TASKS|true|2|clean" "$J"
 printf '%s\n' "$OUT" > "$W/dry.json"
-assert_contains "AC1 (AC7') the JSON commands carry --variant" "$(gj "$W/dry.json" 'j.commands.join(" ")')" "--variant "
+assert_contains "AC1 (AC7'/D6) the JSON commands carry --variant-held" "$(gj "$W/dry.json" 'j.commands.join(" ")')" "--variant-held "
+assert_not_contains "AC1 (D6) the JSON commands carry no plain --variant" "$(gj "$W/dry.json" 'j.commands.join(" ")')" " --variant "
 
 echo "AC3 a real run refuses changes to tracked files; untracked results do not count"
 printf 'changed\n' >> "$R/evals/tasks/pattern-01-option-value-label/prompt.md"
@@ -314,8 +331,8 @@ g --harness claude --model m1 --add-batch
 assert_rc "AC4 every with run passes, every without run fails, no isolation FAIL -> exit 0" 0
 assert_eq "AC2 run-evals.sh ran once" "1" "$(ncalls run-evals.sh)"
 assert_eq "AC2 run-outcome.sh ran once" "1" "$(ncalls run-outcome.sh)"
-assert_has_all "AC2 run-evals.sh got the gate's arguments (AC7': now with --variant)" "$(grep '^run-evals.sh ' "$CALLS")" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--out $OD/" "--variant "
-assert_has_all "AC2 run-outcome.sh got the gate's arguments (AC7': now with --variant)" "$(grep '^run-outcome.sh ' "$CALLS")" "--harness claude" "--model m1" "--arm both --repeat 5" "--tasks $TASKS" "--out $OD/" "--variant "
+assert_has_all "AC2 run-evals.sh got the gate's arguments (AC7': now with --variant)" "$(grep '^run-evals.sh ' "$CALLS")" "--harness claude" "--model m1" "--arm both --repeat 5" "--scenarios E1,E2,E3" "--out $OD/" "--variant-held "
+assert_has_all "AC2 run-outcome.sh got the gate's arguments (AC7': now with --variant)" "$(grep '^run-outcome.sh ' "$CALLS")" "--harness claude" "--model m1" "--arm both --repeat 5" "--tasks $TASKS" "--out $OD/" "--variant-held "
 assert_contains "AC4 the Newcombe table is printed" "$OUT" "## Δ with a 95% interval (Newcombe hybrid score)"
 assert_contains "AC4 the per-arm Wilson table is printed" "$OUT" "## Per arm: passes/n and Wilson 95% interval"
 assert_contains "AC4 an outcome task row is in the Δ table" "$OUT" "| pattern-26-consistent-price-rounding | x | 1.000 |"
@@ -359,15 +376,16 @@ rm -f "$OD/near-sha.json"
 echo "AC5 runner exit codes: 1 and 4 continue, 2 and 3 stop"
 for rc in 1 4; do
   : > "$CALLS"
-  RC=0; OUT="$(cd "$R" && FAKE_RC_run_evals="$rc" bash tools/release-gate.sh --harness claude --model m1 --add-batch 2>&1)" || RC=$?
+  RC=0; OUT="$(cd "$R" && FAKE_RC_run_evals="$rc" HOME="$W/home" TMPDIR="$W/tmp" bash tools/release-gate.sh --harness claude --model m1 --add-batch 2>&1)" || RC=$?
   assert_eq "AC5 run-evals.sh exit $rc: run-outcome.sh still runs" "1" "$(ncalls run-outcome.sh)"
   assert_contains "AC5 run-evals.sh exit $rc: the delta still prints" "$OUT" "## Δ with a 95% interval"
 done
 for rc in 2 3; do
   : > "$CALLS"
-  RC=0; OUT="$(cd "$R" && FAKE_RC_run_evals="$rc" bash tools/release-gate.sh --harness claude --model m1 --add-batch 2>&1)" || RC=$?
+  RC=0; OUT="$(cd "$R" && FAKE_RC_run_evals="$rc" HOME="$W/home" TMPDIR="$W/tmp" bash tools/release-gate.sh --harness claude --model m1 --add-batch 2>&1)" || RC=$?
   assert_rc "AC5 run-evals.sh exit $rc -> the gate exits $rc" "$rc"
-  assert_eq "AC5 run-evals.sh exit $rc: run-outcome.sh does not run" "0" "$(ncalls run-outcome.sh)"
+  # D6: the runners start together, so "run-outcome.sh does not run" cannot hold; the intent (the gate stops, nothing is pooled or printed) is kept
+  assert_not_contains "AC5 run-evals.sh exit $rc: the gate stops, no delta is printed (D6: was: run-outcome.sh does not run)" "$OUT" "## Δ with a 95% interval"
 done
 
 echo "AC1/AC4 --cmd: the harness label is custom"
@@ -383,14 +401,15 @@ echo "m-b the default tasks are one top-level line of the gate"
 assert_eq "m-b tools/release-gate.sh has a top-level DEFAULT_TASKS line with the three separating tasks" "1" \
   "$(grep -c '^DEFAULT_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"$' "$GATE" 2>/dev/null || true)"
 
-echo "AC1 a real run with --harness measures a detached worktree of HEAD: --variant DIR goes to both runners"
+echo "AC1 a real run with --harness measures a detached worktree of HEAD: --variant-held DIR goes to both runners (D6)"
 rcase ac1 ""
 assert_rc "AC1 baseline run (variant ok, full set, k=5) -> exit 0" 0
 BL="$(grep '^run-evals.sh ' "$CALLS")"; OL="$(grep '^run-outcome.sh ' "$CALLS")"
-assert_contains "AC1 run-evals.sh gets --variant" "$BL" "--variant "
-assert_contains "AC1 run-outcome.sh gets --variant" "$OL" "--variant "
-VB="$(printf '%s' "$BL" | sed -n 's/.*--variant \([^ ]*\).*/\1/p')"
-VO="$(printf '%s' "$OL" | sed -n 's/.*--variant \([^ ]*\).*/\1/p')"
+assert_contains "AC1 (D6) run-evals.sh gets --variant-held" "$BL" "--variant-held "
+assert_contains "AC1 (D6) run-outcome.sh gets --variant-held" "$OL" "--variant-held "
+assert_eq "AC1 (D6) neither runner gets a plain --variant" "0|0" "$(printf '%s\n' "$BL" | grep -c -- ' --variant ')|$(printf '%s\n' "$OL" | grep -c -- ' --variant ')"
+VB="$(printf '%s' "$BL" | sed -n 's/.*--variant-held \([^ ]*\).*/\1/p')"
+VO="$(printf '%s' "$OL" | sed -n 's/.*--variant-held \([^ ]*\).*/\1/p')"
 assert_eq "AC1 the variant directory is named on the command line" "1" "$([ -n "$VB" ] && echo 1 || echo 0)"
 assert_eq "AC1 both runners get the same directory" "$VB" "$VO"
 for nm in run-evals.sh run-outcome.sh; do
@@ -410,7 +429,7 @@ for spec in run_evals:2 run_evals:3 run_outcome:2 run_outcome:3; do
   i=$((i + 1)); who="${spec%%:*}"; want="${spec#*:}"
   rcase "ac1-rc$i" "FAKE_RC_$who=$want"
   assert_rc "AC1 $who exit $want -> the gate exits $want" "$want"
-  VD="$(sed -n 's/.*--variant \([^ ]*\).*/\1/p' "$CALLS" | head -n 1)"
+  VD="$(sed -n 's/.*--variant-held \([^ ]*\).*/\1/p' "$CALLS" | head -n 1)"
   assert_eq "AC1 $who exit $want: the variant directory was passed to the runner" "1" "$([ -n "$VD" ] && echo 1 || echo 0)"
   assert_no_path "AC1 $who exit $want: DIR is removed" "$VD"
   assert_eq "AC1 $who exit $want: no worktree entry is left" "1" "$(git -C "$R" worktree list | wc -l | tr -d ' ')"

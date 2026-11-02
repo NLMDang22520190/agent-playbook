@@ -61,7 +61,7 @@ key="${NAME#run-}"; key="${key%.sh}"
 out=""; k=1; arm=both; list=""; vdir=""; prev=""
 for a in "$@"; do
   case "$prev" in
-    --out) out="$a" ;; --repeat) k="$a" ;; --arm) arm="$a" ;; --variant) vdir="$a" ;; "$LISTFLAG") list="$a" ;;
+    --out) out="$a" ;; --repeat) k="$a" ;; --arm) arm="$a" ;; --variant-held) vdir="$a" ;; "$LISTFLAG") list="$a" ;;   # D6: the gate passes --variant-held
   esac
   prev="$a"
 done
@@ -140,6 +140,21 @@ build() {
   mkdir -p "$r/tools" "$r/evals/tasks"
   cp -p "$GATE" "$r/tools/release-gate.sh"; gate_scen "$r/tools/release-gate.sh" "E1 E2 E3"
   cp -p "$PB_ROOT/tools/eval-delta.sh" "$r/tools/eval-delta.sh"
+  # D6 (v0.34.0 B2): the gate installs the variant once through evals/lib-harness.sh and passes --variant-held; the fixture ships the real lib and a fake install.sh
+  cp -p "$PB_ROOT/evals/lib-harness.sh" "$r/evals/lib-harness.sh"
+  printf '7.7.7-fix\n' > "$r/VERSION"
+  cat > "$r/install.sh" <<'IEOF'
+#!/usr/bin/env bash
+D="$(cd "$(dirname "$0")" && pwd)"
+cmd="$1"; shift
+H=""
+while [ $# -gt 0 ]; do case "$1" in --home) H="$2"; shift ;; esac; shift; done
+case "$cmd" in
+  install) rm -rf "${H:?}/.agents/playbook"; mkdir -p "$H/.agents/playbook"; cp "$D/VERSION" "$H/.agents/playbook/VERSION" ;;
+esac
+exit 0
+IEOF
+  chmod 755 "$r/install.sh"
   for t in $(printf '%s' "$TASKS" | tr ',' ' '); do mkdir -p "$r/evals/tasks/$t"; printf 'x\n' > "$r/evals/tasks/$t/prompt.md"; done
   mk_fake "$r" run-evals.sh --scenarios
   mk_fake "$r" run-outcome.sh --tasks
@@ -215,7 +230,7 @@ assert_eq "R7-4' (1) confirm.runner_rc: behaviour 0, outcome null" '{"behaviour"
 assert_eq "R7-3 (1) run-evals.sh was called exactly twice (the first run and one confirmation)" "2" "$(nreal run-evals.sh)"
 assert_eq "R7-3 (1) no outcome-confirm call: no task was flagged (run-outcome.sh once)" "1" "$(nreal run-outcome.sh)"
 CL="$(real_line run-evals.sh 2)"
-has_words "R7-3 (1) the second run-evals call: --arm with, --repeat 5, the same harness, model, hooks, variant" "$CL" "--arm with" "--repeat 5" "--harness claude" "--model m1" "--hooks" "--variant "
+has_words "R7-3 (1) the second run-evals call: --arm with, --repeat 5, the same harness, model, hooks, variant (D6: --variant-held)" "$CL" "--arm with" "--repeat 5" "--harness claude" "--model m1" "--hooks" "--variant-held "
 assert_eq "R7-3 (1) the second call selects --scenarios E1 only (not E2, E3)" "1" "$(printf '%s\n' "$CL" | grep -Ec -- '--scenarios E1( |$)')"
 assert_eq "R7-3 (1) the second call has its own out name behaviour-confirm-<stamp>.md" "1" "$(printf '%s\n' "$CL" | grep -c -- 'behaviour-confirm-[^ ]*\.md')"
 assert_eq "R7-1' (1) the confirmation's OBS line: variant worktree still listed (listed=1)" "1" "$(grep '^OBS run-evals.sh call=2 ' "$OBS" | grep -c 'listed=1')"
@@ -265,7 +280,7 @@ assert_rc "R7-3 (1b) a task confirmed at 5/5 -> pass, exit 0" 0
 assert_eq "R7-4 (1b) confirm.items is the task id" "[\"$T15\"]" "$(gj "$GJ" 'j.confirm && j.confirm.items')"
 assert_eq "R7-3 (1b) run-evals.sh once, run-outcome.sh twice" "1|2" "$(nreal run-evals.sh)|$(nreal run-outcome.sh)"
 OL="$(real_line run-outcome.sh 2)"
-has_words "R7-3 (1b) the second run-outcome call: --arm with, --repeat 5, the one flagged task, outcome-confirm out name" "$OL" "--arm with" "--repeat 5" "--tasks $T15" "--harness claude" "--model m1" "--variant " "outcome-confirm-"
+has_words "R7-3 (1b) the second run-outcome call: --arm with, --repeat 5, the one flagged task, outcome-confirm out name" "$OL" "--arm with" "--repeat 5" "--tasks $T15" "--harness claude" "--model m1" "--variant-held " "outcome-confirm-"
 assert_eq "R7-3 (1b) the second call selects exactly that task (--tasks $T15 and no other)" "1" "$(printf '%s\n' "$OL" | grep -Ec -- "--tasks $T15( |\$)")"
 assert_eq "R7-4' (1b) confirm.runner_rc: behaviour null, outcome 0" '{"behaviour":null,"outcome":0}' "$(gj "$GJ" 'j.confirm && j.confirm.runner_rc')"
 assert_contains "R7-4 (1b) the output prints the outcome-confirm command" "$OUT" "== outcome-confirm: bash evals/run-outcome.sh"
@@ -364,7 +379,7 @@ build rkj ok
 RJ="$W/rkj"
 rr "$RJ" cj "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=5" --json
 assert_rc "R7-3' (9) --json confirmed pass -> exit 0" 0
-printf '%s\n' "$OUT" > "$W/cj.out.json"
+printf '%s\n' "$OUT" | grep -v '^variant: ' > "$W/cj.out.json"   # D6: rr merges stderr, where the gate's variant install/restore lines go
 assert_eq "R7-4 (9) the printed JSON has the confirm object (items [E1])" '["E1"]' "$(gj "$W/cj.out.json" 'j.confirm && j.confirm.items')"
 assert_eq "R7-3' (9) one confirmation log: behaviour-confirm-*.log" "1" "$(ls "$ODN" | grep -c '^behaviour-confirm-.*\.log$')"
 assert_eq "R7-3' (9) one first behaviour log (behaviour-<stamp>.log)" "1" "$(ls "$ODN" | grep -c '^behaviour-[0-9].*\.log$')"
