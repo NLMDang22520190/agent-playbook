@@ -78,9 +78,9 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full; exit 3: fix named file, run again.
 4. Fresh run of test, lint and typecheck with `proof-run.sh`. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
-   real observation of the behaviour in this session (screenshot or browser read, curl, the CLI
-   command); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
-5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, cannot tell which is right), in the hand-off report `06-final-report.md`.
+   real observation of the behaviour in this session (start it, then curl it or take a screenshot; reading the
+   source file is not one); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
+5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, cannot tell which is right), in the hand-off report `06-final-report.md`. Your reply repeats its Not checked lines and logged defaults.
    The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`.
    If the user wants a review, run Phase 3 on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask.
@@ -192,27 +192,27 @@ back through a new RED (tester) or GREEN (implementer) round; findings without e
 Release speed rules (review-round cap, introduced vs pre-existing findings, per-item weight, slow runs once) are in `references/release.md`.
 
 ### Phase 4: Close-out (orchestrator)
-- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change. Sub-agents
-  ran focused tests only; this orchestrator run is the full suite. If it fails, the work goes back
+- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change (sub-agents
+  ran focused tests only). If it fails, the work goes back
   into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
 - Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
   --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
-  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess); `--rework` is the
-  rework round (0 = first pass) and `--majors` the review majors found. Then put `cost.sh summary` into the
+  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess) and `--rework 0` on
+  the first pass. Then put `cost.sh summary` into the
   final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- For a user-visible change the gates include one real observation of the behaviour in this session
-  (screenshot or browser read, curl, the CLI command), as `playbook-proof` describes; unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
+- A user-visible change needs one real observation in this session (screenshot or browser read, curl,
+  the CLI command; as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md` as the hand-off report `06-final-report.md`; the template says what each section needs:
   request coverage, a confidence per AC, review verdict, assumptions, logged defaults, found-not-fixed, [UNVERIFIED],
   `## Not checked` and `## Pre-mortem`. The Pre-mortem, the Models used line and the Playbook feedback line belong to
-  this report only, not to the PR description.
+  this report only, not to the PR description. Your reply repeats the Not checked lines and the logged defaults.
 - The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
 - When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
-- Optional calibration: when role runs were logged with `--task <id>`, `cost.sh calibrate` shows per weight the
-  review majors and rework rounds per task; advice only.
+- Optional: with runs logged by `--task <id>`, `cost.sh calibrate` shows per weight the review majors
+  and rework rounds per task; advice only.
 - Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
-- If a playbook rule, gate or script misfired during the task (a false positive, a wrong verdict, a check that let something through), capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
+- If a playbook rule, gate or script misfired during the task, capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
 - Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
 
 ## When the user says it is wrong
@@ -246,12 +246,13 @@ Native roles get the full role file plus the allowed input paths, never your con
 never saw your reasoning cannot inherit its mistakes.
 
 ## Stop and ask the user when
-- an ambiguity changes assertions and is hard to reverse (reversible ones: log a default instead);
+- an ambiguity changes assertions and is hard to reverse (do the reversible rest first, then ask; reversible ones: log a
+  default instead);
 - a dispute is still open after 2 rounds;
 - making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
 - baseline failures make the RED/GREEN signal unreadable.
 
-In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and reports that in the final report.
+In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and says so in the final report.
 
 ## Resuming
 The orchestrator updates `.agents/handoff/state.md` (from `templates/state.md`)
