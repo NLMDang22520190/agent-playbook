@@ -14,7 +14,9 @@
 # With tests/shard-weights ("test-x.sh SECONDS" lines, # comments; unknown suites weigh 10) the suites are
 # assigned greedily instead: heaviest first (ties by name), each to the lightest shard so far (ties: lowest). Inside a shard
 # the job pool then also starts the suites heaviest first (ties by name), so the longest suite is never the last one started;
-# the logs are still printed in name order. Without weights or without PB_SHARD the start order is the name order.
+# the logs are still printed in name order. While running, one "progress: start tests/x.sh" line is printed when a suite
+# starts and one "progress: done tests/x.sh (N s, rc R)" line when it ends, at once (so a cancelled job's log shows which
+# suites were running); the per-suite log blocks and the "== tests/x (N s)" headings come after, unchanged. Without weights or without PB_SHARD the start order is the name order.
 cd "$(dirname "$0")/.." || exit 3
 SHARD="${PB_SHARD:-}"; SK=1; SN=1
 if [ -n "$SHARD" ]; then
@@ -62,8 +64,10 @@ for t in $ORDER; do
   live_jobs
   while [ "$LIVE" -ge "$JOBS" ]; do sleep 0.1; live_jobs; done
   n="$(basename "$t" .sh)"
-  ( s=$(date +%s); bash "$t" > "$OUTD/$n.out" 2>&1; r=$?; echo $(( $(date +%s) - s )) > "$OUTD/$n.time"
-    echo "$r" > "$OUTD/$n.tmp"; mv "$OUTD/$n.tmp" "$OUTD/$n.rc" ) &
+  echo "progress: start $t"
+  ( s=$(date +%s); bash "$t" > "$OUTD/$n.out" 2>&1; r=$?; e=$(( $(date +%s) - s )); echo "$e" > "$OUTD/$n.time"
+    echo "$r" > "$OUTD/$n.tmp"; mv "$OUTD/$n.tmp" "$OUTD/$n.rc"
+    echo "progress: done $t ($e s, rc $r)" ) &
   PIDS="$PIDS $!"
 done
 wait
