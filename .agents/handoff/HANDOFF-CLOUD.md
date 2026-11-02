@@ -28,3 +28,7 @@
   warning on `git checkout be81cf1 -- <new task dirs>`: a false positive (the paths did not exist in this worktree; nothing lost);
   captured for playbook-feedback.
 - Slice D: RED d2998ee (tester gate OK), GREEN 272131d README (implementer gate OK). test-outcome-heldout 47/0, corpus 1159/0/1 skip, isolation 80/0 (characterization: runner never copied the reference). New suite has no measured Windows weight (L-0009).
+- Slice E (S2): RED 03a4cd6 (tester gate OK), GREEN 8ade3c8 (implementer gate OK): AGENTS.global.md 715 -> 692 words, SKILL.md
+  3681 -> 2720; 450/2000 not reachable with the verbatim pins (D13, asked; default budgets 700/2750); pins 30cba96 (tester gate OK).
+- AC11 check: `git revert 30cba96 8ade3c8 03a4cd6` in a scratch worktree applied cleanly; AGENTS.global.md back to 715 words with the
+  S3 sentences; test-content/diet/sdlc-refs/skill-rules/report-rules and run-checks pass.
