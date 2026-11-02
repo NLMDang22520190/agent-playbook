@@ -8,11 +8,15 @@
 # over the three default tasks, all 5/5 on check x). Never calls a real harness. Needs node and git.
 # Controls (environment of the real run): FAKE_PASSES_<evals|outcome>_<N>="ITEM=P,ITEM=P" (the Nth real call of that runner: the first
 # P of its K with-arm runs of ITEM pass check x; default K), FAKE_RC_<evals|outcome>_<N> (exit code of that call),
-# FAKE_SAFEFAIL=ID,ID (the with-arm "nothing written outside the workdir" check FAILs), FAKE_VARIANT=changed.
+# FAKE_SAFEFAIL=ID,ID (the with-arm "nothing written outside the workdir" check FAILs in every call), FAKE_SAFEFAIL_<evals|outcome>_<N>=ID,ID
+# (the same, only in the Nth real call of that runner: v0.34.0 M4 b, a safety FAIL that appears only in the confirmation run), FAKE_VARIANT=changed.
 . "$(dirname "$0")/lib.sh"
 GATE="$PB_ROOT/tools/release-gate.sh"
 command -v node >/dev/null 2>&1 || { t_skip 1 "node missing"; t_summary; exit $?; }
 command -v git >/dev/null 2>&1 || { t_skip 1 "git missing"; t_summary; exit $?; }
+# v0.34.0 B1 (G1/D4): the real runs below read the CI check runs of HEAD through a fake gh on PATH (green by default; tests/release-gate-fixture.sh)
+. "$(dirname "$0")/release-gate-fixture.sh"
+rgf_gh_install "$RGF_W/gh"; export PATH="$RGF_GH/bin:$PATH"; export PB_GATE_REPO=acme/widgets
 
 W="$(mk_tmp)"
 mkdir -p "$W/home" "$W/tmp" "$W/ctmp"
@@ -82,7 +86,8 @@ for s in $(printf '%s' "$list" | tr ',' ' '); do
     for a in with without; do
       [ "$arm" = with ] && [ "$a" = without ] && continue
       r=FAIL; [ "$a" = with ] && [ "$i" -le "$p" ] && r=PASS
-      sf=PASS; case ",${FAKE_SAFEFAIL:-}," in *",$s,"*) [ "$a" = with ] && sf=FAIL ;; esac
+      sfv="FAKE_SAFEFAIL_${key}_$n"
+      sf=PASS; case ",${FAKE_SAFEFAIL:-},${!sfv:-}," in *",$s,"*) [ "$a" = with ] && sf=FAIL ;; esac
       runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"$a\",\"k\":$i,\"label\":\"$s.$a.$i\",\"status\":\"graded\",\"error\":null,\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"},{\"name\":\"nothing written outside the workdir\",\"key\":\"nothing written outside the workdir\",\"result\":\"$sf\"}]}"
       sep=","
     done
@@ -110,7 +115,8 @@ gate_scen() { # FILE LIST: GATE_SCENARIOS line replaced, or inserted before DEFA
 hd() { git -C "$1" rev-parse HEAD; }
 gcommit() { printf '%s\n' "$3" > "$1/$2"; git -C "$1" add -A && git -C "$1" commit -qm "$4"; }
 # base_dir REPO MODE: a baseline gate dir for HEAD of REPO (not committed). MODE: ok | nopooled | missing (the outcome file named in
-# "pooled" does not exist) | corrupt (the behaviour file is not JSON)
+# "pooled" does not exist) | corrupt (the behaviour file is not JSON) | notschema (v0.34.0 M3: the behaviour file is valid JSON with runs, but
+# its schema is not pb-evals/1)
 base_dir() {
   local r="$1" mode="$2" c d pl
   c="$(hd "$r")"; d="$r/evals/results/gate-$(printf '%s' "$c" | cut -c1-12)"; mkdir -p "$d"
@@ -124,6 +130,7 @@ base_dir() {
   case "$mode" in
     missing) rm -f "$d/outcome-m1.json" ;;
     corrupt) printf '{not json\n' > "$d/behaviour-m1.json" ;;
+    notschema) printf '{"schema":"pb-other/2","playbook_commit":"%s","harness":"claude","model":"m1","runs":[]}\n' "$c" > "$d/behaviour-m1.json" ;;
   esac
 }
 # build NAME MODE -> $W/NAME: commit A (tools, fakes, tasks), a results commit with the baseline gate dir for A tagged v0.32.0
@@ -285,7 +292,8 @@ assert_eq "R7-4 (3b) confirm is null" "null" "$(gj "$GJ" 'String(j.confirm)')"
 echo "R7-1 case 4: the baseline is read in a real run (a run at 2/5 against a 5/5 baseline used to pass). Flagged item outside the gate set: no confirmation, fail with the first reasons"
 mkdir -p "$R/evals/results/gate-c4"
 gen "$R/evals/results/gate-c4/behaviour-earlier.json" "$SHA" "E9" both "E9=2"
-rr "$R" c4 ""
+# M1/D13: gate-c4 already holds the earlier batch, so this run adds to it on purpose (--add-batch)
+rr "$R" c4 "" --add-batch
 assert_rc "R7-1 (4) E9 at 2/5 (an earlier batch in DIR) against the 5/5 baseline -> exit 1 (today: 0)" 1
 assert_eq "R7-1 (4) verdict fail" "fail" "$(gj "$GJ" j.verdict)"
 assert_eq "R7-1 (4) the reason is the first one: E9 x with 5/5 -> 2/5" "regression vs $RB: E9 x: with 5/5 -> 2/5" "$(reasons)"
@@ -332,6 +340,8 @@ chk_broken() { # NAME MODE REASON
 chk_broken nopooled nopooled "baseline $RB: gate.json has no pooled list"
 chk_broken missing missing "baseline $RB: cannot read outcome-m1.json"
 chk_broken corrupt corrupt "baseline $RB: cannot read behaviour-m1.json"
+# M3 (v0.34.0): a listed baseline file that parses as JSON but is not a pb-evals/1 file
+chk_broken notschema notschema "baseline $RB: cannot read behaviour-m1.json"
 chk_broken older older "baseline $RB: cannot read outcome-m1.json"
 RO="$W/b-older"
 assert_eq "R7-2'' (older) fixture: an older tag v0.31.0 with a good baseline exists and is not used" "v0.31.0" "$(git -C "$RO" tag -l 'v0.31.0')"
@@ -362,5 +372,77 @@ FL="$(ls "$ODN"/behaviour-[0-9]*.log 2>/dev/null | head -n 1)"; CLG="$(ls "$ODN"
 assert_contains "R7-3' (9) the first log still holds the first call's output (call=1)" "$(cat "$FL" 2>/dev/null)" "fake-run run-evals.sh call=1"
 assert_contains "R7-3' (9) the confirmation log holds the confirmation call's output (call=2)" "$(cat "$CLG" 2>/dev/null)" "fake-run run-evals.sh call=2"
 assert_eq "R7-3' (9) the confirmation json and md are separate files too" "1|1" "$(ls "$ODN" | grep -c '^behaviour-confirm-.*\.json$')|$(ls "$ODN" | grep -c '^behaviour-confirm-.*\.md$')"
+
+# ===========================================================================================================================
+# v0.34.0 slice B1, M2 and M4. Which of these already pass is said in .agents/handoff/02-tests-B1.md (characterization).
+echo "M2 confirm is null in gate.json while old *-confirm-* files are in DIR but no confirmation ran in this run"
+build rkm ok
+RM="$W/rkm"; SHM="$(hd "$RM")"
+mkdir -p "$RM/evals/results/gate-m2"
+gen "$RM/evals/results/gate-m2/behaviour-confirm-old.json" "$SHM" "E1" with
+gen "$RM/evals/results/gate-m2/outcome-confirm-old.json" "$SHM" "$T15" with
+# M1/D13: the DIR holds the files of an earlier run, so this batch is added on purpose (--add-batch)
+rr "$RM" m2 "" --add-batch
+assert_rc "M2 a clean batch added to a DIR with old confirmation files -> exit 0" 0
+assert_eq "M2 fixture: the old confirmation files were seen and pooled (2 of the 4 pooled files)" "4|2" "$(gj "$GJ" '[j.pooled.length, j.pooled.filter(p=>/-confirm-old\.json$/.test(p)).length].join("|")')"
+assert_eq "M2 no confirmation ran in this run: one real call per runner" "1|1" "$(nreal run-evals.sh)|$(nreal run-outcome.sh)"
+assert_eq "M2 gate.json has \"confirm\": null although *-confirm-* files exist in DIR" "null" "$(gj "$GJ" 'String(j.confirm)')"
+assert_eq "M2 (control) the DIR still holds the old confirmation files" "2" "$(ls "$ODN" | grep -c -- '-confirm-old\.json$')"
+echo "M2 and when a confirmation does run, confirm names this run's items (not the old files')"
+build rkm2 ok
+RM2="$W/rkm2"; SHM2="$(hd "$RM2")"
+mkdir -p "$RM2/evals/results/gate-m2b"
+gen "$RM2/evals/results/gate-m2b/behaviour-confirm-old.json" "$SHM2" "E2" with
+rr "$RM2" m2b "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=5" --add-batch
+assert_rc "M2 (b) a flagged E1 confirmed at 5/5 next to an old confirmation file of E2 -> exit 0" 0
+assert_eq "M2 (b) confirm.items is this run's E1 only" '["E1"]' "$(gj "$GJ" 'j.confirm && j.confirm.items')"
+
+echo "M1/D13 (confirm suite) a real run into a DIR that already holds this suite's files is refused unless --add-batch"
+build rkm3 ok
+RM3="$W/rkm3"
+mkdir -p "$RM3/evals/results/gate-m1c"
+gen "$RM3/evals/results/gate-m1c/behaviour-earlier.json" "$(hd "$RM3")" "E1,E2,E3"
+rr "$RM3" m1c ""
+assert_rc "M1 a DIR holding an earlier pb-evals/1 batch, no flag -> refused, exit 2" 2
+assert_eq "M1 the refused run called no runner" "0" "$(grep -c . "$CALLS" || true)"
+assert_eq "M1 the earlier file is the only file left in DIR" "behaviour-earlier.json" "$(ls "$ODN")"
+
+echo "M4 (a) a second mixed flag: the regression plus rule (a) (an earlier file whose variant end_check is changed) gets no confirmation (the rule (g) pair is case 3)"
+build rkm4 ok
+RM4="$W/rkm4"
+mkdir -p "$RM4/evals/results/gate-m4a"
+gen "$RM4/evals/results/gate-m4a/behaviour-earlier.json" "$(hd "$RM4")" "E3"
+node -e 'const fs=require("fs"),f=process.argv[1],j=JSON.parse(fs.readFileSync(f,"utf8"));j.variant.end_check="changed";fs.writeFileSync(f,JSON.stringify(j)+"\n")' "$RM4/evals/results/gate-m4a/behaviour-earlier.json"
+rr "$RM4" m4a "FAKE_PASSES_evals_1=E1=2" --add-batch
+assert_rc "M4 (a) a regression plus rule (a) from an earlier file -> exit 1" 1
+assert_contains "M4 (a) the regression is among the reasons" "$(reasons)" "regression vs $RB: E1 x: with 5/5 -> 2/5"
+assert_contains "M4 (a) the other failing rule is among the reasons (end_check)" "$(reasons)" "end_check"
+assert_eq "M4 (a) no confirmation call (one call per runner)" "1|1" "$(nreal run-evals.sh)|$(nreal run-outcome.sh)"
+assert_eq "M4 (a) confirm is null" "null" "$(gj "$GJ" 'String(j.confirm)')"
+
+echo "M4 (b) a safety FAIL that appears only in the confirmation run -> final verdict fail with the safety reason"
+build rkm5 ok
+RM5="$W/rkm5"
+rr "$RM5" m4b "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=5 FAKE_SAFEFAIL_evals_2=E1"
+assert_rc "M4 (b) the confirmation clears the regression (7/10) but fails the safety floor -> exit 1" 1
+assert_eq "M4 (b) verdict fail" "fail" "$(gj "$GJ" j.verdict)"
+assert_contains "M4 (b) the final reason is the safety floor of E1" "$(reasons)" "safety floor: E1 nothing written outside the workdir"
+assert_eq "M4 (b) the regression is not a reason any more (pooled 7/10 against 5/5)" "0" "$(reasons | grep -c 'regression vs' || true)"
+assert_eq "M4 (b) the confirmation ran (two run-evals calls) and is recorded for E1" "2|[\"E1\"]" "$(nreal run-evals.sh)|$(gj "$GJ" 'j.confirm && JSON.stringify(j.confirm.items)')"
+assert_eq "M4 (b) the first run had no safety FAIL: confirm.first_reasons holds only the regression line" "1|true" "$(gj "$GJ" 'j.confirm ? [j.confirm.first_reasons.length, /^regression vs/.test(j.confirm.first_reasons[0])].join("|") : "no confirm"')"
+
+echo "M4 (c) a confirmation runner exiting 4 (ERROR runs) does not stop the gate: it decides on the pooled counts"
+build rkm6 ok
+RM6="$W/rkm6"
+rr "$RM6" m4c "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=5 FAKE_RC_evals_2=4"
+assert_rc "M4 (c) confirmation exit 4 and pooled 7/10 -> the gate goes on, verdict pass, exit 0" 0
+assert_eq "M4 (c) confirm.runner_rc.behaviour is 4" "4" "$(gj "$GJ" 'j.confirm && j.confirm.runner_rc.behaviour')"
+assert_eq "M4 (c) the confirmation file is pooled" "1" "$(ls "$ODN" | grep -c '^behaviour-confirm-.*\.json$')"
+build rkm7 ok
+RM7="$W/rkm7"
+rr "$RM7" m4c2 "FAKE_PASSES_evals_1=E1=2 FAKE_PASSES_evals_2=E1=2 FAKE_RC_evals_2=4"
+assert_rc "M4 (c) confirmation exit 4 and pooled 4/10 -> verdict fail on the pooled counts, exit 1 (not 3)" 1
+assert_contains "M4 (c) the reason has the pooled counts" "$(reasons)" "regression vs $RB: E1 x: with 5/5 -> 4/10"
+assert_eq "M4 (c) confirm.runner_rc.behaviour is 4" "4" "$(gj "$GJ" 'j.confirm && j.confirm.runner_rc.behaviour')"
 
 t_summary
