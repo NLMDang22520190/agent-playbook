@@ -313,8 +313,11 @@ mk_base "$W/w2" v0.32.0 m1 claude true "E1,E13" "E1|x|both|0" 0
 gcommit "$W/w2" "c3" README.md "# c3"
 mkres "$W/w2" now m1 claude true "E1,E13" "E1|x|both|0" 0
 pool "$W/w2" now --harness claude
-expect_pass "AC1' the newest qualifying tag (v0.32.0, x 0/5) is the baseline, not v0.31.0 (x 5/5)"
-assert_eq "AC1' ... and gate.json names it" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
+# D9 (v0.34.0 B3): the comparison now uses the BEST candidate, so 0/5 against v0.31.0 (5/5) is a regression naming v0.31.0; what stays is that
+# `baseline` is the newest qualifying tag (v0.32.0) and that no regression is reported against it (0/5 -> 0/5)
+expect_fail "AC1' D9 the newest qualifying tag (v0.32.0, x 0/5) stays gate.json baseline; the regression names the best, v0.31.0 (x 5/5)" "regression vs v0.31.0: E1 x: with 5/5 -> 0/5"
+assert_eq "AC1' ... and gate.json baseline names the newest, v0.32.0" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
+assert_not_contains "AC1' D9 ... no regression line against the newest tag" "$(RS)" "regression vs v0.32.0"
 # [ASSUMED] a gate dir committed at the gate commit's own tag is skipped: a tag on C never serves as its own baseline
 new_repo w3 "$AUTO6" "E1 E13"
 gcommit "$W/w3" "c1" README.md "# c1"
@@ -352,8 +355,11 @@ expect_fail "R1-2 a vX.Y.Z tag whose gate dir has no gate.json does not qualify"
 mk_r1 r1e v0.33.1 other
 expect_fail "R1-2 a vX.Y.Z tag whose gate.json names another commit than the group's does not qualify" "$RG"
 mk_r1 r1f v0.33.1 pass
-expect_pass "R1-2 control: a vX.Y.Z tag with a good gate.json (pass, own commit) is the baseline (x 0/5 -> 0/5)"
-assert_eq "R1-2 control: gate.json names v0.33.1" "v0.33.1" "$(gj "$GJ" j.baseline.tag)"
+# D9: v0.32.0 (5/5) is the best candidate, so 0/5 is a regression vs v0.32.0; that v0.33.1 (x 0/5) qualified shows in gate.json: it is the
+# `baseline` (newest) and the first of `baselines`, and no regression is named against it
+expect_fail "R1-2 control D9: a vX.Y.Z tag with a good gate.json (pass, own commit) qualifies (x 0/5); the regression names the best, v0.32.0" "$RG"
+assert_eq "R1-2 control: gate.json baseline names v0.33.1" "v0.33.1" "$(gj "$GJ" j.baseline.tag)"
+assert_eq "R1-2 control D9: baselines lists v0.33.1 then v0.32.0" "v0.33.1,v0.32.0" "$(gj "$GJ" 'Array.isArray(j.baselines) ? j.baselines.map(b => b.tag).join(",") : "MISSING"')"
 # no good tag at all: the only tag fails the qualification -> tags with gate dirs exist but none qualifies
 for kind in none fail other; do
   new_repo "r1n$kind" "$AUTO6" "E1 E13"
@@ -673,6 +679,34 @@ gcommit "$W/rb" "c3" README.md "# c3"
 mkres "$W/rb" now m1 claude true "E1,E13" "E1|x|both|0" 0
 pool "$W/rb" now --harness claude
 expect_fail "B3 M6 (11) a BROKEN newest baseline still stops the search: its reason, no regression vs the older v0.31.0" "baseline v0.32.0: cannot read outcome-m1.json"
+
+echo "B3 D9 a BROKEN group in an OLDER tag is skipped once a newer baseline was found; it still stops the search when none was found yet"
+new_repo ro "$AUTO6" "E1 E13"
+gcommit "$W/ro" "c1" README.md "# c1"
+mk_base "$W/ro" v0.31.0 m1 claude true "E1,E13" "" 0
+git -C "$W/ro" rm -q "$BDIR/outcome-m1.json" && git -C "$W/ro" commit -qm "drop outcome file" && git -C "$W/ro" tag -f v0.31.0 >/dev/null
+# later tags' trees hold every earlier gate dir: the broken group is removed from the tree after its own tag, so only v0.31.0 shows it
+git -C "$W/ro" rm -q -r "$BDIR" && git -C "$W/ro" commit -qm "remove the old gate dir from later trees"
+gcommit "$W/ro" "c2" README.md "# c2"
+mk_base "$W/ro" v0.32.0 m1 claude true "E1,E13" "E1|x|both|0" 0
+gcommit "$W/ro" "c3" README.md "# c3"
+mkres "$W/ro" now m1 claude true "E1,E13" "E1|x|both|0" 0
+pool "$W/ro" now --harness claude
+expect_pass "B3 D9 (12) v0.32.0 (0/5) is found; the older broken v0.31.0 (its good data would be 5/5) is skipped, not a reason and not read"
+assert_eq "B3 D9 (12) baseline v0.32.0, baselines only [v0.32.0]" "v0.32.0|v0.32.0" "$(gj "$GJ" 'Array.isArray(j.baselines) ? j.baselines.map(b => b.tag).join(",") + "|" + j.baseline.tag : "MISSING"')"
+new_repo rp "$AUTO6" "E1 E13"
+gcommit "$W/rp" "c1" README.md "# c1"
+mk_base "$W/rp" v0.31.0 m1 claude true "E1,E13" "" 0
+gcommit "$W/rp" "c2" README.md "# c2"
+mk_base "$W/rp" v0.32.0 m1 claude true "E1,E13" "" 0
+git -C "$W/rp" rm -q "$BDIR/outcome-m1.json" && git -C "$W/rp" commit -qm "drop outcome file" && git -C "$W/rp" tag -f v0.32.0 >/dev/null
+git -C "$W/rp" rm -q -r "$BDIR" && git -C "$W/rp" commit -qm "remove the old gate dir from later trees"
+gcommit "$W/rp" "c3" README.md "# c3"
+mk_base "$W/rp" v0.33.0 m2 claude true "E1,E13" "" 0
+gcommit "$W/rp" "c4" README.md "# c4"
+mkres "$W/rp" now m1 claude true "E1,E13" "E1|x|both|0" 0
+pool "$W/rp" now --harness claude
+expect_fail "B3 D9 (13) none found yet (v0.33.0 is another model): the broken v0.32.0 still stops the search, v0.31.0 is not used" "baseline v0.32.0: cannot read outcome-m1.json"
 
 echo "AC2/AC4 spends nothing: no fixture runner was called"
 assert_eq "no runner call" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
