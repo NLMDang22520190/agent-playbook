@@ -38,6 +38,17 @@
 #                                     .gitignore, package-lock.json), LC_ALL=C sorted
 #   pbh_test_counts FILE              prints "T A M": test declarations, assertions and skip/only markers of FILE at line start
 #                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
+#   pbh_sha_stdin                     the git blob hash (40 hex) of stdin (git hash-object --stdin; works outside a repository)
+#   pbh_grader_sha RUNNER             the hash of the runner script RUNNER followed by evals/lib-harness.sh (the "grader_sha" of every run)
+#   pbh_cli_version HARNESS           the first line of `HARNESS --version` (stdout and stderr, stdin closed, `timeout 3` when it exists), "" when none
+#   pbh_harness_sha LABEL CMD         the "harness_sha" of every run: the hash of "<harness> <CLI --version output>" for a preset (LABEL is
+#                                     the harness name, CMD empty) or of "cmd <CMD>" for a --cmd adapter (LABEL "custom")
+#   pbh_tree_sha DIR                  the hash of the file tree of DIR: the sorted relative paths of its regular files, then their blob hashes
+#                                     (a content edit, a rename and an added file all change it); the outcome "scenario_sha" of a task
+#   Per-run hashes (v0.34, decision D10): every run of both runners carries "scenario_sha" (run-evals: the git hash of the scenario's
+#   block of evals/scenarios.md, its "## E<n> " heading line to the line before the next such heading, each line newline-terminated;
+#   run-outcome: pbh_tree_sha of the task directory), "grader_sha" and "harness_sha" in its JSON run, all 40 lowercase hex. They let
+#   tools/release-gate.sh decide whether the without-arm rows of an earlier gate can be reused.
 #   pbh_tests_weakened BEFORE AFTER   line 1: the sum over the regular files under BEFORE/tests of max(0,T0-T1) + max(0,A0-A1)
 #                                     + max(0,M1-M0) against the same path under AFTER; then each file with a positive sum
 #                                     (tests/...), LC_ALL=C sorted
@@ -415,7 +426,8 @@ EOF
 # snap/ (playbook, skills-claude/, skills-agents/, blocks/<claude|codex|opencode>) and, once the install may have started, "installing".
 #   pbh_variant_home                 H: PB_VARIANT_HOME, else HOME
 #   pbh_variant_check DIR            0, or prints why DIR is not a variant tree (no dir, no install.sh, no VERSION) and returns 2
-#   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked
+#   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked;
+#                                    prints nothing (returns 0) when H has no lock, also when H or H/.agents does not exist
 #   pbh_variant_begin DIR H HARNESS  lock, snapshot, install, doctor, verify; returns 0, 2 (live lock), 3 (install or verify failed)
 #                                    or 5 (stale snapshot not restorable); on 3 the caller exits and pbh_variant_finalize restores
 #   pbh_variant_held DIR H           the --variant-held check: 0 when H/.agents/.pb-variant.lock exists, the pid in it is alive and the
@@ -665,11 +677,11 @@ pbh_variant_lock() {
   done
 }
 
-# pbh_variant_warn H: for a run without --variant
+# pbh_variant_warn H: for a run without --variant; silent when H has no lock (no .agents dir, or .agents without the lock)
 pbh_variant_warn() {
   local pid
-  pid="$(tr -d '[:space:]' < "$1/.agents/.pb-variant.lock/pid" 2>/dev/null)"
   [ -d "$1/.agents/.pb-variant.lock" ] || return 0
+  pid="$(tr -d '[:space:]' < "$1/.agents/.pb-variant.lock/pid" 2>/dev/null)"
   printf 'WARNING a variant run (pid %s) has another tree installed in %s\n' "${pid:-unknown}" "$1" >&2
   return 0
 }
@@ -758,6 +770,27 @@ pbh_conf_models_json() {
 $(pbh_conf_models "$1")
 EOF
   printf '{%s}' "$o"
+}
+
+# ---- per-run hashes (decision D10); see the header ----
+pbh_sha_stdin() { git hash-object --stdin; }
+pbh_grader_sha() {
+  local lib; lib="$(dirname "${BASH_SOURCE[0]}")/lib-harness.sh"
+  { cat "$1"; printf '\n--lib-harness.sh--\n'; cat "$lib"; } | pbh_sha_stdin
+}
+pbh_cli_version() {
+  local o
+  if command -v timeout >/dev/null 2>&1; then o="$(timeout 3 "$1" --version </dev/null 2>&1)"; else o="$("$1" --version </dev/null 2>&1)"; fi
+  printf '%s\n' "$o" | sed -n 1p | tr -d '\r'
+}
+pbh_harness_sha() {
+  if [ -n "${2:-}" ]; then printf 'cmd %s' "$2" | pbh_sha_stdin
+  else printf '%s %s' "$1" "$(pbh_cli_version "$1")" | pbh_sha_stdin; fi
+}
+pbh_tree_sha() {
+  local files
+  files="$(cd "$1" && find . -type f | LC_ALL=C sort)"
+  { printf '%s\n' "$files"; ( cd "$1" && printf '%s\n' "$files" | git hash-object --stdin-paths ); } | pbh_sha_stdin
 }
 
 # pbh_variant_held DIR H -> see the header: the --variant-held check of a runner whose outer process holds the lock and the install

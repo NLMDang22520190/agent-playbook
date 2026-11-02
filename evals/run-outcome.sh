@@ -54,6 +54,12 @@
 # H/.agents/playbook-backups only those the runner's own install and doctor calls made are removed after the restore; a lock path that is not a directory or a H/.agents
 # that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models").
+# ERROR runs (v0.34, decision D8): a WITH-arm run whose adapter failed (ERROR) still records the check "nothing written outside the
+# workdir" (PASS or FAIL, printed after the "<label> ERROR harness: ..." line, in the run's JSON "checks"); no hidden file is copied or run
+# and there is no "hidden tests" check. Status "error", the md row, n and the exit code 4 stay as they were. A without-arm ERROR run has no checks.
+# Every run of the JSON also has scenario_sha (the hash of the task directory tree: sorted file paths and their blob hashes), grader_sha
+# (this script plus lib-harness.sh) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
+# (evals/lib-harness.sh "Per-run hashes"). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run.
 # --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time, each with its own workdir
 # (<workroot>/<label>), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of
 # --jobs 1 and measure the same things. Each run's output lines (stderr, then stdout) are printed as one block when the run ends, so the
@@ -386,6 +392,12 @@ esac
 # each run's transcript and diff, kept outside the workroot (next to --out)
 EV="${OUT%.md}.runs"
 mkdir -p "$EV" || pb_die "cannot create $EV" 3
+# the per-run hashes (decision D10; evals/lib-harness.sh): grader and harness once, the task's tree per task ("id hash" lines)
+GRADER_SHA="$(pbh_grader_sha "$EVALS/run-outcome.sh")"
+HARNESS_SHA="$(pbh_harness_sha "$LABEL" "$CMD")"
+TREE_SHAS=""
+for id in $IDS; do TREE_SHAS="$TREE_SHAS$id $(pbh_tree_sha "$TASKS_DIR/$id")
+"; done
 
 # Per-run state: ID, ARM, K, RL (label), TD (task dir), WD, PF, LOG
 ANY_FAIL=0; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0; ND_RUNS=""; S_CHECKS=""; NOTES_J=""
@@ -404,8 +416,8 @@ run_json() {
   [ -n "$FTREE" ] && ft="$(pbh_json_str "$FTREE")"
   [ -n "$PSHA" ] && ps="$(pbh_json_str "$PSHA")"
   [ "$ARM" = without ] && dr="$DROPPED"
-  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s],"extra_files_changed":%s,"extra_files":%s,"tests_weakened":%s,"tests_weakened_files":%s}' \
-    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS" \
+  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"scenario_sha":"%s","grader_sha":"%s","harness_sha":"%s","checks":[%s],"extra_files_changed":%s,"extra_files":%s,"tests_weakened":%s,"tests_weakened_files":%s}' \
+    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$SCSHA" "$GRADER_SHA" "$HARNESS_SHA" "$S_CHECKS" \
     "$M_EXTRA" "$M_XFILES" "$M_TW" "$M_TWFILES")
 "
 }
@@ -510,6 +522,7 @@ run_one() {
   RUN="$1"
   ID="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$ID.$ARM.$K"
   TD="$TASKS_DIR/$ID"; TLANG="$(tconf "$ID" language)"
+  SCSHA="$(printf '%s' "$TREE_SHAS" | awk -v i="$ID" '$1 == i { print $2; exit }')"
   FTREE=""; PSHA=""; S_CHECKS=""; NOTES_J=""; M_EXTRA=null; M_XFILES=null; M_TW=null; M_TWFILES=null
   note "language=$TLANG"; note "source=$(tconf "$ID" source)"; note "expected_weight=$(tconf "$ID" expected_weight)"
   note "tasks_dir=$TASKS_DIR"
@@ -610,6 +623,15 @@ EOF
   if [ -n "$herr" ]; then   # not graded: no hidden file is copied anywhere
     printf '%s ERROR harness: %s (see %s)\n' "$RL" "$herr" "$LOG"
     ANY_ERROR=1
+    # D8: a with-arm ERROR run still gets the stray check (never a hidden test: nothing of hidden/ is copied or run); it is recorded and
+    # printed, the status, the md row, n and the exit code stay those of an ERROR run
+    if [ "$ARM" = with ]; then
+      if [ -z "${STRAY// /}" ]; then record PASS "$STRAYC"
+      else
+        record FAIL "$STRAYC"
+        printf '%s NOTE new in the workroot: %s\n' "$RL" "${STRAY% }"; note "STRAY new in the workroot: ${STRAY% }"
+      fi
+    fi
     run_json error "$herr" "$c" "$SECS"
     drop_run
     return 0
