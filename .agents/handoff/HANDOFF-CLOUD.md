@@ -11,3 +11,6 @@
   "[today FAIL]/[guard-rail] ... restore" cases: the guard's restore allow path in this container), test-release-tool.sh 4 (the
   container's global git config sets user.signingkey, gpg cannot sign the fixture tag), test-run-all.sh 1 ("the killed run's
   child (sleep 60) is gone", process timing). Log: .agents/handoff/evidence/baseline-run-all.log (git-ignored).
+- Push of feat/v0.35.0 refused (403: the GitHub App/account has no access to the repo for this org). Work continues as local
+  commits; the user was asked to reconnect GitHub.
+- Spec review round 1: REVISE (11 findings, .agents/handoff/01b-spec-review.md); spec revised ("## Revision 1"); round 2 started.
