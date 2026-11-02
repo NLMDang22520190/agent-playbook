@@ -576,6 +576,16 @@ headless() {
   return 1
 }
 hlog() { if [ -n "${PB_EVAL_HOOK_LOG:-}" ]; then printf 'guard %s\n' "$1" >> "$PB_EVAL_HOOK_LOG" 2>/dev/null; fi; return 0; }
+# DECISION[D-M10] a block / warn log line is "guard block|warn KIND COMMAND": the command on the same line, newlines and control
+# characters as spaces, redacted with pb_redact (the evidence blocks' rules), cut to 400 characters; the decision words stay first.
+# hlogc DECISION COMMAND
+hlogc() {
+  [ -n "${PB_EVAL_HOOK_LOG:-}" ] || return 0
+  local c="$2"
+  c="${c//[[:cntrl:]]/ }"
+  c="$(printf '%s' "$c" | pb_redact 2>/dev/null)" || c=""
+  hlog "$1 ${c:0:400}"
+}
 # jesc TEXT -> JE: TEXT as the body of a JSON string
 jesc() {
   local s="$1"
@@ -596,12 +606,12 @@ warn_json() {
 decide() {
   local kind="$1" what="${2:0:200}" hint="${3:-}"
   if headless; then
-    hlog "block $kind"
+    hlogc "block $kind" "$J_cmd"
     printf '%s\n' "${G_PFX}BLOCKED ($kind), an irreversible action: $what" \
       "This is a headless run and nobody can confirm it, so the action is left pending. Do not try another way to do it (another command, a script or an interpreter). Name it in your final reply as a pending action for the user.$hint" >&2
     exit 2
   fi
-  hlog "warn $kind"
+  hlogc "warn $kind" "$J_cmd"
   warn_json "$kind, an irreversible action: $what. Ask the user to confirm before running it.$hint"
   exit 0
 }
@@ -968,7 +978,8 @@ rpre_cls() {
   i=2
   while [ "$i" -lt "$n" ]; do
     a="${SEGW[$i]#?}"; i=$((i + 1))
-    case "$a" in *"$DS"* | *"$BQ"* | --output*) return 0 ;; esac
+    # DECISION[D-M11] --outp, --outpu and --output (git accepts an abbreviation of a long option) all count as --output
+    case "$a" in *"$DS"* | *"$BQ"* | --outp*) return 0 ;; esac
   done
   RCLS=0
 }
@@ -1120,7 +1131,7 @@ EOF
 }
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
-  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si
+  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si cop=0 cnew=0
   while [ "$i" -lt "$n" ]; do
     w="${SEGW[$i]#?}"
     case "$w" in
@@ -1157,14 +1168,20 @@ seg_git() {
       done ;;
     checkout)
       while [ "$i" -lt "$n" ]; do
-        a="${SEGW[$i]#?}"; i=$((i + 1))
+        a="${SEGW[$i]}"; i=$((i + 1))
+        case "$a" in r* | o*) continue ;; esac
+        a="${a#?}"
         case "$a" in
           --) dd=1 ;;
           .) mode=tracked ;;
+          -b* | -B* | --orphan* | --detach | -d) cnew=1 ;;
           -*) ;;
-          *) [ "$dd" = 1 ] && mode=tracked ;;
+          *) if [ "$dd" = 1 ]; then mode=tracked; else cop=$((cop + 1)); fi ;;
         esac
-      done ;;
+      done
+      # DECISION[D-M8] git checkout <rev> <path> without -- (two or more non-option words, none of them -b/-B/--orphan/--detach
+      # forms) restores the paths from <rev>: tracked discard mode. One word stays ambiguous (a branch) and passes.
+      if [ "$cop" -ge 2 ] && [ "$cnew" = 0 ]; then mode=tracked; fi ;;
     restore)
       while [ "$i" -lt "$n" ]; do
         a="${SEGW[$i]#?}"; i=$((i + 1))
@@ -2236,10 +2253,18 @@ END {
   if (na > cap) print "A 1"
 }'
 
-# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths and never from a word-split string: once, and
-# not when it holds whitespace or is empty (DECISION[D13] N4)
+# DECISION[D15] (M9): a path with whitespace or a shell-special character gets a single-quoted restore hint ('it'\''s' for a quote)
+# and is one whole line of the restore list; the hints are built from the finding paths line by line, never from a word-split string.
+# shq PATH -> SQ: PATH as one shell word
+shq() {
+  case "$1" in
+    *[!A-Za-z0-9._/@%+=:,-]*) SQ="${1//\'/\'\\\'\'}"; SQ="'$SQ'" ;;
+    *) SQ="$1" ;;
+  esac
+}
+# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths: once, and not when it is empty
 rl_add() {
-  case "$1" in '' | *[[:space:]]*) return 0 ;; esac
+  case "$1" in '') return 0 ;; esac
   case "$NL$rl" in *"$NL$1$NL"*) ;; *) rl="$rl$1$NL" ;; esac
 }
 stop_mode() {
@@ -2331,14 +2356,14 @@ EOF
     case "$kinds" in *" $kind "*) ;; *) kinds="$kinds$kind " ;; esac
     case "$kind" in
       schema-drop) items="$items$NL- $kind: $file: table $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        case "$NL$files" in *"$NL$file$NL"*) ;; *) files="$files$file$NL" ;; esac
         rl_add "$file" ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        case "$NL$files" in *"$NL$file$NL"*) ;; *) files="$files$file$NL" ;; esac
         rl_add "$file" ;;
       scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
       code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
-        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac
+        case "$NL$cfiles" in *"$NL$file$NL"*) ;; *) cfiles="$cfiles$file$NL" ;; esac
         if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$file"; then rl_add "$file"; fi ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
@@ -2380,15 +2405,24 @@ EOF
     printf '%s\n' "$msg" >&2
     exit 2
   fi
-  for f in $cfiles; do
-    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
-    else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    shq "$f"
+    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $SQ)$NL"
+    else chint="$chint($SQ is new: remove the new file or move it under .agents/)$NL"; fi
+  done <<EOF
+$cfiles
+EOF
   msg="${G_PFX}BLOCKED (Stop): this session left irreversible schema or migration changes$again:$items$NL"
   if [ "$BASE" = none ]; then
     msg="${msg}Headless run: revert these changes before finishing (restore the schema files, never by rewriting history; remove the migration or move it under .agents/), then describe them as a pending proposal in your final reply."
   else
-    for f in $files; do msg="$msg(restore: git checkout $b7 -- $f)$NL"; done
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      shq "$f"; msg="$msg(restore: git checkout $b7 -- $SQ)$NL"
+    done <<EOF
+$files
+EOF
     msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
   msg="$msg$chint"
