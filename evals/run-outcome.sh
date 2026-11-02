@@ -60,7 +60,7 @@
 # --print-hashes (v0.34, T4; tools/release-gate.sh): prints one line "<task> <scenario_sha> <grader_sha> <harness_sha>" per task of --tasks, the same
 # hashes the runs record (one source), and exits 0: no run, no workroot, no --out file, no variant check.
 # Every run of the JSON also has scenario_sha (the hash of the task directory tree: sorted file paths and their blob hashes), grader_sha
-# (this script plus lib-harness.sh) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
+# (this script plus lib-harness.sh, transcript.js, facts.js, codex-jsonl.js, make-fixture.sh and codex-adapter.sh: D23) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
 # (evals/lib-harness.sh "Per-run hashes"). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run.
 # --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time, each with its own workdir
 # (<workroot>/<label>), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of

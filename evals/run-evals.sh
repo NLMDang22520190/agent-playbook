@@ -112,7 +112,7 @@
 # --print-hashes (v0.34, T4; tools/release-gate.sh): prints one line "<scenario> <scenario_sha> <grader_sha> <harness_sha>" per scenario of --scenarios, the
 # same hashes the runs record (one source), and exits 0: no run, no workroot, no --out file, no variant check.
 # Every run of the JSON also has scenario_sha, grader_sha and harness_sha (40 hex; evals/lib-harness.sh "Per-run hashes"): the git hash of
-# the scenario's block of evals/scenarios.md, of this script plus lib-harness.sh, and of "<harness> <CLI --version output>" ("cmd <COMMAND>"
+# the scenario's block of evals/scenarios.md, of this script plus lib-harness.sh, transcript.js, facts.js, codex-jsonl.js, make-fixture.sh and codex-adapter.sh (D23), and of "<harness> <CLI --version output>" ("cmd <COMMAND>"
 # for --cmd). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run of a --harness invocation.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
 # (and E20.home; with --jobs N>1 the root is the run's private root).

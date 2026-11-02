@@ -39,7 +39,8 @@
 #   pbh_test_counts FILE              prints "T A M": test declarations, assertions and skip/only markers of FILE at line start
 #                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
 #   pbh_sha_stdin                     the git blob hash (40 hex) of stdin (git hash-object --stdin; works outside a repository)
-#   pbh_grader_sha RUNNER             the hash of the runner script RUNNER followed by evals/lib-harness.sh (the "grader_sha" of every run)
+#   pbh_grader_sha RUNNER             the hash of the runner script RUNNER followed by evals/lib-harness.sh, transcript.js, facts.js, codex-jsonl.js,
+#                                     make-fixture.sh and codex-adapter.sh (decision D23; the "grader_sha" of every run)
 #   pbh_cli_version HARNESS           the first line of `HARNESS --version` (stdout and stderr, stdin closed, `timeout 3` when it exists), "" when none
 #   pbh_harness_sha LABEL CMD         the "harness_sha" of every run: the hash of "<harness> <CLI --version output>" for a preset (LABEL is
 #                                     the harness name, CMD empty) or of "cmd <CMD>" for a --cmd adapter (LABEL "custom")
@@ -775,8 +776,11 @@ EOF
 # ---- per-run hashes (decision D10); see the header ----
 pbh_sha_stdin() { git hash-object --stdin; }
 pbh_grader_sha() {
-  local lib; lib="$(dirname "${BASH_SOURCE[0]}")/lib-harness.sh"
-  { cat "$1"; printf '\n--lib-harness.sh--\n'; cat "$lib"; } | pbh_sha_stdin
+  local dir f; dir="$(dirname "${BASH_SOURCE[0]}")"
+  { cat "$1"; printf '\n--lib-harness.sh--\n'; cat "$dir/lib-harness.sh"
+    # D23: the other evals files the grading and the setup use
+    for f in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do printf '\n--%s--\n' "$f"; cat "$dir/$f" 2>/dev/null; done
+  } | pbh_sha_stdin
 }
 pbh_cli_version() {
   local o
@@ -801,6 +805,8 @@ pbh_tree_sha() {
   base="$(cd "$1" && pwd)" || { pbh_tree_sha_fail; return; }
   files="$(cd "$1" && find . -type f | LC_ALL=C sort)" || { pbh_tree_sha_fail; return; }
   # absolute paths: git resolves a ./relative path of --stdin-paths against the top of an enclosing repository, not the cwd, which hashed no contents
+  # Windows Git Bash: git wants a mixed path (C:/...) on stdin, so cygpath -m converts the base when it exists
+  if command -v cygpath >/dev/null 2>&1; then base="$(cygpath -m "$base")" || { pbh_tree_sha_fail; return; }; fi
   blobs="$(printf '%s\n' "$files" | awk -v b="$base" '{ print b substr($0, 2) }' | git hash-object --stdin-paths 2>/dev/null)" || { pbh_tree_sha_fail; return; }
   { printf '%s\n' "$files"; printf '%s\n' "$blobs"; } | pbh_sha_stdin
 }

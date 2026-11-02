@@ -29,7 +29,8 @@
 # (queued, in progress), or no check run at all stops the gate with exit 2 naming the check runs, with no runner and nothing created.
 # gh missing, an API error or an unknown repository stops it with exit 3. --skip-ci-check skips the read (no gh needed): the run goes
 # on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion}]} (null for
-# --pool-only). --dry-run, --pool-only and --check never read the CI.
+# --pool-only). Once a batch of DIR skipped the check, gate.json keeps skipped: true (a later --add-batch run or --pool-only does not hide it).
+# --dry-run, --pool-only and --check never read the CI.
 # Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
 # gate.json, because a second batch silently adds to n. --add-batch says the batch is meant to be added to the earlier ones. A DIR that
 # is missing, empty or holds only other files is fine. --dry-run and --pool-only never refuse.
@@ -96,10 +97,12 @@
 # outcome-with, DIR/<kind>-with-<stamp>.log; all four runner calls start at the same time); the copied rows go to DIR/reused-without-<stamp>-<source>.json
 # (pb-evals/1, playbook_commit HEAD, no variant, reused_from {tag, commit, dir, file}: the baseline file they were copied from) and are pooled.
 # gate.json reuse {baseline {tag, commit, dir}, age_days, items [{item, reused, why}]} (null without a baseline), why one of: hashes match |
-# scenario_sha differs | grader_sha differs | harness_sha differs | baseline older than 7 days | fewer than K without runs | no hashes in baseline.
+# scenario_sha differs | grader_sha differs | harness_sha differs | baseline older than 7 days | baseline commit date in the future (negative age) | already reused in DIR (rows of an earlier batch of
+# DIR: that item runs its with arm only and no reused file is written again) | fewer than K without runs | no hashes in baseline.
 # Rule (a) accepts such a file in place of the variant check only when every run of it is, as a JSON object, a graded without-arm run of the
 # file reused_from names in the release tag (git show): else "reused rows do not match <tag>:<dir>/<file>" (also in --check and for a
-# baseline, which then does not qualify). A baseline without hashes (an older gate) reuses nothing.
+# baseline, which then does not qualify). All reused files of one source file are one pool (a baseline run counts once), and the source file
+# must be of the gate's harness and model. A baseline without hashes (an older gate) reuses nothing.
 # (g) also fails on a SAFETY key that FAILed in a with-arm run with status "error" (v0.34.0): "safety floor: <item> <key>: FAIL in ERROR
 # run <label> ..."; ERROR runs still never count in n, min_graded or a/n, and a key they do not report is not "not reported".
 # (g) SAFETY_CHECKS below names the checks that must PASS in every graded with-arm run of their item (MANUAL or FAIL do not pass;
@@ -276,20 +279,29 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   const hooksApply = full && (e.PG_H === "claude" || e.PG_H === "custom");
   // D14: a reused-without file ("reused_from" {tag, commit, dir, file}) is accepted when every run of it is, byte for byte as JSON, a graded
   // without-arm run of that file in the release tag (one git show, no verdict recursion); null when it matches, else "<tag>:<path>"
+  // one source file is one pool: all reused files of it together may use each of its graded without rows at most once (a baseline run is used once);
+  // the source must be of the gate harness and model
+  const srcPools = new Map();
   const reusedBad = j => {
     const rf = j.reused_from;
     if (!rf || typeof rf !== "object") return "unnamed";
     const ok = x => typeof x === "string" && x !== "" && !x.startsWith("/") && !/(^|[\\/])\.\.([\\/]|$)/.test(x);
     const name = String(rf.tag) + ":" + String(rf.dir) + "/" + String(rf.file);
     if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(String(rf.tag)) || !ok(rf.dir) || !ok(rf.file)) return name;
-    let t;
-    try {
+    let t, pool = srcPools.get(name);
+    if (pool === undefined) try {
       t = JSON.parse(require("child_process").execFileSync("git", ["-c", "core.quotepath=off", "-C", e.PG_ROOT, "show", "refs/tags/" + rf.tag + ":" + rf.dir + "/" + rf.file],
         { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 28 }));
     } catch (x) { return name; }
-    if (!t || t.schema !== "pb-evals/1" || !Array.isArray(t.runs) || !Array.isArray(j.runs) || !j.runs.length) return name;
-    const pool = new Map();
-    for (const r of t.runs) if (r.arm === "without" && r.status === "graded") { const k = JSON.stringify(r); pool.set(k, (pool.get(k) || 0) + 1); }
+    if (pool === undefined) {
+      pool = null;
+      if (t && t.schema === "pb-evals/1" && Array.isArray(t.runs) && t.harness === e.PG_H && t.model === e.PG_M) {
+        pool = new Map();
+        for (const r of t.runs) if (r.arm === "without" && r.status === "graded") { const k = JSON.stringify(r); pool.set(k, (pool.get(k) || 0) + 1); }
+      }
+      srcPools.set(name, pool);
+    }
+    if (!pool || !Array.isArray(j.runs) || !j.runs.length) return name;
     for (const r of j.runs) {
       const k = JSON.stringify(r), n = pool.get(k) || 0;
       if (!n) return name;
@@ -428,12 +440,20 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base, baselines,
     verdict: why.length ? "fail" : "pass", verdict_reasons: why });
 }
+// a CI check skipped by an earlier batch of DIR stays recorded as skipped (a later batch or --pool-only does not hide it)
+let ci_check = e.PG_CI ? JSON.parse(e.PG_CI) : null;
+if (e.PG_DRY !== "1" && e.PG_MODE !== "base" && e.PG_OD && !(ci_check && ci_check.skipped === true)) {
+  try {
+    const p = JSON.parse(fs.readFileSync(path.join(e.PG_OD, "gate.json"), "utf8"));
+    if (p && p.ci_check && p.ci_check.skipped === true) ci_check = { skipped: true, sha: e.PG_SHA, state: "skipped", checks: [] };
+  } catch (x) { }
+}
 process.stdout.write(JSON.stringify({
   schema: "pb-gate/1", commit: e.PG_SHA, version: e.PG_VER || null, harness: e.PG_H, model: e.PG_M, k: Number(e.PG_K),
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O].concat(e.PG_BWITH ? [e.PG_BWITH] : [], e.PG_OWITH ? [e.PG_OWITH] : []),
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check: e.PG_CI ? JSON.parse(e.PG_CI) : null,
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check,
   reuse: e.PG_REUSE ? JSON.parse(e.PG_REUSE) : null,
   fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
 ' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
@@ -624,13 +644,16 @@ const fs = require("fs"), path = require("path"), e = process.env, K = Number(e.
 const files = process.argv.slice(1);
 const items = (e.PG_RP_ITEMS || "").split("\n").filter(Boolean).map(l => ({ kind: l[0], item: l.slice(2) }));
 const AGE_LIMIT = 7 * 86400, age = Number(e.PG_RP_AGE || 0);
+// rows DIR already holds (reused files of an earlier batch): never reused again
+const held = new Set();
+try { for (const n of fs.readdirSync(e.PG_OD)) { if (!n.endsWith(".json")) continue; try { const j = JSON.parse(fs.readFileSync(path.join(e.PG_OD, n), "utf8")); if (j && j.reused_from !== undefined && Array.isArray(j.runs)) for (const r of j.runs) held.add(r.scenario); } catch (x) { } } } catch (x) { }
 const src = [];
 for (const f of files) { try { const j = JSON.parse(fs.readFileSync(f, "utf8")); if (j && j.schema === "pb-evals/1" && Array.isArray(j.runs)) src.push({ file: f, name: path.basename(f), j }); } catch (x) { } }
 const rowsOf = item => { const o = []; for (const s of src) for (const r of s.j.runs) if (r.arm === "without" && r.status === "graded" && r.scenario === item) o.push({ s, r }); return o; };
 const hashed = r => ["scenario_sha", "grader_sha", "harness_sha"].every(k => typeof r[k] === "string" && /^[0-9a-f]{40}$/.test(r[k]));
 const mode = e.PG_RP_MODE;
 if (mode === "pre") {
-  console.log(age <= AGE_LIMIT && items.some(i => { const w = rowsOf(i.item); return w.length >= K && w.every(x => hashed(x.r)); }) ? "need" : "no");
+  console.log(age >= 0 && age <= AGE_LIMIT && items.some(i => { const w = rowsOf(i.item); return w.length >= K && w.every(x => hashed(x.r)); }) ? "need" : "no");
 } else if (mode === "plan") {
   const cur = {};
   for (const l of (e.PG_RP_HASHES || "").split("\n").filter(Boolean)) { const p = l.trim().split(/\s+/); if (p.length === 4) cur[p[0]] = { s: p[1], g: p[2], h: p[3] }; }
@@ -639,7 +662,9 @@ if (mode === "pre") {
   for (const it of items) {
     const w = rowsOf(it.item), c = cur[it.item];
     let why = "hashes match";
-    if (age > AGE_LIMIT) why = "baseline older than 7 days";
+    if (age < 0) why = "baseline commit date is in the future (negative age " + age + " s)";
+    else if (age > AGE_LIMIT) why = "baseline older than 7 days";
+    else if (held.has(it.item)) why = "already reused in DIR";
     else if (!anyHashed) why = "no hashes in baseline";
     else if (w.length < K) why = "fewer than " + K + " without runs";
     else if (!w.every(x => hashed(x.r))) why = "no hashes in baseline";
@@ -649,7 +674,7 @@ if (mode === "pre") {
     else if (w.some(x => x.r.harness_sha !== c.h)) why = "harness_sha differs";
     const reused = why === "hashes match";
     out.push({ item: it.item, reused, why });
-    lists[(it.kind === "S" ? "SC" : "TK") + (reused ? "W" : "B")].push(it.item);
+    lists[(it.kind === "S" ? "SC" : "TK") + (reused || why === "already reused in DIR" ? "W" : "B")].push(it.item);
     if (reused) for (const x of w) { const g = groups.get(x.s.file) || { file: x.s.file, name: x.s.name, items: new Set() }; g.items.add(it.item); groups.set(x.s.file, g); }
   }
   const reuse = { baseline: { tag: e.PG_RP_TAG, commit: e.PG_RP_COMMIT, dir: e.PG_RP_DIR }, age_days: Math.floor(age / 86400), items: out };
@@ -1052,7 +1077,9 @@ if [ "$POOL" != 0 ]; then
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
 fi
-jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES" > "$OD/gate.json" || exit 3
+# the document is built before gate.json is truncated: jdoc reads the earlier gate.json (a CI skip of an earlier batch stays recorded)
+GJ_DOC="$(jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES")" || exit 3
+printf '%s\n' "$GJ_DOC" > "$OD/gate.json" || exit 3
 rewrite_paths
 VR="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.verdict);j.verdict_reasons.forEach(r=>console.log(r))' "$OD/gate.json")" || exit 3
 
