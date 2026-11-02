@@ -2589,4 +2589,33 @@ flat_has "v35 E AC9 R18 the gate runs after every hand-back" "$SKILL" 'gate[^.]{
 sec_flat_has "v35 E AC9 R18 a dispute goes to a fresh tester" "$SKILL" '^### Phase 2' 'dispute[^.]{0,200}fresh tester|fresh tester[^.]{0,200}dispute'
 sec_flat_has "v35 E AC9 R18 the implementer never resolves a dispute itself" "$SKILL" '^### Phase 2' 'never let the implementer resolve a dispute|implementer (never|does not|must not) resolves? (a|the) dispute'
 
+echo "v0.35.0 review1: findings of review round 1 (.agents/handoff/05-review.md) restored in the cut text"
+R1CLAR="$(section "$BLOCK" '^### Clarify before changing' | tr '\n' ' ' | tr -s ' ')"
+# 1. AGENTS.global.md Clarify: the humanizer ask is conditional on the skill being there (same sentence, no '.' between)
+if printf '%s' "$R1CLAR" | grep -qiE -- '(humanizer[^.]{0,120}(is available|available|is installed|installed|exists))|((if|when) [^.]{0,60}(available|installed|exists)[^.]{0,120}humanizer)'; then t_ok "v0.35.0 review1 Clarify: the humanizer ask applies only when a humanizer skill is available"; else t_bad "v0.35.0 review1 Clarify: the humanizer ask applies only when a humanizer skill is available" "no availability condition in the humanizer sentence of the Clarify section of $BLOCK"; fi
+if printf '%s' "$R1CLAR" | grep -qiE -- 'text others will read[^.]{0,200}release notes'; then t_ok "v0.35.0 review1 Clarify: text others will read names release notes"; else t_bad "v0.35.0 review1 Clarify: text others will read names release notes" "'release notes' not in the 'Text others will read' list of $BLOCK"; fi
+if printf '%s' "$R1CLAR" | grep -qiE -- 'text others will read[^.]{0,200}(reports?[^.]{0,20}sent on|reports)'; then t_ok "v0.35.0 review1 Clarify: text others will read names a report sent on"; else t_bad "v0.35.0 review1 Clarify: text others will read names a report sent on" "'a report sent on' / 'reports' not in the 'Text others will read' list of $BLOCK"; fi
+# 2. SKILL.md: the paragraph that starts with **The user says "quick"**
+R1QUICK="$(awk '/^\*\*The user says "quick"/{f=1} f&&/^$/{exit} f{print}' "$SKILL" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+r1q() { if printf '%s' "$R1QUICK" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the quick paragraph of $SKILL"; fi; }
+r1q 'v0.35.0 review1 quick rule: "quick one" counts as quick' '"quick one"|quick one'
+r1q 'v0.35.0 review1 quick rule: "do it quick" counts as quick' '"do it quick"|do it quick'
+r1q 'v0.35.0 review1 quick rule: quick runs Lite at once' '(runs?|start|go)[^.]{0,30}Lite[^.]{0,30}at once|at once[^.]{0,40}Lite'
+r1q 'v0.35.0 review1 quick rule: still test first, seen failing' 'test first[^.]{0,60}seen failing|seen failing[^.]{0,60}test first'
+r1q 'v0.35.0 review1 quick rule: the skip-tests rule is unchanged' 'skip-tests rule is unchanged'
+# 3. harnesses.md intro (text before the first ## heading) must not claim SKILL.md prints the plan
+R1HINTRO="$(awk 'NR>1 && /^## /{exit} {print}' "$HARNESSES" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+if [ -n "$R1HINTRO" ] && ! printf '%s' "$R1HINTRO" | grep -qiE -- 'SKILL\.md.{0,400}print[^`]{0,20}`role-model\.sh plan`'; then t_ok "v0.35.0 review1 harnesses.md intro does not say SKILL.md prints role-model.sh plan"; else t_bad "v0.35.0 review1 harnesses.md intro does not say SKILL.md prints role-model.sh plan" "intro of $HARNESSES still attributes 'print \`role-model.sh plan\`' to SKILL.md"; fi
+if printf '%s' "$R1HINTRO" | grep -qiE -- 'this file (holds|has|keeps|carries).{0,250}model plan.{0,250}(when to ask|ask)'; then t_ok "v0.35.0 review1 harnesses.md intro: this file holds the model plan and when-to-ask rules"; else t_bad "v0.35.0 review1 harnesses.md intro: this file holds the model plan and when-to-ask rules" "intro of $HARNESSES does not say this file holds the model plan and when to ask"; fi
+# 4. SKILL.md Phase 4 observation bullet
+R1OBS="$(section "$SKILL" '^### Phase 4' | awk '/^- /{f=0} /^- [^\n]*observation/{f=1} f{print}' | tr '\n' ' ' | tr -s ' ')"
+r1o() { if printf '%s' "$R1OBS" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the Phase 4 observation bullet of $SKILL"; fi; }
+r1o 'v0.35.0 review1 Phase 4 observation: start it, then curl or a screenshot' 'start it[^.]{0,60}(curl[^.]{0,40}screenshot|screenshot[^.]{0,40}curl)'
+r1o 'v0.35.0 review1 Phase 4 observation: reading the source is not an observation' 'reading the source[^.]{0,30}(is )?not (one|an observation)'
+if [ -n "$R1OBS" ] && ! printf '%s' "$R1OBS" | grep -qiF -- 'screenshot or browser read, curl, the CLI command'; then t_ok "v0.35.0 review1 Phase 4 observation: the old 'screenshot or browser read, curl, the CLI command' list is gone"; else t_bad "v0.35.0 review1 Phase 4 observation: the old 'screenshot or browser read, curl, the CLI command' list is gone" "old list still in (or bullet missing from) Phase 4 of $SKILL"; fi
+# 5. mechanics.md cost bullet: what --majors and --rework mean
+R1COST="$(section "$MECH" '^## Phase 4: cost logging' | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$R1COST" | grep -qiE -- '--majors[^.]{0,200}(review majors|major (review )?findings|majors (the |a )?review(er)? found|majors found)'; then t_ok "v0.35.0 review1 mechanics cost: --majors is the review majors found"; else t_bad "v0.35.0 review1 mechanics cost: --majors is the review majors found" "no meaning of --majors in the cost section of $MECH"; fi
+if printf '%s' "$R1COST" | grep -qiE -- '--rework[^.]{0,200}(counts|is the number of|number of)'; then t_ok "v0.35.0 review1 mechanics cost: says what --rework counts"; else t_bad "v0.35.0 review1 mechanics cost: says what --rework counts" "no meaning of --rework in the cost section of $MECH"; fi
+
 t_summary
