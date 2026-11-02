@@ -284,6 +284,22 @@ ST4="$(otask_sha t-two.with.1 scenario_sha)"
 printf 'x\n' > "$TT/t-two/hidden/tests/extra.p2p.sh"
 ro --cmd "bash $SA/idle.sh" --tasks-dir "$TT" --tasks t-two --arm with
 diff_hex "R1 outcome: adding a file changes the scenario_sha" "$(otask_sha t-two.with.1 scenario_sha)" "$ST4"
+echo "R1 run-outcome: a task dir INSIDE a git repository: a content-only edit still changes scenario_sha (git hash-object --stdin-paths resolves ./paths against the repo top)"
+tsha_dir() { ( . "$EVROOT/lib-harness.sh" >/dev/null 2>&1; pbh_tree_sha "$1" ); }
+for GL in top sub; do
+  TG="$(mk_tmp)"; ( cd "$TG" && git init -q ) || t_bad "git init $GL" "failed"
+  if [ "$GL" = top ]; then GT="$TG"; else GT="$TG/sub/tasks"; mkdir -p "$GT"; fi
+  cp -R "$T"/. "$GT"/
+  TS0="$(tsha_dir "$GT/t-two")"; ro --cmd "bash $SA/idle.sh" --tasks-dir "$GT" --tasks t-two --arm with; SG0="$(otask_sha t-two.with.1 scenario_sha)"
+  printf '\n# content only\n' >> "$GT/t-two/hidden/tests/c.p2p.sh"
+  TS1="$(tsha_dir "$GT/t-two")"; ro --cmd "bash $SA/idle.sh" --tasks-dir "$GT" --tasks t-two --arm with; SG1="$(otask_sha t-two.with.1 scenario_sha)"
+  diff_hex "R1 $GL: pbh_tree_sha of a task dir in a git repo changes with a content-only edit" "$TS0" "$TS1"
+  diff_hex "R1 $GL: outcome scenario_sha of a task dir in a git repo changes with a content-only edit" "$SG0" "$SG1"
+  same_hex "R1 $GL: the runner's scenario_sha is pbh_tree_sha of the task dir" "$TS1" "$SG1"
+  ( cd "$TG" && git add -A && git -c user.email=t@example.invalid -c user.name=t -c commit.gpgsign=false commit -qm c ) >/dev/null 2>&1
+  printf '\n# second edit\n' >> "$GT/t-two/prompt.md"
+  diff_hex "R1 $GL: an edit of a committed file changes pbh_tree_sha" "$TS1" "$(tsha_dir "$GT/t-two")"
+done
 echo "R1 run-outcome: grader_sha follows run-outcome.sh and lib-harness.sh; harness_sha the command or the CLI version"
 EO="$(mk_tmp)"; cp -R "$EVROOT" "$EO/evals"; cp -R "$PB_ROOT/skills" "$EO/skills" 2>/dev/null; cp -R "$PB_ROOT/scripts" "$EO/scripts" 2>/dev/null
 cp "$PB_ROOT/AGENTS.global.md" "$PB_ROOT/VERSION" "$EO/" 2>/dev/null; rm -rf "$EO/evals/results"
