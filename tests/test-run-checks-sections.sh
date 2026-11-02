@@ -686,4 +686,21 @@ skipnote_case "t_skip line passes" "t_skip 4 \"merge tests (no node)\"" pass
 skipnote_case "a note that is not about skipping passes" "echo \"$NT symlinks unavailable here: tests run in --copy mode\"" pass
 skipnote_case "a comment mentioning the pattern passes" "# was: echo \"$NT x are skipped\"" pass
 
+# M13 round 2: --only skipnote must run the lint section (it was listed in the usage but rejected as "unknown section", exit 2)
+for sk_kind in fail pass; do
+  d="$(mk_min_copy)"
+  if [ "$sk_kind" = fail ]; then printf '#!/usr/bin/env bash\n# fixture\necho "%s node not found: the merge tests are skipped"\n' "$NT" > "$d/tests/zz-skipnote.sh"
+  else printf '#!/usr/bin/env bash\n# fixture\nt_skip 4 "merge tests (no node)"\n' > "$d/tests/zz-skipnote.sh"; fi
+  chmod +x "$d/tests/zz-skipnote.sh"
+  run_in "$d" bash evals/run-checks.sh --only skipnote
+  assert_not_contains "M13 --only skipnote ($sk_kind copy): the section is known (not 'unknown section')" "$OUT" "unknown section"
+  if [ "$sk_kind" = fail ]; then
+    assert_rc "M13 --only skipnote on a bad fixture: exit 1" 1
+    assert_contains "M13 --only skipnote on a bad fixture: a FAIL line names tests/zz-skipnote.sh:3" "$(printf '%s\n' "$OUT" | grep '^  FAIL')" "tests/zz-skipnote.sh:3"
+  else
+    assert_rc "M13 --only skipnote on a clean copy: exit 0" 0
+    assert_contains "M13 --only skipnote on a clean copy: the ok line for the skip-note scan" "$OUT" "no 'note: ... skipped' print in tests"
+  fi
+done
+
 t_summary
