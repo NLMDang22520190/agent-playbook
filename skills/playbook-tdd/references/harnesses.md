@@ -1,6 +1,6 @@
 # Starting roles in each harness
 
-The binding rules are in the `SKILL.md` section "Starting roles per harness": resolve each role's model with `role-model.sh <role> --harness <h>`, never upgrade or downgrade a configured model on your own judgement, print `role-model.sh plan`, and ask once as `confirm_models` says. This file holds the plumbing: how to start a role in each harness, how to pass its model and effort, and how to keep the prompt prefix cacheable.
+The binding rules are in the `SKILL.md` section "Starting roles per harness": resolve each role's model with `role-model.sh <role> --harness <h>`, never upgrade or downgrade a configured model on your own judgement, print `role-model.sh plan`, and ask once as `confirm_models` says (detail: "Model plan and when to ask" below). This file holds the plumbing: how to start a role in each harness, how to pass its model and effort, and how to keep the prompt prefix cacheable.
 
 ## Spawn mode (`conf.sh get subagents`)
 
@@ -14,6 +14,12 @@ The binding rules are in the `SKILL.md` section "Starting roles per harness": re
 ## Effort
 
 Pass the effort (`role-model.sh <role> --harness <h> --effort`) where the harness supports it: Agent `effort` parameter, `codex exec -c model_reasoning_effort=<e>`, OpenCode per-agent config; otherwise print it only.
+
+## Model plan and when to ask
+
+Before starting roles, print `role-model.sh plan --harness <h>`.
+Ask the user once, with the reason and the cost difference, only when you want a different model, when a role resolves to session on a Full task, or when confirm_models=always.
+confirm_models=on-change is the default (an unknown value counts as on-change); never ask when confirm_models=never. Headless: use the conf, never upgrade, never block.
 
 ## Prompt prefix
 
