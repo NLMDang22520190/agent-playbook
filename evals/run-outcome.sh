@@ -3,7 +3,7 @@
 # only by the task's hidden tests: every fail_to_pass file must pass and every pass_to_pass file must still pass.
 #   run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks-dir DIR] [--tasks id1,id2]
 #                  [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
-#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR] [--preflight]
+#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR] [--jobs N] [--preflight]
 # --preflight (v0.33.0): checks, without cost, what this command line would refuse with exit 3 (node, git, for --harness the CLI of the
 # harness on PATH, and a python3 that really runs when a selected task has language=python3), then exits 0 with no output, or exits 3
 # with the reason on stderr. It starts no run, makes no workdir, writes no --out file or evidence dir, leaves --workroot alone and never
@@ -54,6 +54,23 @@
 # H/.agents/playbook-backups only those the runner's own install and doctor calls made are removed after the restore; a lock path that is not a directory or a H/.agents
 # that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models").
+# --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time, each with its own workdir
+# (<workroot>/<label>), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of
+# --jobs 1 and measure the same things. Each run's output lines (stderr, then stdout) are printed as one block when the run ends, so the
+# blocks come in the order the runs end. --max-cost is checked before each run starts, against the runs that have FINISHED by then: up
+# to N-1 runs may be in flight (their cost is not known yet), so the cap is approximate by up to N-1 runs; the note "cost unknown"
+# can then appear once per run that starts before the first unknown cost is merged. Under --jobs N>1 each run gets a private root,
+# <workroot>/.jobs/<label>/ (its workdir <workroot>/.jobs/<label>/<label>, .log and .prompt live there), so the stray check ("nothing
+# written outside the workdir") sees that run's writes only and never blames a run for another one. A write into the shared workroot
+# itself cannot be attributed to a run under --jobs N>1 and is not checked. Transcripts and diffs keep their place and names in
+# ${OUT%.md}.runs/<label>.*; the "Workroot:" line and the JSON "workroot" stay the shared root. --jobs 1 keeps <workroot>/<label>. With --variant the install, the doctor
+# call and the restore happen once, in the parent (before the first run starts and after the last one ends); INT, TERM and HUP stop the
+# running runs, then restore. A run that dies (a "cannot ..." exit) stops the others and ends the runner with its exit code.
+# --variant-held DIR (internal, for tools/release-gate.sh; not with --variant): the variant is already installed by an outer process
+# that holds the lock and stays alive. The runner only checks that H/.agents/.pb-variant.lock exists, that the pid in it is alive and that
+# the installed VERSION is DIR's (pbh_variant_held in evals/lib-harness.sh), then records the same variant object as --variant (JSON
+# "variant", the "Variant:" line says the install is held by an outer process); it never installs, runs doctor or restores, and takes
+# nothing over. Same refusals as --variant for --cmd and --arm without alone; exit 2 when the check fails, before anything starts.
 # --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so
 # does its leak probe (--harness claude with the without arm: exit 3 when claude still sees the playbook block); the
 # presets, model flags, arm settings files, the pb-evals/1 JSON and its statistics come from evals/lib-harness.sh. Every
@@ -91,11 +108,18 @@ rm_dir() {
   if [ -e "$1" ] && [ ! -L "$1" ]; then chmod -R u+rwx "$1" 2>/dev/null; rm -rf "$1" 2>/dev/null; fi
   return 0
 }
-cleanup() {
-  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$CUR_BASE"; rm_dir "$SET_DIR"
-  if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
-  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""; SET_DIR=""; ND_FILE=""
+# job_clean: the temp dirs of the running run (also the exit trap of one run of a --jobs fan-out)
+job_clean() {
+  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$CUR_BASE"
+  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""
 }
+cleanup() {
+  pbh_jobs_kill   # --jobs: the running runs first
+  job_clean; rm_dir "$SET_DIR"; rm_dir "$JOBS_DIR"
+  if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
+  SET_DIR=""; JOBS_DIR=""; ND_FILE=""
+}
+job_stop() { stop_adapter; job_clean; }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 # --variant: the snapshot is put back on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
 on_exit() { cleanup; pbh_variant_finalize || exit 5; }
@@ -104,13 +128,13 @@ set_traps() { trap 'on_exit' EXIT; trap 'on_signal 130' INT; trap 'on_signal 143
 set_traps
 
 HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0; CLEAN_ENV=0
-VARIANT=""; VARIANT_SET=0
+VARIANT=""; VARIANT_SET=0; VHELD=""; VHELD_SET=0; VARIANT_HELD=0; JOBS=1; JOBS_SET=0; JOBS_DIR=""
 MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any run replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--tasks-dir|--tasks|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant)
+    --harness|--cmd|--tasks-dir|--tasks|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant|--variant-held|--jobs)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -126,6 +150,8 @@ while [ $# -gt 0 ]; do
     --arm)       ARM_OPT="$2"; ARM_SET=1; shift ;;
     --repeat)    REPEAT_OPT="$2"; REPEAT_SET=1; shift ;;
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
+    --variant-held) VHELD="$2"; VHELD_SET=1; shift ;;
+    --jobs)      JOBS="$2"; JOBS_SET=1; shift ;;
     --interactive) INTERACTIVE=1 ;;
     --clean-env) CLEAN_ENV=1 ;;
     --preflight) PREFLIGHT=1 ;;
@@ -169,8 +195,17 @@ if [ "$REPEAT_SET" = 1 ]; then
     *) pb_die "--repeat needs a whole number from 1 to 99, got: $REPEAT_OPT" 2 ;;
   esac
 fi
+if [ "$JOBS_SET" = 1 ]; then pbh_jobs_valid "$JOBS" || pb_die "--jobs needs a whole number from 1 to 16, got: $JOBS" 2; fi
 # --variant: refusals before anything is touched (exit 2); a run without it only warns about a locked home
-if [ "$VARIANT_SET" = 1 ]; then
+if [ "$VHELD_SET" = 1 ]; then
+  [ "$VARIANT_SET" = 0 ] || pb_die "--variant-held cannot be used with --variant (the outer process holds the install)" 2
+  [ -z "$CMD" ] || pb_die "--variant-held cannot be used with --cmd (the install is made for a --harness preset)" 2
+  [ "$ARMS" != without ] || pb_die "--variant-held cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
+  vwhy="$(pbh_variant_check "$VHELD")" || pb_die "--variant-held: ${vwhy#--variant: }" 2
+  case "$VHELD" in /*) ;; *) VHELD="$PWD/$VHELD" ;; esac
+  VARIANT="$VHELD"; VARIANT_SET=1; VARIANT_HELD=1
+  if [ "$PREFLIGHT" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
+elif [ "$VARIANT_SET" = 1 ]; then
   [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
@@ -300,8 +335,8 @@ done
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
 # --variant: lock, snapshot, install, doctor and verify, before the leak probe and every run
 if [ "$VARIANT_SET" = 1 ]; then
-  pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?
-  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names")"
+  if [ "$VARIANT_HELD" = 0 ]; then pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?; fi   # held: the outer process did
+  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names" 2>/dev/null)"
 fi
 # the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
 DROPPED=0
@@ -471,7 +506,8 @@ drop_run() { rm_dir "$WD"; rm -f "$PF"; rm_dir "$CUR_BASE"; CUR_BASE=""; }
 spent_of() { printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 
-for RUN in $RUNS; do
+run_one() {
+  RUN="$1"
   ID="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$ID.$ARM.$K"
   TD="$TASKS_DIR/$ID"; TLANG="$(tconf "$ID" language)"
   FTREE=""; PSHA=""; S_CHECKS=""; NOTES_J=""; M_EXTRA=null; M_XFILES=null; M_TW=null; M_TWFILES=null
@@ -489,8 +525,14 @@ for RUN in $RUNS; do
       printf '%s SKIPPED %s\n' "$RL" "$skip_why"
       note "SKIPPED $skip_why"
       run_json skipped "" "" ""
-      continue
+      return 0
     fi
+  fi
+  if [ "$JOBS" != 1 ]; then   # D20: a private root per run (this run is a subshell, so the override stays with it), so the stray check sees its own writes only
+    PR="$WORKROOT/.jobs/$RL"; rm -rf "$PR"
+    mkdir -p "$PR" || pb_die "cannot create $PR" 3
+    if [ -f "$WORKROOT/.pb-eval-workroot" ]; then : > "$PR/.pb-eval-workroot" || pb_die "cannot write $PR/.pb-eval-workroot" 3; fi
+    WORKROOT="$PR"
   fi
   WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
   rm -rf "$WD" "$PF" "$LOG" || pb_die "cannot remove $WD" 3
@@ -570,7 +612,7 @@ EOF
     ANY_ERROR=1
     run_json error "$herr" "$c" "$SECS"
     drop_run
-    continue
+    return 0
   fi
   # the hygiene metrics (DECISION[D2]: informational, never a check), from the workdir before grading
   SCOPE="$(tconf "$ID" scope)"
@@ -606,7 +648,16 @@ EOF
   fi
   run_json graded "" "$c" "$SECS"
   drop_run
-done
+}
+if [ "$JOBS" = 1 ]; then
+  for RUN in $RUNS; do run_one "$RUN"; done
+else
+  # --jobs N: the runs fan out (evals/lib-harness.sh pbh_jobs_run)
+  JOBS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pb-evjobs.XXXXXX")" || pb_die "cannot create a temp dir for --jobs" 3
+  # shellcheck disable=SC2086   # RUNS is a list of words
+  pbh_jobs_run "$JOBS" "$JOBS_DIR" run_one job_stop $RUNS || pb_die "cannot create a dir in $JOBS_DIR" 3
+  rm_dir "$JOBS_DIR"; JOBS_DIR=""
+fi
 
 # --variant: end check, then the restore (before the results, so they can say it was done)
 VAR_RC=0; VAR_END=ok; VAR_RESTORED=1
@@ -695,7 +746,8 @@ process.stdout.write(o);' "$JF" "$HP" "$SEEN" "$ISO"
   printf 'Conf models: %s\n' "$(pbh_conf_models_md "$SRC_CONF")"
   if [ "$VARIANT_SET" = 1 ]; then
     printf 'Variant: %s (%s, %s), ' "$VARIANT" "$PBV_VER" "${PBV_SHORT:-no git}"
-    if [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
+    if [ "$VARIANT_HELD" = 1 ]; then printf 'installed by an outer process (held, not restored here)'
+    elif [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
     if [ "$VAR_END" != ok ]; then printf ', end check FAILED'; fi
     printf '\n'
     if [ "$VAR_END" != ok ]; then printf 'Note: variant changed during the run (the installed VERSION is no longer %s); these results do not measure the variant.\n' "$PBV_VER"; fi

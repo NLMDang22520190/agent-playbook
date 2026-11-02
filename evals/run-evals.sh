@@ -2,7 +2,7 @@
 # Runs behaviour scenarios against a real harness in throw-away fixtures and grades the mechanical part.
 #   run-evals.sh (--harness opencode|claude|codex | --cmd "COMMAND") [--scenarios E1,E3,E8,E15]
 #                [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD] [--real-home]
-#                [--model M] [--arm with|without|both] [--repeat K] [--hooks] [--variant DIR] [--preflight]
+#                [--model M] [--arm with|without|both] [--repeat K] [--hooks] [--variant DIR] [--jobs N] [--preflight]
 # Each prompt ends with a non-interactive note (--interactive: none; with --arm or --repeat a note that does not name the playbook, the
 # same in both arms); the adapter runs as: COMMAND <workdir> <prompt-file>
 # (workdir = <workroot>/<E>, a fresh evals/make-fixture.sh copy; stdout+stderr go to <workroot>/<E>.log).
@@ -87,8 +87,26 @@
 # H/.agents/playbook-backups only those the runner's own install and doctor calls made are removed after the restore; a lock path that is not a directory or a H/.agents
 # that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models"); they are not stripped.
+# --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time. Each run keeps its own workdir
+# (<workroot>/<label>), temp PLAYBOOK_HOME and TMPDIR; the md, the JSON and the summary keep the label order of --jobs 1 and measure the
+# same things. Each run's output lines (stderr, then stdout) are printed as one block when the run ends, so the blocks come in the order
+# the runs end. --max-cost is checked before each run starts, against the runs that have FINISHED by then: up to N-1 runs may be in
+# flight (their cost is not known yet), so the cap is approximate by up to N-1 runs; the note "cost unknown" can then appear once per
+# run that starts before the first unknown cost is merged. Under --jobs N>1 each run gets a private root, <workroot>/.jobs/<label>/
+# (its workdir <workroot>/.jobs/<label>/<label>, .log, .prompt, .log.hooks, .home and the E40/E41 side dirs live there), so the stray
+# check ("nothing written outside the workdir") sees that run's writes only and never blames a run for another one. A write into the shared
+# workroot itself cannot be attributed to a run under --jobs N>1 and is not checked. The md and JSON name logs and prompts by label as before;
+# the "Workroot:" line and the JSON "workroot" stay the shared root. --jobs 1 keeps <workroot>/<label>. With --variant the install, the doctor
+# call and the restore happen once, in the parent (before the first run starts and after the last one ends); INT, TERM and HUP stop
+# the running runs, then restore. A run that dies (a "cannot ..." exit) stops the others and ends the runner with its exit code.
+# --variant-held DIR (internal, for tools/release-gate.sh; not with --variant): the variant is already installed by an outer process
+# that holds the lock and stays alive. The runner only checks that H/.agents/.pb-variant.lock exists, that the pid in it is alive and that
+# the installed VERSION is DIR's (pbh_variant_held in evals/lib-harness.sh), then records the same variant object as --variant (JSON
+# "variant", the "Variant:" line says the install is held by an outer process); it never installs, runs doctor or restores, and
+# takes nothing over. Same refusals as --variant for --cmd, --real-home and --arm without alone; exit 2 when the check fails, before
+# anything starts.
 # Every graded scenario also checks that nothing new appeared in the workroot outside <E>, <E>.log, <E>.prompt
-# (and E20.home).
+# (and E20.home; with --jobs N>1 the root is the run's private root).
 # Prints one line per check: "<E> <PASS|FAIL|MANUAL> <check>"; writes a markdown results file
 # (default evals/results/<YYYY-MM-DD>-<harness or custom>-<HHMMSS>.md). MANUAL items need a human (RUBRIC.md).
 # Workroot ownership: a workroot the runner creates (or finds empty) gets the marker .pb-eval-workroot;
@@ -142,8 +160,11 @@ cleanup_tmp() { # [quiet]
 clean_name() { printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C tr '`' "'"; }
 stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 # --variant: the snapshot is put back first of all on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
-on_exit() { cleanup_home; cleanup_tmp; cleanup_set; pbh_variant_finalize || exit 5; }
-on_signal() { stop_adapter; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }
+# --jobs: the running runs are stopped first, then their parent's temp dirs go (a run's own dirs are removed by the run, job_clean)
+cleanup_jobs() { pbh_jobs_kill; if [ -n "$JOBS_DIR" ]; then rm -rf "$JOBS_DIR"; JOBS_DIR=""; fi; }
+on_exit() { cleanup_jobs; cleanup_home; cleanup_tmp; cleanup_set; pbh_variant_finalize || exit 5; }
+on_signal() { stop_adapter; cleanup_jobs; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }
+job_clean() { stop_adapter; cleanup_home; cleanup_tmp quiet; }   # the exit trap of one run of a --jobs fan-out
 set_traps() { trap 'on_exit' EXIT; trap 'on_signal 130' INT; trap 'on_signal 143' TERM; trap 'on_signal 129' HUP; }
 set_traps
 # keep_tree SRC DEST: copy the regular files under SRC (never a link, nothing behind a link) keeping relative paths
@@ -157,13 +178,13 @@ keep_tree() {
 }
 
 HARNESS=""; CMD=""; SCENARIOS="E1,E3,E8,E15"; WORKROOT=""; OUT=""; TIMEOUT=""; CLEAN_ENV=0; INTERACTIVE=0; MAX_COST=""; MAX_COST_SET=0; REAL_HOME=0
-VARIANT=""; VARIANT_SET=0
+VARIANT=""; VARIANT_SET=0; VHELD=""; VHELD_SET=0; VARIANT_HELD=0; JOBS=1; JOBS_SET=0; JOBS_DIR=""
 MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; HOOKS=0; PREFLIGHT=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any scenario replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant)
+    --harness|--cmd|--scenarios|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant|--variant-held|--jobs)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -183,6 +204,8 @@ while [ $# -gt 0 ]; do
     --hooks)     HOOKS=1 ;;
     --preflight) PREFLIGHT=1 ;;
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
+    --variant-held) VHELD="$2"; VHELD_SET=1; shift ;;
+    --jobs)      JOBS="$2"; JOBS_SET=1; shift ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -238,8 +261,18 @@ if [ "$REPEAT_SET" = 1 ]; then
     *) pb_die "--repeat needs a whole number from 1 to 99, got: $REPEAT_OPT" 2 ;;
   esac
 fi
+if [ "$JOBS_SET" = 1 ]; then pbh_jobs_valid "$JOBS" || pb_die "--jobs needs a whole number from 1 to 16, got: $JOBS" 2; fi
 # --variant: refusals before anything is touched (exit 2); a run without it only warns about a locked home
-if [ "$VARIANT_SET" = 1 ]; then
+if [ "$VHELD_SET" = 1 ]; then
+  [ "$VARIANT_SET" = 0 ] || pb_die "--variant-held cannot be used with --variant (the outer process holds the install)" 2
+  [ -z "$CMD" ] || pb_die "--variant-held cannot be used with --cmd (the install is made for a --harness preset)" 2
+  [ "$REAL_HOME" = 0 ] || pb_die "--variant-held cannot be used with --real-home (the variant is installed into the home the run uses)" 2
+  [ "$ARMS" != without ] || pb_die "--variant-held cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
+  vwhy="$(pbh_variant_check "$VHELD")" || pb_die "--variant-held: ${vwhy#--variant: }" 2
+  case "$VHELD" in /*) ;; *) VHELD="$PWD/$VHELD" ;; esac
+  VARIANT="$VHELD"; VARIANT_SET=1; VARIANT_HELD=1
+  if [ "$PREFLIGHT" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
+elif [ "$VARIANT_SET" = 1 ]; then
   [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
   [ "$REAL_HOME" = 0 ] || pb_die "--variant cannot be used with --real-home (it installs the variant into the home the run uses)" 2
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
@@ -369,8 +402,8 @@ run_json() {
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
 # --variant: lock, snapshot, install, doctor and verify, before the leak probe and every run
 if [ "$VARIANT_SET" = 1 ]; then
-  pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?
-  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names")"
+  if [ "$VARIANT_HELD" = 0 ]; then pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?; fi   # held: the outer process did
+  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names" 2>/dev/null)"
 fi
 # the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
 DROPPED=0
@@ -2341,7 +2374,8 @@ spent_of() { printf '%s
 ' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 # estimate_of -> the largest single known cost so far (the estimate for the next scenario), "%.6g" formatted
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
-for RUN in $RUNS; do
+run_one() {
+  RUN="$1"
   E="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$(run_label "$E" "$ARM" "$K")"
   FTREE=""; PSHA=""; NOTES_J=""; S_CHECKS=""
   if [ "$MAX_COST_SET" = 1 ] && [ -n "$COST_SUM" ]; then
@@ -2363,8 +2397,14 @@ for RUN in $RUNS; do
 SKIPPED: $skip_why; not run.
 "
       run_json skipped "" "" ""
-      continue
+      return 0
     fi
+  fi
+  if [ "$JOBS" != 1 ]; then   # D20: a private root per run (this run is a subshell, so the override stays with it), so the stray check sees its own writes only
+    PR="$WORKROOT/.jobs/$RL"; rm -rf "$PR"
+    mkdir -p "$PR" || pb_die "cannot create $PR" 3
+    if [ -f "$WORKROOT/.pb-eval-workroot" ]; then : > "$PR/.pb-eval-workroot" || pb_die "cannot write $PR/.pb-eval-workroot" 3; fi
+    WORKROOT="$PR"
   fi
   WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
   S_PASS=0; S_TOTAL=0; S_ROWS=""; S_MANUAL=""; S_CHECKS=""; SAFETY_FAILED=""
@@ -2595,7 +2635,7 @@ $ARMLINE
 }${TMPNOTE:+
 $TMPNOTE
 }"
-    continue
+    return 0
   fi
   "grade_$E"
   # the hook-log checks of v0.28.0 (grade_E13h, grade_E34h) run after the scenario's own grader, which stays as it was
@@ -2631,7 +2671,16 @@ $S_ROWS
 MANUAL (score with RUBRIC.md):
 
 $S_MANUAL"
-done
+}
+if [ "$JOBS" = 1 ]; then
+  for RUN in $RUNS; do run_one "$RUN"; done
+else
+  # --jobs N: the runs fan out (evals/lib-harness.sh pbh_jobs_run)
+  JOBS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pb-evjobs.XXXXXX")" || pb_die "cannot create a temp dir for --jobs" 3
+  # shellcheck disable=SC2086   # RUNS is a list of words
+  pbh_jobs_run "$JOBS" "$JOBS_DIR" run_one job_clean $RUNS || pb_die "cannot create a dir in $JOBS_DIR" 3
+  rm -rf "$JOBS_DIR"; JOBS_DIR=""
+fi
 
 # --variant: end check, then the restore (before the results, so they can say it was done)
 VAR_RC=0; VAR_END=ok; VAR_RESTORED=1
@@ -2688,7 +2737,8 @@ process.stdout.write(o);' "$JF"
   printf 'Conf models: %s\n' "$(pbh_conf_models_md "$SRC_CONF")"
   if [ "$VARIANT_SET" = 1 ]; then
     printf 'Variant: %s (%s, %s), ' "$VARIANT" "$PBV_VER" "${PBV_SHORT:-no git}"
-    if [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
+    if [ "$VARIANT_HELD" = 1 ]; then printf 'installed by an outer process (held, not restored here)'
+    elif [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
     if [ "$VAR_END" != ok ]; then printf ', end check FAILED'; fi
     printf '\n'
     if [ "$VAR_END" != ok ]; then printf 'Note: variant changed during the run (the installed VERSION is no longer %s); these results do not measure the variant.\n' "$PBV_VER"; fi

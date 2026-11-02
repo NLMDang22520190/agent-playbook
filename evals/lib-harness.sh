@@ -418,11 +418,21 @@ EOF
 #   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked
 #   pbh_variant_begin DIR H HARNESS  lock, snapshot, install, doctor, verify; returns 0, 2 (live lock), 3 (install or verify failed)
 #                                    or 5 (stale snapshot not restorable); on 3 the caller exits and pbh_variant_finalize restores
+#   pbh_variant_held DIR H           the --variant-held check: 0 when H/.agents/.pb-variant.lock exists, the pid in it is alive and the
+#                                    installed H/.agents/playbook/VERSION is DIR's VERSION; sets PBV_DIR PBV_H PBV_L PBV_VER PBV_SHA
+#                                    PBV_SHORT and PBV_STATE=held (so pbh_variant_json and pbh_variant_end_check work, and restore and
+#                                    finalize do nothing); never installs, restores, takes over or changes anything. Else prints
+#                                    "--variant-held: <why>" and returns 2.
 #   pbh_variant_end_check            0 when the installed VERSION still is DIR's, else 1
 #   pbh_variant_restore              restores the snapshot (INT, TERM, HUP ignored); returns 1 and keeps it when that fails
 #   pbh_variant_finalize             restore when still active, remove the temp registry; returns 1 when the restore failed
 #   pbh_variant_names DIR            the skill names of DIR/skills/*/ that hold a SKILL.md, one per line
 #   pbh_variant_sha_short / _full DIR  git short or full HEAD of DIR when it is a git tree, else nothing
+#   An outer script (tools/release-gate.sh) shares ONE install between both runners like this: source this file; pbh_variant_begin DIR H
+#   HARNESS (lock with its own pid, snapshot, install, doctor, verify; on a non-zero return it exits, after pbh_variant_finalize); start
+#   both runners with --variant-held DIR (each checks pbh_variant_held and records the same variant object, never installing or
+#   restoring); wait for them; then pbh_variant_finalize (the one restore; 1 when it failed). The outer script must stay alive (its pid is
+#   the lock's pid) until both runners have ended, and its own traps must call pbh_variant_finalize on INT, TERM and HUP.
 #   pbh_conf_models FILE             the model_* lines of a conf as key=value; pbh_conf_models_md / pbh_conf_models_json format them
 PBV_STATE=""; PBV_H=""; PBV_L=""; PBV_DIR=""; PBV_VER=""; PBV_SHA=""; PBV_SHORT=""; PBV_REGTMP=""
 
@@ -748,4 +758,113 @@ pbh_conf_models_json() {
 $(pbh_conf_models "$1")
 EOF
   printf '{%s}' "$o"
+}
+
+# pbh_variant_held DIR H -> see the header: the --variant-held check of a runner whose outer process holds the lock and the install
+pbh_variant_held() {
+  local dir="$1" h="$2" l="$2/.agents/.pb-variant.lock" pid ver
+  if [ ! -d "$l" ] || [ -L "$l" ]; then
+    printf -- '--variant-held: no variant lock %s (the outer process must hold the variant install); nothing touched\n' "$l" >&2
+    return 2
+  fi
+  pid="$(tr -d '[:space:]' < "$l/pid" 2>/dev/null)"
+  case "$pid" in
+    "" | *[!0-9]*) printf -- '--variant-held: %s has no usable pid file; nothing touched\n' "$l" >&2; return 2 ;;
+  esac
+  if ! kill -0 "$pid" 2>/dev/null; then
+    printf -- '--variant-held: the process (pid %s) that holds %s is not alive; nothing touched\n' "$pid" "$l" >&2
+    return 2
+  fi
+  ver="$(pbh_variant_version "$dir/VERSION")"
+  if [ -z "$ver" ] || [ "$(pbh_variant_version "$h/.agents/playbook/VERSION")" != "$ver" ]; then
+    printf -- '--variant-held: the installed VERSION (%s) is not the one of %s (%s); nothing touched\n' \
+      "$(pbh_variant_version "$h/.agents/playbook/VERSION")" "$dir" "$ver" >&2
+    return 2
+  fi
+  PBV_DIR="$dir"; PBV_H="$h"; PBV_L="$l"; PBV_VER="$ver"
+  PBV_SHA="$(pbh_variant_sha_full "$dir")"; PBV_SHORT="$(pbh_variant_sha_short "$dir")"
+  PBV_STATE=held
+  return 0
+}
+
+# ---- --jobs N: up to N runs at a time (shared by evals/run-evals.sh and evals/run-outcome.sh) ----
+# The runner defines BODY (one run, in the current shell, `return` where a loop would `continue`) and, when it has temp dirs, a function
+# whose name is the CLEAN argument of pbh_jobs_run (stops the run's adapter, removes the run's temp dirs). pbh_jobs_run JOBS DIR BODY CLEAN RUN...: DIR is a runner-private
+# empty temp dir. Each run is started in a background subshell (BODY RUN) with stdout and stderr in DIR/<n>/out and err, and the state
+# the run changed in files: SUMMARY, DETAILS, ND_RUNS (the runner's per-run text, appended in label order at the end), COST_SUM (merged when
+# the run ends, so a run that starts later sees it), ANY_FAIL, ANY_ERROR, NOTE_UNKNOWN. At most JOBS run at a time; a run that ends prints its
+# stderr, then its stdout, as one block. A run whose subshell ends without "done" (pb_die, a signal) stops the others and ends the runner
+# with its exit code. pbh_jobs_kill stops every running run (TERM) and waits for it: the runner's INT/TERM/HUP and exit traps call it.
+# --jobs 1 does not use any of this (the runner loops as before). Polling uses `sleep 0.2` only while every slot is busy.
+PBJ_RUN=""; PBJ_N=0; PBJ_DIR=""; PBJ_COST0=""; PBJ_T=""
+# pbh_jobs_valid VALUE -> 0 for a whole number from 1 to 16 (digits only)
+pbh_jobs_valid() { case "$1" in [1-9] | 1[0-6]) return 0 ;; esac; return 1; }
+pbh_jobs_kill() {
+  local e
+  for e in $PBJ_RUN; do kill "${e#*:}" 2>/dev/null; done
+  for e in $PBJ_RUN; do wait "${e#*:}" 2>/dev/null; done
+  PBJ_RUN=""; PBJ_N=0
+  return 0
+}
+pbh_jobs_save() {
+  printf '%s' "${SUMMARY-}" > "$1/summary"; printf '%s' "${DETAILS-}" > "$1/details"; printf '%s' "${ND_RUNS-}" > "$1/nd"
+  printf '%s' "${COST_SUM#"$PBJ_COST0"}" > "$1/cost"
+  printf '%s %s %s\n' "$ANY_FAIL" "$ANY_ERROR" "$NOTE_UNKNOWN" > "$1/flags"
+}
+# pbh_jobs_text FILE -> PBJ_T = the content of FILE, trailing newlines kept
+pbh_jobs_text() { PBJ_T="$(cat "$1"; printf x)"; PBJ_T="${PBJ_T%x}"; }
+# pbh_jobs_reap -> 0 when at least one run had ended (printed and merged), 1 when none had
+pbh_jobs_reap() {
+  local e i p rest="" found=1 rc f x u c all="$PBJ_RUN"
+  for e in $PBJ_RUN; do
+    i="${e%%:*}"; p="${e#*:}"
+    if [ ! -e "$PBJ_DIR/$i/done" ] && kill -0 "$p" 2>/dev/null; then rest="$rest $e"; continue; fi
+    wait "$p" 2>/dev/null; rc=$?
+    found=0; PBJ_N=$((PBJ_N - 1))
+    [ -s "$PBJ_DIR/$i/err" ] && cat "$PBJ_DIR/$i/err" >&2
+    [ -s "$PBJ_DIR/$i/out" ] && cat "$PBJ_DIR/$i/out"
+    if [ ! -e "$PBJ_DIR/$i/done" ]; then
+      PBJ_RUN="${all/ $e/}"   # the others are still running
+      [ "$rc" -ne 0 ] || rc=3
+      pbh_jobs_kill
+      exit "$rc"
+    fi
+    read -r f x u < "$PBJ_DIR/$i/flags"
+    [ "$f" = 1 ] && ANY_FAIL=1
+    [ "$x" = 1 ] && ANY_ERROR=1
+    [ "$u" = 1 ] && NOTE_UNKNOWN=1
+    c=""; IFS= read -r c < "$PBJ_DIR/$i/cost"
+    COST_SUM="$COST_SUM$c"
+  done
+  PBJ_RUN="$rest"
+  return "$found"
+}
+pbh_jobs_run() {
+  local jobs="$1" dir="$2" body="$3" clean="$4" i=0 r n
+  shift 4
+  PBJ_DIR="$dir"; PBJ_RUN=""; PBJ_N=0
+  for r in "$@"; do
+    i=$((i + 1))
+    while [ "$PBJ_N" -ge "$jobs" ]; do pbh_jobs_reap || sleep 0.2; done
+    mkdir -p "$dir/$i" || return 1
+    PBJ_COST0="$COST_SUM"
+    (
+      exec > "$dir/$i/out" 2> "$dir/$i/err"
+      trap '"$clean"' EXIT
+      trap 'exit 143' INT TERM HUP
+      SUMMARY=""; DETAILS=""; ND_RUNS=""; ANY_FAIL=0; ANY_ERROR=0
+      "$body" "$r"
+      pbh_jobs_save "$dir/$i" && : > "$dir/$i/done"
+    ) &
+    PBJ_RUN="$PBJ_RUN $i:$!"; PBJ_N=$((PBJ_N + 1))
+  done
+  while [ "$PBJ_N" -gt 0 ]; do pbh_jobs_reap || sleep 0.2; done
+  n=$i; i=1
+  while [ "$i" -le "$n" ]; do   # the per-run text, in label order
+    pbh_jobs_text "$dir/$i/summary"; SUMMARY="${SUMMARY-}$PBJ_T"
+    pbh_jobs_text "$dir/$i/details"; DETAILS="${DETAILS-}$PBJ_T"
+    pbh_jobs_text "$dir/$i/nd"; ND_RUNS="$ND_RUNS$PBJ_T"
+    i=$((i + 1))
+  done
+  return 0
 }
