@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the install.sh side of the opt-in Claude Code hooks (v0.28.0 lane k1b, AC-B5, AC-B6): doctor reports the
+# Tests for the install.sh side of the Claude Code hooks (installed by default since v0.33.0) (v0.28.0 lane k1b, AC-B5, AC-B6): doctor reports the
 # hooks, uninstall removes ours (also the way install.ps1 calls it); since v0.33.0 install adds them by default (AC5) unless --no-hooks / PB_HOOKS=off / hooks_optout yes, and never removes them. Everything runs
 # against throw-away --home sandboxes and a stand-in HOME; the real home directory is never touched. The hook scripts
 # belong to other lanes: the settings fixtures point at stub scripts in a temp dir.
