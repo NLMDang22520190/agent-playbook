@@ -62,7 +62,7 @@ world; put_runs "$HEAD" "$(runs_json 0 "")"
 tool "$SHA" --repo "$R"
 nothing "no candidate runs"
 
-echo "AC6.1 each of the thirteen required jobs: skipped, missing or failed -> nothing"
+echo "AC6.1 each of the fifteen required jobs: skipped, missing or failed -> nothing"
 for n in "${NAMES[@]}"; do
   for mode in skipped missing failure cancelled; do
     world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json "$mode" "$n")"
@@ -74,46 +74,58 @@ world; put "repos/$R/actions/runs/111/jobs" '{"total_count":0,"jobs":[]}'
 tool "$SHA" --repo "$R"
 nothing "a run with no jobs"
 world
-put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed 's/"windows shard 8\/8"/"windows shard 8\/9"/')"
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed 's/"windows shard 10\/10"/"windows shard 10\/11"/')"
 tool "$SHA" --repo "$R"
-nothing "shard 8/8 missing (only an 8/9 shard)"
+nothing "shard 10/10 missing (only a 10/11 shard)"
 world
-put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 5\/8"[^]]*\]}/{"name":"unrelated","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 6\/8"[^]]*\]}/{"name":"unrelated 2","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 7\/8"[^]]*\]}/{"name":"unrelated 3","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 8\/8"[^]]*\]}/{"name":"unrelated 4","status":"completed","conclusion":"success"}/' -e 's/"windows shard 1\/8"/"windows shard 1\/4"/' -e 's/"windows shard 2\/8"/"windows shard 2\/4"/' -e 's/"windows shard 3\/8"/"windows shard 3\/4"/' -e 's/"windows shard 4\/8"/"windows shard 4\/4"/')"
-assert_not_contains "AC2 the transition fixture has no 5/8, 6/8, 7/8 or 8/8 job left" "$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")" '"windows shard 5/8"'
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 5\/10"[^]]*\]}/{"name":"unrelated 5","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 6\/10"[^]]*\]}/{"name":"unrelated 6","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 7\/10"[^]]*\]}/{"name":"unrelated 7","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 8\/10"[^]]*\]}/{"name":"unrelated 8","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 9\/10"[^]]*\]}/{"name":"unrelated 9","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 10\/10"[^]]*\]}/{"name":"unrelated 10","status":"completed","conclusion":"success"}/' -e 's/"windows shard 1\/10"/"windows shard 1\/4"/' -e 's/"windows shard 2\/10"/"windows shard 2\/4"/' -e 's/"windows shard 3\/10"/"windows shard 3\/4"/' -e 's/"windows shard 4\/10"/"windows shard 4\/4"/')"
+assert_not_contains "AC2 the transition fixture has no 5/10 .. 10/10 job left" "$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")" '"windows shard 5/10"'
 assert_contains "AC2 the transition fixture carries the old shard names" "$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")" '"windows shard 4/4"'
 tool "$SHA" --repo "$R"
 nothing "only the old 1/4, 2/4, 3/4, 4/4 shards (the transition: a PR run of the four-shard workflow is never reused)"
-echo "v0.28.0 a PR run of the six-shard workflow (windows shard 1/6 .. 6/6, all green, no 7/8 or 8/8) is never reused"
+echo "v0.28.0 a PR run of the six-shard workflow (windows shard 1/6 .. 6/6, all green, no 9/10 or 10/10) is never reused"
 world
-put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 7\/8"[^]]*\]}/{"name":"unrelated","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 8\/8"[^]]*\]}/{"name":"unrelated 2","status":"completed","conclusion":"success"}/' -e 's/"windows shard \([1-6]\)\/8"/"windows shard \1\/6"/g')"
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 7\/10"[^]]*\]}/{"name":"unrelated 7","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 8\/10"[^]]*\]}/{"name":"unrelated 8","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 9\/10"[^]]*\]}/{"name":"unrelated 9","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 10\/10"[^]]*\]}/{"name":"unrelated 10","status":"completed","conclusion":"success"}/' -e 's/"windows shard \([1-9]\)\/10"/"windows shard \1\/6"/g')"
 SIXJ="$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")"
 assert_contains "v0.28.0 the six-shard fixture carries windows shard 1/6" "$SIXJ" '"windows shard 1/6"'
 assert_contains "v0.28.0 the six-shard fixture carries windows shard 6/6" "$SIXJ" '"windows shard 6/6"'
-assert_not_contains "v0.28.0 the six-shard fixture has no /8 shard left" "$SIXJ" '/8"'
+assert_not_contains "v0.28.0 the six-shard fixture has no /10 shard left" "$SIXJ" '/10"'
 tool "$SHA" --repo "$R"
 nothing "only the old 1/6 .. 6/6 shards (a PR run of the six-shard workflow is never reused)"
-echo "v0.30.0 a PR run of the seven-shard workflow (windows shard 1/7 .. 7/7, all green, no 8/8) is never reused"
+echo "v0.30.0 a PR run of the seven-shard workflow (windows shard 1/7 .. 7/7, all green, no 9/10 or 10/10) is never reused"
 world
-put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 8\/8"[^]]*\]}/{"name":"unrelated","status":"completed","conclusion":"success"}/' -e 's/"windows shard \([1-7]\)\/8"/"windows shard \1\/7"/g')"
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 8\/10"[^]]*\]}/{"name":"unrelated 8","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 9\/10"[^]]*\]}/{"name":"unrelated 9","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 10\/10"[^]]*\]}/{"name":"unrelated 10","status":"completed","conclusion":"success"}/' -e 's/"windows shard \([1-9]\)\/10"/"windows shard \1\/7"/g')"
 SEVENJ="$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")"
 assert_contains "v0.30.0 the seven-shard fixture carries windows shard 1/7" "$SEVENJ" '"windows shard 1/7"'
 assert_contains "v0.30.0 the seven-shard fixture carries windows shard 7/7" "$SEVENJ" '"windows shard 7/7"'
-assert_not_contains "v0.30.0 the seven-shard fixture has no /8 shard left" "$SEVENJ" '/8"'
+assert_not_contains "v0.30.0 the seven-shard fixture has no /10 shard left" "$SEVENJ" '/10"'
 tool "$SHA" --repo "$R"
 nothing "only the old 1/7 .. 7/7 shards (a PR run of the seven-shard workflow is never reused)"
-echo "AC2 shard 7/8 failed, shard 8/8 skipped or on the docs-only step -> nothing; all eight green -> reused"
-world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json failure 'windows shard 7/8')"
+echo "v0.34.0 A1 a PR run of the eight-shard workflow (windows shard 1/8 .. 8/8, all green, no 9/10 or 10/10) is never reused"
+world
+put "repos/$R/actions/runs/111/jobs" "$(jobs_json ok | sed -e 's/{"name":"windows shard 9\/10"[^]]*\]}/{"name":"unrelated 9","status":"completed","conclusion":"success"}/' -e 's/{"name":"windows shard 10\/10"[^]]*\]}/{"name":"unrelated 10","status":"completed","conclusion":"success"}/' -e 's/"windows shard \([1-9]\)\/10"/"windows shard \1\/8"/g')"
+EIGHTJ="$(cat "$DATA/repos_${R//\//_}_actions_runs_111_jobs")"
+assert_contains "v0.34.0 A1 the eight-shard fixture carries windows shard 1/8" "$EIGHTJ" '"windows shard 1/8"'
+assert_contains "v0.34.0 A1 the eight-shard fixture carries windows shard 8/8" "$EIGHTJ" '"windows shard 8/8"'
+assert_not_contains "v0.34.0 A1 the eight-shard fixture has no /10 shard left" "$EIGHTJ" '/10"'
 tool "$SHA" --repo "$R"
-nothing "shard 7/8 failed"
-world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json skipped 'windows shard 8/8')"
-tool "$SHA" --repo "$R"
-nothing "shard 8/8 skipped"
-world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps 'windows shard 8/8' docsonly)"
-tool "$SHA" --repo "$R"
-nothing "shard 8/8 ran only the docs-only step"
+nothing "only the old 1/8 .. 8/8 shards (a PR run of the eight-shard workflow is never reused)"
+echo "v0.34.0 A1 shard 9/10 or 10/10 failed, skipped, missing or on the docs-only step -> nothing; all ten green -> reused"
+for k in 9 10; do
+  world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json failure "windows shard $k/10")"
+  tool "$SHA" --repo "$R"
+  nothing "shard $k/10 failed"
+  world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json skipped "windows shard $k/10")"
+  tool "$SHA" --repo "$R"
+  nothing "shard $k/10 skipped"
+  world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json steps "windows shard $k/10" docsonly)"
+  tool "$SHA" --repo "$R"
+  nothing "shard $k/10 ran only the docs-only step"
+done
 world
 tool "$SHA" --repo "$R"
-assert_eq "AC2 all eight shards green: the run is reused" "111" "$OUT"
+assert_eq "A1 all ten shards green: the run is reused" "111" "$OUT"
+assert_eq "A1 the fixture names exactly ten windows shards 1/10 .. 10/10" "1/10 2/10 3/10 4/10 5/10 6/10 7/10 8/10 9/10 10/10 " "$(printf '%s\n' "${NAMES[@]}" | grep '^windows shard ' | sed 's/^windows shard //' | sort -t/ -k1,1n | tr '\n' ' ')"
 
 echo "v0.24.21 AC2 the two macOS shards: failed, skipped or missing -> nothing; the old single macOS job (no shards) is never reused"
 world; put "repos/$R/actions/runs/111/jobs" "$(jobs_json failure 'macos shard 2/2')"
@@ -136,13 +148,13 @@ nothing "only macOS shards named 1/3 and 2/3 (not the 1/2 and 2/2 the workflow r
 OLDMAC_JOBS="$(jobs_json_oldmac)"
 assert_not_contains "v0.24.21 AC3b the old-shape fixture has no macOS shard job" "$OLDMAC_JOBS" '"macos shard'
 assert_contains "v0.24.21 AC3b the old-shape fixture has the full step in the test (macos-latest) job" "$OLDMAC_JOBS" '{"name":"test (macos-latest)","status":"completed","conclusion":"success","steps":['
-assert_contains "v0.24.21 AC3b the old-shape fixture still has the eight Windows shards" "$OLDMAC_JOBS" '"windows shard 8/8"'
+assert_contains "v0.24.21 AC3b the old-shape fixture still has the ten Windows shards" "$OLDMAC_JOBS" '"windows shard 10/10"'
 world; put "repos/$R/actions/runs/111/jobs" "$OLDMAC_JOBS"
 tool "$SHA" --repo "$R"
 nothing "a suite-style test (macos-latest) with a full step and no macOS shards (a PR run of the pre-v0.24.21 workflow)"
 world
 tool "$SHA" --repo "$R"
-assert_eq "v0.24.21 AC2 all thirteen jobs green (two macOS shards, aggregators without steps): the run is reused" "111" "$OUT"
+assert_eq "v0.24.21 AC2 all fifteen jobs green (two macOS shards, aggregators without steps): the run is reused" "111" "$OUT"
 
 echo "AC6.1 the trees must be equal"
 world; put "repos/$R/git/commits/$HEAD" "$(commit_json "$HEAD" "$(h40 99)" "$PAR")"
@@ -197,7 +209,7 @@ tool "$SHA" --repo "$R"; nothing "a compare answer without a status"
 echo "AC6.1 several candidate runs: the first passing run wins"
 world
 put_runs "$HEAD" "$(runs_json 3 "$(run_json 2001 "$HEAD"),$(run_json 2002 "$HEAD"),$(run_json 2003 "$HEAD")")"
-put "repos/$R/actions/runs/2001/jobs" "$(jobs_json failure 'windows shard 2/8')"
+put "repos/$R/actions/runs/2001/jobs" "$(jobs_json failure 'windows shard 2/10')"
 put "repos/$R/actions/runs/2002/jobs" "$(jobs_json ok)"
 put "repos/$R/actions/runs/2003/jobs" "$(jobs_json ok)"
 tool "$SHA" --repo "$R"

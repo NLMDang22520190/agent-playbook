@@ -256,4 +256,8 @@ run bash "$TOOL" --check
 assert_rc "AC4 the real tests/shard-weights weights every suite exactly once" 0
 [ "$RC" -eq 0 ] || printf '%s\n' "$OUT" | sed 's/^/       /'
 
+echo "v0.34.0 A2 the repo's tests/shard-weights header names the CI run it was refreshed from (run 41321750489, the latest with Windows shard timings)"
+SWH="$(grep '^#' "$PB_ROOT/tests/shard-weights" | head -n 3)"
+assert_contains "A2 the header names run 41321750489" "$SWH" "41321750489"
+assert_not_contains "A2 the header no longer names only the old run 41202615481 as its source" "$(printf '%s\n' "$SWH" | head -n 1)" "run 41202615481."
 t_summary
