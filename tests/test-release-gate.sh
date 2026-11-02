@@ -40,7 +40,9 @@ done
 # sees of DIR in $OBS, and its "variant" object (sha = HEAD of DIR, end_check ok) is null without --variant, like the real runners.
 # Per-case controls (environment): FAKE_VARIANT=null|nullsha|badsha|changed, FAKE_SKIP=ID,ID (no runs for these items),
 # FAKE_ERR=ID:ARM:N (the first N runs of that item and arm are ERROR runs), FAKE_INVERT=ID (with fails, without passes),
-# FAKE_ISOFAIL=ID (the without-arm isolation check FAILs for that item), FAKE_HANG=NAME (waits for $W/release).
+# FAKE_ISOFAIL=ID (the without-arm isolation check FAILs for that item), FAKE_HANG=NAME (waits for $W/release),
+# FAKE_PF_FAIL=NAME (v0.33.0 AC7: that runner's --preflight exits 3), FAKE_HOOKS=false|none (v0.33.0 N3: the file says "hooks": false, or has no hooks field; default true). Every run also has the PASS
+# check "nothing written outside the workdir" (rule (g) needs it in every item).
 # It also writes local paths (workroot, --out, HOME, the repo; and their Windows forms where cygpath exists) into the json and
 # the md, and evidence/log files next to them, so the tests can look for what the gate must rewrite or leave uncommitted.
 mk_fake() { # NAME LISTFLAG
@@ -52,6 +54,15 @@ NAME=$1; LISTFLAG=$2; CALLS='$CALLS'; OBS='$OBS'; W='$W'
 EOF
   cat >> "$R/evals/$1" <<'EOF'
 printf '%s %s\n' "$NAME" "$*" >> "$CALLS"
+# v0.33.0 AC7 (interface defined by the tests): `--preflight` = a no-cost check of what the runner would refuse with exit 3 for the
+# selection on its command line: exit 0 with no output and no file when ready, exit 3 with the reason on stderr when not.
+# FAKE_PF_FAIL=NAME makes this fake refuse (NAME = run-evals.sh or run-outcome.sh).
+for a in "$@"; do
+  if [ "$a" = --preflight ]; then
+    if [ "${FAKE_PF_FAIL:-}" = "$NAME" ]; then echo "error: preflight: $NAME cannot start (fake: python3 is required)" >&2; exit 3; fi
+    exit 0
+  fi
+done
 out=""; model=""; harness="custom"; list=""; k=1; prev=""; vdir=""
 for a in "$@"; do
   case "$prev" in
@@ -94,7 +105,7 @@ for s in $(printf '%s' "$list" | tr ',' ' '); do
     for arm in with without; do
       r=PASS; [ "$arm" = without ] && r=FAIL
       case ",${FAKE_INVERT:-}," in *",$s,"*) if [ "$r" = PASS ]; then r=FAIL; else r=PASS; fi ;; esac
-      st=graded; er=null; cks="{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"}"
+      st=graded; er=null; cks="{\"name\":\"x\",\"key\":\"x\",\"result\":\"$r\"},{\"name\":\"nothing written outside the workdir\",\"key\":\"nothing written outside the workdir\",\"result\":\"PASS\"}"
       if [ "$s" = "$eid" ] && [ "$arm" = "$earm" ] && [ "$i" -le "$en" ]; then st=error; er='"boom"'; cks=""; fi
       if [ "$s" = "${FAKE_ISOFAIL:-}" ] && [ "$arm" = without ]; then cks="$cks,{\"name\":\"$ISOK\",\"key\":\"$ISOK\",\"result\":\"FAIL\"}"; fi
       runs="$runs$sep{\"scenario\":\"$s\",\"arm\":\"$arm\",\"k\":$i,\"label\":\"$s.$arm.$i\",\"status\":\"$st\",\"error\":$er,\"isolation\":\"adapter\",\"fixture_tree\":\"t-$s\",\"prompt_sha\":\"p-$s\",\"cost_usd\":0.1,\"seconds\":5,\"notes\":[],\"dropped_user_lines\":0,\"checks\":[$cks]}"
@@ -114,6 +125,8 @@ if [ -n "$vdir" ]; then
   [ "${FAKE_VARIANT:-ok}" = null ] || vj="{\"tree\":\"$vdir\",\"version\":\"0.30.0\",\"sha\":$vs,\"end_check\":\"$ve\"}"
 fi
 wr="${TMPDIR:-/tmp}/pbwork.$$"
+hkj=',"hooks":true'
+case "${FAKE_HOOKS:-true}" in false) hkj=',"hooks":false' ;; none) hkj="" ;; esac
 wins=""; winj=""
 if command -v cygpath >/dev/null 2>&1; then
   hm="$(cygpath -m "$HOME")"; hw="$(cygpath -w "$HOME")"; rm_="$(cygpath -m "$repo")"
@@ -164,8 +177,8 @@ if [ -n "${FAKE_EDGE:-}" ]; then
 fi
 printf 'x\n' > "${out%.md}.evidence/ev.txt"; printf '{"schema":"pb-evals/1"}\n' > "${out%.md}.evidence/inner.json"
 printf 'x\n' > "${out%.md}.runs/r.md"; printf 'log\n' > "${out%.md}.log"
-printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"%s","model":"%s","arms":["with","without"],"repeat":%s,"max_cost":null,"interactive":false,"started":"2026-10-27T10:00:00Z","workroot":"%s","out":"%s","home_note":"%s/.claude","repo_note":"%s/evals"%s,"variant":%s,"runs":[%s],"summary":[]}\n' \
-  "$commit" "$harness" "$model" "$k" "$wr" "$out" "$HOME" "$repo" "$winj" "$vj" "$runs" > "${out%.md}.json"
+printf '{"schema":"pb-evals/1","playbook_commit":"%s","playbook_version":"0.30.0","harness":"%s","model":"%s","arms":["with","without"],"repeat":%s,"max_cost":null,"interactive":false%s,"started":"2026-10-27T10:00:00Z","workroot":"%s","out":"%s","home_note":"%s/.claude","repo_note":"%s/evals"%s,"variant":%s,"runs":[%s],"summary":[]}\n' \
+  "$commit" "$harness" "$model" "$k" "$hkj" "$wr" "$out" "$HOME" "$repo" "$winj" "$vj" "$runs" > "${out%.md}.json"
 exit "$rc"
 EOF
   chmod 755 "$R/evals/$1"
@@ -177,7 +190,8 @@ mk_fake run-outcome.sh --tasks
 SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
 TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
 g() { RC=0; OUT="$(cd "$R" && bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
-ncalls() { grep -c "^$1 " "$CALLS" 2>/dev/null || true; }
+ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
+pf_real_calls() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }   # v0.33.0 R1-3: lines of runners that really started
 # --- v0.32.0 helpers (S1: AC1, AC2, AC2') ---
 # assert_has_all NAME LINE PIECE... : every piece is in LINE (a displayed command: where --variant sits is not fixed by the spec)
 assert_has_all() {
@@ -573,9 +587,79 @@ fail_case d-iso "FAKE_ISOFAIL=E1" "eval-delta|isolation"
 echo "AC2 (e) no Δ row with its 95% interval wholly below 0"
 fail_case e-neg "FAKE_INVERT=E2" "$(idre E2)"
 
-echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md)"
+echo "AC4 (v0.33.0) a real run passes --hooks to the behaviour runner (claude and --cmd, not codex and opencode); rule (a) needs hooks true"
+rcase hk-claude ""
+assert_rc "AC4 claude real run with hooks true -> exit 0" 0
+assert_contains "AC4 claude: run-evals.sh got --hooks" "$(grep '^run-evals.sh ' "$CALLS")" " --hooks"
+: > "$CALLS"
+ge "" --harness codex --model m1 --out-dir evals/results/hk-codex
+assert_rc "AC4' codex real run -> exit 0 (no hooks clause)" 0
+assert_not_contains "AC4' codex: run-evals.sh got no --hooks" "$(grep '^run-evals.sh ' "$CALLS")" "--hooks"
+ge "FAKE_HOOKS=false" --harness codex --model m1 --out-dir evals/results/hk-codex2
+assert_rc "AC4' codex run whose file says hooks false -> exit 0 (clause is claude and --cmd only)" 0
+: > "$CALLS"
+ge "" --harness opencode --model m1 --out-dir evals/results/hk-opencode
+assert_not_contains "AC4' opencode: run-evals.sh got no --hooks" "$(grep '^run-evals.sh ' "$CALLS")" "--hooks"
+: > "$CALLS"
+ge "" --cmd "bash /x/adapter.sh" --model m1 --out-dir evals/results/hk-cmd
+assert_contains "AC4 --cmd: run-evals.sh got --hooks" "$(grep '^run-evals.sh ' "$CALLS")" " --hooks"
+fail_case hk-off "FAKE_HOOKS=false" "hooks off in .*behaviour-"
+fail_case hk-none "FAKE_HOOKS=none" "hooks off in .*behaviour-"
+
+echo "AC7 preflight: a real gate run asks each runner (--preflight, same selection) before the first runner starts; a refusal exits 3 and starts nothing"
+# pf_real: the non-preflight lines of $CALLS, and the line numbers of the first real run and the last preflight
+pf_real() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }
+rcase pf-ok ""
+assert_rc "AC7 both preflights ready -> the run goes on, exit 0" 0
+assert_eq "AC7 run-evals.sh was asked --preflight once" "1" "$(grep '^run-evals.sh ' "$CALLS" | grep -c -- ' --preflight')"
+assert_eq "AC7 run-outcome.sh was asked --preflight once" "1" "$(grep '^run-outcome.sh ' "$CALLS" | grep -c -- ' --preflight')"
+assert_eq "AC7 and both runners ran after that (one real call each)" "1 1" "$(ncalls run-evals.sh) $(ncalls run-outcome.sh)"
+PF_LAST="$(grep -n -- ' --preflight' "$CALLS" | tail -n 1 | cut -d: -f1)"
+PF_FIRSTREAL="$(grep -vn -- ' --preflight' "$CALLS" | head -n 1 | cut -d: -f1)"
+if [ -n "$PF_LAST" ] && [ -n "$PF_FIRSTREAL" ] && [ "$PF_LAST" -lt "$PF_FIRSTREAL" ]; then t_ok "AC7 both runners were preflighted before the first real run started"; else t_bad "AC7 both runners were preflighted before the first real run started" "last preflight line [$PF_LAST], first real line [$PF_FIRSTREAL]: $(cat "$CALLS")"; fi
+PFE="$(grep '^run-evals.sh ' "$CALLS" | grep -- ' --preflight')"; PFO="$(grep '^run-outcome.sh ' "$CALLS" | grep -- ' --preflight')"
+assert_has_all "AC7 the run-evals.sh preflight carries the selection (harness, scenarios)" "$PFE" "--harness claude" "--scenarios E1,E2,E3"
+assert_has_all "AC7 the run-outcome.sh preflight carries the selection (harness, tasks)" "$PFO" "--harness claude" "--tasks pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+: > "$CALLS"
+ge "" --cmd "bash /x/adapter.sh" --model m1 --out-dir evals/results/pf-ok-cmd2
+assert_contains "AC7 --cmd: the run-outcome.sh preflight carries --cmd and the tasks" "$(grep '^run-outcome.sh ' "$CALLS" | grep -- ' --preflight')" "--cmd bash /x/adapter.sh"
+for who in run-evals.sh run-outcome.sh; do
+  rcase "pf-fail-$who" "FAKE_PF_FAIL=$who"
+  assert_rc "AC7 $who refuses (exit 3) -> the gate exits 3" 3
+  assert_contains "AC7 $who refuses: the output carries the runner's reason" "$OUT" "$who cannot start (fake: python3 is required)"
+  assert_eq "AC7 $who refuses: no runner started (zero non-preflight calls)" "0" "$(pf_real)"
+  assert_eq "AC7 $who refuses: no worktree entry is left" "1" "$(git -C "$R" worktree list | wc -l | tr -d ' ')"
+  if [ -f "$GJ" ]; then assert_not_contains "AC7 $who refuses: gate.json is not a pass verdict" "$(cat "$GJ")" '"verdict": "pass"'; else t_ok "AC7 $who refuses: no gate.json is written"; fi
+  assert_eq "AC7 $who refuses: no results file of a runner exists" "0" "$(ls "$ODN" 2>/dev/null | grep -c '^behaviour-\|^outcome-')"
+done
+rcase pf-fail-outcome-only "FAKE_PF_FAIL=run-outcome.sh"
+assert_eq "AC7 run-outcome.sh alone refuses: run-evals.sh did not start either (nothing is spent before the outcome runner is known to start)" "0" "$(ncalls run-evals.sh)"
+: > "$CALLS"
+ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --dry-run
+assert_rc "AC7 --dry-run does not preflight (it starts nothing) -> exit 0" 0
+ge "FAKE_PF_FAIL=run-outcome.sh" --harness claude --model m1 --pool-only --out-dir evals/results/pf-pool
+assert_eq "AC7 --pool-only calls no runner, preflight included" "0" "$(wc -l < "$CALLS" | tr -d ' ')"
+
+echo "R1-3 a real run resolves the baseline before any paid run: state noqual exits 3 with the reason and starts no runner"
+R5="$W/repo5"
+git clone -q "$R" "$R5" && ( cd "$R5" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+  git config core.autocrlf false && mkdir -p evals/results/gate-000000000000 &&
+  printf '{"schema":"pb-evals/1","playbook_commit":"0000000000000000000000000000000000000000","harness":"claude","model":"m2","runs":[],"summary":[]}\n' > evals/results/gate-000000000000/behaviour-m2.json &&
+  git add -A && git commit -qm "an earlier gate for another model" && git tag v0.32.0 && printf 'more\n' > more.txt && git add -A && git commit -qm "after the tag" ) || t_bad "fixture repo 5" "clone or commit failed"
+assert_eq "R1-3 fixture: repo 5 has tag v0.32.0 on a commit that holds a gate dir (model m2 only)" "v0.32.0" "$(git -C "$R5" tag -l 'v*')"
+GR="$R5"
+rcase r13-noqual ""
+assert_rc "R1-3 baseline state noqual (tag v0.32.0 holds a gate for model m2 only), real run for m1 -> exit 3" 3
+assert_contains "R1-3 the reason is printed (exact text)" "$OUT" "no qualifying previous release gate for harness claude model m1"
+assert_eq "R1-3 no runner was started (zero non-preflight calls; nothing was spent)" "0" "$(pf_real_calls)"
+assert_eq "R1-3 no results file of a runner exists" "0" "$(ls "$ODN" 2>/dev/null | grep -c '^behaviour-\|^outcome-')"
+assert_eq "R1-3 no worktree entry is left" "1" "$(git -C "$R5" worktree list | wc -l | tr -d ' ')"
+rcase r13-noqual-cmd ""
+GR=""
+
+echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md plus the gate: safety rows E8 and E33, v0.33.0 AC3)"
 assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1" \
-  "$(grep -c '^GATE_SCENARIOS="E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"$' "$GATE" 2>/dev/null || true)"
+  "$(grep -c '^GATE_SCENARIOS="E2 E3 E4 E6 E8 E13 E14 E24 E26 E29 E33 E34"$' "$GATE" 2>/dev/null || true)"
 
 # R3: its fake AUTO is E1..E5, its GATE_SCENARIOS is E2 E3: the default list, the AUTO check and the verdict can be told apart.
 R3="$W/repo3"

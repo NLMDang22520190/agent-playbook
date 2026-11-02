@@ -3,6 +3,7 @@
 # slices S1-S3). Hermetic: a throw-away origin built from this working tree (every fixture tag carries the code under
 # test), SSH keys made here with ssh-keygen, a hand-built PGP tag object, no network, own git/gpg/playbook config.
 . "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/releases-fixture.sh"
 
 if ! (cd "$PB_ROOT" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
   echo "skip: $PB_ROOT is not a git checkout"; t_summary; exit 0
@@ -17,6 +18,11 @@ export GIT_CONFIG_GLOBAL="$W/gitconfig" GIT_CONFIG_NOSYSTEM=1 LC_ALL=C
 GNUPGHOME="$(mk_tmp)"; export GNUPGHOME
 PLAYBOOK_HOME="$(mk_tmp)"; export PLAYBOOK_HOME
 HOME="$(mk_tmp)"; export HOME
+# v0.33.0 S4 (AC6'): update checks the GitHub Release of the target tag first. This suite is about the signature check, so
+# it uses the test seam (PB_RELEASES_API) with a fake curl that answers 200 for every tag; the Release check is tested in
+# tests/test-update-release.sh.
+rf_fake_curl "$W/bin" || { echo "fake curl setup failed"; exit 3; }
+export PATH="$W/bin:$PATH" PB_RELEASES_API="http://releases.test.invalid" PB_RELEASES_REPO="test/playbook" PB_FAKE_CURL_DEFAULT=200
 mkdir -p "$PLAYBOOK_HOME/.agents" || { echo "conf dir setup failed"; exit 3; }
 CONF="$PLAYBOOK_HOME/.agents/playbook.conf"
 conf() { printf 'require_signed_tags=%s\n' "$1" > "$CONF"; }   # conf VALUE

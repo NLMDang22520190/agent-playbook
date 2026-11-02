@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.32.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-22659-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.33.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-24621-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -154,9 +154,9 @@ In PowerShell, `bash` usually starts `C:\Windows\System32\bash.exe`, the WSL lau
 ./install.sh uninstall --harness all --yes   # removes only what the installer created; keeps config and backups
 ```
 
-## Hooks (Claude Code, opt-in)
+## Hooks (Claude Code, on by default)
 
-The rules ask the agent to stop before irreversible actions. In Claude Code, hooks can enforce part of that. They stay off until you say yes: say "set up the playbook" and answer yes to the hooks line (playbook-setup asks once, default no), or run
+The rules ask the agent to stop before irreversible actions. In Claude Code, hooks can enforce part of that. Since v0.33.0 `install.sh install` and `update` install them by default, and "set up the playbook" (playbook-setup) defaults to on. A `hooks off` written by an older setup counts as the old default and is turned on at the next install or update, with a one-line notice. To opt out, run `install.sh install --no-hooks` (it writes `hooks_optout yes` to the conf, so `update` keeps the choice) or set `PB_HOOKS=off` for one run; `--hooks` turns them on again. The handlers can also be managed by hand:
 
 ```bash
 bash ~/.agents/playbook/scripts/claude-hooks.sh install     # merge into ~/.claude/settings.json (backup first)
@@ -171,7 +171,7 @@ The merge needs node. Without it the script changes nothing and prints the JSON 
 | PreToolUse (`Bash`, `PowerShell`, `Write`, `Edit`) | `guard-irreversible.sh` | Destructive SQL through a database client, force pushes, git commands that throw away uncommitted work, `rm -r` outside the project, and migration runs with a pending contract step: blocked in headless runs, a warning in interactive ones. Writing a migration file is allowed and marked pending. In the `PowerShell` tool (its own handler, `guard-ps`) it checks `git`, destructive SQL through `sqlcmd`, `sqlite3`, `psql` and the like, and `Remove-Item -Recurse` (aliases `rm`, `ri`, `del`, `rmdir`, `rd`) outside the project; see Limits. Tool names and input: [code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks) (section PowerShell). |
 | SessionStart | `guard-irreversible.sh --session-start` | Records the commit the session started from. |
 | SessionStart | `learnings-hook.sh` | Adds the active entries of `.agents/LEARNINGS.md` to the context, labelled as data, not instructions, only for trusted projects: those you list with `learn.sh trust` (`untrust` and `trusted` manage the list in `~/.agents/trusted-projects`) or all of them with `learnings_hook_trust=all` in the global conf (a project conf cannot set it). For any other project it prints one line saying the file was not injected. |
-| Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. |
+| Stop | `guard-irreversible.sh --stop` | Headless only. While the tree holds a dropped table or column, or a migration with a contract step, the agent may not finish: it must revert the change and report it as a pending proposal in its final reply. After three refusals the guard gives up and tells you what is left. The Stop block names the `git checkout <commit> -- <file>` that restores a file, and the PreToolUse check lets that restore through (the `git-discard` check would otherwise block it), and only that: a literal path the block named, with no tracked change at session start, restored from the session start commit or the index, alone or after `cd <dir>` or a read-only `git status`, `diff`, `log` or `show`, with at most these redirections: `2>&1`, `>&2`, `/dev/null`, PowerShell `$null` or `| Out-Null`. Any other command before it, a wrapper or assignment on it, or any other redirection still blocks. |
 
 Headless means `PB_HEADLESS=1`. When `PB_HEADLESS` is unset, `CI=true` counts as headless (GitHub Actions sets it). Claude Code tells a hook nothing about `claude -p`, so before a local `claude -p` run, `export PB_HEADLESS=1`, or the guard only warns. `PB_HEADLESS=0` forces warn-only, in CI too.
 
@@ -184,10 +184,11 @@ The guard reads the command text of one tool call. It does not see through:
 - another shell or evaluator: `bash -c`, `sh -c`, `eval`, `$(...)` and backticks, subshells and brace groups, here-docs fed to a shell;
 - interpreter one-liners (`node -e`, `python -c`, `perl -e`), or a script written to a file and then run;
 - git aliases, `find -delete`, `xargs rm`, and keywords written with `\u` escapes or built by concatenation;
-- SQL that reaches a database client through a file in a form it does not follow: a non-`.sql` file read from disk (`cp notes.txt f.sql`, `cat notes.txt > f.sql`), a file written by an earlier tool call, `&>` redirects, file names with spaces, client options glued to the file name (`psql --file=f.txt`, `psql -ff.txt`), and long prefix options with a separate value (`sudo --user x cp ...`);
+- SQL that reaches a database client through a file in a form it does not follow: a non-`.sql` file read from disk (`cp notes.txt f.sql`, `cat notes.txt > f.sql`), a file written by an earlier tool call, file names with spaces, client options glued to the file name (`psql --file=f.txt`, `psql -ff.txt`), and long prefix options with a separate value (`sudo --user x cp ...`);
 - tools it is not attached to: NotebookEdit and MCP tools (a database MCP server, for example);
 - in the PowerShell tool, the same kind of gaps, and these forms in particular: `Invoke-Expression` and `iex`, `powershell -Command`, `pwsh -c` and `-EncodedCommand`, `cmd /c` and `Start-Process` (the inner command is not read); scriptblocks that run later (`& { }`, `Invoke-Command`); the `--%` stop-parsing token; .NET calls such as `[IO.Directory]::Delete(...)`; variables other than `$HOME`, `$PWD`, `$env:USERPROFILE`, `$env:HOME`, `$env:TEMP`, `$env:TMP`, `$env:TMPDIR` and `$env:CLAUDE_PROJECT_DIR` in a delete target, which count as outside the project (they warn or block); an assignment in the same command to one of the listed variables (`$env:TEMP = ...`, a list assignment such as `$a, $env:TEMP = ...`, a compound one such as `+=`, `Set-Item env:TEMP ...`, `Set-Variable`, `Rename-Item` or `New-Item` naming it, `[Environment]::SetEnvironmentVariable('TEMP', ...)`) makes it unresolved from then on, so a delete through it warns or blocks (fail closed), and a value copied from one variable into another is not followed; splatting (`Remove-Item @p`) with no visible `-Recurse`; `Remove-Item` without `-Recurse`; registry and other provider paths, except that a target with `::` (such as `FileSystem::C:\x`) or a drive-relative one (`C:x`, `C:..\x`) warns or blocks; a SQL file written with `Set-Content` or `Out-File` and run later. The Unicode dashes U+2013 to U+2015 at the start of a word are read as `-`, curly quotes as quote characters, and these as word separators: the Unicode characters U+0085 (NEL), U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000, and the raw form feed and vertical tab bytes (a JSON `\u000b` or `\u000c` escape is not decoded, so it does not separate words: a Limit); `$(...)` inside an expandable here-string runs like in a double-quoted string. The command on the right of an assignment (`$r = Remove-Item -Recurse ...`) is checked like any other, whatever the assignment target: a variable with a scope prefix (`$script:r = ...`), a property (`$x.a = ...`), an index (`$x[0] = ...`, `$h['k'] = ...`), a typed one (`[string] $r = ...`) or a comma list of these, with `=`, `+=`, `-=`, `*=`, `/=`, `%=` or `??=`; not seen through: an index or quoted member name with a space in it (`$h[$i + 1] = ...`, `$x.'a b' = ...`) and a glued dot call after the `=` (`$r = .$c ...`). `cd..` is followed as a move to the parent directory; `cd\` and a drive switch such as `D:` make later relative paths unresolved (fail closed). A call operator whose command is a group, a variable or a quoted name with an expansion (`& (Get-Command x) ...`, `& $cmd ...`, `& "Remove-$x" ...`, also with `.`, and `.$c`) is an unknown command: with a recursive switch in its arguments (also `-Rec:$true`), or `push` with a force form, it warns or blocks (fail closed). A pipeline-fed `Remove-Item -Recurse` has no target word, so it warns or blocks even inside the project (fail closed), for example `Get-ChildItem .\build | Remove-Item -Recurse`. The hook commands are `bash` commands: without Git Bash installed they cannot run, and the PowerShell tool is then unguarded;
 - edits that switch it off: `disableAllHooks` or hook changes in `~/.claude/settings*.json` or `.claude/settings.local.json`, or edits to the guard itself;
+- the restore exemption reads only the command text: shell state from an earlier tool call (a `cd`, a function or an alias defined in a previous call) is not seen;
 - projects that are not a git repository, where the Stop check has no diff to compare;
 - a session with no baseline file (its SessionStart hook did not run, or the file was removed outside the guard) on a branch with no upstream: the Stop check then compares with HEAD, so a drop committed earlier in that session is not seen.
 
@@ -203,12 +204,14 @@ SQL that a database client has already run through one of these bypasses has no 
 </p>
 
 ```bash
-./install.sh update --check             # is there a newer release?
+./install.sh update --check             # is there a newer released tag?
 ./install.sh update --yes               # show the CHANGELOG, check out the tag, re-install everywhere, doctor
 ./install.sh update --to v0.2.0 --yes   # roll back
 ```
 
 `update` checks the release tag with `git verify-tag` before it changes anything. An SSH signature that does not verify against a configured `gpg.ssh.allowedSignersFile` stops the update, even with `--allow-unsigned`. An unsigned tag, an SSH signature while no allowed signers file is set, or a PGP/x509 signature that does not verify (no key, no gpg, or a bad signature) prints a `WARN:` line and the update continues. `scripts/conf.sh set require_signed_tags yes` (global conf) makes those fatal; `--allow-unsigned` lets one through.
+
+`update` takes only tags that have a GitHub Release: it picks the newest released tag and skips newer unreleased ones with an INFO line. `--allow-unreleased` takes the newest `v*` tag (or `--to TAG`) without a Release, also when the Releases API cannot be checked; the signature check still runs.
 
 `feedback.sh submit` refuses to post to a public repository (or one whose visibility it cannot read) unless you pass `--allow-public`. Details: [`docs/update-lifecycle.md`](docs/update-lifecycle.md).
 
@@ -228,12 +231,12 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **22659 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **24621 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 39 / 60 lines · 4,584 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
-| Behaviour evals | Claude Code 2.1.296 is the only harness evaluated in full; Codex is partly evaluated (Run C1: k=3, through a `--cmd` adapter kept outside the repo); OpenCode is installable but not evaluated. Runs 25-44 (2026-10-26 and 27, with vs without the playbook, k=2 to 10, Run 38 on claude-opus-5-5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): at k=10 (Run 44) E2, E3, E4, E6 and E29 show Δ > 0 with 95% intervals that exclude 0, E14 and E21 are inconclusive; with the opt-in hooks Δ > 0 for E13 and E34. Of the 33 outcome tasks, pattern-26, pattern-15 and pattern-24 separate the arms with intervals that exclude 0 (runs pooled across commits); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44; Δ = 0 on 20 tasks in two or more runs and on 6 in one run. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour evals | Claude Code 2.1.296 is the only harness evaluated in full; Codex is partly evaluated (Run C1: k=3, through a `--cmd` adapter kept outside the repo); OpenCode is installable but not evaluated. Runs 25-44 (2026-10-26 and 27, with vs without the playbook, k=2 to 10, Run 38 on claude-opus-5-5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): at k=10 (Run 44) E2, E3, E4, E6 and E29 show Δ > 0 with 95% intervals that exclude 0, E14 and E21 are inconclusive; with the hooks Δ > 0 for E13 and E34. Of the 33 outcome tasks, pattern-26, pattern-15 and pattern-24 separate the arms with intervals that exclude 0 (runs pooled across commits); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44; Δ = 0 on 20 tasks in two or more runs and on 6 in one run. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 ## Alongside Superpowers or other skill packs
 
@@ -261,7 +264,7 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  22659 tests, run in sandboxes, never touch the real HOME
+├── tests/                  24621 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E43) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md

@@ -168,9 +168,9 @@ function endw() {
   if (inw) {
     if (pend == "h") { nhd++; HD[nhd] = w; HDT[nhd] = hdtab; hdg++; HDI[nhd] = hdg; HB[hdg] = ""; emit("h" hdg) }
     else if (pend == "r") emit("r" w)
-    else if (pend == "o") emit("o" w)
+    else if (pend == "o") emit("o" (dup && w ~ /^([0-9]+|-)$/ ? "&" : "") w)
     else emit("w" w)
-    pend = ""
+    pend = ""; dup = 0
   }
   w = ""; inw = 0
 }
@@ -238,7 +238,7 @@ function heredocs(i,   h, k, ln) {
   return i
 }
 function tokenize(s,   i, c, k) {
-  str = s; m = split(s, T, ""); i = 1; w = ""; inw = 0; pend = ""; nhd = 0; TOK = ""
+  str = s; m = split(s, T, ""); i = 1; w = ""; inw = 0; pend = ""; nhd = 0; TOK = ""; dup = 0
   while (i <= m) {
     c = T[i]
     if (c == " " || c == "\t" || c == "\r") { endw(); i++; continue }
@@ -246,12 +246,15 @@ function tokenize(s,   i, c, k) {
     if (c == "|" && T[i + 1] != "|") { endw(); emit("s|"); i++; if (T[i] == "&") i++; continue }
     if (c == "|") { sepw(); i += 2; continue }
     if (c == "(" || c == ")") { endw(); emit("s" c); i++; continue }
+    # DECISION[D15]: &> and &>> redirect to a file (one redirection, not a separator); a dup (>&2, >&-, target all digits or -) is marked with a & in the token; >&word is a file write
+    if (c == "&" && T[i + 1] == ">") { endw(); i += 2; if (T[i] == ">") i++; pend = "o"; continue }
     if (c == ";" || c == "&") { sepw(); i++; continue }
     if (c == "<" || c == ">") {
       if (inw && pend == "" && w ~ /^[0-9]+$/) { w = ""; inw = 0 } else endw()
       if (c == "<" && T[i + 1] == "<" && T[i + 2] == "<") { pend = "r"; i += 3; continue }
       if (c == "<" && T[i + 1] == "<") { i += 2; hdtab = 0; if (T[i] == "-") { hdtab = 1; i++ } pend = "h"; continue }
       i++
+      dup = (c == ">" && T[i] == "&")
       if (T[i] == ">" || T[i] == "&" || T[i] == "|") i++
       pend = (c == ">") ? "o" : "r"; continue
     }
@@ -284,6 +287,7 @@ function psvar(nm,   l) {
   if (l == "env:claude_project_dir") return "CLAUDE_PROJECT_DIR"
   if (l == "true") return "PS_TRUE"
   if (l == "false") return "PS_FALSE"
+  if (l == "null") return "PS_NULL"   # DECISION[D15]: so that >$null can be told from a redirect to an unknown variable
   return "("
 }
 # qs(i) / qd(i): the length of the single / double quote character at T[i] (0 when none): the ASCII one, or a curly one (UTF-8 bytes):
@@ -538,6 +542,7 @@ END {
   print "J_sid=" q(TOP["session_id"])
   print "J_cwd=" q(TOP["cwd"])
   print "J_active=" q(TOP["stop_hook_active"])
+  print "J_source=" q(TOP["source"])
   print "J_cmd=" q(TI["command"])
   print "J_file=" q(TI["file_path"])
   print "J_content=" q(TI["content"])
@@ -553,7 +558,7 @@ END {
   print "J_ok=1"
 }'
 
-J_ok=0; J_tool=""; J_sid=""; J_cwd=""; J_active=""; J_cmd=""; J_file=""; J_content=""; J_new=""
+J_ok=0; J_tool=""; J_sid=""; J_cwd=""; J_active=""; J_source=""; J_cmd=""; J_file=""; J_content=""; J_new=""
 W=()
 H=()
 PARSED="$(awk "$JP" 2>/dev/null)" || exit 0
@@ -614,6 +619,22 @@ RE_SQLF="([^[:space:]\"'=<>|;&()]+[.][Ss][Qq][Ll])([^A-Za-z0-9_]|$)"
 has_contract() {
   [[ $1 =~ $RE_DROP4 ]] && return 0
   [[ $1 =~ $RE_TRUNC ]] && return 0
+  [[ $1 =~ $RE_ALTDROP ]] && return 0
+  return 1
+}
+# has_code_contract TEXT -> 0 when TEXT holds a SQL-shaped contract statement (R3-1, for code files): a DROP of a table, column, database or schema
+# (IF EXISTS allowed) followed by a name, a TABLE-form truncate (any case), a bare truncate in upper case only, or an ALTER TABLE with a DROP.
+# A name starts with a letter, _, a quote, a backtick or [. Not statements: className="truncate", a lodash call, def truncate(, a file object's
+# method, a comment about rounding, dropdown, dropTable(.
+RE_CC_D='"'; RE_CC_Q="'"; RE_CC_B='`'
+RE_CC_ID="[A-Za-z_${RE_CC_D}${RE_CC_Q}${RE_CC_B}[]"
+RE_CC_DROP="[Dd][Rr][Oo][Pp][[:space:]]+([Tt][Aa][Bb][Ll][Ee]|[Cc][Oo][Ll][Uu][Mm][Nn]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]|[Ss][Cc][Hh][Ee][Mm][Aa])[[:space:]]+([Ii][Ff][[:space:]]+[Ee][Xx][Ii][Ss][Tt][Ss][[:space:]]+)?$RE_CC_ID"
+RE_CC_TRT="(^|[^A-Za-z0-9_])[Tt][Rr][Uu][Nn][Cc][Aa][Tt][Ee][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+$RE_CC_ID"
+RE_CC_TRU="(^|[^A-Za-z0-9_])TRUNCATE[[:space:]]+$RE_CC_ID"
+has_code_contract() {
+  [[ $1 =~ $RE_CC_DROP ]] && return 0
+  [[ $1 =~ $RE_CC_TRT ]] && return 0
+  [[ $1 =~ $RE_CC_TRU ]] && return 0
   [[ $1 =~ $RE_ALTDROP ]] && return 0
   return 1
 }
@@ -698,6 +719,7 @@ var_value() {
 assign() {
   local name="${1%%=*}"
   case "$name" in '' | [0-9]* | *[!A-Za-z0-9_]*) return 1 ;; esac
+  case "$name" in GIT_*) GITENV=1 ;; esac   # DECISION[D13]: a GIT_* assignment in the command keeps the restore exemption off
   if expand "${1#*=}"; then printf -v "GV_$name" '%s' "$EXP"; printf -v "GS_$name" '%s' 1
   else printf -v "GS_$name" '%s' 0; fi
   return 0
@@ -846,9 +868,55 @@ is_mig() {
   case "$1" in .agents/*) return 1 ;; *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 0 ;; esac
   return 1
 }
+# R5-3: the is_code/is_mig name rules as awk (same rules as is_code and is_mig), one pass over a path list, so a repo with
+# tens of thousands of untracked dependency files costs one process, not one bash iteration per file. UFILT_D prints the migration
+# paths first, then the code paths.
+UAWK_FN='function ism(p) { if (p ~ /^\.agents\//) return 0; return (tolower(p) ~ /migrat/) }
+function isc(p,   q, l) {
+  q = "/" p; l = tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || l ~ /\.sql$/ || l ~ /migrat/) return 0
+  if (q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}'
+# filt_untracked_to OUT -> OUT holds the untracked paths that can be findings (is_mig first, then is_code), regular non-symlink files
+# only: the name filter in one awk (which also drops a "dir/" nested-repo entry and notes each directory once), then ONE find -P over
+# those directories (maxdepth 1, listing what is neither a regular file nor a directory: symlinks, sockets, fifos) and, only when it
+# lists any, one awk that drops those names. A find per file batch cost 13 s for 20000 files on Windows (process spawns), this costs
+# about one find. Needs TOP.
+UFILT_D="$UAWK_FN"'
+$0 != "" && $0 !~ /\/$/ { if (ism($0)) m[nm++] = $0; else if (isc($0)) c[nc++] = $0 }
+function note(p,   d) { d = p; sub(/[^\/]*$/, "", d); if (!(d in s)) { s[d] = 1; if (d == "") print "." > df; else print "./" substr(d, 1, length(d) - 1) > df } }
+END { for (i = 0; i < nm; i++) { print m[i]; note(m[i]) } for (i = 0; i < nc; i++) { print c[i]; note(c[i]) } }'
+filt_untracked_to() {
+  local nr="$1.nr" df="$1.d"
+  : > "$df"
+  git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | awk -v df="$df" "$UFILT_D" > "$1"
+  [ -s "$df" ] || { rm -f "$df"; return 0; }
+  tr '\n' '\0' < "$df" | { cd "$TOP" 2>/dev/null && xargs -0 sh -c '[ "$#" -gt 0 ] || exit 0; find -P "$@" -maxdepth 1 ! -type f ! -type d -print' _ 2>/dev/null; } > "$nr"
+  if [ -s "$nr" ]; then
+    awk 'FILENAME == ARGV[1] { x[substr($0, 1, 2) == "./" ? substr($0, 3) : $0] = 1; next } !($0 in x)' "$nr" "$1" > "$1.f" && mv "$1.f" "$1"
+  fi
+  rm -f "$df" "$nr" "$1.f"
+  return 0
+}
+filt_untracked() {
+  local t
+  t="$(mktemp "${TMPDIR:-/tmp}/pbguard-ft.XXXXXX" 2>/dev/null)" || return 1
+  filt_untracked_to "$t"
+  cat "$t"
+  rm -f "$t"
+  return 0
+}
 is_schema() {
   case "$1" in *.[Ss][Qq][Ll]) ;; *) return 1 ;; esac
   case "$1" in .agents/* | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
+  case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
+  return 0
+}
+# is_code PATH -> 0 when PATH (relative or absolute, "/" separators) is checked for code-contract statements (R2, D11): not under .agents/,
+# node_modules/ or a test dir, and not a *.sql or *migrat* file (those keep their own kinds)
+is_code() {
+  case "$1" in .agents/* | */.agents/* | node_modules/* | */node_modules/* | *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) return 1 ;; esac
   case "/$1" in */test/* | */tests/* | */spec/* | */fixture/* | */fixtures/*) return 1 ;; esac
   return 0
 }
@@ -872,23 +940,202 @@ EOF
 
 # ---- PreToolUse: Bash ----
 SEGW=()   # the words of the current command (type prefix kept)
+# DECISION[D15] (R9): what may surround the restore. RPRE stays 1 while every segment before the current one is on the allow-list (cd or
+# Set-Location with one literal dir, read-only git status/diff/log/show with literal words, or an earlier allowed restore); RCLS is the
+# verdict for the segment about to run, RRES says the segment just run was an allowed restore, GITW is the index of its git word.
+RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0
+# rpre_cls: RCLS=0 when SEGW (as tokenized, before any parsing) is one segment the restore may follow
+rpre_cls() {
+  local n="${#SEGW[@]}" t i w c a
+  RCLS=1
+  [ "$n" -ge 1 ] || return 0
+  for t in "${SEGW[@]}"; do
+    case "$t" in w*) ;; *) return 0 ;; esac
+  done
+  w="${SEGW[0]#?}"
+  c="$w"
+  if [ "$IS_PS" = 1 ]; then lower "$w"; c="$LW"; fi
+  if [ "$c" = cd ] || { [ "$IS_PS" = 1 ] && { [ "$c" = sl ] || [ "$c" = set-location ]; }; }; then
+    if [ "$n" = 2 ]; then
+      a="${SEGW[1]#?}"
+      case "$a" in '' | -* | *"$DS"* | *"$BQ"* | *[\*\?\[]*) ;; *) RCLS=0 ;; esac
+    fi
+    return 0
+  fi
+  if [ "$IS_PS" = 1 ]; then w="${w##*[/\\]}"; lower "${w%.[Ee][Xx][Ee]}"; c="$LW"; fi
+  [ "$c" = git ] && [ "$n" -ge 2 ] || return 0
+  case "${SEGW[1]#?}" in status | diff | log | show) ;; *) return 0 ;; esac
+  i=2
+  while [ "$i" -lt "$n" ]; do
+    a="${SEGW[$i]#?}"; i=$((i + 1))
+    case "$a" in *"$DS"* | *"$BQ"* | --output*) return 0 ;; esac
+  done
+  RCLS=0
+}
+# rredir_ok TOKEN -> 0 for a redirection the restore segment may carry: a dup (>&2, 2>&1), /dev/null, $null
+rredir_ok() {
+  case "$1" in
+    o/dev/null | 'o&'[0-9] | 'o&'[0-9][0-9] | 'o&-') return 0 ;;
+    o"${DS}PS_NULL$US") return 0 ;;
+  esac
+  return 1
+}
+# DECISION[D13] (R8): the guard lets through the git checkout / git restore its own headless Stop block asked for, and only that.
+# restore_ok SUB START GDIR GOPT -> 0 when the command (words from START on) restores only literal paths the latest headless Stop block
+# named in a restore hint (<sid>.restore), none of which had a tracked change at session start (<sid>.dirty), from BASE or the index, in
+# the worktree the two lists name, with git's global options limited to -C and no GIT_* variable in play. Anything else: 1, so the
+# git-discard check runs as before. DECISION[D14]: every doubtful reading blocks (--no-pager, env GIT_*, restore -S, no pathspec).
+restore_ok() {
+  local sub="$1" i="$2" gdir="$3" n="${#SEGW[@]}" t a src="" hs=0 dd=0 rel np rt pg topn rf df tl v r
+  local -a ps
+  ps=()
+  [ "$4" = 1 ] && [ "$GITENV" = 0 ] && [ -n "$SIDV" ] || return 1
+  # DECISION[D15]: the segments before were on the allow-list, and this one has no assignment prefix, no wrapper (only a plain
+  # git, a path to git, command git) and only the redirections rredir_ok names
+  [ "$RPRE" = 1 ] && [ "$GITW" -ge 0 ] || return 1
+  if [ "$IS_PS" = 1 ]; then [ "$PS_RHS" = 0 ] || return 1; fi
+  t=0
+  while [ "$t" -lt "$GITW" ]; do
+    a="${SEGW[$t]}"; t=$((t + 1))
+    case "$a" in
+      wcommand) ;;
+      w*) return 1 ;;
+      *) rredir_ok "$a" || return 1 ;;
+    esac
+  done
+  for v in DIR WORK_TREE INDEX_FILE COMMON_DIR OBJECT_DIRECTORY ALTERNATE_OBJECT_DIRECTORIES NAMESPACE CONFIG_COUNT CONFIG_PARAMETERS \
+    CONFIG_GLOBAL CONFIG_SYSTEM ICASE_PATHSPECS LITERAL_PATHSPECS GLOB_PATHSPECS NOGLOB_PATHSPECS PREFIX; do
+    v="GIT_$v"
+    [ -z "${!v+x}" ] || return 1
+  done
+  while [ "$i" -lt "$n" ]; do
+    t="${SEGW[$i]}"; i=$((i + 1))
+    case "$t" in w*) ;; *) rredir_ok "$t" && continue; return 1 ;; esac
+    a="${t#?}"
+    if [ "$dd" = 1 ]; then ps[${#ps[@]}]="$a"; continue; fi
+    case "$sub:$a" in
+      *:--) dd=1 ;;
+      checkout:-*) return 1 ;;
+      checkout:*) [ "$hs" = 0 ] || return 1; hs=1; src="$a" ;;
+      restore:-S | restore:--staged) return 1 ;;
+      restore:-W | restore:--worktree) ;;
+      restore:-s | restore:--source)
+        [ "$hs" = 0 ] && [ "$i" -lt "$n" ] || return 1
+        case "${SEGW[$i]}" in w*) ;; *) return 1 ;; esac
+        hs=1; src="${SEGW[$i]#?}"; i=$((i + 1)) ;;
+      restore:--source=*) [ "$hs" = 0 ] || return 1; hs=1; src="${a#--source=}" ;;
+      restore:--*) return 1 ;;
+      restore:-s?*) [ "$hs" = 0 ] || return 1; hs=1; src="${a#-s}" ;;
+      restore:-*) return 1 ;;
+      restore:*) ps[${#ps[@]}]="$a" ;;
+    esac
+  done
+  [ "${#ps[@]}" -gt 0 ] || return 1
+  [ "$sub" = restore ] || [ "$dd" = 1 ] || return 1
+  repo_info "$gdir" || return 1
+  base_of
+  case "$BASE" in none | '') return 1 ;; esac
+  rf="$GC/pb-guard/$SIDV.restore"; df="$GC/pb-guard/$SIDV.dirty"
+  [ -f "$rf" ] && [ -f "$df" ] || return 1
+  IFS= read -r tl < "$rf" || return 1
+  [ "$tl" = "top $TOP" ] || return 1
+  IFS= read -r tl < "$df" || return 1
+  [ "$tl" = "top $TOP" ] || return 1
+  if grep -Fxq unknown "$df" 2>/dev/null; then return 1; fi
+  if [ "$hs" = 1 ]; then
+    case "$src" in '' | -*) return 1 ;; esac
+    r="$(git -C "$gdir" rev-parse -q --verify --end-of-options "$src^{commit}" 2>/dev/null)" || return 1
+    [ "$r" = "$BASE" ] || return 1
+  fi
+  # DECISION[D13] R11-1: compare physically. TOP is git's physical toplevel (/private/var/... on macOS, C:/Users/... on Windows)
+  # while the hook cwd may reach it through a symlink (/var/...) or in the /c/... form; resolve TOP and each pathspec's parent dir
+  # with cd -P / pwd -P (bash builtins, one subshell each), so a symlinked dir that leads outside TOP still blocks.
+  topn="$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$topn" ] && [ "$topn" != / ] || return 1
+  # DECISION[D16] R12-1: git joins a relative pathspec to the PHYSICAL directory it runs in, so ".." folds against that, not against
+  # the hook's (possibly symlinked) path; a directory that does not resolve blocks
+  pg="$(cd -P -- "$gdir" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$pg" ] || return 1
+  for a in "${ps[@]}"; do
+    case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
+    # DECISION[D13] N5: a backslash is a path separator only in a PowerShell command
+    if [ "$IS_PS" != 1 ]; then case "$a" in *\\*) return 1 ;; esac; fi
+    expand "$a" || return 1
+    case "$EXP" in '' | :* | *[*?[]*) return 1 ;; esac
+    norm_path "$EXP" "$pg"; np="$NP"
+    case "$np" in /?*/*) ;; *) return 1 ;; esac
+    # DECISION[D16] R11-1': the nearest EXISTING ancestor is resolved physically; the missing components (a deleted dir) are
+    # appended literally, since a missing component cannot be a symlink
+    rt="${np##*/}"; r="${np%/*}"
+    while [ -n "$r" ] && [ ! -d "$r" ]; do rt="${r##*/}/$rt"; r="${r%/*}"; done
+    r="$(cd -P -- "${r:-/}" 2>/dev/null && pwd -P)" || return 1
+    [ -n "$r" ] || return 1
+    if [ "$r" = / ]; then np="/$rt"; else np="$r/$rt"; fi
+    case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
+    case "$rel" in '' | *"$NL"*) return 1 ;; esac
+    [ ! -d "$TOP/$rel" ] || return 1
+    tail -n +2 "$rf" | grep -Fxq -- "$rel" || return 1
+    if tail -n +2 "$df" | grep -Fxq -- "$rel"; then return 1; fi
+    [ "$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" -- "$rel" 2>/dev/null)" = "$rel" ] || return 1
+  done
+  return 0
+}
+# DECISION[D15]: while a restore list is armed (the headless Stop block named a restore), a restore-shaped command the guard cannot judge
+# (a cwd it cannot resolve, a repo it cannot read, git handed to eval, xargs, a shell, Start-Process, Invoke-Expression) blocks.
+# restore_armed -> 0 when <sid>.restore exists for the repo of the hook's cwd
+restore_armed() {
+  [ -n "$SIDV" ] || return 1
+  repo_info "${J_cwd:-$PWD}" || return 1
+  [ -f "$GC/pb-guard/$SIDV.restore" ]
+}
+# armed_block SUB MODE -> 0 (HIT set) when this is a tracked-file checkout/restore the guard cannot judge while a restore list is armed
+armed_block() {
+  { [ "$2" = tracked ] && { [ "$1" = checkout ] || [ "$1" = restore ]; } && restore_armed; } || return 1
+  HIT=git-discard
+  HINT=" The Stop block's restore runs only as a plain git checkout or git restore, alone or after cd or read-only git; this command could not be checked."
+  return 0
+}
+# seg_wrapped: the command in SEGW hands git checkout / git restore to another command (eval, xargs, a shell, Start-Process, ...)
+seg_wrapped() {
+  local t a hg=0 hr=0 out l
+  for t in "${SEGW[@]}"; do
+    case "$t" in w*) ;; *) continue ;; esac
+    a="${t#?}"
+    case "$a" in git | git.exe | */git | *\\git.exe | *"git "* | *"git$TAB"*) hg=1 ;; esac
+    case "$a" in *checkout* | *restore*) hr=1 ;; esac
+  done
+  [ "$hg" = 1 ] && [ "$hr" = 1 ] && restore_armed || return 1
+  HIT=git-discard
+  HINT=" The Stop block's restore runs only as a plain git checkout or git restore; handing it to another command is not allowed."
+  [ "$CWD_OK" = 1 ] || return 0
+  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$CWD" status --porcelain 2>/dev/null)" || return 0
+  HIT=""; HINT=""
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    case "$l" in '??'* | '!!'*) ;; *) HIT=git-discard; HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."; return 0 ;; esac
+  done <<EOF
+$out
+EOF
+  return 1
+}
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
-  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign=""
+  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si
   while [ "$i" -lt "$n" ]; do
     w="${SEGW[$i]#?}"
     case "$w" in
       -C)
         i=$((i + 1)); a="${SEGW[$i]#?}"
         if expand "$a"; then norm_path "$EXP" "$gdir"; gdir="$NP"; else gok=0; fi ;;
-      -c | --git-dir | --work-tree | --namespace | --exec-path | --config-env) i=$((i + 1)) ;;
-      -*) ;;
+      -c | --git-dir | --work-tree | --namespace | --exec-path | --config-env) gopt=0; i=$((i + 1)) ;;
+      -*) gopt=0 ;;
       *) break ;;
     esac
     i=$((i + 1))
   done
   sub="${SEGW[$i]#?}"
   i=$((i + 1))
+  si="$i"
   case "$sub" in
     push)
       while [ "$i" -lt "$n" ]; do
@@ -940,10 +1187,16 @@ seg_git() {
       done
       if [ "$force" = 1 ] && [ "$dry" = 0 ]; then mode=clean; fi ;;
   esac
-  [ -n "$mode" ] && [ "$gok" = 1 ] || return 1
+  [ -n "$mode" ] || return 1
+  if [ "$gok" != 1 ]; then armed_block "$sub" "$mode"; return; fi
+  if [ "$mode" = tracked ] && { [ "$sub" = checkout ] || [ "$sub" = restore ]; } && restore_ok "$sub" "$si" "$gdir" "$gopt"; then
+    hlog "allow restore-flagged"
+    RRES=1
+    return 1
+  fi
   if [ "$mode" = clean ] && { [ "$cx" = 1 ] || [ "$cX" = 1 ]; }; then ign=--ignored; fi
   # shellcheck disable=SC2086
-  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$gdir" status --porcelain $ign 2>/dev/null)" || return 1
+  out="$(GIT_OPTIONAL_LOCKS=0 git -C "$gdir" status --porcelain $ign 2>/dev/null)" || { armed_block "$sub" "$mode"; return; }
   while IFS= read -r l; do
     [ -n "$l" ] || continue
     case "$mode" in
@@ -1066,7 +1319,7 @@ seg() {
           w="${SEGW[$i]#?}"
           case "$pf:$w" in
             sudo:-[ugpCDhrtTU] | env:-[uCS] | nice:-n | timeout:-[sk] | time:-[fo] | exec:-a) i=$((i + 2)) ;;
-            *:-* | *:[A-Za-z_]*=*) i=$((i + 1)) ;;
+            *:-* | *:[A-Za-z_]*=*) case "$w" in GIT_*=*) GITENV=1 ;; esac; i=$((i + 1)) ;;
             *) break ;;
           esac
         done
@@ -1096,7 +1349,8 @@ seg() {
       done
       return 1 ;;
     cd) seg_cd $((i + 1)); return 1 ;;
-    git) seg_git $((i + 1)); return ;;
+    git) GITW="$i"; seg_git $((i + 1)); return ;;
+    eval | xargs | builtin | bash | sh | dash | zsh | ksh) seg_wrapped; return ;;
     rm) seg_rm $((i + 1)); return ;;
   esac
   args=()
@@ -1217,7 +1471,7 @@ gclose() {
 }
 pre_bash() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1229,14 +1483,17 @@ pre_bash() {
     case "$t" in
       s | 's|' | 's(' | 's)')
         if [ "${#SEGW[@]}" -gt 0 ]; then
+          rpre_cls
           seg && break
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
         fi
         SEGW=()
         case "$t" in
           s) PLT="" ;;
-          's(') GD=$((GD + 1)) ;;
+          's(') GD=$((GD + 1)); RPRE=0 ;;
           's)') if [ "$GD" -gt 0 ]; then gclose; else PLT=""; fi ;;
         esac ;;
       'w{' | 'w}')
@@ -1385,6 +1642,7 @@ ps_cd() {
 }
 # ps_unres NAME: an assignment changed the variable (NAME as renamed by psvar): it stays unresolved for the rest of the command
 ps_unres() {
+  case "$1" in GIT_* | *:GIT_*) GITENV=1 ;; esac   # DECISION[D13]
   case "$1" in HOME | PWD | PS_TEMP | PS_TMP | TMPDIR | CLAUDE_PROJECT_DIR) printf -v "GS_$1" '%s' 0 ;; esac
 }
 # ps_vn NAME -> PV: the psvar name of a variable named NAME in Set-Item / Set-Variable (env:TEMP, HOME ...); 1 when none
@@ -1634,7 +1892,8 @@ ps_seg() {
   ps_cw || return 1
   case "$LW" in
     "$CALLM"*) ps_unk "$((PS_I + 1))"; return ;;
-    git) seg_git "$((PS_I + 1))"; return ;;
+    git) GITW="$PS_I"; seg_git "$((PS_I + 1))"; return ;;
+    start-process | start | saps | invoke-expression | iex | invoke-command | icm | pwsh | powershell | bash | sh | wsl | cmd) seg_wrapped; return ;;
     cd | sl | chdir | set-location | pushd | push-location) ps_cd "$((PS_I + 1))"; return 1 ;;
     popd | pop-location) CWD_OK=0; return 1 ;;
   esac
@@ -1642,7 +1901,7 @@ ps_seg() {
 }
 pre_ps() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""
+  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1654,17 +1913,20 @@ pre_ps() {
     case "$t" in
       s | 's|' | 's(' | 's)')
         if [ "${#SEGW[@]}" -gt 0 ]; then
+          rpre_cls
           if ps_seg; then
             # a delete whose target is unresolved (a $(...) group) is reported after the commands that run inside that group: their hit wins
             if [ "$UNRES" = 1 ] && [ "$HIT" = rm-outside ] && [ -z "$DEFH" ]; then DEFH="$HIT"; DEFT="$HINT"; HIT=""; HINT=""; else break; fi
           fi
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
         fi
         SEGW=()
         case "$t" in
           s) PLT="" ;;
-          's(') GD=$((GD + 1)) ;;
+          's(') GD=$((GD + 1)); RPRE=0 ;;
           's)') if [ "$GD" -gt 0 ]; then gclose; else PLT=""; fi ;;
         esac ;;
       *) SEGW[${#SEGW[@]}]="$t" ;;
@@ -1679,8 +1941,11 @@ pre_ps() {
 pre_write() {
   local f="${J_file//\\//}" txt="$J_content" kind=sql
   [ "$J_tool" = Edit ] && txt="$J_new"
-  case "$f" in *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;; *) exit 0 ;; esac
-  has_contract "$txt" || exit 0
+  case "$f" in
+    *.[Ss][Qq][Ll] | *[Mm][Ii][Gg][Rr][Aa][Tt]*) ;;
+    *) is_code "$f" || exit 0; kind=code-contract ;;
+  esac
+  if [ "$kind" = code-contract ]; then has_code_contract "$txt" || exit 0; else has_contract "$txt" || exit 0; fi
   case "$f" in *[Mm][Ii][Gg][Rr][Aa][Tt]*) kind=migration-contract ;; esac
   hlog "pending $kind"
   warn_json "$J_file holds a contract statement (DROP, TRUNCATE or ALTER TABLE ... DROP). The file is written but pending, not run: do not run it in this session. Headless runs must revert it before finishing and report it as a pending proposal in the final reply."
@@ -1688,17 +1953,121 @@ pre_write() {
 }
 
 # ---- SessionStart: the baseline (D16) ----
+# hash_paths LIST OUT N -> git hash-object of the N paths in LIST into OUT, in order. From 2000 paths the list is split in 8 chunks hashed
+# by 8 parallel git processes (file opens dominate on Windows: 20000 files 4.4 s serial, 1.5 s in parallel); a failed chunk shortens OUT, which the caller's line count catches.
+hash_paths() {
+  local ok=1 sz k
+  if [ "$3" -lt 2000 ]; then git -C "$TOP" hash-object --stdin-paths < "$1" > "$2" 2>/dev/null; return; fi
+  sz=$(( ($3 + 7) / 8 ))
+  for k in a b c d e f g h; do rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null; done
+  split -a 1 -l "$sz" "$1" "$1.c." 2>/dev/null || return 1
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && git -C "$TOP" hash-object --stdin-paths < "$1.c.$k" > "$1.c.$k.h" 2>/dev/null &
+  done
+  wait
+  : > "$2"
+  for k in a b c d e f g h; do
+    [ -f "$1.c.$k" ] && { cat "$1.c.$k.h" >> "$2" 2>/dev/null || ok=0; }
+    rm -f "$1.c.$k" "$1.c.$k.h" 2>/dev/null
+  done
+  [ "$ok" = 1 ]
+}
+# record_untracked FILE -> one "<git hash-object> <path>" line per untracked regular file that can be a finding (is_code or is_mig, not a
+# symlink) at SessionStart; Stop skips an unchanged one (R3-3). Only the first 20000 are hashed (R6-2); the rest are listed as "- <path>"
+# and FILE.capped marks the over-20000 case (R6-1: only unhashed pre-session files may then be left unscanned with a warning). One awk filter, one hash-object pass (R4-2, R5-3)
+record_untracked() {
+  local pf="$1.paths" hf="$1.hashes" tot n pt
+  rm -f "$1.capped" 2>/dev/null
+  filt_untracked_to "$pf" 2>/dev/null || { rm -f "$pf"; return 0; }
+  tot="$(wc -l < "$pf" | tr -d ' ')"
+  n="$tot"
+  pt="$pf"
+  if [ "$tot" -gt 20000 ]; then
+    : > "$1.capped" 2>/dev/null
+    n=20000
+    pt="$pf.top"
+    head -n 20000 "$pf" > "$pt" 2>/dev/null || n=0
+  fi
+  if [ "$n" -gt 0 ] && hash_paths "$pt" "$hf" "$n" && [ "$(wc -l < "$hf" | tr -d ' ')" = "$n" ]; then
+    paste -d' ' "$hf" "$pt" > "$1" 2>/dev/null
+    [ "$tot" -le 20000 ] || tail -n +20001 "$pf" | sed 's/^/- /' >> "$1" 2>/dev/null
+  fi
+  rm -f "$pf" "$hf" "$pf.top" 2>/dev/null
+  return 0
+}
+# un_same PATH -> 0 when PATH was untracked at SessionStart with the same content (UNB holds the record)
+un_same() {
+  local h
+  [ -n "$UNB" ] || return 1
+  h="$(git -C "$TOP" hash-object -- "$1" 2>/dev/null)" || return 1
+  case "$NL$UNB" in *"$NL$h $1$NL"*) return 0 ;; esac
+  return 1
+}
+# DECISION[D13] (R8): tracked_changes -> TCH (the tracked-change paths, one per line, raw bytes, TOP-relative; a rename or copy gives both
+# paths) and TCU=1 when a path holds a newline (it cannot be listed). Needs TOP. tracked_changes SCRATCH: one git status written to the
+# scratch file and read back with bash builtins (DECISION[D15] R11-4: no process substitution, no per-line subprocess; SessionStart
+# with 20000 files must stay under the R6-2 budget on a slow-fork host such as Windows).
+tracked_changes() {
+  local e xy tp skip=0 sf="$1"
+  TCH=""; TCU=0
+  GIT_OPTIONAL_LOCKS=0 git -C "$TOP" -c core.quotepath=off status --porcelain=v1 -z -uno > "$sf" 2>/dev/null || { rm -f "$sf" 2>/dev/null; TCU=1; return 0; }  # DECISION[D16] R12-4: a failed status is "unknown"
+  [ -f "$sf" ] || { TCU=1; return 0; }
+  while IFS= read -r -d '' e; do
+    if [ "$skip" = 1 ]; then
+      skip=0; tp="$e"
+    else
+      xy="${e:0:2}"
+      case "$xy" in '??' | '!!') continue ;; esac
+      case "$xy" in R* | C* | ?R | ?C) skip=1 ;; esac
+      tp="${e:3}"
+    fi
+    case "$tp" in *"$NL"*) TCU=1; continue ;; esac
+    TCH="$TCH$tp$NL"
+  done < "$sf"
+  rm -f "$sf" 2>/dev/null
+  return 0
+}
+# write_dirty FILE -> the session-start record of tracked changes: "top <TOP>", the paths, "unknown" when it cannot list them
+write_dirty() {
+  tracked_changes "$1.st"
+  { printf 'top %s\n' "$TOP"; printf '%s' "$TCH"; [ "$TCU" = 0 ] || printf 'unknown\n'; } > "$1" 2>/dev/null
+}
+# union_dirty FILE -> resume or clear: the current tracked changes are added (DECISION[D13] N2); another top, or a path that cannot be
+# listed, makes the record "unknown"
+union_dirty() {
+  local tl p
+  [ -f "$1" ] || { write_dirty "$1"; return 0; }
+  IFS= read -r tl < "$1" || tl=""
+  if [ "$tl" != "top $TOP" ]; then
+    grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null
+    return 0
+  fi
+  tracked_changes "$1.st"
+  if [ "$TCU" = 1 ]; then grep -Fxq unknown "$1" 2>/dev/null || printf 'unknown\n' >> "$1" 2>/dev/null; fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    tail -n +2 "$1" | grep -Fxq -- "$p" || printf '%s\n' "$p" >> "$1" 2>/dev/null
+  done <<EOF
+$TCH
+EOF
+  return 0
+}
 start_mode() {
   local f h
   [ -n "$SIDV" ] || exit 0
   hook_dir
   repo_info "$HDIR" || exit 0
   f="$GC/pb-guard/$SIDV"
-  [ -e "$f" ] && exit 0
+  if [ -e "$f" ]; then
+    case "$J_source" in resume | clear) union_dirty "$f.dirty" ;; esac
+    exit 0
+  fi
   h="$(git -C "$TOP" rev-parse -q --verify HEAD 2>/dev/null)" || h=none
   [ -n "$h" ] || h=none
   mkdir -p "$GC/pb-guard" 2>/dev/null || exit 0
   printf '%s\n' "$h" > "$f" 2>/dev/null
+  record_untracked "$f.untracked"
+  write_dirty "$f.dirty"
   exit 0
 }
 
@@ -1706,12 +2075,25 @@ start_mode() {
 # input: DS+"B path" (a schema file at the baseline), DS+"N path" (a schema file now), DS+"M path" (an untracked migration),
 # DS+"D" (git diff BASE, -U0), each followed by its lines. Output: KIND<TAB>FILE<TAB>NAME per finding.
 SCH='
+function iscode(p,   q) {
+  q = "/" tolower(p)
+  if (q ~ /\/\.agents\// || q ~ /\/node_modules\// || q ~ /\.sql$/ || q ~ /migrat/ || q ~ /\/(test|tests|spec|fixture|fixtures)\//) return 0
+  return 1
+}
 function nname(s) { gsub(/"/, "", s); gsub(/`/, "", s); gsub(/\[/, "", s); gsub(/\]/, "", s); return tolower(s) }
 function ncols(b) { b = nname(b); gsub(/[ \t]+/, " ", b); gsub(/ ?, ?/, ",", b); gsub(/\( /, "(", b); gsub(/ \)/, ")", b); sub(/^ /, "", b); sub(/ $/, "", b); return b }
 function contract(l) {
   l = tolower(l)
   if (l ~ /drop[ \t]+(table|column|database|schema)([^a-z0-9_]|$)/) return 1
   if (l ~ /(^|[^a-z0-9_])truncate([^a-z0-9_]|$)/) return 1
+  if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
+  return 0
+}
+function ccontract(l,   o) {
+  o = l; l = tolower(l)
+  if (l ~ /drop[ \t]+(table|column|database|schema)[ \t]+(if[ \t]+exists[ \t]+)?[][A-Za-z_"\047`]/) return 1
+  if (l ~ /(^|[^a-z0-9_])truncate[ \t]+table[ \t]+[][A-Za-z_"\047`]/) return 1
+  if (o ~ /(^|[^A-Za-z0-9_])TRUNCATE[ \t]+[][A-Za-z_"\047`]/) return 1
   if (l ~ /alter[ \t]+table[^;]*[ \t]drop([^a-z0-9_]|$)/) return 1
   return 0
 }
@@ -1761,14 +2143,21 @@ function nocom(l,   o, a, d) {
   return o
 }
 BEGIN { DS = "\034" }
-substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; inc = 0; next }
+substr($0, 1, 1) == DS { cur = substr($0, 2, 1); f = substr($0, 4); df = ""; dc = ""; inc = 0; next }
 cur == "B" || cur == "N" { BUF[cur, f] = BUF[cur, f] " " nocom($0) "\n"; next }
 cur == "M" { ADD[f] = ADD[f] $0 "\n"; next }
+cur == "U" { CADD[f] = CADD[f] $0 "\n"; next }
 cur == "D" {
-  if (substr($0, 1, 11) == "diff --git ") { df = ""; next }
-  if (substr($0, 1, 6) == "+++ b/") { df = substr($0, 7); if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""; next }
-  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; next }
+  if (substr($0, 1, 11) == "diff --git ") { df = ""; dc = ""; next }
+  if (substr($0, 1, 6) == "+++ b/") {
+    df = substr($0, 7); dc = ""
+    if (iscode(df)) { dc = df; df = "" }
+    else if (substr(df, 1, 8) == ".agents/" || tolower(df) !~ /migrat/) df = ""
+    next
+  }
+  if (substr($0, 1, 4) == "+++ " || substr($0, 1, 4) == "--- ") { df = ""; dc = ""; next }
   if (df != "" && substr($0, 1, 1) == "+") ADD[df] = ADD[df] substr($0, 2) "\n"
+  if (dc != "" && substr($0, 1, 1) == "+") CADD[dc] = CADD[dc] substr($0, 2) "\n"
   next
 }
 END {
@@ -1787,6 +2176,10 @@ END {
     m = split(ADD[f], L, "\n")
     for (i = 1; i <= m; i++) if (contract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "migration-contract\t" f "\t" substr(l, 1, 120); break }
   }
+  for (f in CADD) {
+    m = split(CADD[f], L, "\n")
+    for (i = 1; i <= m; i++) if (ccontract(L[i])) { l = L[i]; sub(/^[ \t]+/, "", l); sub(/[ \t\r]+$/, "", l); print "code-contract\t" f "\t" substr(l, 1, 120); break }
+  }
   for (nm in NAMES) {
     if (!HAS["B", nm]) continue
     if (HAS["N", nm]) {
@@ -1803,8 +2196,54 @@ END {
   }
 }'
 
+# UCAP: the over-cap ordering for Stop (R5-1, R6-1). stdin: "@@R" + the SessionStart record ("<hash> <path>"), "@@H" + the current hashes,
+# "@@L" + the current paths (same order). Prints "S <path>" for the first 2000: group A (new or changed since SessionStart) first, then
+# group B (pre-session, no recorded hash), in input order; an unchanged recorded file is skipped. When files were not scanned:
+# "T <count>", "D <dir> <count>" (up to 5 top-level dirs with the most) and "C 1", all counting only unscanned A and B files, and
+# "K 1" first (the awk ran), "A 1" when an unscanned file is in group A (such a Stop blocks headless; B alone only warns).
+UCAP='
+$0 == "@@R" { sec = "R"; next }
+$0 == "@@H" { sec = "H"; next }
+$0 == "@@L" { sec = "L"; next }
+sec == "R" { i = index($0, " "); if (i) rec[substr($0, i + 1)] = substr($0, 1, i - 1); next }
+sec == "H" { nh++; H[nh] = $0; next }
+sec == "L" && $0 != "" { n++; P[n] = $0; next }
+END {
+  cap = 2000; ok = (nh == n)
+  for (i = 1; i <= n; i++) {
+    p = P[i]; h = ok ? H[i] : "-"
+    if (!(p in rec)) A[++na] = p
+    else if (ok && rec[p] != "-" && rec[p] == h) SM[++ns] = p
+    else if (rec[p] != "-" && rec[p] != h) A[++na] = p
+    else B[++nb] = p
+  }
+  print "K 1"
+  q = 0
+  for (i = 1; i <= na; i++) Q[++q] = A[i]
+  for (i = 1; i <= nb; i++) Q[++q] = B[i]
+  nu = 0
+  for (i = 1; i <= q; i++) { if (i <= cap) print "S " Q[i]; else U[++nu] = Q[i] }
+  if (q <= cap) exit
+  print "T " nu
+  for (i = 1; i <= nu; i++) { d = index(U[i], "/") ? substr(U[i], 1, index(U[i], "/") - 1) : "."; DC[d]++ }
+  for (k = 1; k <= 5; k++) {
+    best = ""
+    for (d in DC) if (!(d in DONE) && (best == "" || DC[d] > DC[best] || (DC[d] == DC[best] && d < best))) best = d
+    if (best == "") break
+    DONE[best] = 1; print "D " best " " DC[best]
+  }
+  print "C 1"
+  if (na > cap) print "A 1"
+}'
+
+# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths and never from a word-split string: once, and
+# not when it holds whitespace or is empty (DECISION[D13] N4)
+rl_add() {
+  case "$1" in '' | *[[:space:]]*) return 0 ;; esac
+  case "$NL$rl" in *"$NL$1$NL"*) ;; *) rl="$rl$1$NL" ;; esac
+}
 stop_mode() {
-  local bl nl f findings kinds k kind file name items="" short="" files="" b7 sid sf cnt again="" msg
+  local ul nu capped capdirs mk hs co cands bl nl f findings kinds k kind file name items="" short="" files="" cfiles="" chint="" b7 sid sf cnt again="" msg rl=""
   hook_dir
   repo_info "$HDIR" || exit 0
   base_of
@@ -1813,25 +2252,78 @@ stop_mode() {
   bl=""
   [ "$BASE" = none ] || bl="$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" 2>/dev/null)"
   nl="$(git -C "$TOP" -c core.quotepath=off ls-files -co --exclude-standard 2>/dev/null)"
+  UNB=""
+  if [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked" ]; then UNB="$(cat "$GC/pb-guard/$SIDV.untracked" 2>/dev/null)"; fi
+  [ -z "$UNB" ] || UNB="$UNB$NL"
+  # the untracked list, filtered first: regular non-symlink files that can be findings (is_mig first, then is_code); text files only
+  # (binary files cannot hold a statement). Over the 2000-file cap, a file new this session or changed since SessionStart comes first
+  # and an unchanged pre-session one is dropped before counting (R5-1); migrations stay first (R4-1)
+  ul="$(
+    filt_untracked | sed 's|^|./|' | tr '\n' '\0' | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -e '' /dev/null 2>/dev/null; } | sed 's|^\./||'
+  )"
+  nu=0
+  [ -z "$ul" ] || nu="$(printf '%s\n' "$ul" | wc -l | tr -d ' ')"
+  capped=0
+  capdirs=""
+  mk=0
+  ua=0
+  [ -n "$SIDV" ] && [ -f "$GC/pb-guard/$SIDV.untracked.capped" ] && mk=1
+  if [ "$nu" -gt 2000 ]; then
+    hs="$(printf '%s\n' "$ul" | git -C "$TOP" hash-object --stdin-paths 2>/dev/null)"
+    co="$({ printf '@@R\n'; printf '%s' "$UNB"; printf '@@H\n'; printf '%s\n' "$hs"; printf '@@L\n'; printf '%s\n' "$ul"; } | awk -v marker="$mk" "$UCAP" 2>/dev/null)"
+    if [ -n "$co" ]; then
+      ul="$(printf '%s\n' "$co" | sed -n 's/^S //p')"
+      if [ -n "$(printf '%s\n' "$co" | sed -n 's/^C //p')" ]; then
+        capped="$(printf '%s\n' "$co" | sed -n 's/^T //p')"
+        [ -z "$(printf '%s\n' "$co" | sed -n 's/^A //p')" ] || ua=1
+        hlog "stop-scan-capped"
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          capdirs="$capdirs${capdirs:+, }${f% *} (${f##* })"
+        done <<EOF
+$(printf '%s\n' "$co" | sed -n 's/^D //p')
+EOF
+      fi
+    else
+      hlog "stop-scan-capped"
+      capped=$((nu - 2000))
+      ua=1
+      ul="$(printf '%s\n' "$ul" | head -n 2000)"
+    fi
+  fi
+  case "$capped" in '' | *[!0-9]*) capped=0 ;; esac
+  cands="$(
+    printf '%s\n' "$ul" | awk "$UAWK_FN"' $0 != "" && !ism($0)' | sed 's|^|./|' | tr '\n' '\0' \
+      | { cd "$TOP" 2>/dev/null && LC_ALL=C xargs -0 grep -l -I -i -E 'drop|truncate|alter' /dev/null 2>/dev/null; } | sed 's|^\./||'
+  )"
   findings="$(
     {
-      printf '%s\n' "$bl" | while IFS= read -r f; do
+      printf '%s\n' "$bl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" || continue
         printf '%sB %s\n' "$DS" "$f"; git -C "$TOP" show "$BASE:$f" 2>/dev/null; printf '\n'
       done
-      printf '%s\n' "$nl" | while IFS= read -r f; do
+      printf '%s\n' "$nl" | grep -i -e '\.sql$' | while IFS= read -r f; do
         [ -n "$f" ] && is_schema "$f" && [ -f "$TOP/$f" ] || continue
         printf '%sN %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
-      git -C "$TOP" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | while IFS= read -r f; do
+      printf '%s\n' "$ul" | while IFS= read -r f; do
         [ -n "$f" ] && is_mig "$f" && [ -f "$TOP/$f" ] || continue
+        un_same "$f" && continue
         printf '%sM %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
+      done
+      printf '%s\n' "$cands" | while IFS= read -r f; do
+        [ -n "$f" ] && [ -f "$TOP/$f" ] || continue
+        [ "$(wc -c < "$TOP/$f" 2>/dev/null | tr -d ' ')" -le 1048576 ] 2>/dev/null || continue
+        un_same "$f" && continue
+        printf '%sU %s\n' "$DS" "$f"; cat "$TOP/$f" 2>/dev/null; printf '\n'
       done
       printf '%sD -\n' "$DS"
       git -C "$TOP" -c core.quotepath=off diff --no-color --no-ext-diff --no-renames -U0 "$DB" -- 2>/dev/null
     } | awk "$SCH" 2>/dev/null
   )"
-  [ -n "$findings" ] || exit 0
+  if [ "$capped" -gt 0 ]; then findings="$findings${findings:+$NL}scan-capped$TAB-$TAB$capped"; fi
+  # DECISION[D13]: a Stop that finds nothing removes the restore list (the restore it asked for is done)
+  if [ -z "$findings" ]; then [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null; exit 0; fi
   b7="${BASE:0:7}"
   kinds=" "
   while IFS="$TAB" read -r kind file name; do
@@ -1839,18 +2331,28 @@ stop_mode() {
     case "$kinds" in *" $kind "*) ;; *) kinds="$kinds$kind " ;; esac
     case "$kind" in
       schema-drop) items="$items$NL- $kind: $file: table $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        rl_add "$file" ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac ;;
+        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        rl_add "$file" ;;
+      scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
+      code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
+        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac
+        if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$file"; then rl_add "$file"; fi ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
   done <<EOF
 $findings
 EOF
   short="${short#; }"
-  if ! headless; then
+  if ! headless || { [ "$kinds" = " scan-capped " ] && [ "$mk" = 1 ] && [ "$ua" = 0 ]; }; then
     for k in $kinds; do hlog "warn $k"; done
-    jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    if [ "$kinds" = " scan-capped " ]; then
+      jesc "${G_PFX}untracked code files were not scanned for irreversible changes:$items${NL}Tell the user about them."
+    else
+      jesc "${G_PFX}irreversible changes in this session (schema or migration):$items${NL}Confirm them with the user before they are committed, pushed or run."
+    fi
     printf '{"systemMessage":"%s"}\n' "$JE"
     exit 0
   fi
@@ -1861,6 +2363,7 @@ EOF
   case "$cnt" in '' | *[!0-9]*) cnt=0 ;; esac
   if [ "$cnt" -ge 3 ]; then
     for k in $kinds; do hlog "stop-giveup $k"; done
+    [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null
     msg="${G_PFX}gave up after 3 Stop blocks; unresolved irreversible changes: $short. Report them to the user."
     printf '%s\n' "$msg" >&2
     jesc "$msg"
@@ -1871,12 +2374,29 @@ EOF
   printf '%s\n' "$((cnt + 1))" > "$sf" 2>/dev/null
   for k in $kinds; do hlog "stop-block $k"; done
   [ "$J_active" = true ] && again=" (still there after an earlier Stop block)"
+  if [ "$kinds" = " scan-capped " ]; then
+    [ -z "$SIDV" ] || rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null   # DECISION[D15]: no restore hint in this block
+    msg="${G_PFX}BLOCKED (Stop): untracked code files could not be scanned for irreversible changes$again:$items${NL}Headless run: add the directories named above to .gitignore, or move the files under .agents/, then report them in your final reply."
+    printf '%s\n' "$msg" >&2
+    exit 2
+  fi
+  for f in $cfiles; do
+    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
+    else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
+  done
   msg="${G_PFX}BLOCKED (Stop): this session left irreversible schema or migration changes$again:$items$NL"
   if [ "$BASE" = none ]; then
     msg="${msg}Headless run: revert these changes before finishing (restore the schema files, never by rewriting history; remove the migration or move it under .agents/), then describe them as a pending proposal in your final reply."
   else
     for f in $files; do msg="$msg(restore: git checkout $b7 -- $f)$NL"; done
     msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
+  fi
+  msg="$msg$chint"
+  # DECISION[D13]: the paths the hints above name (BASE known), so the PreToolUse check lets that restore through
+  if [ -n "$SIDV" ]; then
+    [ "$BASE" != none ] || rl=""
+    if [ -n "$rl" ]; then { printf 'top %s\n' "$TOP"; printf '%s' "$rl"; } > "$GC/pb-guard/$SIDV.restore" 2>/dev/null
+    else rm -f "$GC/pb-guard/$SIDV.restore" 2>/dev/null; fi   # DECISION[D15]: a block with no restore hint removes the old list
   fi
   printf '%s\n' "$msg" >&2
   exit 2

@@ -2139,7 +2139,7 @@ if printf '%s' "$S4_ALL" | grep -qiE 'at most 8 questions' && printf '%s' "$S4_A
 
 echo "v0.26.0 lane E AC7.1 RUBRIC.md: after the gate line, a rule is kept or added only when its scenario shows Δ > 0"
 RUBF="$PB_ROOT/evals/RUBRIC.md"
-assert_eq "v26 E AC7.1 RUBRIC.md keeps the existing gate line" "1" "$(grep -c '^Gate before releasing a new playbook version: no 0 on E3, E4, E5 or E8 in the harness you use most\.' "$RUBF")"
+assert_eq "v26 E AC7.1 RUBRIC.md keeps a Gate before releasing a new playbook version line (its content is asserted by v0.33.0 AC3)" "1" "$(grep -c '^Gate before releasing a new playbook version' "$RUBF")"
 # the paragraph that names tools/eval-delta.sh, between the gate line and the "Copy this table" line
 DPARA="$(awk '/^Gate before releasing a new playbook version/ { f = 1; next } f && /^Copy this table/ { exit } f && /^[[:space:]]*$/ { if (p ~ /eval-delta/) { print p; exit } p = ""; next } f { p = p " " $0 } END { if (f && p ~ /eval-delta/) print p }' "$RUBF" | head -n 1)"
 if [ -n "$DPARA" ]; then t_ok "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh"; else t_bad "v26 E AC7.1 a paragraph after the gate line names tools/eval-delta.sh" "none between the gate line and 'Copy this table'"; fi
@@ -2168,23 +2168,32 @@ assert_contains "fix3 README: the paragraph names SSH (the case that stops)" "$U
 assert_contains "fix3 README: the paragraph names the allowed signers setting" "$UPAR" "gpg.ssh.allowedSignersFile"
 assert_not_contains "fix3 README: no claim that any signature that does not verify stops the update" "$UPAR" "a signature that does not verify stops the update"
 
-echo "v0.28.0 lane k1b AC-B7: setup step 4 offers the Claude Code hooks as an optional extra line (default no)"
+echo "v0.28.0 lane k1b AC-B7 (v0.33 AC5'/N1/N6 changes marked): setup step 4 offers the Claude Code hooks as an optional extra line (default ON since v0.33)"
 K1B_S4="$(awk '/^4\. \*\*Ask once/ { f = 1 } f && /\*\*Models per role\*\*/ { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
 qchk "k1b AC-B7 step 4 names the install command claude-hooks.sh install" "$K1B_S4" 'claude-hooks\.sh install'
 qchk "k1b AC-B7 step 4: the hooks line is an optional extra outside the 8-question cap" "$K1B_S4" 'hooks?[^.;]{0,160}(extra|optional line|outside the 8|not count|on top)|(extra|optional line|outside the 8|on top of)[^.;]{0,160}hooks?'
 qchk "k1b AC-B7 step 4: the hooks line is for Claude Code only" "$K1B_S4" 'claude code only|only (for|in) claude code|claude code[^.]{0,60}only'
-qchk "k1b AC-B7 step 4: the hooks default to no" "$K1B_S4" 'hooks?[^.]{0,250}default no|default no[^.]{0,250}hooks?'
+qchk "k1b AC-B7 (v0.33 AC5' changed: was default no) step 4: the hooks default to on" "$K1B_S4" 'hooks?[^.]{0,250}default (on|yes|installed)|default (on|yes)[^.]{0,250}hooks?|hooks?[^.]{0,120}(on|installed) by default'
+if printf '%s' "$K1B_S4" | grep -qiE 'hooks?[^.]{0,250}default no|default no[^.]{0,250}hooks?'; then t_bad "k1b AC-B7 (v0.33 AC5') step 4 no longer says the hooks default to no" "default no is still next to hooks"; else t_ok "k1b AC-B7 (v0.33 AC5') step 4 no longer says the hooks default to no"; fi
 qchk "k1b AC-B7 step 4: the hooks go into ~/.claude/settings.json" "$K1B_S4" '~/\.claude/settings\.json'
 qchk "k1b AC-B7 step 4: says what the guard hook does" "$K1B_S4" 'guard[^.]{0,200}(irreversible|block|warn)'
 qchk "k1b AC-B7 step 4: says what the learnings hook does" "$K1B_S4" 'learnings[^.]{0,200}(session start|SessionStart|LEARNINGS)'
 qchk "k1b AC-B7 step 4: says a backup is made" "$K1B_S4" 'back(s|ed)? ?up|backup'
 qchk "k1b AC-B7 step 4: says how to remove them (claude-hooks.sh uninstall)" "$K1B_S4" 'claude-hooks\.sh uninstall'
-flat_has "k1b AC-B7 yes -> conf.sh set hooks on --global" "$SETUP" 'conf\.sh set hooks on --global'
-flat_has "k1b AC-B7 no -> hooks off" "$SETUP" 'hooks off'
-flat_has "k1b AC-B7 a non-interactive setup never installs the hooks" "$SETUP" '(non-interactive|headless)[^.]{0,250}(never|not|no)[^.]{0,40}install[^.]{0,80}hooks?|hooks?[^.]{0,250}(non-interactive|headless)[^.]{0,120}(never|not)[^.]{0,20}install'
+flat_has "k1b AC-B7 (v0.33 N6 changed: was conf.sh set hooks on) no -> conf.sh set hooks_optout yes --global" "$SETUP" 'conf\.sh set hooks_optout yes --global'
+if flat "$SETUP" | grep -qiE 'conf\.sh set hooks on|hooks off'; then t_bad "k1b AC-B7 (v0.33 N6) setup no longer writes the legacy hooks key (on/off)" "hooks on / hooks off still in SKILL.md"; else t_ok "k1b AC-B7 (v0.33 N6) setup no longer writes the legacy hooks key (on/off)"; fi
+flat_has "k1b AC-B7 (v0.33 N1 changed: was no -> hooks off) answering no writes hooks_optout yes" "$SETUP" 'no[^.]{0,80}hooks_optout yes|hooks_optout yes[^.]{0,80}\bno\b|hooks_optout'
+
+flat_has "k1b AC-B7 (v0.33 AC5' changed: was never installs) a non-interactive setup installs the hooks" "$SETUP" '(non-interactive|headless)[^.]{0,250}installs?[^.]{0,80}hooks?|hooks?[^.]{0,250}(non-interactive|headless)[^.]{0,120}install'
+if flat "$SETUP" | grep -qiE '(non-interactive|headless)[^.]{0,250}(never|not|no)[^.]{0,40}install[^.]{0,80}hooks?'; then t_bad "k1b AC-B7 (v0.33 AC5') a non-interactive setup no longer says it never installs the hooks" "the old never-install sentence is still there"; else t_ok "k1b AC-B7 (v0.33 AC5') a non-interactive setup no longer says it never installs the hooks"; fi
 K1B_S6="$(awk '/^6\. \*\*Write the values/ { f = 1 } f && /^7\. / { exit } f { print }' "$SETUP" | tr '\n' ' ' | tr -s ' ')"
-qchk "k1b AC-B7 step 6 lists the global key hooks (on/off)" "$K1B_S6" '`hooks` \(on ?(\||/|or) ?off'
-flat_has "k1b AC-B7 questions.md lists the optional hooks key (global)" "$QUESTIONS" '`hooks` \(global\)'
+qchk "k1b AC-B7 (v0.33 N1/N6 changed: was hooks on/off) step 6 lists the global key hooks_optout (yes/no)" "$K1B_S6" '`hooks_optout` ?\(?[^.]{0,40}yes[^.]{0,20}no'
+qchk "k1b AC-B7 (v0.33 N1) step 6 says no = hooks on, the default" "$K1B_S6" 'hooks_optout[^.]{0,200}(default no|default[^.]{0,20}on|no[^.]{0,20}hooks on)'
+if printf '%s' "$K1B_S6" | grep -qE '`hooks` \(on'; then t_bad "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)"; fi
+flat_has "k1b AC-B7 (v0.33 N1/N6 changed: was `hooks` (global)) questions.md lists the optional hooks_optout key (global)" "$QUESTIONS" '`hooks_optout` \(global\)'
+if flat "$QUESTIONS" | grep -qF '`hooks` (global)'; then t_bad "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key"; fi
+flat_has "k1b AC-B7 (v0.33 AC5') questions.md says a non-interactive setup installs the hooks (default on)" "$QUESTIONS" '(non-interactive|headless)[^.]{0,200}installs? (them|the hooks?|it)|(non-interactive|headless)[^.]{0,200}install[^.]{0,60}hooks?|hooks?[^.]{0,200}(non-interactive|headless)[^.]{0,100}install'
+if flat "$QUESTIONS" | grep -qiE 'non-interactive setup never installs'; then t_bad "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks" "old sentence still there"; else t_ok "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks"; fi
 K1B_SW="$(wc -w < "$SETUP" | tr -d ' ')"
 if [ "$K1B_SW" -le 1100 ]; then t_ok "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100) ($K1B_SW)"; else t_bad "k1b AC-B7 playbook-setup SKILL.md stays at most 1100 words (guard: holds today at 1100)" "$K1B_SW words"; fi
 
@@ -2195,14 +2204,14 @@ qchk "k1b AC-B8 step 8 offers the pointer for Codex and OpenCode" "$K1B_S8" 'cod
 qchk "k1b AC-B8 step 8 says the pointer is how those agents learn about the file" "$K1B_S8" 'pointer.{0,150}(is how|is the way|is what)'
 flat_has "k1b AC-B8 README: Codex/OpenCode learn about LEARNINGS.md through learn.sh init --link-agents" "$README" '(codex|opencode).{0,250}link-agents|link-agents.{0,250}(codex|opencode)'
 
-echo "v0.28.0 lane k1b AC-B9: README section Hooks (Claude Code, opt-in) with handlers, PB_HEADLESS, the Stop check and Limits"
-exact_heading "k1b AC-B9 README has the heading ## Hooks (Claude Code, opt-in)" "$README" '## Hooks (Claude Code, opt-in)'
-K1B_HK="$(awk '/^## Hooks \(Claude Code, opt-in\)$/ { f = 1; print; next } f && /^## / { exit } f { print }' "$README")"
+echo "v0.28.0 lane k1b AC-B9: README section Hooks (Claude Code, on by default) with handlers, PB_HEADLESS, the Stop check and Limits"
+exact_heading "k1b AC-B9 README has the heading ## Hooks (Claude Code, on by default)" "$README" '## Hooks (Claude Code, on by default)'
+K1B_HK="$(awk '/^## Hooks \(Claude Code, on by default\)$/ { f = 1; print; next } f && /^## / { exit } f { print }' "$README")"
 K1B_HKF="$(printf '%s\n' "$K1B_HK" | tr '\n' ' ' | tr -s ' ')"
 for k1b_n in 'guard-irreversible\.sh' 'learnings-hook\.sh' 'PreToolUse' 'SessionStart' 'Stop' 'claude-hooks\.sh uninstall' 'export PB_HEADLESS=1' 'claude -p' 'CI=true'; do
   qchk "k1b AC-B9 hooks section names $k1b_n" "$K1B_HKF" "$k1b_n"
 done
-qchk "k1b AC-B9 hooks section: opt-in through setup" "$K1B_HKF" 'set up the playbook|playbook-setup'
+qchk "k1b AC-B9 hooks section: names setup (on by default, opt-out there)" "$K1B_HKF" 'set up the playbook|playbook-setup'
 qchk "k1b AC-B9 hooks section: PB_HEADLESS=0 forces warn-only" "$K1B_HKF" 'PB_HEADLESS=0[^.]{0,120}warn'
 qchk "k1b AC-B9 hooks section: the Stop check asks to revert and report" "$K1B_HKF" 'Stop.{0,250}revert.{0,250}(report|pending)'
 qchk "k1b AC-B9 Codex: hooks exist (cited) but are not installed" "$K1B_HKF" 'codex.{0,250}(learn\.chatgpt\.com/docs/hooks|developers\.openai\.com/codex/hooks)'
@@ -2211,7 +2220,7 @@ qchk "k1b AC-B9 OpenCode: tool.execute.before exists (cited)" "$K1B_HKF" 'openco
 qchk "k1b AC-B9 OpenCode: cites opencode.ai/docs/plugins" "$K1B_HKF" 'opencode\.ai/docs/plugins'
 qchk "k1b AC-B9 OpenCode: no plugin ships, text rule only" "$K1B_HKF" 'opencode.{0,250}text rule only'
 K1B_LIM="$(printf '%s\n' "$K1B_HK" | awk '/^###+ Limits/ { f = 1 } f { print }' | tr '\n' ' ' | tr -s ' ')"
-if [ -n "$K1B_LIM" ]; then t_ok "k1b AC-B9 the hooks section has a Limits subsection"; else t_bad "k1b AC-B9 the hooks section has a Limits subsection" "no ### Limits heading inside ## Hooks (Claude Code, opt-in)"; fi
+if [ -n "$K1B_LIM" ]; then t_ok "k1b AC-B9 the hooks section has a Limits subsection"; else t_bad "k1b AC-B9 the hooks section has a Limits subsection" "no ### Limits heading inside ## Hooks (Claude Code, on by default)"; fi
 for k1b_n in 'bash -c' 'sh -c' 'eval' '\$\(' 'backtick' 'subshell' 'brace group' 'here-doc' 'node -e' 'python -c' 'perl -e' 'git alias' 'find -delete' 'xargs rm' '\\u' 'concatenat' 'PowerShell' 'NotebookEdit' 'MCP' 'disableAllHooks' 'settings\.local\.json' 'guard itself' 'non-git|not a git|outside (a )?git' 'script[^.]{0,60}(written|writes)[^.]{0,60}(then )?run' 'backstop'; do
   qchk "k1b AC-B9 Limits lists $k1b_n" "$K1B_LIM" "$k1b_n"
 done
@@ -2361,7 +2370,7 @@ C2DEF="$(printf '%s\n' "$C2DOCS" | grep -i 'sonnet' | grep -i 'reviewer' | grep 
 if [ -n "$C2DEF" ]; then t_ok "AC8 a doc sentence says the claude reviewer defaults to sonnet"; else t_bad "AC8 a doc sentence says the claude reviewer defaults to sonnet" "no sentence in README.md or docs/*.md with default + sonnet + reviewer + claude"; fi
 if printf '%s\n' "$C2DOCS" | grep -qE 'model_reviewer(_claude)?=session'; then t_ok "AC8 the docs name model_reviewer=session to undo the default"; else t_bad "AC8 the docs name model_reviewer=session to undo the default" "no model_reviewer=session in README.md or docs/*.md"; fi
 
-echo "v0.32.0 S6 AC16/AC16'/AC16'': the gate set (GATE_SCENARIOS) is in AUTO and follows the Scenarios table of docs/delta-audit.md"
+echo "v0.32.0 S6 AC16/AC16'/AC16'' and v0.33.0 AC3/AC3': the gate set (GATE_SCENARIOS) is in AUTO and follows the Scenarios table of docs/delta-audit.md (KEEP, INCONCLUSIVE and gate: safety rows)"
 S6GATE="$PB_ROOT/tools/release-gate.sh"
 S6RUN="$PB_ROOT/evals/run-evals.sh"
 S6AUDIT="$PB_ROOT/docs/delta-audit.md"
@@ -2369,14 +2378,15 @@ S6AUDIT="$PB_ROOT/docs/delta-audit.md"
 s6_gate() { sed -n 's/^GATE_SCENARIOS="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
 # s6_auto FILE: the ids of the AUTO="..." line of run-evals.sh, one per line, sorted
 s6_auto() { sed -n 's/^AUTO="\(.*\)"$/\1/p' "$1" 2>/dev/null | head -n 1 | tr -s ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u; }
-# s6_rows FILE: the scenario rows of the table under "## Scenarios" whose first cell matches E[0-9]+ and whose 5th cell (Verdict),
-# trimmed, is exactly KEEP, "KEEP (k=2)" or INCONCLUSIVE (exact match: "ZERO-1 (MIXED at k=2)" or "KEEP-ish" do not match); sorted ids
+# s6_rows FILE: the scenario rows of the table under "## Scenarios" whose first cell matches E[0-9]+ and either whose 5th cell (Verdict),
+# trimmed, is exactly KEEP, "KEEP (k=2)" or INCONCLUSIVE (exact match: "ZERO-1 (MIXED at k=2)" or "KEEP-ish" do not match), or whose LAST
+# cell contains the text "gate: safety" (v0.33.0 AC3': the E8 and E33 rows; the marker in any other cell does not count); sorted ids
 s6_rows() {
   awk -F'|' '
     /^## / { ins = ($0 ~ /^## Scenarios[ \t]*$/); next }
     ins && /^\|/ {
-      c = $2; v = $6; gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", v)
-      if (c ~ /^E[0-9]+$/ && (v == "KEEP" || v == "KEEP (k=2)" || v == "INCONCLUSIVE")) print c
+      c = $2; v = $6; l = $(NF - 1); gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", v)
+      if (c ~ /^E[0-9]+$/ && (v == "KEEP" || v == "KEEP (k=2)" || v == "INCONCLUSIVE" || index(l, "gate: safety") > 0)) print c
     }' "$1" 2>/dev/null | LC_ALL=C sort -u
 }
 # s6_in_auto GATEFILE RUNFILE: prints the gate ids that are not in AUTO; exit 1 when there are some or the gate has no GATE_SCENARIOS line
@@ -2403,12 +2413,12 @@ s6_same() {
 S6N="$(grep -c '^GATE_SCENARIOS="' "$S6GATE" 2>/dev/null || true)"
 if [ "$S6N" = 1 ]; then t_ok "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line"; else t_bad "AC14 tools/release-gate.sh has exactly one top-level GATE_SCENARIOS line" "found $S6N"; fi
 S6M="$(s6_in_auto "$S6GATE" "$S6RUN")" && t_ok "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" || t_bad "AC16 every GATE_SCENARIOS id is in the AUTO list of evals/run-evals.sh" "$S6M"
-S6D="$(s6_same "$S6GATE" "$S6AUDIT")" && t_ok "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" || t_bad "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows of docs/delta-audit.md (## Scenarios)" "$S6D"
+S6D="$(s6_same "$S6GATE" "$S6AUDIT")" && t_ok "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows plus the gate: safety rows of docs/delta-audit.md (## Scenarios)" || t_bad "AC16' GATE_SCENARIOS equals the KEEP / KEEP (k=2) / INCONCLUSIVE rows plus the gate: safety rows of docs/delta-audit.md (## Scenarios)" "$S6D"
 
 # the checks themselves, on synthetic files (these pass before and after the gate gains its line): they must catch drift
 S6X="$(mk_tmp)"
-printf 'GATE_SCENARIOS="E2 E3 E5"\n' > "$S6X/gate.sh"
-printf 'AUTO="E1 E2 E3 E5 E7"\n' > "$S6X/run.sh"
+printf 'GATE_SCENARIOS="E2 E3 E4 E5"\n' > "$S6X/gate.sh"
+printf 'AUTO="E1 E2 E3 E4 E5 E7"\n' > "$S6X/run.sh"
 cat > "$S6X/audit.md" <<'S6EOF'
 # Audit
 
@@ -2425,29 +2435,56 @@ cat > "$S6X/audit.md" <<'S6EOF'
 | E1 | one | c | d | PROCESS-ONLY | labels |
 | E2 | two | c | d | KEEP | stays |
 | E3 | three | c | d | KEEP (k=2) | stays |
-| E4 | four | c | d | ZERO-1 (MIXED at k=2) | stays |
+| E4 | four | c | d | ZERO-1 (MIXED at k=2) | stays (security; gate: safety) |
 | E5 | five | c | d | INCONCLUSIVE | stays |
 | E6 | six | c | d | KEEP-ish | a prefix is not a match |
 | ZERO-1 | not a scenario id | c | d | KEEP | stays |
 | E7 | seven | c | d | UNMEASURED | stays |
+| E8 | eight, gate: safety in the title only | c | d | ZERO | stays |
+| E10 | ten | gate: safety | d | ZERO | stays |
 
 ## Rules and references
 
 | E8 | after the section | c | d | KEEP | stays |
 S6EOF
-assert_eq "AC16'' the audit parser takes the Scenarios table only, exact verdicts only (KEEP, KEEP (k=2), INCONCLUSIVE)" "E2 E3 E5" "$(s6_rows "$S6X/audit.md" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "AC16'' the audit parser takes the Scenarios table only, exact verdicts (KEEP, KEEP (k=2), INCONCLUSIVE) plus a last cell holding gate: safety (not another cell)" "E2 E3 E4 E5" "$(s6_rows "$S6X/audit.md" | tr '\n' ' ' | sed 's/ $//')"
 if s6_same "$S6X/gate.sh" "$S6X/audit.md" >/dev/null; then t_ok "AC16' the equality check passes on a matching gate line and audit"; else t_bad "AC16' the equality check passes on a matching gate line and audit" "$(s6_same "$S6X/gate.sh" "$S6X/audit.md")"; fi
 sed 's/| E2 | two | c | d | KEEP |/| E2 | two | c | d | ZERO |/' "$S6X/audit.md" > "$S6X/audit-drift.md"
 if s6_same "$S6X/gate.sh" "$S6X/audit-drift.md" >/dev/null; then t_bad "AC16' drift: a row whose verdict changed to ZERO is caught" "the check still passed"; else t_ok "AC16' drift: a row whose verdict changed to ZERO is caught"; fi
-sed 's/| E4 | four | c | d | ZERO-1 (MIXED at k=2) |/| E4 | four | c | d | KEEP |/' "$S6X/audit.md" > "$S6X/audit-drift2.md"
-if s6_same "$S6X/gate.sh" "$S6X/audit-drift2.md" >/dev/null; then t_bad "AC16' drift: a row that became KEEP but is not in the gate line is caught" "the check still passed"; else t_ok "AC16' drift: a row that became KEEP but is not in the gate line is caught"; fi
-printf 'GATE_SCENARIOS="E2 E3"\n' > "$S6X/gate-short.sh"
+sed 's/| E7 | seven | c | d | UNMEASURED |/| E7 | seven | c | d | KEEP |/' "$S6X/audit.md" > "$S6X/audit-drift2.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift2.md" >/dev/null; then t_bad "AC16' drift: a row (E7) that became KEEP but is not in the gate line is caught" "the check still passed"; else t_ok "AC16' drift: a row (E7) that became KEEP but is not in the gate line is caught"; fi
+printf 'GATE_SCENARIOS="E2 E3 E4"\n' > "$S6X/gate-short.sh"
 if s6_same "$S6X/gate-short.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' drift: a gate line that lost E5 is caught" "the check still passed"; else t_ok "AC16' drift: a gate line that lost E5 is caught"; fi
+sed 's/ZERO-1 (MIXED at k=2) | stays (security; gate: safety) |/ZERO-1 (MIXED at k=2) | stays (security) |/' "$S6X/audit.md" > "$S6X/audit-drift3.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift3.md" >/dev/null; then t_bad "AC3' drift: a gate: safety row that lost its marker (E4) is caught" "the check still passed"; else t_ok "AC3' drift: a gate: safety row that lost its marker (E4) is caught"; fi
+sed 's/| E7 | seven | c | d | UNMEASURED | stays |/| E7 | seven | c | d | UNMEASURED | stays, gate: safety |/' "$S6X/audit.md" > "$S6X/audit-drift4.md"
+if s6_same "$S6X/gate.sh" "$S6X/audit-drift4.md" >/dev/null; then t_bad "AC3' drift: a row that gained the gate: safety marker (E7) but is not in the gate line is caught" "the check still passed"; else t_ok "AC3' drift: a row that gained the gate: safety marker (E7) but is not in the gate line is caught"; fi
 printf '# no gate line\nDEFAULT_TASKS="x"\n' > "$S6X/gate-none.sh"
 if s6_same "$S6X/gate-none.sh" "$S6X/audit.md" >/dev/null; then t_bad "AC16' a gate script without the line fails the equality check" "the check still passed"; else t_ok "AC16' a gate script without the line fails the equality check"; fi
 if s6_in_auto "$S6X/gate.sh" "$S6X/run.sh" >/dev/null; then t_ok "AC16 the AUTO check passes when every gate id is in AUTO"; else t_bad "AC16 the AUTO check passes when every gate id is in AUTO" "$(s6_in_auto "$S6X/gate.sh" "$S6X/run.sh")"; fi
 printf 'AUTO="E1 E2 E3 E7"\n' > "$S6X/run-short.sh"
 if s6_in_auto "$S6X/gate.sh" "$S6X/run-short.sh" >/dev/null; then t_bad "AC16 a gate id (E5) missing from AUTO is caught" "the check still passed"; else t_ok "AC16 a gate id (E5) missing from AUTO is caught"; fi
 if s6_in_auto "$S6X/gate-none.sh" "$S6X/run.sh" >/dev/null; then t_bad "AC16 a gate script without the line fails the AUTO check" "the check still passed"; else t_ok "AC16 a gate script without the line fails the AUTO check"; fi
+
+echo "v0.33.0 AC3 the gate set of the real files: E8 and E33 carry the marker, the gate line names the 12 scenarios, RUBRIC.md states the gate as it is"
+assert_eq "AC3 GATE_SCENARIOS is the 12 scenarios (KEEP, INCONCLUSIVE and the E8, E33 safety rows)" "E2 E3 E4 E6 E8 E13 E14 E24 E26 E29 E33 E34" "$(s6_gate "$S6GATE" | LC_ALL=C sort -t E -k2,2n | tr '\n' ' ' | sed 's/ $//')"
+S6SAFE="$(awk -F'|' '/^## / { ins = ($0 ~ /^## Scenarios[ \t]*$/); next } ins && /^\|/ { c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c); if ((c == "E8" || c == "E33") && index($(NF - 1), "gate: safety") > 0) print c }' "$S6AUDIT" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "AC3' the E8 and E33 rows of docs/delta-audit.md end with the text gate: safety" "E33 E8" "$S6SAFE"
+S6RUB="$PB_ROOT/evals/RUBRIC.md"
+# the gate text: from the "Gate before releasing" line (RUBRIC.md:52 in v0.32) to the "ZERO items" paragraph
+S6RT="$(awk '/^Gate before releasing/ { f = 1 } /^ZERO items/ { f = 0 } f { print }' "$S6RUB" | tr '\n' ' ' | tr -s ' ')"
+S6R1="$(awk '/^Gate before releasing/ { f = 1; print; next } f && /^$/ { exit } f { print }' "$S6RUB" | tr '\n' ' ' | tr -s ' ')"
+if [ -n "$S6RT" ]; then t_ok "AC3 evals/RUBRIC.md has the gate text (Gate before releasing ... ZERO items)"; else t_bad "AC3 evals/RUBRIC.md has the gate text (Gate before releasing ... ZERO items)" "no such section"; fi
+assert_not_contains "AC3 RUBRIC.md: the stale hand-written 'no 0 on E3, E4, E5 or E8' gate is gone" "$S6RT" "no 0 on E3, E4, E5 or E8"
+assert_not_contains "AC3 RUBRIC.md: the stale 10-scenario list of v0.32 is gone" "$S6RT" "E2 E3 E4 E6 E13 E14 E24 E26 E29 E34"
+assert_not_contains "AC3 RUBRIC.md: no stale 'which the gate does not turn on' (the gate runs with --hooks)" "$S6RT" "which the gate does not turn on"
+if printf '%s' "$S6R1" | grep -Eq 'E[0-9]+(, | or | )E[0-9]+'; then t_bad "AC3 RUBRIC.md: the gate sentence lists no scenario ids (it points at docs/delta-audit.md and GATE_SCENARIOS)" "$S6R1"; else t_ok "AC3 RUBRIC.md: the gate sentence lists no scenario ids (it points at docs/delta-audit.md and GATE_SCENARIOS)"; fi
+if printf '%s' "$S6RT" | grep -Eq 'E[0-9]+ E[0-9]+ E[0-9]+'; then t_bad "AC3 RUBRIC.md: the gate text holds no scenario id list" "$S6RT"; else t_ok "AC3 RUBRIC.md: the gate text holds no scenario id list"; fi
+assert_contains "AC3 RUBRIC.md: the gate text names GATE_SCENARIOS" "$S6RT" "GATE_SCENARIOS"
+assert_contains "AC3 RUBRIC.md: the gate text names the gate: safety marker" "$S6RT" "gate: safety"
+if printf '%s' "$S6RT" | grep -Eq '(rule|rules)? ?\(f\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (f)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (f)" "no (f) in the gate text"; fi
+if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (g)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (g)" "no (g) in the gate text"; fi
+assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
+assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
 
 t_summary

@@ -74,7 +74,7 @@ assert_eq "AC14 claude gets --model m-out-2 in both arms" "yes yes" \
   "$(argpair "$FR/claude.t-add.with.1.args" --model m-out-2 && echo yes || echo no) $(argpair "$FR/claude.t-add.without.1.args" --model m-out-2 && echo yes || echo no)"
 assert_contains "AC13 the without run gets --settings with claudeMdExcludes" "$(rec_of "$FR/claude.t-add.without.1.settings")" "claudeMdExcludes"
 assert_contains "AC13 the with run gets --settings with autoMemoryEnabled false" "$(rec_of "$FR/claude.t-add.with.1.settings")" '"autoMemoryEnabled": false'
-assert_eq "AC13 claude gets no PB_EVAL_* variable" "" "$(rec_of "$FR/claude.t-add.without.1.env")"
+assert_eq "AC13 claude gets no PB_EVAL_* variable but PB_EVAL_HOOKS=1 (v0.33.0 N4)" "PB_EVAL_HOOKS=1" "$(rec_of "$FR/claude.t-add.without.1.env")"
 assert_eq "AC13 the without run (clean stream-json) passes lane E's isolation check" "PASS" "$(chk t-add.without.1 "$ISO")"
 assert_eq "AC11 the fake's runs are graded FAIL" "FAIL FAIL" "$(chk t-add.with.1 "$HP") $(chk t-add.without.1 "$HP")"
 

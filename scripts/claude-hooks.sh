@@ -40,9 +40,18 @@ NAMES="guard guard-ps guard-start guard-stop learnings"
 # hook_dir -> <P>, the scripts dir inside the handler commands.
 # DECISION[D30] [UNVERIFIED]: `bash "<P>/..."` with <P> in cygpath -m form (C:/...) when cygpath exists, which both
 # Git Bash and PowerShell accept as an argument to bash; the plain POSIX path otherwise.
+# v0.33.0 R1-5: run inside WSL (WSL_DISTRO_NAME set, no cygpath) against a Windows home (/mnt/<drive>/...), the dir is written as
+# <D>:/rest (drive letter upper case, forward slashes), which Windows Claude Code (Git Bash) and cmd accept; /mnt/c/... they cannot run.
+# Other paths (/home, /mnt/wsl, /mnt/cc) stay as they are. status maps the <D>:/rest form back to /mnt/<d>/rest.
 hook_dir() {
-  local p="$HDIR/.agents/playbook/scripts"
-  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$p"; else printf '%s' "$p"; fi
+  local p="$HDIR/.agents/playbook/scripts" d
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$p"
+  elif [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    case "$p" in
+      /mnt/[A-Za-z]/*) d="$(printf '%s' "${p:5:1}" | tr '[:lower:]' '[:upper:]')"; printf '%s:/%s' "$d" "${p:7}" ;;
+      *) printf '%s' "$p" ;;
+    esac
+  else printf '%s' "$p"; fi
 }
 
 jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
@@ -202,6 +211,10 @@ cmd_status() {
     st="not installed"
     while IFS="$tab" read -r nm p; do
       [ "$nm" = "$n" ] || continue
+      # inside WSL a handler written as <D>:/rest (R1-5) is the file /mnt/<d>/rest
+      case "$p" in
+        [A-Za-z]:/*) [ -z "${WSL_DISTRO_NAME:-}" ] || p="/mnt/$(printf '%s' "${p:0:1}" | tr '[:upper:]' '[:lower:]')/${p:3}" ;;
+      esac
       if [ -f "$p" ]; then st="installed"; break; fi
       st="broken (script missing)"
     done <<EOF
