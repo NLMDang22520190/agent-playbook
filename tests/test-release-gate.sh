@@ -945,8 +945,13 @@ assert_rc "G2 a red and pending CI with --skip-ci-check -> the gate runs, exit 0
 assert_eq "G2 the check runs were not read at all (no gh call)" "0" "$(rgf_gh_ncalls)"
 assert_eq "G2 both runners ran" "1|1" "$(ncalls run-evals.sh)|$(ncalls run-outcome.sh)"
 assert_eq "G2 gate.json ci_check.skipped is true" "true" "$(gj "$GJ" j.ci_check.skipped)"
-rcase g2-skip-nogh "PATH=$NOGH" --skip-ci-check
+# A PATH where gh is unusable but node and the rest stay reachable (a symlink-farm PATH loses node on Windows Git Bash): a shim gh
+# that records a call and fails like a missing command; --skip-ci-check must not call it.
+DEADGH="$W/deadgh"; mkdir -p "$DEADGH"; : > "$W/deadgh.calls"
+printf '#!/bin/sh\necho call >> "%s"\nexit 127\n' "$W/deadgh.calls" > "$DEADGH/gh"; chmod +x "$DEADGH/gh"
+rcase g2-skip-nogh "PATH=$DEADGH:$PATH" --skip-ci-check
 assert_rc "G2 --skip-ci-check needs no gh: gh missing -> exit 0" 0
+assert_eq "G2 --skip-ci-check never called the unusable gh" "0" "$(grep -c call "$W/deadgh.calls" || true)"
 assert_eq "G2 gate.json ci_check.skipped is true (no gh)" "true" "$(gj "$GJ" j.ci_check.skipped)"
 rcase g2-skip-json "" --skip-ci-check --json
 assert_rc "G2 --skip-ci-check --json -> exit 0" 0

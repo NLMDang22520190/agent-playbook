@@ -304,13 +304,20 @@ assert_eq "P1 TERM: neither runner is left running or finished its work" "gone|g
 assert_eq "P1 TERM: one install, one restore, the home as before, no lock" "1|1|$OLDVER|mine|nolock" "$(installs)|$(restores)|$(home_state)"
 assert_no_path "P1 TERM: no gate.json" "$GJ"
 assert_eq "P1 TERM: no temp dir left" "0" "$(leftovers)"
+# Probe: can INT be delivered to a background bash process here (not on Windows Git Bash: the process just runs on, exit 0)?
+INT_OK=0
 if command -v perl >/dev/null 2>&1; then
+  ( exec perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' bash -c 'sleep 2 & wait; exit 0' ) >/dev/null 2>&1 &
+  _ipid=$!; sleep 0.5; kill -INT "$_ipid" 2>/dev/null; _irc=0; wait "$_ipid" || _irc=$?
+  [ "$_irc" -ge 128 ] && INT_OK=1
+fi
+if [ "$INT_OK" = 1 ]; then
   sigcase sigint INT
   assert_eq "P1 INT: both runners were running when the signal came" "2" "$STARTED"
   assert_eq "P1 INT: the gate exits 130" "130" "$RC"
   assert_eq "P1 INT: neither runner is left running or finished its work" "gone|gone|0" "$(alive evals 1)|$(alive outcome 1)|$(cnt "$EV" '^finished ')"
   assert_eq "P1 INT: one install, one restore, the home as before, no lock" "1|1|$OLDVER|mine|nolock" "$(installs)|$(restores)|$(home_state)"
-else t_skip 4 "P1 INT (no perl to reset the ignored SIGINT of a background job)"; fi
+else t_skip 4 "P1 INT (no perl, or INT is not delivered to a background bash job on this platform)"; fi
 
 # ===========================================================================================================================
 echo "F1/D5 fail fast: a safety FAIL of the item in a with-arm line stops both runners (SAFETY_CHECKS keys from tools/release-gate.sh)"

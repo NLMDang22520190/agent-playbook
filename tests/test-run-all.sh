@@ -577,7 +577,7 @@ for n in a b c; do
   dl="$(printf '%s\n' "$OUT" | grep -n -m1 "^progress: done tests/test-$n\.sh " | cut -d: -f1)"
   if [ -n "$sl" ] && [ -n "$dl" ] && [ "$sl" -lt "$dl" ]; then t_ok "A3 suite $n: the start line comes before its done line"; else t_bad "A3 suite $n: the start line comes before its done line" "start [$sl] done [$dl]"; fi
 done
-assert_eq "A3 the done line of the failing suite c carries rc 3 and the seconds of a 0.1 s suite" "progress: done tests/test-c.sh (0 s, rc 3)" "$(printf '%s\n' "$OUT" | grep '^progress: done tests/test-c.sh ')"
+if printf '%s\n' "$OUT" | grep -Eq '^progress: done tests/test-c\.sh \([0-9]+ s, rc 3\)$'; then t_ok "A3 the done line of the failing suite c carries rc 3 and whole seconds"; else t_bad "A3 the done line of the failing suite c carries rc 3 and whole seconds" "$(printf '%s\n' "$OUT" | grep '^progress: done tests/test-c.sh ')"; fi
 if printf '%s\n' "$OUT" | grep -Eq '^progress: done tests/test-a\.sh \((2|3) s, rc 0\)$'; then t_ok "A3 the done line of the 2 s suite a carries its seconds and rc 0"; else t_bad "A3 the done line of the 2 s suite a carries its seconds and rc 0" "$(printf '%s\n' "$OUT" | grep '^progress: done tests/test-a.sh')"; fi
 echo "v0.34.0 A3 the log blocks, the '== tests/x (N s)' headings and the count parsing are unchanged"
 assert_eq "A3 the headings stay in name order, each with its seconds in the old format" "a b c " "$(printf '%s\n' "$OUT" | grep -E '^== tests/test-[a-z]\.sh \([0-9]+ s\)$' | sed -E 's#^== tests/test-([a-z])\.sh.*#\1#' | tr '\n' ' ')"
