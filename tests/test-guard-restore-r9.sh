@@ -248,4 +248,57 @@ pk_psno() { gp "$2"; expect_pass "$1"; assert_eq "$1: no allow restore-flagged l
 pk_psno "R10-4 [guard-rail] no list, PS iex 'git checkout -- db/schema.sql'" "iex 'git checkout -- db\schema.sql'"
 gp "git checkout -- db\schema.sql"; expect_block "R10-4 [guard-rail] no list, PS: the plain discard blocks" git-discard
 
+echo "R2-D1a/b the git-discard block of a compound command that holds the hinted restore says the restore is allowed alone (messages only; D1 of revision 2)"
+# Pins the AC text: "The restore itself is allowed: run exactly `git checkout <b7> -- db/schema.sql` as its own command, with nothing before or after it
+# (cd is fine)." and no "Do not try another way". The allow/block verdicts are characterization: they are the same as before this slice.
+rboot; drop; gs; expect_block "R2-D1b the headless Stop block" schema-drop
+assert_contains "R2-D1b the Stop block hint says to run the restore as its own command" "$GERR" "as its own command"
+D1CMD="git checkout $B7 -- $SC"
+# d1chk NAME CMD [ps]: CMD is blocked (git-discard) and the message names the restore alone; the quoted command passes when run alone
+d1chk() {
+  local n="$1" c="$2" q
+  if [ "${3:-}" = ps ]; then gp "$c"; else gx "$c"; fi
+  expect_block "R2-D1c $n [characterization: still blocked]" git-discard
+  assert_contains "R2-D1a $n: says the restore itself is allowed" "$GERR" "The restore itself is allowed"
+  assert_contains "R2-D1a $n: gives the exact command in backticks" "$GERR" "\`$D1CMD\`"
+  assert_contains "R2-D1a $n: as its own command" "$GERR" "as its own command"
+  assert_contains "R2-D1a $n: nothing before or after it" "$GERR" "nothing before or after it"
+  assert_not_contains "R2-D1a $n: no 'Do not try another way'" "$GERR" "Do not try another way"
+  q="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
+  assert_eq "R2-D1c $n: the command quoted in the message is the hinted restore" "$D1CMD" "$q"
+  if [ -n "$q" ]; then ck_ok "R2-D1c $n: the quoted command run alone passes" "$q"; else t_bad "R2-D1c $n: a command was quoted in the message" "$GERR"; fi
+}
+d1chk "the exact gate-run compound" "cd \"$R\" && git diff $SC > .agents/handoff/PENDING-schema-drop.patch && $D1CMD && git reset -q $SC && git status --short && npm test 2>&1 | grep x"
+d1chk "only '> file' before" "git diff $SC > p.patch && $D1CMD"
+# [characterization, R9-3] a restore with only segments AFTER it is allowed today (nothing to message); the allow-list is unchanged
+ck_ok "R2-D1c [characterization, R9-3] only '&& npm test' after: passes (no message needed)" "$D1CMD && npm test"
+ck_ok "R2-D1c [characterization, R9-3] only '; git status' after: passes" "$D1CMD; git status --short"
+pk_ok "R2-D1c [characterization, R9-3] PowerShell '<restore>; git status' passes" "$D1CMD; git status --short"
+d1chk "';' chain before" "git diff $SC > p.patch; $D1CMD"
+d1chk "';' chain both sides" "git diff $SC > p.patch; $D1CMD; npm test"
+d1chk "PowerShell: '> x; <restore>'" "git diff $SC > x; $D1CMD" ps
+d1chk "PowerShell: '> x; <restore>; git status'" "git diff $SC > x; $D1CMD; git status --short" ps
+ck_ok "R2-D1c [characterization] the hinted command alone passes" "$D1CMD"
+ck_ok "R2-D1c [characterization] cd <dir> && <hinted command> passes (cd is fine)" "cd \"$R\" && $D1CMD"
+
+echo "R2-D1a a compound command whose checkout path is NOT on the restore list keeps today's text"
+rnew; printf '%s\n' 'module.exports = 1;' > "$R/src/app.js"; fxg "$R" add -A; fxg "$R" commit -qm app; rstart
+drop; gs; expect_block "R2-D1a setup: the Stop block (restore list holds only $SC)" schema-drop
+printf '%s\n' 'module.exports = 2;' > "$R/src/app.js"
+for c in "cd \"$R\" && git checkout HEAD -- src/app.js && npm test" "git diff src/app.js > p.patch && git checkout HEAD -- src/app.js" "git checkout HEAD -- src/app.js; git status --short" "git checkout HEAD -- src/app.js"; do
+  gx "$c"; expect_block "R2-D1a [characterization] not on the restore list, still blocked: $c" git-discard
+  assert_contains "R2-D1a not on the restore list keeps 'Do not try another way': $c" "$GERR" "Do not try another way"
+  assert_not_contains "R2-D1a not on the restore list does not claim a restore is allowed: $c" "$GERR" "The restore itself is allowed"
+done
+gp "git diff src/app.js > x; git checkout HEAD -- src/app.js"
+expect_block "R2-D1a [characterization] PowerShell, not on the restore list, still blocked" git-discard
+assert_contains "R2-D1a PowerShell, not on the restore list keeps 'Do not try another way'" "$GERR" "Do not try another way"
+
+echo "R2-D1 a git-discard block with no restore list (nothing armed) keeps today's text"
+rboot; printf '%s\n' '-- edit' >> "$R/$SC"
+gx "git checkout HEAD -- $SC && npm test"; expect_block "R2-D1 [characterization] no restore list: blocked" git-discard
+assert_contains "R2-D1 no restore list keeps 'Do not try another way'" "$GERR" "Do not try another way"
+assert_not_contains "R2-D1 no restore list does not claim a restore is allowed" "$GERR" "The restore itself is allowed"
+
+
 t_summary
