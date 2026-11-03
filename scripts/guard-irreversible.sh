@@ -704,6 +704,27 @@ norm_path() {
   done
   NP="/${st[*]}"
 }
+# DECISION[D4] (v0.34.0 gate 2): physd DIR -> PHYSD, the physical directory in one form per host. In Git Bash `cd -P && pwd -P` does
+# not fold mounts (/tmp/x for C:/Users/u/AppData/Local/Temp/x, but /c/Users/... for the drive spelling of the same dir) and keeps
+# the case it was given, so the restore exemption saw "outside TOP" for the hinted restore. On MSYS the builtin `pwd -W` gives the
+# Windows path with mounts folded; it is turned into the /c/... form norm_path uses. Where `pwd -W` is not available (Linux, macOS,
+# Cygwin) it is exactly `cd -P && pwd -P` as before. Same subshell count as before. Undo: make physd just the pwd -P branch.
+physd() {
+  local d
+  PHYSD=""
+  case "${OSTYPE:-}" in
+    msys*)
+      d="$(cd -P -- "$1" 2>/dev/null && pwd -W 2>/dev/null)" || d=""
+      case "$d" in
+        [A-Za-z]:/*)
+          lower "${d%%:*}"; PHYSD="/$LW${d#??}"
+          [ "${PHYSD%/}" = "$PHYSD" ] || PHYSD="${PHYSD%/}"
+          return 0 ;;
+      esac ;;
+  esac
+  PHYSD="$(cd -P -- "$1" 2>/dev/null && pwd -P)" || { PHYSD=""; return 1; }
+  return 0
+}
 # below PATH DIR -> 0 when PATH is strictly below DIR (both from norm_path); without case when CIC=1
 below() {
   local a="$1" b="$2"
@@ -1071,11 +1092,13 @@ restore_ok() {
   # DECISION[D13] R11-1: compare physically. TOP is git's physical toplevel (/private/var/... on macOS, C:/Users/... on Windows)
   # while the hook cwd may reach it through a symlink (/var/...) or in the /c/... form; resolve TOP and each pathspec's parent dir
   # with cd -P / pwd -P (bash builtins, one subshell each), so a symlinked dir that leads outside TOP still blocks.
-  topn="$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" || return 1
+  physd "$TOP" || return 1
+  topn="$PHYSD"
   [ -n "$topn" ] && [ "$topn" != / ] || return 1
   # DECISION[D16] R12-1: git joins a relative pathspec to the PHYSICAL directory it runs in, so ".." folds against that, not against
   # the hook's (possibly symlinked) path; a directory that does not resolve blocks
-  pg="$(cd -P -- "$gdir" 2>/dev/null && pwd -P)" || return 1
+  physd "$gdir" || return 1
+  pg="$PHYSD"
   [ -n "$pg" ] || return 1
   for a in "${ps[@]}"; do
     case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
@@ -1089,10 +1112,14 @@ restore_ok() {
     # appended literally, since a missing component cannot be a symlink
     rt="${np##*/}"; r="${np%/*}"
     while [ -n "$r" ] && [ ! -d "$r" ]; do rt="${r##*/}/$rt"; r="${r%/*}"; done
-    r="$(cd -P -- "${r:-/}" 2>/dev/null && pwd -P)" || return 1
+    physd "${r:-/}" || return 1
+    r="$PHYSD"
     [ -n "$r" ] || return 1
     if [ "$r" = / ]; then np="/$rt"; else np="$r/$rt"; fi
-    case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
+    # DECISION[D4]: on Windows the two sides are both in the folded /c/... form (see physd) and the prefix test ignores case
+    # (CIC=1 there); rel keeps the pathspec's own case and must still equal a list line exactly
+    if [ "$CIC" = 1 ]; then lower "$np"; v="$LW"; lower "$topn"; r="$LW"; else v="$np"; r="$topn"; fi
+    case "$v" in "$r"/*) rel="${np:${#topn}+1}" ;; *) return 1 ;; esac
     case "$rel" in '' | *"$NL"*) return 1 ;; esac
     [ ! -d "$TOP/$rel" ] || return 1
     tail -n +2 "$rf" | grep -Fxq -- "$rel" || return 1
@@ -1166,8 +1193,11 @@ d1_cmd() {
     shq "$D1P"
     D1CMD="git checkout ${BASE:0:7} -- $SQ"
     # the command must work from the cwd the blocked command ran in: from anywhere but the top, name the top with cd first
-    cw="$(cd -P -- "${J_cwd:-$PWD}" 2>/dev/null && pwd -P)" || cw=""
-    if [ "$cw" != "$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" ]; then shq "$TOP"; D1CMD="cd $SQ && $D1CMD"; fi
+    physd "${J_cwd:-$PWD}" || PHYSD=""
+    cw="$PHYSD"
+    physd "$TOP" || PHYSD=""
+    if [ "$CIC" = 1 ]; then lower "$cw"; cw="$LW"; lower "$PHYSD"; PHYSD="$LW"; fi
+    if [ "$cw" != "$PHYSD" ]; then shq "$TOP"; D1CMD="cd $SQ && $D1CMD"; fi
   fi
   RPRE="$sv"
   return 0
