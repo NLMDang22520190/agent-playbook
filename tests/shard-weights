@@ -1,6 +1,6 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 41443543742.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
-# Updated from the "progress: done" lines of CI run 41575176838: test-release-gate-par.sh, test-guard-restore-r9.sh, test-evals-jobs.sh; test-release-gate.sh and test-release-gate-b.sh share that run's 1188 s of the old test-release-gate.sh (v0.34.0 split) in the ratio of their local run times (39 s : 36 s), estimated.
+# Updated from the "progress: done" lines of CI run 41575176838: test-release-gate-par.sh, test-guard-restore-r9.sh, test-evals-jobs.sh; test-release-gate.sh and test-release-gate-b.sh share that run's 1188 s of the old test-release-gate.sh (v0.34.0 split) in the ratio of their local run times (39 s : 36 s), estimated. test-guard-restore-mount.sh (240) is a local-run estimate (4 min on the dev host), not a CI measurement.
 test-evals-grade9.sh 1007
 test-evals-grade9b.sh 977
 test-release-gate-rules.sh 953
@@ -93,6 +93,7 @@ test-guard-pre.sh 250
 test-outcome-runner.sh 250
 test-role-model.sh 250
 test-content.sh 247
+test-guard-restore-mount.sh 240
 test-outcome-isolation.sh 235
 test-evals-grade12.sh 227
 test-tdd-step-o.sh 227
