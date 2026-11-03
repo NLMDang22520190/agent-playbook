@@ -51,7 +51,10 @@
 # Fail fast (v0.34.0): a runner line "<item>.with.<k> FAIL <check>" whose check (without its " (detail: ...)" group) is a SAFETY_CHECKS key
 # of the item (or "*") stops both runners at once (TERM); gate.json then has verdict fail, the reason "safety floor: <item> <key>: FAIL in
 # <label> (fail fast: the runs were stopped)" and fail_fast {label, item, key} (null otherwise); the exit code is 1. No confirmation and
-# no pooling follow. --cmd never gets --variant (its runs have no variant and fail
+# no pooling follow (with nothing pooled yet, gate.json still gets pooled [], and a file list goes to node after "--" so a name
+# starting with "-" is never read as a node option). The failing run's <log>.<label>.evidence/safety-fail.md is complete before that
+# line is visible: evals/run-evals.sh writes it before it prints the first safety FAIL line of a run (R2-D3), so the TERM loses nothing.
+# --cmd never gets --variant (its runs have no variant and fail
 # the verdict). The environment passes through unchanged: PB_VARIANT_HOME selects the harness home the variant is installed into.
 # Verdict (one function, over the pooled files; a real run, --pool-only and --check all use it): pass needs (a) every pooled file has
 # a variant object with end_check "ok" and variant.sha = HEAD, and, for a claude or --cmd gate, "hooks": true in every pooled file
@@ -456,7 +459,7 @@ process.stdout.write(JSON.stringify({
   pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check,
   reuse: e.PG_REUSE ? JSON.parse(e.PG_REUSE) : null,
   fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
-' ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
+' -- ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
 }
 
 # group_lines XDIR -> one line per pb-evals/1 file under XDIR/evals/results/gate-*/: dir, playbook_commit, harness, model, file name
@@ -540,7 +543,7 @@ for (const p of j.pooled) {
   let ok = false;
   try { const o = JSON.parse(fs.readFileSync(path.join(process.argv[2], b), "utf8")); ok = !!o && o.schema === "pb-evals/1" && Array.isArray(o.runs); } catch (x) { }
   if (!ok) { console.log("cannot read " + b); process.exit(0); }
-}' "$gc" "$x/$d")" || continue
+}' -- "$gc" "$x/$d")" || continue
       if [ -n "$w" ]; then
         # a broken group stops the search (no older tag is tried) while no baseline was found; after one it is skipped (an older tag cannot be repaired)
         [ "$nfound" = 0 ] || continue
@@ -608,7 +611,7 @@ EOT
         case "$VR" in *$'\n'*) MING="${VR#*$'\n'}"; MING="${MING%%$'\n'*}" ;; esac
         if [ "$VR1" != pass ]; then
           R="$R$(printf '%s\n' "$VR" | sed '1,2d')"$'\n'
-          GV="$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).verdict))}catch(x){}' "$CT/x/$d/gate.json")"
+          GV="$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).verdict))}catch(x){}' -- "$CT/x/$d/gate.json")"
           [ "$GV" != pass ] || R="${R}gate.json says pass, the recomputed verdict is fail"$'\n'
         fi
       fi
@@ -692,7 +695,7 @@ if (mode === "pre") {
       reused_from: { tag: e.PG_RP_TAG, commit: e.PG_RP_COMMIT, dir: e.PG_RP_DIR, file: g.name }, runs: rows, summary: [] };
     fs.writeFileSync(path.join(e.PG_OD, "reused-without-" + e.PG_STAMP + "-" + g.name), JSON.stringify(o) + "\n");
   }
-}' ${BASE1_FILES[@]+"${BASE1_FILES[@]}"}
+}' -- ${BASE1_FILES[@]+"${BASE1_FILES[@]}"}
 }
 # reuse_prepare: sets SC_BOTH/SC_WITH/TK_BOTH/TK_WITH and REUSE_JSON (null without a baseline) before any worktree, preflight or runner
 reuse_prepare() {
@@ -1073,7 +1076,7 @@ const fs = require("fs"), e = process.env, num = s => s === "" ? null : Number(s
 const ls = fs.readFileSync(e.PG_FL, "utf8").split("\n");
 fs.writeFileSync(e.PG_CFO, JSON.stringify({ items: ls.filter(l => l[0] === "I").map(l => l.slice(1)), repeat: Number(e.PG_K),
   first_reasons: ls.filter(l => l[0] === "R").map(l => l.slice(1)), commands: process.argv.slice(1).filter(Boolean),
-  runner_rc: { behaviour: num(e.PG_RB), outcome: num(e.PG_RO) } }) + "\n");' "$CB_SHOW" "$CO_SHOW" || exit 3
+  runner_rc: { behaviour: num(e.PG_RB), outcome: num(e.PG_RO) } }) + "\n");' -- "$CB_SHOW" "$CO_SHOW" || exit 3
       CONF_FILE="$BROOT/confirm.json"
       [ -n "$FF_LABEL" ] || do_pool
     fi
@@ -1091,7 +1094,7 @@ fi
 GJ_DOC="$(jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES")" || exit 3
 printf '%s\n' "$GJ_DOC" > "$OD/gate.json" || exit 3
 rewrite_paths
-VR="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.verdict);j.verdict_reasons.forEach(r=>console.log(r))' "$OD/gate.json")" || exit 3
+VR="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.verdict);j.verdict_reasons.forEach(r=>console.log(r))' -- "$OD/gate.json")" || exit 3
 
 if [ "$JSON" = 1 ]; then
   cat "$OD/gate.json"
