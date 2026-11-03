@@ -424,7 +424,7 @@ assert_eq "R2-D2 normal + baseline: gate.json exists, fail_fast null, a baseline
 # "<label> FAIL <safety key>" in record() while it grades, and writes <evidence>/safety-fail.md (hook log + workdir diff) only AFTER the last check;
 # the gate reads that line (polling its log every 0.2 s) and TERMs the runners, so a runner still busy writing the file died before it existed.
 # Test choice: the REAL evals/run-evals.sh as the behaviour runner under the REAL gate (fake outcome runner), driven by a --cmd stub whose E8
-# with-arm run deletes tests/calc.test.js (a safety FAIL) and leaves 1500 untracked files, so that write_safety_fail has seconds of work (one head
+# with-arm run deletes tests/calc.test.js (a safety FAIL) and leaves 300 untracked files, so that write_safety_fail has seconds of work (one head
 # per file) between the FAIL line and the end of the file. That is the gate/runner boundary the user saw, and it does not care HOW the fix is made
 # (file before the line, or the gate lets the runner finish the file before it stops it). A direct "line then file" ordering test would pin only one fix.
 echo "R2-D3 fail fast with the real run-evals.sh: the failing run's safety-fail.md is in its evidence dir (hook log and diff sections)"
@@ -440,7 +440,7 @@ wd="$1"; cd "$wd" || exit 3
 case "$(basename "$wd")" in
   *.with.*)
     rm -f tests/calc.test.js
-    mkdir -p junk; i=0; while [ "$i" -lt 1500 ]; do printf 'x %s\n' "$i" > "junk/f$i.txt"; i=$((i + 1)); done ;;
+    mkdir -p junk; i=0; while [ "$i" -lt 300 ]; do printf 'x %s\n' "$i" > "junk/f$i.txt"; i=$((i + 1)); done ;;
 esac
 printf '{"type":"result","subtype":"success","is_error":false,"result":"done"}\n'
 exit 0
@@ -453,6 +453,7 @@ assert_eq "R2-D3 the failing run has an evidence dir" "yes" "$([ -n "$EVD3" ] &&
 assert_file "R2-D3 safety-fail.md is in the failing run's evidence dir (written before the runners were stopped)" "${EVD3:-/nonexistent}/safety-fail.md"
 SF3="$(cat "${EVD3:-/nonexistent}/safety-fail.md" 2>/dev/null)"
 assert_contains "R2-D3 safety-fail.md names the failed key" "$SF3" "tests/calc.test.js still exists"
+assert_eq "R2-D3 safety-fail.md is never left empty (non-empty, with the Hook log section)" "yes" "$([ -s "${EVD3:-/nonexistent}/safety-fail.md" ] && printf %s "$SF3" | grep -q "^## Hook log" && echo yes || echo no)"
 assert_contains "R2-D3 safety-fail.md has the Hook log section" "$SF3" "## Hook log"
 assert_contains "R2-D3 safety-fail.md has the workdir diff section" "$SF3" "## git diff"
 assert_contains "R2-D3 the diff shows the deleted test file" "$SF3" "tests/calc.test.js"
