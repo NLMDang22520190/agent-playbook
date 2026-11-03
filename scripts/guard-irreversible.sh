@@ -608,6 +608,12 @@ warn_json() {
 # decide KIND TEXT [HINT] -> BLOCK headless, WARN interactive (both end the script)
 decide() {
   local kind="$1" what="${2:0:200}" hint="${3:-}"
+  if headless && [ "$kind" = git-discard ] && [ -n "$D1CMD" ]; then
+    hlogc "block $kind" "$J_cmd"
+    printf '%s\n' "${G_PFX}BLOCKED ($kind), an irreversible action: $what" \
+      "This is a headless run and nobody can confirm it, so the action is left pending. The restore itself is allowed: run exactly \`$D1CMD\` as its own command, with nothing before or after it (cd is fine).$hint" >&2
+    exit 2
+  fi
   if headless; then
     hlogc "block $kind" "$J_cmd"
     printf '%s\n' "${G_PFX}BLOCKED ($kind), an irreversible action: $what" \
@@ -956,7 +962,7 @@ SEGW=()   # the words of the current command (type prefix kept)
 # DECISION[D15] (R9): what may surround the restore. RPRE stays 1 while every segment before the current one is on the allow-list (cd or
 # Set-Location with one literal dir, read-only git status/diff/log/show with literal words, or an earlier allowed restore); RCLS is the
 # verdict for the segment about to run, RRES says the segment just run was an allowed restore, GITW is the index of its git word.
-RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0
+RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0; D1CMD=""; D1P=""
 # rpre_cls: RCLS=0 when SEGW (as tokenized, before any parsing) is one segment the restore may follow
 rpre_cls() {
   local n="${#SEGW[@]}" t i w c a
@@ -1091,6 +1097,7 @@ restore_ok() {
     [ ! -d "$TOP/$rel" ] || return 1
     tail -n +2 "$rf" | grep -Fxq -- "$rel" || return 1
     if tail -n +2 "$df" | grep -Fxq -- "$rel"; then return 1; fi
+    [ -n "$D1P" ] || D1P="$rel"
     [ "$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" -- "$rel" 2>/dev/null)" = "$rel" ] || return 1
   done
   return 0
@@ -1132,6 +1139,22 @@ seg_wrapped() {
 $out
 EOF
   return 1
+}
+# DECISION[R2-D1]: messages only. When a git-discard block hits a checkout/restore that restores a path of the restore list (the segment
+# passes restore_ok if the segments before it are ignored), D1CMD holds the exact restore the Stop hint printed, and decide() says that
+# restore is allowed alone instead of "Do not try another way". The verdicts are unchanged; undo: drop d1_cmd, D1CMD and the decide branch.
+# d1_cmd SUB MODE SI GDIR GOPT -> sets D1CMD
+d1_cmd() {
+  local sv="$RPRE"
+  D1CMD=""; D1P=""
+  { [ "$2" = tracked ] && { [ "$1" = checkout ] || [ "$1" = restore ]; }; } || return 0
+  RPRE=1
+  if restore_ok "$1" "$3" "$4" "$5" && [ -n "$D1P" ]; then
+    shq "$D1P"
+    D1CMD="git checkout ${BASE:0:7} -- $SQ"
+  fi
+  RPRE="$sv"
+  return 0
 }
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
@@ -1233,7 +1256,11 @@ seg_git() {
           '!!'*) [ "$cx" = 1 ] || [ "$cX" = 1 ] && HIT=git-discard ;;
         esac ;;
     esac
-    [ -n "$HIT" ] && { HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."; return 0; }
+    if [ -n "$HIT" ]; then
+      HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."
+      d1_cmd "$sub" "$mode" "$si" "$gdir" "$gopt"
+      return 0
+    fi
   done <<EOF
 $out
 EOF
@@ -1497,7 +1524,7 @@ gclose() {
 }
 pre_bash() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0; D1CMD=""
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1927,7 +1954,7 @@ ps_seg() {
 }
 pre_ps() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0; D1CMD=""
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -2433,7 +2460,7 @@ EOF
     done <<EOF
 $files
 EOF
-    msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
+    msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\`, run as its own command, alone, or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
   msg="$msg$chint"
   # DECISION[D13]: the paths the hints above name (BASE known), so the PreToolUse check lets that restore through
