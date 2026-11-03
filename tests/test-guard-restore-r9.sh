@@ -264,6 +264,9 @@ d1chk() {
   assert_contains "R2-D1a $n: as its own command" "$GERR" "as its own command"
   assert_contains "R2-D1a $n: nothing before or after it" "$GERR" "nothing before or after it"
   assert_not_contains "R2-D1a $n: no 'Do not try another way'" "$GERR" "Do not try another way"
+  assert_contains "R2-D1a round2 $n: do not save a patch or chain" "$GERR" "Do not save a patch or chain other commands with it."
+  assert_not_contains "R2-D1a round2 $n: no 'leave it to the user' (contradicts the allowed restore)" "$GERR" "leave it to the user"
+  assert_not_contains "R2-D1a round2 $n: no 'git stash -u' hint" "$GERR" "git stash -u"
   q="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
   assert_eq "R2-D1c $n: the command quoted in the message is the hinted restore" "$D1CMD" "$q"
   if [ -n "$q" ]; then ck_ok "R2-D1c $n: the quoted command run alone passes" "$q"; else t_bad "R2-D1c $n: a command was quoted in the message" "$GERR"; fi
@@ -299,6 +302,41 @@ rboot; printf '%s\n' '-- edit' >> "$R/$SC"
 gx "git checkout HEAD -- $SC && npm test"; expect_block "R2-D1 [characterization] no restore list: blocked" git-discard
 assert_contains "R2-D1 no restore list keeps 'Do not try another way'" "$GERR" "Do not try another way"
 assert_not_contains "R2-D1 no restore list does not claim a restore is allowed" "$GERR" "The restore itself is allowed"
+
+
+echo "R2-D1a round 2: the message names the part that blocked (phrase: blocked by \`<segment before the restore>\`)"
+rboot; drop; gs; expect_block "R2-D1a r2 setup: the Stop block" schema-drop
+gx "cd \"$R\" && git diff $SC > .agents/handoff/PENDING-schema-drop.patch && git checkout $B7 -- $SC && git reset -q $SC"
+expect_block "R2-D1a r2 gate-run compound still blocked" git-discard
+assert_contains "R2-D1a r2 names the blocking segment: blocked by \`git diff ...patch\`" "$GERR" "blocked by \`git diff $SC > .agents/handoff/PENDING-schema-drop.patch\`"
+assert_contains "R2-D1a r2 an unknown command before the restore is named too" "$(gx "echo hi && git checkout $B7 -- $SC"; printf '%s' "$GERR")" "blocked by \`echo hi\`"
+
+echo "R2-D1a round 2: from a subdirectory (cwd db/) the quoted command passes and restores the file from that same cwd"
+rboot; drop; gs; expect_block "R2-D1a r2 subdir setup: the Stop block" schema-drop
+CWDX="$R/db"
+gx "echo hi && git checkout $B7 -- schema.sql"; expect_block "R2-D1a r2 subdir: echo hi && restore blocked" git-discard
+assert_contains "R2-D1a r2 subdir: restore itself is allowed" "$GERR" "The restore itself is allowed"
+SQ2="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
+if [ -n "$SQ2" ]; then
+  ck_ok "R2-D1a r2 subdir: the quoted command passes from cwd db/ [$SQ2]" "$SQ2"
+  case "$R" in "$PB_TMPBASE"/pbtest.*/repo) ( cd "$R/db" && "$GBASH" -c "$SQ2" ) >/dev/null 2>&1 </dev/null ;; *) t_bad "R2-D1a r2 refuses a repo this suite did not make" "$R" ;; esac
+  assert_eq "R2-D1a r2 subdir: run from db/ the quoted command restores the schema file" "" "$(git -C "$R" diff --name-only -- $SC)"
+else t_bad "R2-D1a r2 subdir: a command was quoted" "$GERR"; fi
+CWDX=""
+
+echo "R2-D1a round 2: a restore segment with a listed plus an unlisted path keeps today's text"
+rboot; drop; gs; expect_block "R2-D1a r2 mixed setup: the Stop block" schema-drop
+printf '%s\n' '// x' >> "$R/src/orders.js"
+gx "git diff x > p && git checkout $B7 -- $SC src/orders.js"; expect_block "R2-D1a r2 mixed paths: blocked" git-discard
+assert_contains "R2-D1a r2 mixed paths keep 'Do not try another way'" "$GERR" "Do not try another way"
+assert_not_contains "R2-D1a r2 mixed paths do not claim a restore is allowed" "$GERR" "The restore itself is allowed"
+
+echo "R2-D1a round 2: interactive mode (PB_HEADLESS=0) with a restore list armed keeps today's WARN text"
+rboot; drop; gs; expect_block "R2-D1a r2 interactive setup: the Stop block" schema-drop
+gx "git diff $SC > p.patch && git checkout $B7 -- $SC" PB_HEADLESS=0
+expect_warn "R2-D1a r2 interactive: the compound warns"
+assert_contains "R2-D1a r2 interactive: today's WARN text" "$GOUT" "Ask the user to confirm before running it."
+assert_not_contains "R2-D1a r2 interactive: no new restore message" "$GOUT" "The restore itself is allowed"
 
 
 t_summary
