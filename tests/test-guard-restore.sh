@@ -509,6 +509,11 @@ $HINTS
 EOF
 if [ "$NH" -ge 2 ]; then t_ok "M7 at least two hints were fed through the guard ($NH)"; else t_bad "M7 at least two hints were fed through the guard" "$NH"; fi
 gp "$(printf '%s\n' "$HINTS" | sed -n 1p)"; expect_pass "M7 PowerShell: the first printed hint passes too"
+# R2-D1: the PreToolUse block of a compound command around the hinted restore quotes a command; that quoted command passes when run alone
+gx "git diff $SC > p.patch && git checkout $B7 -- $SC && npm test"; expect_block "M7 R2-D1 a compound around the schema restore: blocked" git-discard
+QC="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
+assert_eq "M7 R2-D1 the PreToolUse message quotes the restore command" "git checkout $B7 -- $SC" "$QC"
+[ -z "$QC" ] || ck_ok "M7 R2-D1 the command quoted in the PreToolUse message passes the guard [$QC]" "$QC"
 
 echo "M7 the 'new file' and migration hints of the Stop block: remove it or move it under .agents/"
 rboot; printf '%s\n' 'db.exec("DROP TABLE legacy_orders");' > "$R/src/cleanup.js"
