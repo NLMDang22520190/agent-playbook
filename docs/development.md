@@ -14,6 +14,8 @@ A PR that adds tests updates the README count with `tools/readme-count.sh LOG` (
 
 `tools/bsd-check.sh [SUITE...]` runs the suites (default: all) with one-true-awk (`original-awk` or `nawk`) first on PATH, which is the awk macOS ships (`sudo apt install original-awk` on Ubuntu or WSL).
 
+`tools/usage-report.js TRANSCRIPT.jsonl` (or `--latest`) reports where a session's tokens went, from the local Claude Code transcript and its `subagents/` folder: totals, cache write and read per role (orchestrator, tester, implementer, reviewer, spec_reviewer, mechanical), per model, per main-thread segment, and the cold restarts (a call after an idle gap longer than `--gap` minutes, default 60, that writes the whole context again). It counts a call once per message id, has no built-in prices (`--prices FILE` adds a USD column), and `--json` prints the numbers as one object.
+
 For the static checks, `run-checks.sh` runs shellcheck when it is installed (`sudo apt install shellcheck` on Ubuntu or WSL,
 `brew install shellcheck` on macOS) and skips it otherwise. It also refuses GNU-only options that macOS lacks (grep with the PCRE flag, readlink canonicalise, date with a string, stat with a format flag, find with a print format, xargs with no-run-if-empty, sed extended).
 
