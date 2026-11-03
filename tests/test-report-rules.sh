@@ -124,4 +124,17 @@ for fx in '**Result:** <one sentence>' '**Mode:** native | manual | none (degrad
   if grep -qxF -- "$fx" "$FINAL" 2>/dev/null; then t_ok "v0.25.0 AC7 regression: the template still has the line [$fx]"; else t_bad "v0.25.0 AC7 regression: the template still has the line [$fx]" "missing"; fi
 done
 
+echo "v0.35.0 AC12/AC13 (R1-6) the reply itself, not only 06-final-report.md, repeats the Not checked lines and the logged defaults"
+v35_flat() { printf '%s\n' "$1" | tr '\n' ' ' | sed -E 's/e\.g\./eg/g; s/i\.e\./ie/g; s/\.([A-Za-z0-9_])/_\1/g'; }
+V35L5="$(v35_flat "$LITE5")"; V35P4="$(v35_flat "$FULL4")"
+v35_rep() { # NAME TEXT REGEX
+  if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not found"; fi
+}
+V35NC='(reply|answer)[^.]{0,150}Not checked|Not checked[^.]{0,150}(reply|answer)'
+V35LD='(reply|answer)[^.]{0,200}defaults|defaults[^.]{0,150}(reply|answer)'
+v35_rep "v35 AC13 Lite step 5: the reply repeats the Not checked lines" "$V35L5" "$V35NC"
+v35_rep "v35 AC12 Lite step 5: the reply repeats the logged defaults" "$V35L5" "$V35LD"
+v35_rep "v35 AC13 Phase 4: the reply repeats the Not checked lines" "$V35P4" "$V35NC"
+v35_rep "v35 AC12 Phase 4: the reply repeats the logged defaults" "$V35P4" "$V35LD"
+
 t_summary

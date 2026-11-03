@@ -10,6 +10,8 @@ REVIEWER="$TDD/roles/reviewer.md"
 FINAL="$TDD/templates/final-report.md"
 RPROMPT="$TDD/templates/role-prompt.md"
 HARNESSES="$TDD/references/harnesses.md"   # v0.24.13: harness and model plumbing moved here
+MECH="$TDD/references/mechanics.md"   # v0.35.0 slice E (S2): moved mechanics (test infra, dirty tree, context pack, checkpoint, parallel slices, cost, wrong, resuming)
+WEIGHTMD="$TDD/references/weight.md"   # v0.35.0 slice E (S2): worked weight examples (message text, risk line)
 SETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 QUESTIONS="$PB_ROOT/skills/playbook-setup/references/questions.md"
 
@@ -105,8 +107,9 @@ exact_heading 'AC10 final-report has exact heading' "$FINAL" '## Cost'
 check_sec 'AC10 Cost mentions cost.sh summary' "$FINAL" '^## Cost' 'cost\.sh summary'
 check_sec 'AC10 Cost mentions weight' "$FINAL" '^## Cost' 'weight'
 check_sec 'AC10 Cost mentions wall-clock' "$FINAL" '^## Cost' 'wall.?clock'
-check_sec 'AC10 Phase 4 close-out logs runs with cost.sh add' "$SKILL" '^### Phase 4' 'cost\.sh add'
-check 'AC10 SKILL says tokens 0 if unknown' "$SKILL" 'unknown[^.]{0,40}`?0`?|`?0`?[^.]{0,40}unknown'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+check_sec 'AC10 Phase 4 close-out logs runs with cost.sh add' "$MECH" '^## Phase 4' 'cost\.sh add'
+check 'AC10 SKILL says tokens 0 if unknown' "$MECH" 'unknown[^.]{0,40}`?0`?|`?0`?[^.]{0,40}unknown'
 
 # --- AC11: setup asks models per role per harness with a recommendation
 for f in "$SETUP" "$QUESTIONS"; do
@@ -159,7 +162,8 @@ l18="$(line_of "$SCEN" '^## E18 ')"; l19="$(line_of "$SCEN" '^## E19 ')"
 if [ -n "$l18" ] && [ -n "$l19" ] && [ "$l18" -lt "$l19" ]; then t_ok 'AC2.2 E19 comes after E18'; else t_bad 'AC2.2 E19 comes after E18' "E18 line [$l18] E19 line [$l19]"; fi
 
 # --- v0.9.0 #4 AC4.6: the test-infra role is documented
-TDDALL="$(cat "$SKILL" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
+# v0.35.0 slice E (S2): the test-infra paragraph moved from SKILL.md to references/mechanics.md; the AC4.6 pins follow it
+TDDALL="$(cat "$MECH" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
 # paragraphs (blank-line separated) that talk about infra
 infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n"} tolower($0) ~ /infra/'; }
 IP="$(infra_paras)"
@@ -298,7 +302,8 @@ jchk 'v24.24 AC1 Proof: the exact sentence (round 3)' "$BLOCK" "$PROOF" 'On push
 PB_AGL="$(wc -l < "$BLOCK" | tr -d ' ')"; PB_AGW="$(wc -w < "$BLOCK" | tr -d ' ')"
 # characterization: these hold today and must keep holding (line 17 grows, no line is added)
 if [ "$PB_AGL" -le 39 ]; then t_ok "v24.24 AC1 AGENTS.global.md keeps its 39 lines ($PB_AGL)"; else t_bad "v24.24 AC1 AGENTS.global.md keeps its 39 lines" "$PB_AGL lines"; fi
-if [ "$PB_AGW" -le 730 ]; then t_ok "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25) ($PB_AGW)"; else t_bad "v24.24 AC1 / v0.25.0 AC9b AGENTS.global.md keeps the 730-word budget (raised from 700 by user decision 2026-10-25)" "$PB_AGW words"; fi
+# v0.35.0 D13: the 450 cap was not reachable with every verbatim pin kept; the cap is the new budget, 700
+if [ "$PB_AGW" -le 700 ]; then t_ok "v24.24 AC1 / v0.35.0 D13 AGENTS.global.md keeps the 700-word cap (730 until v0.35.0 S2) ($PB_AGW)"; else t_bad "v24.24 AC1 / v0.35.0 D13 AGENTS.global.md keeps the 700-word cap (730 until v0.35.0 S2)" "$PB_AGW words"; fi
 jchk 'v24.1 Scope: never weaken, skip or delete a test or gate' "$BLOCK" "$SCOPE" 'Never weaken, skip or delete a test or gate to make it pass'
 jchk 'v24.1 Scope: no new dependency without asking' "$BLOCK" "$SCOPE" 'no new dependency without asking'
 jchk 'v24.1 Scope: the playbook ~/.agents files are the write exception' "$BLOCK" "$SCOPE" '~/\.agents files'
@@ -722,13 +727,14 @@ lite_has 'v22.1 AC2.2 Lite step 5 requires the Pre-mortem' 5 'pre-mortem'
 lite_has 'v22.1 AC2.2 Lite step 5: the pre-mortem may be one line per risk' 5 'one line (per|for each|each)[^.]{0,40}risk|one-line'
 
 # --- v0.22.1 AC3: first-slice checkpoint (Phase 2)
-sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$SKILL" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
-sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$SKILL" '^### Phase 2' 'screens?|endpoints?'
-sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$SKILL" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
-sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$SKILL" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$SKILL" '^### Phase 2' 'interactive'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$MECH" '^## Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
+sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$MECH" '^## Phase 2' 'screens?|endpoints?'
+sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$MECH" '^## Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
+sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$MECH" '^## Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$MECH" '^## Phase 2' 'interactive'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$MECH" '^## Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$MECH" '^## Phase 2' 'non-interactive[^.]{0,250}continu'
 
 # --- v0.22.1 AC4: when the user says the result is wrong
 exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
@@ -742,7 +748,8 @@ sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SKILL" "$WRONG" 'real bug'
 sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SKILL" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
 sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SKILL" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
 sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SKILL" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
-sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL" "$WRONG" 'regression eval'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$MECH" "$WRONG" 'regression eval'
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
@@ -751,11 +758,12 @@ flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt in
 
 
 # --- v0.22.1 review findings: content
-sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SKILL" "$WRONG" 'playbook-learn'
-sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SKILL" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
-sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$WRONG" 'docs-only|exempt'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$MECH" "$WRONG" 'playbook-learn'
+sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$MECH" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
+sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$MECH" "$WRONG" 'docs-only|exempt'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$MECH" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$MECH" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
 sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$SKILL" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
 SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
@@ -832,10 +840,11 @@ flat_has 'v22.2 AC6.1 state template: the last sha per role (reviewer)' "$STATE_
 flat_has 'v22.2 AC6.1 state template: sha' "$STATE_T" 'sha'
 flat_has 'v22.2 AC6.1 state template: the next step' "$STATE_T" 'next step'
 flat_has 'v22.2 AC6.1 state template: open questions' "$STATE_T" 'open questions?'
-flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$SKILL" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
-flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$MECH" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$MECH" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$MECH" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
+flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$MECH" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
 
 # --- v0.22.2 AC7: docs/development.md (moved from the README in v0.25.1)
 if grep -i 'concurrency' "$DEVDOC" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts' 'no docs/development.md line has both words'; fi
@@ -854,9 +863,10 @@ sec_flat_has 'v22.3 AC2.1 pack: short excerpts' "$RPROMPT" "$PK" 'excerpts?'
 sec_flat_has 'v22.3 AC2.1 pack: the commands to run' "$RPROMPT" "$PK" 'commands?[^.]{0,30}run|run[^.]{0,30}commands?'
 sec_flat_has 'v22.3 AC2.1 pack: the role reads the pack first' "$RPROMPT" "$PK" 'read[^.]{0,40}pack first|pack first|first[^.]{0,40}read[^.]{0,40}pack'
 sec_flat_has 'v22.3 AC2.1 pack: other files only when the pack is not enough' "$RPROMPT" "$PK" 'not enough|insufficient|does not (cover|answer|contain)'
-flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$SKILL" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
-flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$SKILL" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
-flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$SKILL" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$MECH" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
+flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$MECH" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$MECH" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
 
 # --- v0.22.3 AC6.2: the reuse job of .github/workflows/test.yml (static checks)
 echo "v22.3 AC6.2 workflow: reuse job"
@@ -1076,23 +1086,24 @@ flat_has 'v22.3 AC6.4 docs/development.md: ... of the identical tree' "$DEVDOC" 
 flat_has 'v22.3 AC6.4 docs/development.md: ... that was green' "$DEVDOC" 'green[^.]{0,120}(PR|pull request)[^.]{0,120}run|(PR|pull request)[^.]{0,60}run[^.]{0,80}green'
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
-P2='^### Phase 2'
-sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILL" "$P2" 'parallel'
-sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
-sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
-sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
-sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
-sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
-sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
-sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
-sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+P2M='^## Phase 2'   # v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$MECH" "$P2M" 'parallel'
+sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$MECH" "$P2M" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
+sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$MECH" "$P2M" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
+sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$MECH" "$P2M" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
+sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$MECH" "$P2M" '(own|each)[^.]{0,200}(role[- ])?gates?'
+sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$MECH" "$P2M" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
+sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$MECH" "$P2M" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
+sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$MECH" "$P2M" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
+sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$MECH" "$P2M" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
 # v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
 # `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
 echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
-PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$MECH" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
-NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
-assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
+NCM="$(grep -o -- '--commits' "$MECH" | wc -l | tr -d ' ')"
+assert_eq 'v0.26.1 AC-D1 (v0.35.0: references/mechanics.md) names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
 echo "v22.4 AC5.4 role-prompt.md has a project checklist section"
@@ -1109,8 +1120,8 @@ flat_has 'v22.4 AC5.2 playbook-learn says the Role line counts toward the line b
 echo "v22.4 AC6.3 SKILL.md, state.md, bsd-check"
 flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$SKILL" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
 check 'v22.4 AC6.3 state.md: the reviewer line is "the sha it reviewed"' "$TDD/templates/state.md" 'reviewer:.*the sha it reviewed'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}show'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$MECH" "$P2M" 'autonomy=full[^.]{0,200}show'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$MECH" "$P2M" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
 BSD_USAGE="$(sed -n '1,12p' "$PB_ROOT/tools/bsd-check.sh" | tr '\n' ' ' | tr -s ' ')"
 case "$BSD_USAGE" in
   *[Rr]elative\ to\ the\ repo*root*) t_ok 'v22.4 AC6.3 bsd-check usage: suite paths are relative to the repo root' ;;
@@ -1122,12 +1133,13 @@ case "$BSD_USAGE" in
 esac
 
 echo "v22.4 review: the first-slice checkpoint keeps its Why line directly after it"
-CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$SKILL" | cut -d: -f1)"
-PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$SKILL" | cut -d: -f1)"
-WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$MECH" | cut -d: -f1)"
+PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$MECH" | cut -d: -f1)"
+WHY_L="$(grep -n 'wrong pattern copied' "$MECH" | head -n 1 | cut -d: -f1)"
 if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
-if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
+if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$MECH" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
 if flat "$DEVDOC" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests'; fi
 flat_has 'v22.3 review Low-2 docs/development.md: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
 flat_has 'v22.3 review Low-2 docs/development.md: ... and the PR head parent P' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
@@ -1731,7 +1743,8 @@ qchk "v24.10 r1 Phase 1 asks before any code on a reading that is ambiguous and 
 if printf '%s' "$PH1" | grep -qiE 'changes assertions AND is hard to reverse'; then t_bad "v24.10 r1 Phase 1 does not narrow the ask to assertion changes" "found 'changes assertions AND is hard to reverse'"; else t_ok "v24.10 r1 Phase 1 does not narrow the ask to assertion changes"; fi
 PROW="$(grep -E '^\| "nothing else uses X"' "$PROOF_MD")"
 qchk "v24.10 r1 playbook-proof: the nothing-else-uses row names what was searched" "$PROW" 'naming what was searched'
-CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILL" | tr '\n' ' ')"
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md; the pin follows it there, same pattern
+CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$MECH" | tr '\n' ' ')"
 qchk "v24.10 r1 the first-slice checkpoint covers more than one slice (2 slices included)" "$CHKP" 'more than one slice[^.]{0,20}repeats? a pattern'
 if printf '%s' "$CHKP" | grep -qi 'several slices'; then t_bad "v24.10 r1 the checkpoint does not say several slices" "found 'several slices'"; else t_ok "v24.10 r1 the checkpoint does not say several slices"; fi
 
@@ -1764,7 +1777,7 @@ lite_has "v25 AC1 Lite step 1 names the oracle rule and points to Phase 1" 1 'or
 lite_has "v25 AC1 R2-1 Lite step 1 still asks an ambiguous, hard-to-reverse reading before any code" 1 "$ASK_FIRST"
 SKW="$(wc -w < "$SKILL" | tr -d ' ')"; SKB="$(budget_of skills/playbook-tdd/SKILL.md)"
 if [ -n "$SKB" ] && [ "$SKW" -le "$SKB" ]; then t_ok "v25 AC1 SKILL.md is within its word budget ($SKW of $SKB)"; else t_bad "v25 AC1 SKILL.md is within its word budget" "words $SKW budget [$SKB]"; fi
-if [ -n "$SKB" ] && [ "$SKB" -le 3700 ]; then t_ok "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23) ($SKB)"; else t_bad "v25 D3 / v0.24.29 the SKILL.md budget is at most 3700 (3650 at v0.24.25; +50 by user decision 2026-10-23)" "budget [$SKB]"; fi
+if [ -n "$SKB" ] && [ "$SKB" -le 2750 ]; then t_ok "v25 D3 / v0.35.0 D13 the SKILL.md budget is at most 2750 (3700 until v0.35.0 S2) ($SKB)"; else t_bad "v25 D3 / v0.35.0 D13 the SKILL.md budget is at most 2750 (3700 until v0.35.0 S2)" "budget [$SKB]"; fi
 
 echo "v0.24.25 AC1 references/tdd-guide.md#oracle: the details"
 if grep -qE '^## .*\{#oracle\}' "$GUIDE" 2>/dev/null; then t_ok "v25 AC1 tdd-guide.md has a heading with {#oracle}"; else t_bad "v25 AC1 tdd-guide.md has a heading with {#oracle}" "no '## ... {#oracle}' in $GUIDE"; fi
@@ -1857,8 +1870,8 @@ E11BASE29="$(grep -E 'E11_BASE="\$\(git' "$RUNEV29" | head -n 1)"
 if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |)]|$)'; then t_ok "v25 R2-7 E29 is not in the E11_BASE list"; else t_bad "v25 R2-7 E29 is not in the E11_BASE list" "line: [$E11BASE29]"; fi
 
 echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
-# AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
-if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
+# AC8 (v0.24.29: exactly 3700). v0.35.0 S2 (AC10) and D13: the cut reached 2720 words; the budget is exactly 2750 (2720 rounded up to the next 50).
+assert_eq "v0.24.29 AC8 / v0.35.0 D13 evals/word-budgets gives playbook-tdd SKILL.md exactly 2750" "2750" "$SKB"
 # AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
 sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
 sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
@@ -2059,12 +2072,13 @@ ask_has "v0.25.0 AC9 the appended text asks about humanizer (it is a question, n
 ask_has "v0.25.0 AC9 the appended text excludes chat replies" '(never|not|no|except|excluding|skip)[^.;]{0,40}chat repl|chat repl[^.;]{0,40}(never|no|not|excluded|skip)'
 ask_has "v0.25.0 AC9 the appended text says headless: no question" 'headless[^.;]{0,30}(no|not|never|without)[^.;]{0,20}(question|ask)'
 
-echo "v0.25.0 lane H (S2): AC9b the always-on budget is 730 words in evals/word-budgets"
+echo "v0.25.0 lane H (S2): AC9b the always-on budget in evals/word-budgets (v0.35.0 AC10: the word count rounded up to the next 50, at most 450)"
 AGW_B="$(budget_of AGENTS.global.md)"
-if [ "$AGW_B" = "730" ]; then t_ok "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)"; else t_bad "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)" "budget [$AGW_B]"; fi
+# v0.35.0 D13: the cut reached 692 words; the budget is exactly 700 (692 rounded up to the next 50)
+assert_eq "v0.25.0 AC9b / v0.35.0 D13 evals/word-budgets gives AGENTS.global.md exactly 700" "700" "$AGW_B"
 if [ -n "$AGW_B" ] && [ "$PB_AGW" -le "$AGW_B" ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is within its word budget ($PB_AGW <= $AGW_B)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is within its word budget" "words $PB_AGW budget [$AGW_B]"; fi
-# the hard cap stays at 5000 bytes and the block stays at 39 lines (the 4750 and 730 pins moved in place above)
-if [ "$PB_AGL" -eq 39 ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line) ($PB_AGL)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line)" "$PB_AGL lines"; fi
+# the hard cap stays at 5000 bytes; v0.35.0 S2 (spec R1-5): the block has no line added (at most 39) and still holds the title, 8 headings and 8 Why lines
+assert_eq "v0.25.0 AC9b / v0.35.0 D13 AGENTS.global.md has exactly 38 lines after the cut" "38" "$PB_AGL"
 
 echo "v0.25.0 lane H (S2): AC10 the humanizer key is documented in setup"
 SETUP_F="$(cat "$SETUP" "$QUESTIONS" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
@@ -2190,7 +2204,7 @@ K1B_S6="$(awk '/^6\. \*\*Write the values/ { f = 1 } f && /^7\. / { exit } f { p
 qchk "k1b AC-B7 (v0.33 N1/N6 changed: was hooks on/off) step 6 lists the global key hooks_optout (yes/no)" "$K1B_S6" '`hooks_optout` ?\(?[^.]{0,40}yes[^.]{0,20}no'
 qchk "k1b AC-B7 (v0.33 N1) step 6 says no = hooks on, the default" "$K1B_S6" 'hooks_optout[^.]{0,200}(default no|default[^.]{0,20}on|no[^.]{0,20}hooks on)'
 if printf '%s' "$K1B_S6" | grep -qE '`hooks` \(on'; then t_bad "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) step 6 no longer lists the legacy key hooks (on/off)"; fi
-flat_has "k1b AC-B7 (v0.33 N1/N6 changed: was `hooks` (global)) questions.md lists the optional hooks_optout key (global)" "$QUESTIONS" '`hooks_optout` \(global\)'
+flat_has "k1b AC-B7 (v0.33 N1/N6 changed: was \`hooks\` (global)) questions.md lists the optional hooks_optout key (global)" "$QUESTIONS" '`hooks_optout` \(global\)'
 if flat "$QUESTIONS" | grep -qF '`hooks` (global)'; then t_bad "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key" "legacy key still listed"; else t_ok "k1b AC-B7 (v0.33 N6) questions.md no longer lists the legacy hooks key"; fi
 flat_has "k1b AC-B7 (v0.33 AC5') questions.md says a non-interactive setup installs the hooks (default on)" "$QUESTIONS" '(non-interactive|headless)[^.]{0,200}installs? (them|the hooks?|it)|(non-interactive|headless)[^.]{0,200}install[^.]{0,60}hooks?|hooks?[^.]{0,200}(non-interactive|headless)[^.]{0,100}install'
 if flat "$QUESTIONS" | grep -qiE 'non-interactive setup never installs'; then t_bad "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks" "old sentence still there"; else t_ok "k1b AC-B7 (v0.33 AC5') questions.md no longer says a non-interactive setup never installs the hooks"; fi
@@ -2486,5 +2500,122 @@ if printf '%s' "$S6RT" | grep -Eq '(rule|rules)? ?\(f\)'; then t_ok "AC3 RUBRIC.
 if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (g)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (g)" "no (g) in the gate text"; fi
 assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
 assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
+
+# ---- v0.35.0 slice F (S3, AC12 / AC13, spec Revision 1 R1-6): the E13 / E14 wording of AGENTS.global.md ----
+# Meaning is pinned with tolerant regexes on one sentence (plus the next one), not on exact wording. v35_flat joins a section
+# into one line and hides dots that do not end a sentence (e.g., i.e., decisions.md, .agents) so [^.] stays inside a sentence.
+v35_flat() { section "$1" "$2" | tr '\n' ' ' | sed -E 's/e\.g\./eg/g; s/i\.e\./ie/g; s/\.([A-Za-z0-9_])/_\1/g'; }
+# v35_sent TEXT REGEX: each sentence matching REGEX, joined with the sentence after it (a rule may run over two sentences)
+# (awk only splits; the match is grep -E on the first sentence, so interval expressions work on any awk; the two sentences are
+# joined by the field separator 034, not 001, which bash 3.2 uses internally as CTLESC)
+v35_sent() {
+  printf '%s\n' "$1" | awk '{ n = split($0, a, /\. /); for (i = 1; i <= n; i++) print a[i] "\034" a[i + 1] }' |
+    grep -iE -- "^[^$(printf '\034')]*($2)" | tr '\034' ' '
+}
+# v35_chk NAME TEXT REGEX
+v35_chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
+V35CLR="$(v35_flat "$AGLOBAL" '^### Clarify before changing')"
+V35PRF="$(v35_flat "$AGLOBAL" '^### Proof for claims that matter')"
+if [ -n "$V35CLR" ] && [ -n "$V35PRF" ]; then t_ok "v35 fixture: found the Clarify and Proof sections of AGENTS.global.md"; else t_bad "v35 fixture: found the Clarify and Proof sections of AGENTS.global.md" "a section is empty"; fi
+
+echo "v0.35.0 AC12 (E13) Clarify: a step that needs approval does not block the reversible rest; filled-in details are defaults"
+V35STEP="$(v35_sent "$V35CLR" '(step|action)[^.]{0,80}(approval|hard.to.reverse|irreversible)')"
+v35_chk "v35 AC12 Clarify: when one step needs approval, the reversible rest of the task is done first" "$V35STEP" '(^|[^a-z])(rest|remainder)[^.]{0,80}(first|before)'
+v35_chk "v35 AC12 Clarify: then ask about that step only (the whole task is not blocked)" "$V35STEP" 'ask[^.]{0,40}(about )?(that|the|this|one) step[^.]{0,10}only|ask only about (that|the|this|one) step|(not|never|without) block[a-z]*[^.]{0,40}(whole|entire|rest of the) task'
+V35OPEN='(leaves?|left) open|(does not|doesn.t|did not) (say|specify|state|fix)|unspecified|not specified'
+V35DEF="$(v35_sent "$V35CLR" "$V35OPEN")"
+v35_chk "v35 AC12 Clarify: every detail the request leaves open that you fill in yourself is a default" "$V35DEF" '(every|each|any) (detail|choice|value)[^.]{0,200}(is|counts as|are) (also )?a default'
+v35_chk "v35 AC12 Clarify: the examples of such defaults include a sort order" "$V35DEF" '(^|[^a-z])(sort|order)'
+v35_chk "v35 AC12 Clarify: the examples of such defaults include a page size or limit" "$V35DEF" 'page size|limit'
+v35_chk "v35 AC12 Clarify: such defaults are logged in .agents/handoff/decisions.md with how to undo" "$V35DEF" '_agents/handoff/decisions_md[^.]{0,120}undo|undo[^.]{0,120}_agents/handoff/decisions_md'
+v35_chk "v35 AC12 Clarify: such defaults are listed in the reply" "$V35DEF" '(list|name|state|repeat)[a-z]*[^.]{0,60}(your|the) (reply|answer)'
+
+echo "v0.35.0 AC13 (E14) Proof: a user-visible change needs one real observation this session, else a Not checked line in the reply"
+V35OBS="$(v35_sent "$V35PRF" 'user-visible')"
+v35_chk "v35 AC13 Proof: a user-visible change needs one real observation in this session" "$V35OBS" 'user-visible[^.]{0,250}observ[a-z]*[^.]{0,80}this session|user-visible[^.]{0,250}this session[^.]{0,80}observ'
+V35KINDS=0
+for k in '(page|UI)' 'HTTP API' 'CLI' 'file format'; do printf '%s' "$V35OBS" | grep -qE -- "$k" && V35KINDS=$((V35KINDS + 1)); done
+assert_eq "v35 AC13 Proof: the user-visible kinds are named: page/UI, HTTP API, CLI output, file format" "4" "$V35KINDS"
+v35_chk "v35 AC13 Proof: the way to observe is to start it and curl it or take a screenshot" "$V35OBS" '(start|run|launch|serve)[a-z]*[^.]{0,80}(curl|screenshot)'
+v35_chk "v35 AC13 Proof: reading the source file is not an observation" "$V35OBS" '(read|reading)( the| its)? (source|html|code)( file)?[^.]{0,40}(is not|isn.t|does not count|doesn.t count|not (one|an observation|enough))'
+v35_chk "v35 AC13 Proof: if it cannot be observed, a Not checked: line is written" "$V35OBS" '(cannot|can.t|could not|unable)[^.]{0,120}Not checked:'
+v35_chk "v35 AC13 Proof: the Not checked: line goes in the reply itself" "$V35OBS" 'Not checked:[^.]{0,80}(your|the) (reply|answer)|(reply|answer)[^.]{0,80}Not checked:'
+
+echo "v0.35.0 AC12/AC13 graders unchanged: evals/run-evals.sh, evals/facts.js, evals/scenarios.md equal main at branch start (b9f407a)"
+if git -C "$PB_ROOT" cat-file -e b9f407a^{commit} 2>/dev/null && git -C "$PB_ROOT" diff --quiet b9f407a -- evals/run-evals.sh evals/facts.js evals/scenarios.md; then
+  t_ok "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to b9f407a"
+else
+  t_bad "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to b9f407a" "$(git -C "$PB_ROOT" diff --stat b9f407a -- evals/run-evals.sh evals/facts.js evals/scenarios.md 2>&1 | tail -n 3)"
+fi
+
+# ---- v0.35.0 slice E (S2, AC8 / AC9 / AC10, spec R1-1, R1-5, R2-1..R2-3, D5): the cut of the two always-loaded texts ----
+# AC8: AGENTS.global.md <= 450 words, playbook-tdd SKILL.md <= 2000 words (wc -w over the whole file, as evals/run-checks.sh counts);
+# the moved text lives in references/mechanics.md (new), references/weight.md (new) and references/harnesses.md, and SKILL.md
+# keeps one pointer line per moved block, in the section the block left. The pins on the moved text itself follow it (see the
+# "v0.35.0 slice E" comments above and in tests/test-skill-rules.sh, test-sdlc-refs.sh).
+echo "v0.35.0 slice E (S2): AC8 word caps of the always-loaded texts"
+V35E_AGW="$(wc -w < "$AGLOBAL" | tr -d ' ')"; V35E_SKW="$(wc -w < "$SKILL" | tr -d ' ')"
+# v0.35.0 D13: 450 / 2000 were not reachable with every verbatim pin kept; the caps are the new budgets, 700 and 2750
+if [ "$V35E_AGW" -le 700 ]; then t_ok "v35 E AC8 / v0.35.0 D13 AGENTS.global.md is at most 700 words ($V35E_AGW)"; else t_bad "v35 E AC8 / v0.35.0 D13 AGENTS.global.md is at most 700 words" "$V35E_AGW words"; fi
+if [ "$V35E_SKW" -le 2750 ]; then t_ok "v35 E AC8 / v0.35.0 D13 playbook-tdd SKILL.md is at most 2750 words ($V35E_SKW)"; else t_bad "v35 E AC8 / v0.35.0 D13 playbook-tdd SKILL.md is at most 2750 words" "$V35E_SKW words"; fi
+assert_file "v35 E AC8 references/mechanics.md exists" "$MECH"
+assert_file "v35 E AC8 references/weight.md exists" "$WEIGHTMD"
+# v35e_ptr NAME HEADING_REGEX REF KEYWORD_ERE: one line of that SKILL.md section names REF and matches KEYWORD_ERE (a one-line pointer)
+v35e_ptr() {
+  if section "$SKILL" "$2" | grep -F -- "$3" | grep -qiE -- "$4"; then t_ok "$1"; else t_bad "$1" "no line in section [$2] of $SKILL names [$3] and matches [$4]"; fi
+}
+echo "v0.35.0 slice E (S2): AC8 SKILL.md keeps a one-line pointer for each moved block"
+v35e_ptr "v35 E AC8 intro: a pointer line to references/mechanics.md for the test-infra role" '^# TDD with separated roles' 'references/mechanics.md' 'infra'
+v35e_ptr "v35 E AC8 Pick the weight: a pointer line to references/weight.md for the message-text example and the risk line" '^## Pick the weight' 'references/weight.md' 'message|comment text|risk line'
+v35e_ptr "v35 E AC8 Preconditions: a pointer line to references/mechanics.md for the dirty tree and snapshot" '^## Preconditions' 'references/mechanics.md' 'dirty|snapshot'
+v35e_ptr "v35 E AC8 Phase 2: a pointer line to references/mechanics.md for the context pack" '^### Phase 2' 'references/mechanics.md' 'context pack'
+v35e_ptr "v35 E AC8 Phase 2: a pointer line to references/mechanics.md for the first-slice checkpoint" '^### Phase 2' 'references/mechanics.md' 'checkpoint'
+v35e_ptr "v35 E AC8 Phase 2: a pointer line to references/mechanics.md for parallel slices" '^### Phase 2' 'references/mechanics.md' 'parallel'
+v35e_ptr "v35 E AC8 Phase 4: a pointer line to references/mechanics.md for cost logging" '^### Phase 4' 'references/mechanics.md' 'cost'
+v35e_ptr "v35 E AC8 When the user says it is wrong: a pointer line to references/mechanics.md" '^## When the user says it is wrong' 'references/mechanics.md' 'mechanics'
+v35e_ptr "v35 E AC8 Resuming: a pointer line to references/mechanics.md" '^## Resuming' 'references/mechanics.md' 'state\.md|resum'
+v35e_ptr "v35 E AC8 Starting roles: a pointer line to references/harnesses.md for the model plan and when to ask" '^## Starting roles' 'references/harnesses.md' 'plan[^.]*ask|ask[^.]*plan'
+# each new reference file opens with a level-1 title, as the existing references do
+for f in "$MECH" "$WEIGHTMD"; do
+  if head -n 1 "$f" 2>/dev/null | grep -qE '^# '; then t_ok "v35 E AC8 $(basename "$f") opens with a level-1 title"; else t_bad "v35 E AC8 $(basename "$f") opens with a level-1 title" "first line [$(head -n 1 "$f" 2>/dev/null)]"; fi
+done
+echo "v0.35.0 slice E (S2): AC9 KEEP rules of SKILL.md stay in the always-loaded text (characterization: true before the cut, must hold after it)"
+# R18 (KEEP): roles, gates, the implementer never edits a test, disputes go to a fresh tester; the other KEEP rules (R19-R23, the
+# configured-model binding, none mode, the feedback and Models used lines) are pinned above and in test-skill-rules.sh / test-report-rules.sh
+if grep -qiE '^\| Implementer \|[^|]*production code[^|]*\|[^|]*test file' "$SKILL"; then t_ok "v35 E AC9 R18 the role table: the implementer writes production code and must not touch a test file"; else t_bad "v35 E AC9 R18 the role table: the implementer writes production code and must not touch a test file" "row not found in $SKILL"; fi
+if grep -qiE '^\| Tester \|[^|]*tests only' "$SKILL"; then t_ok "v35 E AC9 R18 the role table: the tester writes tests only"; else t_bad "v35 E AC9 R18 the role table: the tester writes tests only" "row not found in $SKILL"; fi
+if grep -qiE '^\| Reviewer \|' "$SKILL"; then t_ok "v35 E AC9 R18 the role table has the reviewer row"; else t_bad "v35 E AC9 R18 the role table has the reviewer row" "row not found in $SKILL"; fi
+flat_has "v35 E AC9 R18 the gate runs after every hand-back" "$SKILL" 'gate[^.]{0,40}after every hand-back'
+sec_flat_has "v35 E AC9 R18 a dispute goes to a fresh tester" "$SKILL" '^### Phase 2' 'dispute[^.]{0,200}fresh tester|fresh tester[^.]{0,200}dispute'
+sec_flat_has "v35 E AC9 R18 the implementer never resolves a dispute itself" "$SKILL" '^### Phase 2' 'never let the implementer resolve a dispute|implementer (never|does not|must not) resolves? (a|the) dispute'
+
+echo "v0.35.0 review1: findings of review round 1 (.agents/handoff/05-review.md) restored in the cut text"
+R1CLAR="$(section "$BLOCK" '^### Clarify before changing' | tr '\n' ' ' | tr -s ' ')"
+# 1. AGENTS.global.md Clarify: the humanizer ask is conditional on the skill being there (same sentence, no '.' between)
+if printf '%s' "$R1CLAR" | grep -qiE -- '(humanizer[^.]{0,120}(is available|available|is installed|installed|exists))|((if|when) [^.]{0,60}(available|installed|exists)[^.]{0,120}humanizer)'; then t_ok "v0.35.0 review1 Clarify: the humanizer ask applies only when a humanizer skill is available"; else t_bad "v0.35.0 review1 Clarify: the humanizer ask applies only when a humanizer skill is available" "no availability condition in the humanizer sentence of the Clarify section of $BLOCK"; fi
+if printf '%s' "$R1CLAR" | grep -qiE -- 'text others will read[^.]{0,200}release notes'; then t_ok "v0.35.0 review1 Clarify: text others will read names release notes"; else t_bad "v0.35.0 review1 Clarify: text others will read names release notes" "'release notes' not in the 'Text others will read' list of $BLOCK"; fi
+if printf '%s' "$R1CLAR" | grep -qiE -- 'text others will read[^.]{0,200}(reports?[^.]{0,20}sent on|reports)'; then t_ok "v0.35.0 review1 Clarify: text others will read names a report sent on"; else t_bad "v0.35.0 review1 Clarify: text others will read names a report sent on" "'a report sent on' / 'reports' not in the 'Text others will read' list of $BLOCK"; fi
+# 2. SKILL.md: the paragraph that starts with **The user says "quick"**
+R1QUICK="$(awk '/^\*\*The user says "quick"/{f=1} f&&/^$/{exit} f{print}' "$SKILL" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+r1q() { if printf '%s' "$R1QUICK" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the quick paragraph of $SKILL"; fi; }
+r1q 'v0.35.0 review1 quick rule: "quick one" counts as quick' '"quick one"|quick one'
+r1q 'v0.35.0 review1 quick rule: "do it quick" counts as quick' '"do it quick"|do it quick'
+r1q 'v0.35.0 review1 quick rule: quick runs Lite at once' '(runs?|start|go)[^.]{0,30}Lite[^.]{0,30}at once|at once[^.]{0,40}Lite'
+r1q 'v0.35.0 review1 quick rule: still test first, seen failing' 'test first[^.]{0,60}seen failing|seen failing[^.]{0,60}test first'
+r1q 'v0.35.0 review1 quick rule: the skip-tests rule is unchanged' 'skip-tests rule is unchanged'
+# 3. harnesses.md intro (text before the first ## heading) must not claim SKILL.md prints the plan
+R1HINTRO="$(awk 'NR>1 && /^## /{exit} {print}' "$HARNESSES" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+if [ -n "$R1HINTRO" ] && ! printf '%s' "$R1HINTRO" | grep -qiE -- 'SKILL\.md.*print[^`]{0,20}`role-model\.sh plan`'; then t_ok "v0.35.0 review1 harnesses.md intro does not say SKILL.md prints role-model.sh plan"; else t_bad "v0.35.0 review1 harnesses.md intro does not say SKILL.md prints role-model.sh plan" "intro of $HARNESSES still attributes 'print \`role-model.sh plan\`' to SKILL.md"; fi
+if printf '%s' "$R1HINTRO" | grep -qiE -- 'this file (holds|has|keeps|carries).{0,250}model plan.{0,250}(when to ask|ask)'; then t_ok "v0.35.0 review1 harnesses.md intro: this file holds the model plan and when-to-ask rules"; else t_bad "v0.35.0 review1 harnesses.md intro: this file holds the model plan and when-to-ask rules" "intro of $HARNESSES does not say this file holds the model plan and when to ask"; fi
+# 4. SKILL.md Phase 4 observation bullet
+R1OBS="$(section "$SKILL" '^### Phase 4' | awk '/^- /{f=0} /^- [^\n]*observation/{f=1} f{print}' | tr '\n' ' ' | tr -s ' ')"
+r1o() { if printf '%s' "$R1OBS" | grep -qiE -- "$2"; then t_ok "$1"; else t_bad "$1" "pattern [$2] not in the Phase 4 observation bullet of $SKILL"; fi; }
+r1o 'v0.35.0 review1 Phase 4 observation: start it, then curl or a screenshot' 'start it[^.]{0,60}(curl[^.]{0,40}screenshot|screenshot[^.]{0,40}curl)'
+r1o 'v0.35.0 review1 Phase 4 observation: reading the source is not an observation' 'reading the source[^.]{0,30}(is )?not (one|an observation)'
+if [ -n "$R1OBS" ] && ! printf '%s' "$R1OBS" | tr '[:upper:]' '[:lower:]' | grep -qF -- 'screenshot or browser read, curl, the cli command'; then t_ok "v0.35.0 review1 Phase 4 observation: the old 'screenshot or browser read, curl, the CLI command' list is gone"; else t_bad "v0.35.0 review1 Phase 4 observation: the old 'screenshot or browser read, curl, the CLI command' list is gone" "old list still in (or bullet missing from) Phase 4 of $SKILL"; fi
+# 5. mechanics.md cost bullet: what --majors and --rework mean
+R1COST="$(section "$MECH" '^## Phase 4: cost logging' | tr '\n' ' ' | tr -s ' ')"
+if printf '%s' "$R1COST" | grep -qiE -- '--majors[^.]{0,200}(review majors|major (review )?findings|majors (the |a )?review(er)? found|majors found)'; then t_ok "v0.35.0 review1 mechanics cost: --majors is the review majors found"; else t_bad "v0.35.0 review1 mechanics cost: --majors is the review majors found" "no meaning of --majors in the cost section of $MECH"; fi
+if printf '%s' "$R1COST" | grep -qiE -- '--rework[^.]{0,200}(counts|is the number of|number of)'; then t_ok "v0.35.0 review1 mechanics cost: says what --rework counts"; else t_bad "v0.35.0 review1 mechanics cost: says what --rework counts" "no meaning of --rework in the cost section of $MECH"; fi
 
 t_summary

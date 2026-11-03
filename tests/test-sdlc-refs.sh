@@ -7,6 +7,7 @@
 export LC_ALL=C
 REF="$PB_ROOT/skills/playbook-tdd/references"
 SK="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+MECH="$PB_ROOT/skills/playbook-tdd/references/mechanics.md"   # v0.35.0 slice E (S2): steps 3 and 4 in full moved here
 AG="$PB_ROOT/AGENTS.global.md"
 WB="$PB_ROOT/evals/word-budgets"
 
@@ -68,10 +69,13 @@ if grep -Fxq -e 'Do not defend the result and do not patch at once.' "$SK"; then
 else t_ok "AC4 the old sentence is replaced"; fi
 NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$SK")"
 assert_eq "AC4 step 1 follows the clause unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
-for s in '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' \
-         '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
+s='2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified'
+if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+# v0.35.0 slice E (S2, AC8, spec R1-1): steps 3 and 4 in full (docs-only misread, gap kind and source, regression eval, playbook-learn)
+# moved to references/mechanics.md (SKILL.md keeps one sentence each); the verbatim pins follow the text there
+for s in '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
          '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
-  if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+  if grep -Fxq -e "$s" "$MECH"; then t_ok "AC4 step ${s%%.*} unchanged (references/mechanics.md)"; else t_bad "AC4 step ${s%%.*} unchanged (references/mechanics.md)" "no line [$s] in $MECH"; fi
 done
 
 U="$REF/upgrade.md"
@@ -158,16 +162,24 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # then v0.28.1 lanes t and p: -9 (Lite step 4 mutation note) +12 (Lite step 2 input-class line) = +3
 # then v0.29.0 lane a: -19 (the Phase 4 report bullet points to the template; Pre-mortem and feedback line are hand-off only)
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
-W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
-if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) words (3700 - 3 + 3 - 19 + 10 = 3691)" "$((W0 - 3 + 3 - 19 + 10))" "$w"
-else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
+# v0.35.0 slice E (S2, spec R1-5) and D13: the cut ends that arithmetic (it pinned 3681 words before the cut); the cut reached
+# 2720 words counted in the C locale (a UTF-8 locale counts 2730: wc -w differs on UTF-8 symbols), so the exact pin uses LC_ALL=C; v0.35.0 review1 re-pins it at 2744; v0.35.0 review2 re-pins it at 2730 so it fits the budget under C.UTF-8 too (2732);
+# v0.35.0 review3: GNU wc -w in the C locale skips a standalone non-ASCII byte run (the two lone U+2264 signs on SKILL.md:34) but BSD wc
+# (macOS) and GNU wc in UTF-8 count it (2732 vs 2730), so the exact pin maps every non-ASCII byte to x first: same count on GNU and BSD, C and UTF-8
+WBV="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$WB" 2>/dev/null)"
+if [ "$w" -le 2750 ]; then t_ok "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words ($w)"; else t_bad "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words" "$w words"; fi
+assert_eq "AC16 / v0.35.0 review3 SKILL.md is exactly 2732 words (non-ASCII bytes mapped to x, wc -w)" "2732" "$(LC_ALL=C tr '\200-\377' 'x' < "$SK" | LC_ALL=C wc -w | tr -d ' ')"
+if [ "$(LC_ALL=C.UTF-8 locale charmap 2>/dev/null)" = "UTF-8" ]; then
+  wu="$(LC_ALL=C.UTF-8 wc -w < "$SK" | tr -d ' ')"
+  if [ -n "$WBV" ] && [ -n "$wu" ] && [ "$wu" -le "$WBV" ]; then t_ok "AC16 / v0.35.0 review2 SKILL.md at or under its evals/word-budgets value under LC_ALL=C.UTF-8 ($wu <= $WBV)"
+  else t_bad "AC16 / v0.35.0 review2 SKILL.md at or under its evals/word-budgets value under LC_ALL=C.UTF-8" "words [$wu] budget [$WBV]"; fi
+else t_skip 1 "AC16 / v0.35.0 review2 SKILL.md under LC_ALL=C.UTF-8 (locale C.UTF-8 not available)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
 else t_ok "AC16 the slice-size Why line is cut"; fi
 if grep -q '^\*\*Why:\*\*' "$SK"; then t_ok "AC16 at least one **Why:** line remains (run-checks.sh)"; else t_bad "AC16 at least one **Why:** line remains (run-checks.sh)" "none"; fi
-if grep -Eq '^skills/playbook-tdd/SKILL\.md 3700 ' "$WB"; then t_ok "AC16 evals/word-budgets keeps playbook-tdd at 3700"; else t_bad "AC16 evals/word-budgets keeps playbook-tdd at 3700" "line changed"; fi
+if grep -Eq '^skills/playbook-tdd/SKILL\.md 2750 ' "$WB"; then t_ok "AC16 / v0.35.0 D13 evals/word-budgets keeps playbook-tdd at exactly 2750 (3700 until v0.35.0 S2)"; else t_bad "AC16 / v0.35.0 D13 evals/word-budgets keeps playbook-tdd at exactly 2750 (3700 until v0.35.0 S2)" "budget [$WBV]"; fi
 # characterization: AGENTS.global.md stays as it is (rule freeze); these pass before and after
 if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook." "$AG"; then
   t_ok "AC16 AGENTS.global.md keeps the precedence sentence verbatim"; else t_bad "AC16 AGENTS.global.md keeps the precedence sentence verbatim" "missing"; fi

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Opt-in Claude Code hooks of agent-playbook (v0.28.0, PowerShell handler v0.29.0): adds the guard and learnings handlers to
-# <home>/.claude/settings.json, removes them again, or reports their state. Bash 3.2.
+# Claude Code hooks of agent-playbook (v0.28.0, PowerShell v0.29.0), installed by default since v0.33.0 (off: install.sh --no-hooks
+# or hooks_optout=yes): adds the guard and learnings handlers to <home>/.claude/settings.json, removes them, or reports their state. Bash 3.2.
 #
 # Usage: claude-hooks.sh install|uninstall|status [--home DIR] [--dry-run]
 #   install    merge the five handlers (other keys and hooks are kept; a backup goes to

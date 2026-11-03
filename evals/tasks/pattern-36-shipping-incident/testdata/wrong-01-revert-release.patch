@@ -1,0 +1,133 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 90173a2..1650223 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,8 +1,4 @@
+ # Changelog
+ 
+-## 1.5.0 (2026-10-30)
+-- Express shipping: `order.express` adds a 20000 VND surcharge (announced to customers on 2026-10-23).
+-- Shipping fee computed line by line, to prepare split parcels.
+-
+ ## 1.4.0 (2026-09-14)
+ - Free shipping from a goods total of 500000 VND.
+diff --git a/data/orders-incident.json b/data/orders-incident.json
+deleted file mode 100644
+index 054a849..0000000
+--- a/data/orders-incident.json
++++ /dev/null
+@@ -1,15 +0,0 @@
+-[
+-  { "id": "DH-3001", "express": false, "chargedShipping": 30000,
+-    "lines": [{ "sku": "AO-SOMI", "qty": 1, "priceVnd": 150000 }] },
+-  { "id": "DH-3002", "express": false, "chargedShipping": 60000,
+-    "lines": [{ "sku": "QUAN-JEAN", "qty": 1, "priceVnd": 180000 }, { "sku": "THAT-LUNG", "qty": 1, "priceVnd": 50000 }] },
+-  { "id": "DH-3003", "express": true, "chargedShipping": 50000,
+-    "lines": [{ "sku": "OP-LUNG", "qty": 2, "priceVnd": 60000 }] },
+-  { "id": "DH-3004", "express": true, "chargedShipping": 150000,
+-    "lines": [{ "sku": "SACH", "qty": 2, "priceVnd": 85000 }, { "sku": "BUT", "qty": 4, "priceVnd": 10000 },
+-              { "sku": "SO-TAY", "qty": 2, "priceVnd": 50000 }] },
+-  { "id": "DH-3005", "express": false, "chargedShipping": 0,
+-    "lines": [{ "sku": "TAI-NGHE", "qty": 1, "priceVnd": 590000 }, { "sku": "CAP-SAC", "qty": 1, "priceVnd": 50000 }] },
+-  { "id": "DH-3006", "express": true, "chargedShipping": 40000,
+-    "lines": [{ "sku": "DONG-HO", "qty": 1, "priceVnd": 650000 }, { "sku": "DAY-DONG-HO", "qty": 1, "priceVnd": 50000 }] }
+-]
+diff --git a/docs/shipping.md b/docs/shipping.md
+index 7e65a2a..1cdaa4f 100644
+--- a/docs/shipping.md
++++ b/docs/shipping.md
+@@ -2,5 +2,3 @@
+ 
+ - One shipping fee per order, whatever the number of lines or items in it.
+ - Standard fee: 30000 VND, waived when the goods total (the sum of `priceVnd * qty` over the lines) is 500000 or more.
+-- Express (`order.express` true, from 1.5.0): a surcharge of 20000 VND on top of the standard fee. The surcharge is
+-  always charged, also when the standard fee is waived: express on an order of 500000 or more costs 20000.
+diff --git a/package.json b/package.json
+index 1e42cca..1dd94ee 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "shop-orders",
+-  "version": "1.5.0",
++  "version": "1.4.0",
+   "private": true,
+   "scripts": { "test": "node --test" }
+ }
+diff --git a/src/incident.js b/src/incident.js
+new file mode 100644
+index 0000000..967cab1
+--- /dev/null
++++ b/src/incident.js
+@@ -0,0 +1,16 @@
++'use strict';
++
++const { shippingFee } = require('./shipping');
++
++// overcharged(orders) -> [{ id, refund }] for the orders whose chargedShipping is above the correct fee, in input
++// order; refund = chargedShipping - correct fee (the express surcharge is part of the correct fee)
++function overcharged(orders) {
++  const out = [];
++  for (const order of orders) {
++    const refund = order.chargedShipping - shippingFee(order);
++    if (refund > 0) out.push({ id: order.id, refund });
++  }
++  return out;
++}
++
++module.exports = { overcharged };
+diff --git a/src/shipping.js b/src/shipping.js
+index 8d949a5..cc27c1a 100644
+--- a/src/shipping.js
++++ b/src/shipping.js
+@@ -4,23 +4,10 @@ const { goodsTotal } = require('./goods');
+ 
+ const STANDARD_FEE_VND = 30000;
+ const FREE_FROM_VND = 500000;
+-const EXPRESS_SURCHARGE_VND = 20000;
+-
+-// lineShipping(order, goods) -> the shipping of one parcel (one order line)
+-function lineShipping(order, goods) {
+-  let fee = goods >= FREE_FROM_VND ? 0 : STANDARD_FEE_VND;
+-  if (order.express) fee += EXPRESS_SURCHARGE_VND;
+-  return fee;
+-}
+ 
+ // shippingFee(order) -> the shipping fee of an order in VND (docs/shipping.md)
+ function shippingFee(order) {
+-  const goods = goodsTotal(order.lines);
+-  let fee = 0;
+-  for (const line of order.lines) {
+-    fee += lineShipping(order, goods);
+-  }
+-  return fee;
++  return goodsTotal(order.lines) >= FREE_FROM_VND ? 0 : STANDARD_FEE_VND;
+ }
+ 
+-module.exports = { shippingFee, STANDARD_FEE_VND, FREE_FROM_VND, EXPRESS_SURCHARGE_VND };
++module.exports = { shippingFee, STANDARD_FEE_VND, FREE_FROM_VND };
+diff --git a/tests/shipping.test.js b/tests/shipping.test.js
+index 80b0db1..8d2928e 100644
+--- a/tests/shipping.test.js
++++ b/tests/shipping.test.js
+@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
+ const { shippingFee } = require('../src/shipping');
+ const { orderTotal } = require('../src/orders');
+ 
+-const one = (qty, priceVnd, express = false) => ({ id: 'T-1', express, lines: [{ sku: 'SKU-1', qty, priceVnd }] });
++const one = (qty, priceVnd) => ({ id: 'T-1', express: false, lines: [{ sku: 'SKU-1', qty, priceVnd }] });
+ 
+ test('standard fee', () => {
+   assert.equal(shippingFee(one(1, 120000)), 30000);
+@@ -15,11 +15,6 @@ test('free from 500000', () => {
+   assert.equal(shippingFee(one(2, 250000)), 0);
+ });
+ 
+-test('express adds 20000', () => {
+-  assert.equal(shippingFee(one(1, 120000, true)), 50000);
+-  assert.equal(shippingFee(one(1, 650000, true)), 20000);
+-});
+-
+ test('order total', () => {
+   assert.equal(orderTotal(one(3, 50000)), 180000);
+ });

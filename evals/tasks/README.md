@@ -13,7 +13,7 @@ One directory per task, `evals/tasks/<id>/`, where `<id>` is the directory name:
 |---|---|
 | `task.conf` | `key=value` lines (no quoting): `id` (the directory name), `language` (`node`, `python3` or `bash`), `source` (`pattern:<slug>` or `oss:<bug class>`), `expected_weight` (`Lite` or `Full`, the playbook-tdd weight a careful agent should pick), `fail_to_pass` and `pass_to_pass` (space-separated paths relative to `hidden/`; `fail_to_pass` may be empty), and `scope=` (space-separated repo paths a correct fix may change: an entry ending in `/` is a prefix, any other a bash `case` glob on the whole path; `tests/`, `.agents/`, `node_modules/`, `.gitignore` and `package-lock.json` are always allowed). Optional `traps=`: a comma list of the trap kinds the task sets (`multi-file`, `misleading-symptom`, `hidden-second-place`, `value-label-fixture`, `wrong-visible-test`, `ambiguous-default`, `not-a-bug`, `dependency-upgrade`, `migration-rollback`, `input-classes`: the report names one input and the hidden tests also cover the other input classes that the prompt's "any" or "every" and the repo docs imply); informational, never graded |
 | `prompt.md` | The user's request as it would arrive in a ticket or chat, in English or Vietnamese. It describes the symptom and the rule, never the hidden tests. |
-| `setup.sh` | `bash setup.sh DIR` builds the task repo in `DIR`: files, then one git commit with a fixed author and date, so two runs give the same HEAD. No network. Bash 3.2. It refuses an existing non-empty `DIR` (exit 2). |
+| `setup.sh` | `bash setup.sh DIR` builds the task repo in `DIR`: files, then one or more git commits, each with a fixed author and date (several commits are fine, for example a release history), so two runs give the same HEAD. No network. Bash 3.2. It refuses an existing non-empty `DIR` (exit 2). |
 | `solution.patch` | A correct fix as a `git diff` against the setup repo (`git apply`-able). Absent, never empty, and only when `fail_to_pass` is empty (a "do not change anything" task). |
 | `testdata/wrong-*.patch` | Plausible wrong fixes, each a `git diff` against the setup repo. The self-check applies each to a fresh setup repo and requires at least one hidden file to fail. |
 | `hidden/tests/...` | The hidden tests, copied over the repo (same relative paths) only for grading. Every file carries the marker `PB-HIDDEN-CANARY:<id>`; nothing outside `hidden/` may carry it. |
@@ -26,6 +26,9 @@ else, or a change where none was needed).
 The `ambiguous-default` tasks (pattern-15, pattern-23 to pattern-26) count only the decision log that the task repo's own
 CONTRIBUTING.md names (`docs/decisions.md`), on purpose: the trap checks that the agent follows the project's
 convention, not a gitignored handoff log of its own.
+
+The held-out tasks pattern-32 and pattern-33 carry the same trap (a reading of the request that loses data), but their
+hidden tests grade only the delivered behaviour (the data is kept). They never grade a decision log.
 
 Node tests import `require('../src/<module>')` with named exports; python tests import `from src.<module> import f`
 (the setup repo has `src/__init__.py`). Name the repo's own visible tests so they never collide with a hidden file,
@@ -67,6 +70,20 @@ A new task should be hard but fair. After it lands, pilot it without the playboo
    that is a scope bug, not agent creep.
 
 Stop when at least 6 of the new tasks have a without-arm pass@1 below 1, then run the full corpus in both arms.
+
+## Held-out tasks
+
+These ten tasks were written before any run, in one commit:
+
+- pattern-27, pattern-28, pattern-29: bug fixes in an existing code base.
+- pattern-30, pattern-31: migrations over existing data.
+- pattern-32, pattern-33: ambiguous requests where one reading loses data.
+- pattern-34, pattern-35: features that span several files.
+- pattern-36: an incident to resolve.
+
+The Calibration loop above does not apply to them. They are not hardened after anyone sees results. A held-out task
+is changed only to fix a broken task, never to tune pass rates. They run in their own suite,
+`tests/test-outcome-heldout.sh`.
 
 ## Adding a task
 

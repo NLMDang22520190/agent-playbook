@@ -1,0 +1,64 @@
+diff --git a/src/inventory.js b/src/inventory.js
+index 3fee8de..83be593 100644
+--- a/src/inventory.js
++++ b/src/inventory.js
+@@ -3,11 +3,11 @@
+ 
+ function createInventory(stock) {
+   const onHandBySku = { ...stock };
+-  const reservations = {}; // orderId -> { sku, qty }
++  const reservations = []; // one { orderId, sku, qty } per reserved line
+ 
+   function reserved(sku) {
+     let n = 0;
+-    for (const r of Object.values(reservations)) if (r.sku === sku) n += r.qty;
++    for (const r of reservations) if (r.sku === sku) n += r.qty;
+     return n;
+   }
+ 
+@@ -17,17 +17,22 @@ function createInventory(stock) {
+ 
+   function reserve(orderId, sku, qty) {
+     if (available(sku) < qty) throw new Error('out_of_stock');
+-    reservations[orderId] = { sku, qty };
++    reservations.push({ orderId, sku, qty });
++  }
++
++  // removes every reservation of orderId and returns them
++  function take(orderId) {
++    const mine = reservations.filter((r) => r.orderId === orderId);
++    for (let i = reservations.length - 1; i >= 0; i--) if (reservations[i].orderId === orderId) reservations.splice(i, 1);
++    return mine;
+   }
+ 
+   function release(orderId) {
+-    delete reservations[orderId];
++    take(orderId);
+   }
+ 
+   function consume(orderId) {
+-    const r = reservations[orderId];
+-    if (r) onHandBySku[r.sku] -= r.qty;
+-    delete reservations[orderId];
++    for (const r of take(orderId)) onHandBySku[r.sku] -= r.qty;
+   }
+ 
+   function onHand(sku) {
+diff --git a/src/orders.js b/src/orders.js
+index 5c46edf..7181144 100644
+--- a/src/orders.js
++++ b/src/orders.js
+@@ -12,7 +12,12 @@ function createOrders(inventory, events = createEvents()) {
+   }
+ 
+   function place(orderId, lines) {
+-    for (const line of lines) inventory.reserve(orderId, line.sku, line.qty);
++    try {
++      for (const line of lines) inventory.reserve(orderId, line.sku, line.qty);
++    } catch (e) {
++      inventory.release(orderId); // a failed place reserves nothing
++      throw e;
++    }
+     orders[orderId] = { status: 'placed', lines: lines.map((l) => ({ ...l })) };
+     events.emit('order.placed', { orderId });
+   }
