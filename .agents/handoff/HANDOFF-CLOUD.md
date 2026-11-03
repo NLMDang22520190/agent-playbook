@@ -44,3 +44,4 @@
 - 2026-11-03 16:10 UTC: the v0.34.0 session sent a queue of 13 candidate items for v0.35.0 (data; scope to be confirmed by the
   user). PR #84 not merged; the user's local gate re-runs on c750f56. Item 3 (guard R6-2 Windows timing) matches the CI flake seen
   on PR #83 windows shard 3/8.
+- 2026-11-03: user chose option (a): items 5 and 12 in PR #83, the rest later. Item 12 done (d9e5794); item 5 after v0.34.0 is on main.
