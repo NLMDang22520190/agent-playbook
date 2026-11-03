@@ -217,8 +217,15 @@ for F in mount drive win; do
   q="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
   assert_eq "AC5 $(tg $F) $F cwd = TOP: the hinted restore has no 'cd <TOP> &&' prefix" "git checkout $B7 -- $SC" "$q"
 done
-CWDX="$(fm drive "$R/a")"
-gx "git diff $SC > p.patch && git checkout $B7 -- $SC"
-q="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
-assert_eq "AC5 [today FAIL] drive-form cwd in a SUBDIR of TOP: the hint names the top with cd first" "cd '$TOP' && git checkout $B7 -- $SC" "$q"
+# AC5 from a subdir: the pathspec is written relative to the cwd (../db/schema.sql names TOP/db/schema.sql, which is on the list;
+# a bare db/schema.sql from a/ names a/db/schema.sql, which is not, so no hint is correct there). TOP is quoted the way the guard's
+# shq quotes it: only when it holds a character outside [A-Za-z0-9._/@%+=:,-].
+case "$TOP" in *[!A-Za-z0-9._/@%+=:,-]*) QTOP="'$TOP'" ;; *) QTOP="$TOP" ;; esac
+for F in mount drive; do
+  CWDX="$(fm $F "$R/a")"
+  gx "git diff ../$SC > p.patch && git checkout $B7 -- ../$SC"
+  expect_block "AC5 $F cwd in subdir a: the compound stays blocked [characterization]" git-discard
+  q="$(printf '%s\n' "$GERR" | sed -n 's/.*run exactly `\([^`]*\)`.*/\1/p' | sed -n 1p)"
+  assert_eq "AC5 [today FAIL] $F cwd in a SUBDIR of TOP: the hint names the top with cd first" "cd $QTOP && git checkout $B7 -- $SC" "$q"
+done
 t_summary
