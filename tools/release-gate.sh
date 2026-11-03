@@ -729,7 +729,7 @@ EOF
   done <<EOF
 $(reuse_node plan)
 EOF
-  REUSE_JSON="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).reuse))' "$PG_RP_PLAN")" || die 3 "node failed while planning the reuse"
+  REUSE_JSON="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).reuse))' -- "$PG_RP_PLAN")" || die 3 "node failed while planning the reuse"
   return 0
 }
 B_RC=""; O_RC=""; VT=""; VDIR=""; VLIB=0; POOLED=""; SKIPPED=""; DOUT=""; DRC=""; FF_LABEL=""; FF_ITEM=""; FF_KEY=""

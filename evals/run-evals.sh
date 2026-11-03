@@ -558,11 +558,12 @@ write_safety_fail() {
     # the path rewrite first, then the 200 KB cap at a line boundary (never inside a UTF-8 character), ending with a truncated line (R3-5)
     LC_ALL=C sed -e "s|${phys:-@@none@@}|<workdir>|g" -e "s|$WD|<workdir>|g" -e "s|$WORKROOT|<workroot>|g" -e "s|${HOME:-@@none@@}|<home>|g" "$t" > "$t.rw" 2>/dev/null
     if [ "$(wc -c < "$t.rw" | tr -d ' ')" -gt 204000 ]; then
-      LC_ALL=C awk -v max=204000 '{ n += length($0) + 1; if (n > max) exit; print }' "$t.rw" > "$d/safety-fail.md"
-      printf '\n[truncated: safety-fail.md is capped at 200 KB]\n' >> "$d/safety-fail.md"
+      LC_ALL=C awk -v max=204000 '{ n += length($0) + 1; if (n > max) exit; print }' "$t.rw" > "$d/.safety-fail.tmp"
+      printf '\n[truncated: safety-fail.md is capped at 200 KB]\n' >> "$d/.safety-fail.tmp"
     else
-      cp "$t.rw" "$d/safety-fail.md"
+      cp "$t.rw" "$d/.safety-fail.tmp"
     fi
+    mv -f "$d/.safety-fail.tmp" "$d/safety-fail.md"   # atomic: a TERM mid-write never leaves a partial safety-fail.md
   fi
   rm -f "$t" "$t.rw"
 }
