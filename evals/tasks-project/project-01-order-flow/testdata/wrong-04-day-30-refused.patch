@@ -1,0 +1,105 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 93721bc..ad3f40f 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -1,3 +1,5 @@
+ # Decisions
+ 
+ Product questions settled without asking (format in CONTRIBUTING.md).
++
++DECISION[D1]: the amount paid for the goods (after the coupon, plus tax) is shared over the units in proportion to the unit price, largest remainder first, so the refunds of one order add up to exactly what was paid, whatever the return order (the policy says "what the customer paid for the items" but not how a coupon or the tax splits over several items).
+diff --git a/src/order-page.js b/src/order-page.js
+index dd39d91..344b38a 100644
+--- a/src/order-page.js
++++ b/src/order-page.js
+@@ -3,6 +3,7 @@
+ // The data behind the order page.
+ function orderSummary(order) {
+   const t = order.totals;
++  const refundedCents = order.refunds.reduce((sum, r) => sum + r.refundCents, 0);
+   return {
+     id: order.id,
+     status: order.status,
+@@ -12,6 +13,8 @@ function orderSummary(order) {
+     shippingCents: t.shippingCents,
+     taxCents: t.taxCents,
+     totalCents: t.totalCents,
++    refundedCents,
++    netCents: t.totalCents - refundedCents,
+   };
+ }
+ 
+diff --git a/src/refunds.js b/src/refunds.js
+new file mode 100644
+index 0000000..e8d90ba
+--- /dev/null
++++ b/src/refunds.js
+@@ -0,0 +1,68 @@
++'use strict';
++
++const DAY = 86400000;
++const WINDOW_DAYS = 30;
++
++function fail(code, message) {
++  const err = new Error(message);
++  err.code = code;
++  return err;
++}
++
++function utcDay(value) {
++  const d = new Date(value);
++  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
++}
++
++// Shares `total` cents over the weights in proportion, largest remainder first, so the shares add up to exactly `total`.
++function allocate(total, weights) {
++  const sum = weights.reduce((a, b) => a + b, 0);
++  if (sum === 0) return weights.map(() => 0);
++  const shares = weights.map((w) => Math.floor((w * total) / sum));
++  let left = total - shares.reduce((a, b) => a + b, 0);
++  const byRemainder = weights.map((w, i) => ({ i, rem: (w * total) % sum })).sort((a, b) => b.rem - a.rem || a.i - b.i);
++  for (let k = 0; left > 0; k++, left--) shares[byRemainder[k].i]++;
++  return shares;
++}
++
++// Refunds returned items: { sku, qty } list. What was paid for the goods (after the coupon, with tax) is shared over the units
++// by unit price, the shipping comes back with the last unreturned unit. A refused call changes nothing.
++function refundItems(order, returns, ctx) {
++  const days = (utcDay(ctx.now) - utcDay(order.placedAt)) / DAY;
++  if (days >= WINDOW_DAYS) throw fail('RETURN_WINDOW_CLOSED', 'the 30 day return window is closed');
++
++  const returned = order.returned || {};
++  const want = {};
++  for (const r of returns) want[r.sku] = (want[r.sku] || 0) + r.qty;
++  for (const sku of Object.keys(want)) {
++    const line = order.lines.find((l) => l.sku === sku);
++    const left = line ? line.qty - (returned[sku] || 0) : 0;
++    if (!Number.isInteger(want[sku]) || want[sku] < 1 || want[sku] > left) {
++      throw fail('RETURN_EXCEEDS_PURCHASE', 'cannot return ' + want[sku] + ' of ' + sku);
++    }
++  }
++
++  const units = [];
++  for (const line of order.lines) for (let n = 0; n < line.qty; n++) units.push({ sku: line.sku, n, weight: line.unitCents });
++  const paidForGoods = order.totals.totalCents - order.totals.shippingCents;
++  const shares = allocate(paidForGoods, units.map((u) => u.weight));
++
++  let refundCents = 0;
++  units.forEach((u, i) => {
++    const already = returned[u.sku] || 0;
++    if (u.n >= already && u.n < already + (want[u.sku] || 0)) refundCents += shares[i];
++  });
++
++  const after = { ...returned };
++  for (const sku of Object.keys(want)) after[sku] = (after[sku] || 0) + want[sku];
++  const allBack = order.lines.every((l) => (after[l.sku] || 0) === l.qty);
++  if (allBack) refundCents += order.totals.shippingCents;
++
++  order.returned = after;
++  order.refunds.push({ refundCents, lines: Object.keys(want).map((sku) => ({ sku, qty: want[sku] })), at: new Date(ctx.now).toISOString() });
++  order.status = allBack ? 'refunded' : 'partially_refunded';
++  for (const sku of Object.keys(want)) ctx.inventory.release(sku, want[sku]);
++  return { refundCents };
++}
++
++module.exports = { refundItems };
