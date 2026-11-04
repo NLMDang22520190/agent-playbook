@@ -83,3 +83,41 @@ operations, heredocs with braces); the bypass-permissions mode that would remove
 (0.30 to 0.79 USD per run, 0.18 without) is an upper bound.
 
 Other hidden tests, with arm over its 8 runs: `refunds-rules` 8/8 (without 4/5), `decisions-logged` 7/8 (without 4/5).
+
+## Consequence-rule experiment (2026-11-04, P1')
+
+Question: does making "a documented rule the change falsifies becomes an AC" part of the spec's Impact (P1') change what the with arm does
+about a consequence of its own change, without making it fix things that were already wrong? Three tasks on one shop repo:
+
+| Task | Family | What it tests |
+|---|---|---|
+| `project-01-order-flow` | consequence | refunds make `dailyRevenue` wrong (`docs/finance.md`) |
+| `project-02-tax-exempt` | consequence | a company pays no tax, `src/invoice.js` repeats the tax rule (`docs/invoicing.md`) |
+| `project-03-product-search` | scope control | `listProducts` sorts by price although `docs/catalog.md` says by name; it was already so, and must be left alone (`catalog-scope.p2p`) |
+
+Variant A is the playbook at 1355bcf, variant B the same tree with P1' (four files: `SKILL.md`, `templates/spec.md`, `roles/spec-reviewer.md`,
+`roles/implementer.md`). Each variant has its own scratch home (`install.sh install --home DIR --copy`), chosen per run through
+`PB_EVAL_WITH_HOME`; this avoids `--variant`, which needs the stock preset (no write permission in a cloud container). Sonnet 5.5, with arm,
+k=3 (the third `project-03` run of each variant was skipped by the budget brake).
+
+| Task | A passes all | B passes all | median cost A / B (USD) |
+|---|---|---|---|
+| project-01 | 1/3 | 2/3 | 1.28 / 1.04 |
+| project-02 | 3/3 | 3/3 | 0.42 / 0.48 |
+| project-03 (control) | 2/2 | 2/2 | 0.20 / 0.14 |
+
+Without the playbook, Sonnet passed project-02 2/2 and project-03 2/2 (0.04 to 0.13 USD per run).
+
+Reading it: **inconclusive.** Only project-01 differs (fixed 2/3 against 1/3; difference +0.33, 95% interval [-0.32, +0.72]); the two other
+tasks are at the ceiling for both variants, so the current playbook already fixes a consequence that is a copy of the logic (project-02)
+and already leaves the control alone. The control stays flat under B (no scope creep seen, n=2). Costs do not move beyond run-to-run noise.
+Caveats:
+
+- The operative text of P1' sits in `templates/spec.md`; `SKILL.md` only says "see the template" (it is at its 3700-word budget). The
+  new `SKILL.md` sentence was seen in all 8 B runs but the template was opened in 1 of 8, so the dose was weak.
+- `outcome-classes.js` reads the last `result` of the transcript. One B run ended on a follow-up turn ("that step is already done"), so it was
+  classed MISSED although the transcript names `dailyRevenue` 29 times.
+- Pooling every current-playbook run on project-01 over three set-ups gives 2/11 fixed against 2/3 for B (difference +0.48, interval
+  [-0.06, +0.79]); the set-ups differ (permissions, `--add-dir`), so this is a hint only.
+- The adapter stops a long invocation without killing the runner when a file `.pb-eval-stop` exists next to it (later runs exit 3 and
+  count as ERROR); the result file of the runner is written only at the end.

@@ -1,0 +1,20 @@
+diff --git a/src/catalog.js b/src/catalog.js
+index 93dbf0d..539ae07 100644
+--- a/src/catalog.js
++++ b/src/catalog.js
+@@ -5,4 +5,14 @@ function listProducts(products) {
+   return products.slice().sort((a, b) => a.priceCents - b.priceCents);
+ }
+ 
+-module.exports = { listProducts };
++const byName = (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase());
++
++// Products whose name or sku contains the query (ignoring case), sorted by name A to Z (ignoring case).
++function searchProducts(products, query) {
++  const q = String(query).toLowerCase();
++  return products
++    .filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
++    .sort((a, b) => a.priceCents - b.priceCents);
++}
++
++module.exports = { listProducts, searchProducts };

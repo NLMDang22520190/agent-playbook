@@ -1,0 +1,43 @@
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 93721bc..394310b 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -1,3 +1,5 @@
+ # Decisions
+ 
+ Product questions settled without asking (format in CONTRIBUTING.md).
++
++DECISION[D1]: invoiceFor repeated the tax rule on its own; it now reads the order's tax and total, as docs/invoicing.md says, so a company order does not show VAT on its invoice.
+diff --git a/src/invoice.js b/src/invoice.js
+index a80b2ca..739fd74 100644
+--- a/src/invoice.js
++++ b/src/invoice.js
+@@ -3,13 +3,13 @@
+ // The invoice of an order: what the customer is charged, line by line, in cents.
+ function invoiceFor(order, config) {
+   const t = order.totals;
+-  const vatCents = Math.floor((t.discountedCents * config.tax_percent + 50) / 100);
++  const vatCents = t.taxCents;
+   return {
+     goodsCents: t.goodsCents,
+     discountCents: t.discountCents,
+     shippingCents: t.shippingCents,
+     vatCents,
+-    totalCents: t.discountedCents + t.shippingCents + vatCents,
++    totalCents: t.totalCents,
+   };
+ }
+ 
+diff --git a/src/pricing.js b/src/pricing.js
+index bc47558..dc7afea 100644
+--- a/src/pricing.js
++++ b/src/pricing.js
+@@ -16,7 +16,7 @@ function priceOrder(cart, config) {
+   const discount = discountCents(goodsCents, cart.coupon, config.coupons);
+   const discountedCents = goodsCents - discount;
+   const shippingCents = discountedCents >= toCents(config.shipping.free_over) ? 0 : toCents(config.shipping.flat);
+-  const taxCents = Math.floor((discountedCents * config.tax_percent + 50) / 100);
++  const taxCents = cart.customerType === 'company' ? 0 : Math.floor((discountedCents * config.tax_percent + 50) / 100);
+   return {
+     goodsCents,
+     discountCents: discount,

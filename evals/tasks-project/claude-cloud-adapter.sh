@@ -7,6 +7,9 @@
 # runs the eval: install into a scratch home (install.sh install --home DIR --harness claude --yes --copy) and export
 # PB_EVAL_WITH_HOME=DIR; the without arm then keeps the real HOME, which must have no playbook.
 set -u
+# A file named .pb-eval-stop next to this script ends every later run at once (exit 3: the runner marks it ERROR, nothing is spent),
+# so a budget watcher can stop a long invocation without killing the runner, which writes its result file only at the end.
+[ -e "$(dirname "$0")/.pb-eval-stop" ] && { echo "adapter: stop file present, run skipped" >&2; exit 3; }
 home="${HOME:-/root}"
 if [ "${PB_EVAL_ARM:-}" = with ]; then
   [ -n "${PB_EVAL_WITH_HOME:-}" ] || { echo "adapter: PB_EVAL_WITH_HOME is not set for the with arm" >&2; exit 2; }
