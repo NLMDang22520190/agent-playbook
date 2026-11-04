@@ -6,9 +6,41 @@
 # The hinted restore `git checkout <base7> -- db/schema.sql`, run alone, must be allowed in all of them; everything blocked today stays
 # blocked. Runs real Git Bash and the real guard, no stub of git, cd or pwd.
 # "[today FAIL]" = fails before the fix; "[guard-rail]" = passes today and must stay (the allow-list must not widen).
-# Skips with a printed reason on hosts without such a mount (Linux, macOS): AC6.
-# Build the repo under the mount: TMPDIR=/tmp is set BEFORE lib.sh loads (PB_TMPBASE), but only where cygpath exists (MSYS/Cygwin).
-if command -v cygpath >/dev/null 2>&1 && [ -d /tmp ]; then export TMPDIR=/tmp; fi
+# Skips with a printed reason only where there is no cygpath (Linux, macOS: AC6) or where no unfolded mount can be had (below).
+# Where the mount comes from (AC7: it must RUN, not skip, in a Windows CI shard with real Git Bash):
+#  1. /tmp when it already is a Git Bash mount that pwd -P leaves unfolded (a laptop with the "usertemp" mount): the repos live in /tmp.
+#  2. otherwise (GitHub windows-latest: /tmp has the same physical path in both forms) a RUNTIME user mount: a mktemp dir under the drive
+#     form of the temp base is mounted at /pbmnt.<pid> with `mount DIR /pbmnt.<pid>`, and the repos are built under that mount point.
+#     The trap umounts it and removes the dir. No stub of git, cd or pwd.
+# PB_MT_FORCE_RUNTIME=1 skips step 1 (used only to prove step 2 on a host where step 1 applies; it changes no assertion).
+MT_MNT=""; MT_MNTDIR=""; MT_SRC=""; MT_PRESKIP=""
+mt_physdiff() { # DIR_IN_MOUNT_FORM -> 0 when pwd -P of the mount form and of its drive form differ; sets MT_PM MT_PD MT_DRV
+  local m
+  m="$(cygpath -m "$1")"; MT_DRV="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
+  MT_PM="$(cd -P -- "$1" 2>/dev/null && pwd -P)"; MT_PD="$(cd -P -- "$MT_DRV" 2>/dev/null && pwd -P)"
+  [ -n "$MT_PM" ] && [ -n "$MT_PD" ] && [ "$MT_PM" != "$MT_PD" ]
+}
+if command -v cygpath >/dev/null 2>&1; then
+  if [ -z "${PB_MT_FORCE_RUNTIME:-}" ] && [ -d /tmp ]; then
+    _p="$(mktemp -d /tmp/pbmprobe.XXXXXX 2>/dev/null)"
+    if [ -n "$_p" ] && mt_physdiff "$_p"; then MT_SRC="/tmp is already a mount that pwd -P leaves unfolded"; export TMPDIR=/tmp; fi
+    case "$_p" in /tmp/pbmprobe.??????) rmdir "$_p" 2>/dev/null ;; esac
+  fi
+  if [ -z "$MT_SRC" ]; then
+    _b="${TMPDIR:-/tmp}"; _bd="$(cygpath -m "$_b")"; _bd="/$(printf '%s' "${_bd%%:*}" | tr 'A-Z' 'a-z')${_bd#?:}"
+    MT_MNTDIR="$(mktemp -d "$_bd/pbmntbase.XXXXXX" 2>/dev/null)"
+    if [ -z "$MT_MNTDIR" ]; then MT_PRESKIP="cannot make a directory under the temp base [$_bd] to mount"
+    else
+      _mp="/pbmnt.$$"
+      mount "$(cygpath -m "$MT_MNTDIR")" "$_mp" >/dev/null 2>&1   # the source must be a Windows (mixed) path: a POSIX one gives EINVAL
+      if mount 2>/dev/null | grep -q " on $_mp type "; then
+        MT_MNT="$_mp"
+        if mt_physdiff "$MT_MNT"; then MT_SRC="runtime mount $MT_MNT -> $MT_MNTDIR"; export TMPDIR="$MT_MNT"
+        else MT_PRESKIP="the runtime mount [$MT_MNT] was made but pwd -P gives [$MT_PM] / [$MT_PD] for its mount and drive forms: no unfolded mount here"; fi
+      else MT_PRESKIP="the runtime mount of [$MT_MNTDIR] at [$_mp] could not be made"; fi
+    fi
+  fi
+fi
 . "$(dirname "$0")/lib.sh"
 . "$PB_ROOT/tests/guard-fixture.sh"
 MT_JUNC=""
@@ -16,7 +48,13 @@ mt_junc_rm() {
   # a directory junction is removed with rmdir so that no recursive delete ever walks through it
   if [ -n "$MT_JUNC" ]; then cmd //c "rmdir $(cygpath -w "$MT_JUNC")" >/dev/null 2>&1; MT_JUNC=""; fi
 }
-mt_cleanup() { mt_junc_rm; t_cleanup; }
+mt_mount_rm() {
+  # umount only after t_cleanup removed the repos, then rmdir (never rm -rf) the now empty base dir, by a checked literal name
+  if [ -n "$MT_MNT" ]; then umount "$MT_MNT" >/dev/null 2>&1; MT_MNT=""; fi
+  case "$MT_MNTDIR" in */pbmntbase.??????) rmdir "$MT_MNTDIR" 2>/dev/null ;; esac
+  MT_MNTDIR=""
+}
+mt_cleanup() { mt_junc_rm; t_cleanup; mt_mount_rm; }
 trap mt_cleanup EXIT
 trap 'mt_cleanup; exit 130' INT
 trap 'mt_cleanup; exit 143' TERM
@@ -25,22 +63,18 @@ trap 'mt_cleanup; exit 143' TERM
 MT_SKIP=""
 if ! command -v cygpath >/dev/null 2>&1; then
   MT_SKIP="no cygpath: this is not MSYS/Cygwin (Git Bash), there is no Windows drive/mount mix of one directory"
+elif [ -n "$MT_PRESKIP" ]; then MT_SKIP="$MT_PRESKIP"
 else
   PD="$(mk_tmp)"
-  _m="$(cygpath -m "$PD")"
-  PD_DRIVE="/$(printf '%s' "${_m%%:*}" | tr 'A-Z' 'a-z')${_m#?:}"
-  _pm="$(cd -P -- "$PD" 2>/dev/null && pwd -P)"
-  _pd="$(cd -P -- "$PD_DRIVE" 2>/dev/null && pwd -P)"
-  if [ -z "$_pm" ] || [ -z "$_pd" ]; then MT_SKIP="cannot cd to the temp dir in the mount form [$PD] or the drive form [$PD_DRIVE]"
-  elif [ "$_pm" = "$_pd" ]; then MT_SKIP="the temp dir has the same physical path in the mount form [$_pm] and the drive form [$_pd]: no mount that pwd -P leaves unfolded here"
-  fi
+  if ! mt_physdiff "$PD"; then MT_SKIP="the temp dir [$PD] has no unfolded mount form here (mount form [$MT_PM], drive form [$MT_PD])"; fi
+  _pm="$MT_PM"; _pd="$MT_PD"
 fi
 if [ -n "$MT_SKIP" ]; then
   t_skip 100 "AC6 mount cases not run: $MT_SKIP"
   t_summary
   exit $?
 fi
-echo "mount probe: mount form [$_pm] vs drive form [$_pd] (pwd -P differs: the defect class exists on this host)"
+echo "mount probe: source: $MT_SRC; mount form [$_pm] vs drive form [$_pd] (pwd -P differs: the defect class exists on this host)"
 
 HL="$GW/mount-hook.log"
 SN=0
@@ -63,7 +97,8 @@ fm() {
   esac
 }
 # tg FORM -> the label of a positive case: the mount form already works at baseline, the others do not
-tg() { if [ "$1" = mount ]; then printf '[guard-rail]'; else printf '[today FAIL]'; fi; }
+# (the mount form works at baseline only for /tmp: the old guard folds a C:/ toplevel to /tmp/..; a runtime mount /pbmnt.N is not folded back)
+tg() { if [ "$1" = mount ] && [ -z "$MT_MNT" ]; then printf '[guard-rail]'; else printf '[today FAIL]'; fi; }
 
 gs() { local a="${1:-false}"; [ "$#" -gt 0 ] && shift; : > "$HL"; grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$HL" "$@" -- "$(jstop "${SCW:-$R}" "$SID" "$a")" --stop; }
 gx() { local c="$1"; shift; : > "$HL"; grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$HL" "$@" -- "$(jbash "$c" "${CWDX:-$R}" "$SID")"; }
@@ -174,7 +209,7 @@ else
     MT_JUNC="$R/db"
     _jp="$(cd -P -- "$R/db" 2>/dev/null && pwd -P)"
     _op="$(cd -P -- "$OUTD/db" 2>/dev/null && pwd -P)"
-    if [ -n "$_jp" ] && [ "$_jp" = "$_op" ]; then LINKKIND=junction
+    if [ -n "$_jp" ] && { [ "$_jp" = "$_op" ] || [ "$(cygpath -m "$_jp")" = "$(cygpath -m "$_op")" ]; }; then LINKKIND=junction   # one directory, whatever mount spells it
     else printf '  note: junction made but cd -P does not resolve it (cd -P gives [%s], target [%s]) [D3]\n' "$_jp" "$_op"; fi
   else printf '  note: mklink /J failed [D3]\n'; fi
 fi
