@@ -1,13 +1,14 @@
 diff --git a/docs/decisions.md b/docs/decisions.md
-index 93721bc..ad3f40f 100644
+index 93721bc..77bfe29 100644
 --- a/docs/decisions.md
 +++ b/docs/decisions.md
-@@ -1,3 +1,5 @@
+@@ -1,3 +1,6 @@
  # Decisions
  
  Product questions settled without asking (format in CONTRIBUTING.md).
 +
 +DECISION[D1]: the amount paid for the goods (after the coupon, plus tax) is shared over the units in proportion to the unit price, largest remainder first, so the refunds of one order add up to exactly what was paid, whatever the return order (the policy says "what the customer paid for the items" but not how a coupon or the tax splits over several items).
++DECISION[D2]: the return window is the 14 days of config/returns.json, not the 30 days in docs/policy.md (the policy text says the running values are in config/); finance subtracts a refund on the day it is made.
 diff --git a/src/order-page.js b/src/order-page.js
 index dd39d91..344b38a 100644
 --- a/src/order-page.js
@@ -31,14 +32,13 @@ index dd39d91..344b38a 100644
  
 diff --git a/src/refunds.js b/src/refunds.js
 new file mode 100644
-index 0000000..a333c7f
+index 0000000..7739881
 --- /dev/null
 +++ b/src/refunds.js
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,63 @@
 +'use strict';
 +
 +const DAY = 86400000;
-+const WINDOW_DAYS = 30;
 +
 +function fail(code, message) {
 +  const err = new Error(message);
@@ -62,7 +62,7 @@ index 0000000..a333c7f
 +// by unit price, the shipping comes back with the last unreturned unit. A refused call changes nothing.
 +function refundItems(order, returns, ctx) {
 +  const days = (utcDay(ctx.now) - utcDay(order.placedAt)) / DAY;
-+  if (days > WINDOW_DAYS) throw fail('RETURN_WINDOW_CLOSED', 'the 30 day return window is closed');
++  if (days > ctx.config.returns.window_days) throw fail('RETURN_WINDOW_CLOSED', 'the return window is closed');
 +
 +  const returned = order.returned || {};
 +  const want = {};
@@ -99,3 +99,23 @@ index 0000000..a333c7f
 +}
 +
 +module.exports = { refundItems };
+diff --git a/src/reports.js b/src/reports.js
+index 8f37856..6dbe648 100644
+--- a/src/reports.js
++++ b/src/reports.js
+@@ -1,8 +1,13 @@
+ 'use strict';
+ 
+-// Revenue of one UTC day (YYYY-MM-DD), in cents: the orders placed that day.
++// Revenue of one UTC day (YYYY-MM-DD), in cents: the orders placed that day, minus the refunds made that day.
+ function dailyRevenue(orders, day) {
+-  return orders.filter((o) => o.placedAt.slice(0, 10) === day).reduce((sum, o) => sum + o.totals.totalCents, 0);
++  let cents = 0;
++  for (const o of orders) {
++    if (o.placedAt.slice(0, 10) === day) cents += o.totals.totalCents;
++    for (const r of o.refunds) if (r.at.slice(0, 10) === day) cents -= r.refundCents;
++  }
++  return cents;
+ }
+ 
+ module.exports = { dailyRevenue };

@@ -23,7 +23,7 @@ The order flow of a small web shop: price a cart, reserve stock, keep the order,
 
 `ctx` is `{ inventory, config, now }`. A cart is `{ lines: [{ sku, qty, unitCents }], coupon }`.
 
-Money rules are in `docs/money.md`, the shop's business rules in `docs/policy.md`. How we work is in `CONTRIBUTING.md`.
+Money rules are in `docs/money.md`, the shop's business rules in `docs/policy.md`, finance in `docs/finance.md`. How we work is in `CONTRIBUTING.md`.
 
 Run the tests with `npm test`.
 PB_TASK_EOF
@@ -51,6 +51,8 @@ PB_TASK_EOF
 cat > docs/policy.md <<'PB_TASK_EOF'
 # Shop policy
 
+The policy text, last reviewed in August. The values the shop actually runs on are in `config/`.
+
 ## Returns
 
 - A customer may return items from a paid order up to 30 days after it was placed. The day of the order is day 0, and days are
@@ -60,6 +62,16 @@ cat > docs/policy.md <<'PB_TASK_EOF'
 - Shipping is not refunded, except when the last unreturned item of the order is returned: then the shipping is refunded too.
 - Returned items go back into stock.
 - An order is never refunded for more than the customer paid, over all its refunds together.
+PB_TASK_EOF
+
+cat > docs/finance.md <<'PB_TASK_EOF'
+# Finance
+
+The dashboard shows revenue per UTC calendar day from `dailyRevenue(orders, day)` (`day` is `YYYY-MM-DD`, cents).
+
+- An order counts on the day it was placed, for what the customer paid.
+- Revenue is net of refunds: a refund is subtracted on the day the refund is made, not on the day of the order. A day with more
+  refunds than sales is negative.
 PB_TASK_EOF
 
 cat > docs/decisions.md <<'PB_TASK_EOF'
@@ -88,6 +100,12 @@ cat > config/shipping.json <<'PB_TASK_EOF'
 {
   "flat": "4.90",
   "free_over": "50.00"
+}
+PB_TASK_EOF
+
+cat > config/returns.json <<'PB_TASK_EOF'
+{
+  "window_days": 14
 }
 PB_TASK_EOF
 
@@ -125,7 +143,12 @@ const path = require('node:path');
 function loadConfig() {
   const dir = path.join(__dirname, '..', 'config');
   const read = (file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
-  return { coupons: read('coupons.json'), shipping: read('shipping.json'), tax_percent: read('tax.json').percent };
+  return {
+    coupons: read('coupons.json'),
+    shipping: read('shipping.json'),
+    tax_percent: read('tax.json').percent,
+    returns: read('returns.json'),
+  };
 }
 
 module.exports = { loadConfig };
@@ -243,6 +266,17 @@ function orderSummary(order) {
 module.exports = { orderSummary };
 PB_TASK_EOF
 
+cat > src/reports.js <<'PB_TASK_EOF'
+'use strict';
+
+// Revenue of one UTC day (YYYY-MM-DD), in cents: the orders placed that day.
+function dailyRevenue(orders, day) {
+  return orders.filter((o) => o.placedAt.slice(0, 10) === day).reduce((sum, o) => sum + o.totals.totalCents, 0);
+}
+
+module.exports = { dailyRevenue };
+PB_TASK_EOF
+
 cat > tests/pricing.test.js <<'PB_TASK_EOF'
 'use strict';
 const test = require('node:test');
@@ -298,6 +332,23 @@ test('placing an order reserves stock and the summary shows the totals', () => {
   assert.equal(inventory.stock('A'), 8);
   assert.equal(order.status, 'paid');
   assert.equal(orderSummary(order).totalCents, 2690);
+});
+PB_TASK_EOF
+
+cat > tests/reports.test.js <<'PB_TASK_EOF'
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { createInventory } = require('../src/inventory');
+const { placeOrder } = require('../src/orders');
+const { dailyRevenue } = require('../src/reports');
+const { loadConfig } = require('../src/config');
+
+test('revenue of a day is what customers paid for the orders placed that day', () => {
+  const ctx = { inventory: createInventory({ A: 9 }), config: loadConfig(), now: new Date('2026-03-01T10:00:00Z') };
+  const o = placeOrder({ lines: [{ sku: 'A', qty: 2, unitCents: 1000 }], coupon: null }, ctx);
+  assert.equal(dailyRevenue([o], '2026-03-01'), 2690);
+  assert.equal(dailyRevenue([o], '2026-03-02'), 0);
 });
 PB_TASK_EOF
 

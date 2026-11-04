@@ -9,6 +9,7 @@ const { placeOrder } = require('../src/orders');
 const { orderSummary } = require('../src/order-page');
 const { priceOrder } = require('../src/pricing');
 const { toCents, formatCents } = require('../src/money');
+const { dailyRevenue } = require('../src/reports');
 
 const NOW = new Date('2026-03-01T10:00:00Z');
 
@@ -37,6 +38,16 @@ test('a placed order is paid, has no refunds and its page matches the totals', (
   assert.equal(order.status, 'paid');
   assert.deepEqual(order.refunds, []);
   assert.equal(orderSummary(order).totalCents, order.totals.totalCents);
+});
+
+test('daily revenue sums the orders placed that UTC day', () => {
+  const inv = createInventory({ A: 9 });
+  const config = loadConfig();
+  const o1 = placeOrder({ lines: [{ sku: 'A', qty: 1, unitCents: 1000 }], coupon: null }, { inventory: inv, config, now: new Date('2026-03-01T00:00:01Z') });
+  const o2 = placeOrder({ lines: [{ sku: 'A', qty: 1, unitCents: 2000 }], coupon: null }, { inventory: inv, config, now: new Date('2026-03-01T23:59:59Z') });
+  const o3 = placeOrder({ lines: [{ sku: 'A', qty: 1, unitCents: 3000 }], coupon: null }, { inventory: inv, config, now: new Date('2026-03-02T00:00:00Z') });
+  assert.equal(dailyRevenue([o1, o2, o3], '2026-03-01'), o1.totals.totalCents + o2.totals.totalCents);
+  assert.equal(dailyRevenue([o1, o2, o3], '2026-03-02'), o3.totals.totalCents);
 });
 
 test('money helpers', () => {

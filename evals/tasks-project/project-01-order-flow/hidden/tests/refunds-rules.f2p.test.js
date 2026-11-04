@@ -63,15 +63,15 @@ test('a fixed coupon: both items carry half of the discount, the last return add
   assert.equal(refundItems(order, [{ sku: 'A', qty: 1 }], ctx).refundCents, 1865);
 });
 
-test('day 30 by UTC date is still allowed, day 31 is not', () => {
+test('the window the shop runs on (config/returns.json) counts days by UTC date: the last day is allowed, the next is not', () => {
   const placed = new Date('2026-01-01T23:59:59Z');
   const { inventory, ctx, order } = setup([{ sku: 'A', qty: 2, unitCents: 1000 }], null, { A: 10 }, placed);
-  const late = { ...ctx, now: new Date('2026-02-01T00:00:00Z') };
+  const late = { ...ctx, now: new Date('2026-01-16T00:00:00Z') };
   assert.throws(() => refundItems(order, [{ sku: 'A', qty: 1 }], late), { code: 'RETURN_WINDOW_CLOSED' });
   assert.equal(order.refunds.length, 0);
   assert.equal(order.status, 'paid');
   assert.equal(inventory.stock('A'), 8);
-  const edge = { ...ctx, now: '2026-01-31T00:00:01Z' };
+  const edge = { ...ctx, now: '2026-01-15T00:00:01Z' };
   assert.equal(refundItems(order, [{ sku: 'A', qty: 1 }], edge).refundCents, 1100);
 });
 
