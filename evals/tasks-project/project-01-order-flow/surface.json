@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {
+      "name": "finance report nets refunds (hidden second place)",
+      "test": "tests/refunds-report.f2p.test.js",
+      "pattern": "dailyRevenue|reports\\.js|finance\\.md|revenue report"
+    }
+  ]
+}

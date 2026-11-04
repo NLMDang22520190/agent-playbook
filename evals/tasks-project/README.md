@@ -64,3 +64,22 @@ Median cost per run: about 0.80 USD with the playbook, 0.18 without (4.4 times).
   `cost.sh` did not run as intended. The adapter does not allow the `Agent` tool by name, yet 4 runs started sub-agents, so some did work.
 - The invented error code of one earlier without-arm run did not recur: the with arm stayed on the two codes of the ticket in 5/5 runs.
 - k=5 per arm. Without-arm pass rates seen for this task: 1/3 (first attempt), 4/5 (this one).
+
+### Fixed, surfaced or missed (`outcome-classes.js`)
+
+`node evals/tasks-project/outcome-classes.js RESULT.json` reads the runner's JSON and each run's final reply (`<stem>.runs/<label>.log.result`)
+and splits a failed hidden test into SURFACED (the reply names the problem, so it is left for the user) and MISSED, using
+`surface.json` of the task. It is a text heuristic; it prints the matching line so a reader can confirm it.
+
+| Arm (Sonnet 5.5) | Runs | Finance report: fixed | surfaced | missed |
+|---|---|---|---|---|
+| with playbook, first run (all tools denied often) | 5 | 0 | 5 | 0 |
+| with playbook, second run (`--add-dir` for the playbook home, `Agent` allowed) | 3 | 1 | 2 | 0 |
+| without | 5 | 4 | 1 | 0 |
+
+No run missed the problem. What differs is what the run does about it: the with arm names it and leaves it for the user in 7 of 8 runs,
+the without arm fixes it in 4 of 5. The second with-arm run still met 5 to 10 refused tool calls per run (git writes, commands with several
+operations, heredocs with braces); the bypass-permissions mode that would remove them is blocked in this session, so the with-arm cost
+(0.30 to 0.79 USD per run, 0.18 without) is an upper bound.
+
+Other hidden tests, with arm over its 8 runs: `refunds-rules` 8/8 (without 4/5), `decisions-logged` 7/8 (without 4/5).

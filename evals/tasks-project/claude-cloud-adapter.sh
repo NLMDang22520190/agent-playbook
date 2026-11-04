@@ -12,10 +12,13 @@ if [ "${PB_EVAL_ARM:-}" = with ]; then
   [ -n "${PB_EVAL_WITH_HOME:-}" ] || { echo "adapter: PB_EVAL_WITH_HOME is not set for the with arm" >&2; exit 2; }
   home="$PB_EVAL_WITH_HOME"
 fi
+extra=()
+# the with arm reads the playbook scripts and conf under its own home; the without arm has nothing there to read
+[ "${PB_EVAL_ARM:-}" = with ] && [ -d "$home/.agents" ] && extra=(--add-dir "$home/.agents")
 settings=()
 [ -n "${PB_EVAL_SETTINGS:-}" ] && settings=(--settings "$PB_EVAL_SETTINGS")
 cd "$1" && HOME="$home" claude -p --output-format stream-json --verbose --model "${PB_EVAL_MODEL:-claude-sonnet-5-5}" \
   "${settings[@]+"${settings[@]}"}" \
-  --permission-mode acceptEdits \
-  --allowedTools "Bash(node:*)" "Bash(npm:*)" "Bash(git:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)" "Bash(bash:*)" "Skill" \
+  --permission-mode acceptEdits "${extra[@]+"${extra[@]}"}" \
+  --allowedTools "Bash(node:*)" "Bash(npm:*)" "Bash(git:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)" "Bash(bash:*)" "Skill" "Agent" \
   < "$2"
