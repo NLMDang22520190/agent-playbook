@@ -351,20 +351,21 @@ if [ -n "$SHARD" ]; then t_ok "v14 AC8.2 a separate shard job on windows-latest 
 SB="$(wf_block "${SHARD:-__none__}")"
 assert_contains "v14 AC8.2 the shard job runs on windows-latest" "$SB" "windows-latest"
 MATRIX_LINE="$(printf '%s\n' "$SB" | grep -E '^ *shard: *\[')"
-assert_contains "v0.30.0 the shard matrix is exactly 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 8/8" "$MATRIX_LINE" "shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']"
-assert_eq "v0.30.0 the matrix line is nothing but the eight-entry list" "shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
-for k in 1 2 3 4 5 6 7 8; do
-  assert_contains "v0.30.0 the shard matrix has $k/8" "$SB" "$k/8"
+assert_contains "v0.34.0 A1 the shard matrix is exactly 1/10 .. 10/10" "$MATRIX_LINE" "shard: ['1/10', '2/10', '3/10', '4/10', '5/10', '6/10', '7/10', '8/10', '9/10', '10/10']"
+assert_eq "v0.34.0 A1 the matrix line is nothing but the ten-entry list" "shard: ['1/10', '2/10', '3/10', '4/10', '5/10', '6/10', '7/10', '8/10', '9/10', '10/10']" "$(printf '%s' "$MATRIX_LINE" | sed 's/^ *//')"
+for k in 1 2 3 4 5 6 7 8 9 10; do
+  assert_contains "v0.34.0 A1 the shard matrix has '$k/10'" "$SB" "'$k/10'"
 done
+assert_not_contains "v0.34.0 A1 no matrix entry ending in /8' is left" "$SB" "/8'"
 assert_not_contains "v0.30.0 no matrix entry ending in /7' is left" "$SB" "/7'"
 assert_not_contains "v0.28.0 no matrix entry ending in /6' is left" "$SB" "/6'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /4' is left" "$SB" "/4'"
 assert_not_contains "v0.24.19 AC1 no matrix entry ending in /3' is left" "$SB" "/3'"
-assert_contains "v0.30.0 the windows-shard comment says the Windows split is eight: 'split in eight'" "$SB" "split in eight"
-assert_not_contains "v0.30.0 the windows-shard comment no longer says 'split in seven'" "$SB" "split in seven"
+assert_contains "v0.34.0 A1 the windows-shard comment says the Windows split is ten: 'split in ten'" "$SB" "split in ten"
+assert_not_contains "v0.34.0 A1 the windows-shard comment no longer says 'split in eight'" "$SB" "split in eight"
 assert_not_contains "v0.24.19 AC1 the windows-shard comment no longer says 'split in four'" "$SB" "split in four"
-assert_contains "v0.30.0 the workflow comment says Windows runs as 'eight parallel shards'" "$(cat "$WF")" "eight parallel shards"
-assert_not_contains "v0.30.0 the workflow no longer says 'seven parallel shards'" "$(cat "$WF")" "seven parallel shards"
+assert_contains "v0.34.0 A1 the workflow comment says Windows runs as 'ten parallel shards'" "$(cat "$WF")" "ten parallel shards"
+assert_not_contains "v0.34.0 A1 the workflow no longer says 'eight parallel shards'" "$(cat "$WF")" "eight parallel shards"
 assert_not_contains "v0.24.19 AC1 the workflow no longer says 'four parallel shards'" "$(cat "$WF")" "four parallel shards"
 # AC7: the quoted "windows shard k/n" names of tools/ci-tree-tested.sh (the header comment has them unquoted) are exactly the matrix entries
 CIT="$PB_ROOT/tools/ci-tree-tested.sh"
@@ -393,8 +394,10 @@ MAC_MATRIX_SET="$(printf '%s\n' "$MAC_MATRIX_LINE" | grep -oE '[0-9]+/[0-9]+' | 
 assert_eq "v0.24.21 AC3 ci-tree-tested.sh checks exactly the macos-shard matrix entries (same set and count)" "$MAC_MATRIX_SET" "$NEED_MAC_SET"
 if [ -n "$NEED_MAC_SET" ] && [ -n "$MAC_MATRIX_SET" ]; then t_ok "v0.24.21 AC3 both macOS sides are non-empty"; else t_bad "v0.24.21 AC3 both macOS sides are non-empty" "need [$NEED_MAC_SET] matrix [$MAC_MATRIX_SET]"; fi
 CIT_HEAD="$(sed -n '1,30p' "$CIT" | sed 's/^# *//' | tr '\n' ' ' | tr -s ' ')"
-assert_contains "v0.30.0 the ci-tree-tested.sh header counts 'eleven suite jobs'" "$CIT_HEAD" "eleven suite jobs"
-assert_contains "v0.30.0 the ci-tree-tested.sh header counts 'thirteen green jobs'" "$CIT_HEAD" "thirteen green jobs"
+assert_contains "v0.34.0 A1 the ci-tree-tested.sh header counts 'thirteen suite jobs'" "$CIT_HEAD" "thirteen suite jobs"
+assert_contains "v0.34.0 A1 the ci-tree-tested.sh header counts 'fifteen green jobs'" "$CIT_HEAD" "fifteen green jobs"
+assert_not_contains "v0.34.0 A1 the ci-tree-tested.sh header no longer says 'eleven suite jobs'" "$CIT_HEAD" "eleven suite jobs"
+assert_not_contains "v0.34.0 A1 the ci-tree-tested.sh header no longer says 'thirteen green jobs'" "$CIT_HEAD" "thirteen green jobs"
 assert_not_contains "v0.30.0 the ci-tree-tested.sh header no longer says 'ten suite jobs'" "$CIT_HEAD" "ten suite jobs"
 assert_not_contains "v0.30.0 the ci-tree-tested.sh header no longer says 'twelve green jobs'" "$CIT_HEAD" "twelve green jobs"
 assert_not_contains "v0.28.0 the ci-tree-tested.sh header no longer says 'nine suite jobs'" "$CIT_HEAD" "nine suite jobs"
@@ -1243,6 +1246,23 @@ assert_contains "v0.24.21 AC3a the Release PR check step keeps the exact matrix.
 RCSTEP="$(wf_step "${MAIN:-__none__}" 'README test count (Linux only)')"
 if [ -n "$RCSTEP" ]; then t_ok "v0.24.21 AC3a the test job keeps the README test count step"; else t_bad "v0.24.21 AC3a the test job keeps the README test count step" "block: $MB"; fi
 assert_contains "v0.24.21 AC3a the README test count step keeps the matrix.os == 'ubuntu-latest' condition" "$(step_if "$RCSTEP")" "matrix.os == 'ubuntu-latest'"
+# v0.34.0 A4 (D3): the count step also runs when the tests passed and only the Release gate step failed, so the CI check
+# reader (release gate G1) sees a real count result. Shape: !cancelled() plus "the tests step succeeded" by that step's id.
+RCIF="$(step_if "$RCSTEP")"
+TSTEP="$(wf_step "${MAIN:-__none__}" 'Tests and static checks')"
+TSID="$(printf '%s\n' "$TSTEP" | grep -m1 -E '^        id:|^      - id:' | sed -E 's/^[[:space:]]*(- )?id:[[:space:]]*//; s/[[:space:]]*$//')"
+if [ -n "$TSID" ]; then t_ok "v0.34.0 A4 the 'Tests and static checks' step of the test job has an id ($TSID)"; else t_bad "v0.34.0 A4 the 'Tests and static checks' step of the test job has an id" "step: $TSTEP"; fi
+assert_contains "v0.34.0 A4 the README count step runs also after a failed step: its if has !cancelled()" "$RCIF" '!cancelled()'
+case "$RCIF" in *"steps.$TSID.outcome == 'success'"*|*"steps.$TSID.conclusion == 'success'"*) t_ok "v0.34.0 A4 the README count step requires the tests step ($TSID) to have succeeded" ;; *) t_bad "v0.34.0 A4 the README count step requires the tests step to have succeeded" "id [$TSID] if: $RCIF" ;; esac
+assert_not_contains "v0.34.0 A4 the README count step does not use always()" "$RCIF" 'always()'
+assert_contains "v0.34.0 A4 the README count step keeps the docs_only skip" "$RCIF" 'docs_only'
+RGSTEP="$(wf_step "${MAIN:-__none__}" 'Release gate (a PR that changes VERSION needs a committed passing gate)')"
+if [ -n "$RGSTEP" ]; then t_ok "v0.34.0 A4 the test job keeps the Release gate step"; else t_bad "v0.34.0 A4 the test job keeps the Release gate step" "block: $MB"; fi
+RGID="$(printf '%s\n' "$RGSTEP" | grep -m1 -E '^        id:|^      - id:' | sed -E 's/^[[:space:]]*(- )?id:[[:space:]]*//; s/[[:space:]]*$//')"
+if [ -n "$RGID" ]; then assert_not_contains "v0.34.0 A4 the README count step does not depend on the Release gate step's result" "$RCIF" "steps.$RGID."; else t_ok "v0.34.0 A4 the Release gate step has no id, so the count step cannot depend on it"; fi
+GATE_LN="$(printf '%s\n' "$MB" | grep -n -m1 'name: Release gate (a PR that changes VERSION' | cut -d: -f1)"
+RC_LN="$(printf '%s\n' "$MB" | grep -n -m1 'name: README test count (Linux only)' | cut -d: -f1)"
+if [ -n "$GATE_LN" ] && [ -n "$RC_LN" ] && [ "$GATE_LN" -lt "$RC_LN" ]; then t_ok "v0.34.0 A4 the README count step stays after the Release gate step (it is the one that must run past its failure)"; else t_bad "v0.34.0 A4 the README count step stays after the Release gate step" "gate line [$GATE_LN] count line [$RC_LN]"; fi
 
 # --- v0.23.0 review: the shas reach the changes job through env:, never interpolated into the script text
 echo "v23.0 review: changes passes the shas through env:"
@@ -2486,5 +2506,25 @@ if printf '%s' "$S6RT" | grep -Eq '(rule|rules)? ?\(f\)'; then t_ok "AC3 RUBRIC.
 if printf '%s' "$S6RT" | grep -Eq '\(g\)'; then t_ok "AC3 RUBRIC.md: the gate text names rule (g)"; else t_bad "AC3 RUBRIC.md: the gate text names rule (g)" "no (g) in the gate text"; fi
 assert_contains "AC3 RUBRIC.md: the gate text names the previous release (baseline) comparison" "$S6RT" "previous release"
 assert_contains "AC3 RUBRIC.md: the gate text names the safety floor" "$S6RT" "safety floor"
+
+# --- v0.34.0 B1 G3: docs/development.md "Maintainer tools": the order is push the release commit, open the PR, wait until CI is green except
+# the Release gate step, then run the gate (old order: gate first, PR last). The numbered steps of the section are read line by line.
+MT_STEPS="$(awk '/^## Maintainer tools/ { f = 1; next } /^## / { f = 0 } f && /^[0-9]+\. / { print }' "$DEVDOC")"
+mt_idx() { printf '%s\n' "$MT_STEPS" | grep -niE -- "$1" | head -n 1 | cut -d: -f1; }
+MT_PUSH="$(mt_idx 'push')"; MT_PR="$(mt_idx 'open the PR|gh pr create')"; MT_WAIT="$(mt_idx '(CI|checks?)[^.]{0,120}green|green[^.]{0,120}(CI|checks?)')"
+MT_GATE="$(mt_idx 'tools/release-gate\.sh --harness')"; MT_SHIP="$(mt_idx 'tools/ship\.sh')"
+mt_before() { # NAME A B: both steps exist and A is the same step as B or an earlier one (a step may hold two of the actions)
+  if [ -n "$2" ] && [ -n "$3" ] && [ "$2" -le "$3" ]; then t_ok "$1"; else t_bad "$1" "step indexes: [$2] before [$3] (push=$MT_PUSH pr=$MT_PR wait=$MT_WAIT gate=$MT_GATE ship=$MT_SHIP)"; fi
+}
+mt_before 'G3 development.md Maintainer tools: the release commit is pushed before the PR is opened' "$MT_PUSH" "$MT_PR"
+mt_before 'G3 development.md Maintainer tools: the PR is opened before the gate is run' "$MT_PR" "$MT_GATE"
+mt_before 'G3 development.md Maintainer tools: a step waits for CI to be green before the gate is run' "$MT_WAIT" "$MT_GATE"
+mt_before 'G3 development.md Maintainer tools: the PR is opened before the step that waits for CI' "$MT_PR" "$MT_WAIT"
+mt_before 'G3 development.md Maintainer tools: the gate is run before tools/ship.sh' "$MT_GATE" "$MT_SHIP"
+if printf '%s\n' "$MT_STEPS" | sed -n "${MT_WAIT:-0}p" | grep -qiE 'except[^.]{0,60}Release gate|Release gate[^.]{0,60}(excepted|excluded|aside)|apart from[^.]{0,60}Release gate|other than[^.]{0,60}Release gate'; then
+  t_ok 'G3 development.md Maintainer tools: the waiting step says CI must be green except the Release gate step'
+else t_bad 'G3 development.md Maintainer tools: the waiting step says CI must be green except the Release gate step' "waiting step: [$(printf '%s\n' "$MT_STEPS" | sed -n "${MT_WAIT:-0}p" | cut -c1-200)]"; fi
+sec_flat_has 'G3 development.md Maintainer tools names --skip-ci-check (the override of the gate CI check, G2)' "$DEVDOC" '^## Maintainer tools' '--skip-ci-check'
+sec_flat_has 'G3 development.md Maintainer tools names --add-batch (a used out DIR is refused, M1)' "$DEVDOC" '^## Maintainer tools' '--add-batch'
 
 t_summary

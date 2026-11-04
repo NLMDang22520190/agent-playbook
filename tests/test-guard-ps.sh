@@ -693,6 +693,33 @@ git push -f *> all.txt
 git push -f >> log.txt 2>&1
 EOF
 
+# M12 the PowerShell all-streams redirection *>&1 / *>&2 / *>> is a redirection, not an argument and not a parse failure (a failed parse
+# would fail open, so a delete or force push behind it must still block). [characterization: the guard already handles these]
+pas <<'EOF2'
+git status *>&1
+Remove-Item -Recurse .\build *>&1
+Remove-Item -Recurse .\build *>&2
+Remove-Item -Recurse .\build *>&1 | Out-Null
+Remove-Item *>&1 -Recurse .\build
+Remove-Item -Recurse .\build 4>&1 5>&1 *>&1
+Remove-Item -Recurse .\build *>&1; Remove-Item -Recurse .\dist
+EOF2
+blk rm-outside <<'EOF2'
+Remove-Item -Recurse C:\Users\me\docs *>&1
+Remove-Item -Recurse C:\Users\me\docs *>&2
+Remove-Item *>&1 -Recurse C:\Users\me\docs
+Remove-Item -Recurse -Force C:\Users\me\docs *>&1 | Out-Null
+Write-Output hi *>&1; Remove-Item -Recurse C:\Users\me\docs
+Remove-Item -Recurse .\build *>&1; Remove-Item -Recurse C:\Users\me\docs
+EOF2
+blk git-push-force <<'EOF2'
+git push -f *>&1
+git push --force origin main *>&1 | Out-Null
+git push --force origin main 3>&1 *>&1
+& git push --force *>&1
+Write-Output hi *>&1; git push --force
+EOF2
+
 echo "P1 AC-P9 wrappers are not followed (documented Limits); D1 fail-open"
 pas <<'EOF'
 iex "git status"

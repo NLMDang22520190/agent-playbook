@@ -235,7 +235,7 @@ and pass it when starting the role. `session` means do not override the session 
 A configured model is binding: the agent never upgrades or downgrades it on its own judgement (a hard task or Full weight is not a reason). Before starting roles, print `role-model.sh plan --harness <h>`.
 Ask the user once, with the reason and the cost difference, only when you want a different model, when a role resolves to session on a Full task, or when confirm_models=always.
 confirm_models=on-change is the default (an unknown value counts as on-change); never ask when confirm_models=never. Headless: use the conf, never upgrade, never block.
-Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
+Two more roles route by task type. Mechanical work (release prep, counts, weights, formatting) uses the `mechanical` model (`role-model.sh mechanical`; which steps to hand it: `references/harnesses.md`), which never falls back to another role's model. Use `reviewer_light` for a review of a diff that only touches tests, docs or skill text; code changes keep the `reviewer` model (`reviewer_light` falls back to it when unset). Build every
 sub-agent prompt from `templates/role-prompt.md`. For the mechanical RED or GREEN step
 (gate, then the test command as evidence, optional checkpoint commit) use
 `bash ~/.agents/playbook/scripts/tdd-step.sh red|green` (`--base` red, `--baseline` both).

@@ -12,7 +12,6 @@ export PLAYBOOK_REGISTRY="$(mk_tmp)/registry"   # never write the real repo's .i
 
 HAVE_NODE=0
 if command -v node >/dev/null 2>&1 && node -e '' >/dev/null 2>&1; then HAVE_NODE=1; fi
-[ "$HAVE_NODE" = 1 ] || echo "note: node not found: the uninstall-removes-hooks tests are skipped (the merge needs node, D12)"
 ck() { cksum < "$1" 2>/dev/null; }
 has_line() { # name text line
   if printf '%s\n' "$2" | grep -qxF -- "$3"; then t_ok "$1"; else t_bad "$1" "no line [$3] in [$2]"; fi

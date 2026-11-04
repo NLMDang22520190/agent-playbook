@@ -3,7 +3,7 @@
 # only by the task's hidden tests: every fail_to_pass file must pass and every pass_to_pass file must still pass.
 #   run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks-dir DIR] [--tasks id1,id2]
 #                  [--workroot DIR] [--out FILE] [--timeout SECONDS] [--clean-env] [--interactive] [--max-cost USD]
-#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR] [--preflight]
+#                  [--model M] [--arm with|without|both] [--repeat K] [--variant DIR] [--jobs N] [--preflight]
 # --preflight (v0.33.0): checks, without cost, what this command line would refuse with exit 3 (node, git, for --harness the CLI of the
 # harness on PATH, and a python3 that really runs when a selected task has language=python3), then exits 0 with no output, or exits 3
 # with the reason on stderr. It starts no run, makes no workdir, writes no --out file or evidence dir, leaves --workroot alone and never
@@ -54,13 +54,38 @@
 # H/.agents/playbook-backups only those the runner's own install and doctor calls made are removed after the restore; a lock path that is not a directory or a H/.agents
 # that is not writable gives exit 3; a stale lock is taken over while holding the lock; after a failed restore every exit is 5.
 # Every run also records the model_* keys of the playbook conf that the with arm gets ("Conf models:" line, JSON "conf_models").
+# ERROR runs (v0.34, decision D8): a WITH-arm run whose adapter failed (ERROR) still records the check "nothing written outside the
+# workdir" (PASS or FAIL, printed after the "<label> ERROR harness: ..." line, in the run's JSON "checks"); no hidden file is copied or run
+# and there is no "hidden tests" check. Status "error", the md row, n and the exit code 4 stay as they were. A without-arm ERROR run has no checks.
+# --print-hashes (v0.34, T4; tools/release-gate.sh): prints one line "<task> <scenario_sha> <grader_sha> <harness_sha>" per task of --tasks, the same
+# hashes the runs record (one source), and exits 0: no run, no workroot, no --out file, no variant check.
+# Every run of the JSON also has scenario_sha (the hash of the task directory tree: sorted file paths and their blob hashes), grader_sha
+# (this script plus lib-harness.sh, transcript.js, facts.js, codex-jsonl.js, make-fixture.sh and codex-adapter.sh: D23) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
+# (evals/lib-harness.sh "Per-run hashes"). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run.
+# --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time, each with its own workdir
+# (<workroot>/<label>), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of
+# --jobs 1 and measure the same things. Each run's output lines (stderr, then stdout) are printed as one block when the run ends, so the
+# blocks come in the order the runs end. --max-cost is checked before each run starts, against the runs that have FINISHED by then: up
+# to N-1 runs may be in flight (their cost is not known yet), so the cap is approximate by up to N-1 runs; the note "cost unknown"
+# can then appear once per run that starts before the first unknown cost is merged. Under --jobs N>1 each run gets a private root,
+# <workroot>/.jobs/<label>/ (its workdir <workroot>/.jobs/<label>/<label>, .log and .prompt live there), so the stray check ("nothing
+# written outside the workdir") sees that run's writes only and never blames a run for another one. A write into the shared workroot
+# itself cannot be attributed to a run under --jobs N>1 and is not checked. Transcripts and diffs keep their place and names in
+# ${OUT%.md}.runs/<label>.*; the "Workroot:" line and the JSON "workroot" stay the shared root. --jobs 1 keeps <workroot>/<label>. With --variant the install, the doctor
+# call and the restore happen once, in the parent (before the first run starts and after the last one ends); INT, TERM and HUP stop the
+# running runs, then restore. A run that dies (a "cannot ..." exit) stops the others and ends the runner with its exit code.
+# --variant-held DIR (internal, for tools/release-gate.sh; not with --variant): the variant is already installed by an outer process
+# that holds the lock and stays alive. The runner only checks that H/.agents/.pb-variant.lock exists, that the pid in it is alive and that
+# the installed VERSION is DIR's (pbh_variant_held in evals/lib-harness.sh), then records the same variant object as --variant (JSON
+# "variant", the "Variant:" line says the install is held by an outer process); it never installs, runs doctor or restores, and takes
+# nothing over. Same refusals as --variant for --cmd and --arm without alone; exit 2 when the check fails, before anything starts.
 # --model, --arm, --repeat, --max-cost and --timeout work as in evals/run-evals.sh (its header has the details), and so
 # does its leak probe (--harness claude with the without arm: exit 3 when claude still sees the playbook block); the
 # presets, model flags, arm settings files, the pb-evals/1 JSON and its statistics come from evals/lib-harness.sh. Every
 # run gets its own temp PLAYBOOK_HOME (with arm: a copy of the playbook conf without feedback_repo; without arm: empty)
 # and its own TMPDIR, removed after the run; HOME stays the real one. --cmd adapters get PB_EVAL_MODEL and, with --arm or
 # --repeat, PB_EVAL_ARM and PB_EVAL_SETTINGS.
-# An adapter that exits non-zero, times out or shows an auth failure makes the run ERROR: it is not graded and no hidden
+# An adapter that exits non-zero, times out or shows an auth failure makes the run ERROR: it is not counted (a with-arm run only gets its stray check) and no hidden
 # file is copied. ERROR and SKIPPED runs never count in n.
 # Writes a markdown results file (default evals/results/<YYYY-MM-DD>-outcome-<harness or custom>-<HHMMSS>.md) with one
 # line per arm (pass@1 over all graded runs, pass^K = share of complete tasks whose every run passed) and one row per
@@ -91,12 +116,19 @@ rm_dir() {
   if [ -e "$1" ] && [ ! -L "$1" ]; then chmod -R u+rwx "$1" 2>/dev/null; rm -rf "$1" 2>/dev/null; fi
   return 0
 }
-cleanup() {
-  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$CUR_BASE"; rm_dir "$SET_DIR"
-  if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
-  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""; SET_DIR=""; ND_FILE=""
+# job_clean: the temp dirs of the running run (also the exit trap of one run of a --jobs fan-out)
+job_clean() {
+  rm_dir "$CUR_HOME"; rm_dir "$CUR_TMP"; rm_dir "$CUR_GRADE"; rm_dir "$CUR_IDX"; rm_dir "$CUR_BASE"
+  CUR_HOME=""; CUR_TMP=""; CUR_GRADE=""; CUR_IDX=""; CUR_BASE=""
 }
-stop_adapter() { if [ -n "$ADPID" ]; then kill "$ADPID" 2>/dev/null; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
+cleanup() {
+  pbh_jobs_kill   # --jobs: the running runs first
+  job_clean; rm_dir "$SET_DIR"; rm_dir "$JOBS_DIR"
+  if [ -n "$ND_FILE" ]; then rm -f "$ND_FILE"; fi
+  SET_DIR=""; JOBS_DIR=""; ND_FILE=""
+}
+job_stop() { stop_adapter; job_clean; }
+stop_adapter() { if [ -n "$ADPID" ]; then pbh_kill_tree "$ADPID"; wait "$ADPID" 2>/dev/null; ADPID=""; fi; }
 # --variant: the snapshot is put back on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
 on_exit() { cleanup; pbh_variant_finalize || exit 5; }
 on_signal() { stop_adapter; cleanup; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }
@@ -104,13 +136,13 @@ set_traps() { trap 'on_exit' EXIT; trap 'on_signal 130' INT; trap 'on_signal 143
 set_traps
 
 HARNESS=""; CMD=""; TASKS_DIR="$EVALS/tasks"; SELECT=""; WORKROOT=""; OUT=""; TIMEOUT=""; INTERACTIVE=0; CLEAN_ENV=0
-VARIANT=""; VARIANT_SET=0
-MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0
+VARIANT=""; VARIANT_SET=0; VHELD=""; VHELD_SET=0; VARIANT_HELD=0; JOBS=1; JOBS_SET=0; JOBS_DIR=""
+MAX_COST=""; MAX_COST_SET=0; MODEL=""; MODEL_SET=0; ARM_OPT=""; ARM_SET=0; REPEAT_OPT=""; REPEAT_SET=0; PREFLIGHT=0; PRINTH=0
 # where the conf copy is read from: the caller's playbook home (PLAYBOOK_HOME, else HOME), before any run replaces it
 SRC_CONF="$(pb_home)/.agents/playbook.conf"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --harness|--cmd|--tasks-dir|--tasks|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant)
+    --harness|--cmd|--tasks-dir|--tasks|--workroot|--out|--timeout|--max-cost|--model|--arm|--repeat|--variant|--variant-held|--jobs)
       [ $# -ge 2 ] || pb_die "$1 needs a value" 2 ;;
   esac
   case "$1" in
@@ -126,9 +158,12 @@ while [ $# -gt 0 ]; do
     --arm)       ARM_OPT="$2"; ARM_SET=1; shift ;;
     --repeat)    REPEAT_OPT="$2"; REPEAT_SET=1; shift ;;
     --variant)   VARIANT="$2"; VARIANT_SET=1; shift ;;
+    --variant-held) VHELD="$2"; VHELD_SET=1; shift ;;
+    --jobs)      JOBS="$2"; JOBS_SET=1; shift ;;
     --interactive) INTERACTIVE=1 ;;
     --clean-env) CLEAN_ENV=1 ;;
     --preflight) PREFLIGHT=1 ;;
+    --print-hashes) PRINTH=1 ;;
     -h|--help)   usage ;;
     *) printf 'error: unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -169,13 +204,22 @@ if [ "$REPEAT_SET" = 1 ]; then
     *) pb_die "--repeat needs a whole number from 1 to 99, got: $REPEAT_OPT" 2 ;;
   esac
 fi
+if [ "$JOBS_SET" = 1 ]; then pbh_jobs_valid "$JOBS" || pb_die "--jobs needs a whole number from 1 to 16, got: $JOBS" 2; fi
 # --variant: refusals before anything is touched (exit 2); a run without it only warns about a locked home
-if [ "$VARIANT_SET" = 1 ]; then
+if [ "$VHELD_SET" = 1 ]; then
+  [ "$VARIANT_SET" = 0 ] || pb_die "--variant-held cannot be used with --variant (the outer process holds the install)" 2
+  [ -z "$CMD" ] || pb_die "--variant-held cannot be used with --cmd (the install is made for a --harness preset)" 2
+  [ "$ARMS" != without ] || pb_die "--variant-held cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
+  vwhy="$(pbh_variant_check "$VHELD")" || pb_die "--variant-held: ${vwhy#--variant: }" 2
+  case "$VHELD" in /*) ;; *) VHELD="$PWD/$VHELD" ;; esac
+  VARIANT="$VHELD"; VARIANT_SET=1; VARIANT_HELD=1
+  if [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then pbh_variant_held "$VHELD" "$(pbh_variant_home)" || exit $?; fi
+elif [ "$VARIANT_SET" = 1 ]; then
   [ -z "$CMD" ] || pb_die "--variant cannot be used with --cmd (the install is made for a --harness preset)" 2
   [ "$ARMS" != without ] || pb_die "--variant cannot be used with --arm without alone (no with run would load the variant; use --arm with or both)" 2
   vwhy="$(pbh_variant_check "$VARIANT")" || pb_die "$vwhy" 2
   case "$VARIANT" in /*) ;; *) VARIANT="$PWD/$VARIANT" ;; esac
-elif [ "$PREFLIGHT" = 0 ]; then   # a --preflight prints nothing when the runner could start
+elif [ "$PREFLIGHT" = 0 ] && [ "$PRINTH" = 0 ]; then   # a --preflight prints nothing when the runner could start
   pbh_variant_warn "$(pbh_variant_home)"
 fi
 # SET_MODE: --arm or --repeat given (both arms get a settings file, the prompt note is arm-neutral)
@@ -245,6 +289,11 @@ if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no wo
   if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
   exit 0
 fi
+if [ "$PRINTH" = 1 ]; then   # --print-hashes: "<task> <scenario_sha> <grader_sha> <harness_sha>" per task, the hashes the runs record; nothing runs
+  ph_g="$(pbh_grader_sha "$EVALS/run-outcome.sh")"; ph_h="$(pbh_harness_sha "$LABEL" "$CMD")"
+  for id in $IDS; do printf '%s %s %s %s\n' "$id" "$(pbh_tree_sha "$TASKS_DIR/$id")" "$ph_g" "$ph_h"; done
+  exit 0
+fi
 USE_TIMEOUT=0
 if [ -n "$TIMEOUT" ]; then
   if command -v timeout >/dev/null 2>&1; then USE_TIMEOUT=1
@@ -282,6 +331,9 @@ for r in $RUNS; do
   if { [ -e "$WORKROOT/$l" ] || [ -e "$WORKROOT/$l.log" ] || [ -e "$WORKROOT/$l.prompt" ]; } && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then
     pb_die "refusing to delete $WORKROOT/$l: the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
   fi
+  if [ "$JOBS" != 1 ] && [ -e "$WORKROOT/.jobs/$l" ] && [ ! -f "$WORKROOT/.pb-eval-workroot" ]; then   # --jobs N>1: the run clears its private root
+    pb_die "refusing to delete $WORKROOT/.jobs/$l (--jobs): the workroot is not runner-owned (.pb-eval-workroot); move it or pick another --workroot" 2
+  fi
 done
 NOW="$(date '+%Y-%m-%d %H%M%S')"; STARTED="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 case "$HARNESS" in
@@ -300,8 +352,8 @@ done
 mkdir -p "$(dirname "$OUT")" || pb_die "cannot create $(dirname "$OUT")" 3
 # --variant: lock, snapshot, install, doctor and verify, before the leak probe and every run
 if [ "$VARIANT_SET" = 1 ]; then
-  pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?
-  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names")"
+  if [ "$VARIANT_HELD" = 0 ]; then pbh_variant_begin "$VARIANT" "$(pbh_variant_home)" "$HARNESS" || exit $?; fi   # held: the outer process did
+  ISO_NAMES="$ISO_NAMES $(tr '\n' ' ' < "$PBV_L/names" 2>/dev/null)"
 fi
 # the settings file of each arm, in a runner temp dir outside the workroot and outside PLAYBOOK_HOME (removed on exit)
 DROPPED=0
@@ -351,6 +403,12 @@ esac
 # each run's transcript and diff, kept outside the workroot (next to --out)
 EV="${OUT%.md}.runs"
 mkdir -p "$EV" || pb_die "cannot create $EV" 3
+# the per-run hashes (decision D10; evals/lib-harness.sh): grader and harness once, the task's tree per task ("id hash" lines)
+GRADER_SHA="$(pbh_grader_sha "$EVALS/run-outcome.sh")"
+HARNESS_SHA="$(pbh_harness_sha "$LABEL" "$CMD")"
+TREE_SHAS=""
+for id in $IDS; do TREE_SHAS="$TREE_SHAS$id $(pbh_tree_sha "$TASKS_DIR/$id")
+"; done
 
 # Per-run state: ID, ARM, K, RL (label), TD (task dir), WD, PF, LOG
 ANY_FAIL=0; ANY_ERROR=0; COST_SUM=""; NOTE_UNKNOWN=0; ND_RUNS=""; S_CHECKS=""; NOTES_J=""
@@ -369,8 +427,8 @@ run_json() {
   [ -n "$FTREE" ] && ft="$(pbh_json_str "$FTREE")"
   [ -n "$PSHA" ] && ps="$(pbh_json_str "$PSHA")"
   [ "$ARM" = without ] && dr="$DROPPED"
-  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"checks":[%s],"extra_files_changed":%s,"extra_files":%s,"tests_weakened":%s,"tests_weakened_files":%s}' \
-    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$S_CHECKS" \
+  ND_RUNS="$ND_RUNS$(printf '{"scenario":%s,"arm":"%s","k":%s,"label":%s,"status":"%s","error":%s,"isolation":"%s","fixture_tree":%s,"prompt_sha":%s,"cost_usd":%s,"seconds":%s,"notes":[%s],"dropped_user_lines":%s,"scenario_sha":"%s","grader_sha":"%s","harness_sha":"%s","checks":[%s],"extra_files_changed":%s,"extra_files":%s,"tests_weakened":%s,"tests_weakened_files":%s}' \
+    "$(pbh_json_str "$ID")" "$ARM" "$K" "$(pbh_json_str "$RL")" "$1" "$err" "$ISO_MODE" "$ft" "$ps" "$cst" "$sec" "$NOTES_J" "$dr" "$SCSHA" "$GRADER_SHA" "$HARNESS_SHA" "$S_CHECKS" \
     "$M_EXTRA" "$M_XFILES" "$M_TW" "$M_TWFILES")
 "
 }
@@ -471,9 +529,11 @@ drop_run() { rm_dir "$WD"; rm -f "$PF"; rm_dir "$CUR_BASE"; CUR_BASE=""; }
 spent_of() { printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 
-for RUN in $RUNS; do
+run_one() {
+  RUN="$1"
   ID="${RUN%%:*}"; ARM="${RUN#*:}"; K="${ARM#*:}"; ARM="${ARM%%:*}"; RL="$ID.$ARM.$K"
   TD="$TASKS_DIR/$ID"; TLANG="$(tconf "$ID" language)"
+  SCSHA="$(printf '%s' "$TREE_SHAS" | awk -v i="$ID" '$1 == i { print $2; exit }')"
   FTREE=""; PSHA=""; S_CHECKS=""; NOTES_J=""; M_EXTRA=null; M_XFILES=null; M_TW=null; M_TWFILES=null
   note "language=$TLANG"; note "source=$(tconf "$ID" source)"; note "expected_weight=$(tconf "$ID" expected_weight)"
   note "tasks_dir=$TASKS_DIR"
@@ -489,8 +549,14 @@ for RUN in $RUNS; do
       printf '%s SKIPPED %s\n' "$RL" "$skip_why"
       note "SKIPPED $skip_why"
       run_json skipped "" "" ""
-      continue
+      return 0
     fi
+  fi
+  if [ "$JOBS" != 1 ]; then   # D20: a private root per run (this run is a subshell, so the override stays with it), so the stray check sees its own writes only
+    PR="$WORKROOT/.jobs/$RL"; rm -rf "$PR"
+    mkdir -p "$PR" || pb_die "cannot create $PR" 3
+    if [ -f "$WORKROOT/.pb-eval-workroot" ]; then : > "$PR/.pb-eval-workroot" || pb_die "cannot write $PR/.pb-eval-workroot" 3; fi
+    WORKROOT="$PR"
   fi
   WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
   rm -rf "$WD" "$PF" "$LOG" || pb_die "cannot remove $WD" 3
@@ -568,9 +634,18 @@ EOF
   if [ -n "$herr" ]; then   # not graded: no hidden file is copied anywhere
     printf '%s ERROR harness: %s (see %s)\n' "$RL" "$herr" "$LOG"
     ANY_ERROR=1
+    # D8: a with-arm ERROR run still gets the stray check (never a hidden test: nothing of hidden/ is copied or run); it is recorded and
+    # printed, the status, the md row, n and the exit code stay those of an ERROR run
+    if [ "$ARM" = with ]; then
+      if [ -z "${STRAY// /}" ]; then record PASS "$STRAYC"
+      else
+        record FAIL "$STRAYC"
+        printf '%s NOTE new in the workroot: %s\n' "$RL" "${STRAY% }"; note "STRAY new in the workroot: ${STRAY% }"
+      fi
+    fi
     run_json error "$herr" "$c" "$SECS"
     drop_run
-    continue
+    return 0
   fi
   # the hygiene metrics (DECISION[D2]: informational, never a check), from the workdir before grading
   SCOPE="$(tconf "$ID" scope)"
@@ -606,7 +681,16 @@ EOF
   fi
   run_json graded "" "$c" "$SECS"
   drop_run
-done
+}
+if [ "$JOBS" = 1 ]; then
+  for RUN in $RUNS; do run_one "$RUN"; done
+else
+  # --jobs N: the runs fan out (evals/lib-harness.sh pbh_jobs_run)
+  JOBS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pb-evjobs.XXXXXX")" || pb_die "cannot create a temp dir for --jobs" 3
+  # shellcheck disable=SC2086   # RUNS is a list of words
+  pbh_jobs_run "$JOBS" "$JOBS_DIR" run_one job_stop $RUNS || pb_die "cannot create a dir in $JOBS_DIR" 3
+  rm_dir "$JOBS_DIR"; JOBS_DIR=""
+fi
 
 # --variant: end check, then the restore (before the results, so they can say it was done)
 VAR_RC=0; VAR_END=ok; VAR_RESTORED=1
@@ -695,7 +779,8 @@ process.stdout.write(o);' "$JF" "$HP" "$SEEN" "$ISO"
   printf 'Conf models: %s\n' "$(pbh_conf_models_md "$SRC_CONF")"
   if [ "$VARIANT_SET" = 1 ]; then
     printf 'Variant: %s (%s, %s), ' "$VARIANT" "$PBV_VER" "${PBV_SHORT:-no git}"
-    if [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
+    if [ "$VARIANT_HELD" = 1 ]; then printf 'installed by an outer process (held, not restored here)'
+    elif [ "$VAR_RESTORED" = 1 ]; then printf 'snapshot restored'; else printf 'snapshot NOT restored (kept at %s)' "$PBV_L/snap"; fi
     if [ "$VAR_END" != ok ]; then printf ', end check FAILED'; fi
     printf '\n'
     if [ "$VAR_END" != ok ]; then printf 'Note: variant changed during the run (the installed VERSION is no longer %s); these results do not measure the variant.\n' "$PBV_VER"; fi

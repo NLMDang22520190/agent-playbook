@@ -121,7 +121,8 @@ OD="$(mk_tmp)"; WR="$(mk_tmp)"; rm -f "$REC/term.sp" "$REC/term.mark" "$REC/term
 mk_adapter term 'printf "%s\n" "${PB_EVAL_SETTINGS-UNSET}" > "'"$REC"'/term.sp"; printf "%s\n" "$$" > "'"$REC"'/term.mark.tmp"; mv "'"$REC"'/term.mark.tmp" "'"$REC"'/term.mark"; exec sleep 30'
 env -u PLAYBOOK_HOME HOME="$GH" bash "$RUNNER" --cmd "bash $A/term.sh" --arm without --scenarios E8 --workroot "$WR" --out "$OD/results.md" >/dev/null 2>&1 &
 RP=$!
-for _ in $(seq 1 100); do [ -f "$REC/term.mark" ] && break; alive "$RP" || break; sleep 0.1; done
+# DECISION[D26]: setup wait, not the checked behaviour; Windows runners are slow (see D24)
+for _ in $(seq 1 600); do [ -f "$REC/term.mark" ] && break; alive "$RP" || break; sleep 0.1; done
 if [ -f "$REC/term.mark" ]; then
   t_ok "AC3.2 SIGTERM: the adapter started"
   kill -TERM "$RP" 2>/dev/null

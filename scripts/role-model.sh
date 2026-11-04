@@ -12,7 +12,8 @@
 #                                        harness) and unknown model_* keys; exit 1 if any, 0 if none
 # Lookup (project conf before global, per pb_conf_get): model_<role>_<harness>,
 # then model_<role>, else "session" (= do not override the session model).
-# Exception: with harness claude the reviewer's default is "sonnet" (so spec_reviewer and reviewer_light fall
+# Exception: with harness claude the mechanical default is "haiku" (DECISION[D11]; keys win, other harnesses stay
+# "session") and the reviewer's default is "sonnet" (so spec_reviewer and reviewer_light fall
 # back to sonnet too); any present key wins, even model_reviewer=session or model_reviewer_claude=session.
 # reviewer_light and spec_reviewer (the Full-weight spec reviewer sub-agent) fall back to the reviewer's model before
 # "session"; mechanical never falls back
@@ -35,6 +36,7 @@ model_for() { # role harness
       [ -n "$v" ] || v="$(model_for reviewer "$2")"
     else
       d=session; [ "$1" = reviewer ] && [ "$2" = claude ] && d=sonnet
+      [ "$1" = mechanical ] && [ "$2" = claude ] && d=haiku   # DECISION[D11]
       v="$(pb_conf_get "model_$1" "$d")"
     fi
   fi

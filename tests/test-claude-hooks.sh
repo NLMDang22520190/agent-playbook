@@ -16,7 +16,6 @@ has_re() { # name text ERE (one line matches)
 }
 HAVE_NODE=0
 if command -v node >/dev/null 2>&1 && node -e '' >/dev/null 2>&1; then HAVE_NODE=1; fi
-[ "$HAVE_NODE" = 1 ] || echo "note: node not found: install/uninstall merge tests are skipped (the merge needs node, D12)"
 
 # node helpers (written to a temp dir; used only when node exists)
 JS="$(mk_tmp)"
@@ -131,7 +130,6 @@ done
 printf '#!%s\nexec "%s" "$@"\n' "$BASHX" "$BASHX" > "$NB/bash"; chmod +x "$NB/bash" 2>/dev/null
 NONODE=0
 if env PATH="$NB" "$BASHX" -c 'command -v node >/dev/null 2>&1 && exit 1; for t in cat grep sed awk mktemp mv cp mkdir rm date; do command -v "$t" >/dev/null 2>&1 || exit 1; done; printf x | grep -q x' >/dev/null 2>&1; then NONODE=1; fi
-[ "$NONODE" = 1 ] || echo "note: cannot build a PATH without node here: the no-node tests are skipped"
 CHN() { env PATH="$NB" "$BASHX" "$CHS" "$@"; }
 
 echo "AC-B1/AC-H1 install into a home without settings.json creates it with the five contract handlers (v0.29: guard-ps added)"
@@ -468,7 +466,7 @@ if [ "$HAVE_NODE" = 1 ] && ! command -v cygpath >/dev/null 2>&1; then
   H="$(mk_home)"; run env WSL_DISTRO_NAME=Ubuntu-24.04 bash "$CHS" install --home "$H" --dry-run
   assert_contains "R1-5 WSL, a stand-in home in the Linux tmp dir: unchanged" "$OUT" "$(wcmd "$H/.agents/playbook/scripts" guard-irreversible.sh)"
 else
-  echo "note: R1-5 mapping tests skipped (node missing, or cygpath exists: D30 form applies there)"
+  t_skip 14 "R1-5 mapping tests (node missing, or cygpath exists: D30 form applies there)"
 fi
 
 echo "R1-5 status accepts either form: the <D>:/rest handlers are found under /mnt/<d>/ when WSL_DISTRO_NAME is set"

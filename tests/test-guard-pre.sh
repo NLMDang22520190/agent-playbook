@@ -562,4 +562,23 @@ gallow "G R10-1 [pin] >&1 is an fd duplication, no file 1 is written" "cat drop.
 gallow "G R10-1 [guard-rail] 2>&1 is an fd duplication" "cat drop.sql 2>&1; sqlite3 db < 1"
 gallow "G R10-1 [guard-rail] >&2 is an fd duplication" "cat drop.sql >&2; sqlite3 db < 2"
 
+# ---- M12 bash redirection forms around the dup: `>& 2` (a space) and `>&2x` (verified in bash 5: `echo a >& 2` writes stderr and makes no
+# file; `echo a >&2x` and `echo a >& 2x` write the FILE 2x). The guard's view must match: digits (even after a space) = fd dup, no file;
+# digits followed by a word character = a file named like the whole word. [characterization: already so at the base commit]
+echo "G M12 >& 2 is an fd duplication, >&2x and >& 2x write a file named 2x"
+gallow "G M12 >& 2 (space) is an fd duplication, no file 2 is written" "cat drop.sql >& 2; sqlite3 db < 2"
+gallow "G M12 >&2 followed by a word: the word is an argument of cat, no file x is written" "cat drop.sql >&2 x; sqlite3 db < x"
+gallow "G M12 2>& 1 (space) is an fd duplication, no file 1 is written" "cat drop.sql 2>& 1; sqlite3 db < 1"
+gblock "G M12 >&2x writes the file 2x, the client reads it" "cat drop.sql >&2x; sqlite3 db < 2x"
+gblock "G M12 >& 2x writes the file 2x, the client reads it" "cat drop.sql >& 2x; sqlite3 db < 2x"
+gallow "G M12 >&2x does not write a file named 2" "cat drop.sql >&2x; sqlite3 db < 2"
+grun PB_HEADLESS=1 -- "$(jbash 'echo hi >& 2 rm -rf /opt/pbguard-data' "$GQ")"
+expect_pass "G M12 >& 2 then words: the words are echo's arguments, not a delete"
+grun PB_HEADLESS=1 -- "$(jbash 'rm -rf /opt/pbguard-data >& 2' "$GQ")"
+expect_block "G M12 a delete with >& 2 (space) is still judged" rm-outside
+grun PB_HEADLESS=1 -- "$(jbash 'rm -rf /opt/pbguard-data >&2x' "$GQ")"
+expect_block "G M12 a delete with >&2x is still judged" rm-outside
+grun PB_HEADLESS=1 -- "$(jbash 'git push --force origin main >& 2' "$GQ")"
+expect_block "G M12 a force push with >& 2 (space) is still judged" git-push-force
+
 t_summary
