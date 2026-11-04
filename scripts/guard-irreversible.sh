@@ -707,13 +707,15 @@ norm_path() {
 # DECISION[D4] (v0.34.0 gate 2): physd DIR -> PHYSD, the physical directory in one form per host. In Git Bash `cd -P && pwd -P` does
 # not fold mounts (/tmp/x for C:/Users/u/AppData/Local/Temp/x, but /c/Users/... for the drive spelling of the same dir) and keeps
 # the case it was given, so the restore exemption saw "outside TOP" for the hinted restore. On MSYS the builtin `pwd -W` gives the
-# Windows path with mounts folded; it is turned into the /c/... form norm_path uses. Where `pwd -W` is not available (Linux, macOS,
-# Cygwin) it is exactly `cd -P && pwd -P` as before. Same subshell count as before. Undo: make physd just the pwd -P branch.
+# Windows path with mounts folded; it is turned into the /c/... form norm_path uses. cygwin* is included because Git for Windows 2.56
+# (bash 5.3, host triple x86_64-pc-cygwin) reports OSTYPE=cygwin; 2.42 reports msys. Where `pwd -W` fails or gives no drive path
+# (Linux, macOS, genuine Cygwin) the result is exactly `cd -P && pwd -P` as before; same subshell count on MSYS and Git for Windows
+# (genuine Cygwin pays one more for the failed `pwd -W`). Undo: make physd just the pwd -P branch.
 physd() {
   local d
   PHYSD=""
   case "${OSTYPE:-}" in
-    msys*)
+    msys* | cygwin*)
       d="$(cd -P -- "$1" 2>/dev/null && pwd -W 2>/dev/null)" || d=""
       case "$d" in
         [A-Za-z]:/*)
