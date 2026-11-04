@@ -25,7 +25,7 @@ mt_mount_rm() {
 }
 mt_physdiff() { # DIR_IN_MOUNT_FORM -> 0 when pwd -P of the mount form and of its drive form differ; sets MT_PM MT_PD MT_DRV
   local m
-  m="$(cygpath -m "$1")"; MT_DRV="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
+  m="$(cygpath -m -l "$1")"; MT_DRV="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
   MT_PM="$(cd -P -- "$1" 2>/dev/null && pwd -P)"; MT_PD="$(cd -P -- "$MT_DRV" 2>/dev/null && pwd -P)"
   [ -n "$MT_PM" ] && [ -n "$MT_PD" ] && [ "$MT_PM" != "$MT_PD" ]
 }
@@ -36,12 +36,12 @@ if command -v cygpath >/dev/null 2>&1; then
     case "$_p" in /tmp/pbmprobe.??????) rmdir "$_p" 2>/dev/null ;; esac
   fi
   if [ -z "$MT_SRC" ]; then
-    _b="${TMPDIR:-/tmp}"; _bd="$(cygpath -m "$_b")"; _bd="/$(printf '%s' "${_bd%%:*}" | tr 'A-Z' 'a-z')${_bd#?:}"
+    _b="${TMPDIR:-/tmp}"; _bd="$(cygpath -m -l "$_b")"; _bd="/$(printf '%s' "${_bd%%:*}" | tr 'A-Z' 'a-z')${_bd#?:}"
     MT_MNTDIR="$(mktemp -d "$_bd/pbmntbase.XXXXXX" 2>/dev/null)"
     if [ -z "$MT_MNTDIR" ]; then MT_PRESKIP="cannot make a directory under the temp base [$_bd] to mount"
     else
       _mp="/pbmnt.$$"
-      mount "$(cygpath -m "$MT_MNTDIR")" "$_mp" >/dev/null 2>&1   # the source must be a Windows (mixed) path: a POSIX one gives EINVAL
+      mount "$(cygpath -m -l "$MT_MNTDIR")" "$_mp" >/dev/null 2>&1   # the source must be a Windows (mixed) path: a POSIX one gives EINVAL
       if mount 2>/dev/null | grep -q " on $_mp type "; then
         MT_MNT="$_mp"
         trap mt_mount_rm EXIT; trap 'mt_mount_rm; exit 130' INT; trap 'mt_mount_rm; exit 143' TERM   # early trap: lib.sh (mktemp || exit 3) or a signal before the full trap below must not leak the mount; replaced by mt_cleanup after lib.sh
@@ -95,9 +95,9 @@ fm() {
   local m d
   case "$1" in
     mount) printf '%s' "$2" ;;
-    win) cygpath -w "$2" ;;
+    win) cygpath -w -l "$2" ;;
     drive | case)
-      m="$(cygpath -m "$2")"; d="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
+      m="$(cygpath -m -l "$2")"; d="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
       if [ "$1" = case ]; then printf '%s' "$d" | tr 'A-Z' 'a-z'; else printf '%s' "$d"; fi ;;
   esac
 }
