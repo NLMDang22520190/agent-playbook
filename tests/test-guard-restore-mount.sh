@@ -14,6 +14,15 @@
 #     The trap umounts it and removes the dir. No stub of git, cd or pwd.
 # PB_MT_FORCE_RUNTIME=1 skips step 1 (used only to prove step 2 on a host where step 1 applies; it changes no assertion).
 MT_MNT=""; MT_MNTDIR=""; MT_SRC=""; MT_PRESKIP=""
+MT_OWNER="${BASHPID:-}"   # the process that made the mount/junction; a forked child running the trap must not undo them (as lib.sh t_cleanup; no BASHPID on bash 3.2: no guard)
+mt_owner() { [ -z "${BASHPID:-}" ] || [ "$BASHPID" = "$MT_OWNER" ]; }
+mt_mount_rm() {
+  # umount only after t_cleanup removed the repos, then rmdir (never rm -rf) the now empty base dir, by a checked literal name
+  mt_owner || return 0
+  if [ -n "$MT_MNT" ]; then umount "$MT_MNT" >/dev/null 2>&1; MT_MNT=""; fi
+  case "$MT_MNTDIR" in */pbmntbase.??????) rmdir "$MT_MNTDIR" 2>/dev/null ;; esac
+  MT_MNTDIR=""
+}
 mt_physdiff() { # DIR_IN_MOUNT_FORM -> 0 when pwd -P of the mount form and of its drive form differ; sets MT_PM MT_PD MT_DRV
   local m
   m="$(cygpath -m "$1")"; MT_DRV="/$(printf '%s' "${m%%:*}" | tr 'A-Z' 'a-z')${m#?:}"
@@ -35,6 +44,7 @@ if command -v cygpath >/dev/null 2>&1; then
       mount "$(cygpath -m "$MT_MNTDIR")" "$_mp" >/dev/null 2>&1   # the source must be a Windows (mixed) path: a POSIX one gives EINVAL
       if mount 2>/dev/null | grep -q " on $_mp type "; then
         MT_MNT="$_mp"
+        trap mt_mount_rm EXIT; trap 'mt_mount_rm; exit 130' INT; trap 'mt_mount_rm; exit 143' TERM   # early trap: lib.sh (mktemp || exit 3) or a signal before the full trap below must not leak the mount; replaced by mt_cleanup after lib.sh
         if mt_physdiff "$MT_MNT"; then MT_SRC="runtime mount $MT_MNT -> $MT_MNTDIR"; export TMPDIR="$MT_MNT"
         else MT_PRESKIP="the runtime mount [$MT_MNT] was made but pwd -P gives [$MT_PM] / [$MT_PD] for its mount and drive forms: no unfolded mount here"; fi
       else MT_PRESKIP="the runtime mount of [$MT_MNTDIR] at [$_mp] could not be made"; fi
@@ -46,13 +56,8 @@ fi
 MT_JUNC=""
 mt_junc_rm() {
   # a directory junction is removed with rmdir so that no recursive delete ever walks through it
+  mt_owner || return 0
   if [ -n "$MT_JUNC" ]; then cmd //c "rmdir $(cygpath -w "$MT_JUNC")" >/dev/null 2>&1; MT_JUNC=""; fi
-}
-mt_mount_rm() {
-  # umount only after t_cleanup removed the repos, then rmdir (never rm -rf) the now empty base dir, by a checked literal name
-  if [ -n "$MT_MNT" ]; then umount "$MT_MNT" >/dev/null 2>&1; MT_MNT=""; fi
-  case "$MT_MNTDIR" in */pbmntbase.??????) rmdir "$MT_MNTDIR" 2>/dev/null ;; esac
-  MT_MNTDIR=""
 }
 mt_cleanup() { mt_junc_rm; t_cleanup; mt_mount_rm; }
 trap mt_cleanup EXIT
@@ -97,7 +102,9 @@ fm() {
   esac
 }
 # tg FORM -> the label of a positive case: the mount form already works at baseline, the others do not
-# (the mount form works at baseline only for /tmp: the old guard folds a C:/ toplevel to /tmp/..; a runtime mount /pbmnt.N is not folded back)
+# (layout-dependent: the mount form works at baseline where /tmp is the usertemp mount, because the old guard folds a C:/ toplevel back to /tmp/..;
+#  under a runtime mount /pbmnt.N it is folded back only if the base dir is inside Temp (this laptop); on a CI-like layout (base outside Temp)
+#  the old guard also passes the mount-form cases, so their [today FAIL] label is right only on the laptop layout. No assertion depends on the label)
 tg() { if [ "$1" = mount ] && [ -z "$MT_MNT" ]; then printf '[guard-rail]'; else printf '[today FAIL]'; fi; }
 
 gs() { local a="${1:-false}"; [ "$#" -gt 0 ] && shift; : > "$HL"; grun PB_HEADLESS=1 PB_EVAL_HOOK_LOG="$HL" "$@" -- "$(jstop "${SCW:-$R}" "$SID" "$a")" --stop; }
