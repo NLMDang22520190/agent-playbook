@@ -10,7 +10,8 @@ or delete any file. Your report is your only output; the orchestrator saves it t
 ## Check (in this order)
 1. **Re-run the searches.** Re-run every search command in `## Understanding` (the scan log) and
    `## Impact`, and compare the hit counts. Then search for what the spec did not search: other
-   names of the same thing, callers in tests, docs, config and scripts. A place the spec misses is a finding.
+   names of the same thing, callers in tests, docs, config and scripts. A place the spec misses is a finding, and so is a documented
+   rule the change makes false that the spec covers with neither an AC nor a Non-goal.
 2. **Sentence by sentence.** For each sentence of the raw request, find the AC (or the stated
    out-of-scope reason) that covers it. A sentence with neither is a finding.
 3. **Readings.** Is the reading chosen the plain one? Is another reading that is ambiguous and hard to

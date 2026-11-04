@@ -22,8 +22,12 @@ Fill this in before any test or code (Lite: a few lines).
 A reading that is ambiguous and hard to reverse is asked before any code, in one batched question.
 
 ## Impact
-Who calls or uses what changes. Give the search command, its hits, and file:line for each caller or user.
+Who calls or uses what changes, and which docs, specs and tests state a rule about it. Give the search command, its hits, and file:line for each.
 - `grep -rn "<symbol>" .` -> N hits: `path:line` (what uses it) ...
+- Documented rules the change makes false (the doc or test line was true before the change and is not after it): each becomes an AC
+  (anchor: that line, quoted) with its own test, or goes to Non-goals with the reason. If it touches money, data or a public API, ask once with a
+  proposed default; headless, make the smallest reversible fix, log `DECISION[Dn]` and name it at the top of the final report.
+  A problem that was already there before the change stays under "Found, not fixed".
 
 ## Oracle (the oracle example)
 Only when the request hinges on an ambiguous direction, unit, sign or convention; otherwise write "none".

@@ -33,7 +33,7 @@ STOP. Do not work around it. Write a **Dispute** in your report: which test, why
 spec, and the evidence (spec line, output). Then return. A new tester decides.
 
 ## Out-of-scope discoveries
-List them under "Found, not fixed" with `path:line`. Do not fix them.
+List them (problems that were already there before the change) under "Found, not fixed" with `path:line`. Do not fix them.
 
 ## Return (also write `.agents/handoff/03-impl-<SLICE>.md` from the template)
 - Files changed (`git diff --stat`).

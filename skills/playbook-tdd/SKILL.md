@@ -124,8 +124,8 @@ the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed
 
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
 search command, its hit count and the files read, other readings and why this one, in and out of scope) and
-`## Impact` (who calls or uses what changes: command, hits, file:line). Search for every place the request
-touches before you fix the scope.
+`## Impact` (who calls or uses what changes, and the docs and tests that state a rule about it: command, hits, file:line;
+rules the change makes false: see the template). Search for every place the request touches before you fix the scope.
 
 **Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
 context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
