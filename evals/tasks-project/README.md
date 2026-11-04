@@ -121,3 +121,17 @@ Caveats:
   [-0.06, +0.79]); the set-ups differ (permissions, `--add-dir`), so this is a hint only.
 - The adapter stops a long invocation without killing the runner when a file `.pb-eval-stop` exists next to it (later runs exit 3 and
   count as ERROR); the result file of the runner is written only at the end.
+
+## Lite against agent-chosen weight (2026-11-04)
+
+Same tree (variant A), Sonnet 5.5, with arm; the Lite arm puts `PB_EVAL_PROMPT_PREFIX="Quick one, please."` in front of the prompt (adapter option).
+Treatment check: the Lite label is in 10 of 10 runs and no run calls `Agent`.
+
+| Task | Lite passes | agent-chosen passes | median cost Lite / chosen (USD) | cost per pass Lite / chosen (USD) |
+|---|---|---|---|---|
+| project-01 | 1/6 | 2/6 | 0.31 / 0.79 | 1.74 / 2.59 |
+| project-02 | 4/4 | 3/3 | 0.19 / 0.42 | 0.20 / 0.42 |
+
+Pass-rate difference Lite minus chosen: project-01 -0.17 [-0.56, +0.30], project-02 0.00 [-0.49, +0.56]. Cost falls as planned, quality is not
+shown to be equal (n too small). Rules, invariants and the order page pass in all 10 Lite runs; the finance report is surfaced in 5 of 6 on
+project-01, as in the other arms. Median time 95 s against 241 s (project-01), 47 s against 115 s (project-02).

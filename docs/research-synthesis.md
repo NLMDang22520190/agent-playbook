@@ -117,6 +117,30 @@ quyền). **[SUY LUẬN]** Số lần khởi động sub-agent (chọn Full hay 
 dữ liệu, và cũng là đòn bẩy ít nguy hiểm nhất cho chất lượng nếu tester và implementer vẫn tách. Project-02 (hệ quả đơn giản): 6/6
 qua với 1 đến 3 sub-agent, khoảng 0,43 USD. Project-03 (Lite, 0 sub-agent): 4/4 qua, khoảng 0,17 USD.
 
+## 5b. Đo đòn bẩy: chạy Lite thay vì để agent tự chọn mức (Sonnet 5.5, có playbook)
+
+Nhánh L thêm "Quick one, please." vào đầu prompt, nên playbook chạy Lite theo luật người dùng nói "quick". Kiểm tra điều trị: nhãn
+Lite có ở 10/10 lần chạy và 0 lần gọi Agent. Đối chứng F là các lần chạy cùng cây playbook (A) và cùng adapter, để agent tự chọn.
+
+| Task | Nhánh | Lần chạy | Qua hết | Chi phí trung vị | Chi phí trên mỗi lần qua | Thời gian trung vị |
+|---|---|---|---|---|---|---|
+| project-01 | Lite | 6 | 1/6 | 0,31 USD | 1,74 USD | 95 s |
+| project-01 | F | 6 | 2/6 | 0,79 USD | 2,59 USD | 241 s |
+| project-02 | Lite | 4 | 4/4 | 0,19 USD | 0,20 USD | 47 s |
+| project-02 | F | 3 | 3/3 | 0,42 USD | 0,42 USD | 115 s |
+
+- **[ĐO]** Chi phí mỗi lần chạy giảm khoảng 2,2 đến 2,5 lần, thời gian giảm khoảng 2,5 lần; chi phí trên mỗi lần qua giảm 33% (project-01) và 52% (project-02).
+- **[ĐO]** Các hành vi lõi không tụt: rules, invariants và trang đơn qua 10/10 lần Lite ở project-01 và project-02. Chỗ rớt của Lite
+  là cùng chỗ cũ: báo cáo doanh thu (1 sửa, 5 nêu), và ghi quyết định ở project-01 (4/6 so với 7/8 của nhánh F, n nhỏ).
+- **Quy tắc quyết định đặt trước** (không thấp hơn quá 0,25 ở cận dưới và giảm chi phí trên mỗi lần qua ít nhất 30%): chi phí đạt ở cả hai task;
+  chất lượng **chưa chứng minh** được: chênh lệch tỉ lệ qua của project-01 là -0,17 với khoảng [-0,56; +0,30], của project-02 là 0,00 với [-0,49; +0,56].
+  Khoảng tin cậy rộng vì n nhỏ, nên không thể khẳng định không kém hơn.
+- **[SUY LUẬN]** Ở loại task này (một module nhỏ, vài file, hidden test), mức Full không cho thấy lợi ích chất lượng đo được so với Lite, trong khi tốn gấp 2 đến 3 lần.
+  Đây không phải bằng chứng rằng Full vô ích: các task này có thể quá dễ để lộ giá trị của reviewer độc lập (đúng như Run 25 đã ghi
+  về corpus cũ). Với task lớn hơn hoặc khó hơn, chưa có số đo.
+- Hai task này vốn thuộc nhóm Full theo luật của playbook (tiền, nhiều file); ép Lite là "người dùng ghi đè", nên kết quả nói về việc Lite
+  có đủ không, chưa nói về việc nên đổi luật chọn mức.
+
 ## 6. Đã làm ra những gì (trên nhánh `claude/serene-galileo-4sr31t`)
 
 | Thứ | Vị trí | Dùng để |
@@ -144,7 +168,7 @@ Cách chạy mẫu: xem `evals/tasks-project/README.md`. Hai biến thể playbo
 
 ## 8. Chi tiêu
 
-Khoảng 18,0 USD trên trần 20 USD (tự cộng từ các dòng COST của runner, không phải số của runner). Chi phí mỗi lần chạy: không có
+Khoảng 20,3 USD trên trần 22 USD (tự cộng từ các dòng COST của runner, không phải số của runner). Chi phí mỗi lần chạy: không có
 playbook 0,04 đến 0,23 USD; có playbook 0,13 đến 1,66 USD tùy task và số sub-agent. Ước tính ban đầu "1 đến 2 USD" cho một so sánh
 có playbook là sai: nhánh có playbook tốn nhiều hơn mức 2 đến 2,5 lần mà các eval cũ cho thấy.
 
@@ -154,7 +178,7 @@ có playbook là sai: nhánh có playbook tốn nhiều hơn mức 2 đến 2,5 
 |---|---|---|---|
 | 1 | Đừng để session có context lớn nằm chờ quá 1 giờ; ghi handoff rồi mở phiên mới | Cold restart 14% và 40% tổng ghi cache **[ĐO]** | Mất ngữ cảnh chưa ghi ra file; phụ thuộc chất lượng handoff |
 | 2 | Chọn model ở đầu session, không đổi giữa chừng | Đo trực tiếp **[ĐO]** | Không có |
-| 3 | Giới hạn số lần khởi động sub-agent (Lite khi đủ điều kiện, gộp slice nhỏ, một reviewer) | Chi phí tăng gấp bốn lần theo số sub-agent, tỉ lệ qua không tăng **[ĐO, n nhỏ]** | Chất lượng độc lập có thể giảm nếu gộp quá tay; cần đo |
+| 3 | Dùng Lite (một context) cho task cỡ nhỏ khi người dùng đồng ý; giới hạn số lần khởi động sub-agent | Lite giảm chi phí mỗi lần chạy 2,2 đến 2,5 lần và chi phí trên mỗi lần qua 33% đến 52%, hành vi lõi không tụt **[ĐO, n nhỏ, chưa chứng minh không kém hơn]** | Mất reviewer độc lập; chưa đo ở task lớn hoặc khó |
 | 4 | Giao việc canh CI và đọc log cho sub-agent, chỉ nhận bản tóm tắt | Luồng chính đọc 105M trong giai đoạn sửa CI ở v0.34 **[SUY LUẬN]** | Mất chi tiết; sub-agent khởi động tốn cache |
 | 5 | Không tối ưu Haiku cho `mechanical` và `reviewer_light` | Chỉ khoảng 1% khối lượng **[ĐO]** | Không có |
 | 6 | Giữ reviewer ở model mạnh | 6% đến 8% lượng đọc **[ĐO]** | Không có |
@@ -164,7 +188,7 @@ có playbook là sai: nhánh có playbook tốn nhiều hơn mức 2 đến 2,5 
 
 ## 10. Câu hỏi còn mở
 
-1. Sub-agent nào trong các lần chạy 4 lần trở lên thật sự đem lại chất lượng (tester, reviewer, hay chỉ tốn cache)?
+1. Ở task lớn hoặc khó hơn, reviewer độc lập và sub-agent có đem lại chất lượng đo được không (ở các task nhỏ thì chưa thấy)?
 2. P1' có Δ > 0 khi liều đủ mạnh (câu cốt lõi nằm trong `SKILL.md`) và k đủ lớn không?
 3. Cắt cold restart bằng handoff có làm tụt chất lượng không (cần đo trên session thật có chỗ nghỉ dài)?
 4. Kết quả có giữ khi đổi model chính (Opus) hoặc loại task (không phải cửa hàng)?

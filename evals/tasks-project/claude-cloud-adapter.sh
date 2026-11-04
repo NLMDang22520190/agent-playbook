@@ -24,4 +24,8 @@ cd "$1" && HOME="$home" claude -p --output-format stream-json --verbose --model 
   "${settings[@]+"${settings[@]}"}" \
   --permission-mode acceptEdits "${extra[@]+"${extra[@]}"}" \
   --allowedTools "Bash(node:*)" "Bash(npm:*)" "Bash(git:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)" "Bash(bash:*)" "Skill" "Agent" \
-  < "$2"
+  < <(
+    # PB_EVAL_PROMPT_PREFIX (optional) goes in front of the task prompt, e.g. "Quick one, please." to ask the playbook for Lite
+    [ -n "${PB_EVAL_PROMPT_PREFIX:-}" ] && printf '%s\n\n' "$PB_EVAL_PROMPT_PREFIX"
+    cat "$2"
+  )
