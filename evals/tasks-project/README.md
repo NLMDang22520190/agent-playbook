@@ -40,3 +40,27 @@ k=3 is too small to separate the models. It shows the task is neither saturated 
 were passed by Sonnet 2/2 in both attempts (the README named `reports.js` and said the docs can lag; those cues are removed). All
 six runs used the 14 days of `config/returns.json`, so the docs-versus-config trap did not catch anyone. The decisive traps are the
 hidden second place (`dailyRevenue` must subtract refunds on the day they are made) and following the ticket's list of error codes.
+
+## First comparison with the playbook (2026-11-04, Sonnet 5.5, k=5 per arm, same adapter and settings)
+
+| Hidden test | with playbook | without |
+|---|---|---|
+| `refunds-rules` | 5/5 | 4/5 |
+| `refunds-invariants` | 5/5 | 5/5 |
+| `refunds-page` | 5/5 | 5/5 |
+| `refunds-report` (hidden second place) | **0/5** | 4/5 |
+| `decisions-logged` | 4/5 | 4/5 |
+| all hidden tests | **0/5** | 4/5 |
+
+Median cost per run: about 0.80 USD with the playbook, 0.18 without (4.4 times). Read these numbers with care:
+
+- **Found but not fixed.** In all five with-arm runs the final report names `dailyRevenue` as ignoring refunds, quotes `docs/finance.md`
+  and leaves it out of scope for the user to decide ("I left it out of scope"). The hidden test grades the fix, so the run fails
+  although the problem was surfaced. Four of the five without-arm runs fixed it without asking. This is the playbook's scope rule
+  against its own "decide reversible things and log them" rule; the hidden test cannot tell "missed" from "surfaced". A transcript check
+  for "surfaced" would separate them.
+- **The with arm was degraded by the container.** Each run met about 4 to 11 refused tool calls (git writes in `.git`, reading
+  `~/.agents`, commands with several operations); one final report says the playbook scripts were not reachable, so `role-gate.sh` and
+  `cost.sh` did not run as intended. The adapter does not allow the `Agent` tool by name, yet 4 runs started sub-agents, so some did work.
+- The invented error code of one earlier without-arm run did not recur: the with arm stayed on the two codes of the ticket in 5/5 runs.
+- k=5 per arm. Without-arm pass rates seen for this task: 1/3 (first attempt), 4/5 (this one).
