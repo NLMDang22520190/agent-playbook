@@ -45,7 +45,21 @@ Phép tính giữ sống [SUY LUẬN từ hệ số giá, chưa kiểm]: một l
 - Với session cloud, chưa xác nhận việc đánh thức có giữ container sống hay không.
 - Vòng tự chọn nhịp (dynamic `/loop`, `ScheduleWakeup` với trễ không quá 3000 giây) có tránh được jitter kiểu cron hay không.
 
-Thí nghiệm đề xuất, chưa chạy (chờ người dùng xác nhận ngân sách; ước tính dưới 1 USD, SUY LUẬN): resume session `3734ab9a-28b9-4015-b198-40064afadb1b` ở khoảng 55 phút và khoảng 110 phút, thêm đối chứng sau hơn 65 phút không hoạt động, đọc `cache_read_input_tokens` và `cache_creation_input_tokens` mỗi lần.
+Thí nghiệm TTL đã chạy sau khi người dùng cho phép (ngân sách khoảng 0,5 USD, trong 1,1 USD còn lại của trần 22). Dữ liệu thô: `docs/research-data/ttl-2026-11-09.tsv`.
+
+[ĐO] `claude -p --resume`, Sonnet 5.5, container này, cache 1 giờ (JSON thô: 0 token ở bucket 5 phút):
+
+| Lần | Giờ (Z) | Cách lần trước | Đọc cache | Ghi mới | Chi phí |
+|---|---|---|---|---|---|
+| B0 | 07:27 | phiên mới | 27.692 | 7.493 | 0,033 USD |
+| B1 | 08:21:47 | 54 phút | 28.279 | 6.945 | 0,063 USD |
+| B2 | 09:15:54 | 54 phút | 35.200 | 63 | 0,067 USD |
+
+Đối chứng (phiên C, idle 2h02m): đọc 0, ghi lại 35.218 token.
+
+[SUY LUẬN có cơ sở từ số đo] B2 đọc gần như toàn bộ context, gồm phần 28k token ghi từ 108 phút trước. Phần đó chỉ sống được vì B1 đã đọc nó ở phút 54, nên mỗi lần đọc làm mới TTL và chu kỳ 54 phút giữ sống được. Đối chứng C cho thấy prefix dùng chung không tự sống nhờ session khác.
+
+Giới hạn: một phiên mỗi nhánh; chỉ cho `claude -p` trong container, Sonnet 5.5; chưa chứng minh cho app desktop Windows hay session cloud. B1 ghi lại khoảng 7k token thay vì đọc, chưa giải thích được. Lần thử đầu bị hỏng vì tiến trình nền bị harness dọn (A1, C1, A2 không chạy), đã chạy lại bằng chuỗi B và đối chứng C.
 
 ## 3. Lệnh `/code-review` (nguồn: tài liệu Claude Code)
 
