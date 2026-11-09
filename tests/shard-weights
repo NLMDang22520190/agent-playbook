@@ -1,7 +1,7 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 41443543742.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
-# Updated from the "progress: done" lines of CI run 41575176838: test-release-gate-par.sh, test-guard-restore-r9.sh, test-evals-jobs.sh; test-release-gate.sh and test-release-gate-b.sh share that run's 1188 s of the old test-release-gate.sh (v0.34.0 split) in the ratio of their local run times (39 s : 36 s), estimated. test-guard-restore-mount.sh (240) is a local-run estimate (4 min on the dev host), not a CI measurement.
-# v0.35.0: test-gate-voided.sh and test-outcome-heldout.sh are estimated, not measured: refresh from the first full Windows CI run of v0.35.0 (L-0003). test-outcome-heldout.sh 181 = 596 (test-outcome-corpus.sh, 33 tasks) x 10/33 rounded up, for the ten new tasks plus its extra assertions; test-gate-voided.sh 7 = the weight of test-mutate-b.sh, the smallest small suite that also makes a node call.
+# v0.35.0: test-outcome-heldout.sh, test-gate-voided.sh and the previously estimated release-gate and evals-variant suites are measured from run 42584250555 (windows-latest, ten shards)
+# test-guard-restore-mount.sh (240) is a local-run estimate (4 min on the dev host), not a CI measurement.
 test-evals-grade9.sh 1007
 test-evals-grade9b.sh 977
 test-release-gate-rules.sh 953
@@ -13,9 +13,9 @@ test-evals-grade6-b.sh 917
 test-ci-tree-tested-steps.sh 873
 test-outcome-variant.sh 794
 test-run-all.sh 789
-test-evals-variant-b.sh 783
 test-release-gate-reuse.sh 701
 test-role-gate-size.sh 695
+test-release-gate-b.sh 693
 test-evals-grade15.sh 679
 test-guard-restore.sh 666
 test-role-gate-batch.sh 664
@@ -26,7 +26,6 @@ test-evals-grade6.sh 648
 test-evals-runner-b.sh 639
 test-tdd-step-d.sh 636
 test-evals-grade2-e20-capture.sh 622
-test-release-gate.sh 618
 test-release-gate-confirm.sh 611
 test-evals-grade4-b.sh 599
 test-evals-grade2.sh 597
@@ -35,11 +34,13 @@ test-outcome-corpus.sh 596
 test-tdd-step-f.sh 588
 test-guard-ps.sh 581
 test-evals-grade8c.sh 577
-test-release-gate-b.sh 570
 test-evals-grade8.sh 569
+test-evals-variant-b.sh 564
 test-ci-tree-tested.sh 559
 test-evals-budget.sh 557
 test-update-release.sh 537
+test-guard-restore-r9.sh 536
+test-release-gate.sh 508
 test-evals-grade2-e20.sh 506
 test-evals-grade7.sh 506
 test-outcome-report.sh 493
@@ -51,7 +52,6 @@ test-tdd-step-b.sh 449
 test-tdd-step-c.sh 449
 test-evals-keys.sh 440
 test-tdd-step-s.sh 437
-test-guard-restore-r9.sh 424
 test-tdd-step-l.sh 424
 test-tdd-step-q.sh 408
 test-tdd-step.sh 406
@@ -59,7 +59,6 @@ test-leak-check.sh 403
 test-evals-grade5.sh 394
 test-tdd-step-h.sh 392
 test-evals-grade3.sh 386
-test-evals-jobs.sh 379
 test-evals-arms.sh 376
 test-role-model-b.sh 370
 test-evals-grade7b.sh 361
@@ -69,8 +68,8 @@ test-evals-grade10b.sh 346
 test-tdd-step-n.sh 341
 test-evals-arms-b.sh 340
 test-evals-grade8b.sh 340
+test-evals-variant.sh 339
 test-guard-code-contract-r3.sh 334
-test-evals-variant.sh 326
 test-guard-code-contract-r6.sh 325
 test-evals-grade12b.sh 321
 test-tdd-step-g.sh 320
@@ -80,6 +79,7 @@ test-leak-check-push.sh 309
 test-ship.sh 308
 test-outcome-jobs.sh 303
 test-role-gate.sh 303
+test-release-gate-par.sh 301
 test-tdd-step-v.sh 289
 test-leak-check-push-b.sh 277
 test-evals-grade14b.sh 270
@@ -93,6 +93,7 @@ test-evals-grade11.sh 252
 test-guard-pre.sh 250
 test-outcome-runner.sh 250
 test-role-model.sh 250
+test-evals-jobs.sh 249
 test-content.sh 247
 test-guard-restore-mount.sh 240
 test-outcome-isolation.sh 235
@@ -103,7 +104,7 @@ test-role-gate-b.sh 226
 test-outcome-metrics.sh 225
 test-release.sh 225
 test-outcome-selfcheck.sh 224
-test-release-gate-par.sh 222
+test-outcome-heldout.sh 221
 test-tdd-step-y.sh 221
 test-release-gate-check.sh 219
 test-tdd-step-r.sh 208
@@ -115,7 +116,6 @@ test-tdd-step-k.sh 198
 test-tdd-step-u.sh 191
 test-guard-stop.sh 185
 test-run-checks-gnu.sh 183
-test-outcome-heldout.sh 181
 test-learnings-hook.sh 171
 test-evals-safety-fail.sh 170
 test-leak-check-mode.sh 169
@@ -172,11 +172,11 @@ test-sdlc-refs.sh 9
 test-rubric-table.sh 8
 test-guard-restore-r12.sh 7
 test-mutate-b.sh 7
-test-gate-voided.sh 7
 test-codex-adapter.sh 5
 test-report-rules.sh 3
 test-docs-rules.sh 2
 test-bsd-check.sh 1
+test-gate-voided.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
