@@ -5,8 +5,8 @@
 # commit whose message says "held-out: written before any run" and no later commit touched them; DEFAULT_TASKS of
 # tools/release-gate.sh is main's (b9f407a); evals/tasks/README.md documents the held-out set.
 # Per-task metadata, canary, prompt and setup pins of the ten live in tests/test-outcome-corpus.sh.
-# L-0009: this suite has no measured Windows weight in tests/shard-weights (owned by another branch; unknown suites weigh
-# 10): the PR names it as an estimate. Never calls a harness. Bash 3.2 / BSD tools.
+# L-0009: tests/shard-weights carries this suite's measured Windows weight (221 s, Windows CI run 42584250555, ten
+# shards). Never calls a harness. Bash 3.2 / BSD tools.
 . "$(dirname "$0")/lib.sh"
 TASKS="$PB_ROOT/evals/tasks"
 CHECK="$PB_ROOT/evals/check-tasks.sh"
