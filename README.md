@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.34.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-26199-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.35.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-26583-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-38%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -231,12 +231,12 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **26199 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **26583 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
-| Always-on block | 39 / 60 lines · 4,584 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
+| Always-on block | 38 / 60 lines · 4,585 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
 | CI | Ubuntu (bash 5, shellcheck), macOS (bash 3.2, BSD tools) and Windows (Git Bash, copy mode) on every push and PR | `.github/workflows/test.yml` |
-| Behaviour evals | Claude Code 2.1.296 is the only harness evaluated in full; Codex is partly evaluated (Run C1: k=3, through a `--cmd` adapter kept outside the repo); OpenCode is installable but not evaluated. Runs 25-44 (2026-10-26 and 27, with vs without the playbook, k=2 to 10, Run 38 on claude-opus-5-5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): at k=10 (Run 44) E2, E3, E4, E6 and E29 show Δ > 0 with 95% intervals that exclude 0, E14 and E21 are inconclusive; with the hooks Δ > 0 for E13 and E34. Of the 33 outcome tasks, pattern-26, pattern-15 and pattern-24 separate the arms with intervals that exclude 0 (runs pooled across commits); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44; Δ = 0 on 20 tasks in two or more runs and on 6 in one run. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
+| Behaviour evals | Claude Code 2.1.296 is the only harness evaluated in full; Codex is partly evaluated (Run C1: k=3, through a `--cmd` adapter kept outside the repo); OpenCode is installable but not evaluated. Runs 25-44 (2026-10-26 and 27, with vs without the playbook, k=2 to 10, Run 38 on claude-opus-5-5) are summarised per rule in [`docs/delta-audit.md`](docs/delta-audit.md): at k=10 (Run 44) E2, E3, E4, E6 and E29 show Δ > 0 with 95% intervals that exclude 0, E14 and E21 are inconclusive; with the hooks Δ > 0 for E13 and E34. Of the 33 outcome tasks, pattern-26, pattern-15 and pattern-24 separate the arms with intervals that exclude 0 (runs pooled across commits); pattern-19, 23 and 25 lean the same way but are inconclusive; pattern-12 did not replicate in Run 44; Δ = 0 on 20 tasks in two or more runs and on 6 in one run. The corpus now has 43 outcome tasks: the 33 above and ten held-out tasks (pattern-27 to pattern-36) written before any run and not yet run. Cost: about 2-2.5x per run with the playbook (Run 25: 2.5x, Run 26: 2.1x, Run 29: 2.1x). Earlier runs, with the failures and grader fixes they found: [2026-10-10](evals/results/2026-10-10-claude-code-2.1.296.md), [2026-10-12 to 26](evals/results/2026-10-12-claude-code-2.1.296.md) | [`evals/scenarios.md`](evals/scenarios.md) · [`RUBRIC.md`](evals/RUBRIC.md) |
 
 ## Alongside Superpowers or other skill packs
 
@@ -264,7 +264,7 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  26199 tests, run in sandboxes, never touch the real HOME
+├── tests/                  26583 tests, run in sandboxes, never touch the real HOME
 ├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E43) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
