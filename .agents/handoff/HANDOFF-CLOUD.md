@@ -45,3 +45,10 @@
   user). PR #84 not merged; the user's local gate re-runs on c750f56. Item 3 (guard R6-2 Windows timing) matches the CI flake seen
   on PR #83 windows shard 3/8.
 - 2026-11-03: user chose option (a): items 5 and 12 in PR #83, the rest later. Item 12 done (d9e5794); item 5 after v0.34.0 is on main.
+- 2026-11-09: v0.34.0 merged (PR #84, db31166, tag v0.34.0; message from the v0.34 session, verified with git fetch). Rebased
+  feat/v0.35.0 onto it (28 commits; conflicts: test-content.sh and test-sdlc-refs.sh kept both sides / the cut's version,
+  SKILL.md kept the cut plus v0.34's "which steps to hand it" pointer). Post-rebase test commit dcbf5c7 (tester gate OK): graders
+  pinned to db31166, SKILL.md exact count 2738, estimated shard weights for test-outcome-heldout.sh (181) and test-gate-voided.sh (7).
+  Force-pushed with --force-with-lease (old e4379f8); the guard hook warned git-push-force, the user had asked for the rebase and
+  given full authority. Next: CI on the rebased tree -> refresh tests/shard-weights from that Windows run (item 5) -> VERSION,
+  CHANGELOG, README counts -> remove this file -> CI green except Release gate -> report the sha.
