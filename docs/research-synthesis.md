@@ -168,7 +168,7 @@ Cách chạy mẫu: xem `evals/tasks-project/README.md`. Hai biến thể playbo
 
 ## 8. Chi tiêu
 
-Khoảng 20,3 USD trên trần 22 USD (tự cộng từ các dòng COST của runner, không phải số của runner). Chi phí mỗi lần chạy: không có
+Khoảng 20,9 USD trên trần 22 USD (cộng cột cost_usd của docs/research-data/runs.tsv, không phải số của runner; con số 20,3 báo trước đó thiếu các lần chạy đang dở khi phanh dừng). Chi phí mỗi lần chạy: không có
 playbook 0,04 đến 0,23 USD; có playbook 0,13 đến 1,66 USD tùy task và số sub-agent. Ước tính ban đầu "1 đến 2 USD" cho một so sánh
 có playbook là sai: nhánh có playbook tốn nhiều hơn mức 2 đến 2,5 lần mà các eval cũ cho thấy.
 
