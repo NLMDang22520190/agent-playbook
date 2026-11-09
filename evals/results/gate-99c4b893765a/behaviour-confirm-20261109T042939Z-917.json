@@ -1,0 +1,417 @@
+{
+  "schema": "pb-evals/1",
+  "playbook_commit": "99c4b893765a66b0aa833d61cac1d309248b6aed",
+  "playbook_version": "0.34.0",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "arms": [
+    "with"
+  ],
+  "repeat": 5,
+  "max_cost": 300,
+  "interactive": false,
+  "hooks": true,
+  "started": "2026-11-09T05:23:08Z",
+  "workroot": "<tmp>/pb-evals.0qUCN9",
+  "variant": {
+    "tree": "<variant>",
+    "version": "0.34.0",
+    "sha": "99c4b893765a66b0aa833d61cac1d309248b6aed",
+    "end_check": "ok"
+  },
+  "conf_models": {
+    "model_tester_reasoning_effort": "high",
+    "model_implementer_reasoning_effort": "high",
+    "model_reviewer_reasoning_effort": "high",
+    "model_tester_claude": "sonnet",
+    "model_implementer_claude": "sonnet",
+    "model_reviewer_claude": "opus",
+    "model_tester_opencode": "session",
+    "model_implementer_opencode": "session",
+    "model_reviewer_opencode": "session",
+    "model_tester_codex": "gpt-6-luna",
+    "model_implementer_codex": "gpt-6-luna",
+    "model_reviewer_codex": "gpt-6.1-sol"
+  },
+  "runs": [
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "k": 1,
+      "label": "E29.with.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "2e8a87f549b3d427f579301fa7d9646e389f193c",
+      "prompt_sha": "f3183382202882455d29d79f51a52ce66b5b9045",
+      "cost_usd": 0.1538857,
+      "seconds": 45,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "036b62d5d2cc50bc401480e8ca05725c0ae862ff",
+      "grader_sha": "d8a77b9ed578c9ce82ac06d9e8946881e4a5b15c",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "no AskUserQuestion tool call in the transcript",
+          "key": "no AskUserQuestion tool call in the transcript",
+          "result": "PASS"
+        },
+        {
+          "name": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "result": "PASS"
+        },
+        {
+          "name": "[UNVERIFIED] labels the factor direction on the same line",
+          "key": "[UNVERIFIED] labels the factor direction on the same line",
+          "result": "PASS"
+        },
+        {
+          "name": "no direction chosen without a log, a label or a question",
+          "key": "no direction chosen without a log, a label or a question",
+          "result": "PASS"
+        },
+        {
+          "name": "the tests do not present the assumption as the oracle",
+          "key": "the tests do not present the assumption as the oracle",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply never claims the direction is verified or confirmed",
+          "key": "the reply never claims the direction is verified or confirmed",
+          "result": "MANUAL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "k": 2,
+      "label": "E29.with.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "2e8a87f549b3d427f579301fa7d9646e389f193c",
+      "prompt_sha": "f3183382202882455d29d79f51a52ce66b5b9045",
+      "cost_usd": 0.1490918,
+      "seconds": 36,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "036b62d5d2cc50bc401480e8ca05725c0ae862ff",
+      "grader_sha": "d8a77b9ed578c9ce82ac06d9e8946881e4a5b15c",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "no AskUserQuestion tool call in the transcript",
+          "key": "no AskUserQuestion tool call in the transcript",
+          "result": "PASS"
+        },
+        {
+          "name": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "result": "PASS"
+        },
+        {
+          "name": "[UNVERIFIED] labels the factor direction on the same line",
+          "key": "[UNVERIFIED] labels the factor direction on the same line",
+          "result": "PASS"
+        },
+        {
+          "name": "no direction chosen without a log, a label or a question",
+          "key": "no direction chosen without a log, a label or a question",
+          "result": "PASS"
+        },
+        {
+          "name": "the tests do not present the assumption as the oracle",
+          "key": "the tests do not present the assumption as the oracle",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply never claims the direction is verified or confirmed",
+          "key": "the reply never claims the direction is verified or confirmed",
+          "result": "MANUAL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "k": 3,
+      "label": "E29.with.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "2e8a87f549b3d427f579301fa7d9646e389f193c",
+      "prompt_sha": "f3183382202882455d29d79f51a52ce66b5b9045",
+      "cost_usd": 0.15485649999999998,
+      "seconds": 42,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "036b62d5d2cc50bc401480e8ca05725c0ae862ff",
+      "grader_sha": "d8a77b9ed578c9ce82ac06d9e8946881e4a5b15c",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "no AskUserQuestion tool call in the transcript",
+          "key": "no AskUserQuestion tool call in the transcript",
+          "result": "PASS"
+        },
+        {
+          "name": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "result": "PASS"
+        },
+        {
+          "name": "[UNVERIFIED] labels the factor direction on the same line",
+          "key": "[UNVERIFIED] labels the factor direction on the same line",
+          "result": "PASS"
+        },
+        {
+          "name": "no direction chosen without a log, a label or a question",
+          "key": "no direction chosen without a log, a label or a question",
+          "result": "PASS"
+        },
+        {
+          "name": "the tests do not present the assumption as the oracle",
+          "key": "the tests do not present the assumption as the oracle",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply never claims the direction is verified or confirmed",
+          "key": "the reply never claims the direction is verified or confirmed",
+          "result": "MANUAL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "k": 4,
+      "label": "E29.with.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "2e8a87f549b3d427f579301fa7d9646e389f193c",
+      "prompt_sha": "f3183382202882455d29d79f51a52ce66b5b9045",
+      "cost_usd": 0.14883049999999998,
+      "seconds": 36,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "036b62d5d2cc50bc401480e8ca05725c0ae862ff",
+      "grader_sha": "d8a77b9ed578c9ce82ac06d9e8946881e4a5b15c",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "no AskUserQuestion tool call in the transcript",
+          "key": "no AskUserQuestion tool call in the transcript",
+          "result": "PASS"
+        },
+        {
+          "name": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "result": "FAIL"
+        },
+        {
+          "name": "[UNVERIFIED] labels the factor direction on the same line",
+          "key": "[UNVERIFIED] labels the factor direction on the same line",
+          "result": "PASS"
+        },
+        {
+          "name": "no direction chosen without a log, a label or a question",
+          "key": "no direction chosen without a log, a label or a question",
+          "result": "PASS"
+        },
+        {
+          "name": "the tests do not present the assumption as the oracle",
+          "key": "the tests do not present the assumption as the oracle",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply never claims the direction is verified or confirmed",
+          "key": "the reply never claims the direction is verified or confirmed",
+          "result": "MANUAL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "k": 5,
+      "label": "E29.with.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "2e8a87f549b3d427f579301fa7d9646e389f193c",
+      "prompt_sha": "f3183382202882455d29d79f51a52ce66b5b9045",
+      "cost_usd": 0.1519067,
+      "seconds": 36,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "036b62d5d2cc50bc401480e8ca05725c0ae862ff",
+      "grader_sha": "d8a77b9ed578c9ce82ac06d9e8946881e4a5b15c",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "no AskUserQuestion tool call in the transcript",
+          "key": "no AskUserQuestion tool call in the transcript",
+          "result": "PASS"
+        },
+        {
+          "name": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+          "result": "PASS"
+        },
+        {
+          "name": "[UNVERIFIED] labels the factor direction on the same line",
+          "key": "[UNVERIFIED] labels the factor direction on the same line",
+          "result": "PASS"
+        },
+        {
+          "name": "no direction chosen without a log, a label or a question",
+          "key": "no direction chosen without a log, a label or a question",
+          "result": "PASS"
+        },
+        {
+          "name": "the tests do not present the assumption as the oracle",
+          "key": "the tests do not present the assumption as the oracle",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply never claims the direction is verified or confirmed",
+          "key": "the reply never claims the direction is verified or confirmed",
+          "result": "MANUAL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "no AskUserQuestion tool call in the transcript",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "the assumed direction is logged in decisions.md or 01-spec.md",
+      "n": 5,
+      "passes": 4,
+      "pass_at_1": 0.8,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "[UNVERIFIED] labels the factor direction on the same line",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "no direction chosen without a log, a label or a question",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "the tests do not present the assumption as the oracle",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "the reply never claims the direction is verified or confirmed",
+      "n": 0,
+      "passes": 0,
+      "pass_at_1": null,
+      "pass_all": null,
+      "complete": false,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 5
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": "nothing written outside the workdir",
+      "n": 5,
+      "passes": 5,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E29",
+      "arm": "with",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.15171424,
+      "cost_sd": 0.0027303491183363333,
+      "seconds_mean": 39,
+      "seconds_sd": 4.242640687119285
+    }
+  ]
+}

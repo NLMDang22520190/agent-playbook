@@ -10,7 +10,6 @@ INST() { bash "$PB_ROOT/install.sh" "$@" $MODEFLAG; }
 export PLAYBOOK_REGISTRY="$(mk_tmp)/registry"
 HAVE_NODE=0
 if command -v node >/dev/null 2>&1 && node -e '' >/dev/null 2>&1; then HAVE_NODE=1; fi
-[ "$HAVE_NODE" = 1 ] || echo "note: node not found: the merge tests are skipped"
 ck() { cksum < "$1" 2>/dev/null; }
 mk_home() { cd "$(mk_tmp)" && pwd -P; }
 nh() { grep -c '# agent-playbook:' "$1/.claude/settings.json" 2>/dev/null || true; }   # handlers in H settings.json
@@ -134,7 +133,7 @@ H="$(mk_home)"
 run INST install --home "$H" --harness codex --yes
 assert_rc "AC5' codex install exits 0" 0
 assert_no_path "AC5' codex install writes no ~/.claude/settings.json" "$H/.claude/settings.json"
-else t_skip 60 "AC5' merge tests (no node)"; fi
+else t_skip 54 "AC5' merge tests (no node)"; fi
 
 echo "AC5' without node: WARN, install still exits 0, nothing half-written"
 BASHX="$(command -v bash)"; NB="$(mk_tmp)"

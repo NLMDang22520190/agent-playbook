@@ -356,20 +356,20 @@ D="$(mk_tmp)"; mk_tree "$D" 0.2 0.2 "a b c d e f"
 guarded 60 env PB_JOBS=1 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
 assert_eq "v24.14 no weights file, shard 1/2: the modulo set a c e starts in name order" "a c e " "$(start_order)"
 
-echo "v0.30.0 eight Windows shards: PB_SHARD=k/8 with the repo's tests/shard-weights partitions every suite exactly once"
+echo "v0.34.0 A1 ten Windows shards: PB_SHARD=k/10 with the repo's tests/shard-weights partitions every suite exactly once (characterization: run-all splits by any n)"
 # stub suites carry the real suite names (hyphens become underscores: the stubs use the name in variable names)
 # and the repo's weights file (same renaming) decides the split
 REAL="$(ls "$PB_ROOT"/tests/test-*.sh | sed 's#^.*/test-##; s#\.sh$##; s/-/_/g' | tr '\n' ' ' | sed 's/ $//')"
 RW="$(grep -v '^#' "$PB_ROOT/tests/shard-weights" | sed 's/-/_/g; s/^test_/test-/' | awk '{ printf "%s\n", $0 }')"
 ALL=""
-for k in 1 2 3 4 5 6 7 8; do
-  wshard_run "$k/8" "$REAL" "$RW"
-  assert_rc "v0.23.3 real weights, shard $k/8 exits 0" 0
+for k in 1 2 3 4 5 6 7 8 9 10; do
+  wshard_run "$k/10" "$REAL" "$RW"
+  assert_rc "v0.23.3 real weights, shard $k/10 exits 0" 0
   r="$(ran_suites)"
-  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/8 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/8 runs at least one suite" "ran nothing"; fi
+  if [ -n "$r" ]; then t_ok "v0.23.3 real weights, shard $k/10 runs at least one suite"; else t_bad "v0.23.3 real weights, shard $k/10 runs at least one suite" "ran nothing"; fi
   ALL="$ALL$r"
 done
-assert_eq "v0.23.3 real weights: the 8 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
+assert_eq "v0.23.3 real weights: the 10 shards together ran every suite exactly once" "$(printf '%s' "$REAL" | tr ' ' '\n' | sort | tr '\n' ' ')" "$(printf '%s' "$ALL" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')"
 
 echo "v0.24.21 two macOS shards: PB_SHARD=k/2 with the repo tests/shard-weights partitions every suite exactly once (both non-empty)"
 # characterization: run-all already partitions by any n; this pins the macOS split the workflow now uses (same REAL names and RW weights as above)
@@ -563,4 +563,58 @@ echo "test-a.sh: 1 passed, 0 failed"
 ' "$D" > "$D/tests/test-a.sh"
 guarded 60 env PB_RERUN=0 PB_JOBS=1 bash "$D/tests/run-all.sh"
 assert_eq "CI fix: a suite run by run-all sees PB_RERUN unset" "unset" "$(cat "$D/seen" 2>/dev/null)"
+# --- v0.34.0 A3 (D1): one progress line when a suite starts and one when it ends, printed as they happen
+echo "v0.34.0 A3 run-all prints 'progress: start' and 'progress: done' lines for every suite"
+D="$(mk_tmp)"; mk_tree "$D" 2 0.1 "a b c"
+guarded 60 env FAIL_c=3 PB_RERUN=0 PB_JOBS=3 bash "$D/tests/run-all.sh"
+assert_rc "A3 a failing suite makes the run exit 1" 1
+for n in a b c; do
+  assert_contains "A3 suite $n: a start line 'progress: start tests/test-$n.sh'" "$OUT" "progress: start tests/test-$n.sh"
+  if printf '%s\n' "$OUT" | grep -Eq "^progress: done tests/test-$n\.sh \([0-9]+ s, rc [0-9]+\)$"; then t_ok "A3 suite $n: a done line 'progress: done tests/test-$n.sh (N s, rc R)'"; else t_bad "A3 suite $n: a done line 'progress: done tests/test-$n.sh (N s, rc R)'" "$(printf '%s\n' "$OUT" | grep '^progress:' | tr '\n' '|')"; fi
+  assert_eq "A3 suite $n: exactly one start line" "1" "$(printf '%s\n' "$OUT" | grep -c "^progress: start tests/test-$n\.sh\$")"
+  assert_eq "A3 suite $n: exactly one done line" "1" "$(printf '%s\n' "$OUT" | grep -c "^progress: done tests/test-$n\.sh ")"
+  sl="$(printf '%s\n' "$OUT" | grep -n -m1 "^progress: start tests/test-$n\.sh\$" | cut -d: -f1)"
+  dl="$(printf '%s\n' "$OUT" | grep -n -m1 "^progress: done tests/test-$n\.sh " | cut -d: -f1)"
+  if [ -n "$sl" ] && [ -n "$dl" ] && [ "$sl" -lt "$dl" ]; then t_ok "A3 suite $n: the start line comes before its done line"; else t_bad "A3 suite $n: the start line comes before its done line" "start [$sl] done [$dl]"; fi
+done
+if printf '%s\n' "$OUT" | grep -Eq '^progress: done tests/test-c\.sh \([0-9]+ s, rc 3\)$'; then t_ok "A3 the done line of the failing suite c carries rc 3 and whole seconds"; else t_bad "A3 the done line of the failing suite c carries rc 3 and whole seconds" "$(printf '%s\n' "$OUT" | grep '^progress: done tests/test-c.sh ')"; fi
+if printf '%s\n' "$OUT" | grep -Eq '^progress: done tests/test-a\.sh \((2|3) s, rc 0\)$'; then t_ok "A3 the done line of the 2 s suite a carries its seconds and rc 0"; else t_bad "A3 the done line of the 2 s suite a carries its seconds and rc 0" "$(printf '%s\n' "$OUT" | grep '^progress: done tests/test-a.sh')"; fi
+echo "v0.34.0 A3 the log blocks, the '== tests/x (N s)' headings and the count parsing are unchanged"
+assert_eq "A3 the headings stay in name order, each with its seconds in the old format" "a b c " "$(printf '%s\n' "$OUT" | grep -E '^== tests/test-[a-z]\.sh \([0-9]+ s\)$' | sed -E 's#^== tests/test-([a-z])\.sh.*#\1#' | tr '\n' ' ')"
+assert_eq "A3 the progress lines exist (3 start + 3 done) so the heading and 'passed' checks below are not vacuous" "6" "$(printf '%s\n' "$OUT" | grep -c '^progress: ')"
+assert_eq "A3 no progress line looks like a heading" "0" "$(printf '%s\n' "$OUT" | grep '^progress:' | grep -c '^== ')"
+assert_eq "A3 no progress line carries the word 'passed' (readme-count counts N passed)" "0" "$(printf '%s\n' "$OUT" | grep '^progress:' | grep -ci 'passed')"
+assert_contains "A3 the per-suite log blocks are still printed" "$OUT" "suite a out"
+assert_contains "A3 the failing run still ends with FAILURES" "$OUT" "FAILURES"
+hl="$(printf '%s\n' "$OUT" | grep -n -m1 '^== tests/test-a\.sh (' | cut -d: -f1)"
+dl="$(printf '%s\n' "$OUT" | grep -n -m1 '^progress: done tests/test-c\.sh ' | cut -d: -f1)"
+if [ -n "$hl" ] && [ -n "$dl" ] && [ "$dl" -lt "$hl" ]; then t_ok "A3 the progress lines come before the first log block (printed as it happens, not at the end)"; else t_bad "A3 the progress lines come before the first log block" "heading line [$hl] last done line [$dl]"; fi
+
+echo "v0.34.0 A3 with PB_JOBS=1 a suite's done line comes before the next suite's start line"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+guarded 60 env PB_JOBS=1 bash "$D/tests/run-all.sh"
+assert_eq "A3 serial order of the progress lines" "start a|done a|start b|done b|" "$(printf '%s\n' "$OUT" | grep '^progress:' | sed -E 's#^progress: (start|done) tests/test-([a-z])\.sh.*#\1 \2#' | tr '\n' '|')"
+
+echo "v0.34.0 A3 a shard prints progress lines only for the suites it runs"
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b c d e f"
+guarded 60 env PB_JOBS=2 PB_SHARD=1/2 bash "$D/tests/run-all.sh"
+assert_eq "A3 shard 1/2 (a c e): start lines" "a c e " "$(printf '%s\n' "$OUT" | grep '^progress: start ' | sed -E 's#^.*test-([a-z])\.sh$#\1#' | sort | tr '\n' ' ')"
+assert_eq "A3 shard 1/2 (a c e): done lines" "a c e " "$(printf '%s\n' "$OUT" | grep '^progress: done ' | sed -E 's#^.*test-([a-z])\.sh .*$#\1#' | sort | tr '\n' ' ')"
+
+echo "v0.34.0 A3 the lines appear while the run is still going (a cancelled job's log shows where it was)"
+# suite a (slow) waits until the live output file holds b's done line and a's own start line; with progress printed only
+# at the end it never sees them and records a timeout. The run-all output goes to a file we can read while it runs.
+D="$(mk_tmp)"; mk_tree "$D" 0.1 0.1 "a b"
+LIVE="$D/live.txt"
+cat > "$D/tests/test-a.sh" <<SUITE
+#!/usr/bin/env bash
+i=0
+while [ "\$i" -lt 150 ]; do
+  if grep -q '^progress: start tests/test-a.sh' "$LIVE" 2>/dev/null && grep -q '^progress: done tests/test-b.sh' "$LIVE" 2>/dev/null; then echo seen > "$D/saw"; exit 0; fi
+  i=\$((i + 1)); sleep 0.1
+done
+echo timeout > "$D/saw"
+SUITE
+guarded 60 env PB_JOBS=2 bash -c 'exec bash "$1" > "$2" 2>&1' x "$D/tests/run-all.sh" "$LIVE"
+assert_eq "A3 while suite a still runs, the live output already holds a's start line and b's done line" "seen" "$(cat "$D/saw" 2>/dev/null)"
 t_summary

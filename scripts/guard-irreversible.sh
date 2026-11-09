@@ -576,6 +576,19 @@ headless() {
   return 1
 }
 hlog() { if [ -n "${PB_EVAL_HOOK_LOG:-}" ]; then printf 'guard %s\n' "$1" >> "$PB_EVAL_HOOK_LOG" 2>/dev/null; fi; return 0; }
+# DECISION[D-M10] a block / warn log line is "guard block|warn KIND COMMAND": the command on the same line, newlines and control
+# characters as spaces, redacted with pb_redact (the evidence blocks' rules), cut to 400 characters; the decision words stay first.
+# hlogc DECISION COMMAND
+hlogc() {
+  [ -n "${PB_EVAL_HOOK_LOG:-}" ] || return 0
+  local c="$2"
+  c="${c//[[:cntrl:]]/ }"
+  # also masked: URL userinfo (://user:pw@) and a curl-style -u / --user user:pw credential
+  c="$(printf '%s' "$c" | pb_redact 2>/dev/null | sed -E \
+    -e 's#(://)[^/@[:space:]]*:[^/@[:space:]]*@#\1[REDACTED]@#g' \
+    -e 's#(^|[[:space:]])(--user([[:space:]]+|=)|-u[[:space:]]*)[^[:space:]]*:[^[:space:]]*#\1\2[REDACTED]#g' 2>/dev/null)" || c=""
+  hlog "$1 ${c:0:400}"
+}
 # jesc TEXT -> JE: TEXT as the body of a JSON string
 jesc() {
   local s="$1"
@@ -595,13 +608,19 @@ warn_json() {
 # decide KIND TEXT [HINT] -> BLOCK headless, WARN interactive (both end the script)
 decide() {
   local kind="$1" what="${2:0:200}" hint="${3:-}"
+  if headless && [ "$kind" = git-discard ] && [ -n "$D1CMD" ]; then
+    hlogc "block $kind" "$J_cmd"
+    printf '%s\n' "${G_PFX}BLOCKED ($kind), an irreversible action: $what" \
+      "This is a headless run and nobody can confirm it, so the action is left pending. ${D1BLK:+Your command was blocked by \`$D1BLK\`. }The restore itself is allowed: run exactly \`$D1CMD\` as its own command, with nothing before or after it (cd is fine). Do not save a patch or chain other commands with it." >&2
+    exit 2
+  fi
   if headless; then
-    hlog "block $kind"
+    hlogc "block $kind" "$J_cmd"
     printf '%s\n' "${G_PFX}BLOCKED ($kind), an irreversible action: $what" \
       "This is a headless run and nobody can confirm it, so the action is left pending. Do not try another way to do it (another command, a script or an interpreter). Name it in your final reply as a pending action for the user.$hint" >&2
     exit 2
   fi
-  hlog "warn $kind"
+  hlogc "warn $kind" "$J_cmd"
   warn_json "$kind, an irreversible action: $what. Ask the user to confirm before running it.$hint"
   exit 0
 }
@@ -684,6 +703,29 @@ norm_path() {
     esac
   done
   NP="/${st[*]}"
+}
+# DECISION[D4] (v0.34.0 gate 2): physd DIR -> PHYSD, the physical directory in one form per host. In Git Bash `cd -P && pwd -P` does
+# not fold mounts (/tmp/x for C:/Users/u/AppData/Local/Temp/x, but /c/Users/... for the drive spelling of the same dir) and keeps
+# the case it was given, so the restore exemption saw "outside TOP" for the hinted restore. On MSYS the builtin `pwd -W` gives the
+# Windows path with mounts folded; it is turned into the /c/... form norm_path uses. cygwin* is included because Git for Windows 2.56
+# (bash 5.3, host triple x86_64-pc-cygwin) reports OSTYPE=cygwin; 2.42 reports msys. Where `pwd -W` fails or gives no drive path
+# (Linux, macOS, genuine Cygwin) the result is exactly `cd -P && pwd -P` as before; same subshell count on MSYS and Git for Windows
+# (genuine Cygwin pays one more for the failed `pwd -W`). Undo: make physd just the pwd -P branch.
+physd() {
+  local d
+  PHYSD=""
+  case "${OSTYPE:-}" in
+    msys* | cygwin*)
+      d="$(cd -P -- "$1" 2>/dev/null && pwd -W 2>/dev/null)" || d=""
+      case "$d" in
+        [A-Za-z]:/*)
+          lower "${d%%:*}"; PHYSD="/$LW${d#??}"
+          [ "${PHYSD%/}" = "$PHYSD" ] || PHYSD="${PHYSD%/}"
+          return 0 ;;
+      esac ;;
+  esac
+  PHYSD="$(cd -P -- "$1" 2>/dev/null && pwd -P)" || { PHYSD=""; return 1; }
+  return 0
 }
 # below PATH DIR -> 0 when PATH is strictly below DIR (both from norm_path); without case when CIC=1
 below() {
@@ -943,7 +985,7 @@ SEGW=()   # the words of the current command (type prefix kept)
 # DECISION[D15] (R9): what may surround the restore. RPRE stays 1 while every segment before the current one is on the allow-list (cd or
 # Set-Location with one literal dir, read-only git status/diff/log/show with literal words, or an earlier allowed restore); RCLS is the
 # verdict for the segment about to run, RRES says the segment just run was an allowed restore, GITW is the index of its git word.
-RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0
+RPRE=1; RCLS=1; RRES=0; GITW=-1; PS_RHS=0; D1CMD=""; D1P=""; D1BLK=""
 # rpre_cls: RCLS=0 when SEGW (as tokenized, before any parsing) is one segment the restore may follow
 rpre_cls() {
   local n="${#SEGW[@]}" t i w c a
@@ -968,7 +1010,9 @@ rpre_cls() {
   i=2
   while [ "$i" -lt "$n" ]; do
     a="${SEGW[$i]#?}"; i=$((i + 1))
-    case "$a" in *"$DS"* | *"$BQ"* | --output*) return 0 ;; esac
+    # DECISION[D-M11] --outp, --outpu and --output all count as --output. git itself rejects --outp= as ambiguous, so this is the safe
+    # side; the prefix also matches --output-indicator-new= and the like (a read-only check that returns "not judged", also safe)
+    case "$a" in *"$DS"* | *"$BQ"* | --outp*) return 0 ;; esac
   done
   RCLS=0
 }
@@ -1050,11 +1094,13 @@ restore_ok() {
   # DECISION[D13] R11-1: compare physically. TOP is git's physical toplevel (/private/var/... on macOS, C:/Users/... on Windows)
   # while the hook cwd may reach it through a symlink (/var/...) or in the /c/... form; resolve TOP and each pathspec's parent dir
   # with cd -P / pwd -P (bash builtins, one subshell each), so a symlinked dir that leads outside TOP still blocks.
-  topn="$(cd -P -- "$TOP" 2>/dev/null && pwd -P)" || return 1
+  physd "$TOP" || return 1
+  topn="$PHYSD"
   [ -n "$topn" ] && [ "$topn" != / ] || return 1
   # DECISION[D16] R12-1: git joins a relative pathspec to the PHYSICAL directory it runs in, so ".." folds against that, not against
   # the hook's (possibly symlinked) path; a directory that does not resolve blocks
-  pg="$(cd -P -- "$gdir" 2>/dev/null && pwd -P)" || return 1
+  physd "$gdir" || return 1
+  pg="$PHYSD"
   [ -n "$pg" ] || return 1
   for a in "${ps[@]}"; do
     case "$a" in '' | . | :* | *[*?[]*) return 1 ;; esac
@@ -1068,14 +1114,19 @@ restore_ok() {
     # appended literally, since a missing component cannot be a symlink
     rt="${np##*/}"; r="${np%/*}"
     while [ -n "$r" ] && [ ! -d "$r" ]; do rt="${r##*/}/$rt"; r="${r%/*}"; done
-    r="$(cd -P -- "${r:-/}" 2>/dev/null && pwd -P)" || return 1
+    physd "${r:-/}" || return 1
+    r="$PHYSD"
     [ -n "$r" ] || return 1
     if [ "$r" = / ]; then np="/$rt"; else np="$r/$rt"; fi
-    case "$np" in "$topn"/*) rel="${np#"$topn"/}" ;; *) return 1 ;; esac
+    # DECISION[D4]: on Windows the two sides are both in the folded /c/... form (see physd) and the prefix test ignores case
+    # (CIC=1 there); rel keeps the pathspec's own case and must still equal a list line exactly
+    if [ "$CIC" = 1 ]; then lower "$np"; v="$LW"; lower "$topn"; r="$LW"; else v="$np"; r="$topn"; fi
+    case "$v" in "$r"/*) rel="${np:${#topn}+1}" ;; *) return 1 ;; esac
     case "$rel" in '' | *"$NL"*) return 1 ;; esac
     [ ! -d "$TOP/$rel" ] || return 1
     tail -n +2 "$rf" | grep -Fxq -- "$rel" || return 1
     if tail -n +2 "$df" | grep -Fxq -- "$rel"; then return 1; fi
+    [ -n "$D1P" ] || D1P="$rel"
     [ "$(git -C "$TOP" -c core.quotepath=off ls-tree -r --name-only "$BASE" -- "$rel" 2>/dev/null)" = "$rel" ] || return 1
   done
   return 0
@@ -1118,9 +1169,44 @@ $out
 EOF
   return 1
 }
+# DECISION[R2-D1]: messages only. When a git-discard block hits a checkout/restore that restores a path of the restore list (the segment
+# passes restore_ok if the segments before it are ignored), D1CMD holds the exact restore the Stop hint printed, and decide() says that
+# restore is allowed alone instead of "Do not try another way". The verdicts are unchanged; undo: drop d1_cmd, D1CMD and the decide branch.
+# d1_blk: remembers the first segment that stopped the restore from being allowed (D1BLK), as its words joined by spaces
+d1_blk() {
+  local w
+  [ -z "$D1BLK" ] || return 0
+  # a redirection token keeps only its target (o: output, r: input); the operator is shown as > or < (an fd number is not kept)
+  for w in "${SEGW[@]}"; do
+    case "$w" in
+      o*) D1BLK="$D1BLK${D1BLK:+ }> ${w#?}" ;;
+      r*) D1BLK="$D1BLK${D1BLK:+ }< ${w#?}" ;;
+      *) D1BLK="$D1BLK${D1BLK:+ }${w#?}" ;;
+    esac
+  done
+}
+# d1_cmd SUB MODE SI GDIR GOPT -> sets D1CMD
+d1_cmd() {
+  local sv="$RPRE" cw
+  D1CMD=""; D1P=""
+  { [ "$2" = tracked ] && { [ "$1" = checkout ] || [ "$1" = restore ]; }; } || return 0
+  RPRE=1
+  if restore_ok "$1" "$3" "$4" "$5" && [ -n "$D1P" ]; then
+    shq "$D1P"
+    D1CMD="git checkout ${BASE:0:7} -- $SQ"
+    # the command must work from the cwd the blocked command ran in: from anywhere but the top, name the top with cd first
+    physd "${J_cwd:-$PWD}" || PHYSD=""
+    cw="$PHYSD"
+    physd "$TOP" || PHYSD=""
+    if [ "$CIC" = 1 ]; then lower "$cw"; cw="$LW"; lower "$PHYSD"; PHYSD="$LW"; fi
+    if [ "$cw" != "$PHYSD" ]; then shq "$TOP"; D1CMD="cd $SQ && $D1CMD"; fi
+  fi
+  RPRE="$sv"
+  return 0
+}
 # seg_git START: git push --force family (D5) and the discard family (D18)
 seg_git() {
-  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si
+  local i="$1" n="${#SEGW[@]}" w gdir="$CWD" gok="$CWD_OK" sub a mode="" staged=0 wt=0 force=0 dry=0 cx=0 cX=0 dd=0 out l ign="" gopt=1 si cop=0 cnew=0
   while [ "$i" -lt "$n" ]; do
     w="${SEGW[$i]#?}"
     case "$w" in
@@ -1157,14 +1243,25 @@ seg_git() {
       done ;;
     checkout)
       while [ "$i" -lt "$n" ]; do
-        a="${SEGW[$i]#?}"; i=$((i + 1))
+        a="${SEGW[$i]}"; i=$((i + 1))
+        case "$a" in r* | o*) continue ;; esac
+        a="${a#?}"
         case "$a" in
           --) dd=1 ;;
           .) mode=tracked ;;
+          -b* | -B* | --orphan* | --detach | -d) cnew=1 ;;
+          # DECISION[D-M8b] the separate-word value of --conflict is not a path (the =value form is one word)
+          --conflict) i=$((i + 1)) ;;
+          # --pathspec-from-file (either form) names the paths in a file: path mode, a tracked discard
+          --pathspec-from-file) mode=tracked; i=$((i + 1)) ;;
+          --pathspec-from-file=*) mode=tracked ;;
           -*) ;;
-          *) [ "$dd" = 1 ] && mode=tracked ;;
+          *) if [ "$dd" = 1 ]; then mode=tracked; else cop=$((cop + 1)); fi ;;
         esac
-      done ;;
+      done
+      # DECISION[D-M8] git checkout <rev> <path> without -- (two or more non-option words, none of them -b/-B/--orphan/--detach
+      # forms) restores the paths from <rev>: tracked discard mode. One word stays ambiguous (a branch) and passes.
+      if [ "$cop" -ge 2 ] && [ "$cnew" = 0 ]; then mode=tracked; fi ;;
     restore)
       while [ "$i" -lt "$n" ]; do
         a="${SEGW[$i]#?}"; i=$((i + 1))
@@ -1207,7 +1304,11 @@ seg_git() {
           '!!'*) [ "$cx" = 1 ] || [ "$cX" = 1 ] && HIT=git-discard ;;
         esac ;;
     esac
-    [ -n "$HIT" ] && { HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."; return 0; }
+    if [ -n "$HIT" ]; then
+      HINT=" Something would be lost for good (git status shows it): keep it first with git stash -u, or leave it to the user."
+      d1_cmd "$sub" "$mode" "$si" "$gdir" "$gopt"
+      return 0
+    fi
   done <<EOF
 $out
 EOF
@@ -1471,7 +1572,7 @@ gclose() {
 }
 pre_bash() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; GITENV=0; D1CMD=""; D1BLK=""
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1485,7 +1586,7 @@ pre_bash() {
         if [ "${#SEGW[@]}" -gt 0 ]; then
           rpre_cls
           seg && break
-          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; d1_blk; fi   # DECISION[D15]
           RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
@@ -1901,7 +2002,7 @@ ps_seg() {
 }
 pre_ps() {
   local t
-  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0
+  HIT=""; HINT=""; TMPS=""; CIC=0; IS_PS=1; ENVSET=0; DEFH=""; DEFT=""; GITENV=0; D1CMD=""; D1BLK=""
   case "${OSTYPE:-}" in msys* | cygwin*) CIC=1 ;; esac
   NP_DRV=0
   if [ -n "$J_cwd" ]; then norm_path "$J_cwd" /; CWD="$NP"; else CWD="$PWD"; fi
@@ -1918,7 +2019,7 @@ pre_ps() {
             # a delete whose target is unresolved (a $(...) group) is reported after the commands that run inside that group: their hit wins
             if [ "$UNRES" = 1 ] && [ "$HIT" = rm-outside ] && [ -z "$DEFH" ]; then DEFH="$HIT"; DEFT="$HINT"; HIT=""; HINT=""; else break; fi
           fi
-          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; fi   # DECISION[D15]
+          if [ "$RCLS" != 0 ] && [ "$RRES" != 1 ]; then RPRE=0; d1_blk; fi   # DECISION[D15]
           RRES=0
           if seg_sql; then HIT=sql; HINT=""; break; fi
           if [ "$GD" -gt 0 ]; then GT="$GT$NL$SEGT"; fi
@@ -2236,10 +2337,19 @@ END {
   if (na > cap) print "A 1"
 }'
 
-# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths and never from a word-split string: once, and
-# not when it holds whitespace or is empty (DECISION[D13] N4)
+# DECISION[D15] (M9): a path with whitespace or a shell-special character gets a single-quoted restore hint ('it'\''s' for a quote)
+# and is one whole line of the restore list; the hints are built from the finding paths line by line, never from a word-split string.
+# shq PATH -> SQ: PATH as one shell word
+shq() {
+  case "$1" in
+    *[!A-Za-z0-9._/@%+=:,-]*)   # the quote and its replacement sit in variables: bash 3.2 reads a quote or backslash written inside ${//} differently
+      sq1="'"; sq2="'\\''"; SQ="${1//$sq1/$sq2}"; SQ="'$SQ'" ;;
+    *) SQ="$1" ;;
+  esac
+}
+# rl_add PATH -> adds PATH to rl (stop_mode's restore list), built from the finding paths: once, and not when it is empty
 rl_add() {
-  case "$1" in '' | *[[:space:]]*) return 0 ;; esac
+  case "$1" in '') return 0 ;; esac
   case "$NL$rl" in *"$NL$1$NL"*) ;; *) rl="$rl$1$NL" ;; esac
 }
 stop_mode() {
@@ -2331,14 +2441,14 @@ EOF
     case "$kinds" in *" $kind "*) ;; *) kinds="$kinds$kind " ;; esac
     case "$kind" in
       schema-drop) items="$items$NL- $kind: $file: table $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        case "$NL$files" in *"$NL$file$NL"*) ;; *) files="$files$file$NL" ;; esac
         rl_add "$file" ;;
       schema-column-drop) items="$items$NL- $kind: $file: column $name was removed"; short="$short; $kind $file $name"
-        case " $files " in *" $file "*) ;; *) files="$files $file" ;; esac
+        case "$NL$files" in *"$NL$file$NL"*) ;; *) files="$files$file$NL" ;; esac
         rl_add "$file" ;;
       scan-capped) items="$items$NL- $kind: $name untracked code files were not scanned (over the 2000-file cap)${capdirs:+; most of them are in $capdirs}. Add those directories to .gitignore or move them under .agents/, and report them in your final reply"; short="$short; $kind $name files not scanned" ;;
       code-contract) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file"
-        case " $cfiles " in *" $file "*) ;; *) cfiles="$cfiles $file" ;; esac
+        case "$NL$cfiles" in *"$NL$file$NL"*) ;; *) cfiles="$cfiles$file$NL" ;; esac
         if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$file"; then rl_add "$file"; fi ;;
       *) items="$items$NL- $kind: $file adds: $name"; short="$short; $kind $file" ;;
     esac
@@ -2380,16 +2490,25 @@ EOF
     printf '%s\n' "$msg" >&2
     exit 2
   fi
-  for f in $cfiles; do
-    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $f)$NL"
-    else chint="$chint($f is new: remove the new file or move it under .agents/)$NL"; fi
-  done
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    shq "$f"
+    if [ "$BASE" != none ] && printf '%s\n' "$bl" | grep -Fxq -- "$f"; then chint="$chint(restore: git checkout $b7 -- $SQ)$NL"
+    else chint="$chint($SQ is new: remove the new file or move it under .agents/)$NL"; fi
+  done <<EOF
+$cfiles
+EOF
   msg="${G_PFX}BLOCKED (Stop): this session left irreversible schema or migration changes$again:$items$NL"
   if [ "$BASE" = none ]; then
     msg="${msg}Headless run: revert these changes before finishing (restore the schema files, never by rewriting history; remove the migration or move it under .agents/), then describe them as a pending proposal in your final reply."
   else
-    for f in $files; do msg="$msg(restore: git checkout $b7 -- $f)$NL"; done
-    msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\` or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      shq "$f"; msg="$msg(restore: git checkout $b7 -- $SQ)$NL"
+    done <<EOF
+$files
+EOF
+    msg="${msg}Headless run: revert these changes before finishing (restore the schema from $b7 with \`git checkout $b7 -- <file>\`, run as its own command, alone, or a revert commit, never by rewriting history; remove the migration or move it under \`.agents/\`), then describe them as a pending proposal in your final reply."
   fi
   msg="$msg$chint"
   # DECISION[D13]: the paths the hints above name (BASE known), so the PreToolUse check lets that restore through

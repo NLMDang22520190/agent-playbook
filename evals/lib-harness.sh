@@ -38,6 +38,18 @@
 #                                     .gitignore, package-lock.json), LC_ALL=C sorted
 #   pbh_test_counts FILE              prints "T A M": test declarations, assertions and skip/only markers of FILE at line start
 #                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
+#   pbh_sha_stdin                     the git blob hash (40 hex) of stdin (git hash-object --stdin; works outside a repository)
+#   pbh_grader_sha RUNNER             the hash of the runner script RUNNER followed by evals/lib-harness.sh, transcript.js, facts.js, codex-jsonl.js,
+#                                     make-fixture.sh and codex-adapter.sh (decision D23; the "grader_sha" of every run)
+#   pbh_cli_version HARNESS           the first line of `HARNESS --version` (stdout and stderr, stdin closed, `timeout 3` when it exists), "" when none
+#   pbh_harness_sha LABEL CMD         the "harness_sha" of every run: the hash of "<harness> <CLI --version output>" for a preset (LABEL is
+#                                     the harness name, CMD empty) or of "cmd <CMD>" for a --cmd adapter (LABEL "custom")
+#   pbh_tree_sha DIR                  the hash of the file tree of DIR: the sorted relative paths of its regular files, then their blob hashes
+#                                     (a content edit, a rename and an added file all change it); the outcome "scenario_sha" of a task
+#   Per-run hashes (v0.34, decision D10): every run of both runners carries "scenario_sha" (run-evals: the git hash of the scenario's
+#   block of evals/scenarios.md, its "## E<n> " heading line to the line before the next such heading, each line newline-terminated;
+#   run-outcome: pbh_tree_sha of the task directory), "grader_sha" and "harness_sha" in its JSON run, all 40 lowercase hex. They let
+#   tools/release-gate.sh decide whether the without-arm rows of an earlier gate can be reused.
 #   pbh_tests_weakened BEFORE AFTER   line 1: the sum over the regular files under BEFORE/tests of max(0,T0-T1) + max(0,A0-A1)
 #                                     + max(0,M1-M0) against the same path under AFTER; then each file with a positive sum
 #                                     (tests/...), LC_ALL=C sorted
@@ -415,14 +427,25 @@ EOF
 # snap/ (playbook, skills-claude/, skills-agents/, blocks/<claude|codex|opencode>) and, once the install may have started, "installing".
 #   pbh_variant_home                 H: PB_VARIANT_HOME, else HOME
 #   pbh_variant_check DIR            0, or prints why DIR is not a variant tree (no dir, no install.sh, no VERSION) and returns 2
-#   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked
+#   pbh_variant_warn H               prints the "WARNING a variant run (pid N) has another tree installed in H" line when H is locked;
+#                                    prints nothing (returns 0) when H has no lock, also when H or H/.agents does not exist
 #   pbh_variant_begin DIR H HARNESS  lock, snapshot, install, doctor, verify; returns 0, 2 (live lock), 3 (install or verify failed)
 #                                    or 5 (stale snapshot not restorable); on 3 the caller exits and pbh_variant_finalize restores
+#   pbh_variant_held DIR H           the --variant-held check: 0 when H/.agents/.pb-variant.lock exists, the pid in it is alive and the
+#                                    installed H/.agents/playbook/VERSION is DIR's VERSION; sets PBV_DIR PBV_H PBV_L PBV_VER PBV_SHA
+#                                    PBV_SHORT and PBV_STATE=held (so pbh_variant_json and pbh_variant_end_check work, and restore and
+#                                    finalize do nothing); never installs, restores, takes over or changes anything. Else prints
+#                                    "--variant-held: <why>" and returns 2.
 #   pbh_variant_end_check            0 when the installed VERSION still is DIR's, else 1
 #   pbh_variant_restore              restores the snapshot (INT, TERM, HUP ignored); returns 1 and keeps it when that fails
 #   pbh_variant_finalize             restore when still active, remove the temp registry; returns 1 when the restore failed
 #   pbh_variant_names DIR            the skill names of DIR/skills/*/ that hold a SKILL.md, one per line
 #   pbh_variant_sha_short / _full DIR  git short or full HEAD of DIR when it is a git tree, else nothing
+#   An outer script (tools/release-gate.sh) shares ONE install between both runners like this: source this file; pbh_variant_begin DIR H
+#   HARNESS (lock with its own pid, snapshot, install, doctor, verify; on a non-zero return it exits, after pbh_variant_finalize); start
+#   both runners with --variant-held DIR (each checks pbh_variant_held and records the same variant object, never installing or
+#   restoring); wait for them; then pbh_variant_finalize (the one restore; 1 when it failed). The outer script must stay alive (its pid is
+#   the lock's pid) until both runners have ended, and its own traps must call pbh_variant_finalize on INT, TERM and HUP.
 #   pbh_conf_models FILE             the model_* lines of a conf as key=value; pbh_conf_models_md / pbh_conf_models_json format them
 PBV_STATE=""; PBV_H=""; PBV_L=""; PBV_DIR=""; PBV_VER=""; PBV_SHA=""; PBV_SHORT=""; PBV_REGTMP=""
 
@@ -655,11 +678,11 @@ pbh_variant_lock() {
   done
 }
 
-# pbh_variant_warn H: for a run without --variant
+# pbh_variant_warn H: for a run without --variant; silent when H has no lock (no .agents dir, or .agents without the lock)
 pbh_variant_warn() {
   local pid
-  pid="$(tr -d '[:space:]' < "$1/.agents/.pb-variant.lock/pid" 2>/dev/null)"
   [ -d "$1/.agents/.pb-variant.lock" ] || return 0
+  pid="$(tr -d '[:space:]' < "$1/.agents/.pb-variant.lock/pid" 2>/dev/null)"
   printf 'WARNING a variant run (pid %s) has another tree installed in %s\n' "${pid:-unknown}" "$1" >&2
   return 0
 }
@@ -748,4 +771,178 @@ pbh_conf_models_json() {
 $(pbh_conf_models "$1")
 EOF
   printf '{%s}' "$o"
+}
+
+# pbh_kill_tree PID: TERM to PID and every descendant of it (children first collected, so none is lost when the parent dies and its
+# children are re-parented). A runner's stop path uses it so the adapter's own children (the harness, a stub's sleep) do not outlive the
+# adapter: without GNU timeout (macOS) nothing else puts them in a group that dies with it. pgrep -P, else ps -A (macOS, Linux); with
+# neither, only PID itself is stopped.
+pbh_kill_tree() {
+  local all="$1" todo="$1" next c p
+  while [ -n "$todo" ]; do
+    next=""
+    for p in $todo; do
+      if command -v pgrep >/dev/null 2>&1; then c="$(pgrep -P "$p" 2>/dev/null)"
+      else c="$(ps -A -o pid= -o ppid= 2>/dev/null | awk -v P="$p" '$2 == P { print $1 }')"; fi
+      for c in $c; do next="$next $c"; done
+    done
+    all="$all$next"; todo="$next"
+  done
+  for p in $all; do kill "$p" 2>/dev/null; done
+  return 0
+}
+
+# ---- per-run hashes (decision D10); see the header ----
+pbh_sha_stdin() { git hash-object --stdin; }
+pbh_grader_sha() {
+  local dir f missing=""; dir="${BASH_SOURCE[0]%/*}"
+  # D23: the runner, this lib and the other evals files the grading and the setup use. One git call hashes every present file; a missing
+  # file is named in the hashed text (never skipped), so adding or removing one changes the hash. 2 processes in all.
+  set -- "$1" "$dir/lib-harness.sh" "$dir/transcript.js" "$dir/facts.js" "$dir/codex-jsonl.js" "$dir/make-fixture.sh" "$dir/codex-adapter.sh"
+  for f in "$@"; do [ -f "$f" ] || missing="$missing ${f##*/}"; done
+  # the present files, in order, are the arguments of the one git call
+  local n=$#; while [ "$n" -gt 0 ]; do f="$1"; shift; n=$((n - 1)); if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
+  { printf 'files:'; for f in "$@"; do printf ' %s' "${f##*/}"; done; printf '\nmissing:%s\n' "$missing"
+    git hash-object --no-filters -- "$@"
+  } | pbh_sha_stdin
+}
+pbh_cli_version() {
+  local o
+  local f p k
+  if command -v timeout >/dev/null 2>&1; then o="$(timeout 3 "$1" --version </dev/null 2>&1)"
+  else   # no timeout: a background kill after 3 s bounds a CLI that does not return
+    f="$(mktemp "${TMPDIR:-/tmp}/pb-evver.XXXXXX")" || return 0
+    "$1" --version </dev/null >"$f" 2>&1 &
+    p=$!; k=0
+    while [ "$k" -lt 30 ] && kill -0 "$p" 2>/dev/null; do sleep 0.1; k=$((k + 1)); done
+    kill "$p" 2>/dev/null; wait "$p" 2>/dev/null
+    o="$(cat "$f")"; rm -f "$f"
+  fi
+  printf '%s\n' "$o" | sed -n 1p | tr -d '\r'
+}
+pbh_harness_sha() {
+  if [ -n "${2:-}" ]; then printf 'cmd %s' "$2" | pbh_sha_stdin
+  else printf '%s %s' "$1" "$(pbh_cli_version "$1")" | pbh_sha_stdin; fi
+}
+pbh_tree_sha() {
+  local files base blobs
+  base="$(cd "$1" && pwd)" || { pbh_tree_sha_fail; return; }
+  files="$(cd "$1" && find . -type f | LC_ALL=C sort)" || { pbh_tree_sha_fail; return; }
+  # absolute paths: git resolves a ./relative path of --stdin-paths against the top of an enclosing repository, not the cwd, which hashed no contents
+  # Windows Git Bash: git wants a mixed path (C:/...) on stdin, so cygpath -m converts the base when it exists
+  if command -v cygpath >/dev/null 2>&1; then base="$(cygpath -m "$base")" || { pbh_tree_sha_fail; return; }; fi
+  blobs="$(printf '%s\n' "$files" | awk -v b="$base" '{ print b substr($0, 2) }' | git hash-object --stdin-paths 2>/dev/null)" || { pbh_tree_sha_fail; return; }
+  { printf '%s\n' "$files"; printf '%s\n' "$blobs"; } | pbh_sha_stdin
+}
+# pbh_tree_sha_fail: a hashing error gives a hash that never equals another (a random one), so nothing is ever reused or matched on it
+pbh_tree_sha_fail() { printf 'tree-hash-error %s %s %s %s\n' "$$" "${RANDOM:-0}" "$(date +%s 2>/dev/null)" "$SECONDS" | pbh_sha_stdin; }
+
+# pbh_variant_held DIR H -> see the header: the --variant-held check of a runner whose outer process holds the lock and the install
+pbh_variant_held() {
+  local dir="$1" h="$2" l="$2/.agents/.pb-variant.lock" pid ver
+  if [ ! -d "$l" ] || [ -L "$l" ]; then
+    printf -- '--variant-held: no variant lock %s (the outer process must hold the variant install); nothing touched\n' "$l" >&2
+    return 2
+  fi
+  pid="$(tr -d '[:space:]' < "$l/pid" 2>/dev/null)"
+  case "$pid" in
+    "" | *[!0-9]*) printf -- '--variant-held: %s has no usable pid file; nothing touched\n' "$l" >&2; return 2 ;;
+  esac
+  if ! kill -0 "$pid" 2>/dev/null; then
+    printf -- '--variant-held: the process (pid %s) that holds %s is not alive; nothing touched\n' "$pid" "$l" >&2
+    return 2
+  fi
+  ver="$(pbh_variant_version "$dir/VERSION")"
+  if [ -z "$ver" ] || [ "$(pbh_variant_version "$h/.agents/playbook/VERSION")" != "$ver" ]; then
+    printf -- '--variant-held: the installed VERSION (%s) is not the one of %s (%s); nothing touched\n' \
+      "$(pbh_variant_version "$h/.agents/playbook/VERSION")" "$dir" "$ver" >&2
+    return 2
+  fi
+  PBV_DIR="$dir"; PBV_H="$h"; PBV_L="$l"; PBV_VER="$ver"
+  PBV_SHA="$(pbh_variant_sha_full "$dir")"; PBV_SHORT="$(pbh_variant_sha_short "$dir")"
+  PBV_STATE=held
+  return 0
+}
+
+# ---- --jobs N: up to N runs at a time (shared by evals/run-evals.sh and evals/run-outcome.sh) ----
+# The runner defines BODY (one run, in the current shell, `return` where a loop would `continue`) and, when it has temp dirs, a function
+# whose name is the CLEAN argument of pbh_jobs_run (stops the run's adapter, removes the run's temp dirs). pbh_jobs_run JOBS DIR BODY CLEAN RUN...: DIR is a runner-private
+# empty temp dir. Each run is started in a background subshell (BODY RUN) with stdout and stderr in DIR/<n>/out and err, and the state
+# the run changed in files: SUMMARY, DETAILS, ND_RUNS (the runner's per-run text, appended in label order at the end), COST_SUM (merged when
+# the run ends, so a run that starts later sees it), ANY_FAIL, ANY_ERROR, NOTE_UNKNOWN. At most JOBS run at a time; a run that ends prints its
+# stderr, then its stdout, as one block. A run whose subshell ends without "done" (pb_die, a signal) stops the others and ends the runner
+# with its exit code. pbh_jobs_kill stops every running run (TERM) and waits for it: the runner's INT/TERM/HUP and exit traps call it.
+# --jobs 1 does not use any of this (the runner loops as before). Polling uses `sleep 0.2` only while every slot is busy.
+PBJ_RUN=""; PBJ_N=0; PBJ_DIR=""; PBJ_COST0=""; PBJ_T=""
+# pbh_jobs_valid VALUE -> 0 for a whole number from 1 to 16 (digits only)
+pbh_jobs_valid() { case "$1" in [1-9] | 1[0-6]) return 0 ;; esac; return 1; }
+pbh_jobs_kill() {
+  local e live=""
+  for e in $PBJ_RUN; do if kill -0 "${e#*:}" 2>/dev/null; then live="$live $e"; fi; done   # live pids only (a reaped pid may be reused)
+  for e in $live; do kill "${e#*:}" 2>/dev/null; done
+  for e in $live; do wait "${e#*:}" 2>/dev/null; done
+  PBJ_RUN=""; PBJ_N=0
+  return 0
+}
+pbh_jobs_save() {
+  printf '%s' "${SUMMARY-}" > "$1/summary"; printf '%s' "${DETAILS-}" > "$1/details"; printf '%s' "${ND_RUNS-}" > "$1/nd"
+  printf '%s' "${COST_SUM#"$PBJ_COST0"}" > "$1/cost"
+  printf '%s %s %s\n' "$ANY_FAIL" "$ANY_ERROR" "$NOTE_UNKNOWN" > "$1/flags"
+}
+# pbh_jobs_text FILE -> PBJ_T = the content of FILE, trailing newlines kept
+pbh_jobs_text() { PBJ_T="$(cat "$1"; printf x)"; PBJ_T="${PBJ_T%x}"; }
+# pbh_jobs_reap -> 0 when at least one run had ended (printed and merged), 1 when none had
+pbh_jobs_reap() {
+  local e i p rest="" found=1 rc f x u c all="$PBJ_RUN"
+  for e in $PBJ_RUN; do
+    i="${e%%:*}"; p="${e#*:}"
+    if [ ! -e "$PBJ_DIR/$i/done" ] && kill -0 "$p" 2>/dev/null; then rest="$rest $e"; continue; fi
+    wait "$p" 2>/dev/null; rc=$?
+    found=0; PBJ_N=$((PBJ_N - 1))
+    [ -s "$PBJ_DIR/$i/err" ] && cat "$PBJ_DIR/$i/err" >&2
+    [ -s "$PBJ_DIR/$i/out" ] && cat "$PBJ_DIR/$i/out"
+    if [ ! -e "$PBJ_DIR/$i/done" ]; then
+      PBJ_RUN="${all/ $e/}"   # the others are still running
+      [ "$rc" -ne 0 ] || rc=3
+      pbh_jobs_kill
+      exit "$rc"
+    fi
+    read -r f x u < "$PBJ_DIR/$i/flags"
+    [ "$f" = 1 ] && ANY_FAIL=1
+    [ "$x" = 1 ] && ANY_ERROR=1
+    [ "$u" = 1 ] && NOTE_UNKNOWN=1
+    c=""; IFS= read -r c < "$PBJ_DIR/$i/cost"
+    COST_SUM="$COST_SUM$c"
+  done
+  PBJ_RUN="$rest"
+  return "$found"
+}
+pbh_jobs_run() {
+  local jobs="$1" dir="$2" body="$3" clean="$4" i=0 r n
+  shift 4
+  PBJ_DIR="$dir"; PBJ_RUN=""; PBJ_N=0
+  for r in "$@"; do
+    i=$((i + 1))
+    while [ "$PBJ_N" -ge "$jobs" ]; do pbh_jobs_reap || sleep 0.2; done
+    mkdir -p "$dir/$i" || return 1
+    PBJ_COST0="$COST_SUM"
+    (
+      exec > "$dir/$i/out" 2> "$dir/$i/err"
+      trap '"$clean"' EXIT
+      trap 'exit 143' INT TERM HUP
+      SUMMARY=""; DETAILS=""; ND_RUNS=""; ANY_FAIL=0; ANY_ERROR=0
+      "$body" "$r"
+      pbh_jobs_save "$dir/$i" && : > "$dir/$i/done"
+    ) &
+    PBJ_RUN="$PBJ_RUN $i:$!"; PBJ_N=$((PBJ_N + 1))
+  done
+  while [ "$PBJ_N" -gt 0 ]; do pbh_jobs_reap || sleep 0.2; done
+  n=$i; i=1
+  while [ "$i" -le "$n" ]; do   # the per-run text, in label order
+    pbh_jobs_text "$dir/$i/summary"; SUMMARY="${SUMMARY-}$PBJ_T"
+    pbh_jobs_text "$dir/$i/details"; DETAILS="${DETAILS-}$PBJ_T"
+    pbh_jobs_text "$dir/$i/nd"; ND_RUNS="$ND_RUNS$PBJ_T"
+    i=$((i + 1))
+  done
+  return 0
 }

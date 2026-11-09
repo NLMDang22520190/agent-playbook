@@ -174,7 +174,8 @@ vsetup() {
 }
 vrun() { vsetup; bash "$VFK/runner.sh" "$@" > "$VOD/stdout" 2> "$VOD/stderr"; RC=$?; OUT="$(cat "$VOD/stdout")"; ERR="$(cat "$VOD/stderr")"; }
 vstart() { vsetup; bash "$VFK/runner.sh" "$@" > "$VOD/stdout" 2> "$VOD/stderr" & VPID=$!; }
-vwait_file() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done; [ -e "$1" ]; }
+# DECISION[D24]: setup wait, not the checked behaviour; Windows runners are slow. AC18 passes a 60 s bound (600 x 0.1 s); the default stays 20 s.
+vwait_file() { local i=0 max="${2:-200}"; while [ ! -e "$1" ] && [ "$i" -lt "$max" ]; do sleep 0.1; i=$((i + 1)); done; [ -e "$1" ]; }
 vfinish() { RC=0; wait "$1" 2>/dev/null || RC=$?; OUT="$(cat "$VOD/stdout")"; ERR="$(cat "$VOD/stderr")"; }
 vlog() { cat "$VFAKE_LOG" 2>/dev/null; }
 vcalls() { cat "$VD/.calls" 2>/dev/null; }
@@ -622,7 +623,7 @@ for sig in INT TERM HUP; do
   mk_variant; VH="$(mk_vhome)"; B_SG="$(tree_sig "$VH")"; vhold_new
   VW_INTDFL=1 VW_SHIM="$VSHIM" VSHIM_MODE=restore VSHIM_HOLD="$VHOLD" vstart --variant "$VD" $VBASE
   G_PID=$VPID; G_OD="$VOD"
-  if vwait_file "$VHOLD/held"; then
+  if vwait_file "$VHOLD/held" 600; then   # DECISION[D24]: setup wait, not the checked behaviour; Windows runners are slow
     kill -s "$sig" "$G_PID" 2>/dev/null; : > "$VHOLD/go"
     VOD="$G_OD"; vfinish "$G_PID"
     assert_rc "AC18 [$sig] the signal did not stop the restore or the run: exit 0" 0
@@ -630,7 +631,7 @@ for sig in INT TERM HUP; do
     expect_restored "AC18 [$sig] during the restore" "$B_SG"
     assert_contains "AC18 [$sig] the results say the snapshot was restored" "$(grep '^Variant:' "${G_OD}/results.md" 2>/dev/null)" "snapshot restored"
   else
-    t_bad "AC18 [$sig] the runner reached the restore" "no 'held' file after 20 s; stderr: $(cat "$G_OD/stderr" 2>/dev/null)"
+    t_bad "AC18 [$sig] the runner reached the restore" "no 'held' file after 60 s; stderr: $(cat "$G_OD/stderr" 2>/dev/null)"
     : > "$VHOLD/go"; kill -KILL "$G_PID" 2>/dev/null; wait "$G_PID" 2>/dev/null
   fi
 done
@@ -640,7 +641,7 @@ VFAKE_SLEEP=1 VW_INTDFL=1 VW_SHIM="$VSHIM" VSHIM_MODE=restore VSHIM_HOLD="$VHOLD
 G_PID=$VPID; G_OD="$VOD"; G_FD="$VFD"
 if vwait_file "$G_FD/started"; then
   kill -s TERM "$G_PID" 2>/dev/null
-  if vwait_file "$VHOLD/held"; then
+  if vwait_file "$VHOLD/held" 600; then   # DECISION[D24]: setup wait, not the checked behaviour; Windows runners are slow
     [ "$VPERL" = 1 ] && kill -s INT "$G_PID" 2>/dev/null
     kill -s HUP "$G_PID" 2>/dev/null; : > "$VHOLD/go"
     VOD="$G_OD"; vfinish "$G_PID"
@@ -648,7 +649,7 @@ if vwait_file "$G_FD/started"; then
     assert_eq "AC18 [TERM, then INT and HUP] the restore line is printed once" "1" "$(printf '%s\n' "$ERR" | grep -c 'variant: restored the snapshot of ')"
     expect_restored "AC18 [TERM, then INT and HUP]" "$B_SG2"
   else
-    t_bad "AC18 [TERM, then INT and HUP] the runner reached the restore" "no 'held' file after 20 s"
+    t_bad "AC18 [TERM, then INT and HUP] the runner reached the restore" "no 'held' file after 60 s"
     : > "$VHOLD/go"; kill -KILL "$G_PID" 2>/dev/null; wait "$G_PID" 2>/dev/null
   fi
 else
