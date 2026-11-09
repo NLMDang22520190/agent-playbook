@@ -150,9 +150,9 @@ rẻ khi cache ấm và đắt khi cache đã chết; `idleCompaction` (v2.1.290
 Giữ sống mỗi 50 phút rẻ hơn cold restart khoảng 20 đến 40 lần theo hệ số giá (hòa vốn khoảng 16 đến 32 giờ idle) **[SUY LUẬN, chưa kiểm giá]**; `/loop` định kỳ
 mỗi giờ bị jitter tới 30 phút nên có thể vượt TTL **[theo tài liệu]**. Đơn vị tính trên gói subscription và hành vi session cloud **[CHƯA KIỂM CHỨNG]**.
 
-**Thí nghiệm TTL đã chạy (2026-11-09, , Sonnet 5.5, container này) [ĐO]**: dữ liệu thô ở . Cache ghi vào bucket 1 giờ (0 token ở bucket 5 phút).
+**Thí nghiệm TTL đã chạy (2026-11-09, `claude -p --resume`, Sonnet 5.5, container này) [ĐO]**: dữ liệu thô ở `docs/research-data/ttl-2026-11-09.tsv`. Cache ghi vào bucket 1 giờ (0 token ở bucket 5 phút).
 Phiên B được đánh thức mỗi 54 phút: lần B2 (09:15Z) đọc 35.200 token và chỉ ghi mới 63, dù phần 28k token đầu được ghi từ 07:27Z, tức 108 phút trước. Phần đó sống tiếp vì B1 đã đọc nó ở phút 54, nên **mỗi lần đọc làm mới TTL** và giữ sống mỗi 54 phút hoạt động. Đối chứng không giữ sống (phiên C, idle 2h02m): đọc 0, ghi lại 35.218 token.
-Chi phí mỗi lần giữ sống ở context 35k khoảng 0,03 đến 0,07 USD. Giới hạn: một phiên mỗi nhánh (kiểm cơ chế, không phải thống kê); chỉ cho  trong container này, chưa chứng minh cho app desktop Windows hay session cloud; B1 ghi lại khoảng 7k token thay vì đọc, chưa giải thích được; chưa đo cách tính cache đọc vào hạn mức gói; chưa đo jitter của  hay cron.
+Chi phí mỗi lần giữ sống ở context 35k khoảng 0,03 đến 0,07 USD. Giới hạn: một phiên mỗi nhánh (kiểm cơ chế, không phải thống kê); chỉ cho `claude -p` trong container này, chưa chứng minh cho app desktop Windows hay session cloud; B1 ghi lại khoảng 7k token thay vì đọc, chưa giải thích được; chưa đo cách tính cache đọc vào hạn mức gói; chưa đo jitter của  hay cron.
 
 ### R10. Lệnh `/code-review` và vòng review hai agent [ĐO từ tài liệu; SUY LUẬN cho đề xuất]
 
@@ -221,7 +221,7 @@ Adapter có `PB_EVAL_WITH_HOME` (thư mục HOME riêng đã cài playbook cho n
 
 ## 8. Chi tiêu và giới hạn môi trường
 
-- Tổng khoảng **20,9 USD** trên trần 22 (chưa tính thí nghiệm TTL ngày 2026-11-09, khoảng 0,5 USD, nằm ngoài runs.tsv) (cộng cột `cost_usd` của `runs.tsv`; chưa tính vài lần thử nhỏ và các lần chạy bị bỏ). Còn khoảng 1,1 USD.
+- Tổng khoảng **20,9 USD** trên trần 22 (cộng cột `cost_usd` của `runs.tsv`; chưa tính vài lần thử nhỏ và các lần chạy bị bỏ). Còn khoảng 1,1 USD trước thí nghiệm TTL ngày 2026-11-09 (khoảng 0,5 USD, ngoài runs.tsv), nên còn khoảng 0,6 USD.
 - Runner `--max-cost` chỉ chặn việc BẮT ĐẦU lần chạy sau; các lần đang dở vẫn cộng thêm.
 - Container cloud ephemeral; thư mục scratchpad (log thô, `result.json`) có thể mất, nên `runs.tsv` là bản lưu bền duy nhất của dữ liệu từng lần chạy.
 - Chế độ bỏ qua quyền cho agent con bị bộ phân loại tự động của Claude Code từ chối ("Create Unsafe Agents"); không lách. Adapter dùng `acceptEdits` và danh sách lệnh hẹp.
