@@ -1,6 +1,7 @@
 # Seconds per suite on the windows-latest CI runner (shard jobs), run 41443543742.
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
 # Updated from the "progress: done" lines of CI run 41575176838: test-release-gate-par.sh, test-guard-restore-r9.sh, test-evals-jobs.sh; test-release-gate.sh and test-release-gate-b.sh share that run's 1188 s of the old test-release-gate.sh (v0.34.0 split) in the ratio of their local run times (39 s : 36 s), estimated. test-guard-restore-mount.sh (240) is a local-run estimate (4 min on the dev host), not a CI measurement.
+# v0.35.0: test-gate-voided.sh and test-outcome-heldout.sh are estimated, not measured: refresh from the first full Windows CI run of v0.35.0 (L-0003). test-outcome-heldout.sh 181 = 596 (test-outcome-corpus.sh, 33 tasks) x 10/33 rounded up, for the ten new tasks plus its extra assertions; test-gate-voided.sh 7 = the weight of test-mutate-b.sh, the smallest small suite that also makes a node call.
 test-evals-grade9.sh 1007
 test-evals-grade9b.sh 977
 test-release-gate-rules.sh 953
@@ -114,6 +115,7 @@ test-tdd-step-k.sh 198
 test-tdd-step-u.sh 191
 test-guard-stop.sh 185
 test-run-checks-gnu.sh 183
+test-outcome-heldout.sh 181
 test-learnings-hook.sh 171
 test-evals-safety-fail.sh 170
 test-leak-check-mode.sh 169
@@ -170,6 +172,7 @@ test-sdlc-refs.sh 9
 test-rubric-table.sh 8
 test-guard-restore-r12.sh 7
 test-mutate-b.sh 7
+test-gate-voided.sh 7
 test-codex-adapter.sh 5
 test-report-rules.sh 3
 test-docs-rules.sh 2

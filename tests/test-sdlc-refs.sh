@@ -166,9 +166,10 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # 2720 words counted in the C locale (a UTF-8 locale counts 2730: wc -w differs on UTF-8 symbols), so the exact pin uses LC_ALL=C; v0.35.0 review1 re-pins it at 2744; v0.35.0 review2 re-pins it at 2730 so it fits the budget under C.UTF-8 too (2732);
 # v0.35.0 review3: GNU wc -w in the C locale skips a standalone non-ASCII byte run (the two lone U+2264 signs on SKILL.md:34) but BSD wc
 # (macOS) and GNU wc in UTF-8 count it (2732 vs 2730), so the exact pin maps every non-ASCII byte to x first: same count on GNU and BSD, C and UTF-8
+# v0.35.0 rebase onto v0.34.0 (db31166): v0.34.0 F added a 6-word pointer in SKILL.md to references/harnesses.md, so the mapped count is 2732 + 6 = 2738 (12 words under the 2750 budget)
 WBV="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$WB" 2>/dev/null)"
 if [ "$w" -le 2750 ]; then t_ok "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words ($w)"; else t_bad "AC16 / v0.35.0 D13 SKILL.md is at most 2750 words" "$w words"; fi
-assert_eq "AC16 / v0.35.0 review3 SKILL.md is exactly 2732 words (non-ASCII bytes mapped to x, wc -w)" "2732" "$(LC_ALL=C tr '\200-\377' 'x' < "$SK" | LC_ALL=C wc -w | tr -d ' ')"
+assert_eq "AC16 / v0.35.0 rebase SKILL.md is exactly 2738 words (non-ASCII bytes mapped to x, wc -w)" "2738" "$(LC_ALL=C tr '\200-\377' 'x' < "$SK" | LC_ALL=C wc -w | tr -d ' ')"
 if [ "$(LC_ALL=C.UTF-8 locale charmap 2>/dev/null)" = "UTF-8" ]; then
   wu="$(LC_ALL=C.UTF-8 wc -w < "$SK" | tr -d ' ')"
   if [ -n "$WBV" ] && [ -n "$wu" ] && [ "$wu" -le "$WBV" ]; then t_ok "AC16 / v0.35.0 review2 SKILL.md at or under its evals/word-budgets value under LC_ALL=C.UTF-8 ($wu <= $WBV)"
