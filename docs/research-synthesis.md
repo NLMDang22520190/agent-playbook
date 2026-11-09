@@ -124,8 +124,8 @@ Lite có ở 10/10 lần chạy và 0 lần gọi Agent. Đối chứng F là c�
 
 | Task | Nhánh | Lần chạy | Qua hết | Chi phí trung vị | Chi phí trên mỗi lần qua | Thời gian trung vị |
 |---|---|---|---|---|---|---|
-| project-01 | Lite | 6 | 1/6 | 0,31 USD | 1,74 USD | 95 s |
-| project-01 | F | 6 | 2/6 | 0,79 USD | 2,59 USD | 241 s |
+| project-01 | Lite | 6 | 1/6 | 0,295 USD | 1,74 USD | 90 s |
+| project-01 | F | 6 | 2/6 | 0,733 USD | 2,59 USD | 226 s |
 | project-02 | Lite | 4 | 4/4 | 0,19 USD | 0,20 USD | 47 s |
 | project-02 | F | 3 | 3/3 | 0,42 USD | 0,42 USD | 115 s |
 

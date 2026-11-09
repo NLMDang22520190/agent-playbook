@@ -1,7 +1,7 @@
 # Handoff: kết quả nghiên cứu quy trình phát triển với agent
 
 Dành cho một agent mới, chưa có ngữ cảnh. Chỉ chứa KẾT QUẢ NGHIÊN CỨU (đã đo, chưa đo, đã sai và đã sửa). Không chứa đề xuất sửa code
-hay quyết định áp dụng; người dùng sẽ hỏi tiếp từng case ở session mới. Bản diễn giải dài hơn: `docs/research-synthesis.md`.
+hay quyết định áp dụng; người dùng sẽ hỏi tiếp từng case ở session mới. Bản diễn giải dài hơn: `docs/research-synthesis.md`. Phát hiện bổ sung và số liệu đã sửa: `docs/research-addendum-2026-11-09.md`.
 
 Nhãn: **[ĐO]** tính từ dữ liệu thật trong file này hoặc repo; **[SUY LUẬN]** là diễn giải; **[CHƯA KIỂM CHỨNG]** là nguồn thứ cấp hoặc chưa
 đọc được nguồn gốc. Đừng nâng một [SUY LUẬN] thành sự thật khi trả lời người dùng.
@@ -119,17 +119,17 @@ thân quy tắc nằm trong `templates/spec.md` và chỉ 1/8 lần B mở mẫu
 
 ### R7. Đòn bẩy chi phí: số lần khởi động sub-agent và mức Lite [ĐO, n nhỏ]
 
-Trên project-01, cùng nhánh có playbook, 14 lần chạy: chi phí trung vị theo số lần gọi Agent: 0 lần 0,30 USD (1/4 qua), 1 đến 3 lần 0,79 USD (1/5), từ 4 lần
-1,28 USD (2/5). Chạy Lite (thêm "Quick one, please." đầu prompt; nhãn Lite ở 10/10 lần, 0 lần gọi Agent), đợt E9:
+Trên project-01, cùng nhánh có playbook, 14 lần chạy (11 lần biến thể A cộng 3 lần biến thể B, đã trộn): chi phí trung vị theo số lần gọi Agent: 0 lần 0,30 USD (1/4 qua), 1 đến 3 lần 0,79 USD (1/5), từ 4 lần
+1,28 USD (2/5). Chỉ tính biến thể A (11 lần): 0 lần 0,30 USD (0/3), 1 đến 3 lần 0,79 USD (1/5), từ 4 lần 1,28 USD (1/3). Chạy Lite (thêm "Quick one, please." đầu prompt; nhãn Lite ở 10/10 lần, 0 lần gọi Agent), đợt E9:
 
 | Task | Nhánh | Lần chạy | Qua hết | Chi phí trung vị | Chi phí trên mỗi lần qua | Thời gian trung vị |
 |---|---|---|---|---|---|---|
-| project-01 | Lite | 6 | 1/6 | 0,31 | 1,74 | 95 s |
-| project-01 | agent tự chọn (A) | 6 | 2/6 | 0,79 | 2,59 | 241 s |
+| project-01 | Lite | 6 | 1/6 | 0,295 | 1,74 | 90 s |
+| project-01 | agent tự chọn (A) | 6 | 2/6 | 0,733 | 2,59 | 226 s |
 | project-02 | Lite | 4 | 4/4 | 0,19 | 0,20 | 47 s |
 | project-02 | agent tự chọn (A) | 3 | 3/3 | 0,42 | 0,42 | 115 s |
 
-Chênh lệch tỉ lệ qua Lite trừ A: project-01 -0,17 [-0,56; +0,30]; project-02 0,00 [-0,49; +0,56]. Chi phí đạt tiêu chí giảm 30% đã đặt trước;
+Chênh lệch tỉ lệ qua Lite trừ A: project-01 -0,17 [-0,56; +0,30]; project-02 0,00 [-0,49; +0,56]. Chi phí đạt tiêu chí giảm 30% đã đặt trước (giảm khoảng 60% theo trung vị đúng; bản trước dùng số giữa trên thay vì trung bình hai số giữa, đã sửa 2026-11-09);
 chất lượng KHÔNG chứng minh được không kém hơn (khoảng chứa -0,25). Các hành vi lõi (quy tắc, bất biến, trang đơn) qua 10/10 lần Lite. Hai task này theo
 luật playbook vốn thuộc nhóm Full (tiền, nhiều file): ép Lite là "người dùng ghi đè". Task có thể quá dễ để lộ giá trị của reviewer độc lập.
 
@@ -141,6 +141,19 @@ thuật ngữ nổi lên khoảng 7 đến 8/6/2026 (Peter Steinberger, Addy Osm
 chính thức, chưa xác nhận); một nguồn trích mức tăng khoảng 40% lên 60% nhờ vòng kiểm chứng (chưa kiểm chứng); các nguồn không thống nhất ranh giới với
 "harness engineering". Playbook đã có vòng lặp có chặn (theo slice, tranh chấp quá 2 vòng thì hỏi người dùng, giới hạn vòng review trong `references/release.md`);
 chưa có vòng lặp không người. Chưa có thí nghiệm nào.
+
+### R9. Prompt cache, TTL, compact [ĐO từ tài liệu; một số phần SUY LUẬN]
+
+Chi tiết và nguồn: `docs/research-addendum-2026-11-09.md` mục 2. Tóm tắt: cache làm mới miễn phí mỗi lần dùng; TTL 1 giờ chỉ cho hội thoại chính trên gói
+subscription trong hạn mức (API key, usage credits, cloud: 5 phút; sub-agent, compaction, workflow: 5 phút trừ khi đặt); mỗi model có cache riêng; `/compact`
+rẻ khi cache ấm và đắt khi cache đã chết; `idleCompaction` (v2.1.290 trở lên, mặc định bật) tự compact sau khoảng 1 giờ idle khi context từ 200k token.
+Giữ sống mỗi 50 phút rẻ hơn cold restart khoảng 20 đến 40 lần theo hệ số giá (hòa vốn khoảng 16 đến 32 giờ idle) **[SUY LUẬN, chưa kiểm giá]**; `/loop` định kỳ
+mỗi giờ bị jitter tới 30 phút nên có thể vượt TTL **[theo tài liệu]**. Đơn vị tính trên gói subscription và hành vi session cloud **[CHƯA KIỂM CHỨNG]**.
+
+### R10. Lệnh `/code-review` và vòng review hai agent [ĐO từ tài liệu; SUY LUẬN cho đề xuất]
+
+Chi tiết: addendum mục 3. `/code-review` không có vòng lặp nội bộ; phạm vi mặc định là các commit nhánh vượt upstream cộng thay đổi chưa commit; giới hạn một commit bằng
+`abc^..abc`. Luật hiện tại của repo: tối đa 2 vòng, từ vòng 3 chỉ MAJOR do thay đổi gây ra. Chưa đo lợi ích của việc chỉ review commit cuối.
 
 ## 3. Sổ thí nghiệm
 
