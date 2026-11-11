@@ -61,6 +61,8 @@ Thí nghiệm TTL đã chạy sau khi người dùng cho phép (ngân sách kho�
 
 Giới hạn: một phiên mỗi nhánh; chỉ cho `claude -p` trong container, Sonnet 5.5; chưa chứng minh cho app desktop Windows hay session cloud. B1 ghi lại khoảng 7k token thay vì đọc, chưa giải thích được. Lần thử đầu bị hỏng vì tiến trình nền bị harness dọn (A1, C1, A2 không chạy), đã chạy lại bằng chuỗi B và đối chứng C.
 
+Thử cron theo session (CronCreate), 2026-11-09 đến 2026-11-11 [ĐO]: hai job hàng giờ (phút :07) đặt lúc 09:55Z ngày 9 và 02:19Z ngày 10 đều biến mất trước lần chạy đầu tiên (kiểm lúc 01:00Z ngày 10 và 11:59Z ngày 11: `CronList` rỗng, không có file log). Session có vẻ đã khởi động lại khi idle. Công cụ báo lần chạy đầu dự kiến lệch +9 phút và +3 phút so với :07 (giả định UTC), tức offset khác nhau theo từng job, nhưng chưa có lần chạy thật. [SUY LUẬN] cron không giữ cache sống được trong session cloud này. Jitter thật [CHƯA KIỂM CHỨNG], cần đo trên máy người dùng bằng `/loop`.
+
 ## 3. Lệnh `/code-review` (nguồn: tài liệu Claude Code)
 
 [ĐO từ tài liệu]
