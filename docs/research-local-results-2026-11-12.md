@@ -161,3 +161,28 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [SUY LUẬN] Context Mode không đáng đưa vào playbook như công cụ giảm chi phí: trần lý thuyết 4,7% đến 8,9% (cắt 50% đến 95%), thực tế thấp hơn vì model không dùng ctx_* thường xuyên (0 lần ở project-05, 1 lần ở project-06, 5 lần ở project-07). Kết hợp với việc cm không cho thấy lợi ích đo được trong ba đợt A/B.
 [ĐO] Dự án B chỉ có 3 transcript (811 lượt gọi), nên ít đại diện hơn A.
 [CHƯA KIỂM CHỨNG] Giới hạn của script: bytes/4 không phải tokenizer, phép cắt lý tưởng bỏ qua việc model phải hỏi lại, token-read không phải USD, một người một khối lượng công việc.
+
+## Bước A2. Chi phí đọc lại lịch sử cũ (history-share.js, transcript thật)
+
+[ĐO] Lệnh: `node docs/research-data/history-share.js ~/.claude/projects/<dự án> [--read-mult 0.05 --write-mult 2] --json <file>` (script đọc trước khi chạy: chỉ đọc usage và timestamp, in tổng hợp; commit 0fc46b3), hai bộ hệ số, hai dự án thật (A: làm việc chính, B). Chi phí 0 USD. JSON: docs/research-data/addressable-share/history-project-{A,B}-{def,alt}.json. def = đọc 0,1, ghi 1,25, output 5; alt = đọc 0,05, ghi 2 (cache 1 giờ), output 5. Đơn vị là "token-tương-đương", không phải USD hay hạn mức gói.
+
+| | A def | A alt | B def | B alt |
+|---|---|---|---|---|
+| File, lượt gọi, compaction | 1.546 / 56.036 / 102 | cùng A | 3 / 811 / 6 | cùng B |
+| Cache read (tổng) | 62,5% | 36,6% | 80,1% | 61,0% |
+| trong đó prefix tĩnh | 18,4% | 10,8% | 20,5% | 15,6% |
+| trong đó lịch sử tích lũy | 44,1% | 25,8% | 59,6% | 45,4% |
+| Cache write (tổng) | 27,8% | không in ở đây | không in | không in |
+| trong đó cold restart | 3,3% (121 lần) | 6,2% | 1,5% (1 lần) | 3,8% |
+| Đọc lại lịch sử cũ hơn 10 lượt | 37,0% | 21,7% | 55,9% | 42,6% |
+| cũ hơn 25 lượt | 30,1% | 17,6% | 50,9% | 38,8% |
+| **cũ hơn 50 lượt (headline)** | **24,1%** | **14,1%** | **43,2%** | **33,0%** |
+| cũ hơn 100 lượt | 17,8% | 10,4% | 30,6% | 23,3% |
+| Tối đa tiết kiệm nếu co 50% / 80% | 12,1% / 19,3% | 7,1% / 11,3% | 21,6% / 34,6% | 16,5% / 26,4% |
+| Đọc theo ngưỡng đăng ký trước | vùng xám (10 đến 25%) | vùng xám | từ 25% trở lên: đáng thử có đôi | từ 25% trở lên |
+
+[ĐO] Kết quả đổi theo hệ số giá đúng như người viết script cảnh báo: dự án A đi từ 24,1% (sát 25%) xuống 14,1% khi cache read rẻ hơn gấp đôi; cả hai đều trong vùng xám.
+[ĐO] Dự án B vượt ngưỡng 25% ở cả hai bộ hệ số (43,2% và 33,0%), nhưng B chỉ có 3 transcript, 811 lượt gọi, trong đó 794 lượt trên 100K: là vài phiên rất dài, không đại diện bằng A (1.546 file).
+[ĐO] Cold restart chiếm 3,3% đến 6,2% chi phí ở A (121 lần), 1,5% đến 3,8% ở B (1 lần). Nhỏ hơn con số 14% đến 40% lượng ghi của handoff cũ (đó là phần của lượng ghi, đo khác).
+[SUY LUẬN] Với khối lượng việc chính (A), phần lịch sử cũ tối đa co được khoảng 7% đến 19% chi phí lý thuyết (7,1% đến 19,3% tuỳ hệ số và mức co 50% hoặc 80%), chưa tính chi phí của chính bộ nén và việc nó phá cache. Chưa đủ cơ sở để đưa billion-context vào playbook; thử có đôi với khóa tạm vẫn là việc cần người dùng cho khóa và đặt trần.
+[CHƯA KIỂM CHỨNG] Giả định giá (các hệ số), việc phần "tăng trưởng so với lượt gọi đầu" gồm cả tool result và tin nhắn của người dùng, và chi phí nén thực tế. Script ghi rõ nó chưa được kiểm trên transcript của người dùng trước lần này.
