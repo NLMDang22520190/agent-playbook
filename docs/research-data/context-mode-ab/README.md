@@ -56,3 +56,16 @@ Phase 1 (one run per arm): `TASKS=project-07-wide-refactor CM_PLUGIN=<context-mo
 Read peak context and cost per run in `summary.md`. Stop if a run costs more than 2.5 USD or if peak context is under 100K (the task still does not reach the regime).
 Phase 2 (only if phase 1 is under 2.0 USD per run and peak context is over 100K): `START=2 K=3 BUDGET=9 OUT_DIR=<same dir> ...` gives 3 runs per arm.
 Total spend stays under 15 USD; the script stops starting runs once the sum of `cost_usd` reaches `BUDGET`.
+
+## Step A before any more paid runs: addressable share of context (`docs/research-data/addressable-share.js`)
+
+Free, runs on YOUR transcripts (Claude Code keeps them as `.jsonl` under `~/.claude/projects/<project>/`, plus `subagents/`). Prints aggregates only
+(no message text). Usage:
+
+`node docs/research-data/addressable-share.js ~/.claude/projects/<your-project> --json share.json`
+
+It computes the share of all input-side reads that comes from tool results of 4 KB or more (Context Mode indexes output above 4 KB and denies a
+full Read above 16 KB), plus the ideal saving if those were cut by 50, 80 or 95 percent, per tool, and the peak context per transcript.
+Thresholds fixed BEFORE looking at any data: under 10% means Context Mode cannot matter much (stop); 20% or more means a paired best-case run
+(step B) is worth its cost; between is gray. Sanity run by the author on one cloud research transcript (WebFetch heavy, 175 calls, 2 compactions):
+headline 10.0% (4 to 16 KB: 5.7%, 16 KB or more: 4.3%), all tool results 14.3%; gray zone, not representative of your work. Paste your run's output back.
