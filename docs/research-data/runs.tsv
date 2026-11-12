@@ -1,0 +1,58 @@
+experiment	task	arm	playbook_variant	model	task_version	run	status	passed_all	failed_checks	cost_usd	seconds	agent_calls	tool_calls	validity
+E1-denied	project-01	without	none	sonnet-5-5	v1	1	graded	0	refunds-rules,refunds-invariants,refunds-page,decisions-logged	0.1471	47	0	7	INVALID: every write was refused (no permission flag), agent changed nothing, runner graded FAIL
+E1-denied	project-01	without	none	sonnet-5-5	v1	2	graded	0	refunds-rules,refunds-invariants,refunds-page,decisions-logged	0.1651	55	0	7	INVALID: every write was refused (no permission flag), agent changed nothing, runner graded FAIL
+E2-v1-without	project-01	without	none	sonnet-5-5	v1	1	graded	1		0.1870	62	0	9	valid; first task version (no finance report, no returns config)
+E2-v1-without	project-01	without	none	sonnet-5-5	v1	2	graded	1		0.1828	56	0	9	valid; first task version (no finance report, no returns config)
+E3-v2-without	project-01	without	none	sonnet-5-5	v2	1	graded	1		0.2145	66	0	9	valid; task with finance report and config window but README cues left in
+E3-v2-without	project-01	without	none	sonnet-5-5	v2	2	graded	1		0.2298	68	0	12	valid; task with finance report and config window but README cues left in
+E4-final-without	project-01	without	none	sonnet-5-5	final	1	graded	0	refunds-rules	0.2032	61	0	10	valid; README cues removed
+E4-final-without	project-01	without	none	sonnet-5-5	final	2	graded	1		0.2068	63	0	11	valid; README cues removed
+E4-final-without	project-01	without	none	sonnet-5-5	final	3	graded	0	refunds-report,decisions-logged	0.1759	55	0	9	valid; README cues removed
+E4-final-without	project-01	without	none	haiku-5-5	final	1	graded	0	refunds-report	0.0190	89	0	12	valid
+E4-final-without	project-01	without	none	haiku-5-5	final	2	graded	0	refunds-report	0.0232	108	0	16	valid
+E4-final-without	project-01	without	none	haiku-5-5	final	3	graded	1		0.0263	121	0	23	valid
+E5-with-vs-without	project-01	with	A	sonnet-5-5	final	1	graded	0	refunds-report	0.8021	266	2	44	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	without	none	sonnet-5-5	final	1	graded	0	refunds-rules,refunds-report,decisions-logged	0.1687	50	0	7	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	with	A	sonnet-5-5	final	2	graded	0	refunds-report,decisions-logged	0.7250	222	3	38	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	without	none	sonnet-5-5	final	2	graded	1		0.1941	66	0	11	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	with	A	sonnet-5-5	final	3	graded	0	refunds-report	0.9197	294	3	42	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	without	none	sonnet-5-5	final	3	graded	1		0.1821	62	0	9	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	with	A	sonnet-5-5	final	4	graded	0	refunds-report	1.1209	318	7	52	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	without	none	sonnet-5-5	final	4	graded	1		0.2010	69	0	10	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	with	A	sonnet-5-5	final	5	graded	0	refunds-report	0.2997	96	0	17	valid; with arm degraded by permission refusals (4 to 11 per run)
+E5-with-vs-without	project-01	without	none	sonnet-5-5	final	5	graded	1		0.1740	57	0	9	valid; with arm degraded by permission refusals (4 to 11 per run)
+E6-with-A	project-01	with	A	sonnet-5-5	final	1	graded	0	refunds-report,decisions-logged	0.4819	168	0	35	valid; adapter added --add-dir and Agent; still 5 to 10 refusals per run
+E6-with-A	project-01	with	A	sonnet-5-5	final	2	graded	1		0.7912	241	2	37	valid; adapter added --add-dir and Agent; still 5 to 10 refusals per run
+E6-with-A	project-01	with	A	sonnet-5-5	final	3	graded	0	refunds-report	0.2962	99	0	18	valid; adapter added --add-dir and Agent; still 5 to 10 refusals per run
+E7-without-new-tasks	project-02	without	none	sonnet-5-5	final	1	graded	1		0.1316	37	0	15	valid
+E7-without-new-tasks	project-02	without	none	sonnet-5-5	final	2	graded	1		0.0938	31	0	12	valid
+E7-without-new-tasks	project-03	without	none	sonnet-5-5	final	1	graded	1		0.0372	10	0	3	valid
+E7-without-new-tasks	project-03	without	none	sonnet-5-5	final	2	graded	1		0.0853	27	0	8	valid
+E8-consequence-rule-A	project-01	with	A	sonnet-5-5	final	1	graded	0	refunds-report	1.2772	414	5	57	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-01	with	A	sonnet-5-5	final	2	graded	1		1.6577	496	6	88	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-01	with	A	sonnet-5-5	final	3	graded	0	refunds-report,decisions-logged	0.6755	211	3	37	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-02	with	A	sonnet-5-5	final	1	graded	1		0.4196	113	2	27	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-02	with	A	sonnet-5-5	final	2	graded	1		0.4349	122	2	35	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-02	with	A	sonnet-5-5	final	3	graded	1		0.3983	115	2	29	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-03	with	A	sonnet-5-5	final	1	graded	1		0.1943	46	0	16	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-03	with	A	sonnet-5-5	final	2	graded	1		0.2020	52	0	20	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-A	project-03	with	A	sonnet-5-5	final	3	error			0.0000	0	0	0	valid; variant A = playbook at 1355bcf
+E8-consequence-rule-B	project-01	with	B	sonnet-5-5	final	1	graded	0	refunds-report	1.6390	735	9	109	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-01	with	B	sonnet-5-5	final	2	graded	1		0.3064	98	0	19	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-01	with	B	sonnet-5-5	final	3	graded	1		1.0406	337	4	51	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-02	with	B	sonnet-5-5	final	1	graded	1		0.3857	99	1	29	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-02	with	B	sonnet-5-5	final	2	graded	1		0.4811	120	3	36	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-02	with	B	sonnet-5-5	final	3	graded	1		0.4773	129	3	30	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-03	with	B	sonnet-5-5	final	1	graded	1		0.1543	38	0	13	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-03	with	B	sonnet-5-5	final	2	graded	1		0.1346	35	0	10	valid; variant B = A plus P1 (4 skill files)
+E8-consequence-rule-B	project-03	with	B	sonnet-5-5	final	3	error			0.0000	0	0	0	valid; variant B = A plus P1 (4 skill files)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	1	graded	0	refunds-report	0.3097	85	0	17	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	2	graded	0	refunds-report,decisions-logged	0.2808	95	0	12	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	3	graded	1		0.3229	102	0	16	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	4	graded	0	refunds-report,decisions-logged	0.2466	74	0	14	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	5	graded	0	refunds-report	0.2389	73	0	11	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-01	with	A+quick	sonnet-5-5	final	6	graded	0	refunds-report	0.3397	107	0	18	valid; prompt prefix "Quick one, please." (Lite weight)
+E9-lite	project-02	with	A+quick	sonnet-5-5	final	1	graded	1		0.1915	44	0	17	valid
+E9-lite	project-02	with	A+quick	sonnet-5-5	final	2	graded	1		0.1933	46	0	16	valid
+E9-lite	project-02	with	A+quick	sonnet-5-5	final	3	graded	1		0.1913	47	0	15	valid
+E9-lite	project-02	with	A+quick	sonnet-5-5	final	4	graded	1		0.2150	50	0	19	valid

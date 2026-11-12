@@ -1,0 +1,7 @@
+run	session	time_utc	gap_before	cache_read	cache_write_1h	cache_write_5m	cost_usd
+B0	B	2026-11-09T07:27:25Z	new session	27692	7493	0	0.0328
+B1	B	2026-11-09T08:21:47Z	54 min	28279	6945	0	0.0634
+B2	B	2026-11-09T09:15:54Z	54 min	35200	63	0	0.0673
+Cold	C	2026-11-09T07:27:19Z	2h02m	0	35218	0	0.1714
+A0	A	2026-11-09T05:24:42Z	new session	0	35184	0	0.1408
+C0	C	2026-11-09T05:24Z (approx)	new session	28279	6900	0	0.0305
