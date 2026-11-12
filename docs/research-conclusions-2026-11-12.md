@@ -50,3 +50,22 @@ Chưa nên: P1', ép Lite, tầng kế hoạch, định tuyến model theo role,
 ## 5. Chi tiêu
 
 Trần cũ 22 USD: khoảng 20,9 USD (runs.tsv) cộng khoảng 0,5 USD (TTL, ngoài runs.tsv). Trần riêng 5 USD cho đánh giá hai công cụ context: đã dùng 2,988 USD (2,106 cộng 0,882, `cost_usd` quy đổi trên gói Team), còn khoảng 2,0 USD. Không chạy thêm nếu chưa có yêu cầu mới.
+
+## 6. Cập nhật sau các đợt A/B tổng hợp và bước A (2026-11-12, buổi chiều)
+
+Dữ liệu: `docs/research-local-results-2026-11-12.md` (việc 4b đến 4d và bước A), `docs/research-data/context-mode-ab-result-*`, `docs/research-data/addressable-share/`.
+
+**Context Mode: kết luận cuối là không đưa vào playbook.**
+
+1. [ĐO] 11 lượt chạy có plugin và 11 lượt baseline qua 5 đợt (khoảng 4,27 USD): baseline qua 10/11 (2,231 USD, 0,223 USD mỗi lần qua), cm qua 8/11 (2,035 USD, 0,254 USD mỗi lần qua); Fisher một phía p khoảng 0,29 (tính tay), không có ý nghĩa. Số lần gọi `ctx_*` là 0, 0, 0, 1 và 5 theo từng đợt (6 tổng); ở project-07 (pha 1) cm dùng `ctx_execute` 5 lần nhưng tool-result của cm lớn hơn baseline (23,7 so với 17,5 KB), peak context tương đương (52K so với 50K), cost 0,280 so với 0,303 USD (k=1).
+2. [ĐO] Peak context của mọi benchmark tổng hợp chỉ 50K đến 59K, trong khi trên hai dự án thật của người dùng 68,4% và 97,9% lượt gọi có context trên 100K. Benchmark tổng hợp không tới được vùng cần đo (project-05, 06, 07; ceiling 15 USD, dừng sau pha 1 theo điều kiện đã đặt).
+3. [ĐO] Bước A (`addressable-share.js`, chạy bởi người dùng trên transcript thật, 0 USD). Dự án A: 56.036 lượt gọi, 11,4 tỷ token đầu vào, kết quả công cụ từ 4 KB trở lên chiếm 9,33% các lượt đọc (từ 16 KB: 3,32%), mọi kết quả công cụ 14,6%; cắt 50% đến 95% chỉ tiết kiệm tối đa 4,7% đến 8,9%. Dự án B: 811 lượt gọi, 335 triệu token, 5,81% (từ 16 KB: 2,49%), tối đa 2,9% đến 5,5%. Theo ngưỡng đã đăng ký trước (dưới 10%: dừng) cả hai đều dưới ngưỡng; dự án A sát ngưỡng.
+4. [SUY LUẬN] Trần lý thuyết thấp hơn trong thực tế vì model hiếm khi gọi `ctx_*` và việc cắt hoàn hảo bỏ qua chuyện phải hỏi lại. Ước lượng thô độ lớn: theo đơn giá khoảng 0,34 USD mỗi triệu token đầu vào quy đổi (một lượt chạy, project-07), 11,4 tỷ token tương ứng khoảng 3.900 USD quy đổi theo giá API, nên 4,7% đến 8,9% là khoảng 180 đến 350 USD quy đổi trong toàn bộ lịch sử của dự án A; không phải chi phí thực trên gói của người dùng.
+5. [CHƯA KIỂM CHỨNG] Hành vi ở context trên 100K trong một A/B (vì benchmark tổng hợp không tới được và bước A cho thấy trần thấp, không đáng chi tiền).
+
+**Tiền:** trần 15 USD cho đánh giá hai công cụ context: đã dùng khoảng 4,27 USD, còn khoảng 10,7 USD chưa dùng. Bước B (so sánh cặp tình huống tốt nhất) không chạy vì bước A dưới ngưỡng.
+
+**billion-context: chưa kết luận, và bước A không áp dụng.** Bước A chỉ đo kết quả công cụ (mục tiêu của Context Mode), chiếm 12% đến 15% các lượt đọc; khoảng 85% còn lại là tiền tố tĩnh và hội thoại. billion-context nén lịch sử hội thoại, nên cận trên của nó cần phép đo riêng. Bước A2 (`docs/research-data/history-share.js`, 0 USD) tính phần chi phí đến từ việc đọc lại lịch sử cũ hơn N lượt gọi và phần cold restart, chỉ từ trường `usage` và timestamp của transcript. Chưa chạy trên dữ liệu của người dùng. Ngưỡng đã đăng ký trước, theo con số chính "tỉ lệ chi phí đọc lại lịch sử cũ hơn 50 lượt gọi": dưới 10% dừng; từ 25% trở lên mới đáng thử có khóa tạm; giữa là vùng xám. Chạy với hai bộ hệ số (`--read-mult 0.1 --write-mult 1.25` mặc định, và `--read-mult 0.05 --write-mult 2`), vì con số thay đổi theo hệ số.
+[ĐO] Chạy thử một lần trên một transcript đám mây của chính tác giả (182 lượt, 2 compaction, 158 lượt context trên 100K): con số chính 11,0% với hệ số mặc định và 6,1% với hệ số thứ hai; cold restart chiếm 17,0% đến 30,5% chi phí (6 lần). Không đại diện cho công việc của người dùng, chỉ để kiểm tra script.
+
+**Danh sách ứng viên v0.36 (thay mục 7 ở mục 3):** ghi chú công cụ tùy chọn nên viết là "Context Mode đã thử: trần lý thuyết 4,7% đến 8,9% trên khối lượng công việc thật, không có lợi ích đo được ở A/B, không khuyến nghị; billion-context chưa thử (cần khóa tạm và cô lập), cận trên của nó đang chờ bước A2". Các mục khác giữ nguyên.

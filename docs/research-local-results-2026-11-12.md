@@ -108,3 +108,56 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Nhánh cm chỉ qua 1/3 bài ẩn. Lượt cm-2 trượt FAIL_TO_PASS tests/invoice-exempt.f2p.test.js; diff của cm-2 và cm-3 không sửa src/invoice.js, còn cm-1 (qua) có sửa invoice.js. Baseline 3/3.
 [SUY LUẬN] Chi phí thấp hơn của nhánh cm (0,085 so 0,161) đi cùng việc bỏ sót invoice.js, nên có thể là làm ít hơn chứ không phải tiết kiệm thật. Chưa chứng minh plugin gây ra việc bỏ sót: k=3, một nhánh trượt 2 lần, baseline 3/3 là khác biệt có thể do nhiễu. Không đủ cơ sở kết luận Context Mode có lợi hoặc hại.
 [CHƯA KIỂM CHỨNG] Cơ chế (vì sao cm bỏ sót invoice.js); cần lặp với k lớn hơn.
+
+## Việc 4c. Lượt thử K=1, task dài project-06-long-session
+
+[ĐO] Lệnh: `TASKS=project-06-long-session CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code K=1 BUDGET=2 OUT_DIR=C:/Users/Lenovo/pbeval/cm-ab-out3 bash docs/research-data/context-mode-ab/run-ab.sh` (nhánh tại 7f692aa). Chi phí 0,696 USD; tổng ba đợt 3,684 USD (trần 5). Dữ liệu: docs/research-data/context-mode-ab-result-long/.
+
+| Task | Arm | Qua test ẩn | Cost USD | Giây | Input-side tok | Cache write | Tool-result KB | Peak context tok | Lượt | Plugin loaded | ctx calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| project-06-long-session | baseline | 1/1 | 0.388 | 133 | 965291 | 40801 | 28.9 | 58995 | 29 | 0 | 0 |
+| project-06-long-session | context-mode | 0/1 | 0.308 | 125 | 706594 | 32386 | 12.0 | 51082 | 33 | 1 | 1 |
+
+[ĐO] Peak context chỉ khoảng 59k (baseline) và 51k (cm), dưới 100K: task vẫn chưa đủ dài để context lớn.
+[ĐO] Nhánh cm gọi ctx_execute đúng 1 lần (đọc và xử lý logs/payments.log bằng code JavaScript thay vì đọc log). Tool-result KB giảm 28,9 xuống 12,0 (một lượt mỗi nhánh).
+[ĐO] Nhánh cm trượt 2 test ẩn: tests/invoice-exempt.f2p.test.js và tests/refunds-report.f2p.test.js. Baseline qua. Đây là lần thứ hai cm trượt đúng invoice-exempt.
+[SUY LUẬN] Lần đầu có dấu hiệu plugin được dùng thật và cắt output, nhưng k=1 và peak context thấp nên không kết luận được về chi phí hay chất lượng. Việc cm trượt invoice-exempt hai đợt liên tiếp (2/3 ở project-05, 1/1 ở project-06) tăng đáng chú ý, nhưng project-05 đã cho thấy nguyên nhân gần nhất là lựa chọn Grep của agent; chưa kiểm cho lượt này (chưa đọc transcript project-06).
+[CHƯA KIỂM CHỨNG] Nguyên nhân cm trượt hai test ở project-06; cần đọc transcript và k lớn hơn.
+
+## Việc 4d. Pha 1, K=1, task project-07-wide-refactor
+
+[ĐO] Lệnh: `TASKS=project-07-wide-refactor CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code K=1 BUDGET=4 OUT_DIR=C:/Users/Lenovo/pbeval/cm-ab-out4 bash docs/research-data/context-mode-ab/run-ab.sh` (nhánh tại 602d89a, trần mới 15 USD theo kế hoạch người dùng). Chi phí 0,583 USD; tổng bốn đợt 4,267 USD. Dữ liệu: docs/research-data/context-mode-ab-result-wide/.
+
+| Task | Arm | Qua test ẩn | Cost USD | Giây | Input-side tok | Cache write | Tool-result KB | Peak context tok | Lượt | Plugin loaded | ctx calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| project-07-wide-refactor | baseline | 1/1 | 0.303 | 99 | 883986 | 31891 | 17.5 | 50085 | 29 | 0 | 0 |
+| project-07-wide-refactor | context-mode | 1/1 | 0.280 | 88 | 709651 | 33549 | 23.7 | 52245 | 25 | 1 | 5 |
+
+[ĐO] Điều kiện dừng của kế hoạch: peak context vẫn dưới 100K (50k và 52k), và không lượt nào vượt 2,5 USD (0,30 và 0,28). Theo kế hoạch, dừng ở đây: benchmark này chưa tới vùng cần đo. Không chạy pha 2.
+[ĐO] Nhánh cm gọi ctx_execute 5 lần (bước 7, 8, 14, 18, 21), chủ yếu để đọc và xử lý các file trong src/reports/ bằng shell hoặc JavaScript. Cả hai nhánh qua test ẩn.
+[ĐO] Tool-result KB của cm lớn hơn baseline (23,7 so với 17,5) dù có dùng ctx_execute; peak context tương đương. Tức không thấy lợi ích về context trong lượt này.
+[SUY LUẬN] Context Mode được dùng nhiều hơn ở task này, nhưng với peak dưới 100K và k=1, chi phí và context không khác đáng kể (0,280 so với 0,303 USD). Chưa có căn cứ cho khẳng định Context Mode tiết kiệm.
+[CHƯA KIỂM CHỨNG] Hành vi ở task có peak trên 100K; chưa đo được trong benchmark hiện có.
+
+## Bước A. Tỷ lệ context có thể co lại (addressable-share.js, transcript thật)
+
+[ĐO] Lệnh: `node docs/research-data/addressable-share.js ~/.claude/projects/<dự án> --json <file>` (script đọc trước khi chạy: chỉ đọc transcript, chỉ ghi file JSON được chỉ định, in số liệu tổng hợp; commit 1c4e4dd). Chạy trên hai dự án thật của người dùng, gọi tạm là A (làm việc chính) và B. Chi phí 0 USD. JSON: docs/research-data/addressable-share/.
+
+| | Dự án A | Dự án B |
+|---|---|---|
+| File transcript | 1.546 | 3 |
+| Lượt gọi API | 56.036 | 811 |
+| Kết quả công cụ | 66.017 (161.267 KB) | 1.481 (934 KB) |
+| Tổng input-side thật | 11,40 tỷ token | 335.261.516 token |
+| Lần nén (compaction) | 102 | 6 |
+| Lượt gọi có context trên 100K | 38.302 (68,4%) | 794 (97,9%) |
+| Peak input-side mỗi file | trung vị 118.939, lớn nhất 966.882 | 88.876, 137.540, 958.608 |
+| **Headline: kết quả từ 4 KB trở lên** | **9,3%** của mọi lượt đọc input-side (16 KB trở lên: 3,3%) | **5,8%** (16 KB trở lên: 2,5%) |
+| Giảm tối đa nếu cắt 50% / 80% / 95% các kết quả từ 4 KB | 4,7% / 7,5% / 8,9% | 2,9% / 4,7% / 5,5% |
+| Công cụ lớn nhất (exposure 4 KB+) | Bash 4,3%, Read 2,4%, PowerShell 2,4% | Bash 3,6%, SearchPlugins 0,8%, PowerShell 0,6% |
+
+[ĐO] Cả hai dự án nằm dưới 10%, tức theo ngưỡng đã đăng ký trước trong script ("UNDER 10%: Context Mode cannot matter much for this workload. Stop.") thì dừng. Dự án A ở 9,3%, sát ngưỡng; dự án B 5,8%.
+[ĐO] Dự án A có 68,4% lượt gọi với context trên 100K, tức khác hẳn các benchmark project-05, 06, 07 (peak 50k đến 59k). Khoảng cách này giải thích vì sao các benchmark đó chưa đo được vùng có ý nghĩa; nhưng ngay cả trên vùng thật, lợi ích tối đa lý thuyết của việc cắt 80% các kết quả lớn chỉ khoảng 7,5%.
+[SUY LUẬN] Context Mode không đáng đưa vào playbook như công cụ giảm chi phí: trần lý thuyết 4,7% đến 8,9% (cắt 50% đến 95%), thực tế thấp hơn vì model không dùng ctx_* thường xuyên (0 lần ở project-05, 1 lần ở project-06, 5 lần ở project-07). Kết hợp với việc cm không cho thấy lợi ích đo được trong ba đợt A/B.
+[ĐO] Dự án B chỉ có 3 transcript (811 lượt gọi), nên ít đại diện hơn A.
+[CHƯA KIỂM CHỨNG] Giới hạn của script: bytes/4 không phải tokenizer, phép cắt lý tưởng bỏ qua việc model phải hỏi lại, token-read không phải USD, một người một khối lượng công việc.

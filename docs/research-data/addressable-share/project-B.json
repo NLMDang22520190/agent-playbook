@@ -1,0 +1,254 @@
+{
+  "total": {
+    "files": 3,
+    "calls": 811,
+    "inputSide": 335261516,
+    "results": 1481,
+    "resultBytes": 956748,
+    "exposure": 35043520.25,
+    "peaks": [
+      88876,
+      137540,
+      958608
+    ],
+    "over100k": 794,
+    "compactions": 6
+  },
+  "byBucket": {
+    "<4KB": {
+      "n": 1430,
+      "bytes": 461060,
+      "exposure": 15553904
+    },
+    "4-16KB": {
+      "n": 45,
+      "bytes": 354908,
+      "exposure": 11157887.75
+    },
+    ">=16KB": {
+      "n": 6,
+      "bytes": 140780,
+      "exposure": 8331728.5
+    }
+  },
+  "byTool": {
+    "Bash": {
+      "n": 569,
+      "bytes": 684659,
+      "exposure": 20934023.5,
+      "big": 39,
+      "bigExposure": 12156767.25
+    },
+    "SubagentHandback": {
+      "n": 2,
+      "bytes": 122,
+      "exposure": 0,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "Read": {
+      "n": 357,
+      "bytes": 64790,
+      "exposure": 2112757,
+      "big": 5,
+      "bigExposure": 804502.5
+    },
+    "mcp__ccd_turn__update_plan": {
+      "n": 108,
+      "bytes": 4732,
+      "exposure": 185326,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "PowerShell": {
+      "n": 23,
+      "bytes": 36990,
+      "exposure": 2543859,
+      "big": 3,
+      "bigExposure": 2138043
+    },
+    "Skill": {
+      "n": 12,
+      "bytes": 371,
+      "exposure": 29468.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "SuggestSkills": {
+      "n": 2,
+      "bytes": 74,
+      "exposure": 7751.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "SearchPlugins": {
+      "n": 1,
+      "bytes": 27205,
+      "exposure": 2842922.5,
+      "big": 1,
+      "bigExposure": 2842922.5
+    },
+    "SuggestPluginInstall": {
+      "n": 1,
+      "bytes": 1387,
+      "exposure": 144594.75,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "AskUserQuestion": {
+      "n": 5,
+      "bytes": 3043,
+      "exposure": 295896.75,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__ccd_turn__wrap_up": {
+      "n": 43,
+      "bytes": 8852,
+      "exposure": 336385.25,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__preview_start": {
+      "n": 6,
+      "bytes": 2209,
+      "exposure": 128550.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__get_page_text": {
+      "n": 3,
+      "bytes": 9908,
+      "exposure": 998942,
+      "big": 1,
+      "bigExposure": 979736
+    },
+    "ToolSearch": {
+      "n": 12,
+      "bytes": 730,
+      "exposure": 29922.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "WebFetch": {
+      "n": 7,
+      "bytes": 5712,
+      "exposure": 294180.75,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "Write": {
+      "n": 131,
+      "bytes": 21589,
+      "exposure": 1073465,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "Edit": {
+      "n": 52,
+      "bytes": 8110,
+      "exposure": 447782.25,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__ccd_directory__change_directory": {
+      "n": 2,
+      "bytes": 476,
+      "exposure": 40936,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__preview_stop": {
+      "n": 3,
+      "bytes": 153,
+      "exposure": 8147.25,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__preview_logs": {
+      "n": 5,
+      "bytes": 5436,
+      "exposure": 218125,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__navigate": {
+      "n": 23,
+      "bytes": 3385,
+      "exposure": 119769,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__computer": {
+      "n": 51,
+      "bytes": 16258,
+      "exposure": 377299.75,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__read_console_messages": {
+      "n": 6,
+      "bytes": 6493,
+      "exposure": 426210.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__javascript_tool": {
+      "n": 29,
+      "bytes": 11368,
+      "exposure": 293983.25,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__resize_window": {
+      "n": 8,
+      "bytes": 4902,
+      "exposure": 258680.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "TaskStop": {
+      "n": 7,
+      "bytes": 6671,
+      "exposure": 120324.75,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "Grep": {
+      "n": 2,
+      "bytes": 10660,
+      "exposure": 567645,
+      "big": 2,
+      "bigExposure": 567645
+    },
+    "SendUserFile": {
+      "n": 7,
+      "bytes": 3035,
+      "exposure": 110508.5,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "mcp__Claude_Browser__preview_list": {
+      "n": 1,
+      "bytes": 1562,
+      "exposure": 58575,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "Agent": {
+      "n": 2,
+      "bytes": 2292,
+      "exposure": 16044,
+      "big": 0,
+      "bigExposure": 0
+    },
+    "WebSearch": {
+      "n": 1,
+      "bytes": 3574,
+      "exposure": 21444,
+      "big": 0,
+      "bigExposure": 0
+    }
+  },
+  "headline4KBShare": 5.813257806183755
+}

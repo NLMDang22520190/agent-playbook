@@ -69,3 +69,13 @@ full Read above 16 KB), plus the ideal saving if those were cut by 50, 80 or 95 
 Thresholds fixed BEFORE looking at any data: under 10% means Context Mode cannot matter much (stop); 20% or more means a paired best-case run
 (step B) is worth its cost; between is gray. Sanity run by the author on one cloud research transcript (WebFetch heavy, 175 calls, 2 compactions):
 headline 10.0% (4 to 16 KB: 5.7%, 16 KB or more: 4.3%), all tool results 14.3%; gray zone, not representative of your work. Paste your run's output back.
+
+## Step A2 for billion-context: cost share of re-reading old history (`docs/research-data/history-share.js`)
+
+Free, runs on your transcripts, prints aggregates only. Run it twice, with the default multipliers and with the other documented pair:
+
+`node docs/research-data/history-share.js ~/.claude/projects/<your-project> --json share2.json`
+`node docs/research-data/history-share.js ~/.claude/projects/<your-project> --read-mult 0.05 --write-mult 2 --json share2b.json`
+
+Headline: cost share of re-reading history older than 50 calls (what a history compressor could shrink), plus the cold-restart share of cost.
+Pre-registered: under 10% means stop; 25% or more means a paired test with a throwaway key could be worth its cost; between is gray.
