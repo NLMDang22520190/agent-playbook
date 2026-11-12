@@ -1,0 +1,6 @@
+SessionStart hook (cm-1, cm-2, cm-3), additionalContext, verbatim:
+"This session may have run before. Call mcp__plugin_context-mode_context-mode__ctx_resume for a summary of what happened."
+No PreToolUse deny, UserPromptSubmit message or other plugin message appears in any of the 6 transcripts (the stream-json log carries SessionStart hook events only).
+
+First Grep result seen by cm-3 (cut): lists README.md, tests/invoice.test.js (assert.equal(inv.vatCents, order.totals.taxCents)), tests/reports.test.js, tests/pricing.test.js, tests/matrix.test.js. The string src/invoice.js does not appear in it.
+First Grep result seen by cm-2 (cut): README.md, tests/matrix.test.js, tests/orders.test.js, tests/pricing.test.js, src/order-page.js, src/orders.js. No invoice file.
