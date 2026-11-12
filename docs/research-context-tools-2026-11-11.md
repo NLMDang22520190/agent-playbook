@@ -43,6 +43,21 @@ Script `docs/research-data/toolshare.py` đọc một transcript Claude Code và
 
 Giới hạn: session nặng WebFetch (155.710 B) nên không đại diện cho phiên TDD đọc repo; đơn vị là byte không phải token. Chỉ cho thấy phần Context Mode có thể nhắm tới là lớn ở loại session này.
 
+## 3b. Thử hook Context Mode bằng payload giả [ĐO, 2026-11-12]
+
+Chạy `plugins/claude-code/hook.mjs` (bản 2.1.7) bằng Node 24.22 trong môi trường tối thiểu (`env -i`, không proxy), 5 payload `PreToolUse`, không gọi API. Lần chạy đầu bị bộ phân loại tự động chặn; chạy được sau khi người dùng thêm quy tắc cho phép.
+
+| Payload | Kết quả |
+|---|---|
+| Read cả file 22.176 B | **deny**, lý do: vượt giới hạn một lần đọc (16.384 B), chỉ dẫn dùng `ctx_execute(language, code, file=...)` |
+| Read có `limit` 50 | không có output (cho qua) |
+| Bash `cat <file 22 KB>` | không có output (KHÔNG bị chặn trong thử nghiệm này, khác README) |
+| Bash `git status` | cho qua |
+| Bash `git checkout abc -- db/schema.sql` (ca khôi phục của guard) | cho qua |
+
+Giới hạn: một file, một phiên bản, payload tự dựng (chưa chạy trong một phiên Claude Code thật). README nói `cat` bị chuyển hướng; thử nghiệm không thấy, nguyên nhân chưa rõ **[CHƯA KIỂM CHỨNG]**.
+[SUY LUẬN] Hook là tiến trình riêng nên không tự "xung đột" với guard của playbook ở các lệnh trên; ảnh hưởng thực tế là một đường vòng: tester và reviewer đọc nguyên một file lớn hơn 16 KB sẽ bị từ chối và phải đi qua `ctx_execute`.
+
 ## 4. Chưa làm
 
 - Thử hook của Context Mode bằng payload giả (không qua API): bị bộ phân loại tự động của Claude Code chặn vì là mã tải từ bên ngoài; không lách. Muốn làm cần người dùng thêm quy tắc cho phép, hoặc làm trên máy người dùng.
