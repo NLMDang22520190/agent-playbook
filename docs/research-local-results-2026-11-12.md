@@ -94,3 +94,17 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Trong 3 lần đo, session không idle lâu và máy không sleep (không có khoảng trống), nên chưa trả lời được "có chạy khi máy sleep không".
 [SUY LUẬN] Độ lệch cố định theo job (khoảng 26 phút), nên khoảng cách giữa hai lần chạy liên tiếp vẫn bằng chu kỳ danh nghĩa. Với chu kỳ 50 phút, khoảng cách thật sẽ gần 50 phút, không vượt TTL 1 giờ. Chỉ dựa trên 3 điểm của một job; "*/50" chưa được đo, và cron chỉ chạy khi REPL rảnh.
 [CHƯA KIỂM CHỨNG] Hành vi khi máy sleep hoặc session đang bận lâu.
+
+## Việc 4b. A/B Context Mode, task có output lớn (project-05-tax-exempt-noisy)
+
+[ĐO] Lệnh: `TASKS=project-05-tax-exempt-noisy CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code K=3 BUDGET=2.5 OUT_DIR=C:/Users/Lenovo/pbeval/cm-ab-out2 bash docs/research-data/context-mode-ab/run-ab.sh` (nhánh đã fast-forward tới c92a5a1). Không bị chặn. Chi phí 0,882 USD; tổng hai đợt 2,988 USD (trần 5). Dữ liệu: docs/research-data/context-mode-ab-result-noisy/.
+
+| Task | Arm | Graded | Errors | Passed all hidden | Median cost USD | Median s | Median input-side tok | Median cache write | Median tool-result KB | Median turns | Plugin loaded | ctx tool calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| project-05-tax-exempt-noisy | baseline | 3 | 0 | 3/3 | 0.161 | 45 | 405677 | 21740 | 6.6 | 17.0 | 0 | 0 |
+| project-05-tax-exempt-noisy | context-mode | 3 | 0 | 1/3 | 0.085 | 50 | 369542 | 6223 | 7.4 | 13.0 | 3 | 0 |
+
+[ĐO] Plugin nạp ở cả 3 lượt cm, nhưng ctx tool calls = 0 lần nữa: model vẫn không dùng công cụ ctx. Tool-result KB hai nhánh gần nhau (6,6 so với 7,4), nên plugin không làm giảm output công cụ vào context ở đợt này.
+[ĐO] Nhánh cm chỉ qua 1/3 bài ẩn. Lượt cm-2 trượt FAIL_TO_PASS tests/invoice-exempt.f2p.test.js; diff của cm-2 và cm-3 không sửa src/invoice.js, còn cm-1 (qua) có sửa invoice.js. Baseline 3/3.
+[SUY LUẬN] Chi phí thấp hơn của nhánh cm (0,085 so 0,161) đi cùng việc bỏ sót invoice.js, nên có thể là làm ít hơn chứ không phải tiết kiệm thật. Chưa chứng minh plugin gây ra việc bỏ sót: k=3, một nhánh trượt 2 lần, baseline 3/3 là khác biệt có thể do nhiễu. Không đủ cơ sở kết luận Context Mode có lợi hoặc hại.
+[CHƯA KIỂM CHỨNG] Cơ chế (vì sao cm bỏ sót invoice.js); cần lặp với k lớn hơn.
