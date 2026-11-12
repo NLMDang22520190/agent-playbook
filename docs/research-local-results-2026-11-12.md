@@ -138,3 +138,26 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Tool-result KB của cm lớn hơn baseline (23,7 so với 17,5) dù có dùng ctx_execute; peak context tương đương. Tức không thấy lợi ích về context trong lượt này.
 [SUY LUẬN] Context Mode được dùng nhiều hơn ở task này, nhưng với peak dưới 100K và k=1, chi phí và context không khác đáng kể (0,280 so với 0,303 USD). Chưa có căn cứ cho khẳng định Context Mode tiết kiệm.
 [CHƯA KIỂM CHỨNG] Hành vi ở task có peak trên 100K; chưa đo được trong benchmark hiện có.
+
+## Bước A. Tỷ lệ context có thể co lại (addressable-share.js, transcript thật)
+
+[ĐO] Lệnh: `node docs/research-data/addressable-share.js ~/.claude/projects/<dự án> --json <file>` (script đọc trước khi chạy: chỉ đọc transcript, chỉ ghi file JSON được chỉ định, in số liệu tổng hợp; commit 1c4e4dd). Chạy trên hai dự án thật của người dùng, gọi tạm là A (làm việc chính) và B. Chi phí 0 USD. JSON: docs/research-data/addressable-share/.
+
+| | Dự án A | Dự án B |
+|---|---|---|
+| File transcript | 1.546 | 3 |
+| Lượt gọi API | 56.036 | 811 |
+| Kết quả công cụ | 66.017 (161.267 KB) | 1.481 (934 KB) |
+| Tổng input-side thật | 11,40 tỷ token | 335.261.516 token |
+| Lần nén (compaction) | 102 | 6 |
+| Lượt gọi có context trên 100K | 38.302 (68,4%) | 794 (97,9%) |
+| Peak input-side mỗi file | trung vị 118.939, lớn nhất 966.882 | 88.876, 137.540, 958.608 |
+| **Headline: kết quả từ 4 KB trở lên** | **9,3%** của mọi lượt đọc input-side (16 KB trở lên: 3,3%) | **5,8%** (16 KB trở lên: 2,5%) |
+| Giảm tối đa nếu cắt 50% / 80% / 95% các kết quả từ 4 KB | 4,7% / 7,5% / 8,9% | 2,9% / 4,7% / 5,5% |
+| Công cụ lớn nhất (exposure 4 KB+) | Bash 4,3%, Read 2,4%, PowerShell 2,4% | Bash 3,6%, SearchPlugins 0,8%, PowerShell 0,6% |
+
+[ĐO] Cả hai dự án nằm dưới 10%, tức theo ngưỡng đã đăng ký trước trong script ("UNDER 10%: Context Mode cannot matter much for this workload. Stop.") thì dừng. Dự án A ở 9,3%, sát ngưỡng; dự án B 5,8%.
+[ĐO] Dự án A có 68,4% lượt gọi với context trên 100K, tức khác hẳn các benchmark project-05, 06, 07 (peak 50k đến 59k). Khoảng cách này giải thích vì sao các benchmark đó chưa đo được vùng có ý nghĩa; nhưng ngay cả trên vùng thật, lợi ích tối đa lý thuyết của việc cắt 80% các kết quả lớn chỉ khoảng 7,5%.
+[SUY LUẬN] Context Mode không đáng đưa vào playbook như công cụ giảm chi phí: trần lý thuyết 4,7% đến 8,9% (cắt 50% đến 95%), thực tế thấp hơn vì model không dùng ctx_* thường xuyên (0 lần ở project-05, 1 lần ở project-06, 5 lần ở project-07). Kết hợp với việc cm không cho thấy lợi ích đo được trong ba đợt A/B.
+[ĐO] Dự án B chỉ có 3 transcript (811 lượt gọi), nên ít đại diện hơn A.
+[CHƯA KIỂM CHỨNG] Giới hạn của script: bytes/4 không phải tokenizer, phép cắt lý tưởng bỏ qua việc model phải hỏi lại, token-read không phải USD, một người một khối lượng công việc.
