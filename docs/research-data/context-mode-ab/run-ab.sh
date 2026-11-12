@@ -11,6 +11,9 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd -P)"; REPO="$(cd "$HERE/../../.." && pwd -P)"
 : "${CM_PLUGIN:?set CM_PLUGIN to <context-mode checkout>/plugins/claude-code}"
 K="${K:-3}"; BUDGET="${BUDGET:-3.5}"; MODEL="${MODEL:-claude-sonnet-5-5}"
+# TASKS: comma-separated ids under evals/tasks-project. Default: the two small tasks of the first run. For the large-output run use
+# TASKS=project-05-tax-exempt-noisy (npm test prints about 65 KB; docs/tax-history.md 33 KB; data/orders-2025.csv 62 KB).
+TASKS="${TASKS:-project-01-order-flow,project-02-tax-exempt}"
 OUT_DIR="${OUT_DIR:-$HOME/context-mode-ab-$(date -u +%Y%m%dT%H%M%SZ)}"
 [ -f "$REPO/evals/run-outcome.sh" ] || { echo "run from a checkout that has evals/run-outcome.sh (research branch)" >&2; exit 2; }
 [ -f "$CM_PLUGIN/hook.mjs" ] || { echo "no hook.mjs in CM_PLUGIN" >&2; exit 2; }
@@ -29,10 +32,10 @@ run_arm() { # $1 = baseline|cm  $2 = iteration
   local plug=""; [ "$1" = cm ] && plug="$CM_PLUGIN"
   PB_CM_PLUGIN="$plug" CM_NODE_DIR="${CM_NODE_DIR:-}" bash "$REPO/evals/run-outcome.sh" \
     --cmd "bash $HERE/context-mode-adapter.sh" --model "$MODEL" --tasks-dir "$REPO/evals/tasks-project" \
-    --tasks project-01-order-flow,project-02-tax-exempt --arm without --repeat 1 --clean-env \
+    --tasks "$TASKS" --arm without --repeat 1 --clean-env \
     --max-cost "$(awk -v b="$BUDGET" 'BEGIN{printf "%.2f", b/4}')" --workroot "$WORK" --out "$OUT_DIR/$1-$2.md" \
     > "$OUT_DIR/$1-$2.stdout" 2>&1
-  echo "$1 iteration $2 exit $? spent so far $(spent)" >&2
+  rc=$?; echo "$1 iteration $2 runner exit $rc (1 = some run FAILED a hidden test, 4 = an ERROR run) spent so far $(spent)" >&2
 }
 i=1
 while [ "$i" -le "$K" ]; do
