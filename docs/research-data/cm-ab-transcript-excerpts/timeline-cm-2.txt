@@ -1,0 +1,33 @@
+=== cm-2
+HOOK_RESPONSE SessionStart outcome=success out_bytes=0
+HOOK_RESPONSE SessionStart outcome=success out_bytes=0
+HOOK_RESPONSE SessionStart outcome=success out_bytes=198
+ 1 CALL Grep {"pattern":"taxCents|placeOrder|priceOrder","output_mode":"content","glob":"!node_modules"}
+   RESULT 2333 B +0.9s
+ 2 CALL Read <WORK>/src/pricing.js +1.6s
+ 3 CALL Read <WORK>/src/orders.js +0.3s
+   RESULT 1175 B +0.4s
+   RESULT 908 B +0.3s
+ 4 CALL Edit <WORK>/src/pricing.js +0.7s
+   RESULT 210 B +0.8s
+ 5 CALL Edit <WORK>/src/orders.js +0.1s
+   RESULT 209 B +0.7s
+ 6 CALL Bash cd "<WORK>/project-05-tax-exempt-noisy.without.1" && sed -n 1,12p tests/orders.test.js && cat package.json | grep -A3 scripts +0.7s
+PERMISSION_DENIED {"type":"system","subtype":"permission_denied","tool_name":"Bash","tool_use_id":"toolu_01QUNt9iMeqFn5ohj9p5z1AL","decision_reason_type":"other","decision_reason":"Compound command contains cd with a relative file read while a Read() deny rule exists","message":"sed reads a file by a relative path af
+   RESULT 182 B ERROR +0.4s
+ 7 CALL Read <WORK>/tests/orders.test.js +1.3s
+   RESULT 803 B +0.7s
+ 8 CALL Write <WORK>/tests/company.test.js +4.5s
+ 9 CALL PowerShell node --test tests/ 2>&1 | Select-Object -Last 15   <== TEST RUN +0.4s
+   RESULT 207 B +0.4s
+PERMISSION_DENIED {"type":"system","subtype":"permission_denied","tool_name":"PowerShell","tool_use_id":"toolu_01AE7hZ6y6sYtJi8Ysbirg1B","decision_reason_type":"subcommandResults","message":"This PowerShell command contains multiple operations. The following part requires approval: node --test tests/ 2>&1 | Select-Ob
+   RESULT 140 B ERROR +1.7s
+10 CALL Bash node --test tests/   <== TEST RUN +1.1s
+   RESULT 1031 B ERROR +3.2s
+11 CALL Bash node --test   <== TEST RUN +1.1s
+   RESULT 183 B +1.6s
+12 CALL Bash node --test 2>&1 | grep -E "^ℹ (tests|pass|fail)|✖"   <== TEST RUN +0.1s
+   RESULT 148 B +1.5s
+TEST_RUNS 4 sizes=[140,1031,183,148]
+TOUCHED_invoice 
+MAX_GAP 4.5s between events before type=assistant

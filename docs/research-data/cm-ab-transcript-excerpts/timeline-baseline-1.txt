@@ -1,0 +1,35 @@
+=== baseline-1
+HOOK_RESPONSE SessionStart outcome=success out_bytes=0
+HOOK_RESPONSE SessionStart outcome=success out_bytes=0
+ 1 CALL Grep {"pattern":"taxCents|placeOrder|priceOrder","output_mode":"files_with_matches"}
+   RESULT 178 B +0.4s
+ 2 CALL Read <WORK>/src/pricing.js +1.5s
+   RESULT 1175 B +0.1s
+ 3 CALL Read <WORK>/src/orders.js +0.2s
+   RESULT 908 B +0.1s
+ 4 CALL Grep {"pattern":"tax","glob":"src/**","output_mode":"content","-i":true} +0.4s
+   RESULT 417 B +0.2s
+ 5 CALL Read <WORK>/src/invoice.js +1.5s
+   RESULT 518 B +0.1s
+ 6 CALL Edit <WORK>/src/invoice.js +0.7s
+   RESULT 210 B +0.3s
+ 7 CALL Edit <WORK>/src/pricing.js +0.8s
+   RESULT 210 B +0.3s
+ 8 CALL Edit <WORK>/src/orders.js +0.8s
+   RESULT 209 B +0.3s
+ 9 CALL Bash cat package.json | grep -A3 scripts; npm test 2>&1 | tail -15; grep -n "toEqual/|deepStrictEqual/|deepEqual" tests/orders.test.js | head   <== TEST RUN +0.2s
+   RESULT 762 B +8.0s
+10 CALL Bash sed -n 1,30p tests/invoice.test.js +0.2s
+   RESULT 865 B +0.5s
+11 CALL Bash cat >> tests/invoice.test.js <<'EOF' test('a company order has no tax in pricing, on the order and on the invoice', () => { const config = loadConfig(); const ctx = { inventory: createInventory({   <== TEST RUN +3.7s
+PERMISSION_DENIED {"type":"system","subtype":"permission_denied","tool_name":"Bash","tool_use_id":"toolu_01DG9bmkW67Qe1juXNVR7nEf","decision_reason_type":"other","decision_reason":"Contains brace with quote character (expansion obfuscation)","message":"Contains brace with quote character (expansion obfuscation)","uui
+   RESULT 59 B ERROR +0.2s
+12 CALL Bash node --test 2>&1 | grep -E "^ℹ (pass|fail)"   <== TEST RUN +1.2s
+   RESULT 134 B +1.1s
+13 CALL Edit <WORK>/tests/invoice.test.js +3.0s
+14 CALL Bash node --test 2>&1 | grep -E "^ℹ (pass|fail)"   <== TEST RUN +0.3s
+   RESULT 217 B +0.1s
+   RESULT 134 B +1.1s
+TEST_RUNS 4 sizes=[762,59,134,134]
+TOUCHED_invoice Read:<WORK>/src/invoice.js, Edit:<WORK>/src/invoice.js, Edit:<WORK>/tests/invoice.test.js
+MAX_GAP 8.0s tool Bash cat package.json | grep -A3 scripts; npm test 2>&1 | tail -15; grep -n "toE
