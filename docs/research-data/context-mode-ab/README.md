@@ -39,3 +39,20 @@ decide k and the ceiling:
 `TASKS=project-06-long-session CM_PLUGIN=<context-mode>/plugins/claude-code K=1 BUDGET=2 bash docs/research-data/context-mode-ab/run-ab.sh`
 
 For billion-context the same task is the benchmark, but only with a throwaway key and the isolation steps in `docs/research-context-tools-2026-11-11.md`.
+
+## Fourth benchmark: wide refactor, large context (task project-07-wide-refactor), ceiling 15 USD
+
+Why: project-06 peaked at about 59K context tokens, below the regime where either tool claims value. `project-07-wide-refactor` is a reports
+module with 24 report files (8 over 16 KB, so Context Mode's hook denies a full Read of them) and three tickets that each touch every
+report (one money formatter, rename of the row field, generation date from `ctx.now`). Self-check OK. The setup repo is about 190 KB of
+source, so a session that reads and edits everything can pass 100K context tokens. Whether it does is what phase 1 measures.
+
+The adapter now also allows `cd`, `echo`, `pwd`, `diff` and `sort` for both arms, because a denied `cd . && ...` compound command changed the run
+in the project-06 pilot (a permission artefact, not the plugin).
+
+Ceiling 15 USD in total, 3.684 USD used before this benchmark, so 11.3 USD left. Plan with a stop rule:
+
+Phase 1 (one run per arm): `TASKS=project-07-wide-refactor CM_PLUGIN=<context-mode>/plugins/claude-code K=1 BUDGET=4 OUT_DIR=<dir> bash docs/research-data/context-mode-ab/run-ab.sh`
+Read peak context and cost per run in `summary.md`. Stop if a run costs more than 2.5 USD or if peak context is under 100K (the task still does not reach the regime).
+Phase 2 (only if phase 1 is under 2.0 USD per run and peak context is over 100K): `START=2 K=3 BUDGET=9 OUT_DIR=<same dir> ...` gives 3 runs per arm.
+Total spend stays under 15 USD; the script stops starting runs once the sum of `cost_usd` reaches `BUDGET`.

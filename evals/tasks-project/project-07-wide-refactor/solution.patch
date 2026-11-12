@@ -1,0 +1,841 @@
+diff --git a/src/money.js b/src/money.js
+index 70a4495..d061891 100644
+--- a/src/money.js
++++ b/src/money.js
+@@ -7,4 +7,11 @@ function toCents(amount) {
+   return Number(m[1]) * 100 + Number((m[2] || '').padEnd(2, '0') || 0);
+ }
+ 
+-module.exports = { toCents };
++// Integer cents to dollars: $1,234.56, -$2.50 (docs/money.md).
++function formatMoney(cents) {
++  if (!Number.isInteger(cents)) throw new TypeError('formatMoney needs integer cents, got ' + cents);
++  const a = Math.abs(cents);
++  return (cents < 0 ? '-' : '') + '$' + String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + String(a % 100).padStart(2, '0');
++}
++
++module.exports = { toCents, formatMoney };
+diff --git a/src/reports/index.js b/src/reports/index.js
+index b05e44f..2b01553 100644
+--- a/src/reports/index.js
++++ b/src/reports/index.js
+@@ -32,9 +32,9 @@ function rowsFrom(orders) {
+   const bySku = new Map();
+   for (const o of orders) {
+     for (const l of o.lines) {
+-      const row = bySku.get(l.sku) || { sku: l.sku, name: l.name, qty: 0, total: 0 };
++      const row = bySku.get(l.sku) || { sku: l.sku, name: l.name, qty: 0, totalCents: 0 };
+       row.qty += l.qty;
+-      row.total += l.qty * l.unitCents;
++      row.totalCents += l.qty * l.unitCents;
+       bySku.set(l.sku, row);
+     }
+   }
+diff --git a/src/reports/r01-sales-daily.js b/src/reports/r01-sales-daily.js
+index 9f38f23..4dc8e7d 100644
+--- a/src/reports/r01-sales-daily.js
++++ b/src/reports/r01-sales-daily.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r01-sales-daily: Sales Daily report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r01-sales-daily', title: 'Sales Daily report', style: 'list' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: split by finance after the 2018 close, see the audit wiki page 720',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r02-sales-weekly.js b/src/reports/r02-sales-weekly.js
+index 30810da..a382474 100644
+--- a/src/reports/r02-sales-weekly.js
++++ b/src/reports/r02-sales-weekly.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r02-sales-weekly: Sales Weekly report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r02-sales-weekly', title: 'Sales Weekly report', style: 'table' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: split by finance after the 2018 close, see the audit wiki page 224',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r03-sales-monthly.js b/src/reports/r03-sales-monthly.js
+index d963f36..6f1cdab 100644
+--- a/src/reports/r03-sales-monthly.js
++++ b/src/reports/r03-sales-monthly.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r03-sales-monthly: Sales Monthly report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r03-sales-monthly', title: 'Sales Monthly report', style: 'plain' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: archived by finance after the 2018 close, see the audit wiki page 232',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r04-refunds.js b/src/reports/r04-refunds.js
+index ec70dcd..1d54f6f 100644
+--- a/src/reports/r04-refunds.js
++++ b/src/reports/r04-refunds.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r04-refunds: Refunds report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r04-refunds', title: 'Refunds report', style: 'list' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: carried by finance after the 2018 close, see the audit wiki page 412',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r05-inventory-value.js b/src/reports/r05-inventory-value.js
+index c9a7f86..3642790 100644
+--- a/src/reports/r05-inventory-value.js
++++ b/src/reports/r05-inventory-value.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r05-inventory-value: Inventory Value report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r05-inventory-value', title: 'Inventory Value report', style: 'table' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: reviewed by finance after the 2018 close, see the audit wiki page 232',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r06-top-skus.js b/src/reports/r06-top-skus.js
+index 55f1a23..552fb59 100644
+--- a/src/reports/r06-top-skus.js
++++ b/src/reports/r06-top-skus.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r06-top-skus: Top Skus report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r06-top-skus', title: 'Top Skus report', style: 'plain' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: audited by finance after the 2018 close, see the audit wiki page 772',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r07-slow-movers.js b/src/reports/r07-slow-movers.js
+index 2ca98d5..50562c9 100644
+--- a/src/reports/r07-slow-movers.js
++++ b/src/reports/r07-slow-movers.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r07-slow-movers: Slow Movers report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r07-slow-movers', title: 'Slow Movers report', style: 'list' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: split by finance after the 2018 close, see the audit wiki page 988',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r08-tax-summary.js b/src/reports/r08-tax-summary.js
+index 12040dd..6959623 100644
+--- a/src/reports/r08-tax-summary.js
++++ b/src/reports/r08-tax-summary.js
+@@ -1,7 +1,9 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r08-tax-summary: Tax Summary report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r08-tax-summary', title: 'Tax Summary report', style: 'table' };
+ 
+ // Background notes kept with the report for auditors. They do not affect the output.
+@@ -268,18 +270,14 @@ const NOTES = [
+   'note 260: rounded by finance after the 2018 close, see the audit wiki page 744',
+ ];
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r09-shipping-cost.js b/src/reports/r09-shipping-cost.js
+index cd58b22..28925f7 100644
+--- a/src/reports/r09-shipping-cost.js
++++ b/src/reports/r09-shipping-cost.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r09-shipping-cost: Shipping Cost report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r09-shipping-cost', title: 'Shipping Cost report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r10-coupons-used.js b/src/reports/r10-coupons-used.js
+index ba4f0e6..cc95d72 100644
+--- a/src/reports/r10-coupons-used.js
++++ b/src/reports/r10-coupons-used.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r10-coupons-used: Coupons Used report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r10-coupons-used', title: 'Coupons Used report', style: 'list' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r11-customers-new.js b/src/reports/r11-customers-new.js
+index 3c99d6e..5b31f40 100644
+--- a/src/reports/r11-customers-new.js
++++ b/src/reports/r11-customers-new.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r11-customers-new: Customers New report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r11-customers-new', title: 'Customers New report', style: 'table' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r12-customers-repeat.js b/src/reports/r12-customers-repeat.js
+index 757777e..ff36541 100644
+--- a/src/reports/r12-customers-repeat.js
++++ b/src/reports/r12-customers-repeat.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r12-customers-repeat: Customers Repeat report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r12-customers-repeat', title: 'Customers Repeat report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r13-region-north.js b/src/reports/r13-region-north.js
+index 950b057..eeaf448 100644
+--- a/src/reports/r13-region-north.js
++++ b/src/reports/r13-region-north.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r13-region-north: Region North report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r13-region-north', title: 'Region North report', style: 'list' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r14-region-south.js b/src/reports/r14-region-south.js
+index db5aa59..f2fa36a 100644
+--- a/src/reports/r14-region-south.js
++++ b/src/reports/r14-region-south.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r14-region-south: Region South report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r14-region-south', title: 'Region South report', style: 'table' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r15-region-east.js b/src/reports/r15-region-east.js
+index e30551f..0803d7c 100644
+--- a/src/reports/r15-region-east.js
++++ b/src/reports/r15-region-east.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r15-region-east: Region East report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r15-region-east', title: 'Region East report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r16-region-west.js b/src/reports/r16-region-west.js
+index aeb2d69..8dc3dfb 100644
+--- a/src/reports/r16-region-west.js
++++ b/src/reports/r16-region-west.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r16-region-west: Region West report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r16-region-west', title: 'Region West report', style: 'list' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r17-margin.js b/src/reports/r17-margin.js
+index 2fb2f5c..9040613 100644
+--- a/src/reports/r17-margin.js
++++ b/src/reports/r17-margin.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r17-margin: Margin report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r17-margin', title: 'Margin report', style: 'table' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r18-cogs.js b/src/reports/r18-cogs.js
+index 78e09c3..e994330 100644
+--- a/src/reports/r18-cogs.js
++++ b/src/reports/r18-cogs.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r18-cogs: Cogs report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r18-cogs', title: 'Cogs report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r19-returns-rate.js b/src/reports/r19-returns-rate.js
+index 93d511b..b001ed4 100644
+--- a/src/reports/r19-returns-rate.js
++++ b/src/reports/r19-returns-rate.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r19-returns-rate: Returns Rate report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r19-returns-rate', title: 'Returns Rate report', style: 'list' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r20-backorders.js b/src/reports/r20-backorders.js
+index 0fe346c..a4d65cf 100644
+--- a/src/reports/r20-backorders.js
++++ b/src/reports/r20-backorders.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r20-backorders: Backorders report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r20-backorders', title: 'Backorders report', style: 'table' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r21-supplier-spend.js b/src/reports/r21-supplier-spend.js
+index 94fd8d7..b2c5b27 100644
+--- a/src/reports/r21-supplier-spend.js
++++ b/src/reports/r21-supplier-spend.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r21-supplier-spend: Supplier Spend report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r21-supplier-spend', title: 'Supplier Spend report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r22-payroll-link.js b/src/reports/r22-payroll-link.js
+index d7714cb..2be7766 100644
+--- a/src/reports/r22-payroll-link.js
++++ b/src/reports/r22-payroll-link.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r22-payroll-link: Payroll Link report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r22-payroll-link', title: 'Payroll Link report', style: 'list' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')';
++  return r.name + ': ' + formatMoney(r.totalCents) + ' (' + r.qty + ')';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r23-cash-drawer.js b/src/reports/r23-cash-drawer.js
+index dca6f8e..b9926b8 100644
+--- a/src/reports/r23-cash-drawer.js
++++ b/src/reports/r23-cash-drawer.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r23-cash-drawer: Cash Drawer report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r23-cash-drawer', title: 'Cash Drawer report', style: 'table' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return '| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |';
++  return '| ' + r.name + ' | ' + formatMoney(r.totalCents) + ' | ' + r.qty + ' |';
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
+diff --git a/src/reports/r24-audit-trail.js b/src/reports/r24-audit-trail.js
+index d0a0762..122cb2f 100644
+--- a/src/reports/r24-audit-trail.js
++++ b/src/reports/r24-audit-trail.js
+@@ -1,21 +1,19 @@
+ 'use strict';
+ 
++const { formatMoney } = require('../money');
++
+ // Report r24-audit-trail: Audit Trail report.
+-// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.
++// Rows come from src/reports/index.js (runAll) as { sku, name, qty, totalCents }, in cents.
+ const meta = { id: 'r24-audit-trail', title: 'Audit Trail report', style: 'plain' };
+ 
+-function fmt(cents) {
+-  return '$' + (cents / 100).toFixed(2);
+-}
+-
+ function line(r) {
+-  return r.qty + ' x ' + r.name + ' = ' + fmt(r.total);
++  return r.qty + ' x ' + r.name + ' = ' + formatMoney(r.totalCents);
+ }
+ 
+ function render(rows, ctx) {
+-  const out = ['# ' + meta.title];
++  const out = ['# ' + meta.title + ' (generated ' + ctx.now.toISOString().slice(0, 10) + ')'];
+   for (const r of rows) out.push(line(r));
+-  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));
++  out.push('Total: ' + formatMoney(rows.reduce((s, r) => s + r.totalCents, 0)));
+   return out.join('\n');
+ }
+ 
