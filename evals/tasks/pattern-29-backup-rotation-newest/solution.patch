@@ -1,0 +1,37 @@
+diff --git a/bin/rotate-backups.sh b/bin/rotate-backups.sh
+index 3e17cff..3da9b15 100755
+--- a/bin/rotate-backups.sh
++++ b/bin/rotate-backups.sh
+@@ -30,13 +30,13 @@ if [ "$((10#$keep))" -lt 1 ]; then
+   exit 2
+ fi
+ 
+-# the backups of DIR, oldest first
++# the backups of DIR, oldest first by the calendar date in the name (unpadded and padded names mixed)
+ backups() {
+   local f
+   (cd "$dir" && for f in *; do
+     [ -f "$f" ] || continue
+-    is_backup_name "$f" && printf '%s\n' "$f"
+-  done) | LC_ALL=C sort
++    is_backup_name "$f" && printf '%s %s\n' "$(backup_key "$f")" "$f"
++  done) | LC_ALL=C sort | cut -d' ' -f2-
+ }
+ 
+ list="$(backups)"
+diff --git a/lib/backup-names.sh b/lib/backup-names.sh
+index 3960bee..a17a80c 100644
+--- a/lib/backup-names.sh
++++ b/lib/backup-names.sh
+@@ -12,3 +12,11 @@ backup_date() {
+   s="${s%.tar.gz}"
+   printf '%s %s %s\n' "${s%%-*}" "$(printf '%s' "$s" | cut -d- -f2)" "${s##*-}"
+ }
++
++# backup_key NAME -> YYYYMMDD, the calendar date of NAME zero-padded, so keys compare in date order
++backup_key() {
++  local y m d
++  set -- $(backup_date "$1")
++  y=$((10#$1)); m=$((10#$2)); d=$((10#$3))
++  printf '%04d%02d%02d\n' "$y" "$m" "$d"
++}

@@ -1,0 +1,22 @@
+diff --git a/src/loyalty.py b/src/loyalty.py
+index 9c256f7..013a384 100644
+--- a/src/loyalty.py
++++ b/src/loyalty.py
+@@ -33,3 +33,17 @@ def add_points(db, member_id, n):
+ def ranking(db):
+     """Members by season points, highest first (ties by id)."""
+     return sorted(db["members"], key=lambda m: (-m["season_points"], m["id"]))
++
++
++def start_new_season(db, name):
++    """Starts season `name` (docs/loyalty-rules.md): archives each member's season points in db["history"] under the
++    season that ends, then sets every member's season points to 0. Lifetime points and tiers stay. Starting the season
++    that is already current changes nothing."""
++    if db["season"] == name:
++        return db
++    ended = db["season"]
++    for m in db["members"]:
++        db["history"].append({"season": ended, "member_id": m["id"], "points": m["season_points"]})
++        m["season_points"] = 0
++    db["season"] = name
++    return db

@@ -71,7 +71,8 @@ has "AC3 R27 the moved section keeps the proof-run.sh usage" "$EF" 'P=~/.agents/
 has "AC3 R27 the moved section keeps the never-retype rule" "$EF" 'Never retype or summari[sz]e output inside the block'
 has "AC3 R27 playbook-proof SKILL.md keeps one pointer line to proof-run.sh and evidence-formats.md" "$PF" 'proof-run\.sh[^.]{0,120}references/evidence-formats\.md|references/evidence-formats\.md[^.]{0,120}proof-run\.sh'
 AGW="$(wc -w < "$BLOCK" | tr -d ' ')"; PSW="$(wc -w < "$PSK" | tr -d ' ')"
-if [ "$AGW" -lt 718 ]; then t_ok "AC3 AGENTS.global.md has fewer words than at v0.28.2 (718): $AGW"; else t_bad "AC3 AGENTS.global.md has fewer words than at v0.28.2 (718)" "$AGW words"; fi
+# v0.35.0 slice E (S2, AC8, spec R1-5) and D13: the cap moves from "fewer than 718 (v0.28.2)" to the new budget, 700
+if [ "$AGW" -le 700 ]; then t_ok "AC3 / v0.35.0 D13 AGENTS.global.md is at most 700 words (718 at v0.28.2): $AGW"; else t_bad "AC3 / v0.35.0 D13 AGENTS.global.md is at most 700 words (718 at v0.28.2)" "$AGW words"; fi
 if [ "$PSW" -lt 675 ]; then t_ok "AC3 playbook-proof SKILL.md has fewer words than at v0.28.2 (675): $PSW"; else t_bad "AC3 playbook-proof SKILL.md has fewer words than at v0.28.2 (675)" "$PSW words"; fi
 for keep in '\[VERIFIED\] ran or read this session' 'On pushback, re-check' 'Never weaken, skip or delete a test or gate' 'If the user asks to skip tests, ask once and offer the test' 'A rename or removal of an export is a public API change' 'log it in `\.agents/handoff/decisions\.md`' 'Read `\.agents/LEARNINGS\.md` first'; do
   has "AC3 KEEP text stays in AGENTS.global.md: $keep" "$BF" "$keep"
@@ -104,7 +105,9 @@ assert_contains "AC4 pr-body.sh prints ## Not checked" "$OUT" "## Not checked"
 assert_not_contains "AC4 pr-body.sh leaves the Pre-mortem out" "$OUT" "Pre-mortem"
 assert_not_contains "AC4 pr-body.sh leaves the Playbook feedback line out" "$OUT" "Playbook feedback"
 TW="$(wc -w < "$TSK" | tr -d ' ')"
-if [ "$TW" -le 3700 ] && [ "$TW" -ge 3650 ]; then t_ok "AC3 playbook-tdd SKILL.md stays within its budget and its count+50 pin (3650..3700): $TW"; else t_bad "AC3 playbook-tdd SKILL.md stays within 3650..3700" "$TW words"; fi
+# v0.35.0 slice E (S2, spec R1-5) and D13: 3650..3700 becomes 2700..2750 (the cut reached 2720 words, budget 2750)
+TBV="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets" 2>/dev/null)"
+if [ "$TW" -le 2750 ] && [ "$TW" -ge 2700 ] && [ -n "$TBV" ] && [ "$TW" -le "$TBV" ]; then t_ok "AC3 / v0.35.0 D13 playbook-tdd SKILL.md stays within its budget and its count+50 pin (2700..2750): $TW (budget $TBV)"; else t_bad "AC3 / v0.35.0 D13 playbook-tdd SKILL.md stays within its budget and its count+50 pin (2700..2750)" "$TW words, budget [$TBV]"; fi
 
 echo "S4 AC5 wording contradictions from scales.md section 7"
 TQ="$(flat "$PB_ROOT/skills/playbook-tdd/references/test-quality.md")"

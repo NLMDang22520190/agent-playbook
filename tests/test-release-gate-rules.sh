@@ -112,7 +112,7 @@ mkres() {
 # mk_base REPO TAG MODEL HARNESS BHOOKS BITEMS SPEC LEGACY: a committed gate dir for the commit at HEAD, tagged TAG on the results commit.
 # v0.33.0 R1-2: the dir also holds the committed gate.json of the real tool (here the fields the baseline rule reads: "commit" = the gate
 # commit and "verdict"). MKB_GJ picks it: pass (default; the verdict pass and "commit" = HEAD), fail (verdict fail), none (no gate.json),
-# other ("commit" names another commit).
+# other ("commit" names another commit), voided (v0.35.0 AC16: verdict "voided" plus a "voided" {reason, date} object, own commit).
 mk_base() {
   local r="$1" d gc pl; d="gate-$(hd "$r" | cut -c1-12)"; gc="$(hd "$r")"
   mkres "$r" "$d" "$3" "$4" "$5" "$6" "$7" "$8"
@@ -121,6 +121,7 @@ mk_base() {
   case "${MKB_GJ:-pass}" in
     pass) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[],"pooled":%s}\n' "$gc" "$pl" > "$r/evals/results/$d/gate.json" ;;
     fail) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"fail","verdict_reasons":["x"],"pooled":%s}\n' "$gc" "$pl" > "$r/evals/results/$d/gate.json" ;;
+    voided) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"voided","voided":{"reason":"code changed after the run","date":"2026-11-02"},"verdict_reasons":[],"pooled":%s}\n' "$gc" "$pl" > "$r/evals/results/$d/gate.json" ;;
     other) printf '{"schema":"pb-gate/1","commit":"%s","verdict":"pass","verdict_reasons":[],"pooled":%s}\n' "0123456789abcdef0123456789abcdef01234567" "$pl" > "$r/evals/results/$d/gate.json" ;;
     none) ;;
   esac
@@ -350,6 +351,14 @@ expect_fail "R1-2 a later v0.33.0#hotfix tag is never the baseline" "$RG"
 mk_r1 r1c v0.33.1 fail
 expect_fail "R1-2 a vX.Y.Z tag whose gate.json says fail does not qualify" "$RG"
 assert_eq "R1-2 ... gate.json names v0.32.0" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
+# v0.35.0 AC16 (R1-2 b, R2-5): a later tag whose only group's gate.json says "voided" (with a "voided" object) for the group's own
+# commit, which would qualify if it said pass, is skipped: the baseline is the earlier tag. Control "pass" -> the later tag: r1f below.
+# Characterization of the existing rule (find_baseline already requires verdict pass); tools/release-gate.sh is not edited.
+mk_r1 r1v v0.33.1 voided
+assert_eq "AC16 fixture: the later tag's committed gate.json says voided for its own commit" "voided|true|code changed after the run" \
+  "$(git -C "$W/r1v" show "v0.33.1:$BDIR/gate.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.verdict+"|"+(j.commit===process.argv[1])+"|"+j.voided.reason)})' "$(git -C "$W/r1v" rev-parse "v0.33.1^")")"
+expect_fail "AC16 a vX.Y.Z tag whose only gate group is voided does not qualify (rule f against v0.32.0)" "$RG"
+assert_eq "AC16 ... gate.json baseline is v0.32.0, not the voided v0.33.1" "v0.32.0" "$(gj "$GJ" j.baseline.tag)"
 mk_r1 r1d v0.33.1 none
 expect_fail "R1-2 a vX.Y.Z tag whose gate dir has no gate.json does not qualify" "$RG"
 mk_r1 r1e v0.33.1 other

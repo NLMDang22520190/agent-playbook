@@ -24,12 +24,16 @@ WEIGHT="$(flat "$SKILL" '^## Pick the weight' 3)"
 if [ -n "$WEIGHT" ]; then t_ok "the Pick the weight section exists"; else t_bad "the Pick the weight section exists" "no heading matched in $SKILL"; fi
 
 echo "AC15.1 a string-literal or message-text change is Lite, even in a sensitive module"
-chk "AC15.1 names a string literal or message text change" "$WEIGHT" 'string literal|message text|comment text'
-chk "AC15.1 limits it to no control flow" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text|comment text)'
-chk "AC15.1 limits it to no data shape" "$WEIGHT" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text|comment text)'
-chk "AC15.1 says such a change is Lite" "$WEIGHT" '(string literal|message text|comment text).{0,250}Lite|Lite.{0,200}(string literal|message text|comment text)'
-chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHT" '(string literal|message text|comment text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text|comment text)[^.]{0,120}Lite'
-chk "AC15.1 the sensitivity is stated as a risk line" "$WEIGHT" '(sensitiv|critical)[^.]{0,200}risk line|risk line[^.]{0,200}(sensitiv|critical)'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/weight.md (section ## Pick the weight...); the regression pins on SKILL.md below stay; the pin follows it there, same pattern
+WMD="$PB_ROOT/skills/playbook-tdd/references/weight.md"
+WEIGHTREF="$(flat "$WMD" '^## Pick the weight' 3)"
+if [ -n "$WEIGHTREF" ]; then t_ok "v0.35.0 E the Pick the weight section of references/weight.md exists"; else t_bad "v0.35.0 E the Pick the weight section of references/weight.md exists" "no heading matched in $WMD"; fi
+chk "AC15.1 names a string literal or message text change" "$WEIGHTREF" 'string literal|message text|comment text'
+chk "AC15.1 limits it to no control flow" "$WEIGHTREF" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?control[- ]flow|control[- ]flow.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 limits it to no data shape" "$WEIGHTREF" '(string literal|message text|comment text).{0,250}(no|without|not (touch|chang)[a-z]*) (any )?data[- ]shape|data[- ]shape.{0,120}(string literal|message text|comment text)'
+chk "AC15.1 says such a change is Lite" "$WEIGHTREF" '(string literal|message text|comment text).{0,250}Lite|Lite.{0,200}(string literal|message text|comment text)'
+chk "AC15.1 says Lite holds even in a sensitive module" "$WEIGHTREF" '(string literal|message text|comment text).{0,250}(even|also|still)[^.]{0,80}(sensitive|critical)|(sensitive|critical)[^.]{0,120}(string literal|message text|comment text)[^.]{0,120}Lite'
+chk "AC15.1 the sensitivity is stated as a risk line" "$WEIGHTREF" '(sensitiv|critical)[^.]{0,200}risk line|risk line[^.]{0,200}(sensitiv|critical)'
 # the existing rules stay: critical code that changes behaviour is still Full
 chk "AC15.1 regression: altering or removing existing behaviour of critical code is still Full" "$WEIGHT" 'alters or removes existing behaviour of critical code'
 chk "AC15.1 regression: a purely additive change in critical code is still Lite" "$WEIGHT" 'purely additive change inside critical code'
@@ -51,16 +55,17 @@ chk "AC15.2 regression: an open dispute after 2 rounds still stops to ask" "$(fl
 
 # ---- v0.23.0 review: the Lite exception is about user-visible message or comment text that is not parsed, matched or sent as data ----
 echo "AC15.1 review: the exception is worded by what the text is used for, not by 'string literal' alone"
-chk "AC15.1 review: names user-visible message or comment text" "$WEIGHT" 'user-visible[^.]{0,60}(message|comment)|(message|comment)[^.]{0,40}text[^.]{0,60}user-visible'
-chk "AC15.1 review: only provided the string is not parsed, matched or sent as data" "$WEIGHT" '(provided|only if|as long as|unless|when)[^.]{0,120}(not|never|no)[^.]{0,60}(parsed|matched|sent)[^.]{0,60}(parsed|matched|sent)?[^.]{0,60}(as )?data'
-chk "AC15.1 review: all three uses are named (parsed, matched, sent)" "$WEIGHT" 'parsed[^.]{0,40}matched[^.]{0,40}sent|sent[^.]{0,40}parsed[^.]{0,40}matched|matched[^.]{0,40}parsed[^.]{0,40}sent'
-chk "AC15.1 review: the rule is still Lite" "$WEIGHT" 'user-visible[^.]{0,250}Lite|Lite[^.]{0,200}user-visible'
-if printf '%s' "$WEIGHT" | grep -qi 'string literal'; then
-  chk "AC15.1 review: where 'string literal' appears, user-visible or parsed/matched/sent qualifies it nearby" "$WEIGHT" 'string literal.{0,250}(user-visible|parsed|matched|sent as data)|(user-visible|parsed|matched|sent as data).{0,250}string literal'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/weight.md (section ## Pick the weight...); the pin follows it there, same pattern
+chk "AC15.1 review: names user-visible message or comment text" "$WEIGHTREF" 'user-visible[^.]{0,60}(message|comment)|(message|comment)[^.]{0,40}text[^.]{0,60}user-visible'
+chk "AC15.1 review: only provided the string is not parsed, matched or sent as data" "$WEIGHTREF" '(provided|only if|as long as|unless|when)[^.]{0,120}(not|never|no)[^.]{0,60}(parsed|matched|sent)[^.]{0,60}(parsed|matched|sent)?[^.]{0,60}(as )?data'
+chk "AC15.1 review: all three uses are named (parsed, matched, sent)" "$WEIGHTREF" 'parsed[^.]{0,40}matched[^.]{0,40}sent|sent[^.]{0,40}parsed[^.]{0,40}matched|matched[^.]{0,40}parsed[^.]{0,40}sent'
+chk "AC15.1 review: the rule is still Lite" "$WEIGHTREF" 'user-visible[^.]{0,250}Lite|Lite[^.]{0,200}user-visible'
+if printf '%s' "$WEIGHTREF" | grep -qi 'string literal'; then
+  chk "AC15.1 review: where 'string literal' appears, user-visible or parsed/matched/sent qualifies it nearby" "$WEIGHTREF" 'string literal.{0,250}(user-visible|parsed|matched|sent as data)|(user-visible|parsed|matched|sent as data).{0,250}string literal'
 else
   t_ok "AC15.1 review: 'string literal' is not used as the rule"
 fi
-if printf '%s' "$WEIGHT" | grep -qiE 'limited to a string literal|only a string literal|just a string literal'; then
+if printf '%s' "$WEIGHTREF" | grep -qiE 'limited to a string literal|only a string literal|just a string literal'; then
   t_bad "AC15.1 review: 'string literal' alone is not the rule" "the section still says the change is limited to a string literal"
 else
   t_ok "AC15.1 review: 'string literal' alone is not the rule"
@@ -77,6 +82,8 @@ echo "v0.24.10 AC1 SKILL.md: no Quick row in Pick the weight, and the Models lin
 assert_eq "v24.10 AC1 the Pick the weight table has no Quick row" "0" "$(grep -cE '^\| \*\*Quick\*\*' "$SKILL")"
 assert_eq "v24.10 AC1 SKILL.md has no /Quick (the Models line says Lite only)" "0" "$(grep -c '/Quick' "$SKILL")"
 SKILL_ONE="$(tr '\n' ' ' < "$SKILL")"
+MECH="$PB_ROOT/skills/playbook-tdd/references/mechanics.md"   # v0.35.0 slice E (S2): moved mechanics
+MECH_ONE="$(tr '\n' ' ' < "$MECH" 2>/dev/null)"
 chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$SKILL_ONE" '\(Lite: session, one context\)'
 
 echo "v0.24.10 AC2 SKILL.md: the user's word quick runs Lite with its own label; a Full criterion goes through the override"
@@ -116,20 +123,24 @@ if [ -n "$ROLES" ]; then t_ok "the Starting roles per harness section exists"; e
 chk "AC2.5 a configured model is binding" "$ROLES" 'configured model[^.]{0,60}binding|binding[^.]{0,60}(configured )?model'
 chk "AC2.5 the agent never upgrades or downgrades it on its own judgement" "$ROLES" 'never (upgrade|downgrade)[^.]{0,80}(own|its) (judg|decision)|never upgrades? or downgrades?'
 chk "AC2.5 'hard' or 'Full' is not a reason to change the model" "$ROLES" '(hard|Full)[^.]{0,80}not a reason|not a reason[^.]{0,80}(hard|Full)'
-chk "AC2.5 it prints the role-model.sh plan line before starting roles" "$ROLES" 'role-model\.sh plan|`plan` line|plan line'
-chk "AC2.5 it asks the user ONCE" "$ROLES" 'ask(s)? the user once|ask once|once, with'
-chk "AC2.5 the reason and the cost difference go in the question" "$ROLES" 'reason[^.]{0,60}cost|cost[^.]{0,60}reason'
-chk "AC2.5 ask when it wants a different model" "$ROLES" 'wants? a different model'
-chk "AC2.5 ask when a role resolves to session on a Full task" "$ROLES" 'resolves? to session[^.]{0,60}Full|Full[^.]{0,60}resolves? to session'
-chk "AC2.5 ask when confirm_models=always" "$ROLES" 'confirm_models=always|confirm_models is always'
-chk "AC2.5 never ask when confirm_models=never" "$ROLES" 'confirm_models=never[^.]{0,80}never ask|never ask[^.]{0,80}confirm_models=never|(never|not) asks?[^.]{0,60}confirm_models=never'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/harnesses.md (section ## Model plan and when to ask); the binding and headless rules stay in SKILL.md; the pin follows it there, same pattern
+HPLAN="$(flat "$HARNMD" '^## Model plan and when to ask' 2)"
+if [ -n "$HPLAN" ]; then t_ok "v0.35.0 E harnesses.md has the section ## Model plan and when to ask"; else t_bad "v0.35.0 E harnesses.md has the section ## Model plan and when to ask" "no heading matched in $HARNMD"; fi
+chk "AC2.5 it prints the role-model.sh plan line before starting roles" "$HPLAN" 'role-model\.sh plan|`plan` line|plan line'
+chk "AC2.5 it asks the user ONCE" "$HPLAN" 'ask(s)? the user once|ask once|once, with'
+chk "AC2.5 the reason and the cost difference go in the question" "$HPLAN" 'reason[^.]{0,60}cost|cost[^.]{0,60}reason'
+chk "AC2.5 ask when it wants a different model" "$HPLAN" 'wants? a different model'
+chk "AC2.5 ask when a role resolves to session on a Full task" "$HPLAN" 'resolves? to session[^.]{0,60}Full|Full[^.]{0,60}resolves? to session'
+chk "AC2.5 ask when confirm_models=always" "$HPLAN" 'confirm_models=always|confirm_models is always'
+chk "AC2.5 never ask when confirm_models=never" "$HPLAN" 'confirm_models=never[^.]{0,80}never ask|never ask[^.]{0,80}confirm_models=never|(never|not) asks?[^.]{0,60}confirm_models=never'
 chk "AC2.5 headless: use the conf, never upgrade" "$ROLES" 'headless[^.]{0,120}(use the conf|conf)[^.]{0,80}never upgrade|headless[^.]{0,160}never upgrade'
 chk "R7 the effort is passed where the harness supports it" "$HARN" 'effort[^.]{0,160}(Agent|codex exec|OpenCode)|(Agent|codex exec|OpenCode)[^.]{0,160}effort'
 chk "R7 the Claude Code Agent effort parameter" "$HARN" 'Agent[^.]{0,60}`?effort`? parameter|`effort` parameter'
 chk "R7 codex exec -c model_reasoning_effort" "$HARN" 'model_reasoning_effort'
 chk "R7 otherwise the effort is only printed" "$HARN" '(else|otherwise)[^.]{0,60}print[^.]{0,40}(only|it)|print(ed)? (it )?only'
-chk "R7 an unknown confirm_models value is treated as on-change" "$ROLES" 'unknown[^.]{0,80}on-change|on-change[^.]{0,80}unknown'
-chk "AC2.5 on-change is the default" "$ROLES" 'on-change[^.]{0,60}default|default[^.]{0,60}on-change'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/harnesses.md (section ## Model plan and when to ask); the pin follows it there, same pattern
+chk "R7 an unknown confirm_models value is treated as on-change" "$HPLAN" 'unknown[^.]{0,80}on-change|on-change[^.]{0,80}unknown'
+chk "AC2.5 on-change is the default" "$HPLAN" 'on-change[^.]{0,60}default|default[^.]{0,60}on-change'
 chk "AC2.5 regression: the resolve-each-role-model rule stays" "$ROLES" 'role-model\.sh <role> --harness <h>'
 
 echo "v0.24.0 AC3.1-AC3.5 (R10, R11) references/release.md holds the release speed rules"
@@ -217,16 +228,19 @@ echo "AC9 (v0.24.17) Preconditions: a dirty start uses role-gate.sh snapshot and
 PRE="$(flat "$SKILL" '^## Preconditions' 3)"
 if [ -n "$PRE" ]; then t_ok "AC9 the Preconditions section exists"; else t_bad "AC9 the Preconditions section exists" "no heading matched in $SKILL"; fi
 chk "AC9 the clean-tree bullet still mentions a clean tree" "$PRE" 'clean tree'
-chk "AC9 names the snapshot command: role-gate.sh snapshot" "$PRE" 'role-gate\.sh`? snapshot'
-chk "AC9 says to run the snapshot before the first role" "$PRE" 'snapshot[^.]{0,80}before the first role|before the first role[^.]{0,80}snapshot'
-chk "AC9 names the --baseline option" "$PRE" '\-\-baseline'
-chk "AC9 says --baseline goes to every gate" "$PRE" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
-chk "AC9 ties it to a dirty tree" "$PRE" 'dirty|pre-existing|already (changed|modified)'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md (section ## Preconditions...); the clean-tree pin above stays on SKILL.md; the pin follows it there, same pattern
+PREM="$(flat "$MECH" '^## Preconditions' 3)"
+if [ -n "$PREM" ]; then t_ok "v0.35.0 E the Preconditions section of references/mechanics.md exists"; else t_bad "v0.35.0 E the Preconditions section of references/mechanics.md exists" "no heading matched in $MECH"; fi
+chk "AC9 names the snapshot command: role-gate.sh snapshot" "$PREM" 'role-gate\.sh`? snapshot'
+chk "AC9 says to run the snapshot before the first role" "$PREM" 'snapshot[^.]{0,80}before the first role|before the first role[^.]{0,80}snapshot'
+chk "AC9 names the --baseline option" "$PREM" '\-\-baseline'
+chk "AC9 says --baseline goes to every gate" "$PREM" '(every|each) gate|gates?[^.]{0,40}\-\-baseline|\-\-baseline[^.]{0,60}(every|each|all) (role )?gate'
+chk "AC9 ties it to a dirty tree" "$PREM" 'dirty|pre-existing|already (changed|modified)'
 # v0.24.21: tdd-step.sh learns --baseline, so the dirty-tree clause changes from "do not use tdd-step.sh" to "pass --baseline to it too"
-chk "v0.24.21 AC1 (was AC9 v0.24.17) says to pass --baseline to tdd-step.sh as well" "$PRE" '(pass|give)[^.]{0,30}--baseline[^.]{0,40}tdd-step\.sh|tdd-step\.sh[^.]{0,40}--baseline'
-if printf '%s' "$PRE" | grep -qiE -- "(do not|don.t|never) use[^.]{0,30}tdd-step\.sh"; then t_bad "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone" "still in the Preconditions section"; else t_ok "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone"; fi
-chk "AC9 says to commit only the role's paths by hand" "$PRE" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
-chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PRE" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
+chk "v0.24.21 AC1 (was AC9 v0.24.17) says to pass --baseline to tdd-step.sh as well" "$PREM" '(pass|give)[^.]{0,30}--baseline[^.]{0,40}tdd-step\.sh|tdd-step\.sh[^.]{0,40}--baseline'
+if printf '%s %s' "$PRE" "$PREM" | grep -qiE -- "(do not|don.t|never) use[^.]{0,30}tdd-step\.sh"; then t_bad "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone" "still in the Preconditions section"; else t_ok "v0.24.21 AC1 the old 'do not use tdd-step.sh' clause is gone"; fi
+chk "AC9 says to commit only the role's paths by hand" "$PREM" 'commit only[^.]{0,60}(path|file)[^.]{0,40}(by hand|manual)|by hand[^.]{0,60}(path|file)'
+chk "v0.24.20 the orchestrator checks the baseline digest matches the one snapshot printed" "$PREM" 'digest[^.]{0,30}match|match[^.]{0,30}digest'
 echo "v0.24.21 AC1: every role's gate gets the sha recorded before the role"
 chk "v0.24.21 AC1 SKILL.md tells to record git rev-parse HEAD" "$SKILL_ONE" 'git rev-parse HEAD'
 chk "v0.24.21 AC1 the rule sits next to the generic gate line (Mechanical enforcement)" "$SKILL_ONE" 'Mechanical enforcement.{0,250}rev-parse HEAD|rev-parse HEAD.{0,250}Mechanical enforcement'
@@ -276,13 +290,20 @@ chk "v0.24.29 D-0 harnesses.md: the blind spot is still named (a role writing ou
 chk "v0.24.29 D-0 harnesses.md: the scope closes the blind spot only for unknown paths (rule 4); declared and recorded paths stay a residual risk" "$HSEC" 'only[^.]{0,60}(unknown|unrecorded|undeclared)[^.]{0,80}path|(unknown|rule 4)[^.]{0,120}only|residual risk'
 chk "v0.24.29 D-0 harnesses.md: a separate worktree gives the isolation without the blind spot" "$HSEC" 'worktree[^.]{0,120}(isolation|without)[^.]{0,80}blind spot|blind spot[^.]{0,120}worktree'
 # SKILL.md:108 pointer (at most about 7 words, SKILL.md stays within the 3700 budget of lane O)
-chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$SKILL_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md (heading: ## Preconditions: ...); the pin follows it there, same pattern
+chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$MECH_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
 SKW3="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$SKW3" -le 3700 ]; then t_ok "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer ($SKW3)"; else t_bad "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer" "$SKW3 words"; fi
+# v0.35.0 slice E (S2, AC8, spec R1-1): this text moved to references/mechanics.md (the infra tester gate); NGOODB counts SKILL.md and mechanics.md together for the at-least-4 pin; the pin follows it there, same pattern
 NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
+NGOODB="$(printf '%s %s' "$SKILL_ONE" "$MECH_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
 NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
-if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
+if [ "$NGOODB" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls in SKILL.md and references/mechanics.md show --base (infra tester, RED, spec review, final review): $NGOODB"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls in SKILL.md and references/mechanics.md show --base (infra tester, RED, spec review, final review)" "only $NGOODB"; fi
+# v0.35.0 slice E (S2): the infra-tester gate call moved to references/mechanics.md; its gate calls read --base <sha before the role> too
+NALLM="$(printf '%s' "$MECH_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
+NSHAM="$(printf '%s' "$MECH_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
+assert_eq "v0.35.0 E every 'check tester|reviewer' in references/mechanics.md reads --base <sha before the role>" "$NALLM" "$NSHAM"
 chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
 chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
 # fix round 1: the reviewer/tester gates read --base <sha before the role> (the role files' wording), not a bare <sha>
@@ -346,4 +367,7 @@ TB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/w
 if [ -n "$TB" ] && [ "$TW" -le "$TB" ]; then t_ok "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23): $TW <= $TB"; else t_bad "R13 SKILL.md is at most the evals/word-budgets cap (3577 at v0.24.13, 3792 at v0.24.12 with the none-mode rule restored; 3639 at v0.24.25: the oracle rule, user OK, D3 allows +50, cap 3650; cap 3700 at v0.24.29: user decision 2026-10-23)" "$TW words, cap [$TB]"; fi
 WANT=$(( (TW + 49) / 50 * 50 ))
 assert_eq "R13 the playbook-tdd budget is the new count rounded up to the next 50" "$WANT" "$TB"
+echo "v0.35.0 AC12 (E13, R1-6) Stop and ask: asking about an irreversible step does not stop the reversible rest of the task"
+V35STOP="$(flat "$SKILL" '^## Stop and ask the user when' 2)"
+chk "v35 AC12 Stop and ask: a step needing approval is asked about while the reversible rest of the task goes on" "$V35STOP" '(irreversible|hard.to.reverse|approval)[^;]{0,250}(^|[^a-z])(rest|remainder)[^;]{0,120}(first|continue|go(es)? on|not (stop|block|wait))|(^|[^a-z])(rest|remainder)[^;]{0,120}(first|continue|go(es)? on|not (stop|block|wait))[^;]{0,250}(irreversible|hard.to.reverse|approval)'
 t_summary

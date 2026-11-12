@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for scripts/claude-hooks.sh (v0.28.0 lane k1b, AC-B1 to AC-B4): opt-in merge of the agent-playbook guard and
+# Tests for scripts/claude-hooks.sh (v0.28.0 lane k1b, AC-B1 to AC-B4): merge (installed by default since v0.33.0) of the agent-playbook guard and
 # learnings hooks into <home>/.claude/settings.json. Every run uses a stand-in home from mk_tmp (HOME is pointed at
 # one too), never the real ~/.claude. The hook scripts belong to other lanes: these tests use stub scripts and only the
 # handler strings of the interface contract (.agents/handoff/01-spec.md).

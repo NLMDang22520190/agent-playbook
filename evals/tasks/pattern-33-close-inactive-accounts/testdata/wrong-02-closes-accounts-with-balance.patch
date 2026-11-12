@@ -1,0 +1,47 @@
+diff --git a/bin/accounts.sh b/bin/accounts.sh
+index fe3352d..d0d3993 100755
+--- a/bin/accounts.sh
++++ b/bin/accounts.sh
+@@ -2,11 +2,12 @@
+ # accounts.sh: reads the account file (docs/retention.md, README.md).
+ #   accounts.sh list FILE      every account, one per line: id, email, last login, balance, status
+ #   accounts.sh show FILE ID   one account, one field per line
++#   accounts.sh close-inactive FILE --today YYYY-MM-DD   closes the inactive accounts of FILE in place
+ set -u
+ here="$(cd "$(dirname "$0")/.." && pwd)"
+ . "$here/lib/tsv.sh"
+ 
+-usage() { sed -n '3,4p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
++usage() { sed -n '3,5p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+ 
+ cmd="${1:-}"
+ [ $# -ge 2 ] || usage
+@@ -24,5 +25,28 @@ case "$cmd" in
+     [ -n "$row" ] || { echo "accounts: no account $3" >&2; exit 1; }
+     printf '%s\n' "$row" | awk -F'\t' '{ printf "id: %s\nemail: %s\nlast login: %s\nbalance: %.2f\nstatus: %s\n", $1, $2, $3, $4 / 100, $5 }'
+     ;;
++  close-inactive)
++    # docs/retention.md: rows are never deleted; an open account whose last login is before the
++    # same date one year earlier gets status closed and the email closed-<id>@invalid; closed rows stay as they are.
++    [ $# -eq 4 ] && [ "$3" = "--today" ] || usage
++    today="$4"
++    case "$today" in
++      [0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]) ;;
++      *) echo "accounts: --today must be YYYY-MM-DD: $today" >&2; exit 2 ;;
++    esac
++    tsv_check "$file" || exit 1
++    year="${today%%-*}"
++    cutoff="$((10#$year - 1))-${today#*-}"
++    tmp="$file.tmp.$$"
++    trap 'rm -f "$tmp"' EXIT
++    awk -F'\t' -v OFS='\t' -v cutoff="$cutoff" -v out="$tmp" '
++      NR > 1 && NF && $5 == "open" && ($3 "") < cutoff {
++        $2 = "closed-" $1 "@invalid"; $5 = "closed"; n++
++      }
++      { print > out }
++      END { printf "closed %d\n", n }
++    ' "$file" || exit 1
++    cat "$tmp" > "$file"
++    ;;
+   *) usage ;;
+ esac

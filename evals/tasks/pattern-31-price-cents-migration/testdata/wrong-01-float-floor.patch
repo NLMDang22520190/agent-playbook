@@ -1,0 +1,79 @@
+diff --git a/src/cart.js b/src/cart.js
+index 26d3992..086b5d3 100644
+--- a/src/cart.js
++++ b/src/cart.js
+@@ -1,15 +1,15 @@
+ 'use strict';
+ // Cart total as shown at checkout.
+-const { parsePrice } = require('./catalog');
++const { centsText, productCents } = require('./catalog');
+ 
+ function totalText(products, lines) {
+   let cents = 0;
+   for (const line of lines) {
+     const p = products.find((x) => x.sku === line.sku);
+     if (!p) throw new Error(`unknown_sku ${line.sku}`);
+-    cents += Math.floor(parsePrice(p.price) * line.qty * 100);
++    cents += productCents(p) * line.qty;
+   }
+-  return (cents / 100).toFixed(2);
++  return centsText(cents);
+ }
+ 
+ module.exports = { totalText };
+diff --git a/src/catalog.js b/src/catalog.js
+index 95f0332..dbe5c4c 100644
+--- a/src/catalog.js
++++ b/src/catalog.js
+@@ -6,8 +6,25 @@ function parsePrice(text) {
+   return parseFloat(String(text).replace(/,/g, ''));
+ }
+ 
++// "1,299.00" -> 129900, "12.5" -> 1250: exact integer cents from the decimal text (at most 2 decimals)
++function toCents(text) {
++  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(text).replace(/,/g, '').trim());
++  if (!m) throw new Error(`bad_price ${text}`);
++  return Number(m[1]) * 100 + Number(((m[2] || '') + '00').slice(0, 2));
++}
++
++// 129900 -> "1299.00"
++function centsText(cents) {
++  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
++}
++
++// priceCents from schemaVersion 2 on, the legacy price text before
++function productCents(product) {
++  return Number.isInteger(product.priceCents) ? product.priceCents : toCents(product.price);
++}
++
+ function priceText(product) {
+-  return parsePrice(product.price).toFixed(2);
++  return centsText(productCents(product));
+ }
+ 
+-module.exports = { parsePrice, priceText };
++module.exports = { parsePrice, toCents, centsText, productCents, priceText };
+diff --git a/src/migrate.js b/src/migrate.js
+index a4985a4..187ec8e 100644
+--- a/src/migrate.js
++++ b/src/migrate.js
+@@ -1,4 +1,5 @@
+ 'use strict';
++const { parsePrice } = require('./catalog');
+ // Versioned data migrations of the catalog (CONTRIBUTING.md: never edit a shipped migration, add the next one).
+ 
+ const migrations = [
+@@ -9,6 +10,13 @@ const migrations = [
+       return { ...data, products: data.products.map((p) => ({ ...p, sku: String(p.sku).toUpperCase() })) };
+     },
+   },
++  {
++    version: 2,
++    // integer priceCents from the legacy decimal price text, exactly (docs/prices.md); readers use priceCents
++    up(data) {
++      return { ...data, products: data.products.map(({ price, ...p }) => ({ ...p, priceCents: Math.floor(parsePrice(price) * 100) })) };
++    },
++  },
+ ];
+ 
+ function migrate(data) {
