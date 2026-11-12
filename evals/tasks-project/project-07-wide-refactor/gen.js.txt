@@ -1,0 +1,40 @@
+'use strict';
+// Generator used by setup.sh (kept as data next to it): writes the report suite of project-07-wide-refactor into the current directory.
+const fs = require('fs');
+const NAMES = ['sales-daily', 'sales-weekly', 'sales-monthly', 'refunds', 'inventory-value', 'top-skus', 'slow-movers', 'tax-summary',
+  'shipping-cost', 'coupons-used', 'customers-new', 'customers-repeat', 'region-north', 'region-south', 'region-east', 'region-west',
+  'margin', 'cogs', 'returns-rate', 'backorders', 'supplier-spend', 'payroll-link', 'cash-drawer', 'audit-trail'];
+const STYLES = ['list', 'table', 'plain'];
+const LINE = {
+  list: "r.name + ': ' + fmt(r.total) + ' (' + r.qty + ')'",
+  table: "'| ' + r.name + ' | ' + fmt(r.total) + ' | ' + r.qty + ' |'",
+  plain: "r.qty + ' x ' + r.name + ' = ' + fmt(r.total)",
+};
+let seed = 31;
+const next = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+const WORDS = ['reviewed', 'adjusted', 'split', 'merged', 'archived', 'restated', 'audited', 'reconciled', 'rounded', 'carried'];
+fs.mkdirSync('src/reports', { recursive: true });
+NAMES.forEach((name, i) => {
+  const id = 'r' + String(i + 1).padStart(2, '0') + '-' + name;
+  const title = name.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') + ' report';
+  const style = STYLES[i % 3];
+  let notes = '';
+  if (i < 8) {
+    const rows = [];
+    for (let k = 1; k <= 260; k += 1) rows.push("  'note " + String(k).padStart(3, '0') + ': ' + WORDS[next(WORDS.length)] + ' by finance after the ' + (2018 + next(8)) + " close, see the audit wiki page " + (100 + next(900)) + "',");
+    notes = '\n// Background notes kept with the report for auditors. They do not affect the output.\nconst NOTES = [\n' + rows.join('\n') + '\n];\n';
+  }
+  const src = "'use strict';\n\n// Report " + id + ': ' + title + '.\n// Rows come from src/reports/index.js (runAll) as { sku, name, qty, total }, total in cents.\n' +
+    "const meta = { id: '" + id + "', title: '" + title + "', style: '" + style + "' };\n" + notes +
+    '\nfunction fmt(cents) {\n  return \'$\' + (cents / 100).toFixed(2);\n}\n\n' +
+    'function line(r) {\n  return ' + LINE[style] + ';\n}\n\n' +
+    'function render(rows, ctx) {\n  const out = [\'# \' + meta.title];\n  for (const r of rows) out.push(line(r));\n' +
+    "  out.push('Total: ' + fmt(rows.reduce((s, r) => s + r.total, 0)));\n  return out.join('\\n');\n}\n\n" +
+    'module.exports = { meta, render' + (i < 8 ? ', notes: NOTES' : '') + ' };\n';
+  fs.writeFileSync('src/reports/' + id + '.js', src);
+});
+const ids = NAMES.map((n, i) => 'r' + String(i + 1).padStart(2, '0') + '-' + n);
+fs.writeFileSync('src/reports/index.js', "'use strict';\n\n// Builds the rows every report shows from a list of orders, and renders all reports.\n" +
+  ids.map((id, i) => 'const m' + (i + 1) + " = require('./" + id + "');").join('\n') + '\nconst MODULES = [' + ids.map((_, i) => 'm' + (i + 1)).join(', ') + '];\n\n' +
+  "// orders: [{ id, lines: [{ sku, name, qty, unitCents }] }]; a negative qty is a return.\nfunction rowsFrom(orders) {\n  const bySku = new Map();\n  for (const o of orders) {\n    for (const l of o.lines) {\n      const row = bySku.get(l.sku) || { sku: l.sku, name: l.name, qty: 0, total: 0 };\n      row.qty += l.qty;\n      row.total += l.qty * l.unitCents;\n      bySku.set(l.sku, row);\n    }\n  }\n  return [...bySku.values()].sort((a, b) => (a.sku < b.sku ? -1 : 1));\n}\n\n" +
+  "function runAll(orders, ctx) {\n  const rows = rowsFrom(orders);\n  const out = {};\n  for (const m of MODULES) out[m.meta.id] = m.render(rows, ctx);\n  return out;\n}\n\nmodule.exports = { rowsFrom, runAll, MODULES };\n");

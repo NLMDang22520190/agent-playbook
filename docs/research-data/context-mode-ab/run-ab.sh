@@ -6,6 +6,7 @@
 #   [K=3] [BUDGET=3.5] [MODEL=claude-sonnet-5-5] [OUT_DIR=DIR] bash docs/research-data/context-mode-ab/run-ab.sh
 # Spend stops at BUDGET USD of cost_usd as the runner reports it (a notional figure on a subscription). Each runner call is capped by
 # --max-cost too, which only blocks starting a LATER run, so the real total can exceed BUDGET by about one run.
+# START=N runs iterations N..K only (reuse OUT_DIR and give BUDGET as the TOTAL for all phases to continue a measurement).
 # Do not put a real secret in the test repos. The plugin's ctx_execute runs model-written code with your network and environment.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd -P)"; REPO="$(cd "$HERE/../../.." && pwd -P)"
@@ -37,7 +38,7 @@ run_arm() { # $1 = baseline|cm  $2 = iteration
     > "$OUT_DIR/$1-$2.stdout" 2>&1
   rc=$?; echo "$1 iteration $2 runner exit $rc (1 = some run FAILED a hidden test, 4 = an ERROR run) spent so far $(spent)" >&2
 }
-i=1
+i="${START:-1}"
 while [ "$i" -le "$K" ]; do
   if [ $((i % 2)) -eq 1 ]; then order="baseline cm"; else order="cm baseline"; fi
   for a in $order; do

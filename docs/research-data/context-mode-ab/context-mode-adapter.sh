@@ -16,5 +16,5 @@ fi
 cd "$1" && claude -p --output-format stream-json --verbose --model "${PB_EVAL_MODEL:-claude-sonnet-5-5}" \
   "${settings[@]+"${settings[@]}"}" "${plugin[@]+"${plugin[@]}"}" \
   --permission-mode acceptEdits \
-  --allowedTools "Bash(node:*)" "Bash(npm:*)" "Bash(git:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)" "Bash(bash:*)" "mcp__plugin_context-mode_context-mode" \
+  --allowedTools "Bash(node:*)" "Bash(npm:*)" "Bash(git:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)" "Bash(bash:*)" "Bash(cd:*)" "Bash(echo:*)" "Bash(pwd:*)" "Bash(diff:*)" "Bash(sort:*)" "mcp__plugin_context-mode_context-mode" \
   < "$2"
