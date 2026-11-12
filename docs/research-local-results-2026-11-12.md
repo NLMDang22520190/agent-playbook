@@ -123,3 +123,18 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Nhánh cm trượt 2 test ẩn: tests/invoice-exempt.f2p.test.js và tests/refunds-report.f2p.test.js. Baseline qua. Đây là lần thứ hai cm trượt đúng invoice-exempt.
 [SUY LUẬN] Lần đầu có dấu hiệu plugin được dùng thật và cắt output, nhưng k=1 và peak context thấp nên không kết luận được về chi phí hay chất lượng. Việc cm trượt invoice-exempt hai đợt liên tiếp (2/3 ở project-05, 1/1 ở project-06) tăng đáng chú ý, nhưng project-05 đã cho thấy nguyên nhân gần nhất là lựa chọn Grep của agent; chưa kiểm cho lượt này (chưa đọc transcript project-06).
 [CHƯA KIỂM CHỨNG] Nguyên nhân cm trượt hai test ở project-06; cần đọc transcript và k lớn hơn.
+
+## Việc 4d. Pha 1, K=1, task project-07-wide-refactor
+
+[ĐO] Lệnh: `TASKS=project-07-wide-refactor CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code K=1 BUDGET=4 OUT_DIR=C:/Users/Lenovo/pbeval/cm-ab-out4 bash docs/research-data/context-mode-ab/run-ab.sh` (nhánh tại 602d89a, trần mới 15 USD theo kế hoạch người dùng). Chi phí 0,583 USD; tổng bốn đợt 4,267 USD. Dữ liệu: docs/research-data/context-mode-ab-result-wide/.
+
+| Task | Arm | Qua test ẩn | Cost USD | Giây | Input-side tok | Cache write | Tool-result KB | Peak context tok | Lượt | Plugin loaded | ctx calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| project-07-wide-refactor | baseline | 1/1 | 0.303 | 99 | 883986 | 31891 | 17.5 | 50085 | 29 | 0 | 0 |
+| project-07-wide-refactor | context-mode | 1/1 | 0.280 | 88 | 709651 | 33549 | 23.7 | 52245 | 25 | 1 | 5 |
+
+[ĐO] Điều kiện dừng của kế hoạch: peak context vẫn dưới 100K (50k và 52k), và không lượt nào vượt 2,5 USD (0,30 và 0,28). Theo kế hoạch, dừng ở đây: benchmark này chưa tới vùng cần đo. Không chạy pha 2.
+[ĐO] Nhánh cm gọi ctx_execute 5 lần (bước 7, 8, 14, 18, 21), chủ yếu để đọc và xử lý các file trong src/reports/ bằng shell hoặc JavaScript. Cả hai nhánh qua test ẩn.
+[ĐO] Tool-result KB của cm lớn hơn baseline (23,7 so với 17,5) dù có dùng ctx_execute; peak context tương đương. Tức không thấy lợi ích về context trong lượt này.
+[SUY LUẬN] Context Mode được dùng nhiều hơn ở task này, nhưng với peak dưới 100K và k=1, chi phí và context không khác đáng kể (0,280 so với 0,303 USD). Chưa có căn cứ cho khẳng định Context Mode tiết kiệm.
+[CHƯA KIỂM CHỨNG] Hành vi ở task có peak trên 100K; chưa đo được trong benchmark hiện có.
