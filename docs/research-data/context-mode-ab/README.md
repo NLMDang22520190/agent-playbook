@@ -23,3 +23,19 @@ project-02 (self-check OK). Estimated cost: about 0.3 to 0.5 USD per run, so use
 New column in the summary: median tool-result KB per run (bytes of tool results in the transcript), the quantity Context Mode claims to cut.
 Read the `ctx tool calls` column first: if it is 0 again, the model ignored the plugin and the arm says nothing about its benefit.
 Runner exit 1 means some run failed a hidden test (a normal FAIL), not an error.
+
+## Third benchmark: long session (task project-06-long-session)
+
+One prompt with three tickets done in order in ONE session: company tax exemption (project-02), returns (project-01) and a duplicate-charge
+incident in `logs/payments.log` (1419 events, 107 KB, 7 orders charged twice; rule in `docs/payments.md`). Hidden tests are the union of
+project-01 and project-02 plus `tests/incident.f2p.test.js`. Same noisy shop as project-05 (matrix test, 33 KB tax history, 62 KB sample
+orders). Self-check OK. It is meant to make the context grow far beyond the small tasks. The summary now has a column
+*Median peak context tokens* (largest input side of any API call in the run), which is the quantity that decides whether a context
+compressor has anything to compress.
+
+Estimated cost 0.5 to 1.2 USD per run [SUY LUẬN, not measured]; run ONE baseline run first to read the real peak context and cost, then
+decide k and the ceiling:
+
+`TASKS=project-06-long-session CM_PLUGIN=<context-mode>/plugins/claude-code K=1 BUDGET=2 bash docs/research-data/context-mode-ab/run-ab.sh`
+
+For billion-context the same task is the benchmark, but only with a throwaway key and the isolation steps in `docs/research-context-tools-2026-11-11.md`.

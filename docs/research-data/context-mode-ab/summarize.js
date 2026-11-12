@@ -7,11 +7,15 @@ const med = a => { const s = a.filter(x => typeof x === "number").sort((x, y) =>
 const fmt = (x, d = 3) => x == null ? "n/a" : Number(x).toFixed(d);
 function transcript(jsonPath, label) {
   const log = path.join(jsonPath.replace(/\.json$/, ".runs"), label + ".log");
-  const out = { toolKB: null, tokens: null, cw: null, cr: null, outTok: null, turns: null, ctxCalls: 0, loaded: false };
+  const out = { peakCtx: null, toolKB: null, tokens: null, cw: null, cr: null, outTok: null, turns: null, ctxCalls: 0, loaded: false };
   let txt; try { txt = fs.readFileSync(log, "utf8"); } catch (e) { return out; }
   for (const line of txt.split("\n")) {
     let o; try { o = JSON.parse(line); } catch (e) { continue; }
     if (o.type === "system" && o.subtype === "init" && JSON.stringify(o.mcp_servers || o.tools || "").includes("context-mode")) out.loaded = true;
+    if (o.type === "assistant" && o.message && o.message.usage) {
+      const u = o.message.usage, c = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      if (out.peakCtx == null || c > out.peakCtx) out.peakCtx = c;
+    }
     if (o.type === "assistant" && o.message && Array.isArray(o.message.content))
       for (const b of o.message.content) if (b.type === "tool_use" && /context-mode|ctx_/.test(b.name || "")) out.ctxCalls++;
     if (o.type === "user" && o.message && Array.isArray(o.message.content))
@@ -39,12 +43,12 @@ for (const f of fs.readdirSync(dir).filter(x => x.endsWith(".json"))) {
   }
 }
 console.log("# Context Mode A/B (without playbook)\n");
-console.log("| Task | Arm | Runs graded | Errors | Passed all hidden tests | Median cost USD | Median seconds | Median input-side tokens | Median cache write | Median tool-result KB | Median turns | Plugin loaded (runs) | ctx tool calls (total) |");
-console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+console.log("| Task | Arm | Runs graded | Errors | Passed all hidden tests | Median cost USD | Median seconds | Median input-side tokens | Median cache write | Median tool-result KB | Median peak context tokens | Median turns | Plugin loaded (runs) | ctx tool calls (total) |");
+console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 const tasks = [...new Set(rows.map(r => r.task))].sort();
 for (const t of tasks) for (const a of ["baseline", "context-mode"]) {
   const g = rows.filter(r => r.task === t && r.arm === a), ok = g.filter(r => r.status === "graded");
-  console.log(`| ${t} | ${a} | ${ok.length} | ${g.length - ok.length} | ${ok.filter(r => r.pass).length}/${ok.length} | ${fmt(med(ok.map(r => r.cost)))} | ${fmt(med(ok.map(r => r.secs)), 0)} | ${fmt(med(ok.map(r => r.tokens)), 0)} | ${fmt(med(ok.map(r => r.cw)), 0)} | ${fmt(med(ok.map(r => r.toolKB)), 1)} | ${fmt(med(ok.map(r => r.turns)), 1)} | ${g.filter(r => r.loaded).length} | ${g.reduce((s, r) => s + r.ctxCalls, 0)} |`);
+  console.log(`| ${t} | ${a} | ${ok.length} | ${g.length - ok.length} | ${ok.filter(r => r.pass).length}/${ok.length} | ${fmt(med(ok.map(r => r.cost)))} | ${fmt(med(ok.map(r => r.secs)), 0)} | ${fmt(med(ok.map(r => r.tokens)), 0)} | ${fmt(med(ok.map(r => r.cw)), 0)} | ${fmt(med(ok.map(r => r.toolKB)), 1)} | ${fmt(med(ok.map(r => r.peakCtx)), 0)} | ${fmt(med(ok.map(r => r.turns)), 1)} | ${g.filter(r => r.loaded).length} | ${g.reduce((s, r) => s + r.ctxCalls, 0)} |`);
 }
 console.log("\nTotal cost_usd of all runs: " + rows.reduce((s, r) => s + (r.cost || 0), 0).toFixed(3));
 console.log("\nRead with care: k is small, the transcript parser is untested, and 'Plugin loaded' 0 in the context-mode arm means the plugin did not load (then the arm measures nothing).");
