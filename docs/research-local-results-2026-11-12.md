@@ -108,3 +108,18 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Nhánh cm chỉ qua 1/3 bài ẩn. Lượt cm-2 trượt FAIL_TO_PASS tests/invoice-exempt.f2p.test.js; diff của cm-2 và cm-3 không sửa src/invoice.js, còn cm-1 (qua) có sửa invoice.js. Baseline 3/3.
 [SUY LUẬN] Chi phí thấp hơn của nhánh cm (0,085 so 0,161) đi cùng việc bỏ sót invoice.js, nên có thể là làm ít hơn chứ không phải tiết kiệm thật. Chưa chứng minh plugin gây ra việc bỏ sót: k=3, một nhánh trượt 2 lần, baseline 3/3 là khác biệt có thể do nhiễu. Không đủ cơ sở kết luận Context Mode có lợi hoặc hại.
 [CHƯA KIỂM CHỨNG] Cơ chế (vì sao cm bỏ sót invoice.js); cần lặp với k lớn hơn.
+
+## Việc 4c. Lượt thử K=1, task dài project-06-long-session
+
+[ĐO] Lệnh: `TASKS=project-06-long-session CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code K=1 BUDGET=2 OUT_DIR=C:/Users/Lenovo/pbeval/cm-ab-out3 bash docs/research-data/context-mode-ab/run-ab.sh` (nhánh tại 7f692aa). Chi phí 0,696 USD; tổng ba đợt 3,684 USD (trần 5). Dữ liệu: docs/research-data/context-mode-ab-result-long/.
+
+| Task | Arm | Qua test ẩn | Cost USD | Giây | Input-side tok | Cache write | Tool-result KB | Peak context tok | Lượt | Plugin loaded | ctx calls |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| project-06-long-session | baseline | 1/1 | 0.388 | 133 | 965291 | 40801 | 28.9 | 58995 | 29 | 0 | 0 |
+| project-06-long-session | context-mode | 0/1 | 0.308 | 125 | 706594 | 32386 | 12.0 | 51082 | 33 | 1 | 1 |
+
+[ĐO] Peak context chỉ khoảng 59k (baseline) và 51k (cm), dưới 100K: task vẫn chưa đủ dài để context lớn.
+[ĐO] Nhánh cm gọi ctx_execute đúng 1 lần (đọc và xử lý logs/payments.log bằng code JavaScript thay vì đọc log). Tool-result KB giảm 28,9 xuống 12,0 (một lượt mỗi nhánh).
+[ĐO] Nhánh cm trượt 2 test ẩn: tests/invoice-exempt.f2p.test.js và tests/refunds-report.f2p.test.js. Baseline qua. Đây là lần thứ hai cm trượt đúng invoice-exempt.
+[SUY LUẬN] Lần đầu có dấu hiệu plugin được dùng thật và cắt output, nhưng k=1 và peak context thấp nên không kết luận được về chi phí hay chất lượng. Việc cm trượt invoice-exempt hai đợt liên tiếp (2/3 ở project-05, 1/1 ở project-06) tăng đáng chú ý, nhưng project-05 đã cho thấy nguyên nhân gần nhất là lựa chọn Grep của agent; chưa kiểm cho lượt này (chưa đọc transcript project-06).
+[CHƯA KIỂM CHỨNG] Nguyên nhân cm trượt hai test ở project-06; cần đọc transcript và k lớn hơn.
