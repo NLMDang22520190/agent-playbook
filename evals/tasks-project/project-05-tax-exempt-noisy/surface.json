@@ -1,0 +1,9 @@
+{
+  "checks": [
+    {
+      "name": "invoice follows the order's tax (hidden second place)",
+      "test": "tests/invoice-exempt.f2p.test.js",
+      "pattern": "invoice"
+    }
+  ]
+}
