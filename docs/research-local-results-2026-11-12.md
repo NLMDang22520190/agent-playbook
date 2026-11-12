@@ -83,3 +83,14 @@ Từ kết quả việc 1 đến 5 và các file nghiên cứu trước đó:
 7. [SUY LUẬN] Context Mode: chưa đưa vào playbook. A/B hiện chỉ cho biết plugin nạp được và chi phí chung không đổi đáng kể, model không gọi công cụ ctx trên task nhỏ. Cần task có file lớn trước khi kết luận.
 8. [SUY LUẬN] Chỉ ghi tài liệu về phạm vi review và `/code-review`. Chưa nên: P1', ép Lite, tầng kế hoạch, định tuyến model, loop engineering.
 9. Mỗi bản phát hành cần gate khoảng 150 lần chạy trả tiền (theo `CHANGELOG.md`); cần người dùng đặt trần riêng.
+
+## Việc 2, cập nhật sau 3 lần đo
+
+[ĐO] Nguồn: docs/research-data/cron-jitter.log. Job df5e91b9, cron "7 * * * *", giờ máy +0700.
+- nominal 09:07, thật 09:33:21 (trễ 26 phút 21 giây)
+- nominal 10:07, thật 10:33:17 (trễ 26 phút 17 giây)
+- nominal 11:07, thật 11:33:17 (trễ 26 phút 17 giây)
+Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây.
+[ĐO] Trong 3 lần đo, session không idle lâu và máy không sleep (không có khoảng trống), nên chưa trả lời được "có chạy khi máy sleep không".
+[SUY LUẬN] Độ lệch cố định theo job (khoảng 26 phút), nên khoảng cách giữa hai lần chạy liên tiếp vẫn bằng chu kỳ danh nghĩa. Với chu kỳ 50 phút, khoảng cách thật sẽ gần 50 phút, không vượt TTL 1 giờ. Chỉ dựa trên 3 điểm của một job; "*/50" chưa được đo, và cron chỉ chạy khi REPL rảnh.
+[CHƯA KIỂM CHỨNG] Hành vi khi máy sleep hoặc session đang bận lâu.
