@@ -47,3 +47,14 @@ Script: docs/research-data/cm-transcript-timeline.js. Đoạn trích đã bỏ �
 4. Bash `git status`: cho qua.
 5. Bash `git checkout abc -- db/schema.sql`: cho qua.
 Giống kết quả chạy tay trước đó. Thư mục tạm của script đã xóa. C:/Users/Lenovo/.context-mode chưa xóa, để người dùng quyết.
+
+## Thêm: transcript project-06-long-session (K=1, 2026-11-12)
+
+Đoạn trích đã làm sạch: docs/research-data/cm-ab-transcript-excerpts/project-06-timeline-{baseline-1,cm-1}.txt.
+
+[ĐO] cm-1 trượt `invoice-exempt` và `refunds-report`; baseline qua. Trong cm-1 không có lệnh nào đọc hoặc sửa `src/invoice.js`, và không có lệnh nào đọc hoặc sửa `src/reports.js` (hai file mà test ẩn cần). Baseline sửa `invoice.js` (bước 9) và ghi `reports.js` (bước 18).
+[ĐO] Điểm rẽ nhánh nằm ở bước 1: cả hai nhánh mở đầu bằng một lệnh Bash ghép nhằm đọc toàn bộ `src/*.js` và `docs/*.md`. Của baseline (`git ls-files; cat package.json; cat docs/*.md; cat src/*.js; ...`) chạy được và trả 2.294 B, sau đó lệnh thứ 4 cat cả `src/reports.js`, `src/invoice.js`. Của cm-1 (`cd . && git ls-files && cat package.json && cat src/*.js && cat docs/*.md && ...`) bị bộ phân loại quyền Bash từ chối ("contains multiple operations", 194 B lỗi). Sau đó cm-1 chỉ đọc lẻ `pricing.js`, `orders.js`, `order-page.js` và các file docs, không bao giờ cat `src/*.js` nữa, nên không thấy `invoice.js` và `reports.js`.
+[SUY LUẬN] Nguyên nhân gần nhất là lệnh khám phá đầu tiên của cm-1 bị từ chối quyền do cách viết ghép (`cd . && ...`), không phải do plugin: nhãn từ chối là "subcommandResults"/quy tắc quyền Bash, và thông báo plugin duy nhất vẫn là SessionStart ctx_resume (198 B). Không thể loại trừ hoàn toàn việc plugin ảnh hưởng đến cách model viết lệnh, nhưng không có bằng chứng.
+[ĐO] Dùng `ctx_execute` đúng 1 lần (bước 29, sau khi code xong), để đọc `logs/payments.log` bằng JavaScript; kết quả 461 B. Trong baseline phần việc tương đương (bước 24 đến 26) dùng `node -e` và script Node, kết quả 883 B và 258 B, tức cũng cắt output. Chênh lệch tool-result KB (28,9 so với 12,0) chủ yếu do baseline có hai lần cat file lớn ở bước 1 đến 5 (2.294, 2.372, 2.174, 4.737, 10.511 B), không phải nhờ ctx_execute.
+[SUY LUẬN] Hai lần liên tiếp cm trượt `invoice-exempt` đều có cùng cơ chế gần nhất: agent không mở `invoice.js` vì khám phá mã nguồn bị thu hẹp (lần 1 do chọn `output_mode: content` ở Grep, lần 2 do lệnh cat bị từ chối quyền). Cả hai đều là biến động ở bước khám phá, không có chứng cứ về cơ chế từ plugin. Vẫn k=1, chưa đủ để kết luận.
+[CHƯA KIỂM CHỨNG] Có hay không việc plugin làm model chọn cách khám phá khác đi; cần k lớn hơn và kiểm soát việc từ chối quyền (ví dụ cho phép `cd` và lệnh ghép giống nhau ở hai nhánh) trước khi so sánh chất lượng.
