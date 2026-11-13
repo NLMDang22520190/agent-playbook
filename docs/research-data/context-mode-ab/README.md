@@ -79,3 +79,20 @@ Free, runs on your transcripts, prints aggregates only. Run it twice, with the d
 
 Headline: cost share of re-reading history older than 50 calls (what a history compressor could shrink), plus the cold-restart share of cost.
 Pre-registered: under 10% means stop; 25% or more means a paired test with a throwaway key could be worth its cost; between is gray.
+
+## Net-value kit for Context Mode (steps 1 to 3, after the literature review in `docs/research-skill-verification-2026-11-13.md`)
+
+Order and what each gives:
+
+1. `docs/research-data/plugin-overhead.sh`: the FIXED tokens the plugin adds to every call (tool definitions, hook text). Run it on your machine (a few cents):
+   `CM_PLUGIN=<context-mode>/plugins/claude-code [CM_NODE_DIR=<node24>/bin] bash docs/research-data/plugin-overhead.sh`
+   It prints O, the prompt-size difference between arms (cache-state independent). Paste the table back.
+2. `docs/research-data/history-share.js` (step A2, billion-context): see the section above; run it with both multiplier pairs.
+3. `docs/research-data/net-savings-sim.js`: a trace-driven simulation on your transcripts of the NET change in cost for a cut r of tool results of 4 KB or more, an overhead O per call and p percent extra calls:
+   `node docs/research-data/net-savings-sim.js ~/.claude/projects/<your-project> --json sim.json`
+   It prints a grid (O in 0, 3K, 6K, 10K, 15K tokens; p in 0, 5, 9 percent) and the break-even O. Read the row of the O you measured in step 1.
+
+Sanity run by the author on one cloud research transcript (196 calls, not representative): the largest possible saving was 5.9% of the baseline cost; at r = 50%
+and p = 0 the net was -2.9% with O = 0 and +0.7% with O = 10K (break-even about 8K tokens per call); with p = +5% extra calls the net was a COST INCREASE
+in every row (2.1% to 7.6%), because 5% more calls cost about 5% of the baseline, as large as the largest possible saving. p matters as much as the cut.
+This is a model, not a measurement: O and p must come from step 1 and from your own A/B (ServiceNow saw +5 to +9% calls with Headroom and RTK).
