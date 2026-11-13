@@ -44,6 +44,8 @@ Two old measurements, kept for scale. Neither is a benchmark.
 
 ## Maintainer tools
 
+Score and the queue of work that raises it: `docs/scorecard.md` (read it before writing a spec; update it when a release closes). The v0.36.0 plan: `docs/v0.36-spec.md`.
+
 Release flow: each lane or item ends with its hand-off files. The release PR body is the `scripts/pr-body.sh` output, one block per item for a release of several items (`bash scripts/pr-body.sh --handoff <worktree>/.agents/handoff >> pr-body.md`), and the PR is opened with `gh pr create --body-file pr-body.md`. The steps, in order:
 
 1. Run the full suite (`tests/run-all.sh`) and update the README test count (`tools/readme-count.sh`).
