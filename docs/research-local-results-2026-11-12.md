@@ -186,3 +186,50 @@ Khoảng cách giữa các lần chạy: 59 phút 56 giây và 60 phút 00 giây
 [ĐO] Cold restart chiếm 3,3% đến 6,2% chi phí ở A (121 lần), 1,5% đến 3,8% ở B (1 lần). Nhỏ hơn con số 14% đến 40% lượng ghi của handoff cũ (đó là phần của lượng ghi, đo khác).
 [SUY LUẬN] Với khối lượng việc chính (A), phần lịch sử cũ tối đa co được khoảng 7% đến 19% chi phí lý thuyết (7,1% đến 19,3% tuỳ hệ số và mức co 50% hoặc 80%), chưa tính chi phí của chính bộ nén và việc nó phá cache. Chưa đủ cơ sở để đưa billion-context vào playbook; thử có đôi với khóa tạm vẫn là việc cần người dùng cho khóa và đặt trần.
 [CHƯA KIỂM CHỨNG] Giả định giá (các hệ số), việc phần "tăng trưởng so với lượt gọi đầu" gồm cả tool result và tin nhắn của người dùng, và chi phí nén thực tế. Script ghi rõ nó chưa được kiểm trên transcript của người dùng trước lần này.
+
+## Việc 1 (đợt mới, 2026-11-13). Chi phí cố định O của plugin Context Mode
+
+[ĐO] Lệnh: `CM_PLUGIN=C:/Users/Lenovo/pbeval/context-mode/plugins/claude-code N=3 bash docs/research-data/plugin-overhead.sh` (nhánh tại f736a03; script đọc trước khi chạy: 6 lượt `claude -p "Reply with the single word ok."` trong thư mục trống, trần 0,3 USD mỗi lượt). Chi phí tổng khoảng 0,53 USD (3 lượt không plugin 0,196; 3 lượt có plugin 0,339, trong đó lượt đầu 0,199 vì cache nguội).
+
+| Nhánh | Lượt | Prompt token mỗi lượt | Trung bình | Cost USD mỗi lượt |
+|---|---|---|---|---|
+| không plugin | 3 | 43456, 45034, 46676 | 45055 | 0.059, 0.065, 0.072 |
+| có plugin | 3 | 49722, 45976, 47613 | 47770 | 0.199, 0.067, 0.073 |
+
+[ĐO] **O = 2.715 token mỗi lượt gọi** (trung bình có plugin trừ không plugin).
+[ĐO] Nhiễu lớn: trong nhánh không plugin, prompt lượt đầu dao động 43.456 đến 46.676 (chênh 3.220), lớn hơn cả O. Khoảng của hai nhánh chồng lên nhau (45.976 và 47.613 của plugin nằm trong 43.456 đến 46.676 hoặc sát). Nên O = 2.715 chỉ là ước lượng thô; khoảng hợp lý rộng từ 0 đến khoảng 6.000.
+[SUY LUẬN] O khoảng 3K, xa dưới ngưỡng hoà vốn lý thuyết (xem bên dưới), nên chi phí cố định của plugin không phải điểm nghẽn; kết quả phụ thuộc chủ yếu vào p (lượt gọi thêm).
+
+## Việc 2 (đợt mới). A2 billion-context
+
+Đã làm, xem mục "Bước A2" ở trên (commit 6a3e2d5, đã push).
+
+## Việc 3 (đợt mới). Mô phỏng giá trị ròng (net-savings-sim.js)
+
+[ĐO] Lệnh: `node docs/research-data/net-savings-sim.js ~/.claude/projects/<dự án> --json <file>` (hệ số mặc định: đọc 0,1, ghi 1,25, output 5; script đọc trước khi chạy). Chi phí 0 USD. JSON: docs/research-data/addressable-share/net-sim-project-{A,B}.json. Kết quả là của mô hình, không phải phép đo.
+
+| | Dự án A (1.546 file, 56.036 lượt) | Dự án B (4 file, 846 lượt) |
+|---|---|---|
+| Tiết kiệm tối đa (cắt 100%, O=0, p=0) | 8,0% | 5,0% |
+| O hoà vốn, r=50%, p=0 | 9.115 token | 11.209 token |
+| O hoà vốn, r=80%, p=0 | 14.584 token | 17.935 token |
+
+Ròng (%, âm là rẻ hơn), cắt 50% / cắt 80% các kết quả từ 4 KB, dự án A:
+
+| O | p=0 | p=+5% | p=+9% |
+|---|---|---|---|
+| 0 | -4,0 / -6,4 | 1,0 / -1,4 | 5,0 / 2,6 |
+| 3.000 | -2,7 / -5,1 | 2,3 / -0,1 | 6,3 / 3,9 |
+| 6.000 | -1,4 / -3,8 | 3,6 / 1,2 | 7,6 / 5,2 |
+| 10.000 | 0,4 / -2,0 | 5,4 / 3,0 | 9,4 / 7,0 |
+| 15.000 | 2,6 / 0,2 | 7,6 / 5,2 | 11,6 / 9,2 |
+
+Dự án B, cắt 50% / 80%: O=0: -2,5 / -4,0 (p=0), 2,5 / 1,0 (p=+5%), 6,5 / 5,0 (p=+9%); O=3.000: -1,8 / -3,3, 3,2 / 1,7, 7,2 / 5,7; O=10.000: -0,3 / -1,8, 4,7 / 3,2, 8,7 / 7,2.
+
+[SUY LUẬN] Nội suy tuyến tính theo O=2.715 (từ hàng O=0 và O=3.000, chưa chạy riêng):
+- Dự án A: p=0: khoảng -2,8% (cắt 50%) và -5,2% (cắt 80%); p=+5%: khoảng +2,2% và -0,2%.
+- Dự án B: p=0: khoảng -1,9% và -3,4%; p=+5%: khoảng +3,1% và +1,6%.
+[SUY LUẬN] Kết quả quyết định bởi p, không phải O: ở p=0 tiết kiệm tối đa khoảng 3% đến 5% (A) và 2% đến 3% (B); chỉ cần p=+5% là A cắt 50% đã thành tăng chi phí (+2,2%), và B tăng ở cả hai mức cắt. Khớp với điều ServiceNow ghi nhận (thêm 5 đến 9% lượt gọi làm mất lợi ích).
+[ĐO] p thật từ ba đợt A/B của tôi (số lượt trung vị cm so baseline, k rất nhỏ): project-05 13 so 17 (-24%), project-06 33 so 29 (+14%), project-07 25 so 29 (-14%); project-01 25 so 11, project-02 16 so 19 ở đợt đầu. Không có xu hướng nhất quán, nên p chưa xác định được; với k=1 đến 3 không dùng được như số đo.
+[SUY LUẬN] Kết luận cho playbook (chưa duyệt): ngay cả khi O nhỏ (khoảng 3K) và p=0, tiết kiệm chỉ khoảng 3% đến 5% chi phí lý thuyết cho khối lượng việc chính, và chỉ cần p dương vài phần trăm là mất. Chưa nên đưa Context Mode vào playbook như công cụ giảm chi phí.
+[CHƯA KIỂM CHỨNG] p thật của Context Mode trên khối lượng việc chính; chi phí tính theo giá API, không phải hạn mức gói (dòng "Prompt cache" của gói chưa đo được).
