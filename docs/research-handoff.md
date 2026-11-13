@@ -1,7 +1,7 @@
 # Handoff: kết quả nghiên cứu quy trình phát triển với agent
 
 Dành cho một agent mới, chưa có ngữ cảnh. Chỉ chứa KẾT QUẢ NGHIÊN CỨU (đã đo, chưa đo, đã sai và đã sửa). Không chứa đề xuất sửa code
-hay quyết định áp dụng; người dùng sẽ hỏi tiếp từng case ở session mới. Bản diễn giải dài hơn: `docs/research-synthesis.md`. Phát hiện bổ sung và số liệu đã sửa: `docs/research-addendum-2026-11-09.md`. Kết luận sau đợt đo local và danh sách ứng viên v0.36: `docs/research-conclusions-2026-11-12.md`.
+hay quyết định áp dụng; người dùng sẽ hỏi tiếp từng case ở session mới. Bản diễn giải dài hơn: `docs/research-synthesis.md`. Phát hiện bổ sung và số liệu đã sửa: `docs/research-addendum-2026-11-09.md`. Kết luận sau đợt đo local và danh sách ứng viên v0.36: `docs/research-conclusions-2026-11-12.md`. Cách kiểm chứng skill và các công cụ có sẵn: `docs/research-skill-verification-2026-11-13.md`.
 
 Nhãn: **[ĐO]** tính từ dữ liệu thật trong file này hoặc repo; **[SUY LUẬN]** là diễn giải; **[CHƯA KIỂM CHỨNG]** là nguồn thứ cấp hoặc chưa
 đọc được nguồn gốc. Đừng nâng một [SUY LUẬN] thành sự thật khi trả lời người dùng.
