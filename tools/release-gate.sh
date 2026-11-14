@@ -28,7 +28,7 @@
 # `gh api repos/OWNER/REPO/actions/jobs/ID` and every failed step must start with "Release gate". Anything else red, a pending check run
 # (queued, in progress), or no check run at all stops the gate with exit 2 naming the check runs, with no runner and nothing created.
 # gh missing, an API error or an unknown repository stops it with exit 3. --skip-ci-check skips the read (no gh needed): the run goes
-# on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion}]} (null for
+# on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion, failed_steps (v0.36.0, only a check run excused as red only in the Release gate step: its failed step names)}]} (null for
 # --pool-only). Once a batch of DIR skipped the check, gate.json keeps skipped: true (a later --add-batch run or --pool-only does not hide it).
 # --dry-run, --pool-only and --check never read the CI.
 # Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
@@ -841,7 +841,7 @@ for (const n of names) {
 }
 # ci_check: G1 - read the check runs of HEAD through the REST API; sets CI_JSON (the ci_check object of gate.json) or stops the gate
 ci_check() {
-  local repo url runs rc=0 cls ans id nm cc job bad="" state=green tab=$'\t' lines=()
+  local repo url runs rc=0 cls ans id nm cc job bad="" state=green tab=$'\t' lines=() fsn fsmap=""
   if [ "$SKIPCI" = 1 ]; then CI_JSON="{\"skipped\":true,\"sha\":\"$SHA\",\"state\":\"skipped\",\"checks\":[]}"; return 0; fi
   repo="${PB_GATE_REPO:-}"
   if [ -z "$repo" ]; then
@@ -876,18 +876,21 @@ EOF
       R)
         if [ "$cc" = failure ]; then
           job="$(gh api "repos/$repo/actions/jobs/$id" </dev/null)" || die 3 "cannot read the job $id ($nm) in $repo (gh api failed); pass --skip-ci-check to go on without CI"
-          if printf '%s' "$job" | node -e '
+          # C4 (v0.36.0): the node call prints the failed step names (tab-joined) when every failed step is the gate's own; they go to gate.json
+          if fsn="$(printf '%s' "$job" | node -e '
 let j; try { j = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch (x) { process.exit(2); }
 const f = (Array.isArray(j.steps) ? j.steps : []).filter(s => s.conclusion === "failure");
-process.exit(f.length > 0 && f.every(s => /^Release gate/.test(String(s.name))) ? 0 : 1)'; then state=green-except-release-gate
+if (f.length > 0 && f.every(s => /^Release gate/.test(String(s.name)))) { process.stdout.write(f.map(s => String(s.name).replace(/[\t\n]/g, " ")).join("\t")); process.exit(0); }
+process.exit(1)')"; then state=green-except-release-gate; fsmap="$fsmap$id$tab$fsn"$'\n'
           else bad="$bad  - $nm ($cc)"$'\n'; fi
         else bad="$bad  - $nm ($cc)"$'\n'; fi ;;
     esac
   done
   [ -z "$bad" ] || die 2 "CI of $SHA is not green (a check run that failed only in its Release gate step counts as green):"$'\n'"${bad%$'\n'}"$'\n'"wait for CI, fix it, or pass --skip-ci-check"
-  CI_JSON="$(printf '%s\n' "${lines[@]}" | SHA="$SHA" ST="$state" node -e '
+  CI_JSON="$(printf '%s\n' "${lines[@]}" | SHA="$SHA" ST="$state" FSMAP="$fsmap" node -e '
 const L = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(l => l.split("\t"));
-process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
+const F = new Map(process.env.FSMAP.split("\n").filter(Boolean).map(l => { const q = l.split("\t"); return [q[0], q.slice(1)]; }));
+process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => F.has(p[1]) ? ({ name: p[2], conclusion: p[3], failed_steps: F.get(p[1]) }) : ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
 }
 
 if [ "$POOL" = 0 ]; then
