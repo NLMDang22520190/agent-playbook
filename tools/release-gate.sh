@@ -138,7 +138,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; CI_JSON=""
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -149,6 +149,7 @@ while [ $# -gt 0 ]; do
     --check) CHECK=1 ;;
     --skip-ci-check) SKIPCI=1 ;;
     --add-batch) ADDB=1 ;;
+    --bootstrap-baseline) BOOT=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
@@ -164,6 +165,8 @@ done
 [ "${#POS[@]}" -eq 0 ] || [ "$CHECK" = 1 ] || die 2 "unknown option: ${POS[0]} (see --help)"
 [ "${#POS[@]}" -le 1 ] || die 2 "--check takes one REV, got: ${POS[*]}"
 REV="${POS[0]:-}"
+[ "$BOOT" = 0 ] || [ "$CHECK" = 0 ] || die 2 "--bootstrap-baseline starts a baseline in a real run; --check only reads (a committed bootstrap gate is recognised by its gate.json)"
+[ "$BOOT" = 0 ] || [ "$DRY" = 0 ] || die 2 "--bootstrap-baseline needs a real run (--dry-run starts nothing)"
 
 if [ "$CHECK" = 0 ]; then
 if [ -n "$HARNESS" ] && [ -n "$CMD" ]; then die 2 "use either --harness or --cmd, not both"; fi
@@ -252,7 +255,7 @@ ${7:-}
 EOJ
   [ "${#bf[@]}" -eq 0 ] || bf=(--base-- "${bf[@]}")
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
-  PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
+  PG_BW="${BASE_WHY:-}" PG_BOOT="${BOOT_USED:-0}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
   PG_CI="${CI_JSON:-}" PG_FFL="${FF_LABEL:-}" PG_FFI="${FF_ITEM:-}" PG_FFK="${FF_KEY:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_BWITH="${BW_SHOW:-}" PG_OWITH="${OW_SHOW:-}" PG_REUSE="${REUSE_JSON:-}" PG_ROOT="$ROOT" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
@@ -456,7 +459,7 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O].concat(e.PG_BWITH ? [e.PG_BWITH] : [], e.PG_OWITH ? [e.PG_OWITH] : []),
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check,
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check, ...(e.PG_BOOT === "1" ? { bootstrap_baseline: true } : {}),
   reuse: e.PG_REUSE ? JSON.parse(e.PG_REUSE) : null,
   fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
 ' -- ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
@@ -908,7 +911,12 @@ if [ "$POOL" = 0 ]; then
   # the exit (R7-1): the verdict reads them after the runs
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
-  [ "$BASE_STATE" != noqual ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL"
+  if [ "$BASE_STATE" = noqual ]; then
+    # S5 (v0.36.0): a model that never had a gate has nothing to be compared with; --bootstrap-baseline runs rule f as "no baseline" and records it
+    [ "$BOOT" = 1 ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL (to start a baseline for this model, run the gate again with --bootstrap-baseline: rule f then compares with nothing, and gate.json records bootstrap_baseline)"
+    BASE_STATE=none; BOOT_USED=1
+    printf 'note: --bootstrap-baseline: no qualifying previous gate for harness %s model %s; rule (f) has nothing to compare with (recorded in gate.json)\n' "$LABEL" "$MODEL" >&2
+  fi
   [ "$BASE_STATE" != broken ] || die 3 "$BASE_WHY"
   # T4: which items reuse the baseline's without rows (asks the runners for the current hashes, runs nothing)
   reuse_prepare
@@ -1092,6 +1100,10 @@ printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
 if [ "$POOL" != 0 ]; then
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
+fi
+# S5: a bootstrap baseline stays recorded for DIR (a later batch or --pool-only does not hide it, like a CI skip)
+if [ "$BOOT_USED" = 0 ] && [ "$BASE_STATE" = noqual ] && [ -f "$OD/gate.json" ] && node -e 'try{process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).bootstrap_baseline===true?0:1)}catch(x){process.exit(1)}' -- "$OD/gate.json"; then
+  BASE_STATE=none; BOOT_USED=1
 fi
 # the document is built before gate.json is truncated: jdoc reads the earlier gate.json (a CI skip of an earlier batch stays recorded)
 GJ_DOC="$(jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES")" || exit 3

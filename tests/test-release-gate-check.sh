@@ -111,6 +111,31 @@ chk "$W/a"
 assert_rc "AC3 REV defaults to HEAD -> exit 0" 0
 assert_contains "AC3 the default-REV run prints the pass line" "$OUT" "release gate: pass (commit $CA12"
 
+echo "v0.36.0 S5 --check accepts a committed bootstrap gate (a model with no earlier gate); a gate without the flag still fails"
+new_repo bt "E1 E2 E3"
+gcommit "$W/bt" "c1" README.md "# c1"
+mkgate "$W/bt" gate-old m2
+gadd "$W/bt" evals/results/gate-old "an earlier gate for another model"
+git -C "$W/bt" tag v0.32.0
+gcommit "$W/bt" "c2" README.md "# c2"
+mkdir -p "$W/bt/evals/results/gate-boot"; printf '{"bootstrap_baseline":true}\n' > "$W/bt/evals/results/gate-boot/gate.json"
+mkgate "$W/bt" gate-boot m1
+assert_eq "S5 fixture: the pooled gate.json keeps bootstrap_baseline true" "true" "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).bootstrap_baseline)' "$W/bt/evals/results/gate-boot/gate.json")"
+gadd "$W/bt" evals/results/gate-boot "bootstrap gate for m1"
+chk "$W/bt"
+assert_rc "S5 --check on a committed bootstrap gate (no qualifying earlier gate for m1) -> exit 0" 0
+new_repo bn "E1 E2 E3"
+gcommit "$W/bn" "c1" README.md "# c1"
+mkgate "$W/bn" gate-old m2
+gadd "$W/bn" evals/results/gate-old "an earlier gate for another model"
+git -C "$W/bn" tag v0.32.0
+gcommit "$W/bn" "c2" README.md "# c2"
+mkgate "$W/bn" gate-plain m1
+gadd "$W/bn" evals/results/gate-plain "gate for m1 without the flag"
+chk "$W/bn"
+assert_rc "S5 control: the same layout without bootstrap_baseline -> exit 1 (no qualifying previous release gate)" 1
+assert_contains "S5 control: the reason is the missing baseline" "$OUT" "no qualifying previous release gate"
+
 echo "AC3 reads only the committed tree"
 printf 'garbage\n' > "$W/a/evals/results/gate-a/behaviour-m1.json"
 printf '{"verdict":"fail"}\n' > "$W/a/evals/results/gate-a/gate.json"
