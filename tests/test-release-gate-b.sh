@@ -158,6 +158,9 @@ assert_contains "D3 the job of the red check run is read (REST actions/jobs/<che
 assert_eq "D3 the gate ran both runners" "1|1" "$(ncalls run-evals.sh)|$(ncalls run-outcome.sh)"
 assert_eq "G2 ci_check is recorded with skipped false" "false" "$(gj "$GJ" j.ci_check.skipped)"
 assert_eq "G2 ci_check.checks names the check run that was red only in the gate" "1" "$(gj "$GJ" 'j.ci_check.checks.filter(c=>c.name==="test (ubuntu-latest)").length')"
+# v0.36.0 C4: gate.json names the failed step of a check run that counts as green only because that step is the gate's own
+assert_eq "C4 the excused check run lists its failed step names (the Release gate step)" "Release gate (a PR that changes VERSION needs a committed passing gate)" "$(gj "$GJ" 'j.ci_check.checks.find(c=>c.name==="test (ubuntu-latest)").failed_steps.join("|")')"
+assert_eq "C4 a check run that was green has no failed_steps" "undefined" "$(gj "$GJ" 'typeof j.ci_check.checks.find(c=>c.name==="test (windows-latest)").failed_steps')"
 
 # rc_short NAME RC: assert_rc, but a failure shows only the first lines of the output (a gate that ran prints its tables)
 rc_short() { local full="$OUT"; OUT="$(printf '%s\n' "$OUT" | head -n 3 | cut -c1-200)"; assert_rc "$1" "$2"; OUT="$full"; }
