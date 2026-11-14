@@ -105,6 +105,11 @@ ro --cmd "bash $SA/authok.sh" --tasks t-add
 assert_rc "C1 success result after a tool result with 401 Unauthorized -> exit 0" 0
 assert_eq "C1 success result after a tool result with 401 Unauthorized: JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
 
+echo "v0.36.0 C1 follow-up: 'not logged in' in the assistant's reply is not an auth marker (found in E13.with.1.log of the v0.35.0 gate)"
+ro --cmd "bash $SA/authtext.sh" --tasks t-add
+assert_rc "C1 follow-up: assistant text with 'not logged in' and a success result -> exit 0" 0
+assert_eq "C1 follow-up: JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+
 echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
 assert_rc "N4 --arm both with the solving stub -> exit 0" 0
