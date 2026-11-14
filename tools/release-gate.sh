@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch]   (env PB_GATE_NOW: the clock of the reuse age)
+#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -119,6 +119,11 @@
 # local path is committed.
 # Hooks (v0.33.0): for --harness claude and --cmd the behaviour runner also gets --hooks, so the with arm measures the default install
 # (the guard and learnings hooks); codex and opencode get no --hooks (run-evals.sh refuses it for them).
+# Bootstrap baseline (v0.36.0, real run only): a model (or harness) that has no qualifying earlier gate stops the gate with exit 3 ("no
+# qualifying previous release gate"). --bootstrap-baseline goes on instead: rule (f) then compares with nothing (gate.json "baseline" is null) and
+# gate.json records "bootstrap_baseline": true. The flag stays recorded for DIR (a later --add-batch or --pool-only does not hide it) and
+# --check accepts a committed gate that carries it. Every other rule still applies. It opens no path for a model that already has a gate: its
+# baseline is found as before. Not with --dry-run or --check (exit 2). The gate of the model that releases still needs its own earlier gate.
 # Real runs spend money: run it on purpose, on the release commit, after the tests pass.
 # Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 (a
 #       confirmation runner's too) | 3 environment (git, node), a runner's 3 (a confirmation runner's too) or a baseline that cannot
@@ -609,6 +614,8 @@ EOT
         DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
         SHA="$c"; LABEL="$h"; MODEL="$m"
         find_baseline "$c" "$h" "$m" || die 3 "cannot read the baseline gate from git"
+        # S5 (v0.36.0): a committed gate that says bootstrap_baseline true started this model's baseline: rule (f) had nothing to compare with
+        if [ "$BASE_STATE" = noqual ] && node -e 'try{process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).bootstrap_baseline===true?0:1)}catch(x){process.exit(1)}' -- "$CT/x/$d/gate.json"; then BASE_STATE=none; BOOT_USED=1; else BOOT_USED=0; fi
         VR="$(jdoc "$(printf '%s\n' "${FILES[@]}")" "" "$DRC" "$DOUT" "" "" "$BASE_FILES" | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(j.verdict);console.log(j.min_graded);j.verdict_reasons.forEach(r=>console.log(r))')" || die 3 "node failed while computing the verdict"
         VR1="${VR%%$'\n'*}"; MING=""
         case "$VR" in *$'\n'*) MING="${VR#*$'\n'}"; MING="${MING%%$'\n'*}" ;; esac
