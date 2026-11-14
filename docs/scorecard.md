@@ -50,6 +50,31 @@ Quy tắc cho mọi agent:
 
 Khi đóng một release: thêm một dòng, thêm dòng giải thích ngắn nếu một thang đổi điểm, cập nhật trạng thái hàng đợi bên dưới và ghi chi phí gate.
 
+## DORA theo release (F1) [ĐO từ git tag, 2026-11-14]
+
+Nguồn: `git tag`, `git log` trên `main`. Ngày là ngày commit được tag (ngày merge), không phải ngày đề ở đầu mục CHANGELOG (ví dụ v0.35.0 ghi 2026-11-09 trong CHANGELOG, tag ở 2026-11-12). Cả 11 tag v0.26.0 đến v0.35.0 là tag nhẹ (`git cat-file -t` ra `commit`), chưa tag nào được ký.
+
+| Release | Ngày tag (UTC+7) | Ngày kể từ release trước | Từ commit đầu đến tag (giờ) | Số commit (không tính merge) |
+|---|---|---|---|---|
+| v0.27.0 | 2026-10-26 | 0.1 | 6.7 | 34 |
+| v0.28.0 | 2026-10-26 | 0.3 | 6.1 | 42 |
+| v0.28.1 | 2026-10-26 | 0.2 | 4.3 | 10 |
+| v0.28.2 | 2026-10-27 | 0.5 | 12.0 | 13 |
+| v0.29.0 | 2026-10-27 | 0.4 | 17.4 | 78 |
+| v0.30.0 | 2026-10-29 | 1.6 | 38.4 | 23 |
+| v0.31.0 | 2026-10-29 | 0.6 | 13.9 | 21 |
+| v0.32.0 | 2026-10-30 | 0.9 | 21.7 | 30 |
+| v0.33.0 | 2026-11-02 | 2.5 | 47.1 | 47 |
+| v0.34.0 | 2026-11-09 | 7.3 | 171.5 | 54 |
+| v0.35.0 | 2026-11-12 | 2.8 | 65.8 | 36 |
+
+Cách đọc [SUY LUẬN]:
+- **Tần suất release:** 11 release trong 17 ngày, nhưng khoảng cách tăng từ dưới 1 ngày (v0.27 đến v0.32) lên 2.5, 7.3 và 2.8 ngày (v0.33 đến v0.35). Mỗi release sau v0.33 phải chờ gate trả phí.
+- **Lead time:** "từ commit đầu đến tag" là chu kỳ của cả release, không phải lead time của một thay đổi. Tăng từ 4 đến 17 giờ (v0.27 đến v0.29) lên 47 đến 172 giờ (v0.33 đến v0.35).
+- **Tỉ lệ release lỗi:** CHƯA ĐO. Repo chưa định nghĩa "release lỗi". Không có release nào bị rollback hay vá khẩn rõ ràng; v0.28.1 và v0.28.2 là thay đổi tính năng và sửa guard, không phải vá lỗi của v0.28.0 theo CHANGELOG. Khi gate thật hỏng và phải sửa trước khi ship thì CHANGELOG có ghi: v0.33.0 (một lần), v0.34.0 (hai lần). Đó là lỗi bắt được trước khi ship, không phải lỗi đến tay người dùng.
+- **Thời gian phục hồi:** CHƯA ĐO, vì chưa có sự cố nào đến tay người dùng được ghi lại.
+- Định nghĩa đề xuất [SUY LUẬN, chờ người duy trì chốt]: "release lỗi" là release phải có bản vá hoặc rollback sau khi tag; "thời gian phục hồi" là từ tag lỗi đến tag vá.
+
 ## Hàng đợi việc nhắm 4/5
 
 Mỗi việc ghi thang tác động, bằng chứng cần có và release dự kiến. Kiểm việc còn đúng trên code hiện tại trước khi mở lane (xem `L-0007` trong `.agents/LEARNINGS.md`). Chọn P0 trước.
@@ -66,7 +91,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 |---|---|---|---|---|
 | A1 | A | Đo phần cắt chữ v0.35.0 bằng `--variant` trên E21, E16, E29 (k >= 5). Nếu rule f cờ, revert commit cắt riêng | Kết quả eval với n; không check nào tụt có ý nghĩa | v0.36 |
 | C1 | C | Runner phân biệt ERROR với FAIL; bộ phân loại đọc cả báo cáo cuối; một lượt bị gắn nhầm "auth or harness error" dù transcript bình thường (E13 ở gate v0.35.0) phải được xử lý | Test RED rồi GREEN; phân loại lại đúng một lần chạy cũ | v0.36 |
-| C3 | C | Điều tra `baseline iteration 2` exit 1 mà summary báo Errors = 0 | Nguyên nhân gốc và test | v0.36 |
+| C3 | C | Điều tra `baseline iteration 2` exit 1 mà summary báo Errors = 0 | Nguyên nhân gốc: **xong, không phải lỗi** (exit 1 là một run graded FAIL; xem `docs/v0.36-spec.md`, S3) | v0.36 |
 | E2 | E | E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 |
 | B3 | B | Tag release có chữ ký (v0.33 đến v0.35 là tag nhẹ). Việc của người duy trì: đặt `user.signingkey`, `tools/release.sh` sẽ ký | `git tag -v` thành công | v0.36 |
 | B4 | B | Sửa header "opt-in" ở `scripts/guard-irreversible.sh:2` (hooks bật mặc định từ v0.33.0) | Test ghim | v0.36 |
