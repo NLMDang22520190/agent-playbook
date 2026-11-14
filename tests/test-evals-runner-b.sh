@@ -47,11 +47,12 @@ assert_rc "F4 retry then a 'partial' result: exit 4 (auth marker counts)" 4
 # ---- v0.36.0 C1: a finished run is not an auth error because its tool output or reply mentions one ----
 # Found by the v0.35.0 gate: an E13 with-arm run (an endpoint task) finished normally, yet its transcript held "401 Unauthorized"
 # in a tool result and the run was marked ERROR ("auth or harness error in the transcript"). A run that ends in a success result
-# was not stopped by auth, so the scan must not fire; a run without one still counts the marker (AC401 and AC3.4 above).
-echo "v0.36.0 C1 a success result hides auth words that the agent read or wrote"
+# was not stopped by auth, so a tool_result line must not fire the scan. Assistant text still counts (test-evals-runner.sh AC2.1 r7), and a run
+# without a success result still counts every marker (AC401 and AC3.4 above).
+echo "v0.36.0 C1 a success result hides auth words that a tool printed"
 TR401='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"curl -i /orders -> HTTP/1.1 401 Unauthorized (expected: no token)"}]}}'
 AS401='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The endpoint returns status 401 Unauthorized without a token; authentication failed as designed."}]}}'
-run_e3 c1a "$INIT" "$TR401" "$AS401" "${RES_PRE}\"$RES_OKTXT\"}"
+run_e3 c1a "$INIT" "$TR401" "${RES_PRE}\"$RES_OKTXT\"}"
 assert_eq "C1 success result after a tool result with 401 Unauthorized: no ERROR line" "0" "$(count_err)"
 assert_rc "C1 success result after a tool result with 401 Unauthorized: exit 0" 0
 assert_eq "C1 success result after a tool result with 401 Unauthorized: still graded (PASS)" "PASS" "$(e3_state)"

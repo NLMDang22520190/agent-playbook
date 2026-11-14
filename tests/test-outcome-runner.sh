@@ -100,6 +100,11 @@ assert_rc "AC4 auth marker -> exit 4" 4
 assert_eq "AC4 auth marker: JSON status error" '"error"' "$(rfield t-add.with.1 status)"
 assert_eq "AC4 auth marker: no hidden test ran" "" "$(leftovers "$GR")"
 
+echo "v0.36.0 C1 a success result hides auth words that the agent read (found by the v0.35.0 gate, E13)"
+ro --cmd "bash $SA/authok.sh" --tasks t-add
+assert_rc "C1 success result after a tool result with 401 Unauthorized -> exit 0" 0
+assert_eq "C1 success result after a tool result with 401 Unauthorized: JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+
 echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
 assert_rc "N4 --arm both with the solving stub -> exit 0" 0
