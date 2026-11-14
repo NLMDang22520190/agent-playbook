@@ -200,4 +200,8 @@ else
   t_skip 1 "AC-A18 shellcheck not installed"
 fi
 
+echo "v0.36.0 B4 the header does not call the guard opt-in (install.sh installs the hooks by default since v0.33.0)"
+if sed -n '1,3p' "$PB_ROOT/scripts/guard-irreversible.sh" | grep -qi 'opt-in'; then t_bad "B4 scripts/guard-irreversible.sh header (lines 1-3) says opt-in" "hooks are installed by default since v0.33.0; opt out with --no-hooks"; else t_ok "B4 the header does not say opt-in"; fi
+if sed -n '1,3p' "$PB_ROOT/scripts/guard-irreversible.sh" | grep -qiE 'default|--no-hooks'; then t_ok "B4 the header says the hooks are the default install and how to opt out"; else t_bad "B4 the header says nothing about the default install or --no-hooks"; fi
+
 t_summary
