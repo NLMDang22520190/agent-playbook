@@ -50,6 +50,24 @@ assert_eq "R1-3 no runner was started (zero non-preflight calls; nothing was spe
 assert_eq "R1-3 no results file of a runner exists" "0" "$(ls "$ODN" 2>/dev/null | grep -c '^behaviour-\|^outcome-')"
 assert_eq "R1-3 no worktree entry is left" "1" "$(git -C "$R5" worktree list | wc -l | tr -d ' ')"
 rcase r13-noqual-cmd ""
+# v0.36.0 S5 (P0-2): --bootstrap-baseline lets a model with no qualifying gate start its own baseline (rule f has nothing to compare with)
+echo "v0.36.0 S5 --bootstrap-baseline: state noqual no longer stops the gate, the flag is recorded, and without it nothing changes"
+rcase s5-boot "" --bootstrap-baseline
+assert_rc "S5 noqual + --bootstrap-baseline: the gate runs and passes, exit 0" 0
+assert_eq "S5 the runners were started (both)" "1|1" "$(ncalls run-evals.sh)|$(ncalls run-outcome.sh)"
+assert_eq "S5 gate.json bootstrap_baseline is true" "true" "$(gj "$GJ" j.bootstrap_baseline)"
+assert_eq "S5 gate.json baseline is null (nothing was compared)" "null" "$(gj "$GJ" 'JSON.stringify(j.baseline)')"
+assert_eq "S5 gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
+ge "" --harness claude --model m1 --pool-only --out-dir evals/results/s5-boot
+assert_rc "S5 --pool-only on that dir keeps the baseline state: exit 0" 0
+assert_eq "S5 --pool-only keeps bootstrap_baseline true (sticky, like a CI skip)" "true" "$(gj "$GJ" j.bootstrap_baseline)"
+rcase s5-noflag ""
+assert_rc "S5 the same repo without the flag: still exit 3 (noqual)" 3
+assert_contains "S5 without the flag the message names the flag" "$OUT" "--bootstrap-baseline"
+ge "" --harness claude --model m1 --dry-run --bootstrap-baseline
+assert_rc "S5 --dry-run with the flag: exit 2 (it starts nothing)" 2
+ge "" --check HEAD --bootstrap-baseline
+assert_rc "S5 --check with the flag: exit 2" 2
 GR=""
 
 echo "AC14 the gate scope: GATE_SCENARIOS is a top-level line of the gate (KEEP and INCONCLUSIVE scenarios of docs/delta-audit.md plus the gate: safety rows E8 and E33, v0.33.0 AC3)"
@@ -158,6 +176,9 @@ assert_contains "D3 the job of the red check run is read (REST actions/jobs/<che
 assert_eq "D3 the gate ran both runners" "1|1" "$(ncalls run-evals.sh)|$(ncalls run-outcome.sh)"
 assert_eq "G2 ci_check is recorded with skipped false" "false" "$(gj "$GJ" j.ci_check.skipped)"
 assert_eq "G2 ci_check.checks names the check run that was red only in the gate" "1" "$(gj "$GJ" 'j.ci_check.checks.filter(c=>c.name==="test (ubuntu-latest)").length')"
+# v0.36.0 C4: gate.json names the failed step of a check run that counts as green only because that step is the gate's own
+assert_eq "C4 the excused check run lists its failed step names (the Release gate step)" "Release gate (a PR that changes VERSION needs a committed passing gate)" "$(gj "$GJ" 'j.ci_check.checks.find(c=>c.name==="test (ubuntu-latest)").failed_steps.join("|")')"
+assert_eq "C4 a check run that was green has no failed_steps" "undefined" "$(gj "$GJ" 'typeof j.ci_check.checks.find(c=>c.name==="test (windows-latest)").failed_steps')"
 
 # rc_short NAME RC: assert_rc, but a failure shows only the first lines of the output (a gate that ran prints its tables)
 rc_short() { local full="$OUT"; OUT="$(printf '%s\n' "$OUT" | head -n 3 | cut -c1-200)"; assert_rc "$1" "$2"; OUT="$full"; }

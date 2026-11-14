@@ -453,8 +453,9 @@ load_transcript() {
 $(node "$EVALS/transcript.js" "$LOG" 2>/dev/null)
 EOF
 }
-# auth_lines -> the log lines to search for auth errors (an api_retry the run recovered from is not one)
-auth_lines() { if [ "$T_result_ok" = 1 ]; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
+# auth_lines -> the log lines to search for auth errors (an api_retry the run recovered from is not one; nor, v0.36.0, a tool_result line of a
+# run that finished: see run-evals.sh)
+auth_lines() { if [ "$T_result_ok" = 1 ]; then grep -vE '"subtype":"api_retry"|^\{"type":"user"' "$LOG"; else cat "$LOG"; fi; }
 # unlink_on_path ROOT REL -> removes every symbolic link among ROOT/REL and its parent dirs below ROOT, so a copy to
 # ROOT/REL cannot be redirected outside ROOT
 unlink_on_path() {

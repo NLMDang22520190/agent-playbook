@@ -2581,13 +2581,13 @@ v35_chk "v35 AC13 Proof: reading the source file is not an observation" "$V35OBS
 v35_chk "v35 AC13 Proof: if it cannot be observed, a Not checked: line is written" "$V35OBS" '(cannot|can.t|could not|unable)[^.]{0,120}Not checked:'
 v35_chk "v35 AC13 Proof: the Not checked: line goes in the reply itself" "$V35OBS" 'Not checked:[^.]{0,80}(your|the) (reply|answer)|(reply|answer)[^.]{0,80}Not checked:'
 
-echo "v0.35.0 left the graders as v0.34.0 shipped them: evals/run-evals.sh, evals/facts.js, evals/scenarios.md equal the v0.34.0 merge commit on main (db31166)"
+echo "v0.35.0 left the graders as v0.34.0 shipped them: evals/facts.js, evals/scenarios.md equal the v0.34.0 merge commit on main (db31166); evals/run-evals.sh left this pin in v0.36.0 (C1: the auth scan skips tool_result lines of a finished run; no grader or scenario changed)"
 if ! git -C "$PB_ROOT" cat-file -e db31166^{commit} 2>/dev/null; then
   t_skip 1 "v35 AC12/AC13 graders unchanged: commit db31166 (the v0.34.0 merge commit on main) is not in this clone"
-elif git -C "$PB_ROOT" diff --quiet db31166 -- evals/run-evals.sh evals/facts.js evals/scenarios.md; then
-  t_ok "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to db31166 (v0.34.0)"
+elif git -C "$PB_ROOT" diff --quiet db31166 -- evals/facts.js evals/scenarios.md; then
+  t_ok "v35 AC12/AC13 graders unchanged: facts.js, scenarios.md identical to db31166 (v0.34.0)"
 else
-  t_bad "v35 AC12/AC13 graders unchanged: run-evals.sh, facts.js, scenarios.md identical to db31166 (v0.34.0)" "$(git -C "$PB_ROOT" diff --stat db31166 -- evals/run-evals.sh evals/facts.js evals/scenarios.md 2>&1 | tail -n 3)"
+  t_bad "v35 AC12/AC13 graders unchanged: facts.js, scenarios.md identical to db31166 (v0.34.0)" "$(git -C "$PB_ROOT" diff --stat db31166 -- evals/facts.js evals/scenarios.md 2>&1 | tail -n 3)"
 fi
 
 # ---- v0.35.0 slice E (S2, AC8 / AC9 / AC10, spec R1-1, R1-5, R2-1..R2-3, D5): the cut of the two always-loaded texts ----

@@ -581,9 +581,10 @@ said()          { grep -qiw "$1" "$LOG"; }
 result_text()   { [ -f "$LOG.result" ] || return 3; cat "$LOG.result"; }
 # result_ok -> 0 when the last stream-json result line is not an error (is_error false, or subtype success)
 result_ok()     { [ "$T_result_ok" = 1 ]; }
-# auth_lines -> the log lines to search for auth errors: a retry the run recovered from (api_retry lines
-# before a successful result) is not a harness failure
-auth_lines()    { if result_ok; then grep -v '"subtype":"api_retry"' "$LOG"; else cat "$LOG"; fi; }
+# auth_lines -> the log lines to search for auth errors: a retry the run recovered from (api_retry lines before a successful result) is not a
+# harness failure, and (v0.36.0) neither is a tool result of a run that finished: a tool_result line is data the agent's tool printed (an
+# endpoint task shows "401 Unauthorized"), not a harness signal. Assistant text is still searched (tests/test-evals-runner.sh AC2.1 r7).
+auth_lines()    { if result_ok; then grep -vE '"subtype":"api_retry"|^\{"type":"user"' "$LOG"; else cat "$LOG"; fi; }
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
 e19_order()     { case "$T_tdd_order" in ok) return 0 ;; bad) return 1 ;; *) return 3 ;; esac; }

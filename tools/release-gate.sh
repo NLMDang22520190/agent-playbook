@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch]   (env PB_GATE_NOW: the clock of the reuse age)
+#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -28,7 +28,7 @@
 # `gh api repos/OWNER/REPO/actions/jobs/ID` and every failed step must start with "Release gate". Anything else red, a pending check run
 # (queued, in progress), or no check run at all stops the gate with exit 2 naming the check runs, with no runner and nothing created.
 # gh missing, an API error or an unknown repository stops it with exit 3. --skip-ci-check skips the read (no gh needed): the run goes
-# on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion}]} (null for
+# on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion, failed_steps (v0.36.0, only a check run excused as red only in the Release gate step: its failed step names)}]} (null for
 # --pool-only). Once a batch of DIR skipped the check, gate.json keeps skipped: true (a later --add-batch run or --pool-only does not hide it).
 # --dry-run, --pool-only and --check never read the CI.
 # Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
@@ -119,6 +119,11 @@
 # local path is committed.
 # Hooks (v0.33.0): for --harness claude and --cmd the behaviour runner also gets --hooks, so the with arm measures the default install
 # (the guard and learnings hooks); codex and opencode get no --hooks (run-evals.sh refuses it for them).
+# Bootstrap baseline (v0.36.0, real run only): a model (or harness) that has no qualifying earlier gate stops the gate with exit 3 ("no
+# qualifying previous release gate"). --bootstrap-baseline goes on instead: rule (f) then compares with nothing (gate.json "baseline" is null) and
+# gate.json records "bootstrap_baseline": true. The flag stays recorded for DIR (a later --add-batch or --pool-only does not hide it) and
+# --check accepts a committed gate that carries it. Every other rule still applies. It opens no path for a model that already has a gate: its
+# baseline is found as before. Not with --dry-run or --check (exit 2). The gate of the model that releases still needs its own earlier gate.
 # Real runs spend money: run it on purpose, on the release commit, after the tests pass.
 # Exit: 0 verdict pass | 1 verdict fail | 2 usage, unknown scenario or task, a dirty tree, nothing to pool, or a runner's 2 (a
 #       confirmation runner's too) | 3 environment (git, node), a runner's 3 (a confirmation runner's too) or a baseline that cannot
@@ -138,7 +143,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; CI_JSON=""
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -149,6 +154,7 @@ while [ $# -gt 0 ]; do
     --check) CHECK=1 ;;
     --skip-ci-check) SKIPCI=1 ;;
     --add-batch) ADDB=1 ;;
+    --bootstrap-baseline) BOOT=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
@@ -164,6 +170,8 @@ done
 [ "${#POS[@]}" -eq 0 ] || [ "$CHECK" = 1 ] || die 2 "unknown option: ${POS[0]} (see --help)"
 [ "${#POS[@]}" -le 1 ] || die 2 "--check takes one REV, got: ${POS[*]}"
 REV="${POS[0]:-}"
+[ "$BOOT" = 0 ] || [ "$CHECK" = 0 ] || die 2 "--bootstrap-baseline starts a baseline in a real run; --check only reads (a committed bootstrap gate is recognised by its gate.json)"
+[ "$BOOT" = 0 ] || [ "$DRY" = 0 ] || die 2 "--bootstrap-baseline needs a real run (--dry-run starts nothing)"
 
 if [ "$CHECK" = 0 ]; then
 if [ -n "$HARNESS" ] && [ -n "$CMD" ]; then die 2 "use either --harness or --cmd, not both"; fi
@@ -252,7 +260,7 @@ ${7:-}
 EOJ
   [ "${#bf[@]}" -eq 0 ] || bf=(--base-- "${bf[@]}")
   PG_MODE="${JMODE:-}" PG_SAFE="$SAFETY_CHECKS" PG_BS="${BASE_STATE:-none}" PG_BT="${BASE_TAG:-}" PG_BC="${BASE_COMMIT:-}" PG_BD="${BASE_DIR:-}" \
-  PG_BW="${BASE_WHY:-}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
+  PG_BW="${BASE_WHY:-}" PG_BOOT="${BOOT_USED:-0}" PG_CF="${CONF_FILE:-}" PG_FL="${FLAGS_FILE:-}" \
   PG_SHA="$SHA" PG_VER="$VER" PG_H="$LABEL" PG_M="$MODEL" PG_K="$K" PG_S="$SCEN" PG_T="$TASKS" PG_OD="$OD" PG_TREE="$TREE" \
   PG_CI="${CI_JSON:-}" PG_FFL="${FF_LABEL:-}" PG_FFI="${FF_ITEM:-}" PG_FFK="${FF_KEY:-}" PG_DRY="$DRY" PG_POOL="$POOL" PG_B="$B_SHOW" PG_O="$O_SHOW" PG_BWITH="${BW_SHOW:-}" PG_OWITH="${OW_SHOW:-}" PG_REUSE="${REUSE_JSON:-}" PG_ROOT="$ROOT" PG_SKIPPED="$2" PG_DRC="$3" PG_DOUT="$4" \
   PG_BRC="$5" PG_ORC="$6" PG_AUTO="$GATE_SCENARIOS" PG_DT="$DEFAULT_TASKS" node -e '
@@ -456,7 +464,7 @@ process.stdout.write(JSON.stringify({
   scenarios: e.PG_S.split(","), tasks: e.PG_T.split(","), out_dir: e.PG_OD, tree: e.PG_TREE,
   dry_run: e.PG_DRY === "1", pool_only: e.PG_POOL === "1", commands: [e.PG_B, e.PG_O].concat(e.PG_BWITH ? [e.PG_BWITH] : [], e.PG_OWITH ? [e.PG_OWITH] : []),
   runner_rc: { behaviour: num(e.PG_BRC), outcome: num(e.PG_ORC) },
-  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check,
+  pooled, skipped, delta_rc: num(e.PG_DRC), ...V, confirm, ci_check, ...(e.PG_BOOT === "1" ? { bootstrap_baseline: true } : {}),
   reuse: e.PG_REUSE ? JSON.parse(e.PG_REUSE) : null,
   fail_fast: e.PG_FFL ? { label: e.PG_FFL, item: e.PG_FFI, key: e.PG_FFK } : null, rows }, null, 2) + "\n");
 ' -- ${pf[@]+"${pf[@]}"} ${bf[@]+"${bf[@]}"}
@@ -606,6 +614,8 @@ EOT
         DOUT="$(bash "$ROOT/tools/eval-delta.sh" "${FILES[@]}" 2>&1)"; DRC=$?
         SHA="$c"; LABEL="$h"; MODEL="$m"
         find_baseline "$c" "$h" "$m" || die 3 "cannot read the baseline gate from git"
+        # S5 (v0.36.0): a committed gate that says bootstrap_baseline true started this model's baseline: rule (f) had nothing to compare with
+        if [ "$BASE_STATE" = noqual ] && node -e 'try{process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).bootstrap_baseline===true?0:1)}catch(x){process.exit(1)}' -- "$CT/x/$d/gate.json"; then BASE_STATE=none; BOOT_USED=1; else BOOT_USED=0; fi
         VR="$(jdoc "$(printf '%s\n' "${FILES[@]}")" "" "$DRC" "$DOUT" "" "" "$BASE_FILES" | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(j.verdict);console.log(j.min_graded);j.verdict_reasons.forEach(r=>console.log(r))')" || die 3 "node failed while computing the verdict"
         VR1="${VR%%$'\n'*}"; MING=""
         case "$VR" in *$'\n'*) MING="${VR#*$'\n'}"; MING="${MING%%$'\n'*}" ;; esac
@@ -841,7 +851,7 @@ for (const n of names) {
 }
 # ci_check: G1 - read the check runs of HEAD through the REST API; sets CI_JSON (the ci_check object of gate.json) or stops the gate
 ci_check() {
-  local repo url runs rc=0 cls ans id nm cc job bad="" state=green tab=$'\t' lines=()
+  local repo url runs rc=0 cls ans id nm cc job bad="" state=green tab=$'\t' lines=() fsn fsmap=""
   if [ "$SKIPCI" = 1 ]; then CI_JSON="{\"skipped\":true,\"sha\":\"$SHA\",\"state\":\"skipped\",\"checks\":[]}"; return 0; fi
   repo="${PB_GATE_REPO:-}"
   if [ -z "$repo" ]; then
@@ -876,18 +886,21 @@ EOF
       R)
         if [ "$cc" = failure ]; then
           job="$(gh api "repos/$repo/actions/jobs/$id" </dev/null)" || die 3 "cannot read the job $id ($nm) in $repo (gh api failed); pass --skip-ci-check to go on without CI"
-          if printf '%s' "$job" | node -e '
+          # C4 (v0.36.0): the node call prints the failed step names (tab-joined) when every failed step is the gate's own; they go to gate.json
+          if fsn="$(printf '%s' "$job" | node -e '
 let j; try { j = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch (x) { process.exit(2); }
 const f = (Array.isArray(j.steps) ? j.steps : []).filter(s => s.conclusion === "failure");
-process.exit(f.length > 0 && f.every(s => /^Release gate/.test(String(s.name))) ? 0 : 1)'; then state=green-except-release-gate
+if (f.length > 0 && f.every(s => /^Release gate/.test(String(s.name)))) { process.stdout.write(f.map(s => String(s.name).replace(/[\t\n]/g, " ")).join("\t")); process.exit(0); }
+process.exit(1)')"; then state=green-except-release-gate; fsmap="$fsmap$id$tab$fsn"$'\n'
           else bad="$bad  - $nm ($cc)"$'\n'; fi
         else bad="$bad  - $nm ($cc)"$'\n'; fi ;;
     esac
   done
   [ -z "$bad" ] || die 2 "CI of $SHA is not green (a check run that failed only in its Release gate step counts as green):"$'\n'"${bad%$'\n'}"$'\n'"wait for CI, fix it, or pass --skip-ci-check"
-  CI_JSON="$(printf '%s\n' "${lines[@]}" | SHA="$SHA" ST="$state" node -e '
+  CI_JSON="$(printf '%s\n' "${lines[@]}" | SHA="$SHA" ST="$state" FSMAP="$fsmap" node -e '
 const L = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(l => l.split("\t"));
-process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
+const F = new Map(process.env.FSMAP.split("\n").filter(Boolean).map(l => { const q = l.split("\t"); return [q[0], q.slice(1)]; }));
+process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => F.has(p[1]) ? ({ name: p[2], conclusion: p[3], failed_steps: F.get(p[1]) }) : ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
 }
 
 if [ "$POOL" = 0 ]; then
@@ -905,7 +918,12 @@ if [ "$POOL" = 0 ]; then
   # the exit (R7-1): the verdict reads them after the runs
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
-  [ "$BASE_STATE" != noqual ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL"
+  if [ "$BASE_STATE" = noqual ]; then
+    # S5 (v0.36.0): a model that never had a gate has nothing to be compared with; --bootstrap-baseline runs rule f as "no baseline" and records it
+    [ "$BOOT" = 1 ] || die 3 "no qualifying previous release gate for harness $LABEL model $MODEL (to start a baseline for this model, run the gate again with --bootstrap-baseline: rule f then compares with nothing, and gate.json records bootstrap_baseline)"
+    BASE_STATE=none; BOOT_USED=1
+    printf 'note: --bootstrap-baseline: no qualifying previous gate for harness %s model %s; rule (f) has nothing to compare with (recorded in gate.json)\n' "$LABEL" "$MODEL" >&2
+  fi
   [ "$BASE_STATE" != broken ] || die 3 "$BASE_WHY"
   # T4: which items reuse the baseline's without rows (asks the runners for the current hashes, runs nothing)
   reuse_prepare
@@ -1089,6 +1107,10 @@ printf '*\n!*.json\n!*.md\n!.gitignore\n' > "$OD/.gitignore"
 if [ "$POOL" != 0 ]; then
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
   find_baseline "$SHA" "$LABEL" "$MODEL" || die 3 "cannot read the baseline gate from git"
+fi
+# S5: a bootstrap baseline stays recorded for DIR (a later batch or --pool-only does not hide it, like a CI skip)
+if [ "$BOOT_USED" = 0 ] && [ "$BASE_STATE" = noqual ] && [ -f "$OD/gate.json" ] && node -e 'try{process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).bootstrap_baseline===true?0:1)}catch(x){process.exit(1)}' -- "$OD/gate.json"; then
+  BASE_STATE=none; BOOT_USED=1
 fi
 # the document is built before gate.json is truncated: jdoc reads the earlier gate.json (a CI skip of an earlier batch stays recorded)
 GJ_DOC="$(jdoc "$POOLED" "$SKIPPED" "$DRC" "$DOUT" "$B_RC" "$O_RC" "$BASE_FILES")" || exit 3

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# guard-irreversible.sh: agent-playbook guard hook for irreversible actions (Claude Code hooks, opt-in).
+# guard-irreversible.sh: agent-playbook guard hook for irreversible actions (Claude Code hooks; installed by default since v0.33.0, opt out with install.sh --no-hooks).
 # Reads the hook JSON on stdin (https://code.claude.com/docs/en/hooks; the PowerShell tool: section "PowerShell", tool_name
 # PowerShell, the text in tool_input.command) and exits 0 or 2, nothing else.
 #   (no mode flag)    PreToolUse on Bash, PowerShell, Write and Edit

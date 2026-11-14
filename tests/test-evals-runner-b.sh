@@ -44,6 +44,23 @@ echo "review F4: an unknown non-error subtype is not success"
 run_e3 f4 "$INIT" "$RETRY" '{"type":"result","subtype":"partial","is_error":false,"result":"stopped early"}'
 assert_rc "F4 retry then a 'partial' result: exit 4 (auth marker counts)" 4
 
+# ---- v0.36.0 C1: a finished run is not an auth error because its tool output or reply mentions one ----
+# Found by the v0.35.0 gate: an E13 with-arm run (an endpoint task) finished normally, yet its transcript held "401 Unauthorized"
+# in a tool result and the run was marked ERROR ("auth or harness error in the transcript"). A run that ends in a success result
+# was not stopped by auth, so a tool_result line must not fire the scan. Assistant text still counts (test-evals-runner.sh AC2.1 r7), and a run
+# without a success result still counts every marker (AC401 and AC3.4 above).
+echo "v0.36.0 C1 a success result hides auth words that a tool printed"
+TR401='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"curl -i /orders -> HTTP/1.1 401 Unauthorized (expected: no token)"}]}}'
+AS401='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The endpoint returns status 401 Unauthorized without a token; authentication failed as designed."}]}}'
+run_e3 c1a "$INIT" "$TR401" "${RES_PRE}\"$RES_OKTXT\"}"
+assert_eq "C1 success result after a tool result with 401 Unauthorized: no ERROR line" "0" "$(count_err)"
+assert_rc "C1 success result after a tool result with 401 Unauthorized: exit 0" 0
+assert_eq "C1 success result after a tool result with 401 Unauthorized: still graded (PASS)" "PASS" "$(e3_state)"
+run_e3 c1b "$INIT" "$TR401" "$AS401" '{"type":"result","subtype":"error_max_turns","is_error":false,"result":"stopped"}'
+assert_rc "C1 the same words with an error_max_turns result: exit 4 (still an ERROR)" 4
+run_e3 c1c "$INIT" "$TR401" "$AS401"
+assert_rc "C1 the same words and no result at all: exit 4 (still an ERROR)" 4
+
 # ---- v0.18.0 AC2.1: nothing is written outside the scenario's workdir ----
 # Check name (the implementer must use this text): "nothing written outside the workdir"; the FAIL line names the new entries.
 echo "v0.18.0 AC2.1 nothing written outside the workdir"
