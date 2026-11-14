@@ -130,6 +130,7 @@ mk_stub cheat 'printf "exit 0\n" > tests/add.f2p.sh; printf "exit 0\n" > tests/a
 mk_stub exit7 'exit 7'
 mk_stub auth 'solve; echo "Error: Invalid API key. Please run /login"'
 mk_stub authok 'solve; init; printf "%s\n" "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"HTTP/1.1 401 Unauthorized (expected: no token)\"}]}}"; result 0.1'
+mk_stub authtext 'solve; init; printf "%s\n" "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Defaults I chose (not logged in decisions.md): newest first.\"}]}}"; result 0.1'
 mk_stub slow 'sleep 5; solve'
 mk_stub canary 'solve; cat "$TASKS/$id/hidden/tests/"*'
 mk_stub stray 'solve; echo x > "$(dirname "$wd")/stray-$l.txt"'
