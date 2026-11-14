@@ -92,7 +92,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 | A1 | A | Đo phần cắt chữ v0.35.0 bằng `--variant` trên E21, E16, E29 (k >= 5). Nếu rule f cờ, revert commit cắt riêng | Kết quả eval với n; không check nào tụt có ý nghĩa | v0.36 |
 | C1 | C | Runner phân biệt ERROR với FAIL; bộ phân loại đọc cả báo cáo cuối; một lượt bị gắn nhầm "auth or harness error" dù transcript bình thường (E13 ở gate v0.35.0) phải được xử lý | Test RED rồi GREEN; phân loại lại đúng một lần chạy cũ | v0.36 |
 | C3 | C | Điều tra `baseline iteration 2` exit 1 mà summary báo Errors = 0 | Nguyên nhân gốc: **xong, không phải lỗi** (exit 1 là một run graded FAIL; xem `docs/v0.36-spec.md`, S3) | v0.36 |
-| E2 | E | E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 |
+| E2 | E | (điều tra xong ở v0.36, xem `docs/v0.36-spec.md` S9; sửa ở v0.37) E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 |
 | B3 | B | Tag release có chữ ký (v0.33 đến v0.35 là tag nhẹ). Việc của người duy trì: đặt `user.signingkey`, `tools/release.sh` sẽ ký | `git tag -v` thành công | v0.36 |
 | B4 | B | Sửa header "opt-in" ở `scripts/guard-irreversible.sh:2` (hooks bật mặc định từ v0.33.0) | Test ghim | v0.36 |
 | C4 | C | Ghi bước CI nào hỏng vào `gate.json` khi `ci_check` là green-except-release-gate | `gate.json` có trường, test | v0.36 |
