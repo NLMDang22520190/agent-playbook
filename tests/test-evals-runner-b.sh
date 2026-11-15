@@ -81,7 +81,7 @@ assert_rc "C1 follow-up: a strong marker (Invalid API key) in assistant text sti
 # Found in a second run (E21.with.3): the phrase sat on the assistant line AND on the final result line (subtype success, is_error false),
 # whose "result" field repeats the whole final reply. A result that says is_error false is the harness telling the run worked.
 echo "v0.36.0 C1 second follow-up: weak auth phrases in the reply repeated by a success result line do not make a finished run an ERROR"
-NLI_TXT='**Defaults chosen (not logged in `decisions.md`)**: sort newest first; page size 20.'
+NLI_TXT='**Defaults chosen (not logged in `decisions.md`)**: sort newest first; page size 20. Added the guard; marked untested.'
 AS_NLI2="{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"$NLI_TXT\"}]}}"
 run_e3 c1h "$INIT" "$AS_NLI2" "${RES_PRE}\"$NLI_TXT\"}"
 assert_eq "C1 2nd: the phrase on the assistant line and on the success result line: no ERROR line" "0" "$(count_err)"
