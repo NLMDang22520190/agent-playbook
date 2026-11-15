@@ -2551,8 +2551,9 @@ v35_chk "v35 AC12 Clarify: then ask about that step only (the whole task is not 
 V35OPEN='(leaves?|left) open|(does not|doesn.t|did not) (say|specify|state|fix)|unspecified|not specified'
 V35DEF="$(v35_sent "$V35CLR" "$V35OPEN")"
 v35_chk "v35 AC12 Clarify: every detail the request leaves open that you fill in yourself is a default" "$V35DEF" '(every|each|any) (detail|choice|value)[^.]{0,200}(is|counts as|are) (also )?a default'
-v35_chk "v35 AC12 Clarify: the examples of such defaults include a sort order" "$V35DEF" '(^|[^a-z])(sort|order)'
-v35_chk "v35 AC12 Clarify: the examples of such defaults include a page size or limit" "$V35DEF" 'page size|limit'
+# v0.36.0: the E13 grader's own words (sort order, page size or limit) came out of the always-loaded text: they matched the eval check word for
+# word, every session in every project paid for them, and the v0.35.0 gate showed no effect (decisions.md check 1/9, reply check 0/8)
+if printf '%s' "$V35DEF" | grep -qiE -- 'sort order|page size|(^|[^a-z])limit'; then t_bad "v36 Clarify: the rule on open details names no example taken from an eval check (sort order, page size, limit)" "found one in [$V35DEF]"; else t_ok "v36 Clarify: the rule on open details names no example taken from an eval check (sort order, page size, limit)"; fi
 v35_chk "v35 AC12 Clarify: such defaults are logged in .agents/handoff/decisions.md with how to undo" "$V35DEF" '_agents/handoff/decisions_md[^.]{0,120}undo|undo[^.]{0,120}_agents/handoff/decisions_md'
 v35_chk "v35 AC12 Clarify: such defaults are listed in the reply" "$V35DEF" '(list|name|state|repeat)[a-z]*[^.]{0,60}(your|the) (reply|answer)'
 
