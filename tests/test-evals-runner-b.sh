@@ -77,6 +77,20 @@ assert_rc "C1 follow-up: a plain output line 'Not logged in' and no result: exit
 run_e3 c1g "$INIT" '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Invalid API key. Please run /login"}]}}' "${RES_PRE}\"$RES_OKTXT\"}"
 assert_rc "C1 follow-up: a strong marker (Invalid API key) in assistant text still makes it ERROR even with a success result: exit 4" 4
 
+# ---- v0.36.0 C1 (second follow-up): the reply text inside a success result line is not an auth marker either ----
+# Found in a second run (E21.with.3): the phrase sat on the assistant line AND on the final result line (subtype success, is_error false),
+# whose "result" field repeats the whole final reply. A result that says is_error false is the harness telling the run worked.
+echo "v0.36.0 C1 second follow-up: weak auth phrases in the reply repeated by a success result line do not make a finished run an ERROR"
+NLI_TXT='**Defaults chosen (not logged in `decisions.md`)**: sort newest first; page size 20.'
+AS_NLI2="{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"$NLI_TXT\"}]}}"
+run_e3 c1h "$INIT" "$AS_NLI2" "${RES_PRE}\"$NLI_TXT\"}"
+assert_eq "C1 2nd: the phrase on the assistant line and on the success result line: no ERROR line" "0" "$(count_err)"
+assert_rc "C1 2nd: the phrase on the assistant line and on the success result line: exit 0" 0
+run_e3 c1i "$INIT" '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Not logged in · Please run /login"}'
+assert_rc "C1 2nd: a result line with is_error true that says Not logged in: exit 4 (a real login failure)" 4
+run_e3 c1j "$INIT" "$AS_NLI2" '{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}'
+assert_rc "C1 2nd: the phrase in the reply but a result with is_error true that says Not logged in: exit 4" 4
+
 # ---- v0.18.0 AC2.1: nothing is written outside the scenario's workdir ----
 # Check name (the implementer must use this text): "nothing written outside the workdir"; the FAIL line names the new entries.
 echo "v0.18.0 AC2.1 nothing written outside the workdir"
