@@ -587,10 +587,11 @@ result_ok()     { [ "$T_result_ok" = 1 ]; }
 auth_lines()    { if result_ok; then grep -vE '"subtype":"api_retry"|^\{"type":"user"' "$LOG"; else cat "$LOG"; fi; }
 # auth_marker -> 0 when the log shows an auth failure. Strong markers (an invalid key, authentication_failed, a 401 status) count on any line
 # auth_lines gives; the weak phrases (unauthorized, authentication failed, not logged in) are plain words that an agent writes in its own reply
-# ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines (v0.36.0).
+# ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines and outside a
+# result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3).
 auth_marker() {
   auth_lines | grep -qiE 'invalid x-api-key|invalid api key|authentication_failed|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori' && return 0
-  auth_lines | grep -vE '^\{"type":"(assistant|user)"' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
+  auth_lines | grep -vE '^\{"type":"(assistant|user)"|^\{"type":"result".*"is_error":false' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
 }
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
