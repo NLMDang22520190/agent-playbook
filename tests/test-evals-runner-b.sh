@@ -61,6 +61,22 @@ assert_rc "C1 the same words with an error_max_turns result: exit 4 (still an ER
 run_e3 c1c "$INIT" "$TR401" "$AS401"
 assert_rc "C1 the same words and no result at all: exit 4 (still an ERROR)" 4
 
+# ---- v0.36.0 C1 (follow-up): plain words in the agent's own reply are not an auth marker ----
+# Found by re-reading E13.with.1.log of the v0.35.0 gate: the run finished with a full reply, and the scan matched "not logged in" in the
+# assistant's final report ("Defaults I chose (not logged in decisions.md)"). Strong markers (invalid api key, authentication_failed, a 401
+# status) still count anywhere; the weak phrases (not logged in, unauthorized, authentication failed) count only outside assistant and user lines.
+echo "v0.36.0 C1 follow-up: weak auth phrases in assistant text do not make a finished run an ERROR"
+AS_NLI='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"**Defaults I chose** (not logged in decisions.md): sort newest first; page size 20. Unauthorized callers get 401 from the endpoint."}]}}'
+run_e3 c1d "$INIT" "$AS_NLI" "${RES_PRE}\"$RES_OKTXT\"}"
+assert_eq "C1 follow-up: assistant text with 'not logged in' and a success result: no ERROR line" "0" "$(count_err)"
+assert_rc "C1 follow-up: assistant text with 'not logged in' and a success result: exit 0" 0
+run_e3 c1e "$INIT" '{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}'
+assert_rc "C1 follow-up: a result line that says Not logged in (is_error true): exit 4 (a real login failure)" 4
+run_e3 c1f "$INIT" 'Not logged in · Please run /login'
+assert_rc "C1 follow-up: a plain output line 'Not logged in' and no result: exit 4" 4
+run_e3 c1g "$INIT" '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Invalid API key. Please run /login"}]}}' "${RES_PRE}\"$RES_OKTXT\"}"
+assert_rc "C1 follow-up: a strong marker (Invalid API key) in assistant text still makes it ERROR even with a success result: exit 4" 4
+
 # ---- v0.18.0 AC2.1: nothing is written outside the scenario's workdir ----
 # Check name (the implementer must use this text): "nothing written outside the workdir"; the FAIL line names the new entries.
 echo "v0.18.0 AC2.1 nothing written outside the workdir"

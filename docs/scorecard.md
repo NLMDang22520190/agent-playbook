@@ -89,7 +89,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 ### P1
 | ID | Thang | Việc | Bằng chứng | Release |
 |---|---|---|---|---|
-| A1 | A | Đo phần cắt chữ v0.35.0 bằng `--variant` trên E21, E16, E29 (k >= 5). Nếu rule f cờ, revert commit cắt riêng | Kết quả eval với n; không check nào tụt có ý nghĩa | v0.36 |
+| A1 | A | Đo phần cắt chữ v0.35.0 bằng `--variant` trên E21, E16, E29 (k >= 5). Nếu rule f cờ, revert commit cắt riêng | Kết quả eval với n; không check nào tụt có ý nghĩa. **Đã đo (xem `docs/v0.36-spec.md`, S10): E21 hồi quy rõ (3 check, 4/10 xuống 0/10), E29 giảm cùng chiều nhưng trong nhiễu, E16 nhiễu; chi phí with-arm giảm khoảng 36%. Chưa có câu nào bị mất để khôi phục; cách xử lý chờ quyết định của người duy trì.** | v0.36 |
 | C1 | C | Runner phân biệt ERROR với FAIL; bộ phân loại đọc cả báo cáo cuối; một lượt bị gắn nhầm "auth or harness error" dù transcript bình thường (E13 ở gate v0.35.0) phải được xử lý | Test RED rồi GREEN; phân loại lại đúng một lần chạy cũ | v0.36 |
 | C3 | C | Điều tra `baseline iteration 2` exit 1 mà summary báo Errors = 0 | Nguyên nhân gốc: **xong, không phải lỗi** (exit 1 là một run graded FAIL; xem `docs/v0.36-spec.md`, S3) | v0.36 |
 | E2 | E | (điều tra xong ở v0.36, xem `docs/v0.36-spec.md` S9; sửa ở v0.37) E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 |

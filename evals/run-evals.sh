@@ -585,6 +585,13 @@ result_ok()     { [ "$T_result_ok" = 1 ]; }
 # harness failure, and (v0.36.0) neither is a tool result of a run that finished: a tool_result line is data the agent's tool printed (an
 # endpoint task shows "401 Unauthorized"), not a harness signal. Assistant text is still searched (tests/test-evals-runner.sh AC2.1 r7).
 auth_lines()    { if result_ok; then grep -vE '"subtype":"api_retry"|^\{"type":"user"' "$LOG"; else cat "$LOG"; fi; }
+# auth_marker -> 0 when the log shows an auth failure. Strong markers (an invalid key, authentication_failed, a 401 status) count on any line
+# auth_lines gives; the weak phrases (unauthorized, authentication failed, not logged in) are plain words that an agent writes in its own reply
+# ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines (v0.36.0).
+auth_marker() {
+  auth_lines | grep -qiE 'invalid x-api-key|invalid api key|authentication_failed|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori' && return 0
+  auth_lines | grep -vE '^\{"type":"(assistant|user)"' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
+}
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
 e19_order()     { case "$T_tdd_order" in ok) return 0 ;; bad) return 1 ;; *) return 3 ;; esac; }
@@ -2657,7 +2664,7 @@ EOF
   herr=""
   if [ "$USE_TIMEOUT" = 1 ] && [ "$rc" -eq 124 ]; then herr="timed out after ${TIMEOUT}s"
   elif [ "$rc" -ne 0 ]; then herr="adapter exited $rc"
-  elif auth_lines | grep -qiE 'invalid x-api-key|invalid api key|unauthori[sz]ed|authentication failed|authentication_failed|not logged in|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori'; then
+  elif auth_marker; then
     herr="auth or harness error in the transcript"
   fi
   if [ -n "$herr" ]; then
