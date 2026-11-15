@@ -84,7 +84,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 |---|---|---|---|---|
 | P0-1 | C, D, E | Đưa 10 task held-out (pattern-27 đến pattern-36) vào `DEFAULT_TASKS` (`tools/release-gate.sh`, hiện chỉ pattern-15, 24, 26), chạy cả hai nhánh k >= 5 trên commit release | `DEFAULT_TASKS` có đủ id; `gate.json` ghi >= 13 task, gate pass | v0.37 (cần C1 và C3 xong ở v0.36) |
 | P0-2 | A, B, C | Gate pass đã commit trên model thứ hai (opus) cho cùng commit release. Hiện chưa có baseline opus nên gate dừng exit 3 ("no qualifying previous release gate") trước khi tốn tiền; cần cách lập baseline | Hai `gate.json` cho hai model, cả hai verdict pass, `--check` pass cho cả hai | v0.36: cơ chế lập baseline (không tốn tiền, test bằng `--dry-run`); v0.37: chạy thật |
-| P0-3 | A, B | Cắt chữ thật: `AGENTS.global.md` <= 450 từ, `SKILL.md` <= 2000 từ, hạ `evals/word-budgets` theo, gate vẫn pass rule f. Test ghim câu chữ nguyên văn nên đổi nó theo quy trình Full | `wc -w` và `evals/word-budgets`; gate pass | v0.37, sau khi A1 đo phần cắt của v0.35.0 |
+| P0-3 | A, B | (v0.36 đã revert phần cắt của v0.35.0 vì E21 hồi quy; làm lại ở v0.37 sao cho E21 giữ nguyên) Cắt chữ thật: `AGENTS.global.md` <= 450 từ, `SKILL.md` <= 2000 từ, hạ `evals/word-budgets` theo, gate vẫn pass rule f. Test ghim câu chữ nguyên văn nên đổi nó theo quy trình Full | `wc -w` và `evals/word-budgets`; gate pass | v0.37, sau khi A1 đo phần cắt của v0.35.0 |
 
 ### P1
 | ID | Thang | Việc | Bằng chứng | Release |
