@@ -49,6 +49,10 @@ main() {
   case "$logf" in */*) mkdir -p "${logf%/*}" 2>/dev/null || fail "cannot create the directory of the log $logf" ;; esac
   : >> "$logf" 2>/dev/null || fail "cannot write the log $logf"
   exec > >(tee -a "$logf") 2>&1
+  tpid=$!
+  # on every exit: close our stdout/stderr so tee sees EOF, then wait for it, so the last lines reach the log
+  # (the exit status is unchanged: the trap ends with `true`)
+  trap 'exec >&- 2>&-; [ -z "$tpid" ] || wait "$tpid" 2>/dev/null; true' EXIT
 
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing.
@@ -110,7 +114,16 @@ main() {
 
   # (the ship log itself, when it lies inside the repository, does not count as dirt)
   # a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
-  [ -z "$(git status --porcelain --untracked-files=all | grep -vF -- " $logf")" ] || fail "work tree is not clean (commit or stash first)"
+  # exempt only the log file itself: path relative to the repo root, and only while untracked ("?? <path>").
+  # -z gives unquoted NUL-separated entries (paths with spaces are not quoted).
+  logd="$(cd "${logf%/*}" 2>/dev/null && pwd -P)"; [ "$logf" != "${logf##*/}" ] || logd="$(pwd -P)"
+  top="$(git rev-parse --show-toplevel)"
+  if [ "$logd" = "$top" ]; then logrel="${logf##*/}"; else logrel="${logd#"$top"/}/${logf##*/}"; fi
+  dirty=""
+  while IFS= read -r -d '' ent; do
+    [ "$ent" = "?? $logrel" ] || dirty=1
+  done < <(git status --porcelain -z --untracked-files=all)
+  [ -z "$dirty" ] || fail "work tree is not clean (commit or stash first)"
   # merge from main: on a detached HEAD (left by install.sh update) gh merges on GitHub, then fails locally
   cur="$(git symbolic-ref -q --short HEAD || echo 'detached HEAD')"
   if [ "$cur" != main ]; then
