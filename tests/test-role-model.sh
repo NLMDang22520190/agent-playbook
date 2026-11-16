@@ -393,7 +393,8 @@ role check
 assert_eq "AC3.1 model_reviewer alone: one warning, not two (reviewer_light is not reported)" "1" "$(printf '%s\n' "$OUT" | grep -c 'warning')"
 
 echo "role-model.sh v0.22.3 AC3.2/AC3.3: instructions route the two roles"
-RMSKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+# v0.37 S3: the Starting roles section moved to references/full.md, so the pins read SKILL.md + full.md
+RMSKILL="$(mk_tmp)/skill-full.md"; { cat "$PB_ROOT/skills/playbook-tdd/SKILL.md"; printf "\n"; cat "$PB_ROOT/skills/playbook-tdd/references/full.md" 2>/dev/null; } > "$RMSKILL"
 RMSETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 rm_flat_has() { # NAME FILE PATTERN
   if tr '\n' ' ' < "$2" 2>/dev/null | tr -s ' ' | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in the flattened $2"; fi

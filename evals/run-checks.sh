@@ -196,7 +196,7 @@ grep -q '^### Lite workflow' "$T" && ok "playbook-tdd describes the Lite workflo
 grep -q 'Weight:' skills/playbook-tdd/templates/final-report.md && ok "final report records the weight" || bad "final-report.md lacks 'Weight:'"
 grep -q 'Weight:' skills/playbook-tdd/templates/spec.md && ok "spec records the weight" || bad "spec.md lacks 'Weight:'"
 # 2. one review per feature
-grep -q 'One reviewer per feature' "$T" && ok "review is batched per feature" || bad "$T lacks 'One reviewer per feature'"
+cat "$T" skills/playbook-tdd/references/full.md | grep -q 'One reviewer per feature' && ok "review is batched per feature" || bad "$T lacks 'One reviewer per feature'"
 # 5. exemptions spelled out
 grep -q '^### Exempt' "$T" && ok "playbook-tdd spells out the exemptions" || bad "$T lacks '### Exempt'"
 for w in docs-only config-only spike; do grep -qi "$w" "$T" && ok "exemption covers $w" || bad "$T exemptions do not cover $w"; done
