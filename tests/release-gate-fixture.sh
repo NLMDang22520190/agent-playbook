@@ -79,6 +79,7 @@ rgf_seal() {
 #   rgf_gh_job ID NAME CONCLUSION "NUMBER|STEP NAME|CONCLUSION"...   the Actions job ID (its steps), served at actions/jobs/ID
 #   rgf_gh_sample_red_gate_only   the captured shape: `test (ubuntu-latest)` failed only in its "Release gate" step, the rest green or skipped
 #   rgf_gh_fail checks|jobs|all   the call exits 1 with an HTTP error (an API error)
+#   rgf_gh_fail partial           the check-runs call prints page 1 (the served data) and then exits 1 (a read cut off after the first page)
 #   rgf_gh_clearlog       empty the call log (every rgf_gh_green does too)
 #   rgf_gh_calls          the call log, one line per call, then rgf_gh_ncalls for its length
 rgf_gh_install() {
@@ -152,6 +153,7 @@ case "$ep" in
     pages=( $(ls "$D"/data/check-runs-*.json 2>/dev/null | sort -t- -k3 -n) )
     [ "${#pages[@]}" -gt 0 ] || { echo "fake gh: no check-runs data" >&2; exit 66; }
     [ "$pag" = 1 ] || pages=( "${pages[0]}" )
+    if [ -e "$D/data/fail-partial" ]; then emit "${pages[0]}"; echo "gh: HTTP 502: bad gateway on page 2 (fake)" >&2; exit 1; fi
     emit "${pages[@]}" ;;
   repos/*/actions/jobs/*)
     [ ! -e "$D/data/fail-jobs" ] || { echo "gh: HTTP 502: bad gateway (fake)" >&2; exit 1; }

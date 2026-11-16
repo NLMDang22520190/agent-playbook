@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests for tools/release.sh v0.37 slice S9, AC11 (Q8b) and R5: after the gate check passes and before tests/run-all.sh, release.sh asks
 # GitHub (REST only: `gh api repos/OWNER/REPO/commits/<HEAD sha>/check-runs`; repo = PB_GATE_REPO or the origin URL, as release-gate.sh does)
-# whether CI is green on exactly HEAD (= origin/main). Green = at least one check run, none pending, every one concluded
-# success/skipped/neutral (strict: no "green except the Release gate step" rule). Green -> tests/run-all.sh is skipped with the line
+# whether CI is green on exactly HEAD (= origin/main). Green = none pending, every run concluded success/skipped/neutral, at least one
+# `success`, AND test (ubuntu-latest), test (macos-latest), test (windows-latest) present and `success` (the aggregators of
+# tools/ci-tree-tested.sh; shards may be skipped) (strict: no "green except the Release gate step" rule). Green -> tests/run-all.sh is skipped with the line
 # "tests/run-all.sh skipped: CI is green on <short sha> (use --local-suite to run it here)" and the README count check (it needs the
 # suite log) is skipped with a line saying CI verified it. --local-suite forces the old behaviour. R5: CI not green (pending, failing, no
 # check runs, gh missing, API error, unparsable JSON, repo unknown) -> the suite runs exactly as before and release.sh says why.
@@ -17,6 +18,12 @@ skipped_line() { printf 'tests/run-all.sh skipped: CI is green on %s (use --loca
 has_line() { printf '%s\n' "$2" | grep -Fxq -- "$1"; }
 # why_line OUT -> a line that names tests/run-all.sh and CI and does not claim a skip (the reason the suite runs)
 why_line() { printf '%s\n' "$1" | grep 'run-all' | grep 'CI' | grep -v 'skipped' | head -n 1; }
+r5_expect_suite() { # name -> after a release.sh run in the current fixture: suite once, no skip line, a reason line, a clean dry run
+  assert_rc "R5 $1: dry run still ends -> exit 0" 0
+  assert_eq "R5 $1: tests/run-all.sh was called once" "1" "$(suite_runs)"
+  assert_not_contains "R5 $1: no skip line" "$OUT" "tests/run-all.sh skipped"
+  if [ -n "$(why_line "$OUT")" ]; then t_ok "R5 $1: a line names tests/run-all.sh and CI as the reason"; else t_bad "R5 $1: a line names tests/run-all.sh and CI as the reason" "$OUT"; fi
+}
 # a gh that is not on PATH: a directory of links to the tools release.sh needs, without gh
 mk_nogh_path() {
   local d t p; d="$(mk_tmp)/bin"; mkdir -p "$d"
@@ -60,27 +67,80 @@ run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_contains "AC11 PB_GATE_REPO=other/thing is the repository asked" "$(cat "$RGF_GH/gh.log")" "repos/other/thing/commits/"
 assert_not_contains "AC11 the default fixture repository is not asked then" "$(cat "$RGF_GH/gh.log")" "acme/widgets"
 
-echo "AC11 boundaries of green: skipped and neutral count, one run is enough"
+echo "AC11 boundaries of green: skipped and neutral count next to the test aggregators, success is needed"
+# (updated: the old rule 'a single success/skipped/neutral run is green' is replaced by the need list, see the cases after this block)
 for c in skipped neutral success; do
   rc_setup
-  rgf_gh_runs "11|only run|completed|$c"
+  real_green_runs "11|only run|completed|$c"
   run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-  assert_rc "AC11 a single check run concluded '$c' is green -> exit 0" 0
-  assert_eq "AC11 a single '$c' run: the suite is skipped" "0" "$(suite_runs)"
+  assert_rc "AC11 an extra check run concluded '$c' beside the aggregators is green -> exit 0" 0
+  assert_eq "AC11 an extra '$c' run: the suite is skipped" "0" "$(suite_runs)"
 done
 rc_setup
-rgf_gh_runs "11|a|completed|success" "12|b|completed|skipped" "13|c|completed|neutral" "14|d|completed|success"
+real_green_runs "12|b|completed|skipped" "13|c|completed|neutral" "14|d|completed|success"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_eq "AC11 success + skipped + neutral together are green: suite skipped" "0" "$(suite_runs)"
 rc_setup
-rgf_gh_runs --per-page 2 "11|a|completed|success" "12|b|completed|success" "13|c|completed|success" "14|d|completed|success" "15|e|completed|success"
+rgf_gh_runs --per-page 2 "${RC_GREEN[@]}" "11|a|completed|success"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_eq "AC11 all green over three pages: suite skipped" "0" "$(suite_runs)"
+assert_eq "AC11 all green over several pages: suite skipped" "0" "$(suite_runs)"
 rc_setup
-rgf_gh_runs --per-page 2 "11|a|completed|success" "12|b|completed|success" "13|c|completed|success" "14|d|completed|success" "15|e|completed|failure"
+rgf_gh_runs --per-page 2 "${RC_GREEN[@]}" "15|e|completed|failure"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_eq "AC11 a failure on the LAST page (page 3) is seen: suite runs" "1" "$(suite_runs)"
-assert_not_contains "AC11 a failure on page 3: no skip line" "$OUT" "tests/run-all.sh skipped"
+assert_eq "AC11 a failure on the LAST page is seen: suite runs" "1" "$(suite_runs)"
+assert_not_contains "AC11 a failure on the last page: no skip line" "$OUT" "tests/run-all.sh skipped"
+
+echo "R5 green needs evidence: a success run AND the test aggregators (test (ubuntu-latest), test (macos-latest), test (windows-latest))"
+rc_setup
+rgf_gh_runs "11|changes|completed|skipped" "12|release|completed|skipped" "13|test (ubuntu-latest)|completed|skipped" \
+  "14|test (macos-latest)|completed|skipped" "15|test (windows-latest)|completed|skipped"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+r5_expect_suite "everything skipped (docs-only shape): no test ran"
+rc_setup
+rgf_gh_runs "11|changes|completed|neutral" "12|test (ubuntu-latest)|completed|neutral" "13|test (macos-latest)|completed|neutral" "14|test (windows-latest)|completed|neutral"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+r5_expect_suite "everything neutral"
+rc_setup
+rgf_gh_runs "11|codecov/patch|completed|success"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+r5_expect_suite "only an unrelated third-party success run, no test jobs"
+rc_setup
+rgf_gh_runs "11|codecov/patch|completed|success" "12|changes|completed|success" "13|release|completed|skipped"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+r5_expect_suite "success runs but none of the test aggregators present"
+for missing in "test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)"; do
+  rc_setup
+  runs=(); for g in "${RC_GREEN[@]}"; do case "$g" in *"|$missing|"*) ;; *) runs+=("$g") ;; esac; done
+  rgf_gh_runs "${runs[@]}"
+  run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+  r5_expect_suite "the aggregator '$missing' is missing"
+done
+for missing in "test (ubuntu-latest)" "test (macos-latest)" "test (windows-latest)"; do
+  rc_setup
+  runs=(); for g in "${RC_GREEN[@]}"; do case "$g" in *"|$missing|"*) runs+=("99|$missing|completed|skipped") ;; *) runs+=("$g") ;; esac; done
+  rgf_gh_runs "${runs[@]}"
+  run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+  r5_expect_suite "the aggregator '$missing' is skipped, not success"
+done
+rc_setup
+real_green_runs
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_eq "R5 control: the real set (aggregators success, shards skipped) is green: suite skipped" "0" "$(suite_runs)"
+assert_not_contains "R5 control: green, no 'runs here' reason" "$OUT" "runs here"
+
+echo "R5 a read cut off after page 1 is never green"
+rc_setup
+rgf_gh_runs --per-page 3 "${RC_GREEN[@]}"
+rgf_gh_fail partial
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+r5_expect_suite "gh api --paginate prints an all-green page 1 (with the aggregators), then exits non-zero"
+rc_setup
+rgf_gh_runs --per-page 3 "${RC_GREEN[@]}"
+rgf_gh_fail partial
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "R5 partial read, real release: the suite runs and the release proceeds -> exit 0" 0
+assert_eq "R5 partial read, real release: suite called once" "1" "$(suite_runs)"
+assert_contains "R5 partial read, real release: tagged" "$(tags_of "$O")" "v1.2.3"
 
 echo "AC11 README counts: skipped with the suite, still enforced with --local-suite"
 rc_setup
@@ -138,12 +198,6 @@ assert_rc "AC11 a gate with an environment error still exits 3" 3
 assert_eq "AC11 gate exit 3: no check-runs call" "0" "$(check_run_calls)"
 
 echo "R5 CI not green on HEAD: the suite runs as before and release.sh says why"
-r5_expect_suite() { # name -> after a release.sh run in the current fixture: suite once, no skip line, a reason line, a clean dry run
-  assert_rc "R5 $1: dry run still ends -> exit 0" 0
-  assert_eq "R5 $1: tests/run-all.sh was called once" "1" "$(suite_runs)"
-  assert_not_contains "R5 $1: no skip line" "$OUT" "tests/run-all.sh skipped"
-  if [ -n "$(why_line "$OUT")" ]; then t_ok "R5 $1: a line names tests/run-all.sh and CI as the reason"; else t_bad "R5 $1: a line names tests/run-all.sh and CI as the reason" "$OUT"; fi
-}
 rc_setup
 rgf_gh_runs "11|a|completed|success" "12|b|in_progress|"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run

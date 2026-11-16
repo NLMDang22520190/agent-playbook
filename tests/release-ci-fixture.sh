@@ -47,7 +47,14 @@ STUB
   unset PB_GATE_CACHE_DIR PB_TEST_GATE_RC PB_TEST_SUITE_OUT PB_TEST_SUITE_RC
   export PATH="$RGF_GH/bin:$ORIG_PATH" PB_GATE_REPO="acme/widgets"
   rgf_gh_green
+  real_green_runs   # CI-green needs the three aggregators (ci_state need list), so the default green carries them
 }
+# real_green_runs [EXTRA...] -> serve the check runs of a push to main whose tree was reused: the three aggregators success, shards
+# skipped (RC_GREEN), plus EXTRA "ID|NAME|STATUS|CONCLUSION" runs
+real_green_runs() { rgf_gh_runs "${RC_GREEN[@]}" "$@"; }
+RC_GREEN=("124850217910|test (ubuntu-latest)|completed|success" "124853028073|test (macos-latest)|completed|success"
+  "124854622507|test (windows-latest)|completed|success" "124850217855|macos shard 1/2|completed|skipped"
+  "124850218254|windows shard 1/10|completed|skipped" "124850191813|changes|completed|success")
 suite_runs() { grep -c . "$PB_TEST_SUITE_LOG" || true; }
 gate_runs() { grep -c . "$PB_TEST_GATE_LOG" || true; }
 check_run_calls() { grep -c 'check-runs' "$RGF_GH/gh.log" || true; }
