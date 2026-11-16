@@ -180,3 +180,4 @@ test-gate-voided.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-ship-timing.sh 10
