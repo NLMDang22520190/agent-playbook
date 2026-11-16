@@ -215,7 +215,8 @@ line_none "AC20 --tasks: an unselected task is not checked" '^(f2p-passing|patch
 echo "AC20 python3 counts as present only if python3 -c 'import sys' works"
 FB="$(mk_tmp)"
 printf '#!/usr/bin/env bash\necho "Python was not found; run without arguments to install from the Microsoft Store" >&2\nexit 9009\n' > "$FB/python3"
-chmod +x "$FB/python3" 2>/dev/null
+cp "$FB/python3" "$FB/python" 2>/dev/null   # v0.37 AC9: python is the fallback, so the stub must fail too
+chmod +x "$FB/python3" "$FB/python" 2>/dev/null
 if [ -x "$FB/python3" ] && ! PATH="$FB:$PATH" python3 -c 'import sys' >/dev/null 2>&1; then
   OUT="$(PATH="$FB:$PATH" bash "$CHECK" --tasks-dir "$T" --tasks py-good 2>&1)"; RC=$?
   line_ok "AC20 a python3 that fails import sys -> SKIPPED (no python3)" '^py-good .*SKIPPED \(no python3\)'

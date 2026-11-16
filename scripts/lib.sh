@@ -15,6 +15,15 @@ pb_root_dir() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
+# pb_pybin -> sets PB_PY to the Python that really runs: python3, else python (Windows Git Bash has no python3
+# shim; the Microsoft Store python3 stub fails the probe), else empty. Callers use "$PB_PY".
+# shellcheck disable=SC2034   # PB_PY is read by the sourcing script
+pb_pybin() {
+  if python3 -c 'import sys' >/dev/null 2>&1; then PB_PY="python3"
+  elif python -c 'import sys' >/dev/null 2>&1; then PB_PY="python"
+  else PB_PY=""; fi
+}
+
 pb_conf_global()  { printf '%s/.agents/playbook.conf' "$(pb_home)"; }
 pb_conf_project() { printf '%s/.agents/playbook.conf' "$(pb_root_dir)"; }
 

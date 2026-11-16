@@ -626,6 +626,7 @@ cmd_doctor() {
   if want claude; then doctor_hooks; fi
   if [ -f "$H/.agents/playbook.conf" ]; then say "OK    $H/.agents/playbook.conf exists"
   else say "INFO  no $H/.agents/playbook.conf yet: the first agent session will run playbook-setup"; fi
+  PLAYBOOK_HOME="$H" bash "$REPO/scripts/conf.sh" check-harness || true
   if [ "$PROBLEMS" -eq 0 ]; then say "doctor: healthy"; else say "doctor: $PROBLEMS problem(s)"; exit 1; fi
 }
 

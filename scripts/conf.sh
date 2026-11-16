@@ -4,6 +4,7 @@
 #   conf.sh set KEY VALUE [--global|--project]     (default --global)
 #   conf.sh list               merged view with origin
 #   conf.sh path               print the two file locations
+#   conf.sh check-harness [--running NAME]   warn (stderr, exit 0) when the conf harness differs from the running one (env hints: CLAUDECODE, CODEX_HOME)
 # Files: <project>/.agents/playbook.conf (wins) and ~/.agents/playbook.conf
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -81,7 +82,26 @@ case "$cmd" in
   path)
     printf 'global:  %s\nproject: %s\n' "$(pb_conf_global)" "$(pb_conf_project)"
     ;;
+  check-harness)
+    running=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --running) [ $# -ge 2 ] || pb_die "usage: conf.sh check-harness [--running NAME]" 2; running="$2"; shift ;;
+        *) pb_die "unknown option: $1" 2 ;;
+      esac
+      shift
+    done
+    if [ -z "$running" ]; then   # one hint only; none or both = unknown
+      if [ -n "${CLAUDECODE:-}" ] && [ -z "${CODEX_HOME:-}" ]; then running="claude"
+      elif [ -z "${CLAUDECODE:-}" ] && [ -n "${CODEX_HOME:-}" ]; then running="codex"; fi
+    fi
+    want="$(pb_conf_get harness)" || exit 0
+    if [ -n "$running" ] && [ -n "$want" ] && [ "$want" != "$running" ]; then
+      echo "warning: playbook.conf harness=$want but the running harness looks like $running (role-model routing does not read this key; run conf.sh set harness $running --global)" >&2
+    fi
+    exit 0
+    ;;
   *)
-    pb_die "usage: conf.sh get|set|list|path" 2
+    pb_die "usage: conf.sh get|set|list|path|check-harness" 2
     ;;
 esac

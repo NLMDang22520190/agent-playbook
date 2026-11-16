@@ -79,7 +79,7 @@ fi
 C="$(mk_fmin_copy)"
 add_line "$C" 'metadata: [unclosed'
 FAKE="$(mk_tmp)"
-printf '#!/bin/sh\nexit 1\n' > "$FAKE/python3"; chmod +x "$FAKE/python3"
+printf '#!/bin/sh\nexit 1\n' > "$FAKE/python3"; cp "$FAKE/python3" "$FAKE/python"; chmod +x "$FAKE/python3" "$FAKE/python"
 OUT="$(PATH="$FAKE:$PATH" bash "$C/evals/run-checks.sh" --only skills 2>&1)"; RC=$?; only_problems
 assert_rc "AC5 without PyYAML the parse check does not fail the run" 0
 SKIPLINE="$(printf '%s\n' "$OUT" | grep -i 'skip' | grep -i 'yaml')"
