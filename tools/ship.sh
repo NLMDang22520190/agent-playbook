@@ -15,6 +15,8 @@
 # Log: stdout and stderr are also written to .agents/handoff/ship-<tag>-<YYYYMMDD-HHMMSS>.log (PB_SHIP_LOG=<file>
 # overrides; usage errors write none). Step lines read "== [HH:MM:SS +Ns] title" (N = seconds since ship started);
 # a successful ship ends with "total time: Ns".
+# Gate once per sha: ship creates a temporary directory, exports it as PB_GATE_CACHE_DIR and removes it on exit, so release.sh
+# (dry run, then the real run on the same HEAD) calls `release-gate.sh --check HEAD` once; a failing gate is never cached.
 # Waiting for the tag's CI run: PB_SHIP_WAIT_TRIES (default 12) x PB_SHIP_WAIT_SECS (default 5).
 set -u
 # The whole body is one function called on the last line: `git pull` below rewrites this file while
@@ -52,7 +54,10 @@ main() {
   tpid=$!
   # on every exit: close our stdout/stderr so tee sees EOF, then wait for it, so the last lines reach the log
   # (the exit status is unchanged: the trap ends with `true`)
-  trap 'exec >&- 2>&-; [ -z "$tpid" ] || wait "$tpid" 2>/dev/null; true' EXIT
+  # gate cache: one temporary directory for this ship, removed on every exit (the same trap, extended)
+  gate_cache="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX" 2>/dev/null)" || gate_cache=""
+  [ -z "$gate_cache" ] || export PB_GATE_CACHE_DIR="$gate_cache"
+  trap '[ -z "$gate_cache" ] || rm -rf "$gate_cache"; exec >&- 2>&-; [ -z "$tpid" ] || wait "$tpid" 2>/dev/null; true' EXIT
 
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing.
