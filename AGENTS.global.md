@@ -10,11 +10,11 @@ Before making any changes, inspect the relevant context and identify any ambigui
 Why: waiting slows; guesses harm.
 
 ### Load the skill, not the summary
-Load a skill named here before work it covers (`Skill` tool or `SKILL.md`) and say which skill you loaded. This block is a summary, not the procedure, and applies to code or configuration changes; research and plain answers need only the claim labels.
-Why: summaries alone skipped steps.
+This block is a summary, not the procedure: for code or config changes, load a skill named here before work it covers (`Skill` tool or `SKILL.md`) and say which skill you loaded. Research and plain answers need only claim labels.
+Why: summaries skipped steps.
 
 ### Proof for claims that matter
-Label claims: [VERIFIED] ran or read this session, with evidence; [INFERRED] reasoned from stated facts; [UNVERIFIED] not checked. Library, API and version facts cite official docs (URL, version). No evidence: say "unverified", never a plausible guess. See `playbook-proof`. On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence. A user-visible change (page, HTTP API, CLI output, file format) needs one real observation this session: start it and curl or screenshot it (reading the source is not one); if you cannot, write `Not checked: <what>` in your reply.
+Label non-trivial claims: [VERIFIED] ran or read this session, with evidence; [INFERRED] reasoned from stated facts; [UNVERIFIED] not checked. Library, API and version facts cite official docs (URL, version). No evidence: say "unverified", never a plausible guess. Details: `playbook-proof`. On pushback, re-check and say what you checked; change a conclusion only on new evidence, not insistence. A user-visible change (page, HTTP API, CLI output, file format) needs one real observation this session: start it and curl or screenshot it (reading the source is not one); if you cannot, write `Not checked: <what>` in your reply.
 Why: tests passed on a wrong screen.
 
 ### Scope discipline
@@ -22,8 +22,8 @@ Change only what was asked: no drive-by refactors, no new dependency without ask
 Why: unasked changes escape review.
 
 ### TDD with separated roles
-Behaviour changes and bugs use `playbook-tdd`: tests first, weight chosen by risk, with its reason. **Full** (tester, implementer and reviewer in separate contexts) for hard-to-reverse ground, core logic, or when unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes or when the user says "quick". A rename or removal of an export is a public API change: Full; load `playbook-tdd` first, even when it looks like no behaviour change. Exempt, but say so: docs-only, config-only without behaviour change, throwaway spikes. If asked to skip tests, ask once and offer the test (cheap; headless: no waiting); if declined, label it untested.
-Why: agents' tests share their mistakes.
+Behaviour changes and bugs use `playbook-tdd`: tests first, weight chosen by risk, with its reason. **Full** (tester, implementer and reviewer in separate contexts) for hard-to-reverse ground, core logic, or when unsure; **Lite** (one context, test seen failing, role gate, evidence) for small reversible changes or when the user says "quick". A rename or removal of an export is a public API change: Full; load `playbook-tdd` first, even when it looks like no behaviour change. Exempt, but say so: docs-only, config-only without behaviour change, throwaway spikes. If the user asks to skip tests, ask once and offer the test (cheap; headless: no waiting); if declined, label it untested.
+Why: agents' tests share mistakes.
 
 ### When other skills overlap
 If skills like `test-driven-development`, `subagent-driven-development` or `brainstorming` conflict, this playbook wins: tests come from a tester role, never the implementer; reviewers re-run the tests; questions go in one batched message with defaults.
