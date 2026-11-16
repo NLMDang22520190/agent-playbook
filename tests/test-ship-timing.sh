@@ -36,6 +36,8 @@ run_in "$F/repo" bash -c 'printf "y\ny\ny\n" | bash tools/ship.sh 12 v1.2.3'
 # no terminal: ask() refuses, but the steps before it were printed with timestamps
 assert_eq "AC10 without --yes: every printed '== ' line has the timestamp" "" "$(bad_step_lines "$OUT")"
 if [ "$(step_lines "$OUT" | grep -c . || true)" -ge 1 ]; then t_ok "AC10 without --yes: at least one step line printed"; else t_bad "AC10 without --yes: at least one step line printed" "$OUT"; fi
+NTS="$(step_lines "$OUT" | grep -Ec "$TS_RE" || true)"
+if [ "$NTS" -ge 2 ]; then t_ok "AC10 without --yes: at least 2 timestamped step lines printed ($NTS)"; else t_bad "AC10 without --yes: at least 2 timestamped step lines printed" "$NTS in: $OUT"; fi
 
 echo "AC10 default log file: .agents/handoff/ship-<tag>-<YYYYMMDD-HHMMSS>.log in the repo"
 fx
@@ -102,6 +104,71 @@ assert_contains "AC10 refusal: the step lines before it are in the log, timestam
 assert_eq "AC10 refusal: no untimestamped step line" "" "$(bad_step_lines "$REFLOG")"
 assert_not_contains "AC10 refusal: no 'total time' claim in the log" "$REFLOG" "total time:"
 assert_not_contains "AC10 refusal: no 'total time' claim on screen" "$OUT" "total time:"
+
+echo "AC10 the elapsed +Ns is real: a 2 s slow step shows up in later step lines and in the total"
+fx
+mkdir -p "$W/slowbin"
+cat > "$W/slowbin/gh" <<'EOS'
+#!/usr/bin/env bash
+# slow fake gh: 'run watch' takes 2 s, everything else is the plain fake gh
+[ "$1 $2" = "run watch" ] && sleep 2
+exec "$FAKE_GH_REAL" "$@"
+EOS
+chmod +x "$W/slowbin/gh"
+export FAKE_GH_REAL="$BIN/gh"
+export PATH="$W/slowbin:$PATH"
+export PB_SHIP_LOG="$F/slow.log"
+sh_run 12 v1.2.3 --yes
+unset PB_SHIP_LOG
+export PATH="$BIN:$ORIG_PATH"
+assert_rc "AC10 slow step: exit 0" 0
+SLOWSECS="$(step_lines "$OUT" | sed -n 's/^== \[[0-9:]* +\([0-9][0-9]*\)s\].*/\1/p' | tr '\n' ' ')"
+LASTSEC="$(printf '%s\n' $SLOWSECS | tail -n 1)"
+if [ -n "$LASTSEC" ] && [ "$LASTSEC" -ge 2 ]; then t_ok "AC10 slow step: the last step line shows +N with N>=2 ($LASTSEC)"; else t_bad "AC10 slow step: the last step line shows +N with N>=2" "elapsed list = [$SLOWSECS] in: $OUT"; fi
+TOTSEC="$(printf '%s\n' "$OUT" | sed -n 's/^total time: \([0-9][0-9]*\)s$/\1/p')"
+if [ -n "$TOTSEC" ] && [ "$TOTSEC" -ge 2 ]; then t_ok "AC10 slow step: total time >= 2s ($TOTSEC)"; else t_bad "AC10 slow step: total time >= 2s" "total = [$TOTSEC] in: $OUT"; fi
+
+echo "AC10 the dirty-tree check exempts the ship log by exact path, not by substring"
+# dirty_case LOGNAME EXTRA_FILE_NAME -> relative PB_SHIP_LOG, an extra untracked file whose name contains it
+dirty_case() {
+  fx
+  printf 'dirt\n' > "$F/repo/$2"
+  export PB_SHIP_LOG="$1"
+  sh_run 12 v1.2.3 --yes
+  unset PB_SHIP_LOG
+}
+dirty_case x xyz
+assert_rc "AC10 log 'x' + untracked 'xyz': ship refuses (exit 1)" 1
+assert_contains "AC10 log 'x' + untracked 'xyz': says the work tree is not clean" "$OUT" "work tree is not clean"
+assert_eq "AC10 log 'x' + untracked 'xyz': nothing merged" "0" "$(origin_merges)"
+assert_eq "AC10 log 'x' + untracked 'xyz': no gh pr merge call" "0" "$(logged '^gh pr merge')"
+dirty_case log "my log"
+assert_rc "AC10 log 'log' + untracked 'my log': ship refuses (exit 1)" 1
+assert_contains "AC10 log 'log' + untracked 'my log': says the work tree is not clean" "$OUT" "work tree is not clean"
+assert_eq "AC10 log 'log' + untracked 'my log': nothing merged" "0" "$(origin_merges)"
+fx
+printf 'one\n' > "$F/repo/x-tracked.txt"
+( cd "$F/repo" && git add x-tracked.txt && GITID commit -qm "tracked x" ) || echo "fixture setup failed"
+printf 'two\n' >> "$F/repo/x-tracked.txt"
+export PB_SHIP_LOG="x"
+sh_run 12 v1.2.3 --yes
+unset PB_SHIP_LOG
+assert_rc "AC10 log 'x' + modified tracked 'x-tracked.txt': ship refuses (exit 1)" 1
+assert_contains "AC10 log 'x' + modified tracked file: says the work tree is not clean" "$OUT" "work tree is not clean"
+assert_eq "AC10 log 'x' + modified tracked file: nothing merged" "0" "$(origin_merges)"
+fx
+export PB_SHIP_LOG="x"
+sh_run 12 v1.2.3 --yes
+unset PB_SHIP_LOG
+assert_rc "AC10 log 'x' alone (the log file is the only new file): ship does not refuse" 0
+assert_not_contains "AC10 log 'x' alone: no 'work tree is not clean'" "$OUT" "work tree is not clean"
+fx
+unset PB_SHIP_LOG
+printf 'dirt\n' > "$F/repo/stray.txt"
+sh_run 12 v1.2.3 --yes
+assert_rc "AC10 default log path + untracked 'stray.txt': ship refuses (exit 1)" 1
+assert_contains "AC10 default log path + untracked file: says the work tree is not clean" "$OUT" "work tree is not clean"
+assert_eq "AC10 default log path + untracked file: nothing merged" "0" "$(origin_merges)"
 
 echo "AC10 a usage error writes no log and no timestamped step"
 fx
