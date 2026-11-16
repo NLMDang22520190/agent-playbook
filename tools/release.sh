@@ -82,23 +82,33 @@ ci_state() {
   [ -n "$repo" ] || { echo "repository unknown"; return 0; }
   command -v gh >/dev/null 2>&1 || { echo "gh is not installed"; return 0; }
   command -v node >/dev/null 2>&1 || { echo "node is not installed"; return 0; }
-  runs="$(gh api --paginate "repos/$repo/commits/$head_sha/check-runs" --jq '.check_runs[]' </dev/null 2>/dev/null)" || { echo "gh api failed"; return 0; }
+  runs="$(GH_PROMPT_DISABLED=1 gh api --paginate "repos/$repo/commits/$head_sha/check-runs" --jq '.check_runs[]' </dev/null 2>/dev/null)" || { echo "gh api failed"; return 0; }
   printf '%s\n' "$runs" | node -e '
 const lines = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean);
 const ok = new Set(["success", "skipped", "neutral"]);
-let n = 0, pending = 0, bad = 0, junk = 0;
+let n = 0, pending = 0, bad = 0, junk = 0, succ = 0;
+const agg = {"test (ubuntu-latest)": 0, "test (macos-latest)": 0, "test (windows-latest)": 0};
 for (const l of lines) {
   let r; try { r = JSON.parse(l); } catch (x) { junk++; continue; }
   if (!r || typeof r !== "object") { junk++; continue; }
   n++;
   if (r.status !== "completed") pending++;
   else if (!ok.has(r.conclusion)) bad++;
+  if (r.status === "completed" && r.conclusion === "success") {
+    succ++;
+    if (Object.prototype.hasOwnProperty.call(agg, r.name)) agg[r.name]++;
+  }
 }
 if (junk) console.log("unreadable check run data");
 else if (n === 0) console.log("no check runs");
 else if (pending) console.log(pending + " check run(s) not finished");
 else if (bad) console.log(bad + " check run(s) not successful");
-else console.log("green");
+else if (!succ) console.log("no check run concluded success");
+else {
+  const miss = Object.keys(agg).filter((k) => !agg[k]);
+  if (miss.length) console.log("aggregator job " + miss[0] + " is not success");
+  else console.log("green");
+}
 ' 2>/dev/null || echo "unreadable check run data"
 }
 
