@@ -228,7 +228,7 @@ sh_run 12 v1.2.3 --yes
 unset FAKE_INSTALL_DETACH
 assert_rc "AC1.2 install leaves a detached HEAD: ship still exits 0" 0
 assert_eq "AC1.2 the clone ends on main, not on a detached HEAD" "main" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
-AFTER_INSTALL="$(printf '%s\n' "$OUT" | awk 'f { print } /^== update the installs/ { f = 1 }')"
+AFTER_INSTALL="$(printf '%s\n' "$OUT" | awk 'f { print } /^== \[[^]]*\] update the installs/ { f = 1 }')"
 assert_contains "AC1.2 the output after the install step names the branch it ends on" "$AFTER_INSTALL" "main"
 fx
 sh_run 12 v1.2.3 --yes

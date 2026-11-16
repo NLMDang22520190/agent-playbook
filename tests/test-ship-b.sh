@@ -110,13 +110,13 @@ export FAKE_SHARDS="100,110,120"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC3.1 balanced: exit 0" 0
 assert_eq "AC3.1 balanced: no 'shard weights' line at all" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
-assert_no_path "AC3.1 balanced: no .agents/handoff" "$F/repo/.agents/handoff"
+assert_no_path "AC3.1 balanced: no shard-weights.next written" "$F/repo/$WN"
 assert_eq "AC3.1 balanced: the shard logs were not fetched (no gh run view --job)" "0" "$(logged '^gh run view .*--job')"
 fx
 export FAKE_SHARDS="300,100,200" FAKE_GH_FAIL="shardview"
 sh_run 12 v1.2.3 --yes
 assert_eq "AC3.1 no shard data (gh failed): no 'shard weights' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
-assert_no_path "AC3.1 no shard data: no .agents/handoff" "$F/repo/.agents/handoff"
+assert_no_path "AC3.1 no shard data: no shard-weights.next written" "$F/repo/$WN"
 unset FAKE_SHARD_LOG
 
 # ---- prompts, through a pseudo-terminal ----
@@ -245,7 +245,7 @@ for main_shards in "${TREE_SKIPPED_MAIN[@]}"; do
   assert_eq "AC6.3 main shards [$main_shards], no id: ci-tree-tested.sh was asked once" "1" "$(tree_calls | wc -l | tr -d ' ')"
   assert_eq "AC6.3 main shards [$main_shards], no id: no hint" "0" "$(unb)"
   assert_eq "AC6.3 main shards [$main_shards], no id: no 'shard weights' line" "0" "$(printf '%s\n' "$OUT" | grep -c 'shard weights')"
-  assert_no_path "AC6.3 main shards [$main_shards], no id: no .agents/handoff" "$F/repo/.agents/handoff"
+  assert_no_path "AC6.3 main shards [$main_shards], no id: no shard-weights.next written" "$F/repo/$WN"
   assert_eq "AC6.3 main shards [$main_shards], no id: no run other than the main one is read" "0" "$(logged '^gh run view 5555')"
   assert_contains "AC6.3 main shards [$main_shards], no id: shipped is still printed" "$OUT" "shipped v1.2.3"
 done
@@ -314,8 +314,8 @@ assert_contains "v22.4 AC2.3 the hint names the mapped scenarios, comma separate
 assert_contains "v22.4 AC2.3 the hint carries --max-cost" "$GL" "--max-cost"
 assert_eq "v22.4 AC2.3 both lines are the same command" "1" "$(printf '%s\n' "$GL" | sort -u | wc -l | tr -d ' ')"
 FIRST="$(lineno '^eval guard: ' | head -n 1)"; LAST="$(lineno '^eval guard: ' | tail -n 1)"
-REL="$(lineno '^== release v1.2.3$' | head -n 1)"
-CHK="$(lineno '^== check the release$' | head -n 1)"
+REL="$(lineno '^== \[[^]]*\] release v1.2.3$' | head -n 1)"
+CHK="$(lineno '^== \[[^]]*\] check the release$' | head -n 1)"
 if [ -n "$FIRST" ] && [ -n "$REL" ] && [ "$FIRST" -lt "$REL" ]; then t_ok "v22.4 AC2.3 the first hint comes BEFORE the '== release v1.2.3' (tag and push) step"; else t_bad "v22.4 AC2.3 the first hint comes BEFORE the '== release v1.2.3' (tag and push) step" "hint line [$FIRST], release step line [$REL]; output: $OUT"; fi
 if [ -n "$LAST" ] && [ -n "$CHK" ] && [ "$LAST" -gt "$CHK" ]; then t_ok "v22.4 AC2.3 the repeated hint comes after the release was checked (final summary)"; else t_bad "v22.4 AC2.3 the repeated hint comes after the release was checked (final summary)" "last hint line [$LAST], '== check the release' line [$CHK]"; fi
 assert_contains "v22.4 AC2.3 ship still says shipped" "$OUT" "shipped v1.2.3"

@@ -12,6 +12,9 @@
 #       3 cannot enter the repository.
 # Eval guard (advice only): when skill text changed since the previous release, ship prints
 # "eval guard: <capped run-evals command>" before it tags and again at the end. It never runs the command.
+# Log: stdout and stderr are also written to .agents/handoff/ship-<tag>-<YYYYMMDD-HHMMSS>.log (PB_SHIP_LOG=<file>
+# overrides; usage errors write none). Step lines read "== [HH:MM:SS +Ns] title" (N = seconds since ship started);
+# a successful ship ends with "total time: Ns".
 # Waiting for the tag's CI run: PB_SHIP_WAIT_TRIES (default 12) x PB_SHIP_WAIT_SECS (default 5).
 set -u
 # The whole body is one function called on the last line: `git pull` below rewrites this file while
@@ -20,7 +23,8 @@ main() {
   cd "$(dirname "$0")/.." || exit 3
 
   usage() { echo "usage: tools/ship.sh PR vX.Y.Z [--yes] [--auto]" >&2; exit 2; }
-  step() { printf '== %s\n' "$1"; }
+  t0=$SECONDS
+  step() { printf '== [%s +%ss] %s\n' "$(date +%H:%M:%S)" "$((SECONDS - t0))" "$1"; }
   fail() { echo "ship refused: $1" >&2; exit 1; }
 
   yes=0; auto=0; pr=""; tag=""
@@ -39,6 +43,12 @@ main() {
   tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
   case "$tries" in '' | *[!0123456789]*) usage ;; esac
   case "$secs" in '' | *[!0123456789]*) usage ;; esac
+
+  # log: from here on (usage errors write none) stdout and stderr also go to a log file; stdin stays the terminal
+  logf="${PB_SHIP_LOG:-.agents/handoff/ship-$tag-$(date +%Y%m%d-%H%M%S).log}"
+  case "$logf" in */*) mkdir -p "${logf%/*}" 2>/dev/null || fail "cannot create the directory of the log $logf" ;; esac
+  : >> "$logf" 2>/dev/null || fail "cannot write the log $logf"
+  exec > >(tee -a "$logf") 2>&1
 
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing.
@@ -98,8 +108,9 @@ main() {
     return 1
   }
 
+  # (the ship log itself, when it lies inside the repository, does not count as dirt)
   # a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
-  [ -z "$(git status --porcelain)" ] || fail "work tree is not clean (commit or stash first)"
+  [ -z "$(git status --porcelain --untracked-files=all | grep -vF -- " $logf")" ] || fail "work tree is not clean (commit or stash first)"
   # merge from main: on a detached HEAD (left by install.sh update) gh merges on GitHub, then fails locally
   cur="$(git symbolic-ref -q --short HEAD || echo 'detached HEAD')"
   if [ "$cur" != main ]; then
@@ -190,6 +201,7 @@ main() {
   echo "back on branch main"
   [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
   echo "shipped $tag"
+  echo "total time: $((SECONDS - t0))s"
 }
 
 main "$@"; exit $?
