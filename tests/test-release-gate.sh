@@ -45,7 +45,7 @@ esac
 exit 0
 IEOF
 chmod 755 "$R/install.sh"
-for t in pattern-15-erase-account-ambiguous pattern-24-merge-duplicate-customers pattern-26-consistent-price-rounding pattern-01-option-value-label; do
+for t in $(printf '%s' "$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")" | tr ',' ' ') pattern-01-option-value-label; do
   mkdir -p "$R/evals/tasks/$t"; printf 'x\n' > "$R/evals/tasks/$t/prompt.md"
 done
 # fake runner: records "<name> <args>", writes ${OUT%.md}.json with both arms; with passes check x, without fails it
@@ -202,7 +202,7 @@ mk_fake run-outcome.sh --tasks
 ( cd "$R" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
   git config commit.gpgsign false && git config core.autocrlf false && git add -A && git commit -qm base ) || t_bad "fixture repo" "git init failed"
 SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
-TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 g() { RC=0; OUT="$(cd "$R" && env HOME="$W/home" bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
 ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
 pf_real_calls() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }   # v0.33.0 R1-3: lines of runners that really started
@@ -393,8 +393,20 @@ assert_contains "AC1 --cmd reaches run-evals.sh" "$(grep '^run-evals.sh ' "$CALL
 assert_contains "AC4 the claude files are skipped for a custom run" "$OUT" "(other harness)"
 
 echo "m-b the default tasks are one top-level line of the gate"
-assert_eq "m-b tools/release-gate.sh has a top-level DEFAULT_TASKS line with the three separating tasks" "1" \
-  "$(grep -c '^DEFAULT_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"$' "$GATE" 2>/dev/null || true)"
+assert_eq "m-b tools/release-gate.sh has exactly one top-level DEFAULT_TASKS line" "1" "$(grep -c '^DEFAULT_TASKS="[^"]*"$' "$GATE" 2>/dev/null || true)"
+echo "v0.37 S6 AC1 DEFAULT_TASKS lists pattern-15, 24, 26 and pattern-27 to 36 (13 ids, in that order), each an existing evals/tasks dir"
+S6_WANT="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding,pattern-27-refund-rounding-cap,pattern-28-cancel-releases-stock,pattern-29-backup-rotation-newest,pattern-30-split-address-migration,pattern-31-price-cents-migration,pattern-32-new-season-reset,pattern-33-close-inactive-accounts,pattern-34-discount-codes,pattern-35-currency-export,pattern-36-shipping-incident"
+S6_GOT="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$GATE")"
+assert_eq "v0.37 AC1 DEFAULT_TASKS is the 13 ids in order (15, 24, 26, 27..36)" "$S6_WANT" "$S6_GOT"
+assert_eq "v0.37 AC1 DEFAULT_TASKS has 13 ids" "13" "$(printf '%s' "$S6_GOT" | tr ',' '\n' | grep -c .)"
+S6_MISS=""
+for t in $(printf '%s' "$S6_GOT" | tr ',' ' '); do [ -d "$PB_ROOT/evals/tasks/$t" ] || S6_MISS="$S6_MISS $t"; done
+assert_eq "v0.37 AC1 every DEFAULT_TASKS id is an existing evals/tasks directory (missing: none)" "" "$S6_MISS"
+echo "v0.37 S6 AC1 --dry-run of the real script, in the real repo, lists all 13 default tasks"
+S6_DRY="$(cd "$PB_ROOT" && env HOME="$W/home" bash tools/release-gate.sh --harness claude --model m1 --dry-run 2>&1)" || true
+S6_OL="$(printf '%s\n' "$S6_DRY" | grep 'evals/run-outcome.sh')"
+for t in $(printf '%s' "$S6_WANT" | tr ',' ' '); do assert_contains "v0.37 AC1 dry-run outcome command lists $t" "$S6_OL" "$t"; done
+assert_contains "v0.37 AC1 dry-run outcome command carries the whole list as --tasks" "$S6_OL" "--tasks $S6_WANT"
 
 echo "AC1 a real run with --harness measures a detached worktree of HEAD: --variant-held DIR goes to both runners (D6)"
 rcase ac1 ""

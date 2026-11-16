@@ -6,7 +6,7 @@
 # `tools/release-gate.sh --pool-only`, then committed (see tests/test-release-gate-check.sh). The fake runners fail if they are
 # ever called: a release tool must never spend money. Source it after lib.sh (it needs mk_tmp, node and git). It is not a suite:
 # run-all.sh only starts tests/test-*.sh.
-RGF_TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+RGF_TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 RGF_W="$(mk_tmp)"
 mkdir -p "$RGF_W/home" "$RGF_W/tmp"
 rgf_git() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false -c core.autocrlf=false "$@"; }

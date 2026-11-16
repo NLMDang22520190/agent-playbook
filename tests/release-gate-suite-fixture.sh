@@ -41,7 +41,7 @@ esac
 exit 0
 IEOF
 chmod 755 "$R/install.sh"
-for t in pattern-15-erase-account-ambiguous pattern-24-merge-duplicate-customers pattern-26-consistent-price-rounding pattern-01-option-value-label; do
+for t in $(printf '%s' "$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")" | tr ',' ' ') pattern-01-option-value-label; do
   mkdir -p "$R/evals/tasks/$t"; printf 'x\n' > "$R/evals/tasks/$t/prompt.md"
 done
 # fake runner: records "<name> <args>", writes ${OUT%.md}.json with both arms; with passes check x, without fails it
@@ -198,7 +198,7 @@ mk_fake run-outcome.sh --tasks
 ( cd "$R" && git init -q && git config user.email t@example.invalid && git config user.name tester &&
   git config commit.gpgsign false && git config core.autocrlf false && git add -A && git commit -qm base ) || t_bad "fixture repo" "git init failed"
 SHA="$(git -C "$R" rev-parse HEAD)"; SHA12="$(printf '%s' "$SHA" | cut -c1-12)"
-TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 g() { RC=0; OUT="$(cd "$R" && env HOME="$W/home" bash tools/release-gate.sh "$@" 2>&1)" || RC=$?; }
 ncalls() { grep "^$1 " "$CALLS" 2>/dev/null | grep -vc -- ' --preflight' || true; }   # real runs only: a --preflight call starts nothing
 pf_real_calls() { grep -v -- ' --preflight' "$CALLS" | grep -c . || true; }   # v0.33.0 R1-3: lines of runners that really started
