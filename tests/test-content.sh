@@ -10,6 +10,9 @@ REVIEWER="$TDD/roles/reviewer.md"
 FINAL="$TDD/templates/final-report.md"
 RPROMPT="$TDD/templates/role-prompt.md"
 HARNESSES="$TDD/references/harnesses.md"   # v0.24.13: harness and model plumbing moved here
+FULLREF="$TDD/references/full.md"   # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming, Hand-off files moved here
+# SKILLFULL = SKILL.md + references/full.md: pins on moved text read this, pins on kept text read SKILL.md only
+SKILLFULL="$(mk_tmp)/skill-full.md"; { cat "$SKILL"; printf "\n"; cat "$FULLREF" 2>/dev/null; } > "$SKILLFULL"
 SETUP="$PB_ROOT/skills/playbook-setup/SKILL.md"
 QUESTIONS="$PB_ROOT/skills/playbook-setup/references/questions.md"
 
@@ -89,16 +92,16 @@ if [ -n "$l1" ] && [ -n "$l2" ] && [ -n "$l3" ] && [ "$l1" -lt "$l2" ] && [ "$l2
 else t_bad 'AC8 markers ordered: 1. Fixed < 2. Spec < 3. This slice' "lines: [$l1] [$l2] [$l3]"; fi
 check_sec 'AC8 per-slice part has slice id' "$RPROMPT" '^## 3\. This slice' 'slice'
 check_sec 'AC8 per-slice part has RED sha' "$RPROMPT" '^## 3\. This slice' 'sha'
-check 'AC8 SKILL references role-prompt.md' "$SKILL" 'role-prompt\.md'
-check 'AC8 SKILL ties it to prompt caching / prefix' "$SKILL" 'prefix[^.]{0,80}(cach|reuse)|cach[^.]{0,80}prefix'
+check 'AC8 SKILL references role-prompt.md' "$SKILLFULL" 'role-prompt\.md'
+check 'AC8 SKILL ties it to prompt caching / prefix' "$SKILLFULL" 'prefix[^.]{0,80}(cach|reuse)|cach[^.]{0,80}prefix'
 
 # --- AC9: starting roles
-check_sec 'AC9 Starting roles section uses role-model.sh' "$SKILL" '^## Starting roles' 'role-model\.sh'
-check_sec 'AC9 Starting roles names harness values claude, codex, opencode' "$SKILL" '^## Starting roles' '`?claude`?[^.]{0,40}`?codex`?[^.]{0,40}`?opencode`?'
+check_sec 'AC9 Starting roles section uses role-model.sh' "$SKILLFULL" '^## Starting roles' 'role-model\.sh'
+check_sec 'AC9 Starting roles names harness values claude, codex, opencode' "$SKILLFULL" '^## Starting roles' '`?claude`?[^.]{0,40}`?codex`?[^.]{0,40}`?opencode`?'
 check 'AC9 Claude Code Agent/Task model parameter' "$HARNESSES" '`model` parameter|model parameter'
 check 'AC9 OpenCode per-role agent in opencode.json' "$HARNESSES" 'opencode\.json'
 check 'AC9 Codex exec -m' "$HARNESSES" 'codex exec -m'
-check 'AC9 session means no override' "$SKILL" 'session[^.]{0,80}(no override|not override|do not override|dont override|without override)|(no override|not override|do not override)[^.]{0,80}session'
+check 'AC9 session means no override' "$SKILLFULL" 'session[^.]{0,80}(no override|not override|do not override|dont override|without override)|(no override|not override|do not override)[^.]{0,80}session'
 
 # --- AC10: cost in final report and close-out
 exact_heading 'AC10 final-report has exact heading' "$FINAL" '## Cost'
@@ -159,7 +162,7 @@ l18="$(line_of "$SCEN" '^## E18 ')"; l19="$(line_of "$SCEN" '^## E19 ')"
 if [ -n "$l18" ] && [ -n "$l19" ] && [ "$l18" -lt "$l19" ]; then t_ok 'AC2.2 E19 comes after E18'; else t_bad 'AC2.2 E19 comes after E18' "E18 line [$l18] E19 line [$l19]"; fi
 
 # --- v0.9.0 #4 AC4.6: the test-infra role is documented
-TDDALL="$(cat "$SKILL" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
+TDDALL="$(cat "$SKILL" "$FULLREF" "$TESTER" "$IMPL" "$REVIEWER" "$RPROMPT" 2>/dev/null)"
 # paragraphs (blank-line separated) that talk about infra
 infra_paras() { printf '%s\n' "$TDDALL" | awk 'BEGIN{RS="";ORS="\n\n"} tolower($0) ~ /infra/'; }
 IP="$(infra_paras)"
@@ -733,13 +736,13 @@ lite_has 'v22.1 AC2.2 Lite step 5 requires the Pre-mortem' 5 'pre-mortem'
 lite_has 'v22.1 AC2.2 Lite step 5: the pre-mortem may be one line per risk' 5 'one line (per|for each|each)[^.]{0,40}risk|one-line'
 
 # --- v0.22.1 AC3: first-slice checkpoint (Phase 2)
-sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$SKILL" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
-sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$SKILL" '^### Phase 2' 'screens?|endpoints?'
-sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$SKILL" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
-sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$SKILL" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$SKILL" '^### Phase 2' 'interactive'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
-sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
+sec_flat_has 'v22.1 AC3.1 Phase 2: slices that repeat a pattern' "$SKILLFULL" '^### Phase 2' 'repeat[^.]{0,120}pattern|pattern[^.]{0,120}repeat|same pattern'
+sec_flat_has 'v22.1 AC3.1 Phase 2: examples are screens, endpoints or files' "$SKILLFULL" '^### Phase 2' 'screens?|endpoints?'
+sec_flat_has 'v22.1 AC3.1 Phase 2: shows the first finished slice' "$SKILLFULL" '^### Phase 2' 'first (finished |completed |done )?slice|first (finished|completed) one'
+sec_flat_has 'v22.1 AC3.1 Phase 2: waits for an OK before the rest' "$SKILLFULL" '^### Phase 2' 'wait[^.]{0,120}(OK|approval|go-ahead|confirm)[^.]{0,160}(rest|remaining|other|next|before)|before the rest[^.]{0,160}(OK|approval|wait)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: this applies to an interactive run' "$SKILLFULL" '^### Phase 2' 'interactive'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run logs the skipped checkpoint in decisions.md' "$SKILLFULL" '^### Phase 2' 'non-interactive[^.]{0,200}(log|decisions\.md)[^.]{0,200}(decisions\.md|skip)|decisions\.md[^.]{0,160}(skip|checkpoint)'
+sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILLFULL" '^### Phase 2' 'non-interactive[^.]{0,250}continu'
 
 # --- v0.22.1 AC4: when the user says the result is wrong
 exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
@@ -843,10 +846,10 @@ flat_has 'v22.2 AC6.1 state template: the last sha per role (reviewer)' "$STATE_
 flat_has 'v22.2 AC6.1 state template: sha' "$STATE_T" 'sha'
 flat_has 'v22.2 AC6.1 state template: the next step' "$STATE_T" 'next step'
 flat_has 'v22.2 AC6.1 state template: open questions' "$STATE_T" 'open questions?'
-flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$SKILL" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILL" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
-flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
-flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
+flat_has 'v22.2 AC6.1 SKILL.md: the orchestrator updates .agents/handoff/state.md' "$SKILLFULL" 'orchestrator.{0,200}\.agents/handoff/state\.md|\.agents/handoff/state\.md.{0,200}orchestrator'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is updated after each phase' "$SKILLFULL" 'state\.md.{0,200}after each phase|after each phase.{0,200}state\.md'
+flat_has 'v22.2 AC6.1 SKILL.md: state.md is read first when resuming' "$SKILLFULL" 'resum.{0,200}state\.md|state\.md.{0,200}resum'
+flat_has 'v22.2 AC6.1 SKILL.md: ... read first' "$SKILLFULL" 'read[^.]{0,40}state\.md[^.]{0,40}first|first[^.]{0,80}(read|reads)[^.]{0,60}state\.md|state\.md[^.]{0,80}first'
 
 # --- v0.22.2 AC7: docs/development.md (moved from the README in v0.25.1)
 if grep -i 'concurrency' "$DEVDOC" | grep -qi 'timeout'; then t_ok 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts'; else t_bad 'v22.2 AC7.1 docs/development.md: one line mentions CI concurrency and timeouts' 'no docs/development.md line has both words'; fi
@@ -865,9 +868,9 @@ sec_flat_has 'v22.3 AC2.1 pack: short excerpts' "$RPROMPT" "$PK" 'excerpts?'
 sec_flat_has 'v22.3 AC2.1 pack: the commands to run' "$RPROMPT" "$PK" 'commands?[^.]{0,30}run|run[^.]{0,30}commands?'
 sec_flat_has 'v22.3 AC2.1 pack: the role reads the pack first' "$RPROMPT" "$PK" 'read[^.]{0,40}pack first|pack first|first[^.]{0,40}read[^.]{0,40}pack'
 sec_flat_has 'v22.3 AC2.1 pack: other files only when the pack is not enough' "$RPROMPT" "$PK" 'not enough|insufficient|does not (cover|answer|contain)'
-flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$SKILL" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
-flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$SKILL" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
-flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$SKILL" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: the orchestrator builds the context pack' "$SKILLFULL" 'orchestrator[^.]{0,160}(builds?|writes?|makes?|prepares?|assembles?)[^.]{0,80}context pack|context pack[^.]{0,200}(built|written|made|prepared|assembled) by the orchestrator'
+flat_has 'v22.3 AC2.2 SKILL.md: once per slice' "$SKILLFULL" 'context pack[^.]{0,250}once per slice|once per slice[^.]{0,250}context pack'
+flat_has 'v22.3 AC2.2 SKILL.md: from the spec Impact section and the scan log' "$SKILLFULL" 'context pack[^.]{0,250}impact[^.]{0,120}scan log|impact[^.]{0,120}scan log[^.]{0,250}context pack'
 
 # --- v0.22.3 AC6.2: the reuse job of .github/workflows/test.yml (static checks)
 echo "v22.3 AC6.2 workflow: reuse job"
@@ -1088,21 +1091,21 @@ flat_has 'v22.3 AC6.4 docs/development.md: ... that was green' "$DEVDOC" 'green[
 # --- v0.22.4 AC4: parallel slices (SKILL.md Phase 2)
 echo "v22.4 AC4.1 SKILL.md Phase 2: parallel slices in separate worktrees"
 P2='^### Phase 2'
-sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILL" "$P2" 'parallel'
-sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
-sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
-sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
-sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
-sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
-sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
-sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
-sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
+sec_flat_has 'v22.4 AC4.1 Phase 2 allows parallel slices' "$SKILLFULL" "$P2" 'parallel'
+sec_flat_has 'v22.4 AC4.1 only slices with disjoint files may run in parallel' "$SKILLFULL" "$P2" 'disjoint[^.]{0,80}files?|files?[^.]{0,60}disjoint'
+sec_flat_has 'v22.4 AC4.1 the disjoint files come from the spec Impact section' "$SKILLFULL" "$P2" 'disjoint[^.]{0,200}impact|impact[^.]{0,200}disjoint'
+sec_flat_has 'v22.4 AC4.1 each parallel slice has its own git worktree' "$SKILLFULL" "$P2" 'separate (git )?worktrees?|(own|its own|each)[^.]{0,40}(git )?worktree'
+sec_flat_has 'v22.4 AC4.1 each worktree has its own red/green commits and role gates' "$SKILLFULL" "$P2" '(own|each)[^.]{0,200}(role[- ])?gates?'
+sec_flat_has 'v22.4 AC4.1 the orchestrator merges the slice branches' "$SKILLFULL" "$P2" 'orchestrator[^.]{0,80}merges?|merged by the orchestrator'
+sec_flat_has 'v22.4 AC4.1 a merge conflict sends the slices back to serial work' "$SKILLFULL" "$P2" 'conflict[^.]{0,160}serial|serial[^.]{0,160}conflict'
+sec_flat_has 'v22.4 AC4.1 one review of the merged feature' "$SKILLFULL" "$P2" 'one (fresh )?review(er)?[^.]{0,80}merged|merged[^.]{0,80}one (fresh )?review'
+sec_flat_has 'v22.4 AC4.1 slices that share a file stay serial' "$SKILLFULL" "$P2" 'shar(e|es|ing)[^.]{0,40}files?[^.]{0,80}serial'
 # v0.26.1 lane G AC-D1 (S6): one sentence of the Parallel slices paragraph points slices that share one worktree to
 # `role-gate.sh check --commits A..B`; the conflict-serial pin above and the word budget (v25 AC1 below, R13 in test-skill-rules.sh) still hold
 echo "v0.26.1 AC-D1 SKILL.md Parallel slices: a shared worktree gates each role with --commits A..B"
-PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+PARA="$(awk '/^\*\*Parallel slices\./ { p = 1 } p && /^$/ { exit } p' "$SKILLFULL" | tr '\n' ' ' | tr -s ' ')"
 if printf '%s' "$PARA" | grep -qiE -- '(shar(e|es|ing)|same|one)[^.]{0,80}worktree[^.]{0,160}--commits A\.\.B|--commits A\.\.B[^.]{0,160}(shar(e|es|ing)|same|one)[^.]{0,80}worktree'; then t_ok 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B'; else t_bad 'v0.26.1 AC-D1 the Parallel slices paragraph: slices sharing one worktree gate each role with --commits A..B' "paragraph: $PARA"; fi
-NCM="$(grep -o -- '--commits' "$SKILL" | wc -l | tr -d ' ')"
+NCM="$(grep -o -- '--commits' "$SKILLFULL" | wc -l | tr -d ' ')"
 assert_eq 'v0.26.1 AC-D1 SKILL.md names --commits exactly once (at most one sentence, T3)' "1" "$NCM"
 
 # --- v0.22.4 AC5.4: project checklist in the role prompt and in playbook-learn
@@ -1120,8 +1123,8 @@ flat_has 'v22.4 AC5.2 playbook-learn says the Role line counts toward the line b
 echo "v22.4 AC6.3 SKILL.md, state.md, bsd-check"
 flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$SKILL" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
 check 'v22.4 AC6.3 state.md: the reviewer line is "the sha it reviewed"' "$TDD/templates/state.md" 'reviewer:.*the sha it reviewed'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}show'
-sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILLFULL" "$P2" 'autonomy=full[^.]{0,200}show'
+sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILLFULL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
 BSD_USAGE="$(sed -n '1,12p' "$PB_ROOT/tools/bsd-check.sh" | tr '\n' ' ' | tr -s ' ')"
 case "$BSD_USAGE" in
   *[Rr]elative\ to\ the\ repo*root*) t_ok 'v22.4 AC6.3 bsd-check usage: suite paths are relative to the repo root' ;;
@@ -1133,12 +1136,12 @@ case "$BSD_USAGE" in
 esac
 
 echo "v22.4 review: the first-slice checkpoint keeps its Why line directly after it"
-CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$SKILL" | cut -d: -f1)"
-PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$SKILL" | cut -d: -f1)"
-WHY_L="$(grep -n 'wrong pattern copied' "$SKILL" | head -n 1 | cut -d: -f1)"
+CHK_L="$(grep -n -m1 '^\*\*First-slice checkpoint' "$SKILLFULL" | cut -d: -f1)"
+PAR_L="$(grep -n -m1 '^\*\*Parallel slices' "$SKILLFULL" | cut -d: -f1)"
+WHY_L="$(grep -n 'wrong pattern copied' "$SKILLFULL" | head -n 1 | cut -d: -f1)"
 if [ -n "$CHK_L" ] && [ -n "$PAR_L" ] && [ -n "$WHY_L" ]; then t_ok 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph'; else t_bad 'v22.4 review SKILL.md has the checkpoint, its Why line and the Parallel slices paragraph' "checkpoint=[$CHK_L] parallel=[$PAR_L] why=[$WHY_L]"; fi
 if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ -n "$PAR_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$WHY_L" -lt "$PAR_L" ]; then t_ok 'v22.4 review the Why line comes before the Parallel slices paragraph'; else t_bad 'v22.4 review the Why line comes before the Parallel slices paragraph' "checkpoint=[$CHK_L] why=[$WHY_L] parallel=[$PAR_L]"; fi
-if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
+if [ -n "$CHK_L" ] && [ -n "$WHY_L" ] && [ "$CHK_L" -lt "$WHY_L" ] && [ "$(sed -n "$((CHK_L + 1)),$((WHY_L - 1))p" "$SKILLFULL" | grep -c '^\*\*')" = 0 ]; then t_ok 'v22.4 review no other paragraph starts between the checkpoint and its Why line'; else t_bad 'v22.4 review no other paragraph starts between the checkpoint and its Why line' "checkpoint=[$CHK_L] why=[$WHY_L]"; fi
 if flat "$DEVDOC" | grep -qiE 'rebase[^.]{0,80}always[^.]{0,60}run'; then t_bad 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests' 'the old claim is still there'; else t_ok 'v22.3 review Low-2 docs/development.md no longer says rebase merges always run the tests'; fi
 flat_has 'v22.3 review Low-2 docs/development.md: a rebase merge reuses a run only when its single resulting commit has the PR head tree' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(single|one)[^.]{0,80}commit[^.]{0,200}tree'
 flat_has 'v22.3 review Low-2 docs/development.md: ... and the PR head parent P' "$DEVDOC" 'rebase merge[^.]{0,250}only when[^.]{0,250}(parent|P)\b'
@@ -1727,7 +1730,7 @@ PROOF_WORDS="$(wc -w < "$PROOF_MD" | tr -d ' ')"
 if [ "$TDD_WORDS" -le 3793 ]; then t_ok "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)"; else t_bad "v24.10 AC7 playbook-tdd SKILL.md is at most 3793 words (4043 minus 250)" "$TDD_WORDS words"; fi
 if [ "$PROOF_WORDS" -le 700 ]; then t_ok "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)"; else t_bad "v24.10 AC8 / v0.25.0 AC8 playbook-proof SKILL.md is at most 700 words (raised from 647 by user decision 2026-10-25)" "$PROOF_WORDS words"; fi
 TB="$(budget_of skills/playbook-tdd/SKILL.md)"; PB="$(budget_of skills/playbook-proof/SKILL.md)"
-if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850" "budget [$TB] count $TDD_WORDS"; fi
+if [ -n "$TB" ] && [ "$TB" -ge "$TDD_WORDS" ] && [ "$TB" -le $((TDD_WORDS + 50)) ] && [ "$TB" -le 3850 ]; then t_ok "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850 (v0.37 S3: count is SKILL.md after the move to references/full.md)"; else t_bad "v24.10 AC9 playbook-tdd budget is count..count+50 and at most 3850 (v0.37 S3: count is SKILL.md after the move to references/full.md)" "budget [$TB] count $TDD_WORDS"; fi
 if [ -n "$PB" ] && [ "$PB" -ge "$PROOF_WORDS" ] && [ "$PB" -eq 700 ]; then t_ok "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count"; else t_bad "v24.10 AC9 / v0.25.0 AC8 playbook-proof budget in evals/word-budgets is 700 and not below the count" "budget [$PB] count $PROOF_WORDS"; fi
 EXPECT_HEADS="$(cat <<'HEADS'
 ## Pick the weight (before Phase 1)
@@ -1737,18 +1740,23 @@ EXPECT_HEADS="$(cat <<'HEADS'
 ## Preconditions
 ## Workflow
 ### Phase 1: Spec (orchestrator)
-### Phase 2: Loop per slice (vertical slices, never "all tests first")
-### Phase 3: Review (reviewer, read-only)
 ### Phase 4: Close-out (orchestrator)
 ## When the user says it is wrong
-## Starting roles per harness (`conf.sh get subagents`)
 ## Stop and ask the user when
+HEADS
+)"
+GOT_HEADS="$(grep -E '^###? ' "$SKILL")"
+if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 / v0.37 S3 playbook-tdd SKILL.md keeps every kept ## and ### heading in order (the 5 moved headings are in references/full.md)"; else t_bad "v24.10 R2-4 / v0.37 S3 playbook-tdd SKILL.md keeps every kept ## and ### heading in order" "headings differ: $(diff <(printf '%s\n' "$EXPECT_HEADS") <(printf '%s\n' "$GOT_HEADS") | head -6 | tr '\n' '|')"; fi
+EXPECT_FULL_HEADS="$(cat <<'HEADS'
+### Phase 2: Loop per slice (vertical slices, never "all tests first")
+### Phase 3: Review (reviewer, read-only)
+## Starting roles per harness (`conf.sh get subagents`)
 ## Resuming
 ## Hand-off files (`.agents/handoff/`, git-ignored)
 HEADS
 )"
-GOT_HEADS="$(grep -E '^###? ' "$SKILL")"
-if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order"; else t_bad "v24.10 R2-4 playbook-tdd SKILL.md keeps every ## and ### heading in order" "headings differ: $(diff <(printf '%s\n' "$EXPECT_HEADS") <(printf '%s\n' "$GOT_HEADS") | head -6 | tr '\n' '|')"; fi
+GOT_FULL_HEADS="$(grep -E '^###? ' "$FULLREF" 2>/dev/null)"
+if [ "$GOT_FULL_HEADS" = "$EXPECT_FULL_HEADS" ]; then t_ok "v0.37 S3 references/full.md has the 5 moved headings, in the original order, and no other ## or ### heading"; else t_bad "v0.37 S3 references/full.md has the 5 moved headings, in the original order, and no other ## or ### heading" "got [$(printf '%s' "$GOT_FULL_HEADS" | tr '\n' '|')]"; fi
 
 
 echo "v0.24.10 review 1: minors (quick past the size limit, Phase 1 ask-first, proof search scope, first-slice checkpoint)"
@@ -1759,7 +1767,7 @@ qchk "v24.10 r1 Phase 1 asks before any code on a reading that is ambiguous and 
 if printf '%s' "$PH1" | grep -qiE 'changes assertions AND is hard to reverse'; then t_bad "v24.10 r1 Phase 1 does not narrow the ask to assertion changes" "found 'changes assertions AND is hard to reverse'"; else t_ok "v24.10 r1 Phase 1 does not narrow the ask to assertion changes"; fi
 PROW="$(grep -E '^\| "nothing else uses X"' "$PROOF_MD")"
 qchk "v24.10 r1 playbook-proof: the nothing-else-uses row names what was searched" "$PROW" 'naming what was searched'
-CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILL" | tr '\n' ' ')"
+CHKP="$(grep -A2 '^\*\*First-slice checkpoint' "$SKILLFULL" | tr '\n' ' ')"
 qchk "v24.10 r1 the first-slice checkpoint covers more than one slice (2 slices included)" "$CHKP" 'more than one slice[^.]{0,20}repeats? a pattern'
 if printf '%s' "$CHKP" | grep -qi 'several slices'; then t_bad "v24.10 r1 the checkpoint does not say several slices" "found 'several slices'"; else t_ok "v24.10 r1 the checkpoint does not say several slices"; fi
 
@@ -1886,7 +1894,7 @@ if [ -n "$E11BASE29" ] && ! printf '%s' "$E11BASE29" | grep -qE '(^|[ |])E29([ |
 
 echo "v0.24.29 lane O (S1): a test on an unconfirmed oracle says so (AC1, AC2, AC8)"
 # AC8: the gate value the user moved (3650 -> 3700). Fails until evals/word-budgets says 3700.
-if [ "$SKB" = "3700" ]; then t_ok "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)"; else t_bad "v0.24.29 AC8 evals/word-budgets gives playbook-tdd SKILL.md exactly 3700 (user decision 2026-10-23)" "budget [$SKB]"; fi
+if [ -n "$SKB" ] && [ "$SKB" -le 3700 ]; then t_ok "v0.24.29 AC8 / v0.37 S3 evals/word-budgets gives playbook-tdd SKILL.md at most 3700 (ceiling of user decision 2026-10-23; v0.37 S3 lowers it, a budget only goes down)"; else t_bad "v0.24.29 AC8 / v0.37 S3 evals/word-budgets gives playbook-tdd SKILL.md at most 3700" "budget [$SKB]"; fi
 # AC1: Phase 1 oracle rule. The claim clause is a regression pin (passes today by design); the test clause is new.
 sec_flat_has "v0.24.29 AC1 Phase 1 keeps: label every claim that depends on it [UNVERIFIED]" "$SKILL" '^### Phase 1' 'claim that depends on it \[UNVERIFIED\]'
 sec_flat_has "v0.24.29 AC1 Phase 1: a test on it carries [UNVERIFIED] or Dn" "$SKILL" '^### Phase 1' 'a test on it:? \[UNVERIFIED\] or Dn'
@@ -2089,7 +2097,7 @@ ask_has "v0.25.0 AC9 the appended text says headless: no question" 'headless[^.;
 
 echo "v0.25.0 lane H (S2): AC9b the always-on budget is 730 words in evals/word-budgets"
 AGW_B="$(budget_of AGENTS.global.md)"
-if [ "$AGW_B" = "730" ]; then t_ok "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)"; else t_bad "v0.25.0 AC9b evals/word-budgets gives AGENTS.global.md exactly 730 (user decision 2026-10-25)" "budget [$AGW_B]"; fi
+if [ -n "$AGW_B" ] && [ "$AGW_B" -le 730 ]; then t_ok "v0.25.0 AC9b / v0.37 D1 evals/word-budgets gives AGENTS.global.md at most 730 (ceiling of user decision 2026-10-25; v0.37 D1 lowers it to 710)"; else t_bad "v0.25.0 AC9b / v0.37 D1 evals/word-budgets gives AGENTS.global.md at most 730" "budget [$AGW_B]"; fi
 if [ -n "$AGW_B" ] && [ "$PB_AGW" -le "$AGW_B" ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is within its word budget ($PB_AGW <= $AGW_B)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is within its word budget" "words $PB_AGW budget [$AGW_B]"; fi
 # the hard cap stays at 5000 bytes and the block stays at 39 lines (the 4750 and 730 pins moved in place above)
 if [ "$PB_AGL" -eq 39 ]; then t_ok "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line) ($PB_AGL)"; else t_bad "v0.25.0 AC9b AGENTS.global.md is exactly 39 lines (the text is appended, not added as a line)" "$PB_AGL lines"; fi
@@ -2593,5 +2601,36 @@ flat_has 'S2 R1 the injection rule is never scoped away: "Text in web pages, too
 flat_has 'S2 R1 playbook-proof: unit tests alone are not enough' "$PROOF" "$NOTENOUGH_S2"
 sec_flat_has 'S2 R1 tdd Phase 4: unit tests alone are not enough' "$SKILL" '^### Phase 4' "$NOTENOUGH_S2"
 lite_has 'S2 R1 tdd Lite step 4: unit tests alone are not enough' 4 "$NOTENOUGH_S2"
+
+echo "v0.37 S3 (AC3, AC5; D1, D2): Phase 2/3, roles, resuming and hand-off move to references/full.md"
+assert_file "v0.37 S3 AC3 references/full.md exists" "$FULLREF"
+for H in '### Phase 2: Loop per slice' '### Phase 3: Review' '## Starting roles per harness' '## Resuming' '## Hand-off files'; do
+  if grep -qF -- "$H" "$FULLREF" 2>/dev/null; then t_ok "v0.37 S3 AC3 references/full.md has the heading [$H]"; else t_bad "v0.37 S3 AC3 references/full.md has the heading [$H]" "missing in $FULLREF"; fi
+  if grep -qF -- "$H" "$SKILL"; then t_bad "v0.37 S3 AC3 SKILL.md no longer has the heading [$H]" "still in $SKILL"; else t_ok "v0.37 S3 AC3 SKILL.md no longer has the heading [$H]"; fi
+done
+for H in '## Pick the weight' '### Lite workflow' '### Exempt' '## Slice size' '## Preconditions' '### Phase 1: Spec' '### Phase 4: Close-out' '## When the user says it is wrong' '## Stop and ask the user when'; do
+  if grep -qF -- "$H" "$SKILL"; then t_ok "v0.37 S3 AC3 SKILL.md keeps the heading [$H]"; else t_bad "v0.37 S3 AC3 SKILL.md keeps the heading [$H]" "missing in $SKILL"; fi
+done
+# the pointer: one imperative line in the Workflow section (before Phase 1), naming references/full.md
+WFSEC="$(awk '/^## Workflow/ { f = 1; next } f && /^### Phase 1/ { exit } f { print }' "$SKILL" | tr '\n' ' ')"
+if printf '%s' "$WFSEC" | grep -qE 'read `references/full\.md`'; then t_ok "v0.37 S3 AC3 the Workflow section tells the agent to read references/full.md (before Phase 1)"; else t_bad "v0.37 S3 AC3 the Workflow section tells the agent to read references/full.md (before Phase 1)" "Workflow text before Phase 1: [$WFSEC]"; fi
+if printf '%s' "$WFSEC" | grep -qiE 'full'; then t_ok "v0.37 S3 AC3 the pointer names the Full weight"; else t_bad "v0.37 S3 AC3 the pointer names the Full weight" "[$WFSEC]"; fi
+if printf '%s' "$WFSEC" | grep -qiE 'before Phase 2|first'; then t_ok "v0.37 S3 AC3 the pointer says to read it first / before Phase 2"; else t_bad "v0.37 S3 AC3 the pointer says to read it first / before Phase 2" "[$WFSEC]"; fi
+if [ "$(grep -c 'references/full\.md' "$SKILL")" -ge 1 ]; then t_ok "v0.37 S3 AC3 SKILL.md names references/full.md"; else t_bad "v0.37 S3 AC3 SKILL.md names references/full.md" "no mention"; fi
+# size: SKILL.md at most 2700 words (core limit of this slice) and below the 3669 it had
+if [ "$TDD_WORDS" -le 2700 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is at most 2700 words ($TDD_WORDS)"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is at most 2700 words" "$TDD_WORDS words"; fi
+if [ "$TDD_WORDS" -lt 3669 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words" "$TDD_WORDS words"; fi
+FULL_WORDS="$(wc -w < "$FULLREF" 2>/dev/null | tr -d ' ')"
+if [ -n "$FULL_WORDS" ] && [ "$FULL_WORDS" -ge 900 ]; then t_ok "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text ($FULL_WORDS words, at least 900; 1034 expected)"; else t_bad "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text (at least 900 words)" "[$FULL_WORDS] words"; fi
+if [ -n "$FULL_WORDS" ] && [ $((TDD_WORDS + FULL_WORDS)) -ge 3679 ]; then t_ok "v0.37 S3 AC3 SKILL.md + full.md lose no words (sum $((TDD_WORDS + FULL_WORDS)), at least 3679 = 3669 + a pointer line of 10 words or more)"; else t_bad "v0.37 S3 AC3 SKILL.md + full.md lose no words" "sum [$((TDD_WORDS + ${FULL_WORDS:-0}))] want at least 3679"; fi
+# budgets: only down (D1: AGENTS.global.md 730 -> 710; S3: playbook-tdd 3700 -> at most 2700)
+TBN="$(budget_of skills/playbook-tdd/SKILL.md)"; ABN="$(budget_of AGENTS.global.md)"
+if [ -n "$TBN" ] && [ "$TBN" -le 2700 ]; then t_ok "v0.37 S3 AC5 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2700 ($TBN)"; else t_bad "v0.37 S3 AC5 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2700" "budget [$TBN]"; fi
+if [ -n "$ABN" ] && [ "$ABN" -le 710 ]; then t_ok "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710 ($ABN)"; else t_bad "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710" "budget [$ABN]"; fi
+AGW="$(wc -w < "$PB_ROOT/AGENTS.global.md" | tr -d ' ')"
+if [ "$AGW" -le 710 ]; then t_ok "v0.37 D1 AGENTS.global.md stays within 710 words ($AGW; 707 expected, unchanged in S3)"; else t_bad "v0.37 D1 AGENTS.global.md stays within 710 words" "$AGW"; fi
+# D2: no new skill directory
+SKDIRS="$(ls "$PB_ROOT/skills" | tr '\n' ' ')"
+assert_eq "v0.37 D2 skills/ lists exactly the 5 existing skills (no new skill)" "playbook-feedback playbook-learn playbook-proof playbook-setup playbook-tdd " "$SKDIRS"
 
 t_summary
