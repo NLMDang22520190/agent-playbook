@@ -121,9 +121,11 @@ main() {
   # a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
   # exempt only the log file itself: path relative to the repo root, and only while untracked ("?? <path>").
   # -z gives unquoted NUL-separated entries (paths with spaces are not quoted).
-  logd="$(cd "${logf%/*}" 2>/dev/null && pwd -P)"; [ "$logf" != "${logf##*/}" ] || logd="$(pwd -P)"
-  top="$(git rev-parse --show-toplevel)"
-  if [ "$logd" = "$top" ]; then logrel="${logf##*/}"; else logrel="${logd#"$top"/}/${logf##*/}"; fi
+  # the repo-relative path comes from git itself (--show-prefix), never from comparing path spellings
+  # (Git Bash spells the same directory differently in pwd -P and --show-toplevel).
+  logdir="."; [ "$logf" = "${logf##*/}" ] || logdir="${logf%/*}"; [ -n "$logdir" ] || logdir="/"
+  logrel=""
+  if prefix="$(git -C "$logdir" rev-parse --show-prefix 2>/dev/null)"; then logrel="${prefix}${logf##*/}"; fi
   dirty=""
   while IFS= read -r -d '' ent; do
     [ "$ent" = "?? $logrel" ] || dirty=1
