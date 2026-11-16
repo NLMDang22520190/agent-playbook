@@ -77,9 +77,8 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
 3. Write the least code to pass. Do not touch the test. `role-gate.sh check implementer --base $RED`
    must pass. `role-gate.sh size --base $RED` checks the Lite limits;
    if it exits 1, escalate to Full; exit 3: fix named file, run again.
-4. Fresh run of test, lint and typecheck with `proof-run.sh`. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs one
-   real observation of the behaviour in this session (start it, then curl it or take a screenshot; reading the
-   source file is not one); unit tests alone are not enough. If it cannot be run, say so under "Not checked".
+4. Fresh run of test, lint and typecheck with `proof-run.sh`. On an unconfirmed oracle, a killed mutant pins the assumed reading; it does not catch a bug. A user-visible change (UI, HTTP API, CLI output, file format) needs the
+   observation named in the always-on rule in AGENTS.global.md; unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, cannot tell which is right), in the hand-off report `06-final-report.md`. Your reply repeats its Not checked lines and logged defaults.
    The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`.
    If the user wants a review, run Phase 3 on the result. If a rule,
@@ -201,8 +200,7 @@ Release speed rules (review-round cap, introduced vs pre-existing findings, per-
   the first pass. Then put `cost.sh summary` into the
   final report's Cost section.
 - `git diff --stat <base>..HEAD`, which must match the spec scope.
-- A user-visible change needs one real observation in this session (screenshot or browser read, curl,
-  the CLI command; as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
+- A user-visible change needs the observation named in the always-on rule in AGENTS.global.md (the real observation, as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
 - Fill `templates/final-report.md` as the hand-off report `06-final-report.md`; the template says what each section needs:
   request coverage, a confidence per AC, review verdict, assumptions, logged defaults, found-not-fixed, [UNVERIFIED],
   `## Not checked` and `## Pre-mortem`. The Pre-mortem, the Models used line and the Playbook feedback line belong to

@@ -17,7 +17,7 @@ Users are affected now in production: wrong results, errors, an outage, wrong ch
 - Never skip or weaken an existing test to ship.
 
 ## 3. Fresh evidence
-- Observe the mitigation and the fix each in this session: the suite through `proof-run.sh`, plus one real observation such as `curl` on the affected endpoint, a log line, or a post-deploy health or error check.
+- Observe the mitigation and the fix each in this session: the suite through `proof-run.sh`, plus the observation required by the always-on rule in AGENTS.global.md, such as `curl` on the affected endpoint, a log line, or a post-deploy health or error check.
 - A green run from before the incident does not count.
 
 ## 4. Report
