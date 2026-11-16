@@ -2617,6 +2617,14 @@ if printf '%s' "$WFSEC" | grep -qE 'read `references/full\.md`'; then t_ok "v0.3
 if printf '%s' "$WFSEC" | grep -qiE 'full'; then t_ok "v0.37 S3 AC3 the pointer names the Full weight"; else t_bad "v0.37 S3 AC3 the pointer names the Full weight" "[$WFSEC]"; fi
 if printf '%s' "$WFSEC" | grep -qiE 'before Phase 2|first'; then t_ok "v0.37 S3 AC3 the pointer says to read it first / before Phase 2"; else t_bad "v0.37 S3 AC3 the pointer says to read it first / before Phase 2" "[$WFSEC]"; fi
 if [ "$(grep -c 'references/full\.md' "$SKILL")" -ge 1 ]; then t_ok "v0.37 S3 AC3 SKILL.md names references/full.md"; else t_bad "v0.37 S3 AC3 SKILL.md names references/full.md" "no mention"; fi
+# v0.37 S3 review: the two other spots that point at moved text name references/full.md
+L13="$(grep -F 'except in `none` mode' "$SKILL")"
+if printf '%s' "$L13" | grep -qF 'references/full.md'; then t_ok "v0.37 S3 review spot 1: the none-mode exception names references/full.md"; else t_bad "v0.37 S3 review spot 1: the none-mode exception names references/full.md" "line: [$L13]"; fi
+if [ -n "$L13" ] && printf '%s' "$L13" | grep -qF 'except in `none` mode'; then t_ok "v0.37 S3 review spot 1: the line still says none mode"; else t_bad "v0.37 S3 review spot 1: the line still says none mode" "no line"; fi
+L6="$(grep -F 'If the user wants a review' "$SKILL")"
+if printf '%s' "$L6" | grep -qF 'references/full.md' && printf '%s' "$L6" | grep -qF 'Phase 3'; then t_ok "v0.37 S3 review spot 2: Lite step 6 names references/full.md and Phase 3"; else t_bad "v0.37 S3 review spot 2: Lite step 6 names references/full.md and Phase 3" "line: [$L6]"; fi
+if printf '%s' "$L6" | grep -qE 'read `references/full\.md`'; then t_ok "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md"; else t_bad "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md" "line: [$L6]"; fi
+if [ "$(grep -c 'read `references/full\.md` first' "$SKILL")" = 1 ]; then t_ok "v0.37 S3 review: the Workflow pointer line still exists"; else t_bad "v0.37 S3 review: the Workflow pointer line still exists" "not exactly one"; fi
 # size: SKILL.md at most 2700 words (core limit of this slice) and below the 3669 it had
 if [ "$TDD_WORDS" -le 2700 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is at most 2700 words ($TDD_WORDS)"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is at most 2700 words" "$TDD_WORDS words"; fi
 if [ "$TDD_WORDS" -lt 3669 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words" "$TDD_WORDS words"; fi
