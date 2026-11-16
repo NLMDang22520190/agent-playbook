@@ -31,7 +31,7 @@ rgf_gh_install "$RGF_W/gh"; export PATH="$RGF_GH/bin:$PATH"; export PB_GATE_REPO
 W="$(mk_tmp)"
 mkdir -p "$W/home" "$W/tmp"
 T15="pattern-15-erase-account-ambiguous"; T24="pattern-24-merge-duplicate-customers"; T26="pattern-26-consistent-price-rounding"
-TASKS="$T15,$T24,$T26"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 BTAG="v0.32.0"; GTAG="v0.33.0"
 OLDVER="0.0.1-base"; NEWVER="7.7.7-fix"
 T0=1790000000
@@ -276,6 +276,9 @@ commit_results() { ( cd "$1" && git add -A evals/results ) && gcommit "$1" "$2" 
 chk() { CHKRC=0; CHKOUT="$(cd "$1" && env -i HOME="$W/home" PATH="$PATH" bash tools/release-gate.sh --check HEAD 2>&1)" || CHKRC=$?; }
 
 CHG="E2:S,E3:G,E8:H,$T24:S"
+# the gate items: 6 scenarios + every default task (derived from the gate's DEFAULT_TASKS); every task but T24 keeps its hashes (reused)
+NIT=$((6 + $(printf '%s' "$TASKS" | tr ',' '\n' | grep -c .)))
+REUSED_ROWS="$(printf '%s\n' E1 E13 $(printf '%s' "$TASKS" | tr ',' ' ' | tr ' ' '\n' | grep -vx "$T24") | LC_ALL=C sort | sed 's/$/:5/' | paste -sd, -)"
 
 # ===========================================================================================================================
 echo "R1/R2/R3 a baseline with hashes, 3 days old: items whose three hashes match run the with arm only, the others both arms"
@@ -285,7 +288,7 @@ rr "$RA" r1 "FAKE_CHG=$CHG" "PB_GATE_NOW=$NOW3" -- --harness claude
 assert_eq "R1 the gate passes (exit 0, verdict pass)" "0|pass" "$RC|$(gj "$GJ" j.verdict)"
 assert_eq "R1 both runners are asked for the hashes once each, with the gate's harness and model and its own selection" "1|1" "$(nph run-evals.sh)|$(nph run-outcome.sh)"
 case "$(ph_calls run-evals.sh)" in *"--harness claude"*"--model m1"*"--scenarios E1,E2,E3,E8,E13,E14"*) t_ok "R1 --print-hashes of the behaviour runner carries --harness claude --model m1 --scenarios <the gate's list>" ;; *) t_bad "R1 --print-hashes of the behaviour runner carries the selection" "$(ph_calls run-evals.sh)" ;; esac
-case "$(ph_calls run-outcome.sh)" in *"--harness claude"*"--model m1"*"--tasks $T15,$T24,$T26"*) t_ok "R1 --print-hashes of the outcome runner carries --harness claude --model m1 --tasks <the gate's list>" ;; *) t_bad "R1 --print-hashes of the outcome runner carries the selection" "$(ph_calls run-outcome.sh)" ;; esac
+case "$(ph_calls run-outcome.sh)" in *"--harness claude"*"--model m1"*"--tasks $TASKS"*) t_ok "R1 --print-hashes of the outcome runner carries --harness claude --model m1 --tasks <the gate's list>" ;; *) t_bad "R1 --print-hashes of the outcome runner carries the selection" "$(ph_calls run-outcome.sh)" ;; esac
 assert_eq "R1 the hashes are asked for before the first real runner call" "yes" "$(order_ok)"
 assert_eq "R1 E1 (all three hashes equal): reused, why hashes match" "true|hashes match" "$(ry E1)"
 assert_eq "R1 E2 (scenario_sha differs): not reused" "false|scenario_sha differs" "$(ry E2)"
@@ -308,9 +311,9 @@ assert_eq "R3 task $T24 (not reused): both arms 5" "w=5 o=5" "$(rq "$T24")"
 assert_eq "R2 reuse.baseline is {tag, commit, dir} of the baseline gate" "$BTAG|$BCA|$BDA" "$(gj "$GJ" 'j.reuse.baseline.tag + "|" + j.reuse.baseline.commit + "|" + j.reuse.baseline.dir')"
 assert_eq "R2 reuse.baseline is the baseline of gate.json" "$(gj "$GJ" 'j.baseline')" "$(gj "$GJ" 'j.reuse.baseline')"
 assert_eq "R2 age_days is 3 (baseline gate commit T0, now T0+3d; the tag commit is a day later and not what counts)" "3" "$(gj "$GJ" 'j.reuse.age_days')"
-assert_eq "R2 reuse.items lists every item of the gate once (6 scenarios + 3 tasks)" "9" "$(gj "$GJ" 'new Set(j.reuse.items.map(i => i.item)).size')"
+assert_eq "R2 reuse.items lists every item of the gate once (6 scenarios + the default tasks)" "$NIT" "$(gj "$GJ" 'new Set(j.reuse.items.map(i => i.item)).size')"
 assert_eq "R2 one reused-without file at least is written to DIR" "yes" "$(rj "$ODN" 'F.length >= 1 ? "yes" : "no"')"
-assert_eq "R2 the reused rows are exactly the without runs of E1, E13, $T15 and $T26, 5 each" "E1:5,E13:5,$T15:5,$T26:5" "$(rj "$ODN" 'const c = {}; for (const f of F) for (const r of f.runs) c[r.scenario] = (c[r.scenario] || 0) + 1; Object.keys(c).sort().map(k => k + ":" + c[k]).join(",")')"
+assert_eq "R2 the reused rows are exactly the without runs of E1, E13, $T15 and $T26, 5 each" "$REUSED_ROWS" "$(rj "$ODN" 'const c = {}; for (const f of F) for (const r of f.runs) c[r.scenario] = (c[r.scenario] || 0) + 1; Object.keys(c).sort().map(k => k + ":" + c[k]).join(",")')"
 assert_eq "R2 every reused row is a without-arm graded run" "true" "$(rj "$ODN" 'F.length > 0 && F.every(f => f.runs.every(r => r.arm === "without" && r.status === "graded"))')"
 assert_eq "R2 the file is pb-evals/1 with playbook_commit = HEAD, harness claude, model m1" "true" "$(rj "$ODN" "F.length > 0 && F.every(f => f.schema === \"pb-evals/1\" && f.playbook_commit === \"$HA\" && f.harness === \"claude\" && f.model === \"m1\")")"
 assert_eq "R2 the file has no variant object" "true" "$(rj "$ODN" 'F.length > 0 && F.every(f => f.variant === undefined || f.variant === null)')"
@@ -319,7 +322,7 @@ assert_eq "R2 reused_from.file is outcome-m1.json for a task" "$BTAG|$BCA|$BDA|o
 assert_eq "R2 every reused row has a complete reused_from" "true" "$(rj "$ODN" 'F.length > 0 && F.every(f => f.runs.every(r => { const g = rf(f, r); return g.tag && g.commit && g.dir && g.file; }))')"
 assert_eq "R2 the reused rows keep the baseline rows' hashes (40 hex values read from the committed baseline file)" "$(git -C "$RA" show "$BTAG:$BDA/behaviour-m1.json" | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8")).runs.find(x => x.scenario === "E1" && x.arm === "without"); console.log([r.scenario_sha, r.grader_sha, r.harness_sha].join("|"))')" "$(rj "$ODN" 'const r = F.flatMap(f => f.runs).find(x => x.scenario === "E1"); [r.scenario_sha, r.grader_sha, r.harness_sha].join("|")')"
 assert_eq "R2 gate.json pools the reused-without file" "true" "$(gj "$GJ" 'j.pooled.some(p => /reused-without-[^\/]*\.json$/.test(p))')"
-assert_eq "R3 every item has 5 graded with and 5 graded without runs in the pooled files (none fewer)" "9 items; " "$(pooled_min "$ODN" "$HA")"
+assert_eq "R3 every item has 5 graded with and 5 graded without runs in the pooled files (none fewer)" "$NIT items; " "$(pooled_min "$ODN" "$HA")"
 assert_eq "R2 eval-delta sees both arms of a reused scenario: a delta row for E1" "true" "$(gj "$GJ" 'j.rows.some(r => r.scenario === "E1")')"
 assert_eq "R2 eval-delta sees both arms of a reused task: a delta row for $T15" "true" "$(gj "$GJ" "j.rows.some(r => r.scenario === \"$T15\")")"
 assert_eq "R2 min_graded is 5 (the reused without runs count towards rule c)" "5" "$(gj "$GJ" 'j.min_graded')"
@@ -330,7 +333,7 @@ assert_eq "R1 age 7 days exactly: E1 reused, age_days 7" "true|hashes match|7" "
 assert_eq "R1 age 7 days exactly: E1 runs the with arm only" "w=5 o=0" "$(rq E1)"
 rr "$RA" r1c "FAKE_CHG=$CHG" "PB_GATE_NOW=$NOW7P" -- --harness claude
 assert_eq "R1 age 7 days and 1 s: E1 not reused (baseline older than 7 days)" "false|baseline older than 7 days" "$(ry E1)"
-assert_eq "R1 age over 7 days: every item has a reason, none is reused" "0|9" "$(gj "$GJ" 'j.reuse.items.filter(i => i.reused).length')|$(gj "$GJ" 'j.reuse.items.filter(i => i.why === "baseline older than 7 days").length')"
+assert_eq "R1 age over 7 days: every item has a reason, none is reused" "0|$NIT" "$(gj "$GJ" 'j.reuse.items.filter(i => i.reused).length')|$(gj "$GJ" 'j.reuse.items.filter(i => i.why === "baseline older than 7 days").length')"
 assert_eq "R1 age over 7 days: E1 and $T15 run both arms, 5 each (today's behaviour)" "w=5 o=5|w=5 o=5" "$(rq E1)|$(rq "$T15")"
 assert_eq "R1 age over 7 days: no reused-without file" "no" "$(rj "$ODN" 'F.length === 0 ? "no" : "yes"')"
 assert_eq "R1 age over 7 days: the gate still passes with the old rows left out" "0|pass" "$RC|$(gj "$GJ" j.verdict)"
@@ -361,7 +364,7 @@ build ro old
 RO="$W/ro"
 rr "$RO" r1o "PB_GATE_NOW=$NOW3" -- --harness claude
 assert_eq "R1 old baseline: the gate passes as today" "0|pass" "$RC|$(gj "$GJ" j.verdict)"
-assert_eq "R2 old baseline: reuse.baseline is set, nothing is reused, every item why no hashes in baseline" "$BTAG|0|9" "$(gj "$GJ" 'j.reuse.baseline.tag')|$(gj "$GJ" 'j.reuse.items.filter(i => i.reused).length')|$(gj "$GJ" 'j.reuse.items.filter(i => i.why === "no hashes in baseline").length')"
+assert_eq "R2 old baseline: reuse.baseline is set, nothing is reused, every item why no hashes in baseline" "$BTAG|0|$NIT" "$(gj "$GJ" 'j.reuse.baseline.tag')|$(gj "$GJ" 'j.reuse.items.filter(i => i.reused).length')|$(gj "$GJ" 'j.reuse.items.filter(i => i.why === "no hashes in baseline").length')"
 assert_eq "R1 old baseline: E1 and $T15 run both arms, 5 each" "w=5 o=5|w=5 o=5" "$(rq E1)|$(rq "$T15")"
 assert_eq "R2 old baseline: no reused-without file" "no" "$(rj "$ODN" 'F.length === 0 ? "no" : "yes"')"
 assert_eq "R2 old baseline: gate.json does not pool a reused-without file" "false" "$(gj "$GJ" 'j.pooled.some(p => /reused-without/.test(p))')"

@@ -98,6 +98,7 @@
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
+pb_pybin   # PB_PY: python3, else python
 . "$EVALS/lib-harness.sh"
 REPO="$(cd "$EVALS/.." && pwd -P)"
 
@@ -284,7 +285,7 @@ fi
 
 command -v node >/dev/null 2>&1 || pb_die "node (>= 18) is required" 3
 command -v git  >/dev/null 2>&1 || pb_die "git is required" 3
-if [ "$NEED_PY" = 1 ] && ! python3 -c 'import sys' >/dev/null 2>&1; then pb_die "python3 is required by a selected task (python3 -c 'import sys' failed)" 3; fi
+if [ "$NEED_PY" = 1 ] && [ -z "$PB_PY" ]; then pb_die "python3 is required by a selected task (python3 -c 'import sys' failed; python did not run either)" 3; fi
 if [ "$PREFLIGHT" = 1 ]; then   # --preflight: nothing below runs; no run, no workdir, no --out file, the harness CLI is only looked up
   if [ -n "$HARNESS" ] && ! command -v "$HARNESS" >/dev/null 2>&1; then pb_die "the $HARNESS CLI is not on PATH (--harness $HARNESS)" 3; fi
   exit 0
@@ -484,7 +485,7 @@ run_hidden() {
     TMPDIR="$1/tmp"; PYTHONDONTWRITEBYTECODE=1; export TMPDIR PYTHONDONTWRITEBYTECODE
     case "$TLANG" in
       node) exec $GTIMEOUT node --test "$2" ;;
-      python3) exec $GTIMEOUT python3 -I -c 'import sys, unittest; sys.path.insert(0, ""); unittest.main(module=None, argv=["python3 -m unittest"] + sys.argv[1:])' "$2" ;;
+      python3) exec $GTIMEOUT "$PB_PY" -I -c 'import sys, unittest; sys.path.insert(0, ""); unittest.main(module=None, argv=["python3 -m unittest"] + sys.argv[1:])' "$2" ;;
       bash) exec $GTIMEOUT bash "$2" ;;
     esac
     exit 126 ) </dev/null >/dev/null 2>&1

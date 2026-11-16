@@ -29,7 +29,7 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    | OpenCode | `task`, `skill`, `question` tools; `~/.config/opencode/` | native: the `task` tool |
    | Other | read the harness docs | ask the user |
 
-   State your conclusion.
+   State your conclusion. `bash ~/.agents/playbook/scripts/conf.sh check-harness` warns when the stored `harness` differs from the running one.
 
    On Windows, `bash --version` must say `msys`/`mingw` (Git Bash); `C:\Windows\System32\bash.exe` is
    the WSL launcher (wrong home): call Git Bash by its full path (usually
@@ -45,7 +45,7 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    Present every detection as a proposed default, with the file it came from.
 
 4. **Ask once, batched.** Use `references/questions.md`: at most 8 questions, each with a
-   default and why it matters. Use the harness's structured question tool when it has one
+   default and why it matters. Use the harness's question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
    accept "defaults" as an answer. Skip questions inspection already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
    Claude Code only: an optional line outside the 8 offers the hooks (default on): guard warns on irreversible
@@ -57,11 +57,11 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
-   configured models in `~/.codex/config.toml`). Rank only from what the harness reports or the
+   configured models in `~/.codex/config.toml`). Rank only from what the harness or the
    user says; never call a model "strongest" without that basis. Print a recommendation table:
    reviewer = strongest available or another vendor, implementer = mid-tier, tester = mid- or
    low-tier, each with a reason and its relative cost. Label any sample table "example". The user
-   accepts it or picks others. Store each pick with
+   accepts or picks others. Store each pick with
    `conf.sh set model_<role>_<harness> <model> --global` (roles: tester, implementer, reviewer, plus the optional `spec_reviewer` for the Full-weight spec reviewer sub-agent (falls back to the reviewer), `reviewer_light` for diffs that only touch tests, docs or skill text and `mechanical` for release prep, counts and formatting).
    Never write generic `model_<role>` keys: they apply to every harness on this machine. Also
    never write keys not documented in step 6.
@@ -86,16 +86,15 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
    - `bash $C list`, output pasted.
    - `bash ~/.agents/playbook/scripts/role-model.sh check`: it must say "no generic model keys";
      otherwise name the generic keys and offer to move them to per-harness keys.
-   - Check that the always-on block is loaded: look for the `<!-- BEGIN agent-playbook` line in the
-     global file of this harness (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or
-     `~/.config/opencode/AGENTS.md`, which falls back to `~/.claude/CLAUDE.md`). If it is missing,
-     recommend `install.sh doctor`.
+   - Check the always-on block: look for the `<!-- BEGIN agent-playbook` line in this harness's global file
+     (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or `~/.config/opencode/AGENTS.md`, falling back to
+     `~/.claude/CLAUDE.md`). If missing, recommend `install.sh doctor`.
    - For Codex: if `~/.codex/AGENTS.override.md` is non-empty, warn that it shadows `AGENTS.md`.
 
 8. **Project bootstrap (ask first).** Offer:
    `bash ~/.agents/playbook/scripts/learn.sh init --link-agents` (creates `.agents/LEARNINGS.md`,
    ignores `.agents/handoff/`, and adds a pointer to `AGENTS.md`). Without the learnings hook (not installed, or
-   Codex/OpenCode), the pointer is how agents learn about the file. If the project has no
+   Codex/OpenCode), the pointer is how agents find the file. If the project has no
    `CLAUDE.md` and the user uses Claude Code, add `--link-claude` (creates `CLAUDE.md` containing `@AGENTS.md`).
 
    Also offer the leak guard: ask for private strings the public repos must never contain and store them with
@@ -109,4 +108,4 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
 
 ## Do not
 - install packages, change harness settings or edit global instruction files without consent;
-- run long test suites during setup (checking that the command exists is enough).
+- run long test suites during setup (checking the command exists is enough).

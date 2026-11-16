@@ -132,13 +132,15 @@ EOF
     "$(git -C "$PB_ROOT" log --format='%h %s' "$ADD..HEAD" -- $DIRS)"
 fi
 
-echo "AC7 DEFAULT_TASKS of tools/release-gate.sh is unchanged from main (b9f407a)"
+echo "AC7 DEFAULT_TASKS of tools/release-gate.sh keeps main's (b9f407a) tasks first, in order (v0.37 AC1 appends pattern-27 to 36; it was: equal)"
 dt_of() { sed -n 's/^DEFAULT_TASKS=//p' | sed -n 1p | tr -d '\r'; }
 if git -C "$PB_ROOT" cat-file -e 'b9f407a^{commit}' 2>/dev/null; then
   MAIN_DT="$(git -C "$PB_ROOT" show b9f407a:tools/release-gate.sh 2>/dev/null | dt_of)"
   if [ -n "$MAIN_DT" ]; then t_ok "AC7 main's tools/release-gate.sh has a DEFAULT_TASKS= line"
   else t_bad "AC7 main's tools/release-gate.sh has a DEFAULT_TASKS= line" "none at b9f407a"; fi
-  assert_eq "AC7 DEFAULT_TASKS equals main's" "$MAIN_DT" "$(dt_of < "$PB_ROOT/tools/release-gate.sh")"
+  NOW_DT="$(dt_of < "$PB_ROOT/tools/release-gate.sh")"
+  MAIN_PFX="${MAIN_DT%\"}"
+  case "$NOW_DT" in "$MAIN_DT"|"$MAIN_PFX",*) t_ok "AC7 DEFAULT_TASKS starts with main's list (equal or main's tasks first, in order)" ;; *) t_bad "AC7 DEFAULT_TASKS starts with main's list (equal or main's tasks first, in order)" "main [$MAIN_DT] now [$NOW_DT]" ;; esac
 else
   t_skip 2 "commit b9f407a (main at the start of v0.35.0) is not in this clone"
 fi

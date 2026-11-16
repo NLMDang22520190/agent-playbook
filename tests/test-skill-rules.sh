@@ -8,6 +8,10 @@
 # text joined into one line (so a sentence wrapped over several lines still matches).
 . "$(dirname "$0")/lib.sh"
 SKILL="$PB_ROOT/skills/playbook-tdd/SKILL.md"
+FULLREF="$PB_ROOT/skills/playbook-tdd/references/full.md"   # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming, Hand-off files live here
+# pins on moved text read SKILL.md + full.md (SKILLFULL, SKFULL_ONE); pins on kept text read SKILL.md only
+SKILLFULL="$(mk_tmp)/skill-full.md"; { cat "$SKILL"; printf "\n"; cat "$FULLREF" 2>/dev/null; } > "$SKILLFULL"
+SKFULL_ONE="$(tr '\n' ' ' < "$SKILLFULL")"
 
 # flat FILE HEADING_REGEX [LEVEL] -> the text from the matching heading to the next heading of level <= LEVEL (default:
 # any ##/### heading), on one line
@@ -38,7 +42,7 @@ echo "AC15.2 non-interactive run: a failed, interrupted or timed-out sub-agent n
 # the rule may sit with the roles-per-harness text, the stop-and-ask list, or the workflow: check the first section that has it
 RULE_SECS=""
 for h in '^## Starting roles per harness' '^## Stop and ask the user when' '^## Workflow'; do
-  RULE_SECS="$RULE_SECS $(flat "$SKILL" "$h" 2)"
+  RULE_SECS="$RULE_SECS $(flat "$SKILLFULL" "$h" 2)"
 done
 chk "AC15.2 names the non-interactive run with a failing, interrupted or timed-out sub-agent" "$RULE_SECS" 'non-interactive.{0,250}sub-?agent.{0,200}(fail|interrupt|time[ -]?out)|sub-?agent.{0,120}(fail|interrupt|time[ -]?out).{0,250}non-interactive'
 chk "AC15.2 covers all three: fails, interrupted, times out" "$RULE_SECS" 'sub-?agent[^.]{0,60}(fails?|failed)[^.]{0,60}(is |was |gets )?interrupted[^.]{0,60}time[sd]? ?out'
@@ -97,8 +101,8 @@ chk "AC1.1 the Pick the weight section still says Full when unsure" "$WEIGHT" 'W
 
 echo "v0.24.0 AC3 SKILL.md points to references/release.md and stays within its line budget (v0.24.10: references/quick.md is gone)"
 assert_eq "v24.10 AC1 SKILL.md no longer points to references/quick.md" "0" "$(grep -c 'references/quick\.md' "$SKILL")"
-if grep -q 'references/release\.md' "$SKILL"; then t_ok "AC3 SKILL.md points to references/release.md"; else t_bad "AC3 SKILL.md points to references/release.md" "not found"; fi
-NREL="$(grep -c 'release\.md' "$SKILL")"
+if grep -q 'references/release\.md' "$SKILLFULL"; then t_ok "AC3 SKILL.md points to references/release.md"; else t_bad "AC3 SKILL.md points to references/release.md" "not found"; fi
+NREL="$(grep -c 'release\.md' "$SKILLFULL")"
 if [ "$NREL" -ge 1 ] && [ "$NREL" -le 4 ]; then t_ok "AC3 SKILL.md has at most 4 lines pointing to release.md ($NREL)"; else t_bad "AC3 SKILL.md has 1-4 lines pointing to release.md" "$NREL lines"; fi
 assert_no_path "v24.10 AC1 references/quick.md is deleted" "$QUICKMD"
 assert_file "references/release.md exists" "$RELEASE"
@@ -108,7 +112,7 @@ MAXLEN="$(awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }' "$SKI
 if [ "$MAXLEN" -le 540 ]; then t_ok "R9 no line of SKILL.md is longer than the current longest (540 chars): no long joined lines to dodge the cap ($MAXLEN)"; else t_bad "R9 no joined long lines" "longest line $MAXLEN chars"; fi
 
 echo "v0.24.0 AC2.5/R7/R9 SKILL.md: a configured model is binding, the plan line, ask once, headless, effort"
-ROLES="$(flat "$SKILL" '^## Starting roles per harness' 2)"
+ROLES="$(flat "$SKILLFULL" '^## Starting roles per harness' 2)"
 # v0.24.13: the harness and model plumbing (spawn mechanics, effort passing) moved to references/harnesses.md
 HARNMD="$PB_ROOT/skills/playbook-tdd/references/harnesses.md"
 HARN="$(tr '\n' ' ' < "$HARNMD" 2>/dev/null)"
@@ -170,7 +174,7 @@ echo "v0.24.0 review round 2 F4: the effort command carries --harness"
 chk "F4 the effort command is role-model.sh <role> --harness <h> --effort" "$HARN" 'role-model\.sh <role> --harness <h> --effort'
 
 echo "v0.24.2 AC2.1 SKILL.md resolves the reviewer model with role-model.sh, not the generic conf key"
-SKTEXT="$(tr '\n' ' ' < "$SKILL" 2>/dev/null)"
+SKTEXT="$(tr '\n' ' ' < "$SKILLFULL" 2>/dev/null)"
 chk "AC2.1 'Prefer a different model' is followed (or preceded) by role-model.sh reviewer --harness <h>" "$SKTEXT" 'Prefer a different model.{0,200}role-model\.sh reviewer --harness <h>|role-model\.sh reviewer --harness <h>.{0,200}Prefer a different model'
 if printf '%s' "$SKTEXT" | grep -qF 'conf.sh get model_reviewer'; then
   t_bad "AC2.1 SKILL.md no longer says conf.sh get model_reviewer" "the generic key is still named in $SKILL"
@@ -181,7 +185,7 @@ fi
 echo "v0.24.13 lane R: the harness and model plumbing moves to references/harnesses.md; the binding rules stay in SKILL.md"
 assert_file "R13 references/harnesses.md exists" "$HARNMD"
 POINTER='How to start roles in each harness (native, manual, none), pass the model and effort, and cache the prompt prefix: `references/harnesses.md`.'
-if grep -qxF -- "$POINTER" "$SKILL"; then t_ok "R13 SKILL.md has the pointer line to references/harnesses.md"; else t_bad "R13 SKILL.md has the pointer line to references/harnesses.md" "no line exactly [$POINTER]"; fi
+if grep -qxF -- "$POINTER" "$SKILLFULL"; then t_ok "R13 SKILL.md has the pointer line to references/harnesses.md"; else t_bad "R13 SKILL.md has the pointer line to references/harnesses.md" "no line exactly [$POINTER]"; fi
 chk "R13 the pointer sits in the Starting roles section" "$ROLES" 'references/harnesses\.md'
 chk "R13 harnesses.md: native spawns a sub-agent per role with a fresh context" "$HARN" '\*\*native\*\*[^.]{0,80}sub-agent per role[^.]{0,40}fresh context'
 chk "R13 harnesses.md: native passes the role file and input paths, not the conversation" "$HARN" 'full text of the role file[^.]{0,80}not your conversation'
@@ -206,8 +210,8 @@ chk "R13 stays in SKILL.md: none mode commits between roles and re-reads only th
 chk "R13 stays in SKILL.md: none mode still runs the gates" "$ROLES" '`none` mode[^.]{0,200}still run the gates'
 chk "R13 stays in SKILL.md: none mode reports the degraded line" "$ROLES" '`none` mode[^.]{0,250}degraded mode: roles shared one context'
 # the "except in `none` mode (see below)" of the opening paragraph must have a target below it
-SEEBELOW="$(awk 'f { print } index($0, "except in `none` mode (see below)") { f = 1 }' "$SKILL" 2>/dev/null | tr '\n' ' ')"
-if grep -qF 'except in `none` mode (see below)' "$SKILL"; then t_ok "R13 SKILL.md still has the 'except in none mode (see below)' pointer"; else t_bad "R13 SKILL.md still has the 'except in none mode (see below)' pointer" "line not found in $SKILL"; fi
+SEEBELOW="$(awk 'f { print } index($0, "except in `none` mode (see below)") { f = 1 }' "$SKILLFULL" 2>/dev/null | tr '\n' ' ')"
+if grep -qF 'except in `none` mode (see below)' "$SKILLFULL"; then t_ok "R13 SKILL.md still has the 'except in none mode (see below)' pointer"; else t_bad "R13 SKILL.md still has the 'except in none mode (see below)' pointer" "line not found in $SKILL"; fi
 chk "R13 the 'see below' target: none mode is defined below the pointer" "$SEEBELOW" 'In `none` mode[^.]{0,40}play[s]? the roles one after another'
 # the Why line of the section reads on its own: no orphan prompt-prefix reason (the prefix caching moved to harnesses.md)
 WHY="$(printf '%s' "$ROLES" | grep -oE '\*\*Why:\*\*.*' )"
@@ -234,7 +238,7 @@ chk "v0.24.21 AC1 the rule: record before each role, pass it as --base to that r
 chk "v0.24.21 AC1 the rule covers every role" "$SKILL_ONE" '(every|each|all) (role|pass)[^.]{0,200}rev-parse HEAD|rev-parse HEAD[^.]{0,250}(every|each|all) (role|pass)|(every|each) role.{0,200}--base'
 chk "v0.24.21 r2 the rule near Mechanical enforcement says every pass as well as each role" "$SKILL_ONE" 'Mechanical enforcement.{0,250}(every|each) pass'
 echo "v0.24.22 the tdd-step line names --base and --baseline; shared checkouts"
-chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKILL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
+chk "v0.24.22 the tdd-step.sh red|green line names --base and --baseline" "$SKFULL_ONE" 'tdd-step\.sh`? red\|green.{0,250}--base[^l].{0,150}--baseline'
 HARN="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"
 # v0.24.29 lane C (D-0, S3): the v0.24.22 sentence "never share one work tree between tasks" is softened ON PURPOSE (user decision U1, 2026-10-23); this pin keeps its intent
 # (worktrees stay first; git worktree add is still the way) and adds the other half (sharing one checkout only with a scope file per task).
@@ -279,14 +283,14 @@ chk "v0.24.29 D-0 harnesses.md: a separate worktree gives the isolation without 
 chk "v0.24.29 AC12 SKILL.md Preconditions points to --scope and references/harnesses.md" "$SKILL_ONE" 'Preconditions.{0,250}.{0,250}.{0,250}.{0,250}--scope[^.]{0,60}references/harnesses\.md|Preconditions.{0,250}.{0,250}.{0,250}.{0,250}references/harnesses\.md[^.]{0,60}--scope'
 SKW3="$(wc -w < "$SKILL" | tr -d ' ')"
 if [ "$SKW3" -le 3700 ]; then t_ok "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer ($SKW3)"; else t_bad "v0.24.29 AC12 SKILL.md stays within 3700 words with the pointer" "$SKW3 words"; fi
-NGOOD="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
-NALL="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
+NGOOD="$(printf '%s' "$SKFULL_ONE" | grep -oE 'check (tester|reviewer) --base' | wc -l | tr -d ' ')"
+NALL="$(printf '%s' "$SKFULL_ONE" | grep -oE 'check (tester|reviewer)' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 every 'check tester|reviewer' in SKILL.md shows --base" "$NALL" "$NGOOD"
 if [ "$NGOOD" -ge 4 ]; then t_ok "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review): $NGOOD"; else t_bad "v0.24.21 AC1 at least 4 tester/reviewer gate calls show --base (infra tester, RED, spec review, final review)" "only $NGOOD"; fi
-chk "v0.24.21 AC1 the tester gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check tester --base'
-chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKILL_ONE" 'role-gate\.sh`? check reviewer --base'
+chk "v0.24.21 AC1 the tester gate call shows --base" "$SKFULL_ONE" 'role-gate\.sh`? check tester --base'
+chk "v0.24.21 AC1 the reviewer gate call shows --base" "$SKFULL_ONE" 'role-gate\.sh`? check reviewer --base'
 # fix round 1: the reviewer/tester gates read --base <sha before the role> (the role files' wording), not a bare <sha>
-NSHA="$(printf '%s' "$SKILL_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
+NSHA="$(printf '%s' "$SKFULL_ONE" | grep -oE 'check (tester|reviewer) --base <sha before the role>' | wc -l | tr -d ' ')"
 assert_eq "v0.24.21 AC1 (fix 6) every 'check tester|reviewer' in SKILL.md reads --base <sha before the role>" "$NALL" "$NSHA"
 
 echo "v0.24.21 AC2: role files, README and the beginners doc show the gates with --base"
@@ -324,7 +328,7 @@ if printf '%s' "$SZH" | grep -qE -- 'dangling symlink[^.;]{0,20}keep'; then t_ba
 if printf '%s %s %s' "$HSEC" "$RGH" "$TDH" | grep -qE -- '(^|[^A-Za-z0-9])E(19|20)([^0-9]|$)'; then t_bad "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)" "an E19 or E20 id is present"; else t_ok "v0.24.30 AC6.3 no E19/E20 ids in the shipped text (they clash with evals/scenarios.md, D7)"; fi
 
 echo "H2 playbook-tdd: when the main agent delegates to the mechanical (haiku) sub-agent (named phrases in references/harnesses.md; pointer in SKILL.md)"
-H2S="$(tr '\n' ' ' < "$SKILL")"
+H2S="$(tr '\n' ' ' < "$SKILLFULL")"
 chk "H2 the existing mechanical-model sentence is still there" "$H2S" 'Mechanical work[^.]{0,80}uses the `mechanical` model'
 chk "H2 SKILL.md mechanical sentence points to references/harnesses.md for which steps" "$H2S" 'uses the `mechanical` model[^.]{0,200}\.[^.]{0,120}references/harnesses\.md|uses the `mechanical` model[^.]{0,200}references/harnesses\.md'
 H2="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/harnesses.md")"

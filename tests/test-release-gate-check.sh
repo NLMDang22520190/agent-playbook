@@ -14,7 +14,7 @@ command -v git >/dev/null 2>&1 || { t_skip 1 "git missing"; t_summary; exit $?; 
 W="$(mk_tmp)"
 mkdir -p "$W/home" "$W/tmp" "$W/ctmp"
 CALLS="$W/calls.log"; : > "$CALLS"
-TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 
 # mk_runner FILE AUTO-or-empty: a fake runner that only records that it was called
 mk_runner() {
@@ -361,6 +361,18 @@ mkdir -p "$W/nogit/tools"; cp -p "$GATE" "$W/nogit/tools/release-gate.sh"; cp -p
 chk "$W/nogit"
 assert_rc "AC3 not a git repository -> exit 3" 3
 assert_not_contains "AC3 ... --check itself is known (no repo)" "$OUT" "unknown option: --check"
+
+echo "v0.37 R4 a shallow clone (--depth 1) of a repo with a committed gate: --check fails clearly, never reports pass"
+# $W/a: gate commit CA, then the results commit RA on top; a depth-1 clone holds RA only, so the gate commit is missing
+git clone -q --depth 1 "file://$W/a" "$W/shallow" 2>/dev/null
+assert_eq "v0.37 R4 fixture: the clone is shallow" "true" "$(git -C "$W/shallow" rev-parse --is-shallow-repository)"
+assert_eq "v0.37 R4 fixture: the clone does not hold the gate commit" "no" "$(git -C "$W/shallow" cat-file -e "$CA^{commit}" 2>/dev/null && echo yes || echo no)"
+chk "$W/shallow"
+assert_neq_rc() { if [ "$RC" -ne 0 ]; then t_ok "$1"; else t_bad "$1" "exit 0, output: [$OUT]"; fi; }
+assert_neq_rc "v0.37 R4 --check in a shallow clone -> nonzero exit"
+nopass "v0.37 R4 --check in a shallow clone does not print a pass line" "$OUT"
+assert_contains "v0.37 R4 the message names the missing gate commit (full sha) and says it is not in the repository" "$OUT" "gate commit $CA is not in this repository"
+# R4 is a green regression guard: the tool already fails this way today (exit nonzero, names the missing gate commit, no pass)
 
 echo "AC3 spends nothing"
 assert_eq "AC3 --check never called a runner (all the runs above)" "0" "$(wc -l < "$CALLS" | tr -d ' ')"

@@ -104,7 +104,8 @@ assert_contains "AC4 pr-body.sh prints ## Not checked" "$OUT" "## Not checked"
 assert_not_contains "AC4 pr-body.sh leaves the Pre-mortem out" "$OUT" "Pre-mortem"
 assert_not_contains "AC4 pr-body.sh leaves the Playbook feedback line out" "$OUT" "Playbook feedback"
 TW="$(wc -w < "$TSK" | tr -d ' ')"
-if [ "$TW" -le 3700 ] && [ "$TW" -ge 3650 ]; then t_ok "AC3 playbook-tdd SKILL.md stays within its budget and its count+50 pin (3650..3700): $TW"; else t_bad "AC3 playbook-tdd SKILL.md stays within 3650..3700" "$TW words"; fi
+TDB="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$PB_ROOT/evals/word-budgets")"
+if [ -n "$TDB" ] && [ "$TW" -le "$TDB" ] && [ "$TDB" -le $((TW + 50)) ] && [ "$TDB" -le 3700 ]; then t_ok "AC3 / v0.37 S3 playbook-tdd SKILL.md stays within its budget and its count+50 pin (budget at most 3700; S3 lowers it): $TW of $TDB"; else t_bad "AC3 / v0.37 S3 playbook-tdd SKILL.md stays within its budget and its count+50 pin" "$TW words, budget [$TDB]"; fi
 
 echo "S4 AC5 wording contradictions from scales.md section 7"
 TQ="$(flat "$PB_ROOT/skills/playbook-tdd/references/test-quality.md")"
@@ -122,7 +123,7 @@ FBS="$(flat "$PB_ROOT/skills/playbook-feedback/SKILL.md")"
 hasnt "AC5 item 7 the feedback example proposes no taken scenario number" "$FBS" 'new: E[0-9]'
 has "AC5 item 7 the feedback example still proposes a new eval" "$FBS" '--eval "new: implementer edits a snapshot file"'
 hasnt "AC5 item 11 release.md headings carry no internal AC codes" "$(flat "$PB_ROOT/skills/playbook-tdd/references/release.md")" '\(AC[0-9]'
-NR="$(grep -F 'Native roles get' "$PB_ROOT/skills/playbook-tdd/SKILL.md")"
+NR="$(grep -hF 'Native roles get' "$PB_ROOT/skills/playbook-tdd/SKILL.md" "$PB_ROOT/skills/playbook-tdd/references/full.md" 2>/dev/null)"   # v0.37 S3: the line moved to references/full.md
 has "AC5 item 8 native roles get the context pack, with no conclusions" "$NR" 'never your conversation or opinions; the context pack holds paths, excerpts and commands, not conclusions'
 
 t_summary

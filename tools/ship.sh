@@ -12,6 +12,11 @@
 #       3 cannot enter the repository.
 # Eval guard (advice only): when skill text changed since the previous release, ship prints
 # "eval guard: <capped run-evals command>" before it tags and again at the end. It never runs the command.
+# Log: stdout and stderr are also written to .agents/handoff/ship-<tag>-<YYYYMMDD-HHMMSS>.log (PB_SHIP_LOG=<file>
+# overrides; usage errors write none). Step lines read "== [HH:MM:SS +Ns] title" (N = seconds since ship started);
+# a successful ship ends with "total time: Ns".
+# Gate once per sha: ship creates a temporary directory, exports it as PB_GATE_CACHE_DIR and removes it on exit, so release.sh
+# (dry run, then the real run on the same HEAD) calls `release-gate.sh --check HEAD` once; a failing gate is never cached.
 # Waiting for the tag's CI run: PB_SHIP_WAIT_TRIES (default 12) x PB_SHIP_WAIT_SECS (default 5).
 set -u
 # The whole body is one function called on the last line: `git pull` below rewrites this file while
@@ -20,7 +25,8 @@ main() {
   cd "$(dirname "$0")/.." || exit 3
 
   usage() { echo "usage: tools/ship.sh PR vX.Y.Z [--yes] [--auto]" >&2; exit 2; }
-  step() { printf '== %s\n' "$1"; }
+  t0=$SECONDS
+  step() { printf '== [%s +%ss] %s\n' "$(date +%H:%M:%S)" "$((SECONDS - t0))" "$1"; }
   fail() { echo "ship refused: $1" >&2; exit 1; }
 
   yes=0; auto=0; pr=""; tag=""
@@ -39,6 +45,19 @@ main() {
   tries="${PB_SHIP_WAIT_TRIES:-12}"; secs="${PB_SHIP_WAIT_SECS:-5}"
   case "$tries" in '' | *[!0123456789]*) usage ;; esac
   case "$secs" in '' | *[!0123456789]*) usage ;; esac
+
+  # log: from here on (usage errors write none) stdout and stderr also go to a log file; stdin stays the terminal
+  logf="${PB_SHIP_LOG:-.agents/handoff/ship-$tag-$(date +%Y%m%d-%H%M%S).log}"
+  case "$logf" in */*) mkdir -p "${logf%/*}" 2>/dev/null || fail "cannot create the directory of the log $logf" ;; esac
+  : >> "$logf" 2>/dev/null || fail "cannot write the log $logf"
+  exec > >(tee -a "$logf") 2>&1
+  tpid=$!
+  # on every exit: close our stdout/stderr so tee sees EOF, then wait for it, so the last lines reach the log
+  # (the exit status is unchanged: the trap ends with `true`)
+  # gate cache: one temporary directory for this ship, removed on every exit (the same trap, extended)
+  gate_cache="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX" 2>/dev/null)" || gate_cache=""
+  [ -z "$gate_cache" ] || export PB_GATE_CACHE_DIR="$gate_cache"
+  trap '[ -z "$gate_cache" ] || rm -rf "$gate_cache"; exec >&- 2>&-; [ -z "$tpid" ] || wait "$tpid" 2>/dev/null; true' EXIT
 
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing.
@@ -98,8 +117,20 @@ main() {
     return 1
   }
 
+  # (the ship log itself, when it lies inside the repository, does not count as dirt)
   # a dirty tree would make the local part of the merge (switch, pull, delete branch) fail after GitHub merged
-  [ -z "$(git status --porcelain)" ] || fail "work tree is not clean (commit or stash first)"
+  # exempt only the log file itself: path relative to the repo root, and only while untracked ("?? <path>").
+  # -z gives unquoted NUL-separated entries (paths with spaces are not quoted).
+  # the repo-relative path comes from git itself (--show-prefix), never from comparing path spellings
+  # (Git Bash spells the same directory differently in pwd -P and --show-toplevel).
+  logdir="."; [ "$logf" = "${logf##*/}" ] || logdir="${logf%/*}"; [ -n "$logdir" ] || logdir="/"
+  logrel=""
+  if prefix="$(git -C "$logdir" rev-parse --show-prefix 2>/dev/null)"; then logrel="${prefix}${logf##*/}"; fi
+  dirty=""
+  while IFS= read -r -d '' ent; do
+    [ "$ent" = "?? $logrel" ] || dirty=1
+  done < <(git status --porcelain -z --untracked-files=all)
+  [ -z "$dirty" ] || fail "work tree is not clean (commit or stash first)"
   # merge from main: on a detached HEAD (left by install.sh update) gh merges on GitHub, then fails locally
   cur="$(git symbolic-ref -q --short HEAD || echo 'detached HEAD')"
   if [ "$cur" != main ]; then
@@ -190,6 +221,7 @@ main() {
   echo "back on branch main"
   [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
   echo "shipped $tag"
+  echo "total time: $((SECONDS - t0))s"
 }
 
 main "$@"; exit $?

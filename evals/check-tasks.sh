@@ -24,6 +24,7 @@
 set -u
 EVALS="$(cd "$(dirname "$0")" && pwd -P)"
 . "$EVALS/../scripts/lib.sh"
+pb_pybin   # PB_PY: python3, else python
 
 usage() { sed -n '2,3p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
@@ -55,7 +56,7 @@ trap 'exit 143' TERM
 
 HAVE_NODE=0; HAVE_PY=0
 if node -e '' >/dev/null 2>&1; then HAVE_NODE=1; fi
-if python3 -c 'import sys' >/dev/null 2>&1; then HAVE_PY=1; fi
+if [ -n "$PB_PY" ]; then HAVE_PY=1; fi
 
 # conf TASKDIR KEY -> value of KEY in task.conf (empty when absent), CR removed
 conf() {
@@ -70,7 +71,7 @@ run_hidden() {
   [ -f "$repo/$f" ] || return 127
   case "$lang" in
     node) (cd "$repo" && $TIMEOUT node --test "$f") >/dev/null 2>&1 ;;
-    python3) (cd "$repo" && $TIMEOUT python3 -m unittest "$f") >/dev/null 2>&1 ;;
+    python3) (cd "$repo" && $TIMEOUT "$PB_PY" -m unittest "$f") >/dev/null 2>&1 ;;
     bash) (cd "$repo" && $TIMEOUT bash "$f") >/dev/null 2>&1 ;;
     *) return 126 ;;
   esac

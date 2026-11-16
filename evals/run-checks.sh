@@ -109,7 +109,9 @@ echo "skills"
 nofiles 'skills/*/'
 desc_total=0
 have_yaml=0
-if python3 -c 'import yaml' >/dev/null 2>&1; then have_yaml=1; else echo "  skip yaml frontmatter parse: python3 with PyYAML not available"; fi
+PB_PY=""   # python3, else python (this script sources no lib.sh; same probe as pb_pybin in scripts/lib.sh)
+if python3 -c 'import sys' >/dev/null 2>&1; then PB_PY="python3"; elif python -c 'import sys' >/dev/null 2>&1; then PB_PY="python"; fi
+if [ -n "$PB_PY" ] && "$PB_PY" -c 'import yaml' >/dev/null 2>&1; then have_yaml=1; else echo "  skip yaml frontmatter parse: python3 with PyYAML not available"; fi
 for d in skills/*/; do
   s="${d%/}"; n="$(basename "$s")"; f="$s/SKILL.md"
   [ -f "$f" ] || { bad "$s has no SKILL.md"; continue; }
@@ -127,7 +129,7 @@ for d in skills/*/; do
   done
   if [ "$have_yaml" -eq 1 ]; then
     if awk 'NR == 1 { next } /^---$/ { exit } { print }' "$f" |
-      python3 -c 'import sys, yaml; yaml.safe_load(sys.stdin)' >/dev/null 2>&1; then
+      "$PB_PY" -c 'import sys, yaml; yaml.safe_load(sys.stdin)' >/dev/null 2>&1; then
       ok "$n: frontmatter parses as YAML"
     else
       bad "$f: frontmatter does not parse as YAML (PyYAML)"
@@ -196,7 +198,7 @@ grep -q '^### Lite workflow' "$T" && ok "playbook-tdd describes the Lite workflo
 grep -q 'Weight:' skills/playbook-tdd/templates/final-report.md && ok "final report records the weight" || bad "final-report.md lacks 'Weight:'"
 grep -q 'Weight:' skills/playbook-tdd/templates/spec.md && ok "spec records the weight" || bad "spec.md lacks 'Weight:'"
 # 2. one review per feature
-grep -q 'One reviewer per feature' "$T" && ok "review is batched per feature" || bad "$T lacks 'One reviewer per feature'"
+cat "$T" skills/playbook-tdd/references/full.md | grep -q 'One reviewer per feature' && ok "review is batched per feature" || bad "$T lacks 'One reviewer per feature'"
 # 5. exemptions spelled out
 grep -q '^### Exempt' "$T" && ok "playbook-tdd spells out the exemptions" || bad "$T lacks '### Exempt'"
 for w in docs-only config-only spike; do grep -qi "$w" "$T" && ok "exemption covers $w" || bad "$T exemptions do not cover $w"; done

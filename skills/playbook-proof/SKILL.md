@@ -29,9 +29,8 @@ Label the claims that matter to a decision. Do not decorate every sentence.
 | "nothing else uses X" | the search command and its output (`rg -n 'X'`), naming what was searched |
 | recommendations | the criteria, the evidence for each option, and what would change the recommendation |
 
-A user-visible change (UI, HTTP API, CLI output, file format) needs one real observation of the behaviour in
-this session (screenshot or browser read, curl, the CLI command); unit tests alone are not enough.
-What could not be observed goes under "Not checked".
+For a user-visible change (UI, HTTP API, CLI output, file format), observe it as the always-on rule in
+AGENTS.global.md says; unit tests alone are not enough. What could not be observed goes under "Not checked".
 
 ## Rules
 1. **Fresh evidence only.** A run from before your last edit proves nothing now.

@@ -24,7 +24,7 @@ rgf_gh_install "$RGF_W/gh"; export PATH="$RGF_GH/bin:$PATH"; export PB_GATE_REPO
 
 W="$(mk_tmp)"
 mkdir -p "$W/home" "$W/tmp"
-TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 T15="pattern-15-erase-account-ambiguous"; T24="pattern-24-merge-duplicate-customers"
 BTAG="v0.32.0"
 OLDVER="0.0.1-base"; NEWVER="7.7.7-fix"

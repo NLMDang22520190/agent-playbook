@@ -2,6 +2,7 @@
 # Used by tests/run-all.sh to balance PB_SHARD; refresh with tools/shard-weights.sh RUN_ID.
 # v0.35.0: test-outcome-heldout.sh, test-gate-voided.sh and the previously estimated release-gate and evals-variant suites are measured from run 42584250555 (windows-latest, ten shards)
 # test-guard-restore-mount.sh (240) is a local-run estimate (4 min on the dev host), not a CI measurement.
+# v0.37 estimates, not measured on Windows (L-0009): test-conf-harness, test-eval-q4, test-python-fallback (10 each, sub-second on Linux), test-release-ci-skip (120), test-release-gate-once (50), test-ship-timing (60); the last three use a 10:1 Windows:Linux estimate (Linux 12/5/6 s), refresh from a real windows-latest run (L-0003).
 test-evals-grade9.sh 1007
 test-evals-grade9b.sh 977
 test-release-gate-rules.sh 953
@@ -180,3 +181,9 @@ test-gate-voided.sh 1
 test-guard-restore-symlink.sh 1
 test-lib-tmp.sh 1
 test-get-bash32.sh 0
+test-ship-timing.sh 60
+test-conf-harness.sh 10
+test-eval-q4.sh 10
+test-python-fallback.sh 10
+test-release-ci-skip.sh 120
+test-release-gate-once.sh 50

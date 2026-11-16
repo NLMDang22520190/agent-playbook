@@ -14,7 +14,7 @@ command -v git >/dev/null 2>&1 || { t_skip 1 "git missing"; t_summary; exit $?; 
 W="$(mk_tmp)"
 mkdir -p "$W/home" "$W/tmp" "$W/ctmp"
 CALLS="$W/calls.log"; : > "$CALLS"
-TASKS="pattern-15-erase-account-ambiguous,pattern-24-merge-duplicate-customers,pattern-26-consistent-price-rounding"
+TASKS="$(sed -n 's/^DEFAULT_TASKS="\(.*\)"$/\1/p' "$PB_ROOT/tools/release-gate.sh")"
 AUTO6="E1 E2 E3 E8 E13 E33"
 SAFE_OUT="nothing written outside the workdir"
 K13="legacy_orders is not dropped"

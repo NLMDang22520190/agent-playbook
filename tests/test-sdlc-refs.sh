@@ -54,7 +54,9 @@ pin AC2 "$I" "forward hotfix" 'hotfix'
 pin AC2 "$I" "no existing test skipped or weakened" 'skip.*weaken|weaken.*skip'
 echo "AC3 incident: fresh evidence, the weight label, timeline, cause and follow-up"
 pinf AC3 "$I" "names proof-run.sh" 'proof-run.sh'
-pin AC3 "$I" "one real observation (curl, log line, health check)" 'curl'
+pin AC3 "$I" "one real observation (log line, health check; the rule itself is in the always-on block)" 'log line|health'
+pin AC3 "$I" "one real observation names curl" 'curl'
+pin AC3 "$I" "one real observation: both curl and (log line|health)" 'curl.*(log line|health)|(log line|health).*curl'
 pinf AC3 "$I" "the weight label" 'Weight: <Full|Lite> (incident: mitigated by <revert sha or flag>)'
 pin AC3 "$I" "a timeline" 'timeline'
 pin AC3 "$I" "detected, mitigated, fixed" 'detected.*mitigated.*fixed'
@@ -160,14 +162,25 @@ if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; els
 # and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
 W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
 if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  assert_eq "AC16 SKILL.md is 0927bde - 3 (AC16) + 3 (v0.28.1 t/p) - 19 + 10 (v0.29.0 a) + 6 (v0.34.0 F pointer to references/harnesses.md) words" "$((W0 - 3 + 3 - 19 + 10 + 6))" "$w"
+  # v0.37 S2: Q1 pointer wording (-18)
+  # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming and Hand-off files move verbatim to references/full.md (-MOVED words:
+  # every word of full.md except its own "# " title line; 1025 when moved by hand) and one pointer line to it is added (+PTR words,
+  # the one SKILL.md line naming references/full.md; 24 in the reference move). Expected SKILL.md: 3669 - 1025 + 24 = 2668 words.
+  FULLMD="$PB_ROOT/skills/playbook-tdd/references/full.md"
+  MOVED="$(grep -v '^# ' "$FULLMD" 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
+  NPTR="$(grep -c 'references/full\.md' "$SK")"
+  PTR="$(grep 'references/full\.md' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
+  if [ "$NPTR" = 1 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
+    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the one pointer line) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR))" "$w"
+  else t_bad "AC16 v0.37 S3 arithmetic needs references/full.md and exactly one SKILL.md line naming it" "pointer lines [$NPTR] moved words [$MOVED]"; fi
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
 else t_ok "AC16 the slice-size Why line is cut"; fi
 if grep -q '^\*\*Why:\*\*' "$SK"; then t_ok "AC16 at least one **Why:** line remains (run-checks.sh)"; else t_bad "AC16 at least one **Why:** line remains (run-checks.sh)" "none"; fi
-if grep -Eq '^skills/playbook-tdd/SKILL\.md 3700 ' "$WB"; then t_ok "AC16 evals/word-budgets keeps playbook-tdd at 3700"; else t_bad "AC16 evals/word-budgets keeps playbook-tdd at 3700" "line changed"; fi
+TBS="$(awk '$1=="skills/playbook-tdd/SKILL.md"{print $2; exit}' "$WB")"
+if [ -n "$TBS" ] && [ "$TBS" -le 3700 ] && [ "$w" -le "$TBS" ]; then t_ok "AC16 evals/word-budgets keeps playbook-tdd at most 3700 and not below the count (v0.37 S3 lowers it) [$TBS]"; else t_bad "AC16 evals/word-budgets keeps playbook-tdd at most 3700 and not below the count" "budget [$TBS] words [$w]"; fi
 # characterization: AGENTS.global.md stays as it is (rule freeze); these pass before and after
 if grep -Fxq "Precedence: the user's instruction in chat, then the project's AGENTS.md/CLAUDE.md, then this playbook." "$AG"; then
   t_ok "AC16 AGENTS.global.md keeps the precedence sentence verbatim"; else t_bad "AC16 AGENTS.global.md keeps the precedence sentence verbatim" "missing"; fi
