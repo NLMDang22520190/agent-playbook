@@ -170,6 +170,59 @@ assert_rc "AC10 default log path + untracked 'stray.txt': ship refuses (exit 1)"
 assert_contains "AC10 default log path + untracked file: says the work tree is not clean" "$OUT" "work tree is not clean"
 assert_eq "AC10 default log path + untracked file: nothing merged" "0" "$(origin_merges)"
 
+echo "AC10 the log exemption does not depend on how git spells the repo root (Git Bash: pwd -P gives /d/a/x, git gives D:/a/x)"
+# skew_git: a git that is the fixture git except 'rev-parse --show-toplevel', which prints the SAME directory spelled differently
+# (a trailing '/.'): a prefix strip of the pwd -P path against it fails, as it does on Windows between /d/a/x and D:/a/x.
+SKEWBIN="$W/skewbin"; mkdir -p "$SKEWBIN"
+cat > "$SKEWBIN/git" <<EOS
+#!/usr/bin/env bash
+if [ "\$*" = "rev-parse --show-toplevel" ]; then
+  t="\$("$BIN/git" rev-parse --show-toplevel)" || exit \$?
+  printf '%s/.\n' "\$t"
+  exit 0
+fi
+exec "$BIN/git" "\$@"
+EOS
+chmod +x "$SKEWBIN/git"
+# probe (L-0004): the skew git really prints a different spelling of the same directory
+fx
+export PATH="$SKEWBIN:$BIN:$ORIG_PATH"
+SK_TOP="$(cd "$F/repo" && git rev-parse --show-toplevel)"
+SK_REAL="$(cd "$F/repo" && "$BIN/git" rev-parse --show-toplevel)"
+export PATH="$BIN:$ORIG_PATH"
+if [ "$SK_TOP" != "$SK_REAL" ] && [ "$SK_TOP" -ef "$SK_REAL" ]; then
+  t_ok "AC10 skew control: the fake git spells the repo root differently ($SK_TOP vs $SK_REAL) and it is the same directory"
+else
+  t_bad "AC10 skew control: the fake git spells the repo root differently and it is the same directory" "skew=[$SK_TOP] real=[$SK_REAL]"
+fi
+# skew_run LOG|"" EXTRA_FILE|"" -> a --yes ship with the skewed toplevel
+skew_run() {
+  fx
+  mkdir -p "$F/repo/.agents/handoff" "$F/repo/logs"
+  [ -z "$2" ] || printf 'dirt\n' > "$F/repo/$2"
+  if [ -n "$1" ]; then export PB_SHIP_LOG="${1//@REPO@/$F/repo}"; else unset PB_SHIP_LOG; fi
+  export PATH="$SKEWBIN:$BIN:$ORIG_PATH"
+  sh_run 12 v1.2.3 --yes
+  export PATH="$BIN:$ORIG_PATH"
+  unset PB_SHIP_LOG
+}
+skew_run "" ""
+assert_rc "AC10 skewed toplevel + default log path: ship exits 0 (the log is not dirt)" 0
+assert_not_contains "AC10 skewed toplevel + default log path: no 'work tree is not clean'" "$OUT" "work tree is not clean"
+skew_run "@REPO@/logs/my ship.log" ""
+assert_rc "AC10 skewed toplevel + absolute PB_SHIP_LOG inside the repo (subdir, space): ship exits 0" 0
+assert_not_contains "AC10 skewed toplevel + absolute PB_SHIP_LOG in a subdir: no 'work tree is not clean'" "$OUT" "work tree is not clean"
+skew_run "@REPO@/root.log" ""
+assert_rc "AC10 skewed toplevel + absolute PB_SHIP_LOG at the repo root: ship exits 0" 0
+assert_not_contains "AC10 skewed toplevel + absolute PB_SHIP_LOG at the repo root: no 'work tree is not clean'" "$OUT" "work tree is not clean"
+skew_run "" "stray.txt"
+assert_rc "AC10 skewed toplevel + default log + untracked 'stray.txt': ship still refuses (exit 1)" 1
+assert_contains "AC10 skewed toplevel + untracked file: says the work tree is not clean" "$OUT" "work tree is not clean"
+assert_eq "AC10 skewed toplevel + untracked file: nothing merged" "0" "$(origin_merges)"
+skew_run "@REPO@/logs/x.log" "logs/other.log"
+assert_rc "AC10 skewed toplevel + log 'logs/x.log' + untracked 'logs/other.log' beside it: ship refuses (exit 1)" 1
+assert_eq "AC10 skewed toplevel + sibling of the log: nothing merged" "0" "$(origin_merges)"
+
 echo "AC10 a usage error writes no log and no timestamped step"
 fx
 rm -rf "$F/repo/.agents/handoff"

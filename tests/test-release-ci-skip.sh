@@ -241,10 +241,19 @@ assert_contains "R5 unparsable JSON: the junk gh was really called" "$(cat "$JB/
 rc_setup
 NG="$(mk_nogh_path)"
 assert_eq "R5 control: the PATH of the next case really has no gh" "" "$(PATH="$NG" command -v gh || true)"
-export PATH="$NG"
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-export PATH="$RGF_GH/bin:$ORIG_PATH"
-r5_expect_suite "gh is not installed"
+# probe (L-0004): every command release.sh needs must really run through the farm (on Windows the links are copies or unusable: exit 127)
+farm_ok=1; farm_bad=""
+for t in git sed grep awk cut tee mktemp rm cat head node dirname env ls date tr printf; do
+  ( PATH="$NG"; "$t" --version >/dev/null 2>&1 ); [ $? -ne 127 ] || { farm_ok=0; farm_bad="$farm_bad $t"; }
+done
+if [ "$farm_ok" = 1 ]; then
+  export PATH="$NG"
+  run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+  export PATH="$RGF_GH/bin:$ORIG_PATH"
+  r5_expect_suite "gh is not installed"
+else
+  t_skip 4 "R5 gh is not installed (PATH farm unusable here, not found through it:$farm_bad)"
+fi
 rc_setup
 unset PB_GATE_REPO
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
