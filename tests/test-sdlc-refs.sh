@@ -54,7 +54,7 @@ pin AC2 "$I" "forward hotfix" 'hotfix'
 pin AC2 "$I" "no existing test skipped or weakened" 'skip.*weaken|weaken.*skip'
 echo "AC3 incident: fresh evidence, the weight label, timeline, cause and follow-up"
 pinf AC3 "$I" "names proof-run.sh" 'proof-run.sh'
-pin AC3 "$I" "one real observation (curl, log line, health check)" 'curl'
+pin AC3 "$I" "one real observation (log line, health check; the rule itself is in the always-on block)" 'log line|health'
 pinf AC3 "$I" "the weight label" 'Weight: <Full|Lite> (incident: mitigated by <revert sha or flag>)'
 pin AC3 "$I" "a timeline" 'timeline'
 pin AC3 "$I" "detected, mitigated, fixed" 'detected.*mitigated.*fixed'

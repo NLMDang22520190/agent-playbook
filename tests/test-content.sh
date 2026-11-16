@@ -685,23 +685,31 @@ REAL='real[- ](behaviou?r|observation|run)|observ[a-z]* (of )?the real'
 UVIS='user[- ]visible'
 NOTENOUGH='unit tests?[^.]{0,80}(not|never) enough|(not|never) enough[^.]{0,80}unit tests?|unit tests? alone'
 NOTCHK_IMPOSSIBLE='(cannot|can.t|could not|not possible|unable)[^.]{0,120}Not checked|Not checked[^.]{0,120}(cannot|can.t|could not|not possible|unable)'
-sec_flat_has 'v22.1 AC1.1 Phase 4: user-visible changes' "$SKILL" '^### Phase 4' "$UVIS"
-sec_flat_has 'v22.1 AC1.1 Phase 4: one real observation of the behaviour' "$SKILL" '^### Phase 4' "$REAL"
-sec_flat_has 'v22.1 AC1.1 Phase 4: in this session' "$SKILL" '^### Phase 4' 'in this session|this session'
-sec_flat_has 'v22.1 AC1.1 Phase 4: screenshot or browser read for a UI' "$SKILL" '^### Phase 4' 'screenshot|browser'
-sec_flat_has 'v22.1 AC1.1 Phase 4: curl for an API' "$SKILL" '^### Phase 4' 'curl'
-sec_flat_has 'v22.1 AC1.1 Phase 4: the CLI command for a CLI' "$SKILL" '^### Phase 4' 'CLI'
-sec_flat_has 'v22.1 AC1.1 Phase 4: unit tests alone are not enough' "$SKILL" '^### Phase 4' "$NOTENOUGH"
-sec_flat_has 'v22.1 AC1.1 Phase 4: when it cannot be run it goes under Not checked' "$SKILL" '^### Phase 4' "$NOTCHK_IMPOSSIBLE"
-lite_has 'v22.1 AC1.1 Lite step 4: user-visible changes' 4 "$UVIS"
-lite_has 'v22.1 AC1.1 Lite step 4: one real observation of the behaviour' 4 "$REAL"
-lite_has 'v22.1 AC1.1 Lite step 4: screenshot or browser read for a UI' 4 'screenshot|browser'
-lite_has 'v22.1 AC1.1 Lite step 4: curl for an API' 4 'curl'
-lite_has 'v22.1 AC1.1 Lite step 4: unit tests alone are not enough' 4 "$NOTENOUGH"
-lite_has 'v22.1 AC1.1 Lite step 4: when it cannot be run it goes under Not checked' 4 "$NOTCHK_IMPOSSIBLE"
-flat_has 'v22.1 AC1.1 playbook-proof: user-visible changes need a real observation' "$PROOF" "($UVIS)[^.]{0,250}($REAL)|($REAL)[^.]{0,250}($UVIS)"
-flat_has 'v22.1 AC1.1 playbook-proof: unit tests alone are not enough for it' "$PROOF" "$NOTENOUGH"
-flat_has 'v22.1 AC1.1 playbook-proof: what could not be observed goes under Not checked' "$PROOF" 'Not checked'
+# v0.37.0 AC4 (Q1): the rule itself lives once, in AGENTS.global.md ('Proof for claims that matter'); Phase 4, Lite step 4 and playbook-proof only point to it
+PTR_ALWAYS='AGENTS\.global\.md|always-on'
+PTR_OBS="($PTR_ALWAYS)[^.]{0,250}($UVIS|observ)|($UVIS|observ)[^.]{0,250}($PTR_ALWAYS)"
+sec_flat_has 'v37 AC4 Phase 4: user-visible changes, points to the always-on rule' "$SKILL" '^### Phase 4' "$PTR_OBS"
+sec_flat_has 'v37 AC4 Phase 4: when it cannot be run it goes under Not checked' "$SKILL" '^### Phase 4' "$NOTCHK_IMPOSSIBLE"
+lite_has 'v37 AC4 Lite step 4: user-visible changes, points to the always-on rule' 4 "$PTR_OBS"
+lite_has 'v37 AC4 Lite step 4: when it cannot be run it goes under Not checked' 4 "$NOTCHK_IMPOSSIBLE"
+flat_has 'v37 AC4 playbook-proof: user-visible changes, points to the always-on rule' "$PROOF" "$PTR_OBS"
+flat_has 'v37 AC4 playbook-proof: what could not be observed goes under Not checked' "$PROOF" 'Not checked'
+flat_has 'v37 AC4 incident.md: the one real observation points to the always-on rule' "$PB_ROOT/skills/playbook-tdd/references/incident.md" "($PTR_ALWAYS)[^.]{0,250}observ|observ[^.]{0,250}($PTR_ALWAYS)"
+flat_has 'v37 AC4 incident.md: still names a log line or health check as the observation' "$PB_ROOT/skills/playbook-tdd/references/incident.md" 'log line|health'
+# R6: the distinctive wording of the rule is found in exactly one file, AGENTS.global.md
+OBS_RULE='needs one real observation'
+OBS_FILES=""
+for f in "$BLOCK" "$PB_ROOT/skills/playbook-proof/SKILL.md" "$PB_ROOT/skills/playbook-tdd/SKILL.md" "$PB_ROOT/skills/playbook-tdd/references/incident.md" "$PB_ROOT/skills/playbook-tdd/roles/"*.md "$PB_ROOT/templates/"*.md; do
+  [ -f "$f" ] && flat "$f" | grep -qiE -- "$OBS_RULE" && OBS_FILES="$OBS_FILES $(basename "$f")"
+done
+OBS_FILES="${OBS_FILES# }"
+assert_eq "v37 AC4 R6 the rule 'needs one real observation' is verbatim in AGENTS.global.md only" "AGENTS.global.md" "$OBS_FILES"
+flat_has 'v37 AC4 AGENTS.global.md Proof keeps the rule: start it and curl or screenshot, reading source is not one, else Not checked' "$BLOCK" 'needs one real observation[^.]{0,200}(curl|screenshot)[^.]{0,120}(reading|read)[^.]{0,60}not one[^.]{0,120}Not checked:'
+# v0.37.0 AC6 (Q3): scope line, and the word count does not grow
+flat_has 'v37 AC6 AGENTS.global.md: the always-on block applies to changing code or configuration' "$BLOCK" '(always-on|this block|these rules)[^.]{0,120}code or config'
+flat_has 'v37 AC6 AGENTS.global.md: research and plain answers need only the claim labels' "$BLOCK" 'research[^.]{0,200}(claim )?labels?'
+AGW37="$(wc -w < "$BLOCK" | tr -d ' ')"
+if [ "$AGW37" -le 709 ]; then t_ok "v37 AC6 AGENTS.global.md does not exceed 709 words ($AGW37)"; else t_bad "v37 AC6 AGENTS.global.md does not exceed 709 words" "$AGW37 words"; fi
 
 # --- v0.22.1 AC2: an honest final report (templates/final-report.md, Phase 4, Lite step 5)
 exact_heading 'v22.1 AC2.1 final-report template has the exact heading ## Not checked' "$FINAL" '## Not checked'
