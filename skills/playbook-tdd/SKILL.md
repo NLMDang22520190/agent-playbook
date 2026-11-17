@@ -10,7 +10,7 @@ or `subagent-driven-development`), borrow its techniques but keep these roles, g
 reviewer's re-run, not their "implementer writes and runs its own tests" model.
 
 At **Full** weight the **orchestrator** (you) coordinates and writes no tests or
-production code, except in `none` mode (see below); **Lite** runs in one context (see "Pick the weight").
+production code, except in `none` mode (see `references/full.md`); **Lite** runs in one context (see "Pick the weight").
 
 | Role | Writes | Must not | Prompt |
 |---|---|---|---|
@@ -81,7 +81,7 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
    observation named in the always-on rule in AGENTS.global.md; unit tests alone are not enough. If it cannot be run, say so under "Not checked".
 5. Final report with `Weight: Lite`, the line "no independent review", the `## Request coverage` section (every raw-request sentence), the `## Not checked` section, a Confidence column in the AC table, a `## Pre-mortem` (for Lite one line per risk is enough; a test on Dn pins the assumed reading, cannot tell which is right), in the hand-off report `06-final-report.md`. Your reply repeats its Not checked lines and logged defaults.
    The report always ENDS with exactly this line, copied verbatim, never paraphrased: `**Playbook feedback:** <captured fb- ids or none>`.
-   If the user wants a review, run Phase 3 on the result. If a rule,
+   If the user wants a review, read `references/full.md` for Phase 3 (the review phase) and run it on the result. If a rule,
    gate or script misfired, capture it with `playbook-feedback` first, with no need to ask.
 
 ### Exempt (say so in one line, e.g. "Exempt (docs-only): no tests added")

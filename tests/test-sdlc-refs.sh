@@ -165,14 +165,19 @@ if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
   # v0.37 S2: Q1 pointer wording (-18)
   # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming and Hand-off files move verbatim to references/full.md (-MOVED words:
   # every word of full.md except its own "# " title line; 1025 when moved by hand) and one pointer line to it is added (+PTR words,
-  # the one SKILL.md line naming references/full.md; 24 in the reference move). Expected SKILL.md: 3669 - 1025 + 24 = 2668 words.
+  # the SKILL.md lines naming references/full.md; 24 in the reference move). Expected SKILL.md: 3669 - 1025 + 24 = 2668 words.
+  # v0.37 S3 review: three SKILL.md lines name references/full.md (the Workflow pointer, "none mode (see `references/full.md`)", Lite step 6
+  # "read `references/full.md` for Phase 3"): PTR counts only the Workflow pointer line (20 words); the other two lines were already in the 0927bde baseline, so
+  # only their added words count: EDITS = 0 (line 13: "(see below)" -> "(see `references/full.md`)", 2 words each) + 8 (step 6: "run Phase 3 on the result"
+  # -> "read `references/full.md` for Phase 3 (the review phase) and run it on the result"). Expected SKILL.md: 2664 + 8 = 2672 words.
   FULLMD="$PB_ROOT/skills/playbook-tdd/references/full.md"
   MOVED="$(grep -v '^# ' "$FULLMD" 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
   NPTR="$(grep -c 'references/full\.md' "$SK")"
-  PTR="$(grep 'references/full\.md' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
-  if [ "$NPTR" = 1 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
-    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the one pointer line) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR))" "$w"
-  else t_bad "AC16 v0.37 S3 arithmetic needs references/full.md and exactly one SKILL.md line naming it" "pointer lines [$NPTR] moved words [$MOVED]"; fi
+  EDITS=8
+  PTR="$(grep 'read `references/full\.md` first' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
+  if [ "$NPTR" = 3 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
+    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the Workflow pointer line) + EDITS (v0.37 S3 review: 8 words added to Lite step 6) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR + EDITS))" "$w"
+  else t_bad "AC16 v0.37 S3 arithmetic needs references/full.md and exactly three SKILL.md lines naming it" "pointer lines [$NPTR] moved words [$MOVED]"; fi
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi

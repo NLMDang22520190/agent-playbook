@@ -209,10 +209,11 @@ chk "R13 stays in SKILL.md: none mode plays the roles one after another" "$ROLES
 chk "R13 stays in SKILL.md: none mode commits between roles and re-reads only the hand-off files" "$ROLES" '`none` mode[^.]{0,120}commit between roles[^.]{0,80}re-read only the hand-off files'
 chk "R13 stays in SKILL.md: none mode still runs the gates" "$ROLES" '`none` mode[^.]{0,200}still run the gates'
 chk "R13 stays in SKILL.md: none mode reports the degraded line" "$ROLES" '`none` mode[^.]{0,250}degraded mode: roles shared one context'
-# the "except in `none` mode (see below)" of the opening paragraph must have a target below it
-SEEBELOW="$(awk 'f { print } index($0, "except in `none` mode (see below)") { f = 1 }' "$SKILLFULL" 2>/dev/null | tr '\n' ' ')"
-if grep -qF 'except in `none` mode (see below)' "$SKILLFULL"; then t_ok "R13 SKILL.md still has the 'except in none mode (see below)' pointer"; else t_bad "R13 SKILL.md still has the 'except in none mode (see below)' pointer" "line not found in $SKILL"; fi
-chk "R13 the 'see below' target: none mode is defined below the pointer" "$SEEBELOW" 'In `none` mode[^.]{0,40}play[s]? the roles one after another'
+# v0.37 S3 review: the "except in `none` mode" pointer of the opening paragraph names references/full.md, where the none-mode rule now lives
+if grep -qF 'except in `none` mode (see `references/full.md`)' "$SKILL"; then t_ok "R13 SKILL.md line 13 says 'except in none mode (see references/full.md)'"; else t_bad "R13 SKILL.md line 13 says 'except in none mode (see references/full.md)'" "pointer text not found in $SKILL"; fi
+if grep -qF 'except in `none` mode (see below)' "$SKILL"; then t_bad "R13 SKILL.md has no dangling 'none mode (see below)' pointer" "still in $SKILL"; else t_ok "R13 SKILL.md has no dangling 'none mode (see below)' pointer"; fi
+FULLNONE="$(tr '\n' ' ' < "$FULLREF" 2>/dev/null)"
+chk "R13 the pointer target: references/full.md defines none mode (roles one after another)" "$FULLNONE" 'In `none` mode[^.]{0,40}play[s]? the roles one after another'
 # the Why line of the section reads on its own: no orphan prompt-prefix reason (the prefix caching moved to harnesses.md)
 WHY="$(printf '%s' "$ROLES" | grep -oE '\*\*Why:\*\*.*' )"
 if [ -n "$WHY" ]; then t_ok "R13 the Starting roles section has a Why line"; else t_bad "R13 the Starting roles section has a Why line" "no **Why:** in the section"; fi
