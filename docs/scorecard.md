@@ -100,6 +100,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 | B1 | B | Tài liệu cache, TTL, không đổi model giữa session, idle quá 1 giờ | Doc có nguồn số đo (`docs/research-data/ttl-2026-11-09.tsv`) và nhãn đo hay suy luận | v0.36 |
 | D1 | D | Phạm vi review và `/code-review` ghi rõ trong tài liệu | Doc có ví dụ và test pin | v0.36 |
 | F1 | F | Bảng DORA có số thật cho ít nhất 3 release (tần suất, thời gian commit đến release, tỉ lệ release lỗi, thời gian phục hồi) từ git tag, CI, CHANGELOG | Bảng trong file này, nhãn [ĐO] | v0.36 |
+| Q9 | D, E | Bảo trì learnings: cảnh báo ngân sách, `stale`, hàng đợi candidate, đề xuất review (spec `docs/v0.37-learnings-spec.md`; slice S1 trước) | Test RED rồi GREEN theo AC của spec; `check` và `checklist` mặc định không đổi | v0.37, nếu kịp; không thì minor kế tiếp |
 
 ### P2
 | ID | Thang | Việc | Release |
