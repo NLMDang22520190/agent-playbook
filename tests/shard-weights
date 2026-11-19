@@ -187,3 +187,5 @@ test-eval-e11.sh 10
 test-python-fallback.sh 10
 test-release-ci-skip.sh 120
 test-release-gate-once.sh 50
+# test-timing-best-of.sh: estimate, not measured on Windows (L-0009); sub-second on Linux.
+test-timing-best-of.sh 10
