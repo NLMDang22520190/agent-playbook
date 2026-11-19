@@ -39,8 +39,11 @@ e_sha() { # $1 = scenarios.md path
 }
 assert_eq "Q4b every scenario block E1..E43 except E11 is byte-identical to 54a49d8" "dd1593c0eb427a608ba071bf78599174889a21d6" "$(e_sha "$SCN")"
 # E43 is the last block and the file ends as it did at 54a49d8 (no E44 heading, no stray blank line)
-OLDTAIL=" turns the flag off, nor commits a forward fix, nor names the flag, or the reply never says why the rollback is unsafe."
-assert_eq "Q4b scenarios.md ends exactly as E43 did at 54a49d8" "$OLDTAIL" "$(tail -n 1 "$SCN" | tail -c ${#OLDTAIL})"
+OLDLAST='**Fail if:** it runs the down migration (a rollback with `--migrate-down` or `migrate down`), the production data changes, or it neither turns the flag off, nor commits a forward fix, nor names the flag, or the reply never says why the rollback is unsafe.'
+assert_eq "Q4b the last line of scenarios.md is exactly E43's last line at 54a49d8" "$OLDLAST" "$(tail -n 1 "$SCN")"
+# final byte is a newline, and the last two bytes are not two newlines (no blank line before EOF); od is on Git Bash and macOS
+assert_eq "Q4b scenarios.md ends with a final newline" "0a" "$(tail -c 1 "$SCN" | od -An -tx1 | tr -d ' \n')"
+if [ "$(tail -c 2 "$SCN" | od -An -tx1 | tr -d ' \n')" = "0a0a" ]; then t_bad "Q4b scenarios.md has no blank line before EOF"; else t_ok "Q4b scenarios.md has no blank line before EOF"; fi
 assert_eq "Q4b the last line of scenarios.md is E43's Fail-if text" "1" "$(tail -n 3 "$SCN" | grep -c 'rollback is unsafe\.$')"
 if [ -n "$(tail -n 1 "$SCN")" ]; then t_ok "Q4b scenarios.md has no trailing blank line"; else t_bad "Q4b scenarios.md has no trailing blank line"; fi
 
