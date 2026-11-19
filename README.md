@@ -4,7 +4,7 @@
 
 A software development process for AI coding agents, in one global skill pack for Claude Code, Codex and OpenCode.
 
-![version](https://img.shields.io/badge/version-0.36.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-26980-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
+![version](https://img.shields.io/badge/version-0.36.0-4F5BD5) ![harness](https://img.shields.io/badge/harness-Claude_Code:_evaluated_·_Codex:_partly_evaluated_·_OpenCode:_installable,_not_evaluated-1F9D63) ![os](https://img.shields.io/badge/os-Linux_·_macOS_·_Windows-5B6478) [![CI](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml/badge.svg)](https://github.com/NLMDang22520190/agent-playbook/actions/workflows/test.yml) ![tests](https://img.shields.io/badge/tests-26985-1F9D63) ![always-on](https://img.shields.io/badge/always--on_block-39%2F60_lines-C98A00) ![status](https://img.shields.io/badge/status-alpha-orange) ![license](https://img.shields.io/badge/license-MIT-5B6478)
 
 </div>
 
@@ -217,7 +217,7 @@ SQL that a database client has already run through one of these bypasses has no 
 
 ## Behaviour evals
 
-Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 44 scenarios, E1 to E44. `evals/run-evals.sh` runs the 39 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
+Script tests show that the tools work. Only behaviour evals show whether an agent follows the rules. [`evals/scenarios.md`](evals/scenarios.md) has 43 scenarios, E1 to E43. `evals/run-evals.sh` runs the 39 that have automatic checks against a real harness in throwaway fixtures, grades each check PASS, FAIL or MANUAL, and writes a results file:
 
 ```bash
 evals/run-evals.sh --harness claude --scenarios E1,E15 --workroot "$HOME/pb-evals-$(date +%s)" --max-cost 5
@@ -231,7 +231,7 @@ The presets do not sandbox the agent, and the opencode preset approves its own a
 
 | Metric | Value | Source |
 |---|---|---|
-| Script, installer and tool tests | **26980 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
+| Script, installer and tool tests | **26985 passing** (see `bash tests/run-all.sh`) | `bash tests/run-all.sh`, WSL Ubuntu 24.04 |
 | Static checks | frontmatter (incl. YAML parse), length budgets, a why for every rule, CRLF, syntax, shellcheck, evals | `evals/run-checks.sh` |
 | Always-on block | 39 / 60 lines · 4,616 / 5,000 bytes | `wc -l -c AGENTS.global.md` |
 | Skill descriptions | 1,372 / 2,000 characters (Codex truncates long skill lists) | `run-checks.sh` |
@@ -264,8 +264,8 @@ agent-playbook/
 ├── scripts/                role-gate · tdd-step · proof-run · mutate · cost · role-model · pr-body · leak-check · conf · learn · feedback · lib
 ├── templates/LEARNINGS.md
 ├── install.sh / install.ps1
-├── tests/                  26980 tests, run in sandboxes, never touch the real HOME
-├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E44) · RUBRIC.md · make-fixture.sh
+├── tests/                  26985 tests, run in sandboxes, never touch the real HOME
+├── evals/                  run-evals.sh (headless evals) · run-checks.sh · scenarios.md (E1–E43) · RUBRIC.md · make-fixture.sh
 ├── tools/                  maintainer scripts: release, CI, README count, hooks (see docs/development.md)
 └── docs/                   diagrams · tdd-for-beginners.md · harness-notes.md · update-lifecycle.md · development.md
 ```
