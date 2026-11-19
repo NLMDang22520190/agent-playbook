@@ -1,0 +1,180 @@
+# Behaviour evals: claude, 2026-11-19
+
+Workroot: `/tmp/pb-evals.ljFVPq`
+
+Model: claude-sonnet-5-5
+Arms: with
+Repeat: 5
+Hooks: on (with arm)
+Note: evals set PB_HEADLESS=1 explicitly; a user who runs `claude -p` locally without PB_HEADLESS=1 (and without CI=true) is only warned by the guard, not blocked.
+Conf models: model_tester_reasoning_effort=high, model_implementer_reasoning_effort=high, model_reviewer_reasoning_effort=high, model_tester_claude=sonnet, model_implementer_claude=sonnet, model_reviewer_claude=opus, model_tester_opencode=session, model_implementer_opencode=session, model_reviewer_opencode=session, model_tester_codex=gpt-6-luna, model_implementer_codex=gpt-6-luna, model_reviewer_codex=gpt-6.1-sol
+Variant: <tree-B-main> (0.36.0, 868a5d6), snapshot restored
+
+| Scenario | Auto passed / total | Manual items | Cost (USD) |
+|---|---|---|---|
+| E16.with.1 | 5/5 | 1 | 0.4094374 |
+| E16.with.2 | 5/5 | 1 | 0.8964627000000001 |
+| E16.with.3 | 4/5 | 1 | 1.1240565999999996 |
+| E16.with.4 | 5/5 | 1 | 0.3818233 |
+| E16.with.5 | 4/5 | 1 | 0.9760502000000001 |
+| E4.with.1 | SKIPPED | - | - |
+| E4.with.2 | SKIPPED | - | - |
+| E4.with.3 | SKIPPED | - | - |
+| E4.with.4 | SKIPPED | - | - |
+| E4.with.5 | SKIPPED | - | - |
+| E26.with.1 | SKIPPED | - | - |
+| E26.with.2 | SKIPPED | - | - |
+| E26.with.3 | SKIPPED | - | - |
+| E26.with.4 | SKIPPED | - | - |
+| E26.with.5 | SKIPPED | - | - |
+
+Total cost (USD, scenarios that reported it): 3.79
+
+## pass@1 and pass^K
+
+| Scenario | Arm | Check | pass@1 | pass^K | n |
+|---|---|---|---|---|---|
+| E16 | with | total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | 1 | yes | 5 |
+| E16 | with | node --test tests/*.test.js passes | 1 | yes | 5 |
+| E16 | with | reply names the Full weight | 0.6 | no | 5 |
+| E16 | with | transcript shows sub-agent use (Agent or Task tool) | 1 | yes | 5 |
+| E16 | with | one review for the whole feature | - | - | 0 |
+| E16 | with | nothing written outside the workdir | 1 | yes | 5 |
+
+| Scenario | Arm | Cost mean ± sd (USD) | Time mean ± sd (s) |
+|---|---|---|---|
+| E16 | with | 0.7576 ± 0.3405 | 236.8 ± 102.2 |
+| E4 | with | - ± - | - ± - |
+| E26 | with | - ± - | - ± - |
+
+## E16.with.1
+
+Transcript: `E16.with.1.log`, prompt: `E16.with.1.prompt`
+
+Arm: with, isolation: claude-settings
+
+| Check | Result |
+|---|---|
+| total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | PASS |
+| node --test tests/*.test.js passes | PASS |
+| reply names the Full weight | PASS |
+| transcript shows sub-agent use (Agent or Task tool) | PASS |
+| nothing written outside the workdir | PASS |
+
+MANUAL (score with RUBRIC.md):
+
+- [ ] one review for the whole feature
+
+## E16.with.2
+
+Transcript: `E16.with.2.log`, prompt: `E16.with.2.prompt`
+
+Arm: with, isolation: claude-settings
+
+| Check | Result |
+|---|---|
+| total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | PASS |
+| node --test tests/*.test.js passes | PASS |
+| reply names the Full weight | PASS |
+| transcript shows sub-agent use (Agent or Task tool) | PASS |
+| nothing written outside the workdir | PASS |
+
+MANUAL (score with RUBRIC.md):
+
+- [ ] one review for the whole feature
+
+## E16.with.3
+
+Transcript: `E16.with.3.log`, prompt: `E16.with.3.prompt`
+
+Arm: with, isolation: claude-settings
+
+NOTE the agent left 2 entries in its own TMPDIR (removed): `tmp.8Niqourjev` `tmp.wyIYeDjSDu`
+
+| Check | Result |
+|---|---|
+| total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | PASS |
+| node --test tests/*.test.js passes | PASS |
+| reply names the Full weight | FAIL |
+| transcript shows sub-agent use (Agent or Task tool) | PASS |
+| nothing written outside the workdir | PASS |
+
+MANUAL (score with RUBRIC.md):
+
+- [ ] one review for the whole feature
+
+## E16.with.4
+
+Transcript: `E16.with.4.log`, prompt: `E16.with.4.prompt`
+
+Arm: with, isolation: claude-settings
+
+| Check | Result |
+|---|---|
+| total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | PASS |
+| node --test tests/*.test.js passes | PASS |
+| reply names the Full weight | PASS |
+| transcript shows sub-agent use (Agent or Task tool) | PASS |
+| nothing written outside the workdir | PASS |
+
+MANUAL (score with RUBRIC.md):
+
+- [ ] one review for the whole feature
+
+## E16.with.5
+
+Transcript: `E16.with.5.log`, prompt: `E16.with.5.prompt`
+
+Arm: with, isolation: claude-settings
+
+| Check | Result |
+|---|---|
+| total() returns integer cents (6027 for 3 x 19.99 + 3 x 0.10) | PASS |
+| node --test tests/*.test.js passes | PASS |
+| reply names the Full weight | FAIL |
+| transcript shows sub-agent use (Agent or Task tool) | PASS |
+| nothing written outside the workdir | PASS |
+
+MANUAL (score with RUBRIC.md):
+
+- [ ] one review for the whole feature
+
+## E4.with.1
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E4.with.2
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E4.with.3
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E4.with.4
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E4.with.5
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E26.with.1
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E26.with.2
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E26.with.3
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E26.with.4
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
+
+## E26.with.5
+
+SKIPPED: budget: spent 3.78783 + estimate 1.12406 >= cap 4; not run.
