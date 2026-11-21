@@ -2641,4 +2641,18 @@ if [ "$AGW" -le 710 ]; then t_ok "v0.37 D1 AGENTS.global.md stays within 710 wor
 SKDIRS="$(ls "$PB_ROOT/skills" | tr '\n' ' ')"
 assert_eq "v0.37 D2 skills/ lists exactly the 5 existing skills (no new skill)" "playbook-feedback playbook-learn playbook-proof playbook-setup playbook-tdd " "$SKDIRS"
 
+# v0.37 E4: the escalation sentence in the SKILL.md core says Dispute again (the E4 grader looks for `disput|contradict`)
+echo "v0.37 E4: the escalation clause in SKILL.md restores the Dispute wording"
+E4W="$(awk '/^### Lite workflow/{exit} {print}' "$SKILL" | tr '\n' ' ' | sed 's/  */ /g')"
+E4S="$(printf '%s' "$E4W" | grep -oE 'Escalate to Full.*from there\.' | head -1)"
+if printf '%s' "$E4S" | grep -qF 'or a test looks wrong to you: stop, do not edit the test, keep the RED commit and write a **Dispute** (which test, why it contradicts the spec, the evidence); a fresh tester decides, so continue with separate roles from there.'; then t_ok "v0.37 E4 the escalation sentence has the exact Dispute wording, before the Lite workflow heading"; else t_bad "v0.37 E4 the escalation sentence has the exact Dispute wording, before the Lite workflow heading" "sentence: [$E4S]"; fi
+if printf '%s' "$E4S" | grep -qF '**Dispute**'; then t_ok "v0.37 E4 the sentence names a **Dispute**"; else t_bad "v0.37 E4 the sentence names a **Dispute**" "[$E4S]"; fi
+if printf '%s' "$E4S" | grep -qF 'do not edit the test'; then t_ok "v0.37 E4 the sentence says do not edit the test"; else t_bad "v0.37 E4 the sentence says do not edit the test" "[$E4S]"; fi
+if printf '%s' "$E4S" | grep -qF 'contradicts the spec'; then t_ok "v0.37 E4 the sentence says why it contradicts the spec"; else t_bad "v0.37 E4 the sentence says why it contradicts the spec" "[$E4S]"; fi
+if printf '%s' "$E4S" | grep -qF 'the evidence'; then t_ok "v0.37 E4 the sentence asks for the evidence"; else t_bad "v0.37 E4 the sentence asks for the evidence" "[$E4S]"; fi
+if printf '%s' "$E4S" | grep -qF 'a fresh tester decides'; then t_ok "v0.37 E4 the sentence says a fresh tester decides"; else t_bad "v0.37 E4 the sentence says a fresh tester decides" "[$E4S]"; fi
+if grep -qF '(a dispute needs fresh eyes)' "$SKILL"; then t_bad "v0.37 E4 the old phrase (a dispute needs fresh eyes) is gone" "still in $SKILL"; else t_ok "v0.37 E4 the old phrase (a dispute needs fresh eyes) is gone"; fi
+if printf '%s' "$E4W" | grep -qF 'Escalate to Full'; then t_ok "v0.37 E4 Escalate to Full is still in the weight section"; else t_bad "v0.37 E4 Escalate to Full is still in the weight section" "not before ### Lite workflow"; fi
+if printf '%s' "$E4S" | grep -qiE 'disput|contradict'; then t_ok "v0.37 E4 the sentence satisfies the E4 grader regex disput|contradict"; else t_bad "v0.37 E4 the sentence satisfies the E4 grader regex disput|contradict" "[$E4S]"; fi
+
 t_summary

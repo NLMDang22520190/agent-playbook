@@ -173,10 +173,14 @@ if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
   FULLMD="$PB_ROOT/skills/playbook-tdd/references/full.md"
   MOVED="$(grep -v '^# ' "$FULLMD" 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
   NPTR="$(grep -c 'references/full\.md' "$SK")"
-  EDITS=8
+  # v0.37 E4: the escalation clause of the weight section is reworded to restore the Dispute wording (E4 grader `disput|contradict`):
+  # "(a dispute needs fresh eyes): stop, keep the RED commit, and" (21 words from "or a test looks wrong") -> "do not edit the test, keep the RED commit and write a **Dispute**
+  # (which test, why it contradicts the spec, the evidence); a fresh tester decides, so" gives +17 words (2672 -> 2689, simulated on a copy), so EDITS = 8 + 17 = 25.
+  # Expected SKILL.md: 2672 + 17 = 2689 words, within the 2700 budget.
+  EDITS=25
   PTR="$(grep 'read `references/full\.md` first' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
   if [ "$NPTR" = 3 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
-    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the Workflow pointer line) + EDITS (v0.37 S3 review: 8 words added to Lite step 6) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR + EDITS))" "$w"
+    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the Workflow pointer line) + EDITS (v0.37 S3 review: 8 words added to Lite step 6; v0.37 E4: 17 words in the escalation clause) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR + EDITS))" "$w"
   else t_bad "AC16 v0.37 S3 arithmetic needs references/full.md and exactly three SKILL.md lines naming it" "pointer lines [$NPTR] moved words [$MOVED]"; fi
 else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
