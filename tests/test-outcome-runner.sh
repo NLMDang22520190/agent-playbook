@@ -115,6 +115,24 @@ ro --cmd "bash $SA/authres.sh" --tasks t-add
 assert_rc "C1 2nd: the phrase on the assistant line and on the success result line -> exit 0" 0
 assert_eq "C1 2nd: JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
 
+echo "auth_marker: a task_notification system line that quotes the agent's own words is not an auth marker (weak phrase)"
+ro --cmd "bash $SA/authtn.sh" --tasks t-add
+assert_rc "TN1 task_notification quoting 'not logged in' and a success result -> exit 0" 0
+assert_eq "TN1 task_notification quoting 'not logged in': JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a strong marker still counts on a task_notification line"
+ro --cmd "bash $SA/authtnstrong.sh" --tasks t-add
+assert_rc "TN2 task_notification with 'invalid x-api-key' -> exit 4" 4
+assert_eq "TN2 task_notification with 'invalid x-api-key': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a weak phrase on any other system line still counts"
+ro --cmd "bash $SA/authsysweak.sh" --tasks t-add
+assert_rc "TN3 system api_error line with 'not logged in' -> exit 4" 4
+assert_eq "TN3 system api_error line with 'not logged in': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authsysunauth.sh" --tasks t-add
+assert_rc "TN4 system status line with 'unauthorized' -> exit 4" 4
+assert_eq "TN4 system status line with 'unauthorized': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+
 echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
 assert_rc "N4 --arm both with the solving stub -> exit 0" 0
