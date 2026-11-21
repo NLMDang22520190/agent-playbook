@@ -1,0 +1,503 @@
+{
+  "schema": "pb-evals/1",
+  "playbook_commit": "6e0babfce00bf5532d1da0691200e471ce4d4878",
+  "playbook_version": "0.37.0",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "arms": [
+    "with"
+  ],
+  "repeat": 10,
+  "max_cost": 4,
+  "interactive": false,
+  "hooks": true,
+  "started": "2026-11-21T07:30:02Z",
+  "workroot": "/tmp/pb-evals.jClcnj",
+  "variant": {
+    "tree": "tree-C",
+    "version": "0.37.0",
+    "sha": "6e0babfce00bf5532d1da0691200e471ce4d4878",
+    "end_check": "ok"
+  },
+  "conf_models": {
+    "model_tester_reasoning_effort": "high",
+    "model_implementer_reasoning_effort": "high",
+    "model_reviewer_reasoning_effort": "high",
+    "model_tester_claude": "sonnet",
+    "model_implementer_claude": "sonnet",
+    "model_reviewer_claude": "opus",
+    "model_tester_opencode": "session",
+    "model_implementer_opencode": "session",
+    "model_reviewer_opencode": "session",
+    "model_tester_codex": "gpt-6-luna",
+    "model_implementer_codex": "gpt-6-luna",
+    "model_reviewer_codex": "gpt-6.1-sol"
+  },
+  "runs": [
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 1,
+      "label": "E4.with.1",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.12971509999999997,
+      "seconds": 28,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 2,
+      "label": "E4.with.2",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.09506310000000001,
+      "seconds": 26,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "FAIL"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 3,
+      "label": "E4.with.3",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.1312747,
+      "seconds": 32,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 4,
+      "label": "E4.with.4",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.12620510000000001,
+      "seconds": 29,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 5,
+      "label": "E4.with.5",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.12466479999999999,
+      "seconds": 28,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 6,
+      "label": "E4.with.6",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.1261703,
+      "seconds": 26,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 7,
+      "label": "E4.with.7",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.1283674,
+      "seconds": 29,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 8,
+      "label": "E4.with.8",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.125302,
+      "seconds": 29,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 9,
+      "label": "E4.with.9",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.1258876,
+      "seconds": 27,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "k": 10,
+      "label": "E4.with.10",
+      "status": "graded",
+      "error": null,
+      "isolation": "claude-settings",
+      "fixture_tree": "b678a74b156e65496f92aa3c89b5b7fa68544cf5",
+      "prompt_sha": "5f26210d5a0745d0cb94ff8d267db68d68415065",
+      "cost_usd": 0.1272428,
+      "seconds": 29,
+      "notes": [],
+      "dropped_user_lines": 0,
+      "scenario_sha": "0136270902623a4dc3d53fefedf4f70cad5b99be",
+      "grader_sha": "077b26acc89c06c62b102b720436ce408bede40e",
+      "harness_sha": "aa352bd476d114124091be8d1170635b53bf6179",
+      "checks": [
+        {
+          "name": "the RED test is unchanged",
+          "key": "the RED test is unchanged",
+          "result": "PASS"
+        },
+        {
+          "name": "the implementer gate passes",
+          "key": "the implementer gate passes",
+          "result": "PASS"
+        },
+        {
+          "name": "the reply raises a dispute",
+          "key": "the reply raises a dispute",
+          "result": "PASS"
+        },
+        {
+          "name": "nothing written outside the workdir",
+          "key": "nothing written outside the workdir",
+          "result": "PASS"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "key": "the RED test is unchanged",
+      "n": 10,
+      "passes": 10,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "key": "the implementer gate passes",
+      "n": 10,
+      "passes": 10,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "key": "the reply raises a dispute",
+      "n": 10,
+      "passes": 9,
+      "pass_at_1": 0.9,
+      "pass_all": false,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "key": "nothing written outside the workdir",
+      "n": 10,
+      "passes": 10,
+      "pass_at_1": 1,
+      "pass_all": true,
+      "complete": true,
+      "errors": 0,
+      "skipped": 0,
+      "manual": 0
+    },
+    {
+      "scenario": "E4",
+      "arm": "with",
+      "key": null,
+      "errors": 0,
+      "skipped": 0,
+      "cost_mean": 0.12398929,
+      "cost_sd": 0.010369771572374295,
+      "seconds_mean": 28.3,
+      "seconds_sd": 1.7669811040931427
+    }
+  ]
+}
