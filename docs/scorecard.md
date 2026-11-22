@@ -100,8 +100,25 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 | B1 | B | Tài liệu cache, TTL, không đổi model giữa session, idle quá 1 giờ | Doc có nguồn số đo (`docs/research-data/ttl-2026-11-09.tsv`) và nhãn đo hay suy luận | v0.36 |
 | D1 | D | Phạm vi review và `/code-review` ghi rõ trong tài liệu | Doc có ví dụ và test pin | v0.36 |
 | F1 | F | Bảng DORA có số thật cho ít nhất 3 release (tần suất, thời gian commit đến release, tỉ lệ release lỗi, thời gian phục hồi) từ git tag, CI, CHANGELOG | Bảng trong file này, nhãn [ĐO] | v0.36 |
-| Q9 | D, E | Bảo trì learnings: cảnh báo ngân sách, `stale`, hàng đợi candidate, đề xuất review (spec `docs/v0.37-learnings-spec.md`; slice S1 trước) | Test RED rồi GREEN theo AC của spec; `check` và `checklist` mặc định không đổi | v0.37, nếu kịp; không thì minor kế tiếp |
-| Q10 | B, D | Hai harness (Claude và Codex), .NET, không để dấu vết trong repo, lõi nhỏ hơn, bỏ phần built-in đã làm tốt (spec `docs/v0.38-multiharness-spec.md`, slice A đến G; A (regex .NET) và B (cài đặt, doctor cho cả hai harness) làm trước). Chưa có lần chạy Codex thật; slice G chờ một lần chạy thật; W6 chỉ bỏ sau khi pilot cho thấy built-in không tệ hơn (kế hoạch pilot: `docs/v0.38-reviewer-pilot-plan.md`, chưa chạy) | Test RED rồi GREEN theo AC; `doctor` báo lệch phiên bản; `git status --porcelain` rỗng ở chế độ không dấu vết; pilot ~10 task cho W6 | v0.38 |
+| Q9 | D, E | Bảo trì learnings: cảnh báo ngân sách, `stale`, hàng đợi candidate, đề xuất review (spec `docs/v0.37-learnings-spec.md`; slice S1 trước) | Test RED rồi GREEN theo AC của spec; `check` và `checklist` mặc định không đổi | v0.38 (quyết định của chủ repo 2026-11-20 và xác nhận 2026-11-22) |
+| Q10 | B, D | Hai harness (Claude và Codex), .NET, không để dấu vết trong repo, lõi nhỏ hơn, bỏ phần built-in đã làm tốt (spec `docs/v0.38-multiharness-spec.md`, slice A đến G; A (regex .NET) và B (cài đặt, doctor cho cả hai harness) làm trước). Chưa có lần chạy Codex thật; slice G chờ một lần chạy thật; W6 chỉ bỏ sau khi pilot cho thấy built-in không tệ hơn (kế hoạch pilot: `docs/v0.38-reviewer-pilot-plan.md`, chưa chạy) | Test RED rồi GREEN theo AC; `doctor` báo lệch phiên bản; `git status --porcelain` rỗng ở chế độ không dấu vết; pilot ~10 task cho W6 | v0.39 (quyết định của chủ repo 2026-11-22). Slice A, B, C (Lite) có thể kéo vào v0.38 nếu còn chỗ; D, E, F chờ eval; G chờ chạy Codex thật |
+
+### v0.38 (gate bền hơn, việc chuyển từ v0.37, Q9)
+Quyết định của chủ repo 2026-11-22 sau bốn lần gate v0.37.0 chưa qua (thư mục `evals/results/attempt*` là bằng chứng). Q10 sang v0.39. Gộp hết vào v0.38 là quá nặng (khoảng 20 slice, ít nhất 8 slice Full, vài phép chạy trả tiền), nên v0.38 làm gate đáng tin trước.
+
+| ID | Thang | Việc | Bằng chứng | Release |
+|---|---|---|---|---|
+| G1 | C | `--budget` tổng cho gate, ước tính chi phí trước khi trả tiền, gate bị cắt vì trần ghi `truncated` | AC1, AC2 của `docs/v0.38-gate-robustness-spec.md` | v0.38 |
+| G2 | C | Gate từ chối chạy khi HEAD khác đầu nhánh PR; `ship.sh` luôn chạy `--dry-run` trước; `timeout-minutes` shard 20 lên 30 | AC3; CI Windows ổn định qua nhiều lần chạy | v0.38 |
+| G3 | C | Mỗi run có thư mục cha riêng để `../x` không ra ngoài vùng runner; rule g không nới | AC4; một A/B nhỏ trước khi tin | v0.38 (một phần có thể vào v0.37.0 nếu gate lần 5 cần) |
+| G4 | C | Pooling theo `payload_tree` thay cho `playbook_commit == HEAD`, cờ `--strict-commit` | AC5; cần chủ repo duyệt vì đổi ngữ nghĩa gate | v0.38 (gộp P2-4) |
+| G5 | C | `tools/replay-graders.sh`: chạy lại grader trên transcript đã lưu, bắt buộc trước gate trả tiền | AC6 | v0.38 (một phần có thể vào v0.37.0) |
+| T1 | C | Sửa `auth_marker` ở `run-evals.sh` (dòng `result` thành công mở đầu bằng khóa khác `type`); `grader_sha` của nó đổi | Test RED rồi GREEN; replay `E24.with.5` của `attempt4-2be8d2f71a66` | v0.37.0 hoặc v0.38 (chủ repo đã đồng ý 2026-11-22 khi chọn phương án lai) |
+| T2 | C | Test không ổn định: ca INT của `test-release-gate-par` đã có vòng thử lại (v0.37.0); đo lại `tests/shard-weights` sau khi tăng timeout | CI Windows xanh ổn định | v0.38 |
+| T3 | E | S5: grader tự động cho "the endpoint works" của E13, sửa E13 ghi mặc định (spec `docs/v0.37-spec.md`, S5) | Check đạt >= 4/5 ở một lần chạy mới | v0.38 (trả tiền khi chạy) |
+| T4 | A, B | Cắt chữ thật tới 450 và 2000 từ (P0-3). `SKILL.md` đã xuống 2689 từ ở v0.37; mục tiêu 2000 chưa đạt | `wc -w`; gate pass rule f | v0.38 (trả tiền) |
+| T5 | A, B, C | Gate opus (P0-2; S12 của v0.37). Chưa có số chi phí và chưa thiết kế thư mục kết quả cho model thứ hai | Hai `gate.json` cho hai model | v0.38 (trả tiền, cần trần) |
+| T6 | E | Quyết định cách sửa check "Models:" của E24 (grader hay văn bản) | Quyết định ghi trong spec, test | v0.38 |
 
 ### P2
 | ID | Thang | Việc | Release |
@@ -109,7 +126,7 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 | P2-1 | C | Gate cho Codex | sau v0.37 |
 | P2-2 | F, B | Đo thời gian và chi phí mỗi task đạt trên task giữ kín, có nhóm đối chứng | sau v0.37 |
 | P2-3 | C | Bỏ hidden test chấm decision log khỏi 3 task gate hiện tại | sau v0.37 |
-| P2-4 | all | Gate theo phạm vi thay đổi (sửa rule b, rule a, `--check`, schema `pb-gate/1`); làm riêng vì sửa chính cổng chặn release | sau v0.37 |
+| P2-4 | all | Gate theo phạm vi thay đổi (sửa rule b, rule a, `--check`, schema `pb-gate/1`); làm riêng vì sửa chính cổng chặn release. Gộp với G4 của `docs/v0.38-gate-robustness-spec.md` (pooling theo hash cây cài đặt) | v0.38, cùng G4 (cần chủ repo duyệt) |
 | P2-5 | D | Tầng kế hoạch cấp dự án (chưa từng thử) | sau v0.37, chưa nên |
 
 ## Cho agent sửa skill: làm gì với file này
