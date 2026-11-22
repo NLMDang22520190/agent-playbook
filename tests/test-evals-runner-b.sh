@@ -94,7 +94,7 @@ assert_rc "C1 2nd: the phrase in the reply but a result with is_error true that 
 # ---- a success result line may open with any key (found in gate attempt 4, E24.with.5) ----
 echo "auth_marker: a success result line opening with duration_api_ms is skipped for weak phrases; strong markers and is_error true still count"
 LEAD='{"duration_api_ms":216536,"stop_reason":"end_turn","type":"result","subtype":"success"'
-run_e3 kok "$INIT" "$LEAD,\"is_error\":false,\"result\":\"Defaults chosen (not logged in decisions.md)\"}"
+run_e3 kok "$INIT" "$LEAD,\"is_error\":false,\"result\":\"$RES_OKTXT Defaults chosen (not logged in \`decisions.md\`).\"}"
 assert_eq "KO1 success result line opening with duration_api_ms quoting 'Not logged in': no ERROR line" "0" "$(count_err)"
 assert_rc "KO1 success result line opening with duration_api_ms quoting 'Not logged in': exit 0" 0
 run_e3 kstrong "$INIT" "$LEAD,\"is_error\":false,\"result\":\"the agent read: invalid x-api-key\"}"
