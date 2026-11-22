@@ -460,10 +460,10 @@ auth_lines() { if [ "$T_result_ok" = 1 ]; then grep -vE '"subtype":"api_retry"|^
 # auth_marker -> 0 when the log shows an auth failure. Strong markers (an invalid key, authentication_failed, a 401 status) count on any line
 # auth_lines gives; the weak phrases (unauthorized, authentication failed, not logged in) are plain words that an agent writes in its own reply
 # ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines and outside a
-# result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3). A system line with subtype task_notification also quotes the agent ("not logged in `decisions.md`"), so the weak phrases skip it too (v0.37.0, found in pattern-31.with.5).
+# result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3). A system line with subtype task_notification also quotes the agent ("not logged in `decisions.md`"), so the weak phrases skip it too (v0.37.0, found in pattern-31.with.5). The result line is found by its two fields in any order, not by its start (v0.37.0, found in E24.with.5 of gate attempt 4: a result line may open with duration_api_ms).
 auth_marker() {
   auth_lines | grep -qiE 'invalid x-api-key|invalid api key|authentication_failed|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori' && return 0
-  auth_lines | grep -vE '^\{"type":"(assistant|user)"|^\{"type":"result".*"is_error":false|"subtype":"task_notification"' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
+  auth_lines | grep -vE '^\{"type":"(assistant|user)"|"subtype":"task_notification"' | awk '!(/"type":"result"/ && /"is_error":false/)' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
 }
 # unlink_on_path ROOT REL -> removes every symbolic link among ROOT/REL and its parent dirs below ROOT, so a copy to
 # ROOT/REL cannot be redirected outside ROOT
