@@ -133,6 +133,17 @@ ro --cmd "bash $SA/authsysunauth.sh" --tasks t-add
 assert_rc "TN4 system status line with 'unauthorized' -> exit 4" 4
 assert_eq "TN4 system status line with 'unauthorized': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
 
+echo "auth_marker: a success result line that opens with another key (duration_api_ms) is skipped for weak phrases like any success result line"
+ro --cmd "bash $SA/authlead.sh" --tasks t-add
+assert_rc "KO1 success result line opening with duration_api_ms quoting 'Not logged in' -> exit 0" 0
+assert_eq "KO1 success result line opening with duration_api_ms quoting 'Not logged in': JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authleadstrong.sh" --tasks t-add
+assert_rc "KO2 same line shape with 'invalid x-api-key' (strong marker) -> exit 4" 4
+assert_eq "KO2 same line shape with 'invalid x-api-key': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authleaderr.sh" --tasks t-add
+assert_rc "KO3 same line shape with is_error true and 'Not logged in' -> exit 4" 4
+assert_eq "KO3 same line shape with is_error true and 'Not logged in': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+
 echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
 assert_rc "N4 --arm both with the solving stub -> exit 0" 0
