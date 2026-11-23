@@ -71,6 +71,7 @@ done
 
 # verdict RUNNER LOG RESULT_OK -> auth | ok, the runner's own functions on LOG in a subshell
 verdict() {
+  # shellcheck disable=SC2034 # LOG and T_result_ok are read by the auth_lines/auth_marker functions sourced below
   ( LOG="$2"; T_result_ok="$3"
     # shellcheck disable=SC1090
     . "$W/$1.fn" || exit 2
