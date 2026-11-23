@@ -9,7 +9,7 @@ FK="$(mk_tmp)"   # fake harness binaries
 # run-evals.sh: it records $FR/<binary>.probe.count, .probe.<n>.args, .probe.<n>.settings and a "probe" line in $FR/<binary>.order,
 # and its PB_EVAL_* variables in $FR/<binary>.probe.<n>.env (v0.28.0 k1c), and answers the text of $FK/probe.answer (default NO): a stream-json result when --output-format stream-json is in argv, else plain text.
 PBH="$(sed -n 's/^## //p' "$PB_ROOT/AGENTS.global.md" | head -n 1)"
-FR="$(mk_tmp)"   # what they recorded: $FR/<binary>.<label>.<what>, label = basename of the cwd (the workdir)
+FR="$(mk_tmp)"   # what they recorded: $FR/<binary>.<label>.<what>, label = basename of the cwd (the workdir), or of its parent when the cwd is a "work" dir (run-outcome, G3)
 
 # mk_fakes: claude, codex and opencode in $FK. Each records its argv (one per line, plus .argc), its PB_EVAL_* variables,
 # PB_HEADLESS (.headless, UNSET when absent; v0.28.0 k1c), PLAYBOOK_HOME, HOME, the regular files under PLAYBOOK_HOME, and the path and a
@@ -43,7 +43,7 @@ if [ "$probe" = 1 ]; then
   fi
   exit 0
 fi
-l="$(basename "$PWD")"
+l="$(basename "$PWD")"; [ "$l" = work ] && l="$(basename "$(dirname "$PWD")")"   # run-outcome: <run dir>/<label>/work
 printf '%s\n' "$l" >> "$FR/$N.order"
 printf '%s\n' "$@" > "$FR/$N.$l.args"
 printf '%s\n' "$#" > "$FR/$N.$l.argc"
