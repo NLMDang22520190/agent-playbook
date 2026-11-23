@@ -45,12 +45,12 @@ assert_eq "G5 two logs give two lines in argument order" "2" "$(printf '%s\n' "$
 
 echo "G5 --fail-on-auth"
 run bash "$TOOL" --fail-on-auth "$L/c3.log"
-assert_rc "G5 (5) --fail-on-auth exits 1 when a runner says auth" 1
+assert_rc "G5 (5) --fail-on-auth exits 1 when both runners say auth" 1
 assert_contains "G5 (5) the line is still printed" "$OUT" "$L/c3.log${TAB}auth${TAB}auth"
 run bash "$TOOL" --fail-on-auth "$L/c1.log"
 assert_rc "G5 (5) --fail-on-auth exits 0 when both say ok" 0
 run bash "$TOOL" --fail-on-auth "$L/c2.log"
-assert_rc "G5 (5) --fail-on-auth exits 1 when only one runner says auth" 1
+assert_rc "G5 (5) --fail-on-auth exits 0 for a task_notification quote (both runners ok since v0.37.0; no realistic log splits them now)" 0
 run bash "$TOOL" "$L/c3.log"
 assert_rc "G5 without --fail-on-auth an auth log still exits 0" 0
 
