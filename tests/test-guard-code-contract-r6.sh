@@ -8,6 +8,7 @@
 # Reviewer E4 / E6: 2100 pre-session .venv, then 2100 new src/gen plus a new src/zz.js with a DROP, blocks (also after a resume).
 . "$(dirname "$0")/lib.sh"
 . "$PB_ROOT/tests/guard-fixture.sh"
+. "$PB_ROOT/tests/timing-fixture.sh"
 
 SN=0
 SHL="$GW/r6-stop.log"
@@ -24,6 +25,7 @@ gs() { local a="${1:-false}"; [ "$#" -gt 0 ] && shift; grun PB_HEADLESS=1 "$@" -
 # mkn DIR EXT N CONTENT -> N files DIR/f00001.EXT ... (5-digit names so the sort order is numeric), one xargs pass
 mkn() { mkdir -p "$R/$1"; seq -f "$R/$1/f%05g.$2" 1 "$3" | CONTENT="$4" xargs -n 1000 sh -c "for f; do printf \"%s\n\" \"\$CONTENT\" > \"\$f\"; done" _; }
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
+sstart_rc() { sstart "$@"; return "$RC"; }   # sstart returns the status of its capture, not the hook's: best_of_ms needs the hook's rc
 blocked_either() { # name -> exit 2 with code-contract or scan-capped, never 0
   if [ "$RC" = 2 ] && { has "$GERR" code-contract || has "$GERR" scan-capped; }; then t_ok "$1 (BLOCK code-contract or scan-capped)"; else t_bad "$1 (BLOCK code-contract or scan-capped)" "rc=$RC $OUT"; fi
 }
@@ -60,11 +62,13 @@ assert_not_contains "R6-3 no scan-capped finding (only one file needed scanning)
 
 echo "R6-2 20000 pre-session files: SessionStart under 5 s and 20000 hashes recorded"
 nrepo; mkn src/big js 20000 "const a = 1;"
-T0=$(now_ms); sstart; DS_MS=$(( $(now_ms) - T0 ))
+# Best of 3 (a loaded Windows runner took 7181 ms once, Linux about 130 ms): only the timed SessionStart is re-run, never the file
+# creation; SessionStart on the same repo and session is idempotent (it rewrites the same record), so a re-run is valid.
+best_of_ms 3 5000 sstart_rc > "$GW/bom.txt"; BOM_RC=$?; DS_MS="$TF_BEST_MS"; DS_N="$TF_ATTEMPTS"
 REC="$(gcd "$R")/pb-guard/$SID.untracked"
-if [ "$RC" = 0 ]; then t_ok "R6-2 SessionStart exits 0"; else t_bad "R6-2 SessionStart exits 0" "rc=$RC $OUT"; fi
-if [ "$DS_MS" -lt 5000 ]; then t_ok "R6-2 SessionStart with 20000 files took ${DS_MS} ms (< 5000)"; else t_bad "R6-2 SessionStart with 20000 files took ${DS_MS} ms (< 5000)" "too slow"; fi
-echo "  (SessionStart ${DS_MS} ms)"
+if [ "$RC" = 0 ] && [ "$TF_CMD_RC" = 0 ]; then t_ok "R6-2 SessionStart exits 0"; else t_bad "R6-2 SessionStart exits 0" "rc=$RC cmd_rc=$TF_CMD_RC $OUT"; fi
+if [ "$BOM_RC" = 0 ]; then t_ok "R6-2 SessionStart with 20000 files took ${DS_MS} ms (< 5000, best of ${DS_N} attempts)"; else t_bad "R6-2 SessionStart with 20000 files took ${DS_MS} ms (< 5000, best of ${DS_N} attempts)" "too slow: $(cat "$GW/bom.txt")"; fi
+echo "  (SessionStart best ${DS_MS} ms in ${DS_N} attempts)"
 assert_eq "R6-2 the record holds 20000 hash lines" "20000" "$(grep -c -E '^[0-9a-f]{40} .+$' "$REC" 2>/dev/null)"
 if [ ! -e "$REC.capped" ]; then t_ok "R6-2 no over-cap marker at exactly 20000 files"; else t_bad "R6-2 no over-cap marker at exactly 20000 files" "exists"; fi
 : > "$SHL"; T0=$(now_ms); gs false PB_EVAL_HOOK_LOG="$SHL"; DT_MS=$(( $(now_ms) - T0 ))

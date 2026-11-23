@@ -18,8 +18,8 @@ ro --cmd "bash $SA/solve.sh"
 assert_rc "AC5 every graded run PASS -> exit 0" 0
 for id in t-add t-two t-node; do
   L="$id.with.1"
-  assert_eq "AC1 label <id>.<arm>.<k> even without --arm/--repeat: the adapter ran in <workroot>/$L" \
-    "$(physdir "$WR")/$L" "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
+  assert_eq "AC1 label <id>.<arm>.<k> even without --arm/--repeat: the adapter ran in <workroot>/$L/work (G3)" \
+    "$(physdir "$WR")/$L/work" "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s/%s' "$(physdir "$(dirname "$(dirname "$a")")")" "$(basename "$(dirname "$a")")" "$(basename "$a")")"
   assert_eq "AC1/AC3 $L: hidden tests pass = PASS" "PASS" "$(chk "$L" 'hidden tests pass')"
 done
 L=t-add.with.1
@@ -29,9 +29,9 @@ assert_eq "AC1 the workdir is a fresh repo made by the task's setup.sh (same HEA
 assert_eq "AC1 the prompt file = prompt.md plus run-evals' non-interactive line" \
   "$(cat "$T/t-add/prompt.md")
 $NONINT" "$(rec_of "$SR/$L.prompt")"
-assert_eq "AC1 the adapter gets <workdir> <workroot>/<label>.prompt (physical paths compared)" \
-  "$(physdir "$WR")/$L $(physdir "$WR")/$L.prompt" \
-  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s %s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
+assert_eq "AC1 the adapter gets <workdir> <workroot>/<label>.prompt (workdir = <workroot>/<label>/work; physical paths compared)" \
+  "$(physdir "$WR")/$L/work $(physdir "$WR")/$L.prompt" \
+  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s/%s %s/%s' "$(physdir "$(dirname "$(dirname "$a")")")" "$(basename "$(dirname "$a")")" "$(basename "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
 LOGT="$(cat "$EV/$L.log" 2>/dev/null)"
 assert_contains "AC1/fix4 the adapter's stdout is kept in <out>.runs/<label>.log" "$LOGT" "STUB-OUT-$L"
 assert_contains "AC1/fix4 the adapter's stderr is kept in <out>.runs/<label>.log" "$LOGT" "STUB-ERR-$L"
@@ -114,6 +114,35 @@ echo "v0.36.0 C1 second follow-up: the phrase repeated by a success result line 
 ro --cmd "bash $SA/authres.sh" --tasks t-add
 assert_rc "C1 2nd: the phrase on the assistant line and on the success result line -> exit 0" 0
 assert_eq "C1 2nd: JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a task_notification system line that quotes the agent's own words is not an auth marker (weak phrase)"
+ro --cmd "bash $SA/authtn.sh" --tasks t-add
+assert_rc "TN1 task_notification quoting 'not logged in' and a success result -> exit 0" 0
+assert_eq "TN1 task_notification quoting 'not logged in': JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a strong marker still counts on a task_notification line"
+ro --cmd "bash $SA/authtnstrong.sh" --tasks t-add
+assert_rc "TN2 task_notification with 'invalid x-api-key' -> exit 4" 4
+assert_eq "TN2 task_notification with 'invalid x-api-key': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a weak phrase on any other system line still counts"
+ro --cmd "bash $SA/authsysweak.sh" --tasks t-add
+assert_rc "TN3 system api_error line with 'not logged in' -> exit 4" 4
+assert_eq "TN3 system api_error line with 'not logged in': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authsysunauth.sh" --tasks t-add
+assert_rc "TN4 system status line with 'unauthorized' -> exit 4" 4
+assert_eq "TN4 system status line with 'unauthorized': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+
+echo "auth_marker: a success result line that opens with another key (duration_api_ms) is skipped for weak phrases like any success result line"
+ro --cmd "bash $SA/authlead.sh" --tasks t-add
+assert_rc "KO1 success result line opening with duration_api_ms quoting 'Not logged in' -> exit 0" 0
+assert_eq "KO1 success result line opening with duration_api_ms quoting 'Not logged in': JSON status graded" '"graded"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authleadstrong.sh" --tasks t-add
+assert_rc "KO2 same line shape with 'invalid x-api-key' (strong marker) -> exit 4" 4
+assert_eq "KO2 same line shape with 'invalid x-api-key': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
+ro --cmd "bash $SA/authleaderr.sh" --tasks t-add
+assert_rc "KO3 same line shape with is_error true and 'Not logged in' -> exit 4" 4
+assert_eq "KO3 same line shape with is_error true and 'Not logged in': JSON status error" '"error"' "$(rfield t-add.with.1 status)"
 
 echo "v0.33.0 N4 every run of run-outcome.sh gets PB_EVAL_HOOKS=1 (both arms), so hooks a user installed stand aside, like run-evals.sh"
 ro --cmd "bash $SA/solve.sh" --tasks t-add --arm both --repeat 1
