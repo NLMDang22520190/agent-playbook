@@ -8,7 +8,8 @@
 # A directory argument expands to its *.log files (not recursive). The logs are only read (the graders run on a temp copy of each); nothing is written next to them.
 #   --fail-on-auth   exit 1 when any log gets "auth" from either runner (the lines are still printed)
 #   --stray          add a fourth column: "stray" when a Bash tool_use command of the log writes outside the work dir
-#                    (a redirect, tee, cp or mv aimed at a ../ path), else "none". It is a lower bound: a write the
+#                    (a redirect, tee, cp or mv aimed at a ../ path), else "none". Since v0.37.0 run-outcome.sh tolerates one
+#                    scratch level (../x), so this column is a superset of its stray FAILs. It is a lower bound: a write the
 #                    command text does not show (a script, a variable, an absolute path) is not seen.
 #   -h, --help       this text
 # Exit: 0 ok | 1 --fail-on-auth and a log is "auth" | 2 usage, unreadable log, node missing or a runner function not found.

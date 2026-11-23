@@ -101,7 +101,7 @@ is changed only to fix a broken task, never to tune pass rates. They run in thei
 `evals/run-outcome.sh (--harness claude|codex|opencode | --cmd "COMMAND") [--tasks id1,id2]` runs an agent on each
 task with the flags of `evals/run-evals.sh` (`--model`, `--arm`, `--repeat`, `--max-cost`, `--timeout`, `--clean-env`,
 which drops the `CLAUDE*` variables and `ANTHROPIC_BASE_URL` that a nested Claude session leaks) and the same
-isolation (a temp `PLAYBOOK_HOME` and `TMPDIR` per run). The hidden tests never enter the workroot: they are copied over
+isolation (a temp `PLAYBOOK_HOME` and `TMPDIR` per run). The agent's working directory is `<workroot>/<label>/work`: a write to `../x` lands in `<workroot>/<label>/` and is tolerated scratch, while `../../x` lands in the workroot and fails the check "nothing written outside the workdir". The hidden tests never enter the workroot: they are copied over
 a private copy of the workdir after the agent exits, and a transcript that shows the canary makes the run
 CONTAMINATED (not passed). It writes a markdown file with pass@1 and pass^K per arm and per task, and a `pb-evals/1`
 JSON file that `tools/eval-delta.sh` reads. Each run costs real money with a real harness; the header of the script
