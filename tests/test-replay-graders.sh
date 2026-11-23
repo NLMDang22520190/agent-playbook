@@ -136,4 +136,163 @@ assert_rc "G5 (10c) a directory run exits 0" 0
 assert_eq "G5 (10c) a pre-existing <log>.result next to a log with a result line keeps its content" "my stored reply" "$(cat "$C/logs/r.log.result" 2>/dev/null)"
 assert_file "G5 the tool exists" "$TOOL"
 
+# =====================================================================================================================================
+# v0.38 G5 remainder (docs/v0.38-g5-spec.md R1, R2; AC1 to AC6): --against RESULT.json adds the columns recorded<TAB>change, and
+# --fail-on-change exits 1 on error->ok or graded->auth. RESULT.json is a synthetic pb-evals/1 file shaped like F3 of the spec (label,
+# status, error); the logs are the small synthetic ones above. Never calls a model.
+echo "G5R against: fixtures"
+G="$(mk_tmp)"; GL="$G/logs"; mkdir -p "$GL"
+AUTH_ERR='auth or harness error in the transcript'
+# a task_notification quoting the weak phrase, then a success result: ok in both runners (the spec's AC1 shape)
+cp "$L/c2.log" "$GL/E24.with.5.log"                       # recorded error (auth or harness error) -> error->ok
+cp "$L/c3.log" "$GL/E21.with.1.log"                       # strong marker, recorded graded -> graded->auth
+cp "$L/c1.log" "$GL/E2.with.1.log"                        # ok, recorded graded -> unchanged
+cp "$L/c3.log" "$GL/E3.with.1.log"                        # auth, recorded error (auth or harness error) -> unchanged
+cp "$L/c1.log" "$GL/E4.with.1.log"                        # ok, recorded error with another error (adapter exited 1) -> unchanged
+cp "$L/c2.log" "$GL/E5.with.1.log"                        # ok, recorded error with a LONGER error that starts with the prefix -> error->ok
+cp "$L/c3.log" "$GL/E6.with.1.log"                        # auth, recorded skipped -> unchanged (graded->auth needs status graded)
+cp "$L/c1.log" "$GL/E7.with.1.log"                        # ok, recorded error with a null error -> unchanged
+cp "$L/c1.log" "$GL/zz-not-in-result.log"                 # no run with this label -> unmatched
+# gres FILE LABEL|STATUS|ERROR ... : a pb-evals/1 file; an empty ERROR is null
+gres() {
+  local out="$1" runs="" sep="" a lab st er; shift
+  for a in "$@"; do
+    lab="${a%%|*}"; a="${a#*|}"; st="${a%%|*}"; er="${a#*|}"
+    if [ -n "$er" ]; then er="\"$er\""; else er=null; fi
+    runs="$runs$sep{\"scenario\":\"x\",\"arm\":\"with\",\"k\":1,\"label\":\"$lab\",\"status\":\"$st\",\"error\":$er,\"checks\":[]}"; sep=","
+  done
+  printf '{"schema":"pb-evals/1","playbook_commit":"abc","harness":"claude","model":"m1","runs":[%s],"summary":[]}\n' "$runs" > "$out"
+}
+RJ="$G/result.json"
+gres "$RJ" "E24.with.5|error|$AUTH_ERR" "E21.with.1|graded|" "E2.with.1|graded|" "E3.with.1|error|$AUTH_ERR" \
+  "E4.with.1|error|adapter exited 1" "E5.with.1|error|$AUTH_ERR: more text" "E6.with.1|skipped|" "E7.with.1|error|"
+ag() { run bash "$TOOL" --against "$RJ" "$@"; }   # the usual call; stdout and stderr in $OUT
+
+echo "G5R AC1 error->ok: a recorded auth or harness error whose log both runners now call ok"
+ag "$GL/E24.with.5.log"
+assert_rc "AC1 exits 0 without --fail-on-change" 0
+assert_eq "AC1 the line is log, ok, ok, error, error->ok" "$GL/E24.with.5.log${TAB}ok${TAB}ok${TAB}error${TAB}error->ok" "$OUT"
+ag "$GL/E5.with.1.log"
+assert_contains "AC1 an error that only STARTS with 'auth or harness error' counts" "$OUT" "${TAB}error${TAB}error->ok"
+
+echo "G5R AC2 graded->auth: a recorded graded run whose log a runner now calls auth"
+ag "$GL/E21.with.1.log"
+assert_eq "AC2 the line is log, auth, auth, graded, graded->auth" "$GL/E21.with.1.log${TAB}auth${TAB}auth${TAB}graded${TAB}graded->auth" "$OUT"
+
+echo "G5R AC3 unchanged"
+ag "$GL/E2.with.1.log"
+assert_eq "AC3 an ok log of a graded run: unchanged" "$GL/E2.with.1.log${TAB}ok${TAB}ok${TAB}graded${TAB}unchanged" "$OUT"
+ag "$GL/E3.with.1.log"
+assert_eq "AC3 an error run whose replay also says auth: unchanged" "$GL/E3.with.1.log${TAB}auth${TAB}auth${TAB}error${TAB}unchanged" "$OUT"
+ag "$GL/E4.with.1.log"
+assert_eq "AC3 an error run with another error (adapter exited 1) and an ok log: unchanged" "$GL/E4.with.1.log${TAB}ok${TAB}ok${TAB}error${TAB}unchanged" "$OUT"
+ag "$GL/E6.with.1.log"
+assert_eq "AC3 a skipped run with an auth log is not graded->auth: unchanged" "$GL/E6.with.1.log${TAB}auth${TAB}auth${TAB}skipped${TAB}unchanged" "$OUT"
+ag "$GL/E7.with.1.log"
+assert_eq "AC3 an error run with a null error and an ok log: unchanged" "$GL/E7.with.1.log${TAB}ok${TAB}ok${TAB}error${TAB}unchanged" "$OUT"
+
+echo "G5R AC4 unmatched, and the output without --against is byte for byte the old one"
+ag "$GL/zz-not-in-result.log"
+assert_eq "AC4 a label that no run has: recorded -, change unmatched" "$GL/zz-not-in-result.log${TAB}ok${TAB}ok${TAB}-${TAB}unmatched" "$OUT"
+ag "$GL/E2.with.1.log" "$GL/zz-not-in-result.log" "$GL/E21.with.1.log"
+assert_eq "AC4 several logs: one line each, in argument order, each with its own columns" \
+  "$GL/E2.with.1.log${TAB}ok${TAB}ok${TAB}graded${TAB}unchanged
+$GL/zz-not-in-result.log${TAB}ok${TAB}ok${TAB}-${TAB}unmatched
+$GL/E21.with.1.log${TAB}auth${TAB}auth${TAB}graded${TAB}graded->auth" "$OUT"
+ag "$GL"
+assert_eq "AC4 a directory argument gives one line per *.log, all with the new columns" "9" "$(printf '%s\n' "$OUT" | grep -c "${TAB}\(unchanged\|unmatched\|error->ok\|graded->auth\)$")"
+# snapshot of today's output (v0.37.0 code) for the same logs, with and without --stray, written out by hand
+SNAPD="$(mk_tmp)"; mkdir -p "$SNAPD/s"
+cp "$L/c1.log" "$L/c2.log" "$L/c3.log" "$L/c4.log" "$L/s-yes.log" "$SNAPD/s/"
+SNAP_PLAIN="$SNAPD/s/c1.log${TAB}ok${TAB}ok
+$SNAPD/s/c2.log${TAB}ok${TAB}ok
+$SNAPD/s/c3.log${TAB}auth${TAB}auth
+$SNAPD/s/c4.log${TAB}auth${TAB}auth
+$SNAPD/s/s-yes.log${TAB}ok${TAB}ok"
+run bash "$TOOL" "$SNAPD/s"
+assert_eq "AC4 without --against the output is the recorded snapshot, byte for byte" "$SNAP_PLAIN" "$OUT"
+run bash "$TOOL" --stray "$SNAPD/s/c1.log" "$SNAPD/s/s-yes.log"
+assert_eq "AC4 --stray without --against is the recorded snapshot, byte for byte" "$SNAPD/s/c1.log${TAB}ok${TAB}ok${TAB}none
+$SNAPD/s/s-yes.log${TAB}ok${TAB}ok${TAB}stray" "$OUT"
+run bash "$TOOL" --fail-on-auth "$SNAPD/s/c3.log"
+assert_eq "AC4 --fail-on-auth without --against keeps its line and exit 1" "$SNAPD/s/c3.log${TAB}auth${TAB}auth|1" "$OUT|$RC"
+SAV="$G/saved.json"; cp "$RJ" "$SAV"
+ag "$GL"
+assert_eq "AC4 --against only reads RESULT.json (unchanged bytes)" "$(cksum < "$SAV")" "$(cksum < "$RJ")"
+
+echo "G5R --stray with --against: the stray column stays before the two new columns"
+run bash "$TOOL" --against "$RJ" --stray "$GL/E24.with.5.log" "$GL/zz-not-in-result.log"
+assert_eq "AC4 --stray --against: log, ok, ok, none, error, error->ok" "$GL/E24.with.5.log${TAB}ok${TAB}ok${TAB}none${TAB}error${TAB}error->ok
+$GL/zz-not-in-result.log${TAB}ok${TAB}ok${TAB}none${TAB}-${TAB}unmatched" "$OUT"
+
+echo "G5R AC5 a RESULT.json that is missing, not JSON, or not pb-evals/1: exit 2 with one error line"
+printf 'this is not json\n' > "$G/notjson.json"
+printf '{"schema":"pb-evals/2","runs":[]}\n' > "$G/otherschema.json"
+printf '{"runs":[]}\n' > "$G/noschema.json"
+: > "$G/empty.json"
+for bad in "$G/missing.json" "$G/notjson.json" "$G/otherschema.json" "$G/noschema.json" "$G/empty.json"; do
+  bn="${bad##*/}"
+  run bash "$TOOL" --against "$bad" "$GL/E2.with.1.log"
+  assert_rc "AC5 --against $bn exits 2" 2
+  ERRTXT="$(bash "$TOOL" --against "$bad" "$GL/E2.with.1.log" 2>&1 >/dev/null)"
+  assert_eq "AC5 --against $bn: exactly one line on stderr" "1" "$(printf '%s\n' "$ERRTXT" | grep -c .)"
+  assert_not_contains "AC5 --against $bn: the error is about RESULT.json, not an unknown option" "$ERRTXT" "unknown option"
+  assert_eq "AC5 --against $bn: no result line is printed on stdout" "" "$(bash "$TOOL" --against "$bad" "$GL/E2.with.1.log" 2>/dev/null)"
+done
+run bash "$TOOL" --against
+assert_rc "AC5 --against without a value exits 2" 2
+
+echo "G5R AC6 --fail-on-change"
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL/E24.with.5.log"
+assert_rc "AC6 error->ok (AC1) exits 1" 1
+assert_contains "AC6 error->ok: the line is still printed" "$OUT" "$GL/E24.with.5.log${TAB}ok${TAB}ok${TAB}error${TAB}error->ok"
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL/E21.with.1.log"
+assert_rc "AC6 graded->auth (AC2) exits 1" 1
+assert_contains "AC6 graded->auth: the line is still printed" "$OUT" "$GL/E21.with.1.log${TAB}auth${TAB}auth${TAB}graded${TAB}graded->auth"
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL/E2.with.1.log" "$GL/E3.with.1.log"
+assert_rc "AC6 unchanged lines (AC3) exit 0" 0
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL/zz-not-in-result.log"
+assert_rc "AC6 unmatched (AC4) exits 0" 0
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL/E2.with.1.log" "$GL/E21.with.1.log" "$GL/zz-not-in-result.log"
+assert_rc "AC6 one changed line among others exits 1" 1
+assert_eq "AC6 and all three lines are printed" "3" "$(printf '%s\n' "$OUT" | grep -c "$TAB")"
+run bash "$TOOL" --against "$RJ" "$GL/E24.with.5.log" "$GL/E21.with.1.log"
+assert_rc "AC6 without --fail-on-change a changed line exits 0" 0
+run bash "$TOOL" --fail-on-change --against "$RJ" "$GL/E24.with.5.log"
+assert_rc "AC6 the flags may come in either order" 1
+run bash "$TOOL" --against "$RJ" --fail-on-change "$GL"
+assert_rc "AC6 a directory with changed lines exits 1" 1
+run bash "$TOOL" --fail-on-change "$GL/E2.with.1.log"
+assert_rc "AC6 --fail-on-change without --against exits 2" 2
+assert_not_contains "AC6 --fail-on-change without --against: not 'unknown option'" "$OUT" "unknown option"
+run bash "$TOOL" --fail-on-change
+assert_rc "AC6 --fail-on-change alone, no LOG at all, still exits 2" 2
+assert_not_contains "AC6 --fail-on-change alone: the --against check comes first (not 'unknown option')" "$OUT" "unknown option"
+run bash "$TOOL" --against "$G/notjson.json" --fail-on-change "$GL/E2.with.1.log"
+assert_rc "AC6 --fail-on-change with an invalid RESULT.json exits 2" 2
+run bash "$TOOL" --against "$G/missing.json" --fail-on-change "$GL/E2.with.1.log"
+assert_rc "AC6 --fail-on-change with a missing RESULT.json exits 2" 2
+run bash "$TOOL" --against "$RJ" --fail-on-auth "$GL/E24.with.5.log"
+assert_rc "AC6 --fail-on-auth keeps its meaning: an error->ok log with verdicts ok exits 0" 0
+run bash "$TOOL" --against "$RJ" --fail-on-auth "$GL/E21.with.1.log"
+assert_rc "AC6 --fail-on-auth keeps its meaning: an auth verdict exits 1" 1
+run bash "$TOOL" --against "$RJ" --fail-on-auth "$GL/E3.with.1.log"
+assert_rc "AC6 --fail-on-auth still exits 1 on an auth verdict that is 'unchanged'" 1
+run bash "$TOOL" --against "$RJ" --fail-on-auth --fail-on-change "$GL/E2.with.1.log"
+assert_rc "AC6 both flags and nothing wrong exit 0" 0
+
+echo "G5R a split verdict (one runner ok, the other auth): error->ok needs BOTH ok, graded->auth needs at least ONE auth"
+# no real log splits the two runners today, so a copy of the tool and runners (in a temp tree) gets an outcome runner whose auth_marker says auth for every log
+SPLT="$(mk_tmp)"; mkdir -p "$SPLT/tools" "$SPLT/evals"
+cp -p "$TOOL" "$SPLT/tools/replay-graders.sh"; cp -p "$PB_ROOT/evals/transcript.js" "$PB_ROOT/evals/run-evals.sh" "$PB_ROOT/evals/run-outcome.sh" "$SPLT/evals/"
+awk '/^auth_marker\(\)/ { print "auth_marker() { return 0; }"; skip = 1; next } skip { if (/^}/) skip = 0; next } { print }' "$PB_ROOT/evals/run-outcome.sh" > "$SPLT/evals/run-outcome.sh"
+run bash "$SPLT/tools/replay-graders.sh" "$GL/E2.with.1.log"
+assert_eq "split fixture: the evals runner says ok and the patched outcome runner says auth" "$GL/E2.with.1.log${TAB}ok${TAB}auth" "$OUT"
+run bash "$SPLT/tools/replay-graders.sh" --against "$RJ" "$GL/E24.with.5.log"
+assert_eq "split: a recorded auth error with ok/auth now is NOT error->ok (both runners must say ok)" "$GL/E24.with.5.log${TAB}ok${TAB}auth${TAB}error${TAB}unchanged" "$OUT"
+run bash "$SPLT/tools/replay-graders.sh" --against "$RJ" "$GL/E2.with.1.log"
+assert_eq "split: a graded run with ok/auth is graded->auth (one runner is enough)" "$GL/E2.with.1.log${TAB}ok${TAB}auth${TAB}graded${TAB}graded->auth" "$OUT"
+run bash "$SPLT/tools/replay-graders.sh" --against "$RJ" --fail-on-change "$GL/E2.with.1.log"
+assert_rc "split: --fail-on-change exits 1 on it" 1
+
 t_summary
