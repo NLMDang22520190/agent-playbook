@@ -90,8 +90,11 @@ assert_rc "G5 (8) an unknown option exits 2" 2
 run bash -c "bash '$TOOL' --bogus '$L/c1.log' 2>&1 >/dev/null"
 assert_contains "G5 (8) the unknown option is named on stderr" "$OUT" "--bogus"
 NB="$(mk_tmp)"; ln -s "$(command -v bash)" "$NB/bash"; ln -s "$(command -v dirname)" "$NB/dirname"
-run env PATH="$NB" "$NB/bash" "$TOOL" "$L/c1.log"
-assert_rc "G5 (8) node missing from PATH exits 2" 2
+# probe: on Git Bash a linked bash.exe cannot start without its DLLs, so the case cannot run there
+if env PATH="$NB" "$NB/bash" -c 'exit 0' >/dev/null 2>&1; then
+  run env PATH="$NB" "$NB/bash" "$TOOL" "$L/c1.log"
+  assert_rc "G5 (8) node missing from PATH exits 2" 2
+else t_skip 1 "G5 (8) node missing from PATH exits 2 (a linked bash does not start on this platform)"; fi
 
 echo "G5 writes nothing"
 # snap DIR -> sorted file list with a checksum of each (names and bytes; recursive)
