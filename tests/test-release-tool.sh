@@ -525,6 +525,7 @@ assert_contains "AC-S6 it says to watch the main-ci job of the first signed rele
 assert_contains "AC-S6 it names the recovery (gh release create by hand)" "$DEVMD" "gh release create"
 assert_contains "AC-S6 it names the GITHUB_SHA tag-object risk" "$DEVMD" "GITHUB_SHA"
 
+cfg_reset   # T8 R2: no signing config left over from AC-S7 (matters when SSH_SIGN=0 and the ssh block with its own cfg_reset is skipped)
 echo "AC4: release.sh checks the release gate (tools/release-gate.sh --check HEAD) before the suite and before any tag (v0.32.0 S3)"
 # suite_mark: tests/run-all.sh becomes a stub that records that it ran (in $MARK); committed and pushed, NOT re-sealed
 suite_mark() {
