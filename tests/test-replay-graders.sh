@@ -94,12 +94,43 @@ run env PATH="$NB" "$NB/bash" "$TOOL" "$L/c1.log"
 assert_rc "G5 (8) node missing from PATH exits 2" 2
 
 echo "G5 writes nothing"
+# snap DIR -> sorted file list with a checksum of each (names and bytes; recursive)
+snap() { (cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s %s\n' "$f" "$(cksum < "$f")"; done); }
+# fresh log directories, so earlier runs cannot have left files that hide a write
+F="$(mk_tmp)"; mkdir -p "$F/logs"
+cp "$L"/c1.log "$L"/c2.log "$L"/c3.log "$L"/c4.log "$L"/s-yes.log "$L"/s-no.log "$F/logs/"
 SNAP_REPO="$(cd "$PB_ROOT" && git status --porcelain 2>/dev/null | cksum)"
-SNAP_LOGS="$(cd "$L" && ls -la | cksum)"
-run bash "$TOOL" --stray "$L"
+SNAP_LOGS="$(snap "$F/logs")"
+run bash "$TOOL" --stray "$F/logs"
 assert_rc "G5 (9) a full replay of the log directory exits 0" 0
 assert_eq "G5 (9) the repo working tree status is unchanged" "$SNAP_REPO" "$(cd "$PB_ROOT" && git status --porcelain 2>/dev/null | cksum)"
-assert_eq "G5 (9) the log directory is unchanged (no file written next to the logs)" "$SNAP_LOGS" "$(cd "$L" && ls -la | cksum)"
+assert_eq "G5 (9) the log directory is unchanged (same files, same bytes; no file written next to the logs)" "$SNAP_LOGS" "$(snap "$F/logs")"
+
+echo "G5 leaves the log directory untouched"
+# (a) one log WITH a success result line, run by file path
+A="$(mk_tmp)"; mkdir -p "$A/logs"
+printf '%s\n' '{"type":"system","subtype":"init"}' \
+  "{$RES_OK,\"result\":\"Not logged in\"}" > "$A/logs/r.log"
+SNAP_A="$(snap "$A/logs")"
+run bash "$TOOL" "$A/logs/r.log"
+assert_rc "G5 (10a) a log with a result line exits 0" 0
+assert_eq "G5 (10a) the directory of a log with a result line is byte-for-byte unchanged" "$SNAP_A" "$(snap "$A/logs")"
+assert_no_path "G5 (10a) no <log>.result is created next to the log" "$A/logs/r.log.result"
+# (b) a pre-existing <log>.result next to a log WITHOUT a result line survives
+B="$(mk_tmp)"; mkdir -p "$B/logs"
+printf '%s\n' '{"type":"system","subtype":"init"}' > "$B/logs/n.log"
+printf 'my stored reply\n' > "$B/logs/n.log.result"
+run bash "$TOOL" "$B/logs/n.log"
+assert_rc "G5 (10b) a log without a result line exits 0" 0
+assert_file "G5 (10b) a pre-existing <log>.result next to a log without a result line is not deleted" "$B/logs/n.log.result"
+assert_eq "G5 (10b) its content is unchanged" "my stored reply" "$(cat "$B/logs/n.log.result" 2>/dev/null)"
+# (c) a pre-existing <log>.result next to a log WITH a result line keeps its content
+C="$(mk_tmp)"; mkdir -p "$C/logs"
+cp "$A/logs/r.log" "$C/logs/r.log"
+printf 'my stored reply\n' > "$C/logs/r.log.result"
+run bash "$TOOL" "$C/logs"
+assert_rc "G5 (10c) a directory run exits 0" 0
+assert_eq "G5 (10c) a pre-existing <log>.result next to a log with a result line keeps its content" "my stored reply" "$(cat "$C/logs/r.log.result" 2>/dev/null)"
 assert_file "G5 the tool exists" "$TOOL"
 
 t_summary
