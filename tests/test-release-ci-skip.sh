@@ -333,6 +333,7 @@ tt_expect_suite() {
 
 echo "AC1 reuse shape + tool prints 4242: the suite and the README check are skipped with the exact R2 lines"
 tt_setup
+export PB_TEST_TT_OUT='4242\n'
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC1 reuse candidate verified -> exit 0" 0
 if has_line "tests/run-all.sh skipped: the tree of $SHORT_T was already tested by PR run 4242 (use --local-suite to run it here)" "$OUT"; then
