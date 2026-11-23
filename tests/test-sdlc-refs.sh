@@ -177,7 +177,9 @@ if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
   # "(a dispute needs fresh eyes): stop, keep the RED commit, and" (21 words from "or a test looks wrong") -> "do not edit the test, keep the RED commit and write a **Dispute**
   # (which test, why it contradicts the spec, the evidence); a fresh tester decides, so" gives +17 words (2672 -> 2689, simulated on a copy), so EDITS = 8 + 17 = 25.
   # Expected SKILL.md: 2672 + 17 = 2689 words, within the 2700 budget.
-  EDITS=25
+  # v0.38 T13: one sentence of 26 words is added to the RED (tester) step of references/full.md (wc -w of the sentence; it sits on its own line without a list marker):
+  # these are words added to full.md, not words moved out of SKILL.md. MOVED grows by 26 and SKILL.md stays 2689, so EDITS = 25 + 26 = 51.
+  EDITS=51
   PTR="$(grep 'read `references/full\.md` first' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
   if [ "$NPTR" = 3 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
     assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the Workflow pointer line) + EDITS (v0.37 S3 review: 8 words added to Lite step 6; v0.37 E4: 17 words in the escalation clause) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR + EDITS))" "$w"
@@ -219,5 +221,15 @@ echo "W9 incident: a revert is not called safe when the bad deploy carries a mig
 pinl W9 "$I" "one line: revert with a schema or data migration caveat" 'revert' 'migration'
 pinf W9 "$I" "points to migration.md" 'migration.md'
 pinl W9 "$I" "one line: with a migration, use the flag or a forward fix" 'migration' '(flag|forward fix)'
+
+echo "v0.38 T13 AC5 references/full.md RED (tester) step: the shard-weights registration sentence, verbatim, inside the RED step"
+T13S='Register new or changed `tests/shard-weights` entries in the tester commit, because the implementer gate treats that file as a test path; with `--paths-from`, use `--base <commit>^`.'
+FULLMD38="$PB_ROOT/skills/playbook-tdd/references/full.md"
+pinf "T13 AC5" "$FULLMD38" "has the shard-weights registration sentence verbatim" "$T13S"
+RED38="$(awk '/^1\. \*\*RED \(tester\)\.\*\*/ { on = 1 } /^2\. \*\*GREEN/ { on = 0 } on' "$FULLMD38" 2>/dev/null)"
+if printf '%s\n' "$RED38" | grep -Fq -e "$T13S"; then t_ok "T13 AC5 the sentence sits between the RED (tester) and GREEN steps"
+else t_bad "T13 AC5 the sentence sits between the RED (tester) and GREEN steps" "not in the RED step: $RED38"; fi
+if [ "$(printf '%s\n' "$T13S" | env -u LC_ALL wc -w | tr -d ' ')" = 26 ]; then t_ok "T13 AC5 the pinned sentence is 26 words (the EDITS arithmetic of AC16)"
+else t_bad "T13 AC5 the pinned sentence is 26 words (the EDITS arithmetic of AC16)" "word count differs"; fi
 
 t_summary
