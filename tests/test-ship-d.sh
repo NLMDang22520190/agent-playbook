@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for tools/ship.sh v0.32.0 AC9 and AC9': before EVERY merge ship starts (the direct merge and arming --auto) it fetches the PR head and
 # refuses unless origin/main is an ancestor of the head (PR up to date) and `tools/release-gate.sh --check <head sha>` exits 0. An already MERGED PR is not checked by ship.
-# Interface (spec Revision 3): head sha = `gh pr view N --json headRefOid`; fetch refs/pull/N/head, else the head branch (headRefName); gate called from main's checkout.
+# Interface (spec Revision 3, T11: REST): head sha = `head.sha` of `gh api repos/O/R/pulls/N`; fetch refs/pull/N/head, else the head branch (headRefName); gate called from main's checkout.
 # The fixture (ship-fixture.sh) has a gate stub with a controllable exit code (FAKE_GATE_RC, FAKE_GATE_MSG) that logs its arguments, and an origin with refs/pull/12/head and feat/x.
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/ship-fixture.sh"
@@ -20,7 +20,7 @@ sh_run 12 v1.2.3 --yes
 assert_rc "AC9 gate ok + up to date: exit 0" 0
 assert_eq "AC9 gate ok + up to date: the whole flow ran" "$FULL_YES" "$(steps)"
 assert_eq "AC9 gate ok: the gate stub was called exactly once, with '--check <PR head sha>'" "release-gate.sh --check $HEAD1" "$(gate_calls)"
-before "AC9 the gate runs before gh pr merge" '^release-gate.sh' '^gh pr merge'
+before "AC9 the gate runs before the PUT merge" '^release-gate.sh' '^gh api .*PUT'
 assert_eq "AC9 gate ok: the merge reached origin" "1" "$(origin_merges)"
 assert_contains "AC9 gate ok: shipped is printed" "$OUT" "shipped v1.2.3"
 
@@ -61,7 +61,7 @@ for rc in 1 2; do
   sh_run 12 v1.2.3 --yes
   assert_rc "AC9 gate exit $rc: ship exits 1" 1
   assert_contains "AC9 gate exit $rc: 'ship refused: release gate: <reason>'" "$OUT" "ship refused: release gate: no gate result for this commit (fake reason)"
-  assert_eq "AC9 gate exit $rc: gh pr merge was never called" "0" "$(logged '^gh pr merge')"
+  assert_eq "AC9 gate exit $rc: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
   assert_eq "AC9 gate exit $rc: only the PR check ran (no release, CI wait or install)" "view" "$(steps)"
   assert_eq "AC9 gate exit $rc: nothing reached origin's main" "0" "$(origin_merges)"
   assert_eq "AC9 gate exit $rc: no tag" "" "$(git -C "$F/repo" tag)"
@@ -76,7 +76,7 @@ sh_run 12 v1.2.3 --yes
 assert_rc "AC9 not up to date: ship exits 1" 1
 assert_contains "AC9 not up to date: 'ship refused: PR is not up to date with main'" "$OUT" "ship refused: PR is not up to date with main"
 assert_contains "AC9 not up to date: says to update the PR and re-run the gate" "$OUT" "update it and re-run the gate"
-assert_eq "AC9 not up to date: gh pr merge was never called" "0" "$(logged '^gh pr merge')"
+assert_eq "AC9 not up to date: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
 assert_eq "AC9 not up to date: only the PR check ran" "view" "$(steps)"
 assert_eq "AC9 not up to date: main on origin has no merge commit of the PR" "0" "$(origin_merges)"
 assert_not_contains "AC9 not up to date: not claimed shipped" "$OUT" "shipped v1.2.3"
@@ -85,7 +85,7 @@ origin_advance
 sh_run 12 v1.2.3
 assert_rc "AC9 not up to date, with questions (no terminal): exit 1" 1
 assert_contains "AC9 not up to date, with questions: refused for the stale PR, before the question" "$OUT" "ship refused: PR is not up to date with main"
-assert_eq "AC9 not up to date, with questions: gh pr merge was never called" "0" "$(logged '^gh pr merge')"
+assert_eq "AC9 not up to date, with questions: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
 
 echo "AC9' --auto: the same refusals happen before auto-merge is armed"
 fx
@@ -101,7 +101,7 @@ export FAKE_GH_MERGE_STATE=BLOCKED FAKE_GATE_RC=1 FAKE_GATE_MSG="gate failed (fa
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC9' --auto, gate fails: exit 1" 1
 assert_contains "AC9' --auto, gate fails: 'ship refused: release gate: <reason>'" "$OUT" "ship refused: release gate: gate failed (fake reason)"
-assert_eq "AC9' --auto, gate fails: no gh pr merge call at all (auto-merge not armed)" "0" "$(logged '^gh pr merge')"
+assert_eq "AC9' --auto, gate fails: no merge call at all (auto-merge not armed)" "0" "$(merges_logged)"
 assert_not_contains "AC9' --auto, gate fails: does not say auto-merge was enabled" "$OUT" "auto-merge enabled"
 fx
 export FAKE_GH_MERGE_STATE=BLOCKED
@@ -109,19 +109,19 @@ origin_advance
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC9' --auto, PR not up to date: exit 1" 1
 assert_contains "AC9' --auto, PR not up to date: 'ship refused: PR is not up to date with main'" "$OUT" "ship refused: PR is not up to date with main"
-assert_eq "AC9' --auto, PR not up to date: no gh pr merge call at all (auto-merge not armed)" "0" "$(logged '^gh pr merge')"
+assert_eq "AC9' --auto, PR not up to date: no merge call at all (auto-merge not armed)" "0" "$(merges_logged)"
 assert_not_contains "AC9' --auto, PR not up to date: does not say auto-merge was enabled" "$OUT" "auto-merge enabled"
 
-echo "AC12 ship pins the merge to the head it checked: --match-head-commit <PR head sha> on the direct merge and on --auto"
+echo "AC12 ship pins the merge to the head it checked: sha=<PR head sha> on the direct (PUT) merge, --match-head-commit <PR head sha> on --auto"
 fx
 pr_ahead
 HEADP="$(pr_head)"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC12 direct merge: exit 0" 0
-assert_eq "AC12 direct merge: exactly one gh pr merge call" "1" "$(logged '^gh pr merge')"
-assert_contains "AC12 direct merge: the call carries --match-head-commit <PR head sha>" "$(grep '^gh pr merge' "$FAKE_LOG")" "--match-head-commit $HEADP"
+assert_eq "AC12 direct merge: exactly one merge call (PUT, counting gh pr merge too)" "1" "$(merges_logged)"
+assert_contains "AC12 direct merge: the PUT carries -f sha=<PR head sha>" "$(put_lines)" "sha=$HEADP"
 assert_eq "AC12 direct merge: the pinned sha is the one the gate was asked about" "release-gate.sh --check $HEADP" "$(gate_calls)"
-assert_eq "AC12 direct merge: the rest of the call is unchanged" "gh pr merge 12 --merge --delete-branch" "$(merge_call)"
+assert_eq "AC12 direct merge: the rest of the call is the REST merge (merge_method=merge)" "$PUT_CALL" "$(merge_call)"
 fx
 pr_ahead
 export FAKE_GH_MERGE_STATE=BLOCKED

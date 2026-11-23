@@ -141,7 +141,7 @@ dirty_case x xyz
 assert_rc "AC10 log 'x' + untracked 'xyz': ship refuses (exit 1)" 1
 assert_contains "AC10 log 'x' + untracked 'xyz': says the work tree is not clean" "$OUT" "work tree is not clean"
 assert_eq "AC10 log 'x' + untracked 'xyz': nothing merged" "0" "$(origin_merges)"
-assert_eq "AC10 log 'x' + untracked 'xyz': no gh pr merge call" "0" "$(logged '^gh pr merge')"
+assert_eq "AC10 log 'x' + untracked 'xyz': no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
 dirty_case log "my log"
 assert_rc "AC10 log 'log' + untracked 'my log': ship refuses (exit 1)" 1
 assert_contains "AC10 log 'log' + untracked 'my log': says the work tree is not clean" "$OUT" "work tree is not clean"

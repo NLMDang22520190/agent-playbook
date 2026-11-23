@@ -14,8 +14,18 @@ BIN="$W/bin"; mkdir -p "$BIN"
 # ---- fake gh ----
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
-# fake gh. Env: FAKE_LOG, FAKE_GH_STATE, FAKE_GH_MERGE_STATE, FAKE_GH_MERGE_COMMIT (sha of the PR's merge commit, empty = none),
-# FAKE_GH_FAIL (words: prview merge runlist runwatch relview shardlist shardview shardlog),
+# fake gh. T11 (v0.38.0): the PR is read and merged through the REST API (`gh api`); every `gh pr ...` is refused with a GraphQL-style error
+# (exit 1), except `gh pr merge ... --auto` (GraphQL has no REST twin), which needs `gh api graphql` to work.
+#   gh api repos/O/R/pulls/N                 -> the PR as raw REST JSON (state open|closed, merged, mergeable_state (lower case), merge_commit_sha,
+#                                               head.sha, head.ref, head.repo.full_name, base.ref, base.repo.full_name)
+#   gh api -X PUT repos/O/R/pulls/N/merge    -> merges: logs "merge-at <branch>", pushes merged-N.txt to origin's main (N from the path)
+#   gh api -X DELETE repos/O/R/git/refs/heads/REF, gh api graphql, gh api repos/O/R/actions/runs...; any other gh api path: exit 0, no output
+# Every call is also logged with its GH_REPO to "$FAKE_LOG.ghrepo" (one line "GH_REPO=<value> gh <args>"), so that $FAKE_LOG keeps one line per call.
+# Env: FAKE_LOG, FAKE_GH_STATE (OPEN|MERGED|CLOSED), FAKE_GH_MERGE_STATE (upper case word; NULL = "mergeable_state": null, MISSING = key absent),
+# FAKE_GH_MERGE_COMMIT (sha of merge_commit_sha, empty = null, also for an OPEN PR: GitHub's trial merge), FAKE_GH_HEAD_REPO (default: the repo of the path;
+# "null" = head.repo null; any other value = that head repo, a fork), FAKE_GH_HEAD_REF (default feat/x), FAKE_GH_BASE_REF (default main),
+# FAKE_GH_FAIL (words: prview (GET pulls) merge (PUT merge, and gh pr merge --auto) merge405 merge409 merge422 (PUT merge, with that HTTP status) delete
+# (DELETE ref) runs (actions/runs) graphql runlist runwatch relview shardlist shardview shardlog),
 # FAKE_SHARD_LOG (none = the job log has no suite timings),
 # FAKE_ORIGIN_WORK (clone of origin used to simulate the merge), FAKE_ORIGIN_GIT (the bare origin: headRefOid is read from it),
 # FAKE_SHARD_LIST (empty|null: the main push run lookup finds nothing), FAKE_MAIN_RUN (its id, default 7777),
@@ -77,27 +87,84 @@ emit() { # $1 = JSON text; apply --jq/-q when given
   fi
   printf '%s\n' "$1"
 }
+echo "GH_REPO=${GH_REPO:-} gh $*" >> "$FAKE_LOG.ghrepo"
+graphql_403() { echo "GraphQL: Resource not accessible by integration (HTTP 403)" >&2; }
+# do_merge N: what GitHub does on a merge: the PR's commit reaches origin's main (a detached HEAD makes the real gh fail locally after the merge)
+do_merge() {
+  echo "merge-at $(git rev-parse --abbrev-ref HEAD 2>&1)" >> "$FAKE_LOG"
+  ( cd "$FAKE_ORIGIN_WORK" &&
+    git pull -q --ff-only origin main >/dev/null 2>&1
+    case "${FAKE_REWRITE_SHIP:-}" in
+      exit99) printf 'exit 99\n' > tools/ship.sh ;;
+      trunc)  head -c 300 tools/ship.sh > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
+      grow)   { cat tools/ship.sh; printf '\necho "ship.sh from the merge commit"; exit 98\n'; } > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
+    esac
+    echo merged > "merged-${1}.txt" && git add -A &&
+    git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -qm "merge PR $1" &&
+    git push -q origin HEAD:main >/dev/null 2>&1 ) || return 1
+}
+pr_json() { # $1 = OWNER/REPO taken from the path -> the REST JSON of the PR
+  local st="${FAKE_GH_STATE:-OPEN}" s merged=false ms mc hr h hsha
+  case "$st" in OPEN) s=open ;; MERGED) s=closed; merged=true ;; *) s=closed ;; esac
+  case "${FAKE_GH_MERGE_STATE:-CLEAN}" in
+    NULL) ms='"mergeable_state":null,' ;;
+    MISSING) ms="" ;;
+    *) ms="\"mergeable_state\":\"$(printf '%s' "${FAKE_GH_MERGE_STATE:-CLEAN}" | tr 'A-Z' 'a-z')\"," ;;
+  esac
+  if [ -n "${FAKE_GH_MERGE_COMMIT:-}" ]; then mc="\"$FAKE_GH_MERGE_COMMIT\""; else mc=null; fi
+  h="${FAKE_GH_HEAD_REPO:-$1}"
+  case "$h" in null) hr=null ;; *) hr="{\"full_name\":\"$h\"}" ;; esac
+  hsha="$(val headRefOid)"
+  printf '{"number":%s,"title":"fake pull request","state":"%s","merged":%s,%s"merge_commit_sha":%s,"head":{"sha":"%s","ref":"%s","repo":%s},"base":{"ref":"%s","repo":{"full_name":"%s"}}}\n' \
+    "${FAKE_PR:-12}" "$s" "$merged" "$ms" "$mc" "$hsha" "${FAKE_GH_HEAD_REF:-feat/x}" "$hr" "${FAKE_GH_BASE_REF:-main}" "$1"
+}
+if [ "$1" = pr ]; then
+  case "$2" in
+    merge) case " $* " in *" --auto "*) ;; *) graphql_403; exit 1 ;; esac ;;
+    *) graphql_403; exit 1 ;;
+  esac
+fi
+if [ "$1" = api ]; then
+  shift; method=GET; apath=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -X|--method) method="$2"; shift ;;
+      -f|-F|--field|--raw-field|-H|--header|--jq|-q|--template|-t|--input) shift ;;
+      -*) ;;
+      *) [ -n "$apath" ] || apath="$1" ;;
+    esac
+    shift
+  done
+  case "$apath" in
+    graphql) failing graphql && exit 1; echo '{"data":{"repository":{"id":"R_kgFake"}}}'; exit 0 ;;
+    repos/*/actions/runs*) failing runs && exit 1; echo '{"total_count":0,"workflow_runs":[]}'; exit 0 ;;
+    repos/*/pulls/*/merge)
+      [ "$method" = PUT ] || exit 0
+      n="${apath#*/pulls/}"; n="${n%%/*}"
+      failing merge && exit 1
+      for c in 405 409 422; do failing "merge$c" && { echo "gh: HTTP $c (simulated merge refusal)" >&2; exit 1; }; done
+      do_merge "$n" || exit 1
+      printf '{"sha":"%s","merged":true,"message":"Pull Request successfully merged"}\n' "$(git -C "${FAKE_ORIGIN_GIT:-/nonexistent}" rev-parse main 2>/dev/null)"; exit 0 ;;
+    repos/*/pulls/*)
+      [ "$method" = GET ] || exit 0
+      n="${apath##*/pulls/}"
+      case "$n" in '' | *[!0123456789]*) exit 0 ;; esac
+      failing prview && exit 1
+      r="${apath#repos/}"; r="${r%%/pulls/*}"
+      pr_json "$r"; exit 0 ;;
+    repos/*/git/refs/heads/*)
+      [ "$method" = DELETE ] || exit 0
+      failing delete && exit 1
+      exit 0 ;;
+  esac
+  exit 0   # any other gh api path (release.sh reads repos/O/R/commits/SHA/check-runs): nothing
+fi
 case "$1 $2" in
-  "pr view")
-    failing prview && exit 1
-    if [ -n "$fields" ]; then emit "$(json_obj)"; else printf 'title:\tfake\nstate:\t%s\n' "${FAKE_GH_STATE:-OPEN}"; fi ;;
-  "pr merge")
+  "pr merge")   # only --auto gets here (checked above): GitHub arms the merge for later; nothing reaches origin's main now
+    failing graphql && exit 1
     failing merge && exit 1
-    # where the clone is when GitHub merges (a detached HEAD makes the real gh fail locally after the merge)
     echo "merge-at $(git rev-parse --abbrev-ref HEAD 2>&1)" >> "$FAKE_LOG"
-    # --auto: GitHub only arms the merge for later (when the checks pass); nothing reaches origin's main now
-    case " $* " in *" --auto "*) echo "Pull request #$3 will be automatically merged when all requirements are met"; exit 0 ;; esac
-    ( cd "$FAKE_ORIGIN_WORK" &&
-      git pull -q --ff-only origin main >/dev/null 2>&1
-      case "${FAKE_REWRITE_SHIP:-}" in
-        exit99) printf 'exit 99\n' > tools/ship.sh ;;
-        trunc)  head -c 300 tools/ship.sh > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
-        grow)   { cat tools/ship.sh; printf '\necho "ship.sh from the merge commit"; exit 98\n'; } > tools/ship.tmp && mv tools/ship.tmp tools/ship.sh ;;
-      esac
-      echo merged > "merged-${3}.txt" && git add -A &&
-      git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false commit -qm "merge PR $3" &&
-      git push -q origin HEAD:main >/dev/null 2>&1 ) || exit 1
-    echo "merged pull request #$3" ;;
+    echo "Pull request #$3 will be automatically merged when all requirements are met"; exit 0 ;;
   "run list")
     if [ "$branch" = main ]; then   # the lookup of the push-to-main run (shard report), not of the tag's run
       failing shardlist && exit 1
@@ -286,6 +353,9 @@ fx() {
   git -C "$F/work" remote set-url origin "$F/origin.git"
   : > "$F/log"
   export FAKE_LOG="$F/log" FAKE_ORIGIN_WORK="$F/work" FAKE_ORIGIN_GIT="$F/origin.git" FAKE_GATE_RC=0 FAKE_GATE_MSG="" FAKE_GH_STATE=OPEN FAKE_GH_MERGE_STATE=CLEAN FAKE_GH_FAIL=""
+  export PB_GATE_REPO=o/r   # T11: the repo ship talks to; the REST paths in the log are repos/o/r/...
+  unset GH_REPO FAKE_GH_HEAD_REPO FAKE_GH_HEAD_REF FAKE_GH_BASE_REF
+  : > "$F/log.ghrepo"
   export FAKE_REL_DRY_RC=0 FAKE_REL_REAL_RC=0 FAKE_INSTALL_RC=0 FAKE_PR=12 FAKE_TAG=v1.2.3 FAKE_GH_MERGE_COMMIT= FAKE_SHARD_LIST= FAKE_MAIN_RUN=7777 FAKE_SHARDS= FAKE_SHARD_LOG= FAKE_TREE_RUN= FAKE_TREE_RC=0
   unset FAKE_SHARDS_7777 FAKE_SHARDS_5555 FAKE_SHARDS_9191
   export FAKE_REWRITE_SHIP="" FAKE_INPLACE=1 FAKE_SHIP_REPO="$F/repo"
@@ -297,7 +367,9 @@ sh_run() { run_in "$F/repo" bash tools/ship.sh "$@" </dev/null; }
 # steps -> compact sequence of what was called, from the log (consecutive repeats collapsed)
 steps() {
   awk '
-    /^gh pr view/ { print "view"; next }
+    # T11: the PR read is `gh api repos/O/R/pulls/N` (GET), the direct merge is `gh api -X PUT repos/O/R/pulls/N/merge`; --auto still uses `gh pr merge`
+    /^gh api / && /\/pulls\/[0-9]+\/merge/ && /(-X|--method)[ =]PUT/ { print "merge"; next }
+    /^gh api / && /\/pulls\/[0-9]+( |$)/ && !/(-X|--method)[ =](PUT|DELETE|PATCH)/ { print "view"; next }
     /^gh pr merge/ { print "merge"; next }
     /^release.sh .*--dry-run/ { print "dry"; next }
     /^release.sh/ { print "release"; next }
@@ -331,7 +403,14 @@ side_commit() {
 }
 # v0.32.0 AC9 helpers
 # merge_call -> the logged gh pr merge call without a --match-head-commit <sha> pair (AC12 asserts that pair in test-ship-d.sh)
-merge_call() { grep '^gh pr merge' "$FAKE_LOG" | sed 's/ --match-head-commit [0-9a-fA-F]*//'; }
+# T11: also the direct merge, `gh api -X PUT repos/o/r/pulls/N/merge -f merge_method=merge -f sha=<head>`, printed without its `-f sha=<sha>` pair
+merge_call() { grep -E '^gh pr merge|^gh api .*(-X|--method)[ =]PUT .*/pulls/[0-9]+/merge' "$FAKE_LOG" | sed -e 's/ --match-head-commit [0-9a-fA-F]*//' -e 's/ -f sha=[0-9a-fA-F]*//'; }
+# T11 helpers: how many merges were attempted (a PUT merge or a gh pr merge), the PUT merge lines, the GET lines of the PR, the ref DELETE lines
+merges_logged() { grep -cE '^gh pr merge|^gh api .*(-X|--method)[ =]PUT .*/pulls/[0-9]+/merge' "$FAKE_LOG" 2>/dev/null || true; }
+put_lines() { grep -E '^gh api .*(-X|--method)[ =]PUT .*/pulls/[0-9]+/merge' "$FAKE_LOG" || true; }
+del_lines() { grep -E '^gh api .*(-X|--method)[ =]DELETE ' "$FAKE_LOG" || true; }
+pr_gets() { grep -E '^gh api ' "$FAKE_LOG" | grep -E '/pulls/[0-9]+( |$)' | grep -vE -- '(-X|--method)[ =](PUT|DELETE|PATCH)' || true; }
+PUT_CALL="gh api -X PUT repos/o/r/pulls/12/merge -f merge_method=merge"   # merge_call of a direct merge of PR 12 in repo o/r
 gate_calls() { grep '^release-gate.sh' "$FAKE_LOG"; }
 pr_head() { git -C "$F/origin.git" rev-parse -q --verify "refs/pull/${FAKE_PR:-12}/head" 2>/dev/null || git -C "$F/origin.git" rev-parse refs/heads/feat/x; }
 # origin_advance -> origin's main moves on (a commit made through the work clone); the repo's origin/main is NOT refreshed

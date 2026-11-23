@@ -3,7 +3,7 @@
 #   tools/ship.sh PR vX.Y.Z [--yes]
 # Everything is stubbed: a fake `gh` first on PATH, stub tools/release.sh and install.sh inside a throw-away
 # git repo (bare origin + clone). The stubs append one line per call to $FAKE_LOG, so the order of the steps
-# and the arguments are asserted from that log. The fake `gh pr merge` simulates the merge by pushing a commit
+# and the arguments are asserted from that log. The fake PUT repos/O/R/pulls/N/merge (T11; `gh pr merge` only for --auto) simulates the merge by pushing a commit
 # (merged-N.txt) to origin's main, so `git switch main && git pull --ff-only` has something to pull.
 # Prompts are answered through a pseudo-terminal (python3 pty); where none is available those assertions are
 # skipped with an exact count.
@@ -22,11 +22,11 @@ fx
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 --yes full flow exits 0" 0
 assert_eq "AC6.1/AC2.1 order with --yes: view, merge, release, CI list, CI watch, release view, install (no dry run)" "$FULL_YES" "$(steps)"
-assert_contains "AC6.1 pr view is asked about PR 12" "$(grep '^gh pr view' "$FAKE_LOG" | head -n 1)" "12"
-L="$(grep '^gh pr merge' "$FAKE_LOG")"
-assert_contains "AC6.1 merges PR 12" "$L" "pr merge 12"
-assert_contains "AC6.1 merge uses --merge" "$L" "--merge"
-assert_contains "AC6.1 merge deletes the branch" "$L" "--delete-branch"
+assert_contains "AC6.1 the PR is read through the REST API: GET repos/o/r/pulls/12" "$(pr_gets | head -n 1)" "repos/o/r/pulls/12"
+L="$(put_lines)"
+assert_contains "AC6.1 merges PR 12: PUT repos/o/r/pulls/12/merge" "$L" "repos/o/r/pulls/12/merge"
+assert_contains "AC6.1 merge uses merge_method=merge" "$L" "merge_method=merge"
+assert_contains "AC6.1 merge deletes the branch: DELETE repos/o/r/git/refs/heads/feat/x" "$(del_lines)" "repos/o/r/git/refs/heads/feat/x"
 assert_eq "AC2.1 --yes: no release.sh --dry-run call at all" "0" "$(logged '^release.sh .*--dry-run')"
 assert_eq "AC2.1 --yes: release.sh is called exactly once" "1" "$(logged '^release.sh')"
 SKIPLINE="$(printf '%s\n' "$OUT" | grep '^== ' | grep -i 'dry' | grep -i 'skip')"
@@ -49,7 +49,7 @@ fx
 export FAKE_PR=345 FAKE_TAG=v10.20.30
 sh_run 345 v10.20.30 --yes
 assert_rc "AC6.1 PR 345 / v10.20.30 exits 0" 0
-assert_contains "AC6.1 merges PR 345" "$(grep '^gh pr merge' "$FAKE_LOG")" "pr merge 345"
+assert_contains "AC6.1 merges PR 345" "$(put_lines)" "repos/o/r/pulls/345/merge"
 assert_eq "AC6.1 releases v10.20.30" "release.sh v10.20.30 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 assert_contains "AC6.1 looks up the CI run of v10.20.30" "$(grep '^gh run list' "$FAKE_LOG" | head -n 1)" "--branch v10.20.30"
 
@@ -64,8 +64,8 @@ done
 fx
 export FAKE_GH_FAIL="prview"
 sh_run 12 v1.2.3 --yes
-if [ "$RC" -ne 0 ]; then t_ok "AC6.1 gh pr view failing: non-zero exit"; else t_bad "AC6.1 gh pr view failing: non-zero exit" "exit $RC; output: $OUT"; fi
-assert_eq "AC6.1 gh pr view failing: nothing merged" "view" "$(steps)"
+if [ "$RC" -ne 0 ]; then t_ok "AC6.1 the PR read (GET pulls) failing: non-zero exit"; else t_bad "AC6.1 the PR read (GET pulls) failing: non-zero exit" "exit $RC; output: $OUT"; fi
+assert_eq "AC6.1 the PR read failing: nothing merged" "view" "$(steps)"
 
 echo "AC6.1 non-interactive stdin without --yes refuses at the first question"
 fx
@@ -106,8 +106,8 @@ assert_eq "AC6.1 missing release: install is not run" "view merge release runlis
 fx
 export FAKE_GH_FAIL="merge"
 sh_run 12 v1.2.3 --yes
-if [ "$RC" -ne 0 ]; then t_ok "AC6.1 gh pr merge failing: non-zero exit"; else t_bad "AC6.1 gh pr merge failing: non-zero exit" "exit $RC; output: $OUT"; fi
-assert_eq "AC6.1 gh pr merge failing: release.sh is not run" "view merge" "$(steps)"
+if [ "$RC" -ne 0 ]; then t_ok "AC6.1 the PUT merge failing: non-zero exit"; else t_bad "AC6.1 the PUT merge failing: non-zero exit" "exit $RC; output: $OUT"; fi
+assert_eq "AC6.1 the PUT merge failing: release.sh is not run" "view merge" "$(steps)"
 
 echo "review round 1: the CI run is looked up by tag, tag commit and event"
 fx
@@ -150,7 +150,7 @@ printf 'edit
 sh_run 12 v1.2.3 --yes
 assert_rc "R1 modified tracked file: exit 1" 1
 assert_contains "R1 modified tracked file: says the tree is not clean" "$OUT" "not clean"
-assert_eq "R1 modified tracked file: no gh pr merge, no release" "0" "$(logged '^gh pr merge')"
+assert_eq "R1 modified tracked file: no merge call (PUT or gh pr merge), no release" "0" "$(merges_logged)"
 assert_eq "R1 modified tracked file: nothing after the check" "" "$(steps | sed 's/^view$//')"
 fx
 printf 'x
@@ -158,7 +158,7 @@ printf 'x
 sh_run 12 v1.2.3 --yes
 assert_rc "R1 untracked file: exit 1" 1
 assert_contains "R1 untracked file: says the tree is not clean" "$OUT" "not clean"
-assert_eq "R1 untracked file: no gh pr merge" "0" "$(logged '^gh pr merge')"
+assert_eq "R1 untracked file: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
 assert_eq "R1 untracked file: no release.sh or install.sh call" "0" "$(logged '^release.sh\|^install.sh')"
 
 echo "AC6.1 usage errors exit 2 and touch nothing"
@@ -187,7 +187,7 @@ before_merge() { printf '%s\n' "$OUT" | awk '/^== merge PR/ { exit } { print }';
 fx   # default fixture: the clone is on the branch feat/x
 sh_run 12 v1.2.3 --yes
 assert_rc "AC1.1 on another branch: exit 0" 0
-assert_eq "AC1.1 on another branch: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
+assert_eq "AC1.1 on another branch: the merge ran while the clone was on main" "merge-at main" "$(merge_at)"
 assert_eq "AC1.1 on another branch: the full flow ran" "$FULL_YES" "$(steps)"
 if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 on another branch: a '== ' line before the merge says it switches to main"
 else t_bad "AC1.1 on another branch: a '== ' line before the merge says it switches to main" "output before the merge: $(before_merge)"; fi
@@ -196,7 +196,7 @@ fx
 assert_eq "AC1.1 fixture check: the clone starts on a detached HEAD" "HEAD" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC1.1 detached HEAD: exit 0" 0
-assert_eq "AC1.1 detached HEAD: gh pr merge ran while the clone was on main" "merge-at main" "$(merge_at)"
+assert_eq "AC1.1 detached HEAD: the merge ran while the clone was on main" "merge-at main" "$(merge_at)"
 assert_eq "AC1.1 detached HEAD: the full flow ran" "$FULL_YES" "$(steps)"
 assert_eq "AC1.1 detached HEAD: the local main got the merge" "$(git -C "$F/origin.git" rev-parse main)" "$(cd "$F/repo" && git rev-parse HEAD)"
 if before_merge | grep '^== ' | grep -q 'main'; then t_ok "AC1.1 detached HEAD: a '== ' line before the merge says it switches to main"
@@ -205,7 +205,7 @@ fx
 ( cd "$F/repo" && git switch -q main )
 sh_run 12 v1.2.3 --yes
 assert_rc "AC1.1 already on main: exit 0" 0
-assert_eq "AC1.1 already on main: gh pr merge ran on main" "merge-at main" "$(merge_at)"
+assert_eq "AC1.1 already on main: the merge ran on main" "merge-at main" "$(merge_at)"
 echo "AC1.1 the switch to main fails: refuse before merging"
 for start in branch detached; do
   fx
@@ -215,7 +215,7 @@ for start in branch detached; do
   git -C "$F/repo" worktree add -q "$F/wt" main >/dev/null 2>&1
   sh_run 12 v1.2.3 --yes
   assert_rc "AC1.1 ($start) switch to main impossible: exit 1" 1
-  assert_eq "AC1.1 ($start) switch impossible: gh pr merge never called" "0" "$(logged '^gh pr merge')"
+  assert_eq "AC1.1 ($start) switch impossible: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
   assert_eq "AC1.1 ($start) switch impossible: no release, no install" "0" "$(logged '^release.sh\|^install.sh')"
   assert_eq "AC1.1 ($start) switch impossible: origin main is untouched" "0" "$(git -C "$F/origin.git" ls-tree -r --name-only main | grep -c '^merged-')"
   assert_eq "AC1.1 ($start) switch impossible: the clone stays where it was" "$before" "$(cd "$F/repo" && git rev-parse --abbrev-ref HEAD)"

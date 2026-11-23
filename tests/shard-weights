@@ -126,6 +126,7 @@ test-guard-restore-mount.sh 129
 test-tdd-step-j.sh 128
 test-ship-timing.sh 125
 test-ship-d.sh 123
+test-ship-rest.sh 120
 test-evals-grade14c.sh 121
 test-role-gate-committed.sh 117
 test-scope-classify.sh 117

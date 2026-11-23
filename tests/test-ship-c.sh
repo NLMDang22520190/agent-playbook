@@ -6,8 +6,9 @@
 . "$(dirname "$0")/ship-fixture.sh"
 
 # ---- v0.17.0: gh call shapes the tests fix (the implementer must use exactly these) ----
-#  PR check:     gh pr view PR --json state,mergeStateStatus,mergeCommit --jq '...'   (gh prints mergeCommit as {"oid": "SHA"}, null until merged)
-#  auto-merge:   gh pr merge PR --auto --merge --delete-branch     (exactly this argument order)
+#  PR check (T11, v0.38.0): gh api repos/O/R/pulls/PR   (raw REST JSON: state, merged, mergeable_state, merge_commit_sha, head.sha ...)
+#  auto-merge:   gh pr merge PR --auto --merge --delete-branch     (exactly this argument order; GraphQL has no REST twin)
+#  direct merge: gh api -X PUT repos/O/R/pulls/PR/merge -f merge_method=merge -f sha=HEAD   (merge_call prints it without the sha pair)
 #  shard report: gh run list --branch main --event push --commit SHA --limit 1 --json databaseId [--jq ...]
 #                gh run view RUN --json jobs                       (no --jq: parse the JSON with node, as tools/shard-weights.sh does)
 #                jobs named "windows shard K/N" carry startedAt/completedAt; a job still running has completedAt 0001-01-01T00:00:00Z
@@ -45,7 +46,7 @@ fx
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC2.1 CLEAN PR with --auto: exit 0" 0
 assert_eq "AC2.1 CLEAN PR with --auto: the whole flow ran" "$FULL_YES" "$(steps)"
-assert_eq "AC2.1 CLEAN PR with --auto: a plain merge call, no --auto in it" "gh pr merge 12 --merge --delete-branch" "$(merge_call)"
+assert_eq "AC2.1 CLEAN PR with --auto: a plain REST merge call (PUT), no gh pr merge --auto in it" "$PUT_CALL" "$(merge_call)"
 assert_eq "AC2.1 CLEAN PR with --auto: released from main with the merge pulled" "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 for st in BLOCKED UNSTABLE; do
   fx
@@ -75,7 +76,7 @@ assert_eq "AC2.2 fixture: the merge commit is not in the local clone yet (ship m
 sh_run 12 v1.2.3 --yes
 assert_rc "AC2.2 MERGED, merge commit on origin/main: exit 0" 0
 assert_eq "AC2.2 MERGED: no merge call; update main, release, CI, release check, install ran" "$MERGED_YES" "$(steps)"
-assert_eq "AC2.2 MERGED: gh pr merge was never called" "0" "$(logged '^gh pr merge')"
+assert_eq "AC2.2 MERGED: no merge call was made (PUT or gh pr merge)" "0" "$(merges_logged)"
 assert_eq "AC2.2 MERGED: exactly one '== ' line says the PR is already merged" "1" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -ci 'already merged')"
 assert_eq "AC2.2 MERGED: no '== merge PR' step line" "0" "$(printf '%s\n' "$OUT" | grep -c '^== merge PR')"
 assert_eq "AC2.2 MERGED: released from main with the merge commit pulled" "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
@@ -95,7 +96,7 @@ fx
 merged_on_main
 sh_run 12 v1.2.3 --yes --auto
 assert_rc "AC2.2 MERGED with --auto: exit 0" 0
-assert_eq "AC2.2 MERGED with --auto: still no merge call (not even an auto-merge)" "0" "$(logged '^gh pr merge')"
+assert_eq "AC2.2 MERGED with --auto: still no merge call (not even an auto-merge)" "0" "$(merges_logged)"
 assert_eq "AC2.2 MERGED with --auto: the merged flow ran" "$MERGED_YES" "$(steps)"
 fx
 merged_on_main
@@ -117,7 +118,7 @@ sh_run 12 v1.2.3 --yes
 assert_rc "AC2.2 MERGED with a commit unknown to origin: exit 1" 1
 assert_eq "AC2.2 MERGED with an unknown commit: nothing merged or released" "view" "$(steps)"
 assert_contains "AC2.2 MERGED with an unknown commit: the refusal names origin/main" "$OUT" "origin/main"
-assert_eq "AC2.2 MERGED with an unknown commit: gh pr merge never called" "0" "$(logged '^gh pr merge')"
+assert_eq "AC2.2 MERGED with an unknown commit: no merge call (PUT or gh pr merge)" "0" "$(merges_logged)"
 fx
 side_commit
 export FAKE_GH_STATE=MERGED FAKE_GH_MERGE_COMMIT="$MC"
