@@ -18,8 +18,8 @@ ro --cmd "bash $SA/solve.sh"
 assert_rc "AC5 every graded run PASS -> exit 0" 0
 for id in t-add t-two t-node; do
   L="$id.with.1"
-  assert_eq "AC1 label <id>.<arm>.<k> even without --arm/--repeat: the adapter ran in <workroot>/$L" \
-    "$(physdir "$WR")/$L" "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
+  assert_eq "AC1 label <id>.<arm>.<k> even without --arm/--repeat: the adapter ran in <workroot>/$L/work (G3)" \
+    "$(physdir "$WR")/$L/work" "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s/%s' "$(physdir "$(dirname "$(dirname "$a")")")" "$(basename "$(dirname "$a")")" "$(basename "$a")")"
   assert_eq "AC1/AC3 $L: hidden tests pass = PASS" "PASS" "$(chk "$L" 'hidden tests pass')"
 done
 L=t-add.with.1
@@ -29,9 +29,9 @@ assert_eq "AC1 the workdir is a fresh repo made by the task's setup.sh (same HEA
 assert_eq "AC1 the prompt file = prompt.md plus run-evals' non-interactive line" \
   "$(cat "$T/t-add/prompt.md")
 $NONINT" "$(rec_of "$SR/$L.prompt")"
-assert_eq "AC1 the adapter gets <workdir> <workroot>/<label>.prompt (physical paths compared)" \
-  "$(physdir "$WR")/$L $(physdir "$WR")/$L.prompt" \
-  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s %s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
+assert_eq "AC1 the adapter gets <workdir> <workroot>/<label>.prompt (workdir = <workroot>/<label>/work; physical paths compared)" \
+  "$(physdir "$WR")/$L/work $(physdir "$WR")/$L.prompt" \
+  "$(a="$(sed -n 1p "$SR/$L.args" 2>/dev/null)"; p="$(sed -n 2p "$SR/$L.args" 2>/dev/null)"; printf '%s/%s/%s %s/%s' "$(physdir "$(dirname "$(dirname "$a")")")" "$(basename "$(dirname "$a")")" "$(basename "$a")" "$(physdir "$(dirname "$p")")" "$(basename "$p")")"
 LOGT="$(cat "$EV/$L.log" 2>/dev/null)"
 assert_contains "AC1/fix4 the adapter's stdout is kept in <out>.runs/<label>.log" "$LOGT" "STUB-OUT-$L"
 assert_contains "AC1/fix4 the adapter's stderr is kept in <out>.runs/<label>.log" "$LOGT" "STUB-ERR-$L"

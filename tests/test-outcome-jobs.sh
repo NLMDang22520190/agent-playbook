@@ -24,7 +24,7 @@ if [ "$(cat "$CJ/mode")" = par ]; then
   if [ "$l" = t-add.with.1 ]; then i=0; while [ "$(ls "$CJ" | grep -c "^fin\.")" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; fi
 fi
 if [ -f "$CJ/stray" ]; then
-  if [ "$l" = "$(cat "$CJ/stray")" ]; then echo x > "$(dirname "$wd")/stray-$l.txt"; : > "$CJ/strayed"
+  if [ "$l" = "$(cat "$CJ/stray")" ]; then echo x > "$wr/stray-$l.txt"; : > "$CJ/strayed"
   else i=0; while [ ! -f "$CJ/strayed" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done; fi
 fi
 solve
@@ -94,7 +94,7 @@ for k in args tmp ph home; do
 done
 for l in t-add.with.1 t-two.with.1 t-node.with.1; do
   assert_file "J1 --jobs 3: $l had its PLAYBOOK_HOME as an existing dir (its files were listed)" "$SR/$l.phfiles"
-  assert_eq "J1 --jobs 3: $l: its workdir is <workroot>/.jobs/$l/$l (D20: a private root per run)" "$(physdir "$WR")/.jobs/$l/$l" "$(a="$(sed -n 1p "$SR/$l.args" 2>/dev/null)"; printf '%s/%s' "$(physdir "$(dirname "$a")")" "$(basename "$a")")"
+  assert_eq "J1 --jobs 3: $l: its workdir is <workroot>/.jobs/$l/$l/work (D20: a private root per run; G3)" "$(physdir "$WR")/.jobs/$l/$l/work" "$(a="$(sed -n 1p "$SR/$l.args" 2>/dev/null)"; printf '%s/%s/%s' "$(physdir "$(dirname "$(dirname "$a")")")" "$(basename "$(dirname "$a")")" "$(basename "$a")")"
   assert_eq "J1 --jobs 3: $l: TMPDIR and PLAYBOOK_HOME are set" "0" "$(cat "$SR/$l.tmp" "$SR/$l.ph" | grep -c '^UNSET$')"
   assert_eq "J1 --jobs 3: $l: the log is kept in <out>.runs" "1" "$(grep -c "STUB-OUT-$l" "$EV/$l.log" 2>/dev/null)"
   assert_file "J1 --jobs 3: $l: the diff is kept in <out>.runs" "$EV/$l.diff"
@@ -157,6 +157,26 @@ assert_file "D7 the first run's adapter ran" "$SR/t-add.with.1.args"
 # ================= --variant =================
 JOBS_OUTER_BASE="--harness claude --tasks-dir $T --tasks t-add"
 jobs_variant_suite --harness claude --tasks-dir "$T" --tasks t-add,t-two
+# ================= G3 scratch level under --jobs =================
+echo "G3 --jobs 2: ../out.txt is scratch (lands in <workroot>/.jobs/<label>/<label>/), ../../out.txt is a stray of that run"
+ro --cmd "bash $SA/scratch.sh" --tasks t-add,t-two --jobs 2
+assert_rc "G3 --jobs 2 ../out.txt: exit 0" 0
+for l in t-add.with.1 t-two.with.1; do
+  assert_eq "G3 --jobs 2 ../out.txt: $l: the stray check is PASS" "PASS" "$(chk "$l" 'nothing written outside the workdir')"
+  assert_eq "G3 --jobs 2 ../out.txt: $l: the agent's cwd parent is <workroot>/.jobs/$l/$l" "$(physdir "$WR")/.jobs/$l/$l" "$(rec_of "$SR/$l.up")"
+done
+assert_eq "G3 --jobs 2 ../out.txt: no NOTE about a new entry" "0" "$(printf '%s\n' "$OUT" | grep -c 'NOTE new in the workroot')"
+ro --cmd "bash $SA/stray2.sh" --tasks t-add,t-two --jobs 2
+assert_rc "G3 --jobs 2 ../../out.txt: exit 1" 1
+for l in t-add.with.1 t-two.with.1; do
+  assert_eq "G3 --jobs 2 ../../out.txt: $l: the stray check is FAIL" "FAIL" "$(chk "$l" 'nothing written outside the workdir')"
+  assert_contains "G3 --jobs 2 ../../out.txt: $l: the NOTE names out.txt" "$(printf '%s\n' "$OUT" | grep "^$l NOTE")" "out.txt"
+done
+ro --cmd "bash $SA/stray2.sh" --tasks t-add --jobs 1
+assert_rc "G3 --jobs 1 ../../out.txt: exit 1" 1
+assert_eq "G3 --jobs 1 ../../out.txt: the stray check is FAIL" "FAIL" "$(chk t-add.with.1 'nothing written outside the workdir')"
+assert_contains "G3 --jobs 1 ../../out.txt: the NOTE names out.txt" "$(printf '%s\n' "$OUT" | grep '^t-add.with.1 NOTE')" "out.txt"
+
 # ================= C3 review round: non-owned workroot =================
 echo "C3 a --workroot that is not runner-owned and holds the user's .jobs/<label> dir: --jobs 2 refuses (exit 2) and keeps the file"
 cj_reset seq 1

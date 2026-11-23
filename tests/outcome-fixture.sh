@@ -96,7 +96,12 @@ printf '#!/usr/bin/env bash\n# %s:t-bad\nexit 1\n' "$CAN" > "$TB/t-bad/hidden/te
 mk_stub() {
   { printf '#!/usr/bin/env bash\nSR=%s\nTASKS=%s\n' "'$SR'" "'$T'"
     cat <<'EOF'
-wd="$1"; pf="$2"; l="$(basename "$wd")"; id="${l%%.*}"
+wd="$1"; pf="$2"
+# the working directory is <run dir>/<label>/work (<run dir> = the workroot, or <workroot>/.jobs/<label> under --jobs N>1); the stubs
+# also accept the old layout <workroot>/<label>, so that a layout pin fails on its own instead of every run failing.
+# lab = the <label> dir, l = the label, wr = the run dir (the part of the workroot the stray check watches)
+if [ "$(basename "$wd")" = work ]; then lab="$(dirname "$wd")"; else lab="$wd"; fi
+l="$(basename "$lab")"; wr="$(dirname "$lab")"; id="${l%%.*}"
 printf '%s\n%s\n' "$wd" "$pf" > "$SR/$l.args"
 cp "$pf" "$SR/$l.prompt" 2>/dev/null
 git -C "$wd" rev-parse HEAD > "$SR/$l.head" 2>/dev/null
@@ -141,7 +146,7 @@ mk_stub authleadstrong 'solve; init; printf "%s\n" "{\"duration_api_ms\":216536,
 mk_stub authleaderr 'solve; init; printf "%s\n" "{\"duration_api_ms\":216536,\"stop_reason\":\"end_turn\",\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"total_cost_usd\":0.1,\"result\":\"Not logged in\"}"'
 mk_stub slow 'sleep 5; solve'
 mk_stub canary 'solve; cat "$TASKS/$id/hidden/tests/"*'
-mk_stub stray 'solve; echo x > "$(dirname "$wd")/stray-$l.txt"'
+mk_stub stray 'solve; echo x > "$wr/stray-$l.txt"'
 mk_stub oracle 'case "$l" in t-add.with.3) ;; *) solve ;; esac'
 mk_stub errk2 'case "$l" in t-add.with.2) exit 7 ;; esac; solve'
 mk_stub cost 'solve; init; case "$l" in *.1) result 0.2 ;; *) result 0.4 ;; esac'
@@ -152,7 +157,7 @@ mk_stub skill 'solve; init; case "$l" in *.without.*) tu Skill "{\"skill\":\"pla
 # PLAYBOOK_HOME, and env. It prints nothing (its transcript must stay clean): $SR/<label>.snoop gets CLEAN or HIT, plus
 # ENVHIT when an env value holds the tasks dir path. Then it solves the task.
 mk_stub snoop 'c="PB-HIDDEN-"; c="${c}CANARY:"
-wr="$(dirname "$wd")"; par="$(dirname "$wr")"
+par="$(dirname "$wr")"
 { ls -laR "$wd"; grep -rs -- "$c" "$wd"
   ls -laR "$wr"; grep -rs -- "$c" "$wr"
   ls -la "$par"; for f in "$par"/* "$par"/.[!.]*; do if [ -f "$f" ]; then grep -s -- "$c" "$f"; fi; done
@@ -170,7 +175,7 @@ solve'
 # earlier transcripts or prompts), $SR/<label>.tr = STUB-OUT-<other label> lines found under the workroot's parent (an
 # earlier run's transcript), $SR/<label>.fix = files under the workroot's parent holding t-add's fix (an earlier run's
 # solution). Empty files = nothing reachable.
-mk_stub peek 'wr="$(dirname "$wd")"; par="$(dirname "$wr")"
+mk_stub peek 'par="$(dirname "$wr")"
 (cd "$wr" && ls -A) | grep -vxF -e "$l" -e "$l.log" -e "$l.prompt" -e .pb-eval-workroot > "$SR/$l.sib"
 grep -rhos -- "STUB-OUT-[A-Za-z0-9.-]*" "$par" | grep -vxF "STUB-OUT-$l" | LC_ALL=C sort -u > "$SR/$l.tr"
 grep -rlsF -- "\$1 + \$2" "$par" > "$SR/$l.fix"
@@ -180,6 +185,14 @@ solve'
 # entry point exits 0, so `python3 -m unittest F` run from the repo root would "pass" every hidden test.
 mk_stub pysolve 'sed "s/a - b/a + b/" m.py > m.py.new && mv m.py.new m.py'
 mk_stub pyshadow 'mkdir -p unittest; : > unittest/__init__.py; printf "%s\n" "import sys" "sys.exit(0)" > unittest/__main__.py'
+# scratch levels (feature G3, the working directory is <run dir>/<label>/work): scratch writes ../out.txt (one level above the workdir,
+# tolerated: it lands in <run dir>/<label>/), stray2 writes ../../out.txt (lands in the run dir: still a stray), inwork writes a
+# file inside the workdir. Each records at its start whether ../out.txt already exists ($SR/<label>.seen: SEEN or CLEAN) and where
+# its workdir's parent is ($SR/<label>.up).
+mk_stub scratch 'if [ -e ../out.txt ]; then echo SEEN; else echo CLEAN; fi > "$SR/$l.seen"; (cd .. && pwd -P) > "$SR/$l.up"
+solve; echo x > ../out.txt'
+mk_stub stray2 'solve; echo x > ../../out.txt'
+mk_stub inwork 'solve; echo x > out.txt'
 mk_stub pyshadowmod 'printf "%s\n" "import sys" "sys.exit(0)" > unittest.py'
 
 # ro [ARGS...] -> run evals/run-outcome.sh on the tasks dir $T with HOME=$GH, $FK first on PATH, TMPDIR=$RT (a fresh dir, so a

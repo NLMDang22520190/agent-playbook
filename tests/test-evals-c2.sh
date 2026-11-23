@@ -104,7 +104,7 @@ assert_eq "M5 without-arm ERROR: no checks" "0" "$(rj "$RJ" E8.without.1 r.check
 assert_not_contains "M5 without-arm ERROR: no FAIL line printed" "$OUT" "E8 FAIL"
 
 # ---------------- M5 / D8: run-outcome ----------------
-mk_stub strayexit 'echo x > "$(dirname "$wd")/stray-$l.txt"; exit 1'
+mk_stub strayexit 'echo x > "$wr/stray-$l.txt"; exit 1'
 mk_stub exit7solve 'solve; exit 7'
 STRAYC="nothing written outside the workdir"
 echo "M5 D8 run-outcome: a with-arm ERROR run records only the stray check; no hidden test is copied or run"
