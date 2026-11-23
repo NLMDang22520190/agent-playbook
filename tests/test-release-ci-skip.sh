@@ -295,4 +295,206 @@ assert_rc "AC11 --local-suite without a tag -> exit 2" 2
 assert_eq "AC11 usage errors: nothing tagged, no gate, no suite, no CI read" "0" "$((  $(gate_runs) + $(suite_runs) + $(check_run_calls) ))"
 assert_eq "AC11 usage errors: no tag" "" "$(tags_of "$C")$(tags_of "$O")"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# v0.38 T7 (spec: docs/v0.38-t7-spec.md, AC1-AC9): on a merge commit whose tree was reused, CI has no `test (ubuntu-latest)` check run
+# (the job `test` is skipped) while `test (macos-latest)` and `test (windows-latest)` are success. ci_state then prints a second line
+# `reuse-candidate`; release.sh asks tools/ci-tree-tested.sh (a STUB here: installed, committed and pushed per case, never in rc_setup,
+# so the cases above keep their old meaning (AC9); logs its arguments outside the work tree; never calls gh) and, for a numeric run id,
+# skips the suite and the README count check.
+# ---------------------------------------------------------------------------------------------------------------------------------
+echo "v0.38 T7 setup: the stub tools/ci-tree-tested.sh is per case, not in rc_setup (AC9)"
+# the real shape of a reuse merge commit: job `test` skipped (no `test (ubuntu-latest)`), macOS and Windows aggregators success
+RC_REUSE=(); for g in "${RC_GREEN[@]}"; do case "$g" in *"|test (ubuntu-latest)|"*) RC_REUSE+=("124850217910|test|completed|skipped") ;; *) RC_REUSE+=("$g") ;; esac; done
+TT_LOG="$rc_work/tt.log"
+tt_calls() { grep -c . "$TT_LOG" || true; }
+tt_setup() { # rc_setup + the stub tool committed and pushed (clean tree), reuse-shaped check runs, empty call log
+  rc_setup
+  cat > "$C/tools/ci-tree-tested.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${PB_TEST_TT_LOG:?}"
+[ -z "${PB_TEST_TT_ERR:-}" ] || printf '%s\n' "$PB_TEST_TT_ERR" >&2
+[ -z "${PB_TEST_TT_OUT+x}" ] || printf '%b' "$PB_TEST_TT_OUT"
+exit "${PB_TEST_TT_RC:-0}"
+STUB
+  ( cd "$C" && G add -A && G commit -qm tt-stub && git push -q origin main 2>/dev/null ) || echo "fixture setup failed: tt stub"
+  : > "$TT_LOG"; export PB_TEST_TT_LOG="$TT_LOG"; unset PB_TEST_TT_OUT PB_TEST_TT_RC PB_TEST_TT_ERR
+  rgf_gh_runs "${RC_REUSE[@]}"
+  SHORT_T="$(git -C "$C" rev-parse --short HEAD)"; HEAD_T="$(git -C "$C" rev-parse HEAD)"
+}
+# tt_expect_suite NAME REASON -> the suite ran once, no skip line, and the exact "runs here" line with REASON in brackets
+tt_expect_suite() {
+  assert_rc "$1: dry run -> exit 0" 0
+  assert_eq "$1: tests/run-all.sh ran once" "1" "$(suite_runs)"
+  if has_line "tests/run-all.sh runs here: CI is not green on $SHORT_T ($2)" "$OUT"; then t_ok "$1: exact 'runs here' line with ($2)"
+  else t_bad "$1: exact 'runs here' line with ($2)" "$OUT"; fi
+  assert_not_contains "$1: no skip line" "$OUT" "tests/run-all.sh skipped"
+  assert_not_contains "$1: no README-skipped line" "$OUT" "README test count check skipped"
+}
+
+echo "AC1 reuse shape + tool prints 4242: the suite and the README check are skipped with the exact R2 lines"
+tt_setup
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC1 reuse candidate verified -> exit 0" 0
+if has_line "tests/run-all.sh skipped: the tree of $SHORT_T was already tested by PR run 4242 (use --local-suite to run it here)" "$OUT"; then
+  t_ok "AC1 exact suite-skipped line (real short sha, run id 4242)"; else t_bad "AC1 exact suite-skipped line (real short sha, run id 4242)" "$OUT"; fi
+if has_line "README test count check skipped: PR run 4242 verified it (use --local-suite to check it here)" "$OUT"; then
+  t_ok "AC1 exact README-skipped line"; else t_bad "AC1 exact README-skipped line" "$OUT"; fi
+assert_eq "AC1 the suite did not run" "0" "$(suite_runs)"
+assert_not_contains "AC1 no 'runs here' line" "$OUT" "runs here"
+assert_contains "AC1 the dry run still ends" "$OUT" "would tag v1.2.3"
+assert_eq "AC1 the tool was called exactly once" "1" "$(tt_calls)"
+assert_eq "AC1 the tool got the full HEAD sha first, then --repo acme/widgets" "$HEAD_T --repo acme/widgets" "$(cat "$TT_LOG")"
+
+echo "AC1 a real release on a reuse candidate tags and pushes without the suite"
+tt_setup
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3
+assert_rc "AC1 real release on a verified reuse candidate -> exit 0" 0
+assert_eq "AC1 real release: the suite did not run" "0" "$(suite_runs)"
+assert_contains "AC1 real release: tagged in origin" "$(tags_of "$O")" "v1.2.3"
+
+echo "AC1 the README count check is skipped too (a wrong count is not refused), and the id is whatever the tool printed"
+tt_setup
+set_readme "$(printf '# demo\n| Script tests | **11 passing** (see run-all) |\n')"
+SHORT_T="$(git -C "$C" rev-parse --short HEAD)"
+export PB_TEST_TT_OUT='777\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC1 wrong README count + verified tree -> exit 0 (no refusal)" 0
+assert_not_contains "AC1 no README refusal text" "$OUT" "README.md test count is wrong"
+if has_line "README test count check skipped: PR run 777 verified it (use --local-suite to check it here)" "$OUT"; then
+  t_ok "AC1 README-skipped line carries the id the tool printed (777)"; else t_bad "AC1 README-skipped line carries the id the tool printed (777)" "$OUT"; fi
+assert_eq "AC1 wrong README count: the suite did not run" "0" "$(suite_runs)"
+
+echo "AC1 whitespace around a numeric id is trimmed"
+tt_setup
+export PB_TEST_TT_OUT='  4242 \n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+if has_line "tests/run-all.sh skipped: the tree of $SHORT_T was already tested by PR run 4242 (use --local-suite to run it here)" "$OUT"; then
+  t_ok "AC1 '  4242 ' is accepted as 4242"; else t_bad "AC1 '  4242 ' is accepted as 4242" "$OUT"; fi
+assert_eq "AC1 trimmed id: the suite did not run" "0" "$(suite_runs)"
+
+echo "AC2 reuse shape + tool prints nothing: the suite runs once and says why (the first line of ci_state)"
+tt_setup
+export PB_TEST_TT_OUT=''
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC2 empty tool output" "aggregator job test (ubuntu-latest) is not success"
+assert_eq "AC2 the tool was asked once" "1" "$(tt_calls)"
+
+echo "AC3 a tool answer that is not exactly one numeric id counts as none: the suite runs, no tool noise leaks"
+n=0
+for ans in 'abc\n' '42 43\n' '42x\n' '42\n43\n' ' \n  \n' '-5\n' '4.2\n' '0x2A\n'; do
+  n=$((n + 1)); tt_setup
+  export PB_TEST_TT_OUT="$ans" PB_TEST_TT_ERR="TT-FAKE-TOOL-ERROR"
+  run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+  tt_expect_suite "AC3 answer #$n [$ans]" "aggregator job test (ubuntu-latest) is not success"
+  assert_not_contains "AC3 answer #$n: the tool's stderr does not reach release.sh's output" "$OUT" "TT-FAKE-TOOL-ERROR"
+done
+tt_setup
+export PB_TEST_TT_OUT='4242\n' PB_TEST_TT_RC=1 PB_TEST_TT_ERR="TT-FAKE-TOOL-ERROR"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC3 tool exits 1 but printed 4242" "aggregator job test (ubuntu-latest) is not success"
+assert_not_contains "AC3 tool exit 1: the tool's stderr does not reach the output" "$OUT" "TT-FAKE-TOOL-ERROR"
+tt_setup
+rm -f "$C/tools/ci-tree-tested.sh"; ( cd "$C" && G add -A && G commit -qm tt-gone && git push -q origin main 2>/dev/null )
+SHORT_T="$(git -C "$C" rev-parse --short HEAD)"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC3 the tool file does not exist" "aggregator job test (ubuntu-latest) is not success"
+assert_not_contains "AC3 missing tool: no shell 'No such file' noise in the output" "$OUT" "No such file"
+
+echo "AC4 the Windows aggregator is not success too: the tool is not asked, the suite runs, the first line is unchanged"
+reuse_without() { # NAME NEWSPEC|"" -> RC_REUSE with the run named NAME dropped (NEWSPEC empty) or replaced
+  local g; REUSE_X=(); for g in "${RC_REUSE[@]}"; do case "$g" in *"|$1|"*) [ -z "$2" ] || REUSE_X+=("$2") ;; *) REUSE_X+=("$g") ;; esac; done
+}
+tt_setup; reuse_without "test (windows-latest)" ""; rgf_gh_runs "${REUSE_X[@]}"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC4 windows aggregator missing" "aggregator job test (ubuntu-latest) is not success"
+assert_eq "AC4 windows missing: the tool was not called" "0" "$(tt_calls)"
+tt_setup; reuse_without "test (windows-latest)" "99|test (windows-latest)|completed|skipped"; rgf_gh_runs "${REUSE_X[@]}"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC4 windows aggregator skipped" "aggregator job test (ubuntu-latest) is not success"
+assert_eq "AC4 windows skipped: the tool was not called" "0" "$(tt_calls)"
+tt_setup; reuse_without "test (windows-latest)" "99|test (windows-latest)|completed|failure"; rgf_gh_runs "${REUSE_X[@]}"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC4 windows aggregator failure" "1 check run(s) not successful"
+assert_eq "AC4 windows failure: the tool was not called" "0" "$(tt_calls)"
+tt_setup; reuse_without "test (macos-latest)" ""; rgf_gh_runs "${REUSE_X[@]}"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC4 macos aggregator missing" "aggregator job test (ubuntu-latest) is not success"
+assert_eq "AC4 macos missing: the tool was not called" "0" "$(tt_calls)"
+tt_setup; reuse_without "test (windows-latest)" ""; reuse_without "test (macos-latest)" ""; rgf_gh_runs "${REUSE_X[@]}"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC4 macos and windows both missing" "aggregator job test (ubuntu-latest) is not success"
+assert_eq "AC4 both missing: the tool was not called" "0" "$(tt_calls)"
+
+echo "AC5 another check run pending or failed on the reuse shape: the tool is not asked, the suite runs"
+tt_setup; rgf_gh_runs "${RC_REUSE[@]}" "88|slow|in_progress|"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC5 one check run in progress" "1 check run(s) not finished"
+assert_eq "AC5 pending: the tool was not called" "0" "$(tt_calls)"
+tt_setup; rgf_gh_runs "${RC_REUSE[@]}" "88|codecov/patch|completed|failure"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC5 one other check run failed" "1 check run(s) not successful"
+assert_eq "AC5 failure: the tool was not called" "0" "$(tt_calls)"
+tt_setup; rgf_gh_runs "${RC_REUSE[@]}" "88|slow|queued|"
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+tt_expect_suite "AC5 one check run queued" "1 check run(s) not finished"
+assert_eq "AC5 queued: the tool was not called" "0" "$(tt_calls)"
+
+echo "AC6 all three aggregators success: the old skip lines, word for word, and the tool is not asked"
+tt_setup; real_green_runs
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_rc "AC6 green -> exit 0" 0
+if has_line "$(skipped_line "$SHORT_T")" "$OUT"; then t_ok "AC6 old suite-skipped line"; else t_bad "AC6 old suite-skipped line" "$OUT"; fi
+if has_line "README test count check skipped: CI verified it on $SHORT_T (use --local-suite to check it here)" "$OUT"; then t_ok "AC6 old README-skipped line"; else t_bad "AC6 old README-skipped line" "$OUT"; fi
+assert_not_contains "AC6 no PR-run wording" "$OUT" "PR run"
+assert_eq "AC6 the suite did not run" "0" "$(suite_runs)"
+assert_eq "AC6 the tool was not called" "0" "$(tt_calls)"
+
+echo "AC7 --local-suite on the AC1 state: the suite runs, the tool is not asked"
+tt_setup
+export PB_TEST_TT_OUT='4242\n'
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run --local-suite
+assert_rc "AC7 --local-suite -> exit 0" 0
+assert_eq "AC7 the suite ran once" "1" "$(suite_runs)"
+assert_eq "AC7 the tool was not called" "0" "$(tt_calls)"
+assert_not_contains "AC7 no skip line" "$OUT" "skipped"
+assert_not_contains "AC7 no 'PR run' wording" "$OUT" "PR run"
+
+echo "AC8 the --repo argument: PB_GATE_REPO, else the origin URL"
+tt_setup
+export PB_GATE_REPO="o/r" PB_TEST_TT_OUT='4242\n'
+rgf_gh_runs "${RC_REUSE[@]}"
+run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+assert_eq "AC8 PB_GATE_REPO=o/r: the tool got --repo o/r" "$HEAD_T --repo o/r" "$(cat "$TT_LOG")"
+tt_setup
+unset PB_GATE_REPO
+OB="$(dirname "$O")/github.com/o2/r2.git"; mkdir -p "$(dirname "$OB")"
+git init -q --bare "$OB" && git -C "$OB" symbolic-ref HEAD refs/heads/main && git -C "$C" push -q "$OB" main 2>/dev/null &&
+  git -C "$C" remote set-url origin "$OB"
+probe_repo="$(git -C "$C" remote get-url origin 2>/dev/null | sed -n 's#^.*github\.com[:/]\([^/][^/]*/[^/][^/]*\)$#\1#p' | sed 's#\.git$##; s#/$##')"
+if [ "$probe_repo" = "o2/r2" ] && [ "$(git -C "$C" ls-remote origin refs/heads/main | cut -f1)" = "$HEAD_T" ]; then
+  export PB_TEST_TT_OUT='4242\n'
+  run_in "$C" bash tools/release.sh v1.2.3 --dry-run
+  assert_rc "AC8 origin .../github.com/o2/r2.git: dry run -> exit 0" 0
+  assert_eq "AC8 no PB_GATE_REPO: the tool got --repo o2/r2 (from the origin URL)" "$HEAD_T --repo o2/r2" "$(cat "$TT_LOG")"
+  assert_eq "AC8 origin URL case: the suite did not run" "0" "$(suite_runs)"
+else
+  t_skip 3 "AC8 origin-URL case (path-shaped origin did not parse here: [$probe_repo])"
+fi
+export PB_GATE_REPO="acme/widgets"
+
+echo "AC9 the stub is per case: rc_setup alone has no tools/ci-tree-tested.sh, so the old aggregator cases keep their meaning"
+rc_setup
+assert_no_path "AC9 rc_setup installs no ci-tree-tested.sh" "$C/tools/ci-tree-tested.sh"
+unset PB_TEST_TT_OUT PB_TEST_TT_RC PB_TEST_TT_ERR PB_TEST_TT_LOG
+
 t_summary
