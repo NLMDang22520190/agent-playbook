@@ -33,9 +33,9 @@ assert_rc "G5 (1) exits 0" 0
 assert_eq "G5 (1) success result opening with duration_api_ms quoting 'Not logged in': ok in both runners" \
   "$L/c1.log${TAB}ok${TAB}ok" "$OUT"
 run bash "$TOOL" "$L/c2.log"
-# run-evals.sh auth_marker does not skip task_notification lines (run-outcome.sh does since v0.37.0), so the evals column is auth: the divergence the tool exists to show
-assert_eq "G5 (2) task_notification quoting it: outcome ok, evals auth (current runners differ, both columns say so)" \
-  "$L/c2.log${TAB}auth${TAB}ok" "$OUT"
+# both runners skip a task_notification line for the weak phrases (run-evals.sh since this fix, run-outcome.sh since v0.37.0)
+assert_eq "G5 (2) task_notification quoting it: ok in both runners" \
+  "$L/c2.log${TAB}ok${TAB}ok" "$OUT"
 run bash "$TOOL" "$L/c3.log"
 assert_eq "G5 (3) strong marker invalid x-api-key: auth in both" "$L/c3.log${TAB}auth${TAB}auth" "$OUT"
 run bash "$TOOL" "$L/c4.log"

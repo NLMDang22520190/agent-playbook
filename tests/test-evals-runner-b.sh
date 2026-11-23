@@ -102,6 +102,17 @@ assert_rc "KO2 same line shape with 'invalid x-api-key': exit 4" 4
 run_e3 kerr "$INIT" "$LEAD,\"is_error\":true,\"result\":\"Not logged in\"}"
 assert_rc "KO3 same line shape with is_error true and 'Not logged in': exit 4" 4
 
+# ---- a task_notification system line that quotes the agent is not an auth marker for the weak phrases (run-outcome.sh does this since v0.37.0) ----
+echo "auth_marker: a task_notification line quoting a weak phrase is skipped; strong markers and other system lines still count"
+TNL='{"type":"system","subtype":"task_notification","summary":"kept Not logged in `decisions.md` out of the report"}'
+run_e3 ktn1 "$INIT" "$TNL" "${RES_PRE}\"$RES_OKTXT\"}"
+assert_eq "TN1 task_notification quoting 'Not logged in' and a passing result: no ERROR line" "0" "$(count_err)"
+assert_rc "TN1 task_notification quoting 'Not logged in' and a passing result: exit 0" 0
+run_e3 ktn2 "$INIT" '{"type":"system","subtype":"task_notification","summary":"the agent read: invalid x-api-key"}' "${RES_PRE}\"$RES_OKTXT\"}"
+assert_rc "TN2 task_notification holding 'invalid x-api-key': exit 4 (strong marker)" 4
+run_e3 ktn3 "$INIT" '{"type":"system","subtype":"api_error","message":"Not logged in"}' "${RES_PRE}\"$RES_OKTXT\"}"
+assert_rc "TN3 non-task_notification system line quoting 'not logged in': exit 4" 4
+
 # ---- v0.18.0 AC2.1: nothing is written outside the scenario's workdir ----
 # Check name (the implementer must use this text): "nothing written outside the workdir"; the FAIL line names the new entries.
 echo "v0.18.0 AC2.1 nothing written outside the workdir"
