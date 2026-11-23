@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
+#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--skip-replay] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -31,6 +31,14 @@
 # on and gate.json records ci_check {skipped: true}. gate.json holds ci_check {skipped, sha, state, checks [{name, conclusion, failed_steps (v0.36.0, only a check run excused as red only in the Release gate step: its failed step names)}]} (null for
 # --pool-only). Once a batch of DIR skipped the check, gate.json keeps skipped: true (a later --add-batch run or --pool-only does not hide it).
 # --dry-run, --pool-only and --check never read the CI.
+# Replay (v0.38.0, G5): a real run (after the CI check, before the baseline, the worktree, the preflight and any runner) and --dry-run replay
+# the stored outcome run logs of DIR: for every DIR/outcome-<stamp>.json that is a pb-evals/1 file, tools/replay-graders.sh --against FILE
+# DIR/outcome-<stamp>.runs re-grades the logs run-outcome.sh left there with the CURRENT graders. DIR without such a file: nothing is
+# printed. With one but no logs: "replay: no stored outcome run logs in DIR (nothing to replay)". Else "replay: N logs, M changed"; M > 0
+# (a recorded error that now grades ok, a recorded graded run that now shows auth) stops the gate with exit 2 naming the labels (the
+# recorded batch is stale: use another --out-dir, or pass --skip-replay). The replay tool missing, or exiting other than 0 or 1, stops it
+# with exit 3. All these lines go to stderr. --skip-replay skips the step ("note: --skip-replay: ..." on stderr; nothing in gate.json);
+# --pool-only and --check never replay and accept the flag. In practice the step bites on --add-batch, since a used DIR is refused before.
 # Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
 # gate.json, because a second batch silently adds to n. --add-batch says the batch is meant to be added to the earlier ones. A DIR that
 # is missing, empty or holds only other files is fine. --dry-run and --pool-only never refuse.
@@ -143,7 +151,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""; SKIPREPLAY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -153,6 +161,7 @@ while [ $# -gt 0 ]; do
     --pool-only) POOL=1 ;;
     --check) CHECK=1 ;;
     --skip-ci-check) SKIPCI=1 ;;
+    --skip-replay) SKIPREPLAY=1 ;;
     --add-batch) ADDB=1 ;;
     --bootstrap-baseline) BOOT=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
@@ -638,7 +647,49 @@ EOT
   exit 1
 fi
 
+# replay_check: G5 - replay the stored outcome run logs of DIR (DIR/outcome-<stamp>.runs/<label>.log, the path run-outcome.sh writes) against their
+# outcome-<stamp>.json with tools/replay-graders.sh --against; a run graded differently now (error->ok, graded->auth) stops the gate with exit 2.
+# Silent when DIR holds no outcome-*.json pb-evals/1 file (the filter of used_dir). Every line goes to stderr.
+replay_check() {
+  local files f rd lg n=0 m=0 labels="" nf=0 out rc line c lab tab=$'\t'
+  if [ "$SKIPREPLAY" = 1 ]; then printf 'note: --skip-replay: the stored run logs were not replayed\n' >&2; return 0; fi
+  files="$(PG_OD="$OD" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+let names = [];
+try { names = fs.readdirSync(e.PG_OD).filter(n => /^outcome-.*\.json$/.test(n)).sort(); } catch (x) { }
+for (const n of names) {
+  try { if (JSON.parse(fs.readFileSync(path.join(e.PG_OD, n), "utf8")).schema === "pb-evals/1") console.log(n); } catch (x) { }
+}')" || die 3 "node failed while reading $OD"
+  [ -n "$files" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    f="$OD/$f"; rd="${f%.json}.runs"
+    lg="$(ls "$rd"/*.log 2>/dev/null)" || lg=""
+    [ -n "$lg" ] || continue
+    nf=$((nf + 1))
+    rc=0
+    out="$("$ROOT/tools/replay-graders.sh" --against "$f" "$rd" 2>/dev/null)" || rc=$?
+    case "$rc" in 0 | 1) ;; *) die 3 "replay: the replay tool failed (exit $rc); fix it, or pass --skip-replay" ;; esac
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      n=$((n + 1))
+      c="${line##*"$tab"}"
+      case "$c" in
+        error-\>ok | graded-\>auth) m=$((m + 1)); lab="${line%%"$tab"*}"; lab="${lab##*/}"; labels="$labels${labels:+, }${lab%.log}" ;;
+      esac
+    done <<EOT
+$out
+EOT
+  done <<EOT
+$files
+EOT
+  if [ "$nf" = 0 ]; then printf 'replay: no stored outcome run logs in %s (nothing to replay)\n' "$OD" >&2; return 0; fi
+  printf 'replay: %s logs, %s changed\n' "$n" "$m" >&2
+  [ "$m" = 0 ] || die 2 "replay: $m run(s) were graded differently than the current graders would grade them ($labels); the recorded batch is stale: use another --out-dir, or pass --skip-replay"
+}
+
 if [ "$DRY" = 1 ]; then
+  replay_check
   if [ "$JSON" = 1 ]; then jdoc "" "" "" "" "" ""; exit $?; fi
   printf 'release gate (dry run): commit %s%s, harness %s, model %s, k=%s per arm\n' "$SHA" "${VER:+ (v$VER)}" "$LABEL" "$MODEL" "$K"
   printf 'tree: %s%s\n' "$TREE" "$([ "$TREE" = dirty ] && printf ' (a real run refuses it)')"
@@ -914,6 +965,7 @@ if [ "$POOL" = 0 ]; then
     [ -z "$UF" ] || die 2 "$OD already holds results of an earlier run ($(printf '%s' "$UF" | tr '\n' ' ' | sed 's/ $//')): a second batch adds to n; pass --add-batch to add one on purpose, or use another --out-dir"
   fi
   ci_check
+  replay_check
   # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run. Its files live under $BROOT until
   # the exit (R7-1): the verdict reads them after the runs
   BROOT="$(mktemp -d "${TMPDIR:-/tmp}/pbbase.XXXXXX")" || die 3 "cannot make a temp dir"
