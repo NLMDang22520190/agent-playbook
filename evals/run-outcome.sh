@@ -13,9 +13,9 @@
 # Claude session leaks them into the child); ANTHROPIC_API_KEY and everything else stay.
 # --tasks-dir defaults to evals/tasks next to this script, --tasks to every task directory in it. Each run has the label
 # <id>.<arm>.<k> (pattern-02-dimension-text.with.1), in the order task, then k, then arm (with before without). Per run:
-# `bash DIR/<id>/setup.sh <workroot>/<label>` builds a fresh repo (no network), <workroot>/<label>.prompt gets prompt.md
+# `bash DIR/<id>/setup.sh <workroot>/<label>/work` builds a fresh repo (no network), <workroot>/<label>.prompt gets prompt.md
 # plus a non-interactive note (--interactive: none), and the adapter runs as COMMAND <workdir> <prompt-file> with
-# stdout+stderr in <workroot>/<label>.log. The hidden tests never enter the workroot: after the adapter exits, the workdir
+# stdout+stderr in <workroot>/<label>.log; the workdir is <workroot>/<label>/work, so ../x is scratch in <workroot>/<label>/ and ../../x is a stray. The hidden tests never enter the workroot: after the adapter exits, the workdir
 # is copied to a runner-private temp dir (outside the workroot and outside the agent's TMPDIR), hidden/ is copied over the
 # copy (same relative paths, replacing the agent's files there), each hidden file runs alone from the copy's root
 # (node --test F, python3 -m unittest F with stdlib unittest loaded before the repo root joins sys.path, or bash F, under
@@ -63,15 +63,15 @@
 # (this script plus lib-harness.sh, transcript.js, facts.js, codex-jsonl.js, make-fixture.sh and codex-adapter.sh: D23) and harness_sha ("<harness> <CLI --version output>", "cmd <COMMAND>" for --cmd), 40 hex each
 # (evals/lib-harness.sh "Per-run hashes"). The runner calls `<harness> --version` once (stdin closed, 3 s limit) before the first run.
 # --jobs N (1..16, digits only, default 1 = one run at a time, as before): up to N runs at a time, each with its own workdir
-# (<workroot>/<label>), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of
+# (<workroot>/<label>/work), temp PLAYBOOK_HOME, TMPDIR, grading copy and diff. The md, the JSON and the summary keep the label order of
 # --jobs 1 and measure the same things. Each run's output lines (stderr, then stdout) are printed as one block when the run ends, so the
 # blocks come in the order the runs end. --max-cost is checked before each run starts, against the runs that have FINISHED by then: up
 # to N-1 runs may be in flight (their cost is not known yet), so the cap is approximate by up to N-1 runs; the note "cost unknown"
 # can then appear once per run that starts before the first unknown cost is merged. Under --jobs N>1 each run gets a private root,
-# <workroot>/.jobs/<label>/ (its workdir <workroot>/.jobs/<label>/<label>, .log and .prompt live there), so the stray check ("nothing
+# <workroot>/.jobs/<label>/ (its workdir <workroot>/.jobs/<label>/<label>/work, .log and .prompt live there), so the stray check ("nothing
 # written outside the workdir") sees that run's writes only and never blames a run for another one. A write into the shared workroot
 # itself cannot be attributed to a run under --jobs N>1 and is not checked. Transcripts and diffs keep their place and names in
-# ${OUT%.md}.runs/<label>.*; the "Workroot:" line and the JSON "workroot" stay the shared root. --jobs 1 keeps <workroot>/<label>. With --variant the install, the doctor
+# ${OUT%.md}.runs/<label>.*; the "Workroot:" line and the JSON "workroot" stay the shared root. --jobs 1 keeps <workroot>/<label>/work. With --variant the install, the doctor
 # call and the restore happen once, in the parent (before the first run starts and after the last one ends); INT, TERM and HUP stop the
 # running runs, then restore. A run that dies (a "cannot ..." exit) stops the others and ends the runner with its exit code.
 # --variant-held DIR (internal, for tools/release-gate.sh; not with --variant): the variant is already installed by an outer process
@@ -460,10 +460,10 @@ auth_lines() { if [ "$T_result_ok" = 1 ]; then grep -vE '"subtype":"api_retry"|^
 # auth_marker -> 0 when the log shows an auth failure. Strong markers (an invalid key, authentication_failed, a 401 status) count on any line
 # auth_lines gives; the weak phrases (unauthorized, authentication failed, not logged in) are plain words that an agent writes in its own reply
 # ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines and outside a
-# result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3).
+# result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3). A system line with subtype task_notification also quotes the agent ("not logged in `decisions.md`"), so the weak phrases skip it too (v0.37.0, found in pattern-31.with.5). The result line is found by its two fields in any order, not by its start (v0.37.0, found in E24.with.5 of gate attempt 4: a result line may open with duration_api_ms).
 auth_marker() {
   auth_lines | grep -qiE 'invalid x-api-key|invalid api key|authentication_failed|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori' && return 0
-  auth_lines | grep -vE '^\{"type":"(assistant|user)"|^\{"type":"result".*"is_error":false' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
+  auth_lines | grep -vE '^\{"type":"(assistant|user)"|"subtype":"task_notification"' | awk '!(/"type":"result"/ && /"is_error":false/)' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
 }
 # unlink_on_path ROOT REL -> removes every symbolic link among ROOT/REL and its parent dirs below ROOT, so a copy to
 # ROOT/REL cannot be redirected outside ROOT
@@ -534,8 +534,8 @@ save_diff() {
   fi
   rm_dir "$ix"; CUR_IDX=""
 }
-# drop_run -> the run's workdir and prompt file leave the workroot (its transcript and diff are already in $EV)
-drop_run() { rm_dir "$WD"; rm -f "$PF"; rm_dir "$CUR_BASE"; CUR_BASE=""; }
+# drop_run -> the run's workdir (an empty run dir too; scratch written to ../ stays) and prompt file leave the workroot (its transcript and diff are already in $EV)
+drop_run() { rm_dir "$WD"; rmdir "$RUND" 2>/dev/null; rm -f "$PF"; rm_dir "$CUR_BASE"; CUR_BASE=""; }
 spent_of() { printf '%s\n' $COST_SUM | awk '{ s += $1 } END { printf "%.6g", s }'; }
 estimate_of() { printf '%s\n' $COST_SUM | awk '{ if ($1 + 0 > m) m = $1 + 0 } END { printf "%.6g", m }'; }
 
@@ -568,8 +568,10 @@ run_one() {
     if [ -f "$WORKROOT/.pb-eval-workroot" ]; then : > "$PR/.pb-eval-workroot" || pb_die "cannot write $PR/.pb-eval-workroot" 3; fi
     WORKROOT="$PR"
   fi
-  WD="$WORKROOT/$RL"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
-  rm -rf "$WD" "$PF" "$LOG" || pb_die "cannot remove $WD" 3
+  # the agent's cwd is <run dir>/work: ../x lands in the run dir (scratch, an expected entry), ../../x in the root (a stray)
+  RUND="$WORKROOT/$RL"; WD="$RUND/work"; PF="$WORKROOT/$RL.prompt"; LOG="$WORKROOT/$RL.log"
+  rm -rf "$RUND" "$PF" "$LOG" || pb_die "cannot remove $RUND" 3
+  mkdir -p "$RUND" || pb_die "cannot create $RUND" 3
   # the user's git config (hooks, signing, autocrlf) must not change the task repo
   if ! sout="$(cd "$WORKROOT" && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null bash "$TD/setup.sh" "$WD" 2>&1)"; then
     printf '%s\n' "$sout" >&2

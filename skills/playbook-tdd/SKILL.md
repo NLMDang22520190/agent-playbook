@@ -54,7 +54,7 @@ The weight line quotes the file:line or rule that decided it.
 
 State the weight and its reason in one line (in `decisions.md` and the final report). When unsure,
 choose Full. **Escalate to Full** as soon as Lite work meets any Full criterion, grows past the size
-limit, or a test looks wrong to you (a dispute needs fresh eyes): stop, keep the RED commit, and
+limit, or a test looks wrong to you: stop, do not edit the test, keep the RED commit and write a **Dispute** (which test, why it contradicts the spec, the evidence); a fresh tester decides, so
 continue with separate roles from there.
 
 **User override (Full to Lite).** When the work meets a Full criterion and the user asks for Lite, ask once, naming the Full

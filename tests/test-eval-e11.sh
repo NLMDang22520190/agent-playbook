@@ -48,5 +48,6 @@ assert_eq "Q4b the last line of scenarios.md is E43's Fail-if text" "1" "$(tail 
 if [ -n "$(tail -n 1 "$SCN")" ]; then t_ok "Q4b scenarios.md has no trailing blank line"; else t_bad "Q4b scenarios.md has no trailing blank line"; fi
 
 H="$(bash "$RUNEV" --harness claude --print-hashes 2>/dev/null | grep -E '^E[0-9]+ ')"
-assert_eq "Q4b grader_sha is unchanged" "077b26acc89c06c62b102b720436ce408bede40e" "$(printf '%s\n' "$H" | head -n 1 | awk '{print $3}')"
+# Changed in v0.37.0 (owner approved): evals/run-evals.sh got the auth_marker result-line fix, so the pinned grader_sha moved from 077b26ac... to the value below. Changed again in v0.37.0 (owner approved): run-evals.sh auth_marker now also skips a task_notification line, moving it from f9ba085b... to the current value.
+assert_eq "Q4b grader_sha is unchanged" "841359acd88ce1b0cd10b9c1988c7d66b1bf12d4" "$(printf '%s\n' "$H" | head -n 1 | awk '{print $3}')"
 t_summary

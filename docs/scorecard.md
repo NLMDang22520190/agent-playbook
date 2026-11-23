@@ -47,6 +47,7 @@ Quy tắc cho mọi agent:
 | v0.25.1 | | 2.5 | 2.5 | 1.5 | 2.5 | 2.5 | 2.0 | 2.5 | [NGƯỜI DÙNG CHẤM] |
 | v0.33.0 | 2026-10-31 | 3.0 | 3.0 | 3.0 | 3.0 | 3.0 | 2.5 | 3.0 | [NGƯỜI DÙNG CHẤM] |
 | v0.35.0 | 2026-11-09 | 3.0 | 3.0 | 3.0 | 3.0 | 3.0 | 2.5 | 3.0 | [NGƯỜI DÙNG CHẤM] |
+| v0.37.0 | 2026-11-23 | chờ chấm | chờ chấm | chờ chấm | chờ chấm | chờ chấm | chờ chấm | chờ chấm | chưa có điểm: cần người chấm độc lập hoặc chủ repo, theo thang gốc không nằm trong repo |
 
 Khi đóng một release: thêm một dòng, thêm dòng giải thích ngắn nếu một thang đổi điểm, cập nhật trạng thái hàng đợi bên dưới và ghi chi phí gate.
 
@@ -82,9 +83,9 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 ### P0 (cần cho 4/5; làm ở v0.37 trừ phần chuẩn bị)
 | ID | Thang | Việc | Bằng chứng để cộng điểm | Release |
 |---|---|---|---|---|
-| P0-1 | C, D, E | Đưa 10 task held-out (pattern-27 đến pattern-36) vào `DEFAULT_TASKS` (`tools/release-gate.sh`, hiện chỉ pattern-15, 24, 26), chạy cả hai nhánh k >= 5 trên commit release | `DEFAULT_TASKS` có đủ id; `gate.json` ghi >= 13 task, gate pass | v0.37 (cần C1 và C3 xong ở v0.36) |
-| P0-2 | A, B, C | Gate pass đã commit trên model thứ hai (opus) cho cùng commit release. Hiện chưa có baseline opus nên gate dừng exit 3 ("no qualifying previous release gate") trước khi tốn tiền; cần cách lập baseline | Hai `gate.json` cho hai model, cả hai verdict pass, `--check` pass cho cả hai | v0.36: cơ chế lập baseline (không tốn tiền, test bằng `--dry-run`); v0.37: chạy thật |
-| P0-3 | A, B | (v0.36 đã revert phần cắt của v0.35.0 vì E21 hồi quy; làm lại ở v0.37 sao cho E21 giữ nguyên) Cắt chữ thật: `AGENTS.global.md` <= 450 từ, `SKILL.md` <= 2000 từ, hạ `evals/word-budgets` theo, gate vẫn pass rule f. Test ghim câu chữ nguyên văn nên đổi nó theo quy trình Full | `wc -w` và `evals/word-budgets`; gate pass | v0.37, sau khi A1 đo phần cắt của v0.35.0 |
+| P0-1 | C, D, E | Đưa 10 task held-out (pattern-27 đến pattern-36) vào `DEFAULT_TASKS` (`tools/release-gate.sh`, hiện chỉ pattern-15, 24, 26), chạy cả hai nhánh k >= 5 trên commit release | `DEFAULT_TASKS` có đủ id; `gate.json` ghi >= 13 task, gate pass | v0.37 (cần C1 và C3 xong ở v0.36) **Xong ở v0.37.0 (2026-11-23):** `DEFAULT_TASKS` 13 id; gate lần 5 pass trên `2009032` (12 scenario, 13 task, k=5, hai nhánh), `evals/results/gate-200903240844/`; sau bốn lần chưa qua (`attempt*`). Chi phí lần pass 56,93 USD [ĐO, theo session local; `gate.json` verdict pass đã kiểm]. |
+| P0-2 | A, B, C | Gate pass đã commit trên model thứ hai (opus) cho cùng commit release. Hiện chưa có baseline opus nên gate dừng exit 3 ("no qualifying previous release gate") trước khi tốn tiền; cần cách lập baseline | Hai `gate.json` cho hai model, cả hai verdict pass, `--check` pass cho cả hai | v0.36: cơ chế lập baseline (không tốn tiền, test bằng `--dry-run`); v0.37: chạy thật **Chưa đạt ở v0.37.0:** gate opus (S12) chuyển sang v0.38 (T5). |
+| P0-3 | A, B | (v0.36 đã revert phần cắt của v0.35.0 vì E21 hồi quy; làm lại ở v0.37 sao cho E21 giữ nguyên) Cắt chữ thật: `AGENTS.global.md` <= 450 từ, `SKILL.md` <= 2000 từ, hạ `evals/word-budgets` theo, gate vẫn pass rule f. Test ghim câu chữ nguyên văn nên đổi nó theo quy trình Full | `wc -w` và `evals/word-budgets`; gate pass | v0.37, sau khi A1 đo phần cắt của v0.35.0 **Một phần ở v0.37.0:** `playbook-tdd/SKILL.md` 3669 xuống 2689 từ, `AGENTS.global.md` 707 từ; mục tiêu 450 và 2000 chưa đạt, chuyển sang v0.38 (T4). |
 
 ### P1
 | ID | Thang | Việc | Bằng chứng | Release |
@@ -92,11 +93,11 @@ Mỗi việc ghi thang tác động, bằng chứng cần có và release dự k
 | A1 | A | Đo phần cắt chữ v0.35.0 bằng `--variant` trên E21, E16, E29 (k >= 5). Nếu rule f cờ, revert commit cắt riêng | Kết quả eval với n; không check nào tụt có ý nghĩa. **Đã đo (xem `docs/v0.36-spec.md`, S10): E21 hồi quy rõ (3 check, 4/10 xuống 0/10), E29 giảm cùng chiều nhưng trong nhiễu, E16 nhiễu; chi phí with-arm giảm khoảng 36%. Chưa có câu nào bị mất để khôi phục; cách xử lý chờ quyết định của người duy trì.** | v0.36 |
 | C1 | C | Runner phân biệt ERROR với FAIL; bộ phân loại đọc cả báo cáo cuối; một lượt bị gắn nhầm "auth or harness error" dù transcript bình thường (E13 ở gate v0.35.0) phải được xử lý | Test RED rồi GREEN; phân loại lại đúng một lần chạy cũ | v0.36 |
 | C3 | C | Điều tra `baseline iteration 2` exit 1 mà summary báo Errors = 0 | Nguyên nhân gốc: **xong, không phải lỗi** (exit 1 là một run graded FAIL; xem `docs/v0.36-spec.md`, S3) | v0.36 |
-| E2 | E | (điều tra xong ở v0.36, xem `docs/v0.36-spec.md` S9; sửa ở v0.37) E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 |
+| E2 | E | (điều tra xong ở v0.36, xem `docs/v0.36-spec.md` S9; sửa ở v0.37) E13 ghi mặc định (sắp xếp, page size, cách hoàn tác) >= 4/5 (hiện decisions.md 1/9, tại gate v0.35.0) và check "the endpoint works" chấm tự động (hiện MANUAL) | Check đạt >= 4/5 ở một lần chạy mới | điều tra v0.36, sửa v0.37 **Chưa làm ở v0.37.0** (S5 cần chạy trả tiền): chuyển sang v0.38 (T3). |
 | B3 | B | Tag release có chữ ký (v0.33 đến v0.35 là tag nhẹ). Việc của người duy trì: đặt `user.signingkey`, `tools/release.sh` sẽ ký | `git tag -v` thành công | v0.36 |
 | B4 | B | Sửa header "opt-in" ở `scripts/guard-irreversible.sh:2` (hooks bật mặc định từ v0.33.0) | Test ghim | v0.36 |
 | C4 | C | Ghi bước CI nào hỏng vào `gate.json` khi `ci_check` là green-except-release-gate | `gate.json` có trường, test | v0.36 |
-| C5 | C | Sửa test flaky R6-2 trên Windows. Đổi ngưỡng test phải hỏi chủ repo trước | CI Windows xanh ổn định qua nhiều lần chạy | v0.37 |
+| C5 | C | Sửa test flaky R6-2 trên Windows. Đổi ngưỡng test phải hỏi chủ repo trước | CI Windows xanh ổn định qua nhiều lần chạy | v0.37 **Xong ở v0.37.0** (R6-2 đo bằng `best_of_ms`); ca INT và F3b còn thỉnh thoảng đỏ, xem T2. |
 | B1 | B | Tài liệu cache, TTL, không đổi model giữa session, idle quá 1 giờ | Doc có nguồn số đo (`docs/research-data/ttl-2026-11-09.tsv`) và nhãn đo hay suy luận | v0.36 |
 | D1 | D | Phạm vi review và `/code-review` ghi rõ trong tài liệu | Doc có ví dụ và test pin | v0.36 |
 | F1 | F | Bảng DORA có số thật cho ít nhất 3 release (tần suất, thời gian commit đến release, tỉ lệ release lỗi, thời gian phục hồi) từ git tag, CI, CHANGELOG | Bảng trong file này, nhãn [ĐO] | v0.36 |
@@ -110,15 +111,16 @@ Quyết định của chủ repo 2026-11-22 sau bốn lần gate v0.37.0 chưa q
 |---|---|---|---|---|
 | G1 | C | `--budget` tổng cho gate, ước tính chi phí trước khi trả tiền, gate bị cắt vì trần ghi `truncated` | AC1, AC2 của `docs/v0.38-gate-robustness-spec.md` | v0.38 |
 | G2 | C | Gate từ chối chạy khi HEAD khác đầu nhánh PR; `ship.sh` luôn chạy `--dry-run` trước; `timeout-minutes` shard 20 lên 30 | AC3; CI Windows ổn định qua nhiều lần chạy | v0.38 |
-| G3 | C | Mỗi run có thư mục cha riêng để `../x` không ra ngoài vùng runner; rule g không nới | AC4; một A/B nhỏ trước khi tin | v0.38 (một phần có thể vào v0.37.0 nếu gate lần 5 cần) |
+| G3 | C | Dung sai một cấp scratch (`../x`), `../../x` vẫn FAIL: ĐÃ LÀM ở v0.37.0, nới check một cấp theo quyết định của chủ repo 2026-11-23. Còn lại: đo ghi ra ngoài vùng runner thật (home, đường dẫn tuyệt đối), A/B cho thấy workdir sâu thêm một cấp không làm lệch điểm | AC4 đã đạt (35 test); phần còn lại chưa đo | v0.38 |
 | G4 | C | Pooling theo `payload_tree` thay cho `playbook_commit == HEAD`, cờ `--strict-commit` | AC5; cần chủ repo duyệt vì đổi ngữ nghĩa gate | v0.38 (gộp P2-4) |
-| G5 | C | `tools/replay-graders.sh`: chạy lại grader trên transcript đã lưu, bắt buộc trước gate trả tiền | AC6 | v0.38 (một phần có thể vào v0.37.0) |
-| T1 | C | Sửa `auth_marker` ở `run-evals.sh` (dòng `result` thành công mở đầu bằng khóa khác `type`); `grader_sha` của nó đổi | Test RED rồi GREEN; replay `E24.with.5` của `attempt4-2be8d2f71a66` | v0.37.0 hoặc v0.38 (chủ repo đã đồng ý 2026-11-22 khi chọn phương án lai) |
-| T2 | C | Test không ổn định: ca INT của `test-release-gate-par` đã có vòng thử lại (v0.37.0); đo lại `tests/shard-weights` sau khi tăng timeout | CI Windows xanh ổn định | v0.38 |
+| G5 | C | `tools/replay-graders.sh`: bản đầu ĐÃ LÀM ở v0.37.0 (chạy lại `auth_marker` của hai runner, `--stray`, 42 test). Còn lại: so với trạng thái đã ghi của run, replay các check khác của outcome, bắt buộc trong `ship.sh` trước gate trả tiền | AC6 một phần | v0.38 |
+| T1 | C | Sửa `auth_marker` ở cả hai runner: ĐÃ LÀM ở v0.37.0 (dòng `result` thành công mở đầu bằng khóa khác `type`; dòng `task_notification`); replay trên transcript attempt3 và attempt4 ra `ok` cho `pattern-31.with.5` và `E24.with.5` [ĐO, theo session local] | Test RED rồi GREEN (14 test); `grader_sha` của `run-evals.sh` và `run-outcome.sh` đổi | xong ở v0.37.0 |
+| T2 | C | Test không ổn định: ca INT của `test-release-gate-par` đã có vòng thử lại (v0.37.0); ca F3b (`test-evals-runner-b.sh`, chờ adapter 10 giây) đỏ một lần trên Windows rồi qua khi chạy lại; `test-eval-e11.sh` đỏ ở local Windows của chủ repo chưa rõ nguyên nhân (CI xanh); đo lại `tests/shard-weights` sau khi tăng timeout | CI Windows xanh ổn định; nguyên nhân e11 | v0.38 (hoặc v0.37.1 cho e11) |
 | T3 | E | S5: grader tự động cho "the endpoint works" của E13, sửa E13 ghi mặc định (spec `docs/v0.37-spec.md`, S5) | Check đạt >= 4/5 ở một lần chạy mới | v0.38 (trả tiền khi chạy) |
 | T4 | A, B | Cắt chữ thật tới 450 và 2000 từ (P0-3). `SKILL.md` đã xuống 2689 từ ở v0.37; mục tiêu 2000 chưa đạt | `wc -w`; gate pass rule f | v0.38 (trả tiền) |
 | T5 | A, B, C | Gate opus (P0-2; S12 của v0.37). Chưa có số chi phí và chưa thiết kế thư mục kết quả cho model thứ hai | Hai `gate.json` cho hai model | v0.38 (trả tiền, cần trần) |
 | T6 | E | Quyết định cách sửa check "Models:" của E24 (grader hay văn bản) | Quyết định ghi trong spec, test | v0.38 |
+| T7 | C | `ci_state` của `tools/release.sh` đòi `test (ubuntu-latest)`, `test (macos-latest)`, `test (windows-latest)` đều `success` trên đúng sha; trên merge commit đã dùng cơ chế reuse, check của Ubuntu không tồn tại (job `test` bị skipped), nên `release.sh` chạy lại 186 file ở local dù cây giống hệt cây đã qua CI. Chấp nhận một merge commit có cây đã kiểm (`tools/ci-tree-tested.sh`) | Test RED rồi GREEN; v0.37.0 phải tag tay (`b7452d4`) | v0.38 |
 
 ### P2
 | ID | Thang | Việc | Release |

@@ -113,6 +113,37 @@ assert_eq "AC10 the hidden tests still pass (the FAIL comes from STRAY alone)" "
 ro --cmd "bash $SA/solve.sh" --tasks t-add
 assert_eq "AC10 a clean run: 'nothing written outside the workdir' = PASS" "PASS" "$(chk t-add.with.1 'nothing written outside the workdir')"
 
+echo "G3 one level of scratch above the workdir (<run dir>/<label>/work): ../out.txt is scratch, ../../out.txt is still a stray"
+SC="nothing written outside the workdir"
+ro --cmd "bash $SA/scratch.sh" --tasks t-add
+assert_rc "G3 a stub writing ../out.txt solves the task -> exit 0" 0
+assert_eq "G3 ../out.txt: the stray check is PASS" "PASS" "$(chk t-add.with.1 "$SC")"
+assert_eq "G3 ../out.txt: the hidden tests still pass" "PASS" "$(chk t-add.with.1 'hidden tests pass')"
+assert_eq "G3 ../out.txt: no NOTE about a new entry in the workroot" "0" "$(printf '%s\n' "$OUT" | grep -c 'NOTE new in the workroot')"
+assert_eq "G3 ../out.txt: the agent's cwd parent is <workroot>/<label>" "$(physdir "$WR")/t-add.with.1" "$(rec_of "$SR/t-add.with.1.up")"
+assert_file "G3 ../out.txt: the scratch file ends up in <workroot>/<label>/" "$WR/t-add.with.1/out.txt"
+assert_no_path "G3 ../out.txt: it is not written into the workroot itself" "$WR/out.txt"
+echo "G3 a second run of the same label starts from a clean <label> dir"
+SCR="$(mk_tmp)"
+for n in 1 2; do
+  run env -u PLAYBOOK_HOME -u PB_EVAL_ARM -u PB_EVAL_MODEL -u PB_EVAL_SETTINGS HOME="$GH" PATH="$FK:$PATH" TMPDIR="$RT" \
+    bash "$OUTCOME" --tasks-dir "$T" --workroot "$WR" --out "$SCR/r$n.md" --cmd "bash $SA/scratch.sh" --tasks t-add
+  assert_rc "G3 run $n of t-add.with.1 in the same workroot -> exit 0" 0
+  assert_eq "G3 run $n: the <label> dir held no out.txt from an earlier run when the stub started" "CLEAN" "$(rec_of "$SR/t-add.with.1.seen")"
+done
+assert_file "G3 after the second run the scratch file of that run is in <workroot>/<label>/" "$WR/t-add.with.1/out.txt"
+ro --cmd "bash $SA/stray2.sh" --tasks t-add
+assert_rc "G3 a stub writing ../../out.txt -> exit 1" 1
+assert_eq "G3 ../../out.txt: the stray check is FAIL" "FAIL" "$(chk t-add.with.1 "$SC")"
+assert_contains "G3 ../../out.txt: the NOTE names out.txt" "$(printf '%s\n' "$OUT" | grep '^t-add.with.1 NOTE')" "out.txt"
+assert_eq "G3 ../../out.txt: the hidden tests still pass (the FAIL comes from the stray alone)" "PASS" "$(chk t-add.with.1 'hidden tests pass')"
+assert_file "G3 ../../out.txt: the stray file is in the workroot" "$WR/out.txt"
+ro --cmd "bash $SA/inwork.sh" --tasks t-add
+assert_rc "G3 a stub writing inside the workdir -> exit 0" 0
+assert_eq "G3 a write inside the workdir: the stray check is PASS" "PASS" "$(chk t-add.with.1 "$SC")"
+assert_no_path "G3 a write inside the workdir: nothing in <workroot>/<label>/" "$WR/t-add.with.1/out.txt"
+assert_no_path "G3 a write inside the workdir: nothing in the workroot" "$WR/out.txt"
+
 echo "v0.35.0 AC6 the runner never puts the reference into the workdir (a real held-out task: pattern-27, one run)"
 # Characterization test: run-outcome.sh never copied solution.patch or testdata/ before this slice either; this pins it on
 # a real task of the corpus. The refsnoop stub records at its start, and prints nothing but the prelude's STUB-OUT/ERR:
@@ -143,7 +174,7 @@ EOF
   printf '%s\n' "$NEEDLE" > "$NDIR/needle"
   if [ -n "$FRESH_HEAD" ] && [ -n "$NEEDLE" ]; then t_ok "AC6 fresh setup HEAD of $R27 and a line unique to its solution.patch"
   else t_bad "AC6 fresh setup HEAD of $R27 and a line unique to its solution.patch" "HEAD [$FRESH_HEAD] needle [$NEEDLE]"; fi
-  mk_stub refsnoop 'wr="$(dirname "$wd")"; nf='"'$NDIR/needle'"'
+  mk_stub refsnoop 'nf='"'$NDIR/needle'"'
 git status --porcelain > "$SR/$l.porcelain" 2>&1
 find "$wd" "$wr" \( -name solution.patch -o -name "wrong-*.patch" \) -print > "$SR/$l.refnames" 2>/dev/null
 grep -rlF -f "$nf" -- "$wd" "$wr" > "$SR/$l.refline" 2>/dev/null

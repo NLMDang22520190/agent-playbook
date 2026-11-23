@@ -21,7 +21,7 @@ if [ "$probe" = 1 ]; then
   echo '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":0.001,"result":"NO"}'
   exit 0
 fi
-l="$(basename "$PWD")"
+l="$(basename "$PWD")"; [ "$l" = work ] && l="$(basename "$(dirname "$PWD")")"   # run-outcome: <run dir>/<label>/work
 printf 'run %s ver=%s\n' "$l" "$ver" >> "$VFAKE_LOG"
 if [ -n "${VFAKE_SLEEP:-}" ]; then
   echo $$ > "$VFAKE_DIR/sleeper.pid"; echo $$ >> "$VFAKE_DIR/sleepers"; : > "$VFAKE_DIR/started"
