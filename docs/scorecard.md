@@ -121,6 +121,15 @@ Quyết định của chủ repo 2026-11-22 sau bốn lần gate v0.37.0 chưa q
 | T5 | A, B, C | Gate opus (P0-2; S12 của v0.37). Chưa có số chi phí và chưa thiết kế thư mục kết quả cho model thứ hai | Hai `gate.json` cho hai model | v0.38 (trả tiền, cần trần) |
 | T6 | E | Quyết định cách sửa check "Models:" của E24 (grader hay văn bản) | Quyết định ghi trong spec, test | v0.38 |
 | T7 | C | `ci_state` của `tools/release.sh` đòi `test (ubuntu-latest)`, `test (macos-latest)`, `test (windows-latest)` đều `success` trên đúng sha; trên merge commit đã dùng cơ chế reuse, check của Ubuntu không tồn tại (job `test` bị skipped), nên `release.sh` chạy lại 186 file ở local dù cây giống hệt cây đã qua CI. Chấp nhận một merge commit có cây đã kiểm (`tools/ci-tree-tested.sh`) | Test RED rồi GREEN; v0.37.0 phải tag tay (`b7452d4`) | v0.38 |
+| T8 | C | Suite local có khoảng 48 lỗi sẵn do môi trường (`/.claude/CLAUDE.md` làm nhánh without từ chối); lỗi mới nằm lẫn trong đó, chỉ CI lộ ra (`test-outcome-report.sh`). Làm suite local kín môi trường (cô lập HOME và CLAUDE.md) | Chạy local và CI cho cùng kết quả trên một sha | v0.38 |
+| T9 | C | Fake agent lấy label từ `basename "$PWD"`; G3 đổi layout thành `<label>/work` làm test vỡ. Fixture truyền label qua biến môi trường tường minh | Test RED rồi GREEN; đổi layout không vỡ fixture | v0.38 |
+| T10 | C | Chạy `replay-graders` trên toàn bộ transcript `attempt*` đã commit trong CI (miễn phí) như test hồi quy cho grader; bốn lần gate trả tiền hỏng, hai lần vì grader báo sai | CI có bước replay; đổi grader làm đỏ khi verdict đổi | v0.38 (gộp với G5) |
+| T11 | C | `ship.sh` và `release.sh` không chạy được trong cloud (GraphQL 403, `gh pr view` lỗi). Dùng REST (`gh api`) hoặc báo rõ ngay lúc bắt đầu | Chạy được trong môi trường chỉ có REST | v0.38 |
+| T12 | C | `release-pr-check.sh` đòi commit rỗng "README test count N" sau mỗi lần test đổi (hai lần ở v0.37.0); số tính local sai nhiều lần (27037, 27047, 27093 so với 27128 của CI). CI tự tính số test hoặc README không ghi số cứng | Không còn commit rỗng; test | v0.38 |
+| T13 | C | Role gate vi phạm vì dòng `shard-weights` nằm trong commit implementer (phải sắp lại 6 commit). Thông báo lỗi của `role-gate.sh` gợi ý đăng ký file test trong commit tester; ghi vào `playbook-tdd` | Test thông báo; câu trong SKILL | v0.38 |
+| T14 | C | `release-gate.sh --check` với chuỗi sha đầy đủ thoát 1 và liệt kê thư mục gate cũ; chưa giải thích | Nguyên nhân gốc; test | v0.38 |
+| T15 | C | Quy tắc: sửa một check sau khi thấy gate fail cần (a) ghi trong CHANGELOG, (b) A/B hoặc đo bù, (c) chủ repo duyệt bằng văn bản. G3 (ii) mới đủ (a) và (c), thiếu (b) | Quy tắc trong tài liệu gate; A/B cho G3 | v0.38 |
+| T16 | A, B | Quy trình chấm độc lập cho scorecard (clone đầy đủ đúng tag, context mới, đầu vào đưa cho người chấm); thang chấm gốc không nằm trong repo công khai | Tài liệu quy trình; một lần chấm thử | v0.38 |
 
 ### P2
 | ID | Thang | Việc | Release |

@@ -90,3 +90,12 @@ Managed with `learn.sh` (installed at ~/.agents/playbook/scripts/learn.sh). Rule
 - Source: failure
 - Scope: tests/shard-weights, tests/test-*.sh
 - Role: all
+
+### L-0010 · 2026-11-23 · Check the file or run the measurement before stating a cause
+- Status: active
+- Rule: Before reporting a root cause or a data structure, read the file or run the command that shows it; do not state it from memory.
+- Why: Three claims had to be retracted in v0.37.0: the tree field of gate.json (clean/dirty, not a hash), a stray-write habit claim (2 of 162 vs 0 of 159), and a first G3 that made rule g nearly vacuous.
+- Evidence: v0.37.0 gate attempts 3 to 5, owner correction 2026-11-23
+- Source: user
+- Scope: project-wide
+- Role: all
