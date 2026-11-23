@@ -589,9 +589,10 @@ auth_lines()    { if result_ok; then grep -vE '"subtype":"api_retry"|^\{"type":"
 # auth_lines gives; the weak phrases (unauthorized, authentication failed, not logged in) are plain words that an agent writes in its own reply
 # ("Defaults I chose (not logged in decisions.md)", found in the v0.35.0 gate), so they count only outside assistant and user lines and outside a
 # result line with is_error false, whose "result" field repeats the whole final reply (v0.36.0, found again in E21.with.3). The result line is found by its two fields in any order, not by its start (v0.37.0, found in E24.with.5 of gate attempt 4: a result line may open with duration_api_ms).
+# A task_notification line is skipped for the weak phrases too: it quotes the agent's own text (v0.37.0: the behaviour runner had the same gap as run-outcome.sh, found while writing replay-graders).
 auth_marker() {
   auth_lines | grep -qiE 'invalid x-api-key|invalid api key|authentication_failed|(status|code|http|error)[^0-9A-Za-z]{0,20}401([^0-9]|$)|(^|[^0-9])401 +unauthori' && return 0
-  auth_lines | grep -vE '^\{"type":"(assistant|user)"' | awk '!(/"type":"result"/ && /"is_error":false/)' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
+  auth_lines | grep -vE '^\{"type":"(assistant|user)"|"subtype":"task_notification"' | awk '!(/"type":"result"/ && /"is_error":false/)' | grep -qiE 'unauthori[sz]ed|authentication failed|not logged in'
 }
 # e19_order -> 0 when the Skill call for playbook-tdd comes before the first Write/Edit under tests/,
 # 1 when it comes after or never, 3 when the log is not stream-json
