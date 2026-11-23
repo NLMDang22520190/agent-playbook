@@ -755,6 +755,12 @@ EOF
       if [ "$bad" -eq 1 ]; then
         printf 'VIOLATION (%s): %s [%s]\n' "$role" "$f" "$kind"
         violations=$((violations + 1))
+        # v0.38 T13: tests/shard-weights is a test path; tell the implementer where to register it (advisory line only)
+        if [ "$role" = implementer ] && [ "$kind" = test ]; then
+          case "$f" in shard-weights|*/shard-weights)
+            printf 'hint: %s counts as a test path; register shard-weights entries in the tester commit (the RED commit), not in the implementer commit\n' "$(shown "$f")" ;;
+          esac
+        fi
       fi
       sc_e4 "$f"
     done <<EOF

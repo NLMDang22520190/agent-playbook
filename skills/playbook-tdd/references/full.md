@@ -12,6 +12,7 @@ For slice S:
    - if the tester listed "Stubs needed" (compiled languages): run a short implementer pass limited
      to signatures whose bodies throw "not implemented", gate it as implementer, re-run RED;
    - commit the checkpoint: `git commit -m "test(red): S - <behaviour>"`. Note the sha as `RED`.
+   Register new or changed `tests/shard-weights` entries in the tester commit, because the implementer gate treats that file as a test path; with `--paths-from`, use `--base <commit>^`.
 2. **GREEN (implementer).** Start a fresh implementer with `roles/implementer.md`, the spec slice
    and the RED sha. When it returns:
    - `role-gate.sh check implementer --base $RED`, which must pass;
