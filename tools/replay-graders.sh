@@ -5,7 +5,7 @@
 # A verdict is "auth" when the runner's auth_marker finds an auth failure in the log, else "ok". auth_lines and auth_marker are
 # read from the CURRENT evals/run-evals.sh and evals/run-outcome.sh at run time (sed/awk extraction, no copied regexes), and
 # result_ok comes from evals/transcript.js as each runner's load_transcript gets it, so a change to a runner shows here at once.
-# A directory argument expands to its *.log files (not recursive). The logs are only read; nothing is written next to them.
+# A directory argument expands to its *.log files (not recursive). The logs are only read (the graders run on a temp copy of each); nothing is written next to them.
 #   --fail-on-auth   exit 1 when any log gets "auth" from either runner (the lines are still printed)
 #   --stray          add a fourth column: "stray" when a Bash tool_use command of the log writes outside the work dir
 #                    (a redirect, tee, cp or mv aimed at a ../ path), else "none". It is a lower bound: a write the
@@ -90,17 +90,21 @@ for (const l of fs.readFileSync(process.argv[1], "utf8").split("\n")) {
 }
 console.log(hit ? "stray" : "none");'
 
-anyauth=0
+anyauth=0 n=0
 while IFS= read -r log; do
   [ -n "$log" ] || continue
+  # transcript.js writes/deletes <log>.result and the runner functions read $LOG: work on a copy in our own temp dir
+  n=$((n + 1)); mkdir "$W/c$n" || die "cannot make a temp dir"
+  cp "$log" "$W/c$n/run.log" || die "cannot copy: $log"
+  work="$W/c$n/run.log"
   rok=0
   while IFS='=' read -r k v; do
     [ "$k" = result_ok ] && rok="$v"
   done <<EOF
-$(node "$EVALS/transcript.js" "$log" 2>/dev/null)
+$(node "$EVALS/transcript.js" "$work" 2>/dev/null)
 EOF
-  ve="$(verdict evals "$log" "$rok")" || die "the evals auth functions failed on $log"
-  vo="$(verdict outcome "$log" "$rok")" || die "the outcome auth functions failed on $log"
+  ve="$(verdict evals "$work" "$rok")" || die "the evals auth functions failed on $log"
+  vo="$(verdict outcome "$work" "$rok")" || die "the outcome auth functions failed on $log"
   [ "$ve" = auth ] || [ "$vo" = auth ] && anyauth=1
   line="$log	$ve	$vo"
   if [ "$STRAY" = 1 ]; then
