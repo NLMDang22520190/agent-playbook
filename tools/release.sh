@@ -14,6 +14,11 @@
 # at least one check run, none is pending and all concluded success, skipped or neutral, tests/run-all.sh and the README count check are
 # skipped (one line each says so) unless --local-suite is given. In every other state (not green, no runs, gh missing, API error, unreadable
 # JSON, unknown repository) the suite runs as before and one line says why; reading CI never fails the release by itself.
+# Reused tree: when only `test (ubuntu-latest)` is not success (macOS and Windows aggregators success, every check run completed and
+# none bad; ci_state then prints `reuse-candidate` as a second line, the job was skipped because the tree was already tested), it runs
+# `bash tools/ci-tree-tested.sh <sha> --repo OWNER/REPO` (stderr dropped). Only a single non-empty string of digits (a PR run id) is
+# accepted: the suite and the README count check are then skipped, one line each naming that run. Anything else (empty, not a number,
+# several lines, non-zero exit, missing tool) means no result and the suite runs here. All-green never calls the tool; --local-suite never does.
 # Then runs tests/run-all.sh (unless CI is green, see above). With --dry-run it prints
 # the steps it would take (would tag, would push) and changes nothing; otherwise it creates the
 # tag and pushes it (CI then creates the release). Repo root = the parent of this script's directory.
@@ -71,14 +76,22 @@ if [ -z "$gate_cached" ]; then
   esac
 fi
 
-# ci_state: prints "green" or the reason CI is not green on HEAD; never fails (a failed read is just "not green")
-ci_state() {
-  local repo url runs
+# ci_repo: prints OWNER/REPO (PB_GATE_REPO, else parsed from the origin URL), or nothing when unknown
+ci_repo() {
+  local repo url
   repo="${PB_GATE_REPO:-}"
   if [ -z "$repo" ]; then
     url="$(git remote get-url origin 2>/dev/null)"
     repo="$(printf '%s' "$url" | sed -n 's#^.*github\.com[:/]\([^/][^/]*/[^/][^/]*\)$#\1#p' | sed 's#\.git$##; s#/$##')"
   fi
+  printf '%s' "$repo"
+}
+
+# ci_state: prints "green" or the reason CI is not green on HEAD; never fails (a failed read is just "not green").
+# A second line `reuse-candidate` means only `test (ubuntu-latest)` is not success (see the header).
+ci_state() {
+  local repo runs
+  repo="$(ci_repo)"
   [ -n "$repo" ] || { echo "repository unknown"; return 0; }
   command -v gh >/dev/null 2>&1 || { echo "gh is not installed"; return 0; }
   command -v node >/dev/null 2>&1 || { echo "node is not installed"; return 0; }
@@ -106,7 +119,10 @@ else if (bad) console.log(bad + " check run(s) not successful");
 else if (!succ) console.log("no check run concluded success");
 else {
   const miss = Object.keys(agg).filter((k) => !agg[k]);
-  if (miss.length) console.log("aggregator job " + miss[0] + " is not success");
+  if (miss.length) {
+    console.log("aggregator job " + miss[0] + " is not success");
+    if (miss.length === 1 && miss[0] === "test (ubuntu-latest)") console.log("reuse-candidate");
+  }
   else console.log("green");
 }
 ' 2>/dev/null || echo "unreadable check run data"
@@ -114,11 +130,25 @@ else {
 
 suite_skipped=0
 if [ "$local_suite" -eq 0 ]; then
-  ci="$(ci_state)"; ci="$(printf '%s' "$ci" | head -n 1)"
+  ci_full="$(ci_state)"; ci="$(printf '%s\n' "$ci_full" | head -n 1)"; ci2="$(printf '%s\n' "$ci_full" | sed -n 2p)"
+  reuse_id=""
+  if [ "$ci" != "green" ] && [ "$ci2" = "reuse-candidate" ]; then
+    reuse_repo="$(ci_repo)"
+    reuse_out="$(bash tools/ci-tree-tested.sh "$head_sha" --repo "$reuse_repo" 2>/dev/null)" || reuse_out=""
+    reuse_out="$(printf '%s' "$reuse_out" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"   # trim ends only; inner space or a second line is rejected below
+    case "$reuse_out" in
+      ""|*[!0-9]*) ;;
+      *) reuse_id="$reuse_out" ;;
+    esac
+  fi
   if [ "$ci" = "green" ]; then
     suite_skipped=1
     echo "tests/run-all.sh skipped: CI is green on $head_short (use --local-suite to run it here)"
     echo "README test count check skipped: CI verified it on $head_short (use --local-suite to check it here)"
+  elif [ -n "$reuse_id" ]; then
+    suite_skipped=1
+    echo "tests/run-all.sh skipped: the tree of $head_short was already tested by PR run $reuse_id (use --local-suite to run it here)"
+    echo "README test count check skipped: PR run $reuse_id verified it (use --local-suite to check it here)"
   else
     [ -n "$ci" ] || ci="no answer"
     echo "tests/run-all.sh runs here: CI is not green on $head_short ($ci)"
