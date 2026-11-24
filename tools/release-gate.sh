@@ -3,7 +3,7 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--budget USD] [--json] [--dry-run | --pool-only] [--skip-ci-check] [--skip-replay] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
+#                         [--budget USD] [--json] [--dry-run | --pool-only] [--skip-ci-check] [--skip-replay] [--add-batch] [--bootstrap-baseline] [--skip-head-check] [--verify]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
@@ -52,6 +52,23 @@
 # Used DIR (v0.34.0): a real run refuses (exit 2, naming DIR, nothing run or changed) an out DIR that already holds a pb-evals/1 file or a
 # gate.json, because a second batch silently adds to n. --add-batch says the batch is meant to be added to the earlier ones. A DIR that
 # is missing, empty or holds only other files is fine. --dry-run and --pool-only never refuse.
+# Head check (v0.38.0, G2a): a real run (not --dry-run, --pool-only or --check) compares HEAD with the head of the SAME-NAMED branch on `origin`
+# right after the clean-tree test and the used-DIR refusal (both local) and before the CI check, so before any `gh` call, runner or worktree:
+# `git ls-remote origin refs/heads/<branch>` (GIT_TERMINAL_PROMPT=0, no time limit of its own). No `origin` remote: skipped silently. Detached
+# HEAD: skipped, with "note: detached HEAD: the head check was skipped" on stderr. A read error, a branch that is not on origin, or another
+# sha stops the gate with exit 3 ("head check: ..."), nothing created. Limits: a PR from a fork is out of scope (the PR head is read as the
+# head of the same-named branch of origin); the branch is read once, so a push after the check is not seen. --skip-head-check skips the
+# whole step (no ls-remote; "note: --skip-head-check: HEAD was not compared with origin" on stderr; with --dry-run, --pool-only or --check
+# it is accepted and silent). Nothing about it goes to gate.json.
+# --verify: a real run that stops, free of charge, just before the worktree is made, after every refusal that runs before it: clean tree,
+# used DIR, head check, CI check (--skip-ci-check honoured), replay, baseline (noqual and broken stop it with exit 3 as in a real run, so
+# the --bootstrap-baseline path cannot be tested), --budget check and the reuse plan (the free --print-hashes calls; reuse-plan.json goes
+# to the temp dir the trap removes). Refusals keep the exit code and text of a real run. If all pass it prints on stdout "verify: commit
+# <12 hex>, harness H, model M, k=K", the runner commands of the real run (reuse and --budget applied, so not those of --dry-run; built
+# with the placeholder variant path like --dry-run, so --variant-held differs from the real one with --harness; the confirmation calls
+# are not shown), then "verify: ok, a real run would start now" (exit 0). Limits: the preflight needs the worktree and does not run, so
+# --verify is not "every free refusal"; nothing is run or written. --verify wins over --dry-run; with --json, --pool-only, --check or
+# --bootstrap-baseline: exit 2 "--verify cannot be combined with <flag>" (checked before the other combinations).
 # --dry-run prints the commit, the tree state ("tree: clean" or "tree: dirty") and both commands, and runs nothing.
 # --pool-only runs no harness and pools what DIR holds. --json prints one JSON object instead (schema pb-gate/1: commit,
 # version, harness, model, k, scenarios, tasks, out_dir, tree, dry_run, pool_only, commands, runner_rc, pooled, skipped
@@ -161,7 +178,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""; SKIPREPLAY=0; BUDGET=""; BUDGET_SET=0
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""; SKIPREPLAY=0; BUDGET=""; BUDGET_SET=0; SKIPHEAD=0; VERIFY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -174,6 +191,8 @@ while [ $# -gt 0 ]; do
     --skip-replay) SKIPREPLAY=1 ;;
     --add-batch) ADDB=1 ;;
     --bootstrap-baseline) BOOT=1 ;;
+    --skip-head-check) SKIPHEAD=1 ;;
+    --verify) VERIFY=1 ;;
     --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout | --budget)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
@@ -187,6 +206,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+if [ "$VERIFY" = 1 ]; then
+  [ "$JSON" = 0 ] || die 2 "--verify cannot be combined with --json"
+  [ "$POOL" = 0 ] || die 2 "--verify cannot be combined with --pool-only"
+  [ "$CHECK" = 0 ] || die 2 "--verify cannot be combined with --check"
+  [ "$BOOT" = 0 ] || die 2 "--verify cannot be combined with --bootstrap-baseline"
+  DRY=0   # --verify wins over --dry-run
+fi
 [ "${#POS[@]}" -eq 0 ] || [ "$CHECK" = 1 ] || die 2 "unknown option: ${POS[0]} (see --help)"
 [ "${#POS[@]}" -le 1 ] || die 2 "--check takes one REV, got: ${POS[*]}"
 REV="${POS[0]:-}"
@@ -1053,6 +1079,23 @@ const F = new Map(process.env.FSMAP.split("\n").filter(Boolean).map(l => { const
 process.stdout.write(JSON.stringify({ skipped: false, sha: process.env.SHA, state: process.env.ST, checks: L.map(p => F.has(p[1]) ? ({ name: p[2], conclusion: p[3], failed_steps: F.get(p[1]) }) : ({ name: p[2], conclusion: p[3] })) }));')" || die 3 "node failed while recording the check runs"
 }
 
+# G2a: the head check (a real run only): HEAD must be the head of the same-named branch of origin; stops with exit 3
+head_check() {
+  if [ "$SKIPHEAD" = 1 ]; then printf 'note: --skip-head-check: HEAD was not compared with origin\n' >&2; return 0; fi
+  git -C "$ROOT" remote get-url origin >/dev/null 2>&1 || return 0
+  local br out rc rsha
+  br="$(git -C "$ROOT" symbolic-ref --short -q HEAD)" || br=""
+  if [ -z "$br" ]; then printf 'note: detached HEAD: the head check was skipped\n' >&2; return 0; fi
+  rc=0; out="$(GIT_TERMINAL_PROMPT=0 git -C "$ROOT" ls-remote origin "refs/heads/$br" 2>&1)" || rc=$?
+  if [ "$rc" != 0 ]; then
+    out="$(printf '%s' "$out" | head -n 1 | cut -c1-200)"
+    die 3 "head check: cannot read origin (${out:-exit $rc}); pass --skip-head-check to go on without it"
+  fi
+  [ -n "$out" ] || die 3 "head check: branch $br is not on origin; push it first (or pass --skip-head-check)"
+  rsha="$(printf '%s' "$out" | head -n 1 | cut -f1)"
+  [ "$rsha" = "$SHA" ] || die 3 "head check: HEAD $(printf '%s' "$SHA" | cut -c1-12) is not the head of origin/$br ($(printf '%s' "$rsha" | cut -c1-12)); push or pull so they match (or pass --skip-head-check)"
+}
+
 if [ "$POOL" = 0 ]; then
   if [ "$TREE" = dirty ]; then
     printf '%s\n' "$DIRTY" >&2
@@ -1063,6 +1106,7 @@ if [ "$POOL" = 0 ]; then
     UF="$(used_dir)" || die 3 "node failed while reading $OD"
     [ -z "$UF" ] || die 2 "$OD already holds results of an earlier run ($(printf '%s' "$UF" | tr '\n' ' ' | sed 's/ $//')): a second batch adds to n; pass --add-batch to add one on purpose, or use another --out-dir"
   fi
+  head_check
   ci_check
   replay_check
   # the baseline first (R1-3): a noqual state stops the gate before any worktree, runner or paid run. Its files live under $BROOT until
@@ -1081,6 +1125,16 @@ if [ "$POOL" = 0 ]; then
   # T4: which items reuse the baseline's without rows (asks the runners for the current hashes, runs nothing)
   reuse_prepare
   [ "$BUDGET_SET" = 0 ] || budget_shares
+  if [ "$VERIFY" = 1 ]; then
+    build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
+    printf 'verify: commit %s, harness %s, model %s, k=%s\n' "$(printf '%s' "$SHA" | cut -c1-12)" "$LABEL" "$MODEL" "$K"
+    if [ -n "$SC_BOTH" ]; then show "${B_ARGS[@]}"; printf '\n'; fi
+    if [ -n "$TK_BOTH" ]; then show "${O_ARGS[@]}"; printf '\n'; fi
+    if [ "${#BW_ARGS[@]}" -gt 0 ]; then show "${BW_ARGS[@]}"; printf '\n'; fi
+    if [ "${#OW_ARGS[@]}" -gt 0 ]; then show "${OW_ARGS[@]}"; printf '\n'; fi
+    printf 'verify: ok, a real run would start now\n'
+    exit 0
+  fi
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
