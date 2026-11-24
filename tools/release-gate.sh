@@ -3,13 +3,23 @@
 # the exact commit that will be released, then the Δ per check with 95% intervals from the runs of that commit only.
 #   tools/release-gate.sh (--harness claude|codex|opencode | --cmd "COMMAND") --model M [--k K] [--scenarios E1,E2]
 #                         [--tasks id1,id2] [--out-dir DIR] [--max-cost USD] [--timeout SECONDS] [--clean-env]
-#                         [--json] [--dry-run | --pool-only] [--skip-ci-check] [--skip-replay] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
+#                         [--budget USD] [--json] [--dry-run | --pool-only] [--skip-ci-check] [--skip-replay] [--add-batch] [--bootstrap-baseline]   (env PB_GATE_NOW: the clock of the reuse age)
 # Runs, from the repository root:
 #   bash evals/run-evals.sh   <harness> --model M --arm both --repeat K --scenarios <GATE_SCENARIOS below> --out DIR/behaviour-<stamp>.md
 #   bash evals/run-outcome.sh <harness> --model M --arm both --repeat K --tasks <the separating tasks> --out DIR/outcome-<stamp>.md
 # with --max-cost, --timeout and --clean-env passed to both (--max-cost caps each runner CALL: a gate that confirms a flag, see below, makes up to four capped runner calls, two first and up to two confirmations, so it can spend up to about four times the cap). K defaults to 5; less than 5 is
 # refused, because with k=3 per arm most 95% intervals include 0. The separating tasks are the outcome tasks whose Δ excluded 0
 # in v0.29.0: pattern-15-erase-account-ambiguous, pattern-24-merge-duplicate-customers, pattern-26-consistent-price-rounding.
+# Budget (v0.38.0, G1): --budget USD (a positive decimal; not with --max-cost or --bootstrap-baseline: exit 2; --pool-only and --check ignore it) is a total
+# for the gate. A real run reads the cost_usd of the first baseline group's files (behaviour*.json and outcome*.json, not *confirm*) as the estimate of each runner
+# (the cost of the baseline gate, not an upper bound), prints "budget: B USD total, B/2 per runner; estimate behaviour E1, outcome E2" on stderr, and stops with
+# exit 3, before any runner, preflight or worktree, when B/2 is below an estimate or a runner has none (no baseline, or no cost in its files). Each runner gets B/2;
+# when a runner makes two first calls (both arms, and with only for reused items) each call gets B/4. The --max-cost of every call (preflight included) is that
+# share, floored to 4 decimals. A confirmation call gets (B - spent) / 2, spent = the cost_usd of the files this run wrote (not reused rows, not earlier batches);
+# with nothing left (share 0.0000) it is skipped with a "budget: confirmation ... skipped" line. --dry-run --budget does NOT read the baseline: no estimate and no
+# refusal, only the commands with --max-cost B/2 and a "budget: dry run" line (limit). A running call can pass its cap a little, so B is not a hard ceiling.
+# gate.json has "truncated": true when a (scenario, arm) of the needed set has fewer than 5 graded runs and a skipped run (cut by the cost cap): verdict_reasons
+# then names it ("truncated by the cost cap: add the missing runs with --add-batch (items: ...)"). It is a label: the verdict is the one rule (c) gives.
 # DIR defaults to evals/results/gate-<first 12 hex of HEAD>. A runner that exits 0, 1 (a FAIL) or 4 (ERROR runs, left out of
 # n) lets the gate go on; 2 or 3 stops it with that code.
 # Pooling: every DIR/*.json is read; a pb-evals/1 file whose playbook_commit is HEAD and whose harness ("custom" for --cmd)
@@ -151,7 +161,7 @@ die() { printf 'error: %s\n' "$2" >&2; exit "$1"; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)" || exit 3
 BROOT=""; BASE_STATE=none; BASE_TAG=""; BASE_COMMIT=""; BASE_DIR=""; BASE_FILES=""; BASE_WHY=""; JMODE=""; CONF_FILE=""; FLAGS_FILE=""
-HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""; SKIPREPLAY=0
+HARNESS=""; CMD=""; MODEL=""; K=5; SCEN=""; TASKS=""; OD=""; MAXC=""; TMO=""; CLEAN=0; JSON=0; DRY=0; POOL=0; CHECK=0; REV=""; POS=(); SKIPCI=0; ADDB=0; BOOT=0; BOOT_USED=0; CI_JSON=""; SKIPREPLAY=0; BUDGET=""; BUDGET_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage ;;
@@ -164,11 +174,12 @@ while [ $# -gt 0 ]; do
     --skip-replay) SKIPREPLAY=1 ;;
     --add-batch) ADDB=1 ;;
     --bootstrap-baseline) BOOT=1 ;;
-    --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout)
+    --harness | --cmd | --model | --k | --scenarios | --tasks | --out-dir | --max-cost | --timeout | --budget)
       [ $# -ge 2 ] || die 2 "$1 needs a value"
       case "$1" in
         --harness) HARNESS="$2" ;; --cmd) CMD="$2" ;; --model) MODEL="$2" ;; --k) K="$2" ;; --scenarios) SCEN="$2" ;;
         --tasks) TASKS="$2" ;; --out-dir) OD="$2" ;; --max-cost) MAXC="$2" ;; --timeout) TMO="$2" ;;
+        --budget) BUDGET="$2"; BUDGET_SET=1 ;;
       esac
       shift ;;
     -*) die 2 "unknown option: $1 (see --help)" ;;
@@ -193,6 +204,13 @@ esac
 case "$K" in "" | *[!0-9]* | 0*) die 2 "--k needs a whole number of at least 5, got: $K" ;; esac
 [ "$K" -ge 5 ] && [ "$K" -le 99 ] || die 2 "--k must be at least 5 (and at most 99), got: $K"
 [ "$DRY" = 1 ] && [ "$POOL" = 1 ] && die 2 "use either --dry-run or --pool-only"
+# G1: --budget is a positive decimal (the runner's --max-cost rule), alone with respect to --max-cost and --bootstrap-baseline; --pool-only ignores it
+if [ "$BUDGET_SET" = 1 ] && [ "$POOL" = 0 ]; then
+  case "$BUDGET" in "" | *[!0-9.]* | *. | *.*.*) die 2 "--budget needs a positive decimal amount in USD, got: $BUDGET" ;; esac
+  case "$BUDGET" in *[1-9]*) ;; *) die 2 "--budget needs a positive decimal amount in USD, got: $BUDGET" ;; esac
+  [ -z "$MAXC" ] || die 2 "--budget and --max-cost are alternatives: --budget splits a total between the runners, --max-cost caps each runner call"
+  [ "$BOOT" = 0 ] || die 2 "--budget needs an estimate from a baseline, so it cannot start one with --bootstrap-baseline (use --max-cost)"
+fi
 command -v git >/dev/null 2>&1 || die 3 "git is required"
 command -v node >/dev/null 2>&1 || die 3 "node (>= 18) is required"
 
@@ -218,7 +236,17 @@ TREE=clean; [ -z "$DIRTY" ] || TREE=dirty
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 SEL=(); if [ -n "$HARNESS" ]; then SEL=(--harness "$HARNESS"); else SEL=(--cmd "$CMD"); fi
 PASS=()
-[ -z "$MAXC" ] || PASS+=(--max-cost "$MAXC")
+# G1: the --max-cost of each runner call (MC_B/MC_O: the both-arms calls, MC_BW/MC_OW: the with-only calls, MC_CB/MC_CO: the confirmations);
+# --max-cost gives all the same value, --budget sets them per call (budget_shares, the dry run, budget_confirm)
+MC_B="$MAXC"; MC_O="$MAXC"; MC_BW="$MAXC"; MC_OW="$MAXC"; MC_CB="$MAXC"; MC_CO="$MAXC"; MCA=()
+mcarr() { MCA=(); [ -z "$1" ] || MCA=(--max-cost "$1"); }
+# bud_div AMOUNT N [SPENT]: (AMOUNT - SPENT) / N in USD, floored to 4 decimals, no trailing zeros (0 when nothing is left); node, not bash
+bud_div() {
+  PG_A="$1" PG_N="$2" PG_S="${3:-0}" node -e '
+const u = s => { const p = String(s).split("."); return Number(p[0] || 0) * 1e4 + Number((p[1] || "").slice(0, 4).padEnd(4, "0")); };
+const f = x => { const i = Math.floor(x / 1e4), r = String(x % 1e4).padStart(4, "0").replace(/0+$/, ""); return i + (r ? "." + r : ""); };
+const e = process.env; process.stdout.write(f(Math.max(0, Math.floor((u(e.PG_A) - Math.ceil(Number(e.PG_S) * 1e4 - 1e-6)) / Number(e.PG_N)))));'
+}
 [ -z "$TMO" ] || PASS+=(--timeout "$TMO")
 [ "$CLEAN" = 0 ] || PASS+=(--clean-env)
 # T4: SC_BOTH/TK_BOTH are the items run with both arms, SC_WITH/TK_WITH the reused items (with arm only; their without rows come from the baseline)
@@ -228,19 +256,21 @@ SC_BOTH="${SCEN:-}"; SC_WITH=""; TK_BOTH="${TASKS:-}"; TK_WITH=""; REUSE_JSON=""
 build_args() {
   local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant-held "$1")
   case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac   # run-evals.sh --hooks: claude and --cmd only
-  B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SC_BOTH" --out "$OD/behaviour-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
-  O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TK_BOTH" --out "$OD/outcome-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_B"; B_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --scenarios "$SC_BOTH" --out "$OD/behaviour-$STAMP.md" ${hk[@]+"${hk[@]}"} ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_O"; O_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm both --repeat "$K" --tasks "$TK_BOTH" --out "$OD/outcome-$STAMP.md" ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
   BW_ARGS=(); OW_ARGS=()
-  [ -z "$SC_WITH" ] || BW_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$SC_WITH" --out "$OD/behaviour-with-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
-  [ -z "$TK_WITH" ] || OW_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$TK_WITH" --out "$OD/outcome-with-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_BW"; [ -z "$SC_WITH" ] || BW_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$SC_WITH" --out "$OD/behaviour-with-$STAMP.md" ${hk[@]+"${hk[@]}"} ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_OW"; [ -z "$TK_WITH" ] || OW_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$TK_WITH" --out "$OD/outcome-with-$STAMP.md" ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
 }
+# G1: a dry run prints each runner's budget / 2 (it does not read the baseline: no estimate, no refusal)
+if [ "$BUDGET_SET" = 1 ] && [ "$DRY" = 1 ]; then MC_B="$(bud_div "$BUDGET" 2)"; MC_O="$MC_B"; fi
 build_args "${TMPDIR:-/tmp}/pbgate.XXXXXX/variant"
 # conf_args VARIANT_DIR -> CB_ARGS and CO_ARGS: the confirmation calls (with arm only, K runs of the flagged items CSC and CTK)
 conf_args() {
   local v=() hk=(); [ -z "$HARNESS" ] || v=(--variant-held "$1")
   case "$HARNESS" in codex | opencode) ;; *) hk=(--hooks) ;; esac
-  CB_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$CSC" --out "$OD/behaviour-confirm-$STAMP.md" ${hk[@]+"${hk[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
-  CO_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$CTK" --out "$OD/outcome-confirm-$STAMP.md" ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_CB"; CB_ARGS=(evals/run-evals.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --scenarios "$CSC" --out "$OD/behaviour-confirm-$STAMP.md" ${hk[@]+"${hk[@]}"} ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
+  mcarr "$MC_CO"; CO_ARGS=(evals/run-outcome.sh "${SEL[@]}" --model "$MODEL" --arm with --repeat "$K" --tasks "$CTK" --out "$OD/outcome-confirm-$STAMP.md" ${MCA[@]+"${MCA[@]}"} ${PASS[@]+"${PASS[@]}"} ${v[@]+"${v[@]}"})
 }
 # show ARGS... -> "bash ARGS..." for display, quoting only the words that need it
 show() {
@@ -289,12 +319,12 @@ for (const l of e.PG_DOUT.split("\n")) {
   rows.push({ scenario: c[0], check: c[1], delta: Number(c[2]), lo: m ? Number(m[1]) : null, hi: m ? Number(m[2]) : null, verdict: c[4] });
 }
 const skipped = lines(e.PG_SKIPPED).map(l => { const i = l.lastIndexOf(" ("); return { file: l.slice(0, i), reason: l.slice(i + 2, -1) }; });
-const V = {};
+const V = { truncated: false };
 if (e.PG_DRY !== "1" && e.PG_FFL) {
   Object.assign(V, { variant: null, full_set: null, min_graded: 0, baseline: null, baselines: [], verdict: "fail",
     verdict_reasons: ["safety floor: " + e.PG_FFI + " " + e.PG_FFK + ": FAIL in " + e.PG_FFL + " (fail fast: the runs were stopped)"] });
 } else if (e.PG_DRY !== "1") {
-  const bad = [], seen = {}, cnt = {}, why = [], hk = [], full = e.PG_MODE !== "base";
+  const bad = [], seen = {}, cnt = {}, skp = {}, why = [], hk = [], full = e.PG_MODE !== "base";
   const gset = new Set(e.PG_AUTO.split(/[ ,]+/).filter(Boolean));
   const hooksApply = full && (e.PG_H === "claude" || e.PG_H === "custom");
   // D14: a reused-without file ("reused_from" {tag, commit, dir, file}) is accepted when every run of it is, byte for byte as JSON, a graded
@@ -340,15 +370,16 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
     for (const r of j.runs || []) {
       seen[r.scenario] = 1;
       if (r.status === "graded") { const c = cnt[r.scenario] || (cnt[r.scenario] = {}); c[r.arm] = (c[r.arm] || 0) + 1; }
+      if (r.status === "skipped") { const c = skp[r.scenario] || (skp[r.scenario] = {}); c[r.arm] = (c[r.arm] || 0) + 1; }
     }
   }
-  const need = (e.PG_AUTO + " " + e.PG_DT).split(/[ ,]+/).filter(Boolean), miss = need.filter(s => !seen[s]), low = [];
+  const need = (e.PG_AUTO + " " + e.PG_DT).split(/[ ,]+/).filter(Boolean), miss = need.filter(s => !seen[s]), low = [], cut = [];
   let min = null;
   for (const s of need) for (const a of ["with", "without"]) {
     if (!seen[s]) continue;
     const n = (cnt[s] || {})[a] || 0;
     if (min === null || n < min) min = n;
-    if (n < 5) low.push(s + " " + a + " (" + n + ")");
+    if (n < 5) { low.push(s + " " + a + " (" + n + ")"); if (((skp[s] || {})[a] || 0) > 0 && !cut.includes(s)) cut.push(s); }
   }
   const neg = [...new Set(rows.filter(r => r.hi !== null && r.hi < 0).map(r => r.scenario))];
   if (bad.length) why.push("variant: " + bad.length + " pooled file(s) lack a variant object with end_check ok and variant.sha = the gate commit (" + bad.join(", ") + ")");
@@ -356,6 +387,8 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
   for (const b of hk) why.push("hooks off in " + b);
   if (miss.length) why.push("full set: no runs for " + miss.join(", "));
   if (low.length) why.push("fewer than 5 graded runs per arm: " + low.join(", "));
+  // G1: a (scenario, arm) of the needed set below 5 graded runs that carries a skipped run was cut by the cost cap; a label only (rule c already failed)
+  if (cut.length) why.push("truncated by the cost cap: add the missing runs with --add-batch (items: " + cut.join(", ") + ")");
   if (e.PG_DRC !== "0") why.push("tools/eval-delta.sh exited " + e.PG_DRC + " (an isolation check failed or the pooled files are unusable)");
   if (neg.length) why.push("delta wholly below 0 (95% interval) for " + neg.join(", "));
   let base = null, baselines = [];
@@ -457,7 +490,7 @@ if (e.PG_DRY !== "1" && e.PG_FFL) {
     const items = [...new Set(reg.map(r => r.s))].sort();
     fs.writeFileSync(e.PG_FL, (reg.length > 0 && why.length === reg.length ? "only" : "no") + "\n" + items.map(i => "I" + i + "\n").join("") + reg.map(r => "R" + r.t + "\n").join(""));
   }
-  Object.assign(V, { variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base, baselines,
+  Object.assign(V, { truncated: cut.length > 0, variant: bad.length === 0, full_set: miss.length === 0, min_graded: min === null ? 0 : min, baseline: base, baselines,
     verdict: why.length ? "fail" : "pass", verdict_reasons: why });
 }
 // a CI check skipped by an earlier batch of DIR stays recorded as skipped (a later batch or --pool-only does not hide it)
@@ -690,6 +723,7 @@ EOT
 
 if [ "$DRY" = 1 ]; then
   replay_check
+  [ "$BUDGET_SET" = 0 ] || printf 'budget: dry run: the estimate and the refusal need the baseline and run only in a real run\n' >&2
   if [ "$JSON" = 1 ]; then jdoc "" "" "" "" "" ""; exit $?; fi
   printf 'release gate (dry run): commit %s%s, harness %s, model %s, k=%s per arm\n' "$SHA" "${VER:+ (v$VER)}" "$LABEL" "$MODEL" "$K"
   printf 'tree: %s%s\n' "$TREE" "$([ "$TREE" = dirty ] && printf ' (a real run refuses it)')"
@@ -792,6 +826,71 @@ $(reuse_node plan)
 EOF
   REUSE_JSON="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).reuse))' -- "$PG_RP_PLAN")" || die 3 "node failed while planning the reuse"
   return 0
+}
+# budget_check (G1): the estimate of each runner is the cost_usd sum of the files of the newest baseline group (a name starting with behaviour or
+# outcome, no confirm in it); a share (budget / 2) below an estimate, or a runner without an estimate, stops the gate with 3 before anything runs
+budget_check() {
+  local files=() l out half
+  while IFS= read -r l; do
+    case "$l" in "@@"*) [ "${#files[@]}" -eq 0 ] || break ;; "") ;; *) files+=("$l") ;; esac
+  done <<BCEOF
+$BASE_FILES
+BCEOF
+  half="$(bud_div "$BUDGET" 2)"
+  out="$(PG_BUD="$BUDGET" PG_NONE="$([ "$BASE_STATE" = found ] && echo 0 || echo 1)" node -e '
+const fs = require("fs"), path = require("path"), e = process.env;
+const u = s => { const p = String(s).split("."); return Number(p[0] || 0) * 1e4 + Number((p[1] || "").slice(0, 4).padEnd(4, "0")); };
+const f = x => { const i = Math.floor(x / 1e4), r = String(x % 1e4).padStart(4, "0").replace(/0+$/, ""); return i + (r ? "." + r : ""); };
+const est = { behaviour: 0, outcome: 0 };
+for (const p of process.argv.slice(1)) {
+  const b = path.basename(p), k = /^behaviour/.test(b) ? "behaviour" : /^outcome/.test(b) ? "outcome" : "";
+  if (!k || /confirm/.test(b)) continue;
+  try { for (const r of JSON.parse(fs.readFileSync(p, "utf8")).runs || []) if (typeof r.cost_usd === "number") est[k] += r.cost_usd; } catch (x) { }
+}
+const ks = ["behaviour", "outcome"];
+for (const k of ks) if (e.PG_NONE === "1" || !(est[k] > 0)) { console.log("no " + k + " " + (e.PG_NONE === "1" ? "no baseline" : "no cost in the baseline files")); process.exit(0); }
+const eu = {}; for (const k of ks) eu[k] = Math.ceil(est[k] * 1e4 - 1e-6);
+const hu = Math.floor(u(e.PG_BUD) / 2);
+for (const k of ks) if (hu < eu[k]) { console.log("low " + k + " " + f(eu[k]) + " " + f(eu.behaviour) + " " + f(eu.outcome) + " " + f(u(e.PG_BUD))); process.exit(0); }
+console.log("ok " + f(eu.behaviour) + " " + f(eu.outcome));' -- ${files[@]+"${files[@]}"})" || die 3 "node failed while reading the baseline cost"
+  case "$out" in
+    "no "*) set -- $out
+      printf 'budget: refused: no cost estimate for %s (%s); pass --max-cost instead\n' "$2" "${out#no $2 }" >&2; exit 3 ;;
+    "low "*) set -- $out
+      printf 'budget: refused: %s share %s USD is below its estimate %s USD (budget %s); raise --budget\nbudget: estimate behaviour %s, outcome %s\n' "$2" "$half" "$3" "$6" "$4" "$5" >&2; exit 3 ;;
+  esac
+  set -- $out
+  printf 'budget: %s USD total, %s per runner; estimate behaviour %s, outcome %s\n' "$(bud_div "$BUDGET" 1)" "$half" "$2" "$3" >&2
+}
+# budget_shares (G1): after reuse_prepare: a runner with two calls (both arms, with only) gives each budget / 4, a runner with one call budget / 2
+budget_shares() {
+  local h q
+  h="$(bud_div "$BUDGET" 2)"; q="$(bud_div "$BUDGET" 4)"
+  MC_B="$h"; MC_BW="$h"; MC_O="$h"; MC_OW="$h"
+  if [ -n "$SC_BOTH" ] && [ -n "$SC_WITH" ]; then MC_B="$q"; MC_BW="$q"; fi
+  if [ -n "$TK_BOTH" ] && [ -n "$TK_WITH" ]; then MC_O="$q"; MC_OW="$q"; fi
+}
+# budget_confirm (G1): the confirmation calls get (budget - spent) / 2, spent = cost_usd of the files this run wrote (its own stamp, not reused rows);
+# with a share of 0.0000 there is no confirmation (CSC and CTK are emptied, a line says why)
+budget_confirm() {
+  local spent half rem why bt
+  spent="$(PG_OD="$OD" PG_RE="^(behaviour|outcome)(-with)?-$STAMP\\.json$" node -e '
+const fs = require("fs"), e = process.env; let s = 0;
+for (const n of fs.readdirSync(e.PG_OD).filter(n => new RegExp(e.PG_RE).test(n))) {
+  let j = {}; try { j = JSON.parse(fs.readFileSync(e.PG_OD + "/" + n, "utf8")); } catch (x) { }
+  if (j.reused_from !== undefined) continue;
+  for (const r of j.runs || []) if (typeof r.cost_usd === "number") s += r.cost_usd;
+}
+process.stdout.write(String(s));')" || die 3 "node failed while adding up the cost"
+  half="$(bud_div "$BUDGET" 2 "$spent")"
+  MC_CB="$half"; MC_CO="$half"
+  if [ "$half" = 0 ]; then
+    rem="$(bud_div "$BUDGET" 1 "$spent")"; bt="$(bud_div "$BUDGET" 1)"
+    why="only $rem USD left of $bt USD"; [ "$rem" != 0 ] || why="nothing left of $bt USD"
+    [ -z "$CSC" ] || printf 'budget: confirmation behaviour skipped: %s\n' "$why" >&2
+    [ -z "$CTK" ] || printf 'budget: confirmation outcome skipped: %s\n' "$why" >&2
+    CSC=""; CTK=""
+  fi
 }
 B_RC=""; O_RC=""; VT=""; VDIR=""; VLIB=0; POOLED=""; SKIPPED=""; DOUT=""; DRC=""; FF_LABEL=""; FF_ITEM=""; FF_KEY=""
 RK=("" "" "" "" ""); RP=("" "" "" "" ""); RDONE=(1 1 1 1 1); RRC=("" "" "" "" ""); RLN=(0 0 0 0 0); RA1=(); RA2=(); RA3=(); RA4=()
@@ -977,8 +1076,11 @@ if [ "$POOL" = 0 ]; then
     printf 'note: --bootstrap-baseline: no qualifying previous gate for harness %s model %s; rule (f) has nothing to compare with (recorded in gate.json)\n' "$LABEL" "$MODEL" >&2
   fi
   [ "$BASE_STATE" != broken ] || die 3 "$BASE_WHY"
+  # G1: the estimate and the refusal, before reuse_prepare (it calls the runners), the worktree and the preflight
+  [ "$BUDGET_SET" = 0 ] || budget_check
   # T4: which items reuse the baseline's without rows (asks the runners for the current hashes, runs nothing)
   reuse_prepare
+  [ "$BUDGET_SET" = 0 ] || budget_shares
   if [ -n "$HARNESS" ]; then
     VT="$(mktemp -d "${TMPDIR:-/tmp}/pbgate.XXXXXX")" || die 3 "cannot make a temp dir"
     VDIR="$VT/variant"
@@ -1133,6 +1235,7 @@ if [ "$POOL" = 0 ] && [ -z "$FF_LABEL" ]; then
           esac ;;
       esac
     done < "$BROOT/flags"
+    if [ "$CBAD" = 0 ] && [ "$BUDGET_SET" = 1 ]; then budget_confirm; fi
     if [ "$CBAD" = 0 ] && { [ -n "$CSC" ] || [ -n "$CTK" ]; }; then
       conf_args "$VDIR"
       CB_RC=""; CO_RC=""; CB_SHOW=""; CO_SHOW=""
