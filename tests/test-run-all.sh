@@ -583,7 +583,7 @@ echo "v0.34.0 A3 the log blocks, the '== tests/x (N s)' headings and the count p
 assert_eq "A3 the headings stay in name order, each with its seconds in the old format" "a b c " "$(printf '%s\n' "$OUT" | grep -E '^== tests/test-[a-z]\.sh \([0-9]+ s\)$' | sed -E 's#^== tests/test-([a-z])\.sh.*#\1#' | tr '\n' ' ')"
 assert_eq "A3 the progress lines exist (3 start + 3 done) so the heading and 'passed' checks below are not vacuous" "6" "$(printf '%s\n' "$OUT" | grep -c '^progress: ')"
 assert_eq "A3 no progress line looks like a heading" "0" "$(printf '%s\n' "$OUT" | grep '^progress:' | grep -c '^== ')"
-assert_eq "A3 no progress line carries the word 'passed' (readme-count counts N passed)" "0" "$(printf '%s\n' "$OUT" | grep '^progress:' | grep -ci 'passed')"
+assert_eq "A3 no progress line carries the word 'passed'" "0" "$(printf '%s\n' "$OUT" | grep '^progress:' | grep -ci 'passed')"
 assert_contains "A3 the per-suite log blocks are still printed" "$OUT" "suite a out"
 assert_contains "A3 the failing run still ends with FAILURES" "$OUT" "FAILURES"
 hl="$(printf '%s\n' "$OUT" | grep -n -m1 '^== tests/test-a\.sh (' | cut -d: -f1)"

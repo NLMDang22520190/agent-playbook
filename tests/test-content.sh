@@ -1152,14 +1152,14 @@ GUARD_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 -F '[!0-9]' | cut -d: -f1)"
 OUT_LN="$(printf '%s\n' "$RSTEP" | grep -n -m1 'GITHUB_OUTPUT' | cut -d: -f1)"
 if [ -n "$GUARD_LN" ] && [ -n "$OUT_LN" ] && [ "$GUARD_LN" -lt "$OUT_LN" ]; then t_ok 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT'; else t_bad 'v22.3 review Low-4 the guard comes before the write to GITHUB_OUTPUT' "guard line [$GUARD_LN] output line [$OUT_LN]"; fi
 
-# --- v0.23.0 AC2: the README test count is checked in the PR (static checks of the workflow)
+# --- v0.23.0 AC2 (v0.38 T12: the README test count is gone): the test job runs the suite (static checks of the workflow)
 # wf_step ID NAME -> the lines of that step ("      - name: NAME" up to the next step) of the job
 wf_step() { wf_block "$1" | awk -v n="      - name: $2" '$0 == n { f = 1; print; next } f && /^      - / { exit } f { print }'; }
 # step_if TEXT -> the step-level if: line ("" when none)
 step_if() { printf '%s\n' "$1" | grep -m1 '^        if:'; }
 REDUCED_COND="needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
 
-echo "v23.0 AC2 workflow: the ubuntu job counts the README tests"
+echo "v23.0 AC2 workflow: the test job runs the suite"
 FULLSTEP="$(wf_step "${MAIN:-__none__}" 'Tests and static checks')"
 if [ -n "$FULLSTEP" ]; then t_ok 'v23.0 AC5.2 the test job keeps a step named exactly "Tests and static checks"'; else t_bad 'v23.0 AC5.2 the test job keeps a step named exactly "Tests and static checks"' "block: $MB"; fi
 RUNALL_LINES="$(printf '%s\n' "$MB" | grep 'run-all\.sh')"
@@ -1167,25 +1167,27 @@ TEE_LINE="$(printf '%s\n' "$RUNALL_LINES" | grep -m1 'tee')"
 if [ -n "$TEE_LINE" ]; then t_ok 'v23.0 AC2.1 the test job tees the run-all output to a log'; else t_bad 'v23.0 AC2.1 the test job tees the run-all output to a log' "run-all lines: $RUNALL_LINES"; fi
 case "$MB" in *pipefail*|*PIPESTATUS*) t_ok 'v23.0 AC2.1 the test job keeps the exit code of run-all (pipefail or PIPESTATUS)' ;; *) t_bad 'v23.0 AC2.1 the test job keeps the exit code of run-all (pipefail or PIPESTATUS)' "no pipefail or PIPESTATUS in the block" ;; esac
 case "$RUNALL_LINES" in *'|| true'*) t_bad 'v23.0 AC2.1 the run-all line never ends in || true' "lines: $RUNALL_LINES" ;; *) t_ok 'v23.0 AC2.1 the run-all line never ends in || true' ;; esac
-CHECK_LINE="$(printf '%s\n' "$MB" | grep -m1 'readme-count\.sh --check')"
-if printf '%s\n' "$CHECK_LINE" | grep -Eq 'readme-count\.sh --check[[:space:]]+[^[:space:]]+'; then t_ok 'v23.0 AC2.1 the test job runs tools/readme-count.sh --check with a log argument'; else t_bad 'v23.0 AC2.1 the test job runs tools/readme-count.sh --check with a log argument' "check line: [$CHECK_LINE]"; fi
-TEE_LOG="$(printf '%s\n' "$TEE_LINE" | sed 's/.*tee[[:space:]]*//; s/^-a[[:space:]]*//; s/[[:space:]].*//; s/"//g')"
-if [ -n "$TEE_LOG" ]; then case "$CHECK_LINE" in *"$TEE_LOG"*) t_ok 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' ;; *) t_bad 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' "tee log [$TEE_LOG] check line [$CHECK_LINE]" ;; esac; else t_bad 'v23.0 AC2.1 the check reads the log that run-all wrote (same path as tee)' "no tee log found"; fi
-TEE_LN="$(printf '%s\n' "$MB" | grep -n -m1 'run-all\.sh.*tee' | cut -d: -f1)"
-CHECK_LN="$(printf '%s\n' "$MB" | grep -n -m1 'readme-count\.sh --check' | cut -d: -f1)"
-if [ -n "$TEE_LN" ] && [ -n "$CHECK_LN" ] && [ "$TEE_LN" -lt "$CHECK_LN" ]; then t_ok 'v23.0 AC2.1 the count check comes after the run-all line'; else t_bad 'v23.0 AC2.1 the count check comes after the run-all line' "tee line [$TEE_LN] check line [$CHECK_LN]"; fi
-# the step that holds the check: only ubuntu, never macOS, and only on a full run
-CHECK_STEP="$(printf '%s\n' "$MB" | awk '/^      - / { if (buf ~ /readme-count\.sh --check/) { printf "%s", buf; exit } buf = "" } { buf = buf $0 "\n" } END { if (buf ~ /readme-count\.sh --check/) printf "%s", buf }')"
-case "$CHECK_STEP" in *ubuntu-latest*|*Linux*) t_ok 'v23.0 AC2.1 the count check is limited to ubuntu (the macOS job does not run it)' ;; *) t_bad 'v23.0 AC2.1 the count check is limited to ubuntu (the macOS job does not run it)' "step: $CHECK_STEP" ;; esac
-case "$CHECK_STEP" in *docs_only*|*"name: Tests and static checks"*) t_ok 'v23.0 AC2.1 the count check runs on full runs only (docs_only gate or inside the full step)' ;; *) t_bad 'v23.0 AC2.1 the count check runs on full runs only (docs_only gate or inside the full step)' "step: $CHECK_STEP" ;; esac
 assert_not_contains 'v23.0 AC2.1 the Windows shard job does not run the count check' "$SB" 'readme-count'
 assert_not_contains 'v23.0 AC2.1 the aggregator does not run the count check' "$AB" 'readme-count'
+assert_not_contains 'v0.38 T12 AC3 the test job has no README test count step' "$MB" 'README test count'
+assert_not_contains 'v0.38 T12 AC3 the test job does not run readme-count' "$MB" 'readme-count'
 
-echo "v23.0 AC2.2 README or CHANGELOG: a PR that adds tests updates the README count"
-CHLOG="$PB_ROOT/CHANGELOG.md"
-COUNT_RULE='(PR|pull request)[^.]{0,80}(add|adds|adding|added)[^.]{0,60}tests?[^.]{0,160}(README|readme-count)|(README|readme-count)[^.]{0,120}(PR|pull request)[^.]{0,80}(add|adds|adding|added)[^.]{0,60}tests?'
-if flat "$README" | grep -qiE -- "$COUNT_RULE" || flat "$CHLOG" | grep -qiE -- "$COUNT_RULE"; then t_ok 'v23.0 AC2.2 README or CHANGELOG says a PR that adds tests updates the README count'; else t_bad 'v23.0 AC2.2 README or CHANGELOG says a PR that adds tests updates the README count' "pattern [$COUNT_RULE] in neither file"; fi
-if flat "$README" | grep -qiE -- 'readme-count|tools/readme-count' || flat "$CHLOG" | grep -qiE -- 'readme-count\.sh[^.]{0,120}(PR|CI|check)'; then t_ok 'v23.0 AC2.2 the rule names tools/readme-count.sh'; else t_bad 'v23.0 AC2.2 the rule names tools/readme-count.sh' 'neither file ties readme-count.sh to the PR check'; fi
+echo "v0.38 T12 AC2 the README no longer names the readme-count tool or a test count rule"
+assert_not_contains 'v0.38 T12 AC2 README.md does not mention readme-count' "$(cat "$README")" 'readme-count'
+assert_not_contains 'v0.38 T12 R6 README.md does not say a PR that adds tests updates a README count' "$(cat "$README")" 'README count'
+# AC1: no hard-coded test count in the README, the other badges stay
+assert_eq 'v0.38 T12 AC1 README.md has no badge/tests-N badge' "0" "$(grep -Ec 'badge/tests-[0-9]+' "$README" || true)"
+assert_eq 'v0.38 T12 AC1 README.md has no **N passing** count' "0" "$(grep -Ec '\*\*[0-9]+ passing\*\*' "$README" || true)"
+assert_eq 'v0.38 T12 AC1 README.md has no "N tests, run in sandboxes" count' "0" "$(grep -Ec '[0-9]+ tests, run in sandboxes' "$README" || true)"
+assert_contains 'v0.38 T12 AC1 README.md keeps the version badge' "$(cat "$README")" 'img.shields.io/badge/version-'
+assert_contains 'v0.38 T12 AC1 README.md keeps the harness badge' "$(cat "$README")" 'img.shields.io/badge/harness-'
+assert_contains 'v0.38 T12 AC1 README.md keeps the os badge' "$(cat "$README")" 'img.shields.io/badge/os-'
+assert_contains 'v0.38 T12 AC1 the Quality table points at the latest CI run' "$(cat "$README")" "see the latest CI run (bash tests/run-all.sh prints each suite's count)"
+assert_contains 'v0.38 T12 AC1 the tree line describes tests/ without a number' "$(cat "$README")" 'suites, run in sandboxes, never touch the real HOME'
+# AC2: the tool and its test are gone
+assert_eq 'v0.38 T12 AC2 tools/readme-count.sh does not exist' "no" "$([ -e "$PB_ROOT/tools/readme-count.sh" ] && echo yes || echo no)"
+assert_eq 'v0.38 T12 AC2 tests/test-readme-count.sh does not exist' "no" "$([ -e "$PB_ROOT/tests/test-readme-count.sh" ] && echo yes || echo no)"
+assert_eq 'v0.38 T12 R5 tests/test-release-stale-count.sh does not exist' "no" "$([ -e "$PB_ROOT/tests/test-release-stale-count.sh" ] && echo yes || echo no)"
 
 # --- v0.23.0 AC5.1: the changes job (docs-only detection)
 echo "v23.0 AC5.1 workflow: the changes job"
@@ -1254,26 +1256,13 @@ done
 RPSTEP="$(wf_step "${MAIN:-__none__}" 'Release PR check (VERSION changed -> tools/check-release.sh)')"
 if [ -n "$RPSTEP" ]; then t_ok "v0.24.21 AC3a the test job keeps the Release PR check step"; else t_bad "v0.24.21 AC3a the test job keeps the Release PR check step" "block: $MB"; fi
 assert_contains "v0.24.21 AC3a the Release PR check step keeps the exact matrix.os == 'ubuntu-latest' condition" "$(step_if "$RPSTEP")" "matrix.os == 'ubuntu-latest'"
-RCSTEP="$(wf_step "${MAIN:-__none__}" 'README test count (Linux only)')"
-if [ -n "$RCSTEP" ]; then t_ok "v0.24.21 AC3a the test job keeps the README test count step"; else t_bad "v0.24.21 AC3a the test job keeps the README test count step" "block: $MB"; fi
-assert_contains "v0.24.21 AC3a the README test count step keeps the matrix.os == 'ubuntu-latest' condition" "$(step_if "$RCSTEP")" "matrix.os == 'ubuntu-latest'"
-# v0.34.0 A4 (D3): the count step also runs when the tests passed and only the Release gate step failed, so the CI check
-# reader (release gate G1) sees a real count result. Shape: !cancelled() plus "the tests step succeeded" by that step's id.
-RCIF="$(step_if "$RCSTEP")"
 TSTEP="$(wf_step "${MAIN:-__none__}" 'Tests and static checks')"
 TSID="$(printf '%s\n' "$TSTEP" | grep -m1 -E '^        id:|^      - id:' | sed -E 's/^[[:space:]]*(- )?id:[[:space:]]*//; s/[[:space:]]*$//')"
 if [ -n "$TSID" ]; then t_ok "v0.34.0 A4 the 'Tests and static checks' step of the test job has an id ($TSID)"; else t_bad "v0.34.0 A4 the 'Tests and static checks' step of the test job has an id" "step: $TSTEP"; fi
-assert_contains "v0.34.0 A4 the README count step runs also after a failed step: its if has !cancelled()" "$RCIF" '!cancelled()'
-case "$RCIF" in *"steps.$TSID.outcome == 'success'"*|*"steps.$TSID.conclusion == 'success'"*) t_ok "v0.34.0 A4 the README count step requires the tests step ($TSID) to have succeeded" ;; *) t_bad "v0.34.0 A4 the README count step requires the tests step to have succeeded" "id [$TSID] if: $RCIF" ;; esac
-assert_not_contains "v0.34.0 A4 the README count step does not use always()" "$RCIF" 'always()'
-assert_contains "v0.34.0 A4 the README count step keeps the docs_only skip" "$RCIF" 'docs_only'
 RGSTEP="$(wf_step "${MAIN:-__none__}" 'Release gate (a PR that changes VERSION needs a committed passing gate)')"
 if [ -n "$RGSTEP" ]; then t_ok "v0.34.0 A4 the test job keeps the Release gate step"; else t_bad "v0.34.0 A4 the test job keeps the Release gate step" "block: $MB"; fi
 RGID="$(printf '%s\n' "$RGSTEP" | grep -m1 -E '^        id:|^      - id:' | sed -E 's/^[[:space:]]*(- )?id:[[:space:]]*//; s/[[:space:]]*$//')"
-if [ -n "$RGID" ]; then assert_not_contains "v0.34.0 A4 the README count step does not depend on the Release gate step's result" "$RCIF" "steps.$RGID."; else t_ok "v0.34.0 A4 the Release gate step has no id, so the count step cannot depend on it"; fi
 GATE_LN="$(printf '%s\n' "$MB" | grep -n -m1 'name: Release gate (a PR that changes VERSION' | cut -d: -f1)"
-RC_LN="$(printf '%s\n' "$MB" | grep -n -m1 'name: README test count (Linux only)' | cut -d: -f1)"
-if [ -n "$GATE_LN" ] && [ -n "$RC_LN" ] && [ "$GATE_LN" -lt "$RC_LN" ]; then t_ok "v0.34.0 A4 the README count step stays after the Release gate step (it is the one that must run past its failure)"; else t_bad "v0.34.0 A4 the README count step stays after the Release gate step" "gate line [$GATE_LN] count line [$RC_LN]"; fi
 
 # --- v0.23.0 review: the shas reach the changes job through env:, never interpolated into the script text
 echo "v23.0 review: changes passes the shas through env:"

@@ -6,8 +6,8 @@
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/release-gate-fixture.sh"
 . "$(dirname "$0")/releases-fixture.sh"
-# the skip count is the whole file: 200 assertions (passed+failed+skipped of a real run)
-command -v node >/dev/null 2>&1 || { t_skip 200 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
+# the skip count is the whole file: 188 assertions (passed+failed+skipped of a real run)
+command -v node >/dev/null 2>&1 || { t_skip 188 "node missing (the synthetic release gate needs it)"; t_summary; exit $?; }
 REL_SRC="$PB_ROOT/tools/release.sh"
 export PLAYBOOK_HOME="$(mk_tmp)"
 G() { git -c user.email=t@example.invalid -c user.name=tester -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
@@ -172,9 +172,10 @@ README_OK='# demo
 | Script tests | **11 passing** (see run-all) |
 Every one of the 11 tests, run in sandboxes.
 '
+# v0.38 T12: release.sh no longer reads README test counts; a wrong or stale number is accepted (inverted from v0.9.0 AC7.2)
 setup; set_readme "$README_OK"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 all three README numbers equal passed+skipped (11): dry run exit 0" 0
+assert_rc "AC7.2 README numbers equal to the run (11): dry run exit 0" 0
 assert_contains "AC7.2 dry run still reaches 'would tag'" "$OUT" "would tag"
 setup; set_readme "$README_OK"
 run_in "$C" bash tools/release.sh v1.2.3
@@ -184,33 +185,29 @@ assert_contains "AC7.2 the tag is created" "$(tags_of "$C")" "v1.2.3"
 setup; set_readme '![tests](https://img.shields.io/badge/tests-9-1F9D63)
 '
 run_in "$C" bash tools/release.sh v1.2.3
-assert_rc "AC7.2 badge 9 (passed only, skipped not added) vs 11 -> refused, exit 1" 1
-assert_contains "AC7.2 refusal names README" "$OUT" "README"
-assert_contains "AC7.2 refusal names the README number" "$OUT" "9"
-assert_contains "AC7.2 refusal names the real total" "$OUT" "11"
-assert_eq "AC7.2 refusal creates no tag" "" "$(tags_of "$C")$(origin_tags)"
+assert_rc "AC7.2 (v0.38 T12) badge 9 vs a run total of 11 is accepted: real release exit 0" 0
+assert_not_contains "AC7.2 no README refusal text" "$OUT" "README.md test count is wrong"
+assert_contains "AC7.2 the tag is created in origin" "$(origin_tags)" "v1.2.3"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 --dry-run refuses on the same mismatch: exit 1" 1
-assert_not_contains "AC7.2 --dry-run mismatch does not print 'would tag'" "$OUT" "would tag"
+assert_not_contains "AC7.2 the dry run prints no README-skipped line" "$OUT" "README test count check skipped"
 
 setup; set_readme '![tests](https://img.shields.io/badge/tests-12-1F9D63)
 '
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 badge 12 (too high) vs 11 -> exit 1" 1
+assert_rc "AC7.2 badge 12 (too high) is accepted -> exit 0" 0
 
 setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
 | Script tests | **10 passing** |
 '
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 only the '**N passing**' number is stale -> exit 1" 1
-assert_contains "AC7.2 names the stale number 10" "$OUT" "10"
+assert_rc "AC7.2 a stale '**N passing**' number is accepted -> exit 0" 0
+assert_not_contains "AC7.2 no README refusal text for the stale '**N passing**'" "$OUT" "README.md test count is wrong"
 
 setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
 Every one of the 8 tests, run in sandboxes.
 '
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 only the 'N tests, run in sandboxes' number is stale -> exit 1" 1
-assert_contains "AC7.2 names the stale number 8" "$OUT" "8"
+assert_rc "AC7.2 a stale 'N tests, run in sandboxes' number is accepted -> exit 0" 0
 
 setup; set_readme '![tests](https://img.shields.io/badge/tests-11-1F9D63)
 | Script tests | **11 passing** |
@@ -218,13 +215,13 @@ Every one of the 11 tests, run in sandboxes.
 **3 passing** in some unrelated old table
 '
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 every occurrence is checked, a second stale '**3 passing**' -> exit 1" 1
+assert_rc "AC7.2 a second stale '**3 passing**' is accepted -> exit 0" 0
 
 setup; set_readme '# demo
 Version 0.9.0 has 40 files. We run 3 jobs. Issue #120 is closed.
 '
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 README without the three count patterns: no check, exit 0" 0
+assert_rc "AC7.2 README without the three count patterns: exit 0" 0
 
 setup
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
@@ -234,14 +231,7 @@ setup; printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "
 printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
 ( cd "$C" && G add -A && G commit -qm red && git push -q origin main ) && reseal
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 a failing suite is refused before (and regardless of) the README check" 1
-
-setup
-printf '#!/usr/bin/env bash\necho "test-a.sh: 4 passed, 0 failed"\necho "test-b.sh: 6 passed, 0 failed, 1 skipped"\nexit 0\n' > "$C/tests/run-all.sh"
-printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G add -A && G commit -qm other-totals && git push -q origin main ) && reseal
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC7.2 totals are summed over suite lines (4+6+1 = 11): exit 0" 0
+assert_rc "AC7.2 a failing suite is refused (with a README that has a count) -> exit 1" 1
 
 
 echo "v0.10.0 AC8.1 the suite output is streamed, the exit status is run-all's"
@@ -276,20 +266,6 @@ run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC8.1 a stub exiting 7 is refused with 1 (the release.sh refusal code)" 1
 assert_eq "AC8.1 a stub exiting 7 creates no tag" "" "$(tags_of "$C")$(origin_tags)"
 
-# the README count check reads the streamed log, including a final line without a newline
-setup
-printf '#!/usr/bin/env bash\necho "test-a.sh: 5 passed, 0 failed"\necho "test-b.sh: 3 passed, 0 failed, 2 skipped"\nprintf "test-c.sh: 1 passed, 0 failed"\nexit 0\n' > "$C/tests/run-all.sh"
-printf '![tests](https://img.shields.io/badge/tests-11-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G add -A && G commit -qm count-ok && git push -q origin main ) && reseal
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC8.1 count check works on streamed output (5+3+2+1 = 11, last line unterminated): exit 0" 0
-printf '![tests](https://img.shields.io/badge/tests-10-1F9D63)\n' > "$C/README.md"
-( cd "$C" && G commit -qam count-bad && git push -q origin main ) && reseal
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC8.1 count check still refuses a wrong README number on streamed output: exit 1" 1
-assert_contains "AC8.1 the refusal names the README number" "$OUT" "10"
-assert_contains "AC8.1 the refusal names the real total" "$OUT" "11"
-
 # liveness: the first stub line must be visible while the stub is still running.
 # The stub waits for a go-file (no timing guess); it gives up after ~60s so a buffering implementation cannot hang.
 setup
@@ -319,50 +295,19 @@ assert_eq "AC8.1 the live run still exits 0" "0" "$(cat "$LOUT.rc" 2>/dev/null)"
 assert_contains "AC8.1 the live run still ends with 'would tag'" "$(cat "$LOUT")" "would tag"
 
 
-echo "README counts read only suite summary lines (an assertion line with N passed, M failed in its name is ignored)"
-set_readme_assert() {   # README_TEXT -> committed run-all stub: one summary line (10 passed) plus an assertion line naming 4 passed, 1 failed
-  printf '%s' "$1" > "$C/README.md"
-  cat > "$C/tests/run-all.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "== tests/test-a.sh"
-echo "  ok   AC6.2 'Tests: 4 passed, 1 failed: subtract.': PASS"
-echo "test-a.sh: 10 passed, 0 failed"
-echo "ALL GREEN"
-exit 0
-STUB
-  ( cd "$C" && G add -A && G commit -qm readme && git push -q origin main ) && reseal
-}
-setup; set_readme_assert '# demo
-![tests](https://img.shields.io/badge/tests-10-1F9D63)
-| Script tests | **10 passing** |
-Every one of the 10 tests, run in sandboxes.
-'
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "RV release: README 10 equals the one summary line (assertion line ignored): dry run exit 0" 0
-assert_contains "RV release: that dry run reaches 'would tag'" "$OUT" "would tag"
-setup; set_readme_assert '![tests](https://img.shields.io/badge/tests-15-1F9D63)
-'
-run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "RV release: README 15 (summary 10 + the assertion line's 4 + 1) is wrong: refused, exit 1" 1
-assert_contains "RV release: the refusal names the real total 10" "$OUT" "suite ran 10"
-
-
-echo "v0.23.2 AC14 a README count that differs from the run is refused naming the expected and the found count"
-# Spec note (tester): no tool in this repo writes VERSION/CHANGELOG/README and commits; the README count is re-counted by
-# tools/release.sh after the suite run, on a clean tree equal to origin/main (i.e. after the last commit). These cases pin that
-# place. The only change asked of it: the refusal says "expected N" (the suite's passed + skipped) and "found M" (README).
+echo "v0.38 T12 (was v0.23.2 AC14) a README count that differs from the run is no longer refused"
 setup; set_readme '![tests](https://img.shields.io/badge/tests-9-1F9D63)
 '
 run_in "$C" bash tools/release.sh v1.2.3
-assert_rc "AC14.1 README 9 vs the run's 11: refused, exit 1" 1
-if printf '%s\n' "$OUT" | grep -iE 'expected[^0-9]{0,20}11' | grep -iqE 'found[^0-9]{0,20}9([^0-9]|$)'; then t_ok "AC14.1 the refusal reads 'expected 11 ... found 9'"; else
-  if printf '%s\n' "$OUT" | grep -iE 'found[^0-9]{0,20}9([^0-9]|$)' | grep -iqE 'expected[^0-9]{0,20}11'; then t_ok "AC14.1 the refusal reads 'found 9 ... expected 11'"; else t_bad "AC14.1 the refusal names the expected (11) and the found (9) counts with those words" "$OUT"; fi
-fi
-assert_eq "AC14.1 the refusal creates no tag and pushes nothing" "" "$(tags_of "$C")$(origin_tags)"
+assert_rc "AC14.1 README 9 vs the run's 11: released, exit 0" 0
+assert_not_contains "AC14.1 no 'expected ... found' refusal" "$OUT" "found 9"
+assert_not_contains "AC14.1 no README refusal text" "$OUT" "README.md test count is wrong"
+assert_contains "AC14.1 the tag is created in origin" "$(origin_tags)" "v1.2.3"
 setup; set_readme "$README_OK"
 run_in "$C" bash tools/release.sh v1.2.3
 assert_rc "AC14.1 README equals the run's count (11): it proceeds, exit 0" 0
 assert_not_contains "AC14.1 a matching count prints no 'expected ... found' refusal" "$OUT" "found 11"
+
 
 echo "v0.29 slice S: release tag signing (AC-S1..AC-S7, spec 01-spec.md)"
 # Isolation: no real global/system git config, temp HOME and GNUPGHOME; the throw-away key lives in mk_tmp only.

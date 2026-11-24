@@ -202,7 +202,7 @@ refused() {
 echo "G1/D3 not green -> exit 2 naming the checks, before the baseline, worktree, preflight and any runner"
 rgf_gh_sample_red_gate_only
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|failure" \
-  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|skipped" "8|README test count (Linux only)|skipped"
+  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|skipped" "8|Tests and static checks|skipped"
 rcase g1-realfail ""
 refused "G1 test (ubuntu-latest) failed in Tests and static checks" "test (ubuntu-latest)"
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|failure" \
@@ -210,9 +210,9 @@ rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6
 rcase g1-bothfail ""
 refused "D3 tests failed AND the Release gate step failed (not solely the gate)" "test (ubuntu-latest)"
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|success" \
-  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|README test count (Linux only)|failure"
+  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|Tests and static checks|failure"
 rcase g1-countfail ""
-refused "D3 the Release gate step and the README count step failed (a non-gate step failed too)" "test (ubuntu-latest)"
+refused "D3 the Release gate step and a second non-gate step failed (a non-gate step failed too)" "test (ubuntu-latest)"
 rgf_gh_green
 rgf_gh_runs "1|test (ubuntu-latest)|completed|success" "2|windows shard 3/8|in_progress|" "3|macos shard 1/2|queued|" "4|changes|completed|success"
 rcase g1-pending ""

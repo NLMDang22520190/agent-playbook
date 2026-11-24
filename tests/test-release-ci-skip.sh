@@ -4,8 +4,8 @@
 # whether CI is green on exactly HEAD (= origin/main). Green = none pending, every run concluded success/skipped/neutral, at least one
 # `success`, AND test (ubuntu-latest), test (macos-latest), test (windows-latest) present and `success` (the aggregators of
 # tools/ci-tree-tested.sh; shards may be skipped) (strict: no "green except the Release gate step" rule). Green -> tests/run-all.sh is skipped with the line
-# "tests/run-all.sh skipped: CI is green on <short sha> (use --local-suite to run it here)" and the README count check (it needs the
-# suite log) is skipped with a line saying CI verified it. --local-suite forces the old behaviour. R5: CI not green (pending, failing, no
+# "tests/run-all.sh skipped: CI is green on <short sha> (use --local-suite to run it here)" (release.sh no longer reads a README test
+# count, so there is no README line at all). --local-suite forces the old behaviour. R5: CI not green (pending, failing, no
 # check runs, gh missing, API error, unparsable JSON, repo unknown) -> the suite runs exactly as before and release.sh says why.
 # Spec: docs/v0.37-spec.md AC11, R5. Shared setup: release-ci-fixture.sh (real release.sh, stub gate, stub run-all, fake gh).
 . "$(dirname "$0")/lib.sh"
@@ -142,23 +142,23 @@ assert_rc "R5 partial read, real release: the suite runs and the release proceed
 assert_eq "R5 partial read, real release: suite called once" "1" "$(suite_runs)"
 assert_contains "R5 partial read, real release: tagged" "$(tags_of "$O")" "v1.2.3"
 
-echo "AC11 README counts: skipped with the suite, still enforced with --local-suite"
+echo "AC11/AC4 (v0.38 T12) README test counts are not read: a wrong count is not refused, no README line"
 rc_setup
-set_readme "$(printf '# demo\n| Script tests | **11 passing** (see run-all) |\n')"   # the stub suite adds up to 9: 11 is wrong
+set_readme "$(printf '# demo\n| Script tests | **11 passing** (see run-all) |\n')"   # the stub suite adds up to 9: 11 is wrong, and nobody cares
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "AC11 green CI + a wrong README count: no suite log, so no refusal -> exit 0" 0
-assert_not_contains "AC11 green CI: the README count check is not run (no refusal text)" "$OUT" "README.md test count is wrong"
-RL="$(printf '%s\n' "$OUT" | grep 'README' | grep 'CI' | head -n 1)"
-if [ -n "$RL" ]; then t_ok "AC11 green CI: one line says CI verified the README count"; else t_bad "AC11 green CI: one line says CI verified the README count" "no line with README and CI in: $OUT"; fi
+assert_rc "AC11 green CI + a wrong README count -> exit 0" 0
+assert_not_contains "AC11 green CI: no README refusal text" "$OUT" "README.md test count is wrong"
+assert_eq "AC11 green CI: no line mentions the README" "0" "$(printf '%s\n' "$OUT" | grep -c 'README')"
 assert_eq "AC11 README case: the suite was not called" "0" "$(suite_runs)"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run --local-suite
-assert_rc "AC11 --local-suite + a wrong README count -> refused, exit 1" 1
-assert_contains "AC11 --local-suite enforces the README count" "$OUT" "README.md test count is wrong: expected 9"
+assert_rc "AC4 --local-suite + a wrong README count is not refused -> exit 0" 0
+assert_not_contains "AC4 --local-suite: no README refusal text" "$OUT" "README.md test count is wrong"
+assert_eq "AC4 --local-suite: no line mentions the README" "0" "$(printf '%s\n' "$OUT" | grep -c 'README')"
 assert_eq "AC11 --local-suite README case: the suite ran" "1" "$(suite_runs)"
 rc_setup
 set_readme "$(printf '# demo\n| Script tests | **9 passing** (see run-all) |\n')"
 run_in "$C" bash tools/release.sh --local-suite v1.2.3 --dry-run
-assert_rc "AC11 --local-suite (before the tag) + the right README count -> exit 0" 0
+assert_rc "AC11 --local-suite (before the tag) + any README count -> exit 0" 0
 assert_not_contains "AC11 --local-suite: the README is not reported as CI-verified" "$(printf '%s\n' "$OUT" | grep 'README' | grep 'CI')" "CI"
 
 echo "AC11 --local-suite forces the suite even when CI is green"
@@ -279,8 +279,8 @@ rc_setup
 set_readme "$(printf '# demo\n| Script tests | **11 passing** (see run-all) |\n')"
 rgf_gh_runs "11|a|completed|failure"
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
-assert_rc "R5 CI red: the README count is enforced as before -> exit 1" 1
-assert_contains "R5 CI red: README refusal text" "$OUT" "README.md test count is wrong: expected 9"
+assert_rc "R5 CI red: a wrong README count is not refused -> exit 0" 0
+assert_not_contains "R5 CI red: no README refusal text" "$OUT" "README.md test count is wrong"
 
 echo "AC11 usage: unknown flags still exit 2, --local-suite is a known flag"
 rc_setup
@@ -300,7 +300,7 @@ assert_eq "AC11 usage errors: no tag" "" "$(tags_of "$C")$(tags_of "$O")"
 # (the job `test` is skipped) while `test (macos-latest)` and `test (windows-latest)` are success. ci_state then prints a second line
 # `reuse-candidate`; release.sh asks tools/ci-tree-tested.sh (a STUB here: installed, committed and pushed per case, never in rc_setup,
 # so the cases above keep their old meaning (AC9); logs its arguments outside the work tree; never calls gh) and, for a numeric run id,
-# skips the suite and the README count check.
+# skips the suite.
 # ---------------------------------------------------------------------------------------------------------------------------------
 echo "v0.38 T7 setup: the stub tools/ci-tree-tested.sh is per case, not in rc_setup (AC9)"
 # the real shape of a reuse merge commit: job `test` skipped (no `test (ubuntu-latest)`), macOS and Windows aggregators success
@@ -331,15 +331,14 @@ tt_expect_suite() {
   assert_not_contains "$1: no README-skipped line" "$OUT" "README test count check skipped"
 }
 
-echo "AC1 reuse shape + tool prints 4242: the suite and the README check are skipped with the exact R2 lines"
+echo "AC1 reuse shape + tool prints 4242: the suite is skipped with the exact R2 line, and no README line is printed"
 tt_setup
 export PB_TEST_TT_OUT='4242\n'
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC1 reuse candidate verified -> exit 0" 0
 if has_line "tests/run-all.sh skipped: the tree of $SHORT_T was already tested by PR run 4242 (use --local-suite to run it here)" "$OUT"; then
   t_ok "AC1 exact suite-skipped line (real short sha, run id 4242)"; else t_bad "AC1 exact suite-skipped line (real short sha, run id 4242)" "$OUT"; fi
-if has_line "README test count check skipped: PR run 4242 verified it (use --local-suite to check it here)" "$OUT"; then
-  t_ok "AC1 exact README-skipped line"; else t_bad "AC1 exact README-skipped line" "$OUT"; fi
+assert_not_contains "AC1 no README-skipped line" "$OUT" "README test count check skipped"
 assert_eq "AC1 the suite did not run" "0" "$(suite_runs)"
 assert_not_contains "AC1 no 'runs here' line" "$OUT" "runs here"
 assert_contains "AC1 the dry run still ends" "$OUT" "would tag v1.2.3"
@@ -354,7 +353,7 @@ assert_rc "AC1 real release on a verified reuse candidate -> exit 0" 0
 assert_eq "AC1 real release: the suite did not run" "0" "$(suite_runs)"
 assert_contains "AC1 real release: tagged in origin" "$(tags_of "$O")" "v1.2.3"
 
-echo "AC1 the README count check is skipped too (a wrong count is not refused), and the id is whatever the tool printed"
+echo "AC1 a wrong README count is not refused, and the id is whatever the tool printed"
 tt_setup
 set_readme "$(printf '# demo\n| Script tests | **11 passing** (see run-all) |\n')"
 SHORT_T="$(git -C "$C" rev-parse --short HEAD)"
@@ -362,8 +361,9 @@ export PB_TEST_TT_OUT='777\n'
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC1 wrong README count + verified tree -> exit 0 (no refusal)" 0
 assert_not_contains "AC1 no README refusal text" "$OUT" "README.md test count is wrong"
-if has_line "README test count check skipped: PR run 777 verified it (use --local-suite to check it here)" "$OUT"; then
-  t_ok "AC1 README-skipped line carries the id the tool printed (777)"; else t_bad "AC1 README-skipped line carries the id the tool printed (777)" "$OUT"; fi
+if has_line "tests/run-all.sh skipped: the tree of $SHORT_T was already tested by PR run 777 (use --local-suite to run it here)" "$OUT"; then
+  t_ok "AC1 suite-skipped line carries the id the tool printed (777)"; else t_bad "AC1 suite-skipped line carries the id the tool printed (777)" "$OUT"; fi
+assert_not_contains "AC1 no README-skipped line (777 case)" "$OUT" "README test count check skipped"
 assert_eq "AC1 wrong README count: the suite did not run" "0" "$(suite_runs)"
 
 echo "AC1 whitespace around a numeric id is trimmed"
@@ -455,7 +455,7 @@ export PB_TEST_TT_OUT='4242\n'
 run_in "$C" bash tools/release.sh v1.2.3 --dry-run
 assert_rc "AC6 green -> exit 0" 0
 if has_line "$(skipped_line "$SHORT_T")" "$OUT"; then t_ok "AC6 old suite-skipped line"; else t_bad "AC6 old suite-skipped line" "$OUT"; fi
-if has_line "README test count check skipped: CI verified it on $SHORT_T (use --local-suite to check it here)" "$OUT"; then t_ok "AC6 old README-skipped line"; else t_bad "AC6 old README-skipped line" "$OUT"; fi
+assert_not_contains "AC6 no README-skipped line" "$OUT" "README test count check skipped"
 assert_not_contains "AC6 no PR-run wording" "$OUT" "PR run"
 assert_eq "AC6 the suite did not run" "0" "$(suite_runs)"
 assert_eq "AC6 the tool was not called" "0" "$(tt_calls)"

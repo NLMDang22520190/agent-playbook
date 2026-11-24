@@ -4,7 +4,7 @@
 #   tools/rubric-table.sh            prints the table (nothing written)
 #   tools/rubric-table.sh --write    replaces the table in evals/RUBRIC.md (text outside the table unchanged)
 #   tools/rubric-table.sh --check    exit 0 when RUBRIC.md matches, 1 when not (naming the first differing row); other arguments exit 2
-# Files are resolved next to the tools directory (as tools/readme-count.sh), so a temp copy laid out as <T>/tools and <T>/evals is graded on its own files.
+# Files are resolved next to the tools directory (as tools/release.sh), so a temp copy laid out as <T>/tools and <T>/evals is graded on its own files.
 # Row counts are compared with the heading count, never with a literal (decision D17: lane W adds E35-E39 later).
 . "$(dirname "$0")/lib.sh"
 

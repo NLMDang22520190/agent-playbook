@@ -159,13 +159,12 @@ test-install-hooks.sh 49
 test-conf.sh 42
 test-replay-graders.sh 40
 test-release-gate-replay.sh 40
-test-readme-count.sh 38
-test-release-stale-count.sh 37
 test-proof-run.sh 33
 test-role-gate-mode.sh 33
 test-preflight.sh 31
 test-shard-weights.sh 25
 test-skill-rules.sh 25
+test-release-pr-check-nocount.sh 24
 test-evals-lib.sh 23
 test-pr-body.sh 22
 test-diet.sh 15
