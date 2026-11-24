@@ -6,7 +6,8 @@
 #   learn.sh retire L-0001 --reason R
 #   learn.sh trust [DIR]|untrust [DIR]|trusted   (the projects whose learnings the SessionStart hook injects: the lines
 #                              of <home>/.agents/trusted-projects; DIR defaults to the project root; the USER runs these)
-#   learn.sh check
+#   learn.sh check   (problems, then a summary line ending "; entry lines: A active, R retired", then a warning line
+#                              when the hook injects only some of the active entries; the exit code ignores the warning)
 #   learn.sh checklist ROLE   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
 #                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
 # Exit: 0 ok | 1 check failed | 2 usage/validation | 3 environment | 4 duplicate | 5 at capacity
@@ -277,7 +278,27 @@ EOF
       echo "problem: $act active entries exceeds the cap of $MAX_ENTRIES"
       problems=$((problems + 1))
     fi
-    echo "learnings: $act active, $ret retired, $lines lines ($REL)"
+    elines="$(awk '
+      /^### / { if (inent) { if (isret) r += n; else a += n }; inent = 1; n = 0; isret = 0; seen = 0 }
+      inent { n++; if (!seen && /^- Status: /) { seen = 1; if ($0 ~ /^- Status: retired/) isret = 1 } }
+      END { if (inent) { if (isret) r += n; else a += n }; printf "%d %d", a + 0, r + 0 }
+    ' "$FILE")"
+    echo "learnings: $act active, $ret retired, $lines lines ($REL); entry lines: ${elines% *} active, ${elines#* } retired"
+    if [ -f "$HERE/learnings-hook.sh" ]; then
+      hk="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$ROOT" bash "$HERE/learnings-hook.sh" --eval </dev/null 2>/dev/null)" || hk=""
+      kn="$(printf '%s\n' "$hk" | awk '
+        /^\[[0-9]+ more entries not shown: read .*\]$/ { cand = $0; next }
+        /^<\/project-learnings>$/ { if (cand != "") { k = cand; sub(/^\[/, "", k); sub(/ .*/, "", k); last = k } cand = ""; next }
+        { cand = "" }
+        END { if (last != "") print last }
+      ' || true)"
+      case "$kn" in
+        "" | *[!0-9]*) ;;
+        *) if [ "$kn" -ge 1 ] && [ "$kn" -le "${act:-0}" ]; then
+             echo "warning: $((act - kn)) of $act active entries are injected by the hook (oldest first); the rest are shown only as a count"
+           fi ;;
+      esac
+    fi
     [ "$problems" -eq 0 ] || exit 1
     ;;
 
