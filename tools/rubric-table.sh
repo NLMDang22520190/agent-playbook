@@ -4,7 +4,7 @@
 #                                   per heading, in scenarios.md order (nothing written)
 #   tools/rubric-table.sh --write   replaces the rows under the "| Scenario |" header of RUBRIC.md; the text outside the table is unchanged
 #   tools/rubric-table.sh --check   only compares: exit 0 when RUBRIC.md matches, 1 when not (the first differing row is named)
-# Both files are read next to the tools directory (as tools/readme-count.sh). Exit: 0 ok, 1 out of date (--check) or no table in
+# Both files are read next to the tools directory (as tools/release.sh). Exit: 0 ok, 1 out of date (--check) or no table in
 # RUBRIC.md, 2 usage or a file that cannot be read.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"

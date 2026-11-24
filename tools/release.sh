@@ -11,13 +11,13 @@
 # variable (or with a missing directory) every run calls the gate.
 # CI instead of the local suite: after the gate and before tests/run-all.sh it reads the check runs of exactly HEAD (REST only:
 # `gh api --paginate repos/OWNER/REPO/commits/<sha>/check-runs`; OWNER/REPO is PB_GATE_REPO, else parsed from the origin URL). When there is
-# at least one check run, none is pending and all concluded success, skipped or neutral, tests/run-all.sh and the README count check are
-# skipped (one line each says so) unless --local-suite is given. In every other state (not green, no runs, gh missing, API error, unreadable
+# at least one check run, none is pending and all concluded success, skipped or neutral, tests/run-all.sh is
+# skipped (one line says so) unless --local-suite is given. In every other state (not green, no runs, gh missing, API error, unreadable
 # JSON, unknown repository) the suite runs as before and one line says why; reading CI never fails the release by itself.
 # Reused tree: when only `test (ubuntu-latest)` is not success (macOS and Windows aggregators success, every check run completed and
 # none bad; ci_state then prints `reuse-candidate` as a second line, the job was skipped because the tree was already tested), it runs
 # `bash tools/ci-tree-tested.sh <sha> --repo OWNER/REPO` (stderr dropped). Only a single non-empty string of digits (a PR run id) is
-# accepted: the suite and the README count check are then skipped, one line each naming that run. Anything else (empty, not a number,
+# accepted: the suite is then skipped, one line naming that run. Anything else (empty, not a number,
 # several lines, non-zero exit, missing tool) means no result and the suite runs here. All-green never calls the tool; --local-suite never does.
 # Then runs tests/run-all.sh (unless CI is green, see above). With --dry-run it prints
 # the steps it would take (would tag, would push) and changes nothing; otherwise it creates the
@@ -144,11 +144,9 @@ if [ "$local_suite" -eq 0 ]; then
   if [ "$ci" = "green" ]; then
     suite_skipped=1
     echo "tests/run-all.sh skipped: CI is green on $head_short (use --local-suite to run it here)"
-    echo "README test count check skipped: CI verified it on $head_short (use --local-suite to check it here)"
   elif [ -n "$reuse_id" ]; then
     suite_skipped=1
     echo "tests/run-all.sh skipped: the tree of $head_short was already tested by PR run $reuse_id (use --local-suite to run it here)"
-    echo "README test count check skipped: PR run $reuse_id verified it (use --local-suite to check it here)"
   else
     [ -n "$ci" ] || ci="no answer"
     echo "tests/run-all.sh runs here: CI is not green on $head_short ($ci)"
@@ -156,18 +154,8 @@ if [ "$local_suite" -eq 0 ]; then
 fi
 
 if [ "$suite_skipped" -eq 0 ]; then
-suite_log="$(mktemp "${TMPDIR:-/tmp}/pbrelease.XXXXXX")" || { echo "mktemp failed" >&2; exit 3; }
-trap 'rm -f "$suite_log"' EXIT
-bash tests/run-all.sh 2>&1 | tee "$suite_log"; suite_rc=${PIPESTATUS[0]}   # live output, run-all's status
+bash tests/run-all.sh 2>&1; suite_rc=$?   # live output, run-all's status
 [ "$suite_rc" -eq 0 ] || refuse "tests/run-all.sh failed"
-# README test counts (badge, "**N passing**", "N tests, run in sandboxes") must equal passed + skipped.
-total="$(grep -E '^[^[:space:]]+\.sh: [0-9]+ passed, [0-9]+ failed' "$suite_log" | grep -oE '[0-9]+ passed, [0-9]+ failed(, [0-9]+ skipped)?' |
-  awk '{ t += $1; if (NF >= 6) t += $5 } END { print t + 0 }')"
-if [ -r README.md ]; then
-  for n in $(grep -oE 'badge/tests-[0-9]+|\*\*[0-9]+ passing\*\*|[0-9]+ tests, run in sandboxes' README.md | grep -oE '[0-9]+' ); do
-    [ "$n" = "$total" ] || refuse "README.md test count is wrong: expected $total (the suite ran $total, passed + skipped), found $n"
-  done
-fi
 fi
 
 if [ "$dry" -eq 1 ]; then

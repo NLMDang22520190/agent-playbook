@@ -534,7 +534,7 @@ fi
 
 if want skipnote; then
 nofiles 'tests/*.sh'
-# An env-dependent skip must be t_skip N (the README test count adds the skipped assertions up); a "note: ... skipped" print
+# An env-dependent skip must be t_skip N (the suite summary counts skipped assertions separately); a "note: ... skipped" print
 # (echo or printf, any quoting) hides them. Refused in tests/*.sh outside whole-line comments; a t_skip line or a note that
 # does not say skipped is fine. Not covered: a message split over lines or built from variables.
 gsn="$(awk '
@@ -545,7 +545,7 @@ gsnrc=$?
 gsn="$(printf '%s' "$gsn" | tr -s ' ')"
 if [ "$gsnrc" -ne 0 ]; then bad "skip-note scan failed (awk exit $gsnrc; a missing or unreadable file in tests/?)"
 elif [ -z "${gsn// /}" ]; then ok "no 'note: ... skipped' print in tests (use t_skip N)"
-else bad "a 'note: ... skipped' print in a test hides the skip from the README count; use t_skip N \"why\" at: $gsn"; fi
+else bad "a 'note: ... skipped' print in a test hides the skip from the suite summary; use t_skip N \"why\" at: $gsn"; fi
 fi
 
 if want modes; then

@@ -114,10 +114,6 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash tools/release-pr-check.sh --gate "$BASE_SHA"
-      - name: README test count (Linux only)
-        # A PR that adds tests updates the README count with tools/readme-count.sh; a stale count fails here.
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && matrix.os == 'ubuntu-latest' && !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
-        run: bash tools/readme-count.sh --check "$RUNNER_TEMP/run-all.log"
 
   macos-shard:
     # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable. It runs the same suite split in two.
