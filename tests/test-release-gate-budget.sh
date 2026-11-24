@@ -554,6 +554,16 @@ rr "$RA" "ac6f" PB_GATE_NOW=$NOW100 "$FLAG" FAKE_Q_evals_main=79 FAKE_Q_outcome_
 assert_eq "AC6 0.25 USD left (19.75 + 20 spent of 40): the confirmation gets 0.125" "0.125" "$(cv run-evals.sh confirm)"
 rr "$RA" "ac6g" PB_GATE_NOW=$NOW100 "$FLAG" -- --harness claude --max-cost 5
 assert_eq "AC1 without --budget the confirmation call keeps the asked --max-cost (5)" "5" "$(cv run-evals.sh confirm)"
+# the OUTCOME runner's confirmation call carries the same (budget - spent) / 2 (a missing --max-cost there is an unbounded paid run)
+FLAGO="FAKE_PASSES_outcome_main=$T15=0"
+rr "$RA" "ac6h" PB_GATE_NOW=$NOW100 "$FLAGO" FAKE_Q_evals_main=8 FAKE_Q_outcome_main=12 -- --harness claude --budget 100
+assert_eq "AC6 only the outcome runner confirms (spent 2 + 3 of 100): its confirmation call gets 47.5, the behaviour one makes no call" "47.5|nocall" "$(cv run-outcome.sh confirm)|$(cv run-evals.sh confirm)"
+rr "$RA" "ac6i" PB_GATE_NOW=$NOW100 "$FLAG" "$FLAGO" FAKE_Q_evals_main=8 FAKE_Q_outcome_main=12 -- --harness claude --budget 100
+assert_eq "AC6 both runners confirm (spent 5 of 100): each confirmation call gets (100 - 5) / 2 = 47.5" "47.5|47.5" "$(cv run-evals.sh confirm)|$(cv run-outcome.sh confirm)"
+rr "$RA" "ac6j" PB_GATE_NOW=$NOW100 "$FLAGO" FAKE_Q_evals_main=79 FAKE_Q_outcome_main=80 -- --harness claude --budget 40
+assert_eq "AC6 outcome confirmation rounds down in 0.0001 units: 0.25 left gives 0.125" "0.125" "$(cv run-outcome.sh confirm)"
+rr "$RA" "ac6k" PB_GATE_NOW=$NOW100 "$FLAGO" -- --harness claude --max-cost 5
+assert_eq "AC1 without --budget the outcome confirmation call keeps the asked --max-cost (5)" "5" "$(cv run-outcome.sh confirm)"
 
 # ===========================================================================================================================
 echo "AC7 (R7): --dry-run --budget does not read the baseline and does not refuse: it prints each runner's budget / 2 and says so on stderr"
