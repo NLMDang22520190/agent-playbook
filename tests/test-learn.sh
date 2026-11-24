@@ -443,4 +443,162 @@ else
   t_skip 9 "case-sensitive file system without cygpath not available here: case rows not testable"
 fi
 
+# ---- v0.38 Q9 S1: budget warning and entry-line counts in `learn.sh check` (AC1-AC6) ----
+echo "Q9 S1 AC1: entry lines in the summary line (counts measured on the fixture file)"
+S1R="$(mk_tmp)"; mk_repo "$S1R"; cd "$S1R" || exit 3
+bash "$LEARN" init >/dev/null
+s1add() { bash "$LEARN" add --why w --evidence "${S1EV:-e}" --source user "$@" >/dev/null; }
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+s1add --title "S1 three" --rule "S1 rule number three."
+# independent count: lines from a '### ' heading to the line before the next heading (or EOF); first Status line decides
+s1count() { # FILE -> "A R"
+  awk '
+    function flush() { if (inent) { if (st == "retired") r += n; else a += n } }
+    /^### / { flush(); inent = 1; n = 0; st = "" }
+    { if (inent) { n++; if (st == "" && $0 ~ /^- Status: /) st = ($0 ~ /^- Status: retired/) ? "retired" : "active" } }
+    END { flush(); printf "%d %d\n", a, r }' "$1"
+}
+run bash "$LEARN" retire L-0003 --reason "s1"
+S1C="$(s1count "$F")"
+assert_eq "Q9 S1 AC1 fixture sanity: independent count is 18 active, 8 retired lines" "18 8" "$S1C"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC1 check exit 0" 0
+assert_contains "Q9 S1 AC1 old prefix of the summary line is kept" "$OUT" "learnings: 2 active, 1 retired, 38 lines (.agents/LEARNINGS.md)"
+assert_eq "Q9 S1 AC1 summary line ends with '; entry lines: 18 active, 8 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '^learnings: 2 active, 1 retired, 38 lines (\.agents/LEARNINGS\.md); entry lines: 18 active, 8 retired$')"
+# retire the middle entry instead
+S1R2="$(mk_tmp)"; mk_repo "$S1R2"; cd "$S1R2" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+s1add --title "S1 three" --rule "S1 rule number three."
+run bash "$LEARN" retire L-0002 --reason "s1"
+assert_eq "Q9 S1 AC1 fixture sanity: middle retired, independent count is 17 active, 9 retired" "17 9" "$(s1count "$F")"
+run bash "$LEARN" check
+assert_eq "Q9 S1 AC1 middle entry retired: '; entry lines: 17 active, 9 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '; entry lines: 17 active, 9 retired$')"
+assert_contains "Q9 S1 AC1 middle retired: old prefix kept" "$OUT" "learnings: 2 active, 1 retired, 38 lines (.agents/LEARNINGS.md)"
+# file without entries
+S1R3="$(mk_tmp)"; mk_repo "$S1R3"; cd "$S1R3" || exit 3
+bash "$LEARN" init >/dev/null
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC1 empty file: check exit 0" 0
+assert_eq "Q9 S1 AC1 file without entries: '; entry lines: 0 active, 0 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '^learnings: 0 active, 0 retired, [0-9]* lines (\.agents/LEARNINGS\.md); entry lines: 0 active, 0 retired$')"
+run bash "$LEARN" checklist tester
+assert_not_contains "Q9 S1 AC6 checklist output does not carry the new summary" "$OUT" "entry lines"
+
+echo "Q9 S1 AC3: no warning on a small file, and with only an old problem"
+S1R4="$(mk_tmp)"; mk_repo "$S1R4"; cd "$S1R4" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC3 small file: exit 0" 0
+assert_not_contains "Q9 S1 AC3 small file: no warning line" "$OUT" "warning:"
+LEARN_MAX_LINES=5 run bash "$LEARN" check
+assert_rc "Q9 S1 AC3 over the line budget: exit 1 as before" 1
+assert_contains "Q9 S1 AC3 over the line budget: the old problem names the budget" "$OUT" "problem: "
+assert_contains "Q9 S1 AC3 over the line budget: budget text" "$OUT" "exceeds the 5-line budget"
+assert_not_contains "Q9 S1 AC3 over the line budget with no hook cut: no warning line" "$OUT" "warning:"
+
+echo "Q9 S1 AC2: hook truncates, check warns (N = M - K from the real hook)"
+S1R5="$(mk_tmp)"; mk_repo "$S1R5"; cd "$S1R5" || exit 3
+bash "$LEARN" init >/dev/null
+S1M=20
+s1big() { S1EV="$(printf 'e%.0s' $(seq 1 400))"; for i in $(seq 1 $S1M); do s1add --title "S1 big $i" --rule "S1 big rule number $i."; done; S1EV=""; }
+s1big
+S1_LINES="$(wc -l < "$F" | tr -d ' ')"; S1_BYTES="$(wc -c < "$F" | tr -d ' ')"
+S1_ACT="$(grep -c '^- Status: active' "$F")"
+assert_eq "Q9 S1 AC2 fixture sanity: $S1M active entries" "$S1M" "$S1_ACT"
+if [ "$S1_LINES" -lt 250 ]; then t_ok "Q9 S1 AC2 fixture sanity: $S1_LINES lines < 250"; else t_bad "Q9 S1 AC2 fixture sanity: lines < 250" "$S1_LINES"; fi
+if [ "$S1_BYTES" -gt 8000 ]; then t_ok "Q9 S1 AC2 fixture sanity: $S1_BYTES bytes > 8000"; else t_bad "Q9 S1 AC2 fixture sanity: bytes > 8000" "$S1_BYTES"; fi
+S1_HOUT="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$S1R5" bash "$PB_ROOT/scripts/learnings-hook.sh" --eval </dev/null 2>/dev/null)"
+S1_K="$(printf '%s\n' "$S1_HOUT" | sed -n 's/^\[\([0-9][0-9]*\) more entries not shown: read .*\]$/\1/p' | tail -n 1)"
+case "$S1_K" in
+  ''|*[!0-9]*) t_bad "Q9 S1 AC2 fixture sanity: hook reports a K" "K=[$S1_K]"; S1_K=0 ;;
+  *) if [ "$S1_K" -ge 1 ] && [ "$S1_K" -lt "$S1M" ]; then t_ok "Q9 S1 AC2 fixture sanity: hook cuts, K=$S1_K"; else t_bad "Q9 S1 AC2 fixture sanity: 1 <= K < M" "K=$S1_K"; fi ;;
+esac
+S1_N=$((S1M - S1_K))
+S1_WARN="warning: $S1_N of $S1M active entries are injected by the hook (oldest first); the rest are shown only as a count"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 within both check budgets: exit 0" 0
+assert_eq "Q9 S1 AC2 exactly one warning line with N = M - K" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1_WARN")"
+assert_eq "Q9 S1 AC2 only one 'warning:' line in total" "1" "$(printf '%s\n' "$OUT" | grep -c '^warning:')"
+assert_eq "Q9 S1 AC2 the warning is the last line (after the summary line)" "$S1_WARN" "$(printf '%s\n' "$OUT" | tail -n 1)"
+assert_contains "Q9 S1 AC2 summary line carries entry lines" "$OUT" "; entry lines: "
+# structural error (one entry loses its Why): problem first, then summary, then warning, exit 1
+sed '0,/^- Why: w$/{/^- Why: w$/d;}' "$F" > "$F.s1" && mv "$F.s1" "$F"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 with a structural problem: exit 1" 1
+S1_P="$(printf '%s\n' "$OUT" | grep -n '^problem:' | head -n 1 | cut -d: -f1)"
+S1_S="$(printf '%s\n' "$OUT" | grep -n '^learnings: ' | head -n 1 | cut -d: -f1)"
+S1_W="$(printf '%s\n' "$OUT" | grep -n '^warning: ' | head -n 1 | cut -d: -f1)"
+if [ -n "$S1_P" ] && [ -n "$S1_S" ] && [ -n "$S1_W" ] && [ "$S1_P" -lt "$S1_S" ] && [ "$S1_S" -lt "$S1_W" ]; then t_ok "Q9 S1 AC2 order: problem, summary, warning (lines $S1_P < $S1_S < $S1_W)"; else t_bad "Q9 S1 AC2 order: problem, summary, warning" "p=[$S1_P] s=[$S1_S] w=[$S1_W]; output: $OUT"; fi
+assert_eq "Q9 S1 AC2 with a problem: exactly one warning line, N = M - K" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1_WARN")"
+
+echo "Q9 S1 AC5: check never touches the eval hook log"
+S1LOG="$(mk_tmp)/hook.log"
+PB_EVAL_HOOK_LOG="$S1LOG" run bash "$LEARN" check
+assert_no_path "Q9 S1 AC5 PB_EVAL_HOOK_LOG file is not created by check" "$S1LOG"
+printf 'sentinel line\n' > "$S1LOG"
+PB_EVAL_HOOK_LOG="$S1LOG" run bash "$LEARN" check
+assert_eq "Q9 S1 AC5 an existing PB_EVAL_HOOK_LOG file is not modified by check" "sentinel line" "$(cat "$S1LOG")"
+
+echo "Q9 S1 AC4: the hook is the only source of N (temp scripts dir with fake hooks)"
+S1SD="$(mk_tmp)"; mkdir -p "$S1SD/scripts"; cp "$PB_ROOT/scripts/learn.sh" "$PB_ROOT/scripts/lib.sh" "$S1SD/scripts/"
+S1L="$S1SD/scripts/learn.sh"
+# Case A: no learnings-hook.sh next to learn.sh, on a fresh big fixture
+S1R6="$(mk_tmp)"; mk_repo "$S1R6"; cd "$S1R6" || exit 3
+bash "$LEARN" init >/dev/null
+s1big
+run bash "$LEARN" check; S1_RC0="$RC"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 A: no hook script: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 A: no hook script: no warning" "$OUT" "warning:"
+assert_not_contains "Q9 S1 AC4 A: no error text (No such file)" "$OUT" "No such file"
+assert_not_contains "Q9 S1 AC4 A: no error text (not found)" "$OUT" "not found"
+assert_not_contains "Q9 S1 AC4 A: no error text (rror)" "$OUT" "rror"
+assert_contains "Q9 S1 AC4 A: summary line still printed" "$OUT" "learnings: $S1M active"
+# Case B: hook prints garbage / exits 7
+printf '#!/usr/bin/env bash\necho "garbage [99 more entries not shown"\necho "more garbage"\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 B: garbage hook: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 B: garbage hook: no warning" "$OUT" "warning:"
+printf '#!/usr/bin/env bash\necho "[3 more entries not shown: read X]"\necho "</project-learnings>"\nexit 7\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 B: hook exits 7: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 B: hook exits 7: no warning, even with a valid-looking note" "$OUT" "warning:"
+# Case C: fake hook says K=3 on a small 5-entry file that no byte math would flag
+S1R7="$(mk_tmp)"; mk_repo "$S1R7"; cd "$S1R7" || exit 3
+bash "$LEARN" init >/dev/null
+for i in 1 2 3 4 5; do s1add --title "S1 small $i" --rule "S1 small rule number $i."; done
+s1fake() { # NOTE-LINE: hook that prints the note line then the closing tag
+  printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n%s\n</project-learnings>\nEOT\n' "$1" > "$S1SD/scripts/learnings-hook.sh"
+}
+s1fake "[3 more entries not shown: read X]"
+run bash "$S1L" check
+assert_rc "Q9 S1 AC4 C: fake hook K=3: exit 0" 0
+assert_eq "Q9 S1 AC4 C: warning 2 of 5 comes from the hook's K, not from bytes" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 2 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+s1fake "[5 more entries not shown: read X]"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 C: K = M is valid (N = 0)" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 0 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+run bash "$LEARN" check
+assert_not_contains "Q9 S1 AC4 C: real hook, small file: no warning" "$OUT" "warning:"
+# Case D: invalid K or misplaced note
+s1fake "[0 more entries not shown: read X]"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: K = 0: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: K = 0: exit 0" 0
+s1fake "[6 more entries not shown: read X]"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: K > M: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: K > M: exit 0" 0
+printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n[3 more entries not shown: read X]\nsome later line\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: note not directly before the closing tag: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: misplaced note: exit 0" 0
+printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n[2 more entries not shown: read X]\n[4 more entries not shown: read Y]\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 D: the last note line before the tag wins (K=4, N=1)" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 1 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+cd "$PB_ROOT" || exit 3
+
 t_summary
