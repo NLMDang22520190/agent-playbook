@@ -8,6 +8,8 @@
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
 # Questions need a terminal on stdin; --yes answers them (use only when the user already said yes).
+# The dry run always runs, also with --yes: --yes therefore runs the release.sh checks twice (dry run, then the
+# real run) and the full suite twice when CI tree reuse (T7) does not apply.
 # Exit: 0 shipped, 1 refused or a step failed (release.sh's own status is passed on), 2 usage,
 #       3 cannot enter the repository.
 # Eval guard (advice only): when skill text changed since the previous release, ship prints
@@ -215,14 +217,10 @@ main() {
   find_eval_hint
   [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
 
-  if [ "$yes" = 1 ]; then
-    step "dry run skipped (--yes: the real release.sh runs the same checks and suite before tagging)"
-  else
-    step "release $tag (dry run)"
-    bash tools/release.sh "$tag" --dry-run; rc=$?
-    [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh --dry-run exited $rc" >&2; exit "$rc"; }
-    ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
-  fi
+  step "release $tag (dry run)"
+  bash tools/release.sh "$tag" --dry-run; rc=$?
+  [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh --dry-run exited $rc" >&2; exit "$rc"; }
+  [ "$yes" = 1 ] || ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
   step "release $tag"
   bash tools/release.sh "$tag"; rc=$?
   [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh exited $rc" >&2; exit "$rc"; }
