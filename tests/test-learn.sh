@@ -599,6 +599,46 @@ assert_rc "Q9 S1 AC4 D: misplaced note: exit 0" 0
 printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n[2 more entries not shown: read X]\n[4 more entries not shown: read Y]\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
 run bash "$S1L" check
 assert_eq "Q9 S1 AC4 D: the last note line before the tag wins (K=4, N=1)" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 1 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+# ---- Q9 S1 review gaps: first Status line decides, spaced project root, hook stderr hygiene ----
+echo "Q9 S1 AC1: a later '- Status: retired' line inside an active entry does not retire it"
+S1R7="$(mk_tmp)"; mk_repo "$S1R7"; cd "$S1R7" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 g one" --rule "S1 gap rule number one."
+s1add --title "S1 g two" --rule "S1 gap rule number two."
+# hand edit: after the first entry's Scope line add a body line that starts like a Status line
+awk '/^- Scope: / && !d { print; print "- Status: retired (quoted in the body, not the entry status)"; d = 1; next } { print }' "$F" > "$F.s1" && mv "$F.s1" "$F"
+S1G="$(s1count "$F")"
+S1GA="${S1G% *}"; S1GR="${S1G#* }"
+assert_eq "Q9 S1 AC1 gap fixture sanity: first entry still starts with an active Status line" "active" "$(awk '/^### /{n++} n==1 && /^- Status: /{sub(/^- Status: /,""); print; exit}' "$F")"
+assert_eq "Q9 S1 AC1 gap fixture sanity: the body holds a later retired line" "1" "$(grep -c '^- Status: retired' "$F")"
+assert_eq "Q9 S1 AC1 gap fixture sanity: independent count has no retired lines" "0" "$S1GR"
+run bash "$LEARN" check
+assert_eq "Q9 S1 AC1 first Status line decides: '; entry lines: $S1GA active, 0 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c "; entry lines: $S1GA active, 0 retired\$")"
+
+echo "Q9 S1 AC2: project root with a space gives the same warning as the hook run by hand"
+S1RS="$(mk_tmp)/proj with space"; mkdir -p "$S1RS"; mk_repo "$S1RS"; cd "$S1RS" || exit 3
+bash "$LEARN" init >/dev/null
+s1big
+S1SH="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$S1RS" bash "$PB_ROOT/scripts/learnings-hook.sh" --eval </dev/null 2>/dev/null)"
+S1SK="$(printf '%s\n' "$S1SH" | sed -n 's/^\[\([0-9][0-9]*\) more entries not shown: read .*\]$/\1/p' | tail -n 1)"
+case "$S1SK" in
+  ''|*[!0-9]*) t_bad "Q9 S1 AC2 space root sanity: hook run by hand reports a K" "K=[$S1SK]"; S1SK=0 ;;
+  *) t_ok "Q9 S1 AC2 space root sanity: hook run by hand cuts, K=$S1SK" ;;
+esac
+S1SW="warning: $((S1M - S1SK)) of $S1M active entries are injected by the hook (oldest first); the rest are shown only as a count"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 space root: exit 0" 0
+assert_eq "Q9 S1 AC2 space root: same warning N = M - K as the hook by hand" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1SW")"
+
+echo "Q9 S1 AC4: hook stderr does not leak into check output"
+S1R8="$(mk_tmp)"; mk_repo "$S1R8"; cd "$S1R8" || exit 3
+bash "$LEARN" init >/dev/null
+for i in 1 2 3 4 5; do s1add --title "S1 e $i" --rule "S1 e rule number $i."; done
+printf '#!/usr/bin/env bash\necho "STRAY-HOOK-STDERR-7731" >&2\ncat <<"EOT"\n<project-learnings>\n[3 more entries not shown: read X]\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_rc "Q9 S1 AC4 stderr hook: exit 0" 0
+assert_eq "Q9 S1 AC4 stderr hook: the warning still prints" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 2 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+assert_not_contains "Q9 S1 AC4 stderr hook: no stray stderr text in the output" "$OUT" "STRAY-HOOK-STDERR-7731"
 cd "$PB_ROOT" || exit 3
 
 t_summary
