@@ -68,6 +68,7 @@ test-evals-grade10b.sh 321
 test-leak-check-push.sh 314
 test-tdd-step-c.sh 310
 test-guard-pre.sh 309
+test-release-gate-head.sh 300
 test-outcome-runner.sh 300
 test-tdd-step-g.sh 296
 test-ship.sh 293
