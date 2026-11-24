@@ -285,7 +285,7 @@ EOF
     ' "$FILE")"
     echo "learnings: $act active, $ret retired, $lines lines ($REL); entry lines: ${elines% *} active, ${elines#* } retired"
     if [ -f "$HERE/learnings-hook.sh" ]; then
-      hk="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$ROOT" bash "$HERE/learnings-hook.sh" --eval </dev/null 2>/dev/null)" || hk=""
+      hk="$(PB_EVAL_HOOK_LOG='' CLAUDE_PROJECT_DIR="$ROOT" bash "$HERE/learnings-hook.sh" --eval </dev/null 2>/dev/null)" || hk=""
       kn="$(printf '%s\n' "$hk" | awk '
         /^\[[0-9]+ more entries not shown: read .*\]$/ { cand = $0; next }
         /^<\/project-learnings>$/ { if (cand != "") { k = cand; sub(/^\[/, "", k); sub(/ .*/, "", k); last = k } cand = ""; next }
