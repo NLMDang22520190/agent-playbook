@@ -3,6 +3,7 @@
 test-release-gate-reuse.sh 1065
 test-release-tool.sh 981
 test-ci-tree-tested-steps.sh 908
+test-release-gate-budget.sh 900
 test-evals-grade14.sh 880
 test-release-gate-b.sh 875
 test-guard-ps.sh 841
