@@ -526,7 +526,7 @@ assert_eq "Q9 S1 AC2 only one 'warning:' line in total" "1" "$(printf '%s\n' "$O
 assert_eq "Q9 S1 AC2 the warning is the last line (after the summary line)" "$S1_WARN" "$(printf '%s\n' "$OUT" | tail -n 1)"
 assert_contains "Q9 S1 AC2 summary line carries entry lines" "$OUT" "; entry lines: "
 # structural error (one entry loses its Why): problem first, then summary, then warning, exit 1
-sed '0,/^- Why: w$/{/^- Why: w$/d;}' "$F" > "$F.s1" && mv "$F.s1" "$F"
+awk '$0 == "- Why: w" && !d { d = 1; next } { print }' "$F" > "$F.s1" && mv "$F.s1" "$F"
 run bash "$LEARN" check
 assert_rc "Q9 S1 AC2 with a structural problem: exit 1" 1
 S1_P="$(printf '%s\n' "$OUT" | grep -n '^problem:' | head -n 1 | cut -d: -f1)"

@@ -422,7 +422,7 @@ assert_eq "AC5 --check, origin behind vs unreadable: same exit and stdout" "$MM_
 assert_eq "AC5 --check: stderr is the same with an unreadable origin" "$MM_cerr" "$ERR"
 assert_eq "AC5 --dry-run with a mismatching origin: exit 0, the dry-run report, stderr empty" "0|1|" "${MM_dry%%|*}|$(cnt "$MM_dry" 'release gate (dry run)')|$MM_derr"
 assert_eq "AC5 none of the three modes printed anything about the head check" "0" "$(printf '%s\n' "$MM_derr$MM_perr$MM_cerr$MM_dry$MM_pool$MM_chk" | grep -c 'head check' || true)"
-assert_eq "AC5 --pool-only did pool (not a refusal): its exit is the verdict's, 0 or 1" "yes" "$(case "${MM_pool%%|*}" in 0 | 1) echo yes ;; *) echo no ;; esac)"
+assert_eq "AC5 --pool-only did pool (not a refusal): its exit is the verdict's, 0 or 1" "yes" "$(MM_pe="${MM_pool%%|*}"; if [ "$MM_pe" = 0 ] || [ "$MM_pe" = 1 ]; then echo yes; else echo no; fi)"
 assert_eq "AC5 git ls-remote was never called by --dry-run, --pool-only or --check (mismatching, then unreadable origin)" "0" "$(lsr_calls)"
 o_match "$RA"
 
