@@ -21,17 +21,18 @@ echo "AC6.1 --yes: the whole flow, in order"
 fx
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 --yes full flow exits 0" 0
-assert_eq "AC6.1/AC2.1 order with --yes: view, merge, release, CI list, CI watch, release view, install (no dry run)" "$FULL_YES" "$(steps)"
+assert_eq "AC6.1/AC2.1 order with --yes: view, merge, dry run, release, CI list, CI watch, release view, install" "$FULL_YES" "$(steps)"
 assert_contains "AC6.1 the PR is read through the REST API: GET repos/o/r/pulls/12" "$(pr_gets | head -n 1)" "repos/o/r/pulls/12"
 L="$(put_lines)"
 assert_contains "AC6.1 merges PR 12: PUT repos/o/r/pulls/12/merge" "$L" "repos/o/r/pulls/12/merge"
 assert_contains "AC6.1 merge uses merge_method=merge" "$L" "merge_method=merge"
 assert_contains "AC6.1 merge deletes the branch: DELETE repos/o/r/git/refs/heads/feat/x" "$(del_lines)" "repos/o/r/git/refs/heads/feat/x"
-assert_eq "AC2.1 --yes: no release.sh --dry-run call at all" "0" "$(logged '^release.sh .*--dry-run')"
-assert_eq "AC2.1 --yes: release.sh is called exactly once" "1" "$(logged '^release.sh')"
+assert_eq "R4 --yes: release.sh --dry-run is called exactly once" "1" "$(logged '^release.sh .*--dry-run')"
+assert_eq "R4 --yes: release.sh is called twice (dry run, then real)" "2" "$(logged '^release.sh')"
+assert_eq "R4 --yes: the dry run is 'release.sh v1.2.3 --dry-run'" "1" "$(grep -c '^release.sh v1.2.3 --dry-run' "$FAKE_LOG")"
 SKIPLINE="$(printf '%s\n' "$OUT" | grep '^== ' | grep -i 'dry' | grep -i 'skip')"
-if [ -n "$SKIPLINE" ]; then t_ok "AC2.1 --yes: a '== ' line says the dry run is skipped"; else t_bad "AC2.1 --yes: a '== ' line says the dry run is skipped" "'== ' lines: $(printf '%s\n' "$OUT" | grep '^== ' | tr '\n' '|')"; fi
-assert_eq "AC2.1 --yes: exactly one '== ' line talks about the dry run" "1" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -ci 'dry')"
+if [ -z "$SKIPLINE" ]; then t_ok "R4 --yes: no '== ' line says the dry run is skipped"; else t_bad "R4 --yes: no '== ' line says the dry run is skipped" "'== ' lines: $(printf '%s\n' "$OUT" | grep '^== ' | tr '\n' '|')"; fi
+assert_eq "R4 --yes: exactly one '== ' line talks about the dry run (the dry run step)" "1" "$(printf '%s\n' "$OUT" | grep '^== ' | grep -ci 'dry')"
 assert_eq "AC6.1 real release is exactly 'release.sh v1.2.3', on main with the merge pulled" \
   "release.sh v1.2.3 | branch=main merged=yes" "$(grep '^release.sh' "$FAKE_LOG" | grep -v -- '--dry-run')"
 assert_contains "AC6.1 CI run is looked up by the tag" "$(grep '^gh run list' "$FAKE_LOG" | head -n 1)" "--branch v1.2.3"
@@ -82,13 +83,15 @@ echo "AC6.1 a failing release.sh stops ship.sh with its status"
 fx
 export FAKE_REL_DRY_RC=7
 sh_run 12 v1.2.3 --yes
-assert_rc "AC2.1 --yes never runs the dry run, so a dry run that would fail with 7 does not matter: exit 0" 0
-assert_eq "AC2.1 --yes with a failing dry-run stub: the full flow without dry run" "$FULL_YES" "$(steps)"
+assert_rc "R4 --yes runs the dry run, so a dry run failing with 7 stops ship with 7" 7
+assert_eq "R4 --yes with a failing dry-run stub: stops at the dry run, no real release" "view merge dry" "$(steps)"
+assert_contains "R4 --yes with a failing dry-run stub: says release.sh --dry-run exited 7" "$OUT" "tools/release.sh --dry-run exited 7"
+assert_eq "R4 --yes with a failing dry-run stub: release.sh is called once only (the dry run)" "1" "$(logged '^release.sh')"
 fx
 export FAKE_REL_REAL_RC=5
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 real release failing with 5: ship.sh exits 5" 5
-assert_eq "AC6.1 failing release: no CI wait, no release view, no install" "view merge release" "$(steps)"
+assert_eq "AC6.1 failing release: no CI wait, no release view, no install" "view merge dry release" "$(steps)"
 
 echo "AC6.1 CI and release checks"
 fx
@@ -96,13 +99,13 @@ export FAKE_GH_FAIL="runwatch"
 sh_run 12 v1.2.3 --yes
 assert_rc "AC6.1 failed CI run: exit 1" 1
 assert_contains "AC6.1 failed CI run: the message names the run" "$OUT" "4242"
-assert_eq "AC6.1 failed CI run: no release view, no install" "view merge release runlist runwatch" "$(steps)"
+assert_eq "AC6.1 failed CI run: no release view, no install" "view merge dry release runlist runwatch" "$(steps)"
 fx
 export FAKE_GH_FAIL="relview"
 sh_run 12 v1.2.3 --yes
 if [ "$RC" -ne 0 ]; then t_ok "AC6.1 missing GitHub release: non-zero exit"; else t_bad "AC6.1 missing GitHub release: non-zero exit" "exit $RC; output: $OUT"; fi
 assert_contains "AC6.1 missing release: the message names the tag" "$OUT" "v1.2.3"
-assert_eq "AC6.1 missing release: install is not run" "view merge release runlist runwatch relview" "$(steps)"
+assert_eq "AC6.1 missing release: install is not run" "view merge dry release runlist runwatch relview" "$(steps)"
 fx
 export FAKE_GH_FAIL="merge"
 sh_run 12 v1.2.3 --yes
@@ -129,7 +132,7 @@ for mode in empty null; do
   assert_rc "R1 run list $mode: exit 1" 1
   assert_contains "R1 run list $mode: says no CI run found" "$OUT" "no CI run found"
   assert_contains "R1 run list $mode: names the tag" "$OUT" "v1.2.3"
-  assert_eq "R1 run list $mode: never calls run watch, release view or install" "view merge release runlist" "$(steps)"
+  assert_eq "R1 run list $mode: never calls run watch, release view or install" "view merge dry release runlist" "$(steps)"
   assert_eq "R1 run list $mode: no 'run watch' call at all" "0" "$(logged '^gh run watch')"
   if [ "$(logged '^gh run list')" -ge 2 ]; then t_ok "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)"; else t_bad "R1 run list $mode: retried (PB_SHIP_WAIT_TRIES=2)" "run list calls: $(logged '^gh run list')"; fi
 done
@@ -140,7 +143,7 @@ sh_run 12 v1.2.3 --yes
 assert_rc "R1 gh run list failing: exit 1" 1
 assert_contains "R1 gh run list failing: the gh error is shown, not hidden" "$OUT" "simulated runlist failure"
 assert_contains "R1 gh run list failing: same refusal, no CI run found" "$OUT" "no CI run found"
-assert_eq "R1 gh run list failing: no watch, no release view, no install" "view merge release runlist" "$(steps)"
+assert_eq "R1 gh run list failing: no watch, no release view, no install" "view merge dry release runlist" "$(steps)"
 unset PB_SHIP_WAIT_TRIES PB_SHIP_WAIT_SECS
 
 echo "review round 1: a dirty work tree is refused before anything changes"

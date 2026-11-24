@@ -822,10 +822,10 @@ for id in $(wf_jobs); do
   tv="$(wf_timeout "$id")"
   case "$tv" in '' | *[!0123456789]*) t_bad "v22.2 AC2.2 job $id has a numeric timeout-minutes" "value: [$tv]" ;; *) t_ok "v22.2 AC2.2 job $id has a numeric timeout-minutes ($tv)" ;; esac
 done
-assert_eq 'v22.2 AC2.2 the test job (ubuntu) has timeout-minutes 20' "20" "$(wf_timeout "${MAIN:-__none__}")"
-assert_eq 'v22.2 AC2.2 windows-shard has timeout-minutes 20' "20" "$(wf_timeout "${SHARD:-__none__}")"
+assert_eq 'v22.2 AC2.2 the test job (ubuntu) has timeout-minutes 30' "30" "$(wf_timeout "${MAIN:-__none__}")"
+assert_eq 'v22.2 AC2.2 windows-shard has timeout-minutes 30' "30" "$(wf_timeout "${SHARD:-__none__}")"
 assert_eq 'v22.2 AC2.2 the aggregator (test (windows-latest)) has timeout-minutes 5' "5" "$(wf_timeout "${AGG:-__none__}")"
-assert_eq 'v0.24.21 AC1 macos-shard has timeout-minutes 20 (the old macOS job limit)' "20" "$(wf_timeout "${MACSHARD:-__none__}")"
+assert_eq 'v0.24.21 AC1 macos-shard has timeout-minutes 30 (v0.38 R5, was 20)' "30" "$(wf_timeout "${MACSHARD:-__none__}")"
 assert_eq 'v0.24.21 AC1 the aggregator (test (macos-latest)) has timeout-minutes 5' "5" "$(wf_timeout "${MACAGG:-__none__}")"
 assert_eq 'v22.2 AC2.2 main-ci has timeout-minutes 30' "30" "$(wf_timeout main-ci)"
 assert_eq 'v22.2 AC2.2 release has timeout-minutes 10' "10" "$(wf_timeout release)"

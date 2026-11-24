@@ -170,7 +170,7 @@ pty_block() {
   fx
   pty_ship -- 12 v1.2.3 --yes
   assert_rc "AC6.1 --yes on a terminal: exit 0 without any answer" 0
-  assert_eq "AC2.1 --yes on a terminal: no dry run either" "$FULL_YES" "$(steps)"
+  assert_eq "AC2.1 --yes on a terminal: the dry run runs too" "$FULL_YES" "$(steps)"
   assert_not_contains "AC6.1 --yes on a terminal: no question is printed" "$OUT" "[y/N]"
   fx
   export FAKE_GH_STATE=MERGED

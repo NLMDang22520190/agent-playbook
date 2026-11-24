@@ -170,12 +170,12 @@ else
   t_skip 12 "no pseudo-terminal (python3 pty) for the ship questions"
 fi
 
-echo "AC11 ship --yes: one release.sh run, so one gate check on HEAD"
+echo "AC11 ship --yes: the dry run and the real run, one gate check on HEAD (the real run reuses the dry run result)"
 fx_real_release
 sh_run 12 v1.2.3 --yes
 assert_rc "AC11 ship --yes -> exit 0" 0
-assert_eq "AC11 ship --yes: release.sh asked the gate once" "1" "$(release_gate_calls)"
+assert_eq "AC11 ship --yes: release.sh (dry run then real) asked the gate once" "1" "$(release_gate_calls)"
 assert_eq "AC11 ship --yes: no sha checked twice" "" "$(dup_shas)"
-assert_not_contains "AC11 ship --yes: nothing was cached (a single run)" "$OUT" "cached for"
+assert_contains "AC11 ship --yes: the dry run cached the gate, so the real run prints 'cached for'" "$OUT" "cached for"
 
 t_summary

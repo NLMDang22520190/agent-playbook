@@ -109,7 +109,7 @@ merged_on_main
 export FAKE_REL_REAL_RC=5
 sh_run 12 v1.2.3 --yes
 assert_rc "AC2.2 MERGED: a failing release.sh (5) still stops ship with its status" 5
-assert_eq "AC2.2 MERGED with a failing release: nothing after it" "view release" "$(steps)"
+assert_eq "AC2.2 MERGED with a failing release: nothing after it" "view dry release" "$(steps)"
 
 echo "AC2.2 refused: MERGED but the merge commit is not on origin/main, or no merge commit; CLOSED"
 fx

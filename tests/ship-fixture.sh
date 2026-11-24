@@ -382,8 +382,8 @@ steps() {
 }
 logged() { grep -c -- "$1" "$FAKE_LOG" 2>/dev/null || true; }
 FULL="view merge dry release runlist runwatch relview install"          # with the questions: the dry run is kept
-FULL_YES="view merge release runlist runwatch relview install"          # --yes: the dry run is skipped (v0.14.0 AC2.1)
-MERGED_YES="view release runlist runwatch relview install"              # PR already merged (v0.17.0 AC2.2), --yes: no merge call
+FULL_YES="view merge dry release runlist runwatch relview install"      # --yes: the dry run still runs (v0.38 R4)
+MERGED_YES="view dry release runlist runwatch relview install"          # PR already merged (v0.17.0 AC2.2), --yes: no merge call, the dry run still runs (v0.38 R4)
 MERGED_Q="view dry release runlist runwatch relview install"            # PR already merged, with the questions: the dry run stays
 AUTO_MERGE_CALL="gh pr merge 12 --auto --merge --delete-branch"
 # merged_on_main -> the PR is MERGED and its merge commit ($MC) is a new commit on origin's main, made through the work
