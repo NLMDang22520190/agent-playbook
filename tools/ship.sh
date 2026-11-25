@@ -220,7 +220,7 @@ main() {
   step "release $tag (dry run)"
   bash tools/release.sh "$tag" --dry-run; rc=$?
   [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh --dry-run exited $rc" >&2; exit "$rc"; }
-  [ "$yes" = 1 ] || ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
+  ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
   step "release $tag"
   bash tools/release.sh "$tag"; rc=$?
   [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh exited $rc" >&2; exit "$rc"; }
