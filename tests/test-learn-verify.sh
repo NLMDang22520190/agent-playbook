@@ -574,5 +574,106 @@ has "AC16c a wrong entry still leads to retire" "$RF" '(wrong|incorrect|no longe
 has "AC16c commands wait for the user's approval of each item" "$RF" "Never run an item's commands until the user approves that item"
 assert_eq "AC16d review.md never says 'Verified' in capitals" "0" "$(grep -cF 'Verified' "$RV" || true)"
 
+echo "GAP gap tests from the S3 mutation run"
+# (a) replace mode on a CRLF file keeps CRLF on the replaced line
+one1; vr 2026-03-01 verify L-0001; crlf "$F"
+vr 2026-11-10 verify L-0001
+assert_eq "GAP-a CRLF replace: exit 0" "0|verified L-0001" "$VRC|$VO"
+assert_eq "GAP-a CRLF replace: the replaced line ends with CR" "1" "$(grep -c "^- Verified: 2026-11-10${CR}\$" "$F" || true)"
+assert_eq "GAP-a CRLF replace: every line still ends with CR" "$(nlines "$F")" "$(grep -c "${CR}\$" "$F" || true)"
+assert_eq "GAP-a CRLF replace: the old date is gone" "0" "$(cnt '2026-03-01' "$F")"
+# (b) L-00010 next to L-0001
+one1
+printf '\n### L-00010 · 2026-01-02 · Ten\n- Status: active\n- Rule: R10\n- Scope: project-wide\n- Role: all\n' >> "$F"
+snap
+vr 2026-11-10 verify L-0001
+assert_eq "GAP-b verify L-0001 beside L-00010: exit 0" "0|verified L-0001" "$VRC|$VO"
+assert_eq "GAP-b L-00010 block is unchanged" "$(blk L-00010 "$VS/before" | cksum)" "$(blk L-00010 | cksum)"
+assert_eq "GAP-b exactly one Verified line in the file" "1" "$(cnt '^- Verified:' "$F")"
+snap
+vr 2026-11-10 verify L-0010
+assert_eq "GAP-b verify L-0010 does not match L-00010: exit 2, no such entry" "2|error: no such entry: L-0010" "$VRC|$VE"
+assert_eq "GAP-b verify L-0010 leaves the file unchanged" "same" "$(same "$(ck "$VS/before")" "$(ck "$F")")"
+# (c) real calendar dates (leap years)
+one1; snap
+vr 2000-02-29 verify L-0001
+assert_eq "GAP-c verify on 2000-02-29 (leap year) is accepted" "0|verified L-0001|1" "$VRC|$VO|$(cnt '^- Verified: 2000-02-29$' "$F")"
+one1; snap
+vr 2100-02-29 verify L-0001
+assert_eq "GAP-c verify on 2100-02-29 (not a leap year): exit 2" "2" "$VRC"
+assert_eq "GAP-c verify on 2100-02-29: names the date, file unchanged, stdout empty" "1||same" "$(printf '%s\n' "$VE" | grep -c 'invalid PLAYBOOK_DATE: 2100-02-29')|$VO|$(same "$(ck "$VS/before")" "$(ck "$F")")"
+stl 2000-02-29
+assert_eq "GAP-c stale on 2000-02-29 is accepted (exit 0)" "0" "$SRC"
+stl 2100-02-29
+assert_eq "GAP-c stale on 2100-02-29: exit 2" "2" "$SRC"
+assert_eq "GAP-c stale on 2100-02-29: names the date, stdout empty" "1|" "$(printf '%s\n' "$SE" | grep -c 'invalid PLAYBOOK_DATE: 2100-02-29')|$SO"
+# (d) D14(b): "- Status: activeXYZ" counts as active
+one1
+awk '/^- Status: active$/ { print "- Status: activeXYZ"; next } { print }' "$F" > "$VS/sx" && cat "$VS/sx" > "$F"
+vr 2026-11-10 verify L-0001
+assert_eq "GAP-d Status: activeXYZ is active for verify: exit 0" "0|verified L-0001" "$VRC|$VO"
+assert_eq "GAP-d the Status line is untouched" "1" "$(cnt '^- Status: activeXYZ$' "$F")"
+# (e) duplicate Role lines: the first one is the anchor
+one1
+insafter L-0001 '- Role:' '- Role: tester'
+vr 2026-11-10 verify L-0001
+assert_eq "GAP-e duplicate Role: exit 0" "0|verified L-0001" "$VRC|$VO"
+assert_eq "GAP-e the Verified line follows the FIRST Role line and precedes the second" "- Role: all|- Verified: 2026-11-10|- Role: tester" "$(blk L-0001 | awk '/^- Verified:/ { print prev "|" $0; getline; print "|" $0; exit } { prev = $0 }' | tr -d '\n')"
+# (f) CRLF check with well-formed Verified lines: no Verified problem
+one1; vr 2026-11-10 verify L-0001; crlf "$F"
+CKV
+assert_eq "GAP-f CRLF file with a well-formed Verified line: no malformed-Verified problem" "0" "$(printf '%s\n' "$CKO" | grep -c 'malformed Verified' || true)"
+# (g) a failing mktemp
+one1; snap
+BADT="$VS/no-such-dir/x"
+if TMPDIR="$BADT" mktemp "$BADT/pblearn.XXXXXX" >/dev/null 2>&1; then
+  t_skip 3 "GAP-g mktemp cannot fail here"
+else
+  VO="$(PLAYBOOK_DATE=2026-11-10 TMPDIR="$BADT" bash "$LEARN" verify L-0001 2>"$ERRF")"; VRC=$?; VE="$(cat "$ERRF")"
+  assert_eq "GAP-g failing mktemp: exit 3, 'mktemp failed'" "3|error: mktemp failed" "$VRC|$(printf '%s\n' "$VE" | tail -n 1)"
+  assert_eq "GAP-g failing mktemp: stdout empty, file unchanged" "|same" "$VO|$(same "$(ck "$VS/before")" "$(ck "$F")")"
+  assert_eq "GAP-g failing mktemp: nothing created in the bad TMPDIR parent" "0" "$(ls -A "$VS/no-such-dir" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+# (h) race guard: the file changes between the read phase and the write phase; phase 2 must not overwrite a line
+#     that is not the expected anchor. The shim awk mutates the file right after the read-phase awk call returns.
+RSTUB="$(mk_tmp)"; RCNT="$RSTUB/count"
+cat > "$RSTUB/awk" <<'EOS'
+#!/bin/sh
+echo x >> "$AWKCOUNT"
+n=$(wc -l < "$AWKCOUNT" | tr -d ' ')
+"$REALAWK" "$@"
+rc=$?
+if [ -n "${MUTAT:-}" ] && [ "$n" = "$MUTAT" ]; then
+  "$REALAWK" '/^### L-0001 / { print "<!-- raced -->" } { print }' "$RACEF" > "$RACEF.mut" && cat "$RACEF.mut" > "$RACEF" && rm -f "$RACEF.mut"
+fi
+exit $rc
+EOS
+chmod +x "$RSTUB/awk" 2>/dev/null
+racerun() { # MUTAT args... ; sets VO VE VRC NCALLS
+  local m="$1"; shift; : > "$RCNT"
+  VO="$(PATH="$RSTUB:$PATH" AWKCOUNT="$RCNT" REALAWK="$REALAWK" MUTAT="$m" RACEF="$PWD/$F" PLAYBOOK_DATE=2026-11-10 TMPDIR="$VT" bash "$LEARN" "$@" 2>"$ERRF")"; VRC=$?
+  VE="$(cat "$ERRF")"; NCALLS="$(nlines "$RCNT")"
+}
+: > "$RCNT"; PATH="$RSTUB:$PATH" AWKCOUNT="$RCNT" REALAWK="$REALAWK" awk 'BEGIN{exit 0}' 2>/dev/null
+if [ "$(nlines "$RCNT")" -gt 0 ]; then
+  one1; vr 2026-03-01 verify L-0001   # replace mode: the file now has a Verified line
+  snap
+  racerun "" verify L-0099; RP="$NCALLS"
+  racerun "" verify L-0001; RC2="$NCALLS"; cp "$VS/before" "$F"
+  if [ "$RC2" -eq "$((RP + 1))" ]; then
+    racerun "$RP" verify L-0001
+    "$REALAWK" '/^### L-0001 / { print "<!-- raced -->" } { print }' "$VS/before" > "$VS/raced"
+    assert_eq "GAP-h raced file (replace mode): verify exits 3" "3" "$VRC"
+    assert_eq "GAP-h raced file: stdout has no 'verified'" "" "$VO"
+    assert_eq "GAP-h raced file: only the mutation's line differs, no Role/Status line overwritten" "$(ck "$VS/raced")" "$(ck "$F")"
+    assert_eq "GAP-h raced file: the Role line and the Status line are still there" "1|1" "$(cnt '^- Role: all$' "$F")|$(cnt '^- Status: active$' "$F")"
+    assert_eq "GAP-h raced file: no temp file left" "empty" "$(vtmp)"
+  else
+    t_skip 5 "GAP-h awk call counts differ ($RP read-phase calls, $RC2 for a full run)"
+  fi
+else
+  t_skip 5 "GAP-h a stub awk cannot be run through PATH here"
+fi
+
 cd "$PB_ROOT" || exit 3
 t_summary
