@@ -10,8 +10,10 @@
 #                              when the hook injects only some of the active entries; the exit code ignores the warning)
 #   learn.sh checklist ROLE   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
 #                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
+#   learn.sh stale [--days N] [--fail]   (active entries older than N days (default 180) and/or whose path-like scope
+#                              matches no tracked file, one line each, then a summary; read-only; --fail: exit 1 when any listed)
 # Exit: 0 ok | 1 check failed | 2 usage/validation | 3 environment | 4 duplicate | 5 at capacity
-# Env: LEARN_MAX_ENTRIES (default 40 active), LEARN_MAX_LINES (default 250), PLAYBOOK_DATE (tests)
+# Env: LEARN_MAX_ENTRIES (default 40 active), LEARN_MAX_LINES (default 250), PLAYBOOK_DATE (tests), learn_stale_days (conf, default 180)
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -199,6 +201,111 @@ case "$cmd" in
     echo "retired $id"
     ;;
 
+  stale)
+    # Read-only. Differences from other commands, on purpose: an entry is active when its FIRST "- Status:" line starts
+    # with "- Status: active" (so A can differ from the per-line "N active" of `check`); the scope is taken from the FIRST
+    # "- Scope:" line of the entry (`checklist` takes the last one).
+    sdays=""; sfail=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --fail) sfail=1 ;;
+        --days)
+          [ $# -ge 2 ] || pb_die "--days needs a value (a positive integer)" 2
+          sdays="$2"
+          case "$sdays" in "" | *[!0-9]* | 0*) pb_die "--days must be a positive integer without sign or leading zero: $sdays" 2 ;; esac
+          [ "${#sdays}" -le 6 ] || pb_die "--days is too large: $sdays" 2
+          shift ;;
+        *) pb_die "unknown option: $1 (usage: learn.sh stale [--days N] [--fail])" 2 ;;
+      esac
+      shift
+    done
+    [ -f "$FILE" ] || pb_die "$REL not found" 2
+    if [ -z "$sdays" ]; then
+      sdays="$(pb_conf_get learn_stale_days 180)"
+      case "$sdays" in "" | *[!0-9]* | 0*) pb_die "invalid learn_stale_days: $sdays (a positive integer)" 2 ;; esac
+      [ "${#sdays}" -le 6 ] || pb_die "invalid learn_stale_days: $sdays (too large)" 2
+    fi
+    # one record per active entry: AGE<TAB>SCOPE<TAB>HEADING (AGE is "-" when the heading date is unusable)
+    srecs="$(TODAY_S="$TODAY" awk '
+      function dnum(s,   y, m, d, dim, leap, era, yoe, doy) {
+        if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) return -1
+        y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+        if (m < 1 || m > 12 || d < 1) return -1
+        leap = ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)
+        dim = (m == 2) ? (leap ? 29 : 28) : ((m == 4 || m == 6 || m == 9 || m == 11) ? 30 : 31)
+        if (d > dim) return -1
+        if (m <= 2) y--
+        y += 400
+        era = int(y / 400); yoe = y - era * 400
+        doy = int((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1
+        return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
+      }
+      function flush() {
+        if (inent && active) printf "%s\t%s\t%s\n", age, scope, rest
+        inent = 0
+      }
+      BEGIN {
+        sep = " · "; sl = length(sep)
+        tdays = dnum(ENVIRON["TODAY_S"])
+        if (tdays < 0) { bad = 1; exit 3 }
+      }
+      { sub(/\r$/, "") }
+      /^### L-[0-9][0-9][0-9][0-9] / {
+        flush(); inent = 1; active = 0; seen = 0; hasscope = 0; scope = "project-wide"; age = "-"
+        rest = substr($0, 5)
+        if (substr(rest, 7, sl) == sep && substr(rest, 17 + sl, sl) == sep && length(rest) > 16 + 2 * sl) {
+          n = dnum(substr(rest, 7 + sl, 10))
+          if (n >= 0) age = tdays - n
+        }
+        next
+      }
+      /^### / { flush(); next }
+      inent && !seen && /^- Status:/ { seen = 1; if ($0 ~ /^- Status: active/) active = 1; next }
+      inent && !hasscope && /^- Scope:/ {
+        hasscope = 1
+        if (substr($0, 1, 9) == "- Scope: " && length($0) > 9) { scope = substr($0, 10); gsub(/\t/, " ", scope) }
+        next
+      }
+      END { if (bad) exit 3; flush() }
+    ' "$FILE")" || pb_die "invalid PLAYBOOK_DATE: $TODAY (expected a real date, YYYY-MM-DD)" 2
+    srepo=0
+    if [ "$( (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null) )" = true ]; then srepo=1; fi
+    sout=""; sk=0; sa=0
+    if [ -n "$srecs" ]; then
+      while IFS="$(printf '\t')" read -r sage sscope shead; do
+        sa=$((sa + 1))
+        sreason=""
+        if [ "$sage" != "-" ] && [ "$sage" -gt "$sdays" ]; then sreason="$sage days old"; fi
+        if [ "$srepo" -eq 1 ]; then
+          slike=1
+          case "$sscope" in
+            *[[:space:]]* | *\\* | :* | /* | [A-Za-z]:*) slike=0 ;;
+            .. | ../* | */.. | */../*) slike=0 ;;
+            */* | *\** | *.*) ;;
+            *) slike=0 ;;
+          esac
+          if [ "$slike" -eq 1 ]; then
+            sls="$( (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C "$ROOT" ls-files -- "$sscope" 2>/dev/null) )" && src=0 || src=1
+            if [ "$src" -eq 0 ] && [ -z "$sls" ]; then
+              sreason="${sreason:+$sreason; }scope matches no tracked file"
+            fi
+          fi
+        fi
+        if [ -n "$sreason" ]; then
+          sk=$((sk + 1))
+          sout="$sout$shead: $sreason
+"
+        fi
+      done <<EOF
+$srecs
+EOF
+    fi
+    [ -z "$sout" ] || printf '%s' "$sout"
+    [ "$srepo" -eq 1 ] || echo "scope check skipped: not a git repository"
+    echo "stale: $sk of $sa active entries listed (older than $sdays days)"
+    if [ "$sfail" -eq 1 ] && [ "$sk" -gt 0 ]; then exit 1; fi
+    ;;
+
   trust | untrust)
     [ $# -le 1 ] || pb_die "usage: learn.sh $cmd [DIR]" 2
     dir="$(trust_dir "${1:-$ROOT}")"
@@ -322,6 +429,6 @@ EOF
     if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no learnings for $crole"; fi
     ;;
   *)
-    pb_die "usage: learn.sh init|add|retire|check|checklist|trust|untrust|trusted" 2
+    pb_die "usage: learn.sh init|add|retire|check|checklist|stale|trust|untrust|trusted" 2
     ;;
 esac
