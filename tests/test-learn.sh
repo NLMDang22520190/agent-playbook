@@ -935,6 +935,79 @@ st_e L-0003 "$SD" "Fresh between" project-wide
 st_e L-0001 2026-02-01 "First last" project-wide
 sst
 assert_eq "Q9 S2 AC10 file order (L-0005 before L-0001); the fresh entry in between is absent (Feb 1 to Nov 17 is 289 days)" "$(printf 'L-0005 · 2026-01-01 · Fifth first: 320 days old\nL-0001 · 2026-02-01 · First last: 289 days old\nstale: 2 of 3 active entries listed (older than 180 days)')" "$SOUT"
+echo "Q9 S2 review gaps: leap rule on entry dates"
+st_fix
+st_e L-0001 2000-02-29 "Leap 2000" project-wide
+sst_at 2000-03-02 --days 1
+assert_eq "Q9 S2 gap: entry 2000-02-29 is a valid date and ages (2000-02-29 to 2000-03-02 is 2 days)" "$(printf 'L-0001 · 2000-02-29 · Leap 2000: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 1900-02-29 "Not leap 1900" scripts/nope.sh
+sst_at 1900-03-02 --days 1
+assert_eq "Q9 S2 gap: entry 1900-02-29 is invalid: not aged, still scope-checked and listed" "$(printf 'L-0001 · 1900-02-29 · Not leap 1900: %s\nstale: 1 of 1 active entries listed (older than 1 days)' "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr" "0|" "$SRC|$SERR"
+
+echo "Q9 S2 review gaps: path-like scopes that are excluded from the check"
+st_fix
+st_e L-0001 "$SD" "x1" ':(top)scripts/nope.sh'
+st_e L-0002 "$SD" "x2" ../scripts/nope.sh
+st_e L-0003 "$SD" "x3" /abs/x.sh
+st_e L-0004 "$SD" "x4" C:x/y.sh
+st_e L-0005 "$SD" "x5" a/../nope.sh
+st_e L-0006 "$SD" "x6" ..
+st_e L-0007 "$SD" "x7" "$(printf 'tab\tinside scripts/nope.sh')"
+st_e L-0008 "$SD" "x8" "scripts/nope.sh "
+sst
+assert_eq "Q9 S2 gap: magic pathspec, .., absolute, drive, a/../, '..', tab and trailing space are never flagged (8 entries)" "stale: 0 of 8 active entries listed (older than 180 days)" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr" "0|" "$SRC|$SERR"
+
+echo "Q9 S2 review gaps: scope starting with a dash"
+st_fix
+st_e L-0001 "$SD" "Dash" -x/y.sh
+sst
+assert_eq "Q9 S2 gap: scope -x/y.sh is checked (not taken as an option) and matches no tracked file" "$(printf 'L-0001 · %s · Dash: %s\nstale: 1 of 1 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... empty stderr" "" "$SERR"
+
+echo "Q9 S2 review gaps: future date with a small threshold"
+st_fix
+st_e L-0001 2027-01-01 "Future" project-wide
+sst --days 10
+assert_eq "Q9 S2 gap: negative age is not listed even with --days 10" "stale: 0 of 1 active entries listed (older than 10 days)" "$SOUT"
+
+echo "Q9 S2 review gaps: conf values, Scope without a space, ### note after an entry"
+st_fix
+st_e L-0001 2026-01-01 "Old" project-wide
+for BADC in 05 1234567; do
+  printf 'learn_stale_days=%s\n' "$BADC" > .agents/playbook.conf
+  sst
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: exit 2" "2" "$SRC"
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: stdout empty" "" "$SOUT"
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: exactly one stderr line, an 'error: ' line" "1|1" "$(printf '%s\n' "$SERR" | grep -c '')|$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+done
+rm -f .agents/playbook.conf
+st_fix
+st_e L-0001 2026-01-01 "No space" @none active "- Scope:nope/x.sh"
+sst
+assert_eq "Q9 S2 gap: '- Scope:nope/x.sh' (no space) is project-wide: age only, no scope flag" "$(printf 'L-0001 · 2026-01-01 · No space: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+st_e L-0001 "$SD" "Before note" scripts/nope.sh
+printf '\n### note\n- Rule: r\n- Why: w\n' >> "$F"
+sst
+assert_eq "Q9 S2 gap: a '### note' block without Status/Scope after an active entry changes nothing (A = 1, entry still flagged)" "$(printf 'L-0001 · %s · Before note: %s\nstale: 1 of 1 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... empty stderr" "" "$SERR"
+
+echo "Q9 S2 review gaps: bad dates and malformed headings leave stderr empty"
+st_fix
+st_e L-0001 2026-13-40 "Bad month" scripts/nope.sh
+st_e L-0002 2026-02-29 "Bad day" scripts/nope.sh
+sst_at 2024-03-02 --days 1
+assert_eq "Q9 S2 gap AC8 bad dates: stderr empty" "" "$SERR"
+st_fix
+printf '\n### L-0001 · 2026-01-01 - dash title\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+printf '\n### L-0002 · 2026-1-01 · short date\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+printf '\n### L-0003 · 2026-01-011 · long date\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+sst --days 1
+assert_eq "Q9 S2 gap: wrong second separator or wrong-length date is not aged (scope reason only, raw heading text)" "$(printf 'L-0001 · 2026-01-01 - dash title: %s\nL-0002 · 2026-1-01 · short date: %s\nL-0003 · 2026-01-011 · long date: %s\nstale: 3 of 3 active entries listed (older than 1 days)' "$NOSCOPE" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr (no integer-expression error)" "0|" "$SRC|$SERR"
 cd "$PB_ROOT" || exit 3
 
 t_summary
