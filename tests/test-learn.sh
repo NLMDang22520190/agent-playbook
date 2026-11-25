@@ -1125,6 +1125,27 @@ assert_contains "Q9 S4 AC1 the usage line names candidate" "$OUT" "candidate"
 assert_contains "Q9 S4 AC1 the usage line still names stale" "$OUT" "stale"
 assert_contains "Q9 S4 AC1 the exact command list" "$OUT" "init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted"
 
+echo "Q9 S3 AC1: characterization of checklist, stale and check (green before and after the verify slice)"
+Z1="$(mk_tmp)"; mk_repo "$Z1"; cd "$Z1" || exit 3
+(
+  unset LEARN_MAX_ENTRIES LEARN_MAX_LINES
+  export PLAYBOOK_DATE=2026-01-01
+  bash "$LEARN" init >/dev/null 2>&1
+  bash "$LEARN" add --title T1 --rule R1 --why w --evidence e --source user --scope 'src/**' --role tester >/dev/null 2>&1
+  bash "$LEARN" add --title T2 --rule R2 --why w --evidence e --source user >/dev/null 2>&1
+  printf '\n### L-0003 · 2026-02-02 · T3\n- Status: active\n- Rule: R3\n- Why: w\n- Evidence: e\n- Source: user\n- Scope: project-wide\n' >> .agents/LEARNINGS.md
+  bash "$LEARN" add --title T4 --rule R4 --why w --evidence e --source user >/dev/null 2>&1
+  bash "$LEARN" retire L-0004 --reason gone >/dev/null 2>&1
+)
+ZCL() { ( unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; bash "$LEARN" checklist "$@" 2>/dev/null ); }
+assert_eq "Q9 S3 AC1 checklist tester: three exact lines" "$(printf -- '- [ ] R1 (L-0001, scope: src/**)\n- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL tester)"
+assert_eq "Q9 S3 AC1 checklist implementer: R2 and R3" "$(printf -- '- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL implementer)"
+assert_eq "Q9 S3 AC1 checklist reviewer: R2 and R3" "$(printf -- '- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL reviewer)"
+ZST="$(unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; PLAYBOOK_DATE=2026-11-17 bash "$LEARN" stale 2>/dev/null)"
+assert_eq "Q9 S3 AC1 stale: three 'N days old' lines and the exact summary" "$(printf 'L-0001 · 2026-01-01 · T1: 320 days old\nL-0002 · 2026-01-01 · T2: 320 days old\nL-0003 · 2026-02-02 · T3: 288 days old\nstale: 3 of 3 active entries listed (older than 180 days)')" "$ZST"
+ZCK="$(unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; bash "$LEARN" check 2>&1)"; ZCRC=$?
+assert_eq "Q9 S3 AC1 check: exact summary line, exit 0" "0|learnings: 3 active, 1 retired, 46 lines (.agents/LEARNINGS.md); entry lines: 26 active, 8 retired" "$ZCRC|$ZCK"
+
 cd "$PB_ROOT" || exit 3
 
 t_summary

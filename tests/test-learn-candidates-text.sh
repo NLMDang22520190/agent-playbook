@@ -109,7 +109,7 @@ c "AC18 non-interactive" 'non-interactive'
 cF "AC18 promote exit 4: drop the candidate, retiring does not help" 'For exit 4, drop the candidate: retiring does not help, because retired rules still count as duplicates.'
 cF "AC18 promote exit 5: retire or merge with the user's approval" "For exit 5, retire or merge an entry with the user's approval, then promote again."
 cn "AC18 no longer tells to retire an entry to fix a failed promote in general" 'Fix the cause \(retire an entry'
-cn "AC18 never says 'verify L-' (S3 does not exist)" 'verify L-'
+cn "AC18 never says 'verify L-' (candidates carry no Verified)" 'verify L-'
 if [ -f "$CM" ]; then
   if grep -qF 'Verified' "$CM"; then t_bad "AC18 never says 'Verified' (case-sensitive)" "found"; else t_ok "AC18 never says 'Verified' (case-sensitive)"; fi
   assert_eq "AC18 never names review.md" "0" "$(grep -c 'review\.md' "$CM")"
@@ -120,9 +120,9 @@ fi
 cn "AC18 never allows promote or drop in a non-interactive run" '(run|use) (promote|drop).{0,60}non-interactive'
 cn "AC18 never allows re-adding a retired rule" 're-?add (a |the )?retired'
 if grep -qE '^  verify\)' "$LEARN"; then
-  t_bad "AC18 learn.sh has a verify branch: S3 must update this test (and candidates.md rules about Verified)" "S3 owns this"
+  t_ok "AC18 S3 landed: learn.sh has verify; candidates.md still never mentions it"
 else
-  t_ok "AC18 no verify branch in learn.sh yet (S3 must update this test when it adds one)"
+  t_bad "AC18 S3 expects a verify branch in learn.sh" "missing"
 fi
 
 cd "$PB_ROOT" || exit 3

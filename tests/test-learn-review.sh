@@ -89,7 +89,7 @@ echo "AC6 input unchanged (text)"
 r "AC6 LEARNINGS.md stays unchanged" 'LEARNINGS\.md[^.]{0,120}(unchanged|not (edited|modified|written)|byte-identical)|(unchanged|not (edited|modified|written)|byte-identical)[^.]{0,120}LEARNINGS\.md'
 r "AC6 names cksum or byte-identical" 'cksum|byte-identical'
 r "AC6 no write commands while reviewing" '(no|never).{0,60}(init|add|retire|trust|untrust).{0,60}(while|during).{0,20}review'
-rF "AC6 exact no-write sentence" 'Run no init, add, retire, trust or untrust while you review.'
+rF "AC6 exact no-write sentence" 'Run no init, add, retire, verify, trust or untrust while you review.'
 rn "AC6 review never calls init/trust/untrust" 'bash \$L (init|trust|untrust)'
 rn "AC6 checklist never called with all" '\$L checklist all'
 r "AC6 checklist is called with a role" '\$L checklist (tester|implementer|reviewer|<role>)'
@@ -143,14 +143,11 @@ rn "AC8 non-interactive run does not ask the user" 'non-interactive.{0,160}ask t
 rF "AC8 exact non-interactive phrase" 'In a non-interactive run (no user can answer)'
 rF "AC8 exact no-approval sentence" 'The proposal file is not a learning entry, so writing it needs no approval.'
 
-echo "AC9 VERIFY stopgap (S3 must change this test when it adds verify)"
-if grep -qE '^  verify\)' "$LEARN"; then
-  r "AC9 learn.sh has verify, so review.md uses verify L-" 'verify L-'
-else
-  rn "AC9 no verify branch in learn.sh, so no 'verify L-' in review.md" 'verify L-'
-  rn "AC9 no verify branch in learn.sh, so no \$L verify in review.md" '\$L verify'
-fi
-r "AC9 stopgap wording" 'no (learn\.sh )?verify command|until.{0,60}verify'
+echo "AC9 VERIFY (S3 landed)"
+if grep -qE '^  verify\)' "$LEARN"; then t_ok "AC9 learn.sh has a verify branch"; else t_bad "AC9 S3 landed: learn.sh must have a verify branch" "missing"; fi
+r "AC9 review.md uses verify L-" 'verify L-'
+r "AC9 review.md names the command" '\$L verify L-'
+rn "AC9 no stopgap wording" 'no (learn\.sh )?verify command|verify command exists yet'
 r "AC9 VERIFY has a read-only check" 'git ls-files|grep'
 r "AC9 VERIFY wrong outcome leads to retire" '(wrong|incorrect|no longer (true|valid|holds)|outdated|false).{0,200}retire'
 
