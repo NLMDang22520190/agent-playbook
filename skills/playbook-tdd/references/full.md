@@ -51,6 +51,41 @@ Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the l
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
 Release speed rules (review-round cap, introduced vs pre-existing findings, per-item weight, slow runs once) are in `references/release.md`.
 
+## Slice size
+A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
+that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
+CLI flag and a file format, or two endpoints).
+
+### Phase 4: Close-out (orchestrator)
+- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change (sub-agents
+  ran focused tests only). If it fails, the work goes back
+  into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
+- Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
+  --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
+  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess) and `--rework 0` on
+  the first pass. Then put `cost.sh summary` into the
+  final report's Cost section.
+- `git diff --stat <base>..HEAD`, which must match the spec scope.
+- A user-visible change needs the observation named in the always-on rule in AGENTS.global.md (the real observation, as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
+- Fill `templates/final-report.md` as the hand-off report `06-final-report.md`; the template says what each section needs:
+  request coverage, a confidence per AC, review verdict, assumptions, logged defaults, found-not-fixed, [UNVERIFIED],
+  `## Not checked` and `## Pre-mortem`. The Pre-mortem, the Models used line and the Playbook feedback line belong to
+  this report only, not to the PR description. Your reply repeats the Not checked lines and the logged defaults.
+- The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
+- When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
+- Optional: with runs logged by `--task <id>`, `cost.sh calibrate` shows per weight the review majors
+  and rework rounds per task; advice only.
+- Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
+- If a playbook rule, gate or script misfired during the task, capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
+- Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
+
+## Test infrastructure role (opt-in)
+Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
+`test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
+implementer may change. Order: the tester first writes tests that exercise the infra change and sees
+them fail (`check tester --base <sha before the role>`, commit RED); then a different context makes the change and passes
+`role-gate.sh check infra --base $RED`. Without the key, infra files count as tests.
+
 ## Starting roles per harness (`conf.sh get subagents`)
 Resolve each role's model first: `bash ~/.agents/playbook/scripts/role-model.sh <role> --harness <h>`
 (`claude`, `codex` or `opencode`: the harness you run in)

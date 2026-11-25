@@ -22,15 +22,7 @@ production code, except in `none` mode (see `references/full.md`); **Lite** runs
 Mechanical enforcement: `~/.agents/playbook/scripts/role-gate.sh check <role> [--base REF]`.
 Before each role and every pass, record `git rev-parse HEAD` as the role's `--base` (a committing role is judged). The gate runs after every hand-back.
 
-Test infrastructure (test runners, shared test helpers) is a fourth, opt-in role: set the project key
-`test_infra_regex` and matching paths classify as `infra`, which neither the tester nor the
-implementer may change. Order: the tester first writes tests that exercise the infra change and sees
-them fail (`check tester --base <sha before the role>`, commit RED); then a different context makes the change and passes
-`role-gate.sh check infra --base $RED`. Without the key, infra files count as tests.
-
-**Why:** an agent that writes both code and tests writes tests that agree with its own mistakes,
-and a test nobody saw fail proves nothing. Separate contexts plus a git gate make "the tests were
-changed to pass" impossible to miss.
+**Why:** an agent that writes both code and tests writes tests that agree with its own mistakes, and a test nobody saw fail proves nothing. Separate contexts plus a git gate make "the tests were changed to pass" impossible to miss.
 
 New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation spot-check are in
 `references/test-quality.md`.
@@ -40,7 +32,7 @@ New to TDD? Read `references/tdd-guide.md` first. Test quality and the mutation 
 | Weight | Use it when | What runs |
 |---|---|---|
 | **Full** | the change touches hard-to-reverse ground (a change to an existing public API or data shape, migrations, security, money, outward actions), core business logic, or the user asked for it | everything below: separate tester, implementer and reviewer contexts, gates after each hand-back |
-| **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly ≤ 3 production files and ≤ 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
+| **Lite** | small and reversible: a bug fix or behaviour tweak inside one module, roughly <= 3 production files and <= 100 changed lines, nothing from the Full column | the Lite workflow below: one context, still test first and seen failing, gates, evidence, no reviewer sub-agent |
 | **Exempt** | see "Exempt" below | no new tests; existing checks still run when cheap |
 
 Incident, upgrade, migration and debug work, and squashing before a merge: `references/<kind>.md` (incident, upgrade, migration, debug, team) sets the weight and the steps.
@@ -95,11 +87,6 @@ with no Full criterion, ask once before going to Full; headless, stay Lite and l
 permissions, build or deploy settings), generated code that ships, "small" fixes in business logic,
 and anything in the Full column. These are at least Lite.
 
-## Slice size
-A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
-that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
-CLI flag and a file format, or two endpoints).
-
 ## Preconditions
 - git repo with a clean tree or a known baseline (`git status`). With a dirty tree, run `role-gate.sh snapshot` before the first role, pass `--baseline <file>` to every gate and to `tdd-step.sh` (check the digest matches), or commit only the role's paths by hand. Concurrent tasks: `--scope`, see `references/harnesses.md`.
 - Commands known: `conf.sh get test_cmd` (also `lint_cmd`, `typecheck_cmd`). Unknown: detect,
@@ -107,15 +94,17 @@ CLI flag and a file format, or two endpoints).
 - Baseline: run the test command once with `proof-run.sh --label baseline`. Record tests that
   already fail, so nobody gets blamed for them and nobody "fixes" them in passing.
 - `autonomy=ask-before-commit` (default): ask once at the start, "I will create local checkpoint
-  commits (test(red) / feat(green)) on branch X. OK?"
+  commits (test(red) / feat(green)) on branch X. OK?" Do not push or open a PR unless `autonomy=full` or the user asked.
 
 ## Workflow
 
-When the weight is Full, read `references/full.md` first, before Phase 2: it also holds starting roles, resuming and hand-off files.
+When the weight is Full, read `references/full.md` first: it holds Phase 2 to 4 (close-out), Slice size, the opt-in test-infrastructure role, starting roles, resuming and hand-off files. With sub-agents the report has the `**Models used:**` line (`templates/final-report.md`).
+
+At any weight, close out with `git diff --stat <base>..HEAD`, `cost.sh add --weight <Full|Lite>` for each role run and `playbook-learn` for non-obvious lessons (Phase 4 in `references/full.md`).
 
 ### Phase 1: Spec (orchestrator)
 Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, acceptance criteria with
-ids (AC1…) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
+ids (AC1...) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
 constraints, and **slices**, each building on the previous. Nothing goes into the spec that the source did not say.
 
 **Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
@@ -141,29 +130,6 @@ code, in one batched message; for the rest choose a default, log it in `.agents/
 the request was ambiguous. Re-read the AC table before each commit.
 
 Oracle rule: when the request hinges on an ambiguous direction, unit, sign or convention, the spec needs a worked example with a concrete expected result, confirmed by the user or a source document and recorded as an AC that the tests use verbatim; without one, ask (headless: log it in decisions.md as open and label every claim that depends on it [UNVERIFIED] (a test on it: [UNVERIFIED] or Dn)); details: `references/tdd-guide.md#oracle`.
-
-### Phase 4: Close-out (orchestrator)
-- Fresh full run of test, lint and typecheck through `proof-run.sh`, after the last change (sub-agents
-  ran focused tests only). If it fails, the work goes back
-  into a new RED/GREEN round (tester or implementer, as the failure requires); do not report done.
-- Log each role run: `bash ~/.agents/playbook/scripts/cost.sh add --role <role> --tokens <N>
-  --seconds <S> --model <M> --weight <Full|Lite> --phase <spec|red|green|review|fix|release> --rework <N>
-  --majors <N> --task <id>`, with tokens as the harness reports them (`0` if unknown, never a guess) and `--rework 0` on
-  the first pass. Then put `cost.sh summary` into the
-  final report's Cost section.
-- `git diff --stat <base>..HEAD`, which must match the spec scope.
-- A user-visible change needs the observation named in the always-on rule in AGENTS.global.md (the real observation, as in `playbook-proof`); unit tests alone are not enough. If it cannot be run, it goes under "Not checked".
-- Fill `templates/final-report.md` as the hand-off report `06-final-report.md`; the template says what each section needs:
-  request coverage, a confidence per AC, review verdict, assumptions, logged defaults, found-not-fixed, [UNVERIFIED],
-  `## Not checked` and `## Pre-mortem`. The Pre-mortem, the Models used line and the Playbook feedback line belong to
-  this report only, not to the PR description. Your reply repeats the Not checked lines and the logged defaults.
-- The report ENDS with exactly the line `**Playbook feedback:** <captured fb- ids or none>`, copied verbatim from `templates/final-report.md`, never paraphrased, with nothing after it.
-- When sub-agents ran, the report has the line `**Models used:** tester=<m> (<effort>), implementer=..., reviewer=... (Lite: session, one context)`, copied verbatim from `templates/final-report.md` with the models filled in, placed before `## Learnings proposed`; naming the models only in prose is not enough.
-- Optional: with runs logged by `--task <id>`, `cost.sh calibrate` shows per weight the review majors
-  and rework rounds per task; advice only.
-- Propose learnings (skill `playbook-learn`) when something non-obvious went wrong.
-- If a playbook rule, gate or script misfired during the task, capture it with skill `playbook-feedback` before the final report, with no need to ask (capture is local): one line per misfire, with its evidence.
-- Do not push or open a PR unless `autonomy=full` or the user asked; the PR description is the `pr-body.sh` output.
 
 ## When the user says it is wrong
 Do not defend the result and do not patch at once; in a production incident, mitigate first (`references/incident.md`).
