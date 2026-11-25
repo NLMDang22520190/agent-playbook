@@ -253,7 +253,7 @@ r "HARD-A copy wording names --scope and --role" '(copy|copied|carry|carried|tak
 r "HARD-A copied from the source entry" '(source|original) entr[^.]{0,255}--(scope|role)|--(scope|role)[^.]{0,255}(source|original) entr'
 r "HARD-A MERGE copies them only if the sources agree" 'MERGE.{0,255}only if[^.]{0,40}(agree|same|match)|only if[^.]{0,40}(agree|same|match).{0,255}MERGE'
 # (B) the duplicate check runs at proposal time, before the retire, so a failed add cannot strand a retired entry
-r "HARD-B duplicate grep is before the retire" "grep $DUPFL.{0,300}(before|prior to|ahead of)[^.]{0,40}retir|(before|prior to|ahead of)[^.]{0,40}retir.{0,300}grep $DUPFL"
+r "HARD-B duplicate grep is before the retire" "grep $DUPFL.{0,255}(before|prior to|ahead of)[^.]{0,40}retir|(before|prior to|ahead of)[^.]{0,40}retir.{0,255}grep $DUPFL"
 # (C) mutant pins
 r "HARD-C quoting sentence: copied values in single quotes with the '\'' escape" "cop(ied|y)[^.]{0,100}single quotes[^.]{0,100}${QQ}"
 r "HARD-C flagged quote limit is 200, not 2000" '(at most|up to|max)[^.]{0,20}200[^0-9]'
