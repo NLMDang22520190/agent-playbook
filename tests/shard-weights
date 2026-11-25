@@ -189,3 +189,4 @@ test-bsd-check.sh 1
 test-guard-restore-symlink.sh 1
 test-get-bash32.sh 0
 test-lib-tmp.sh 0
+test-learn-review.sh 10
