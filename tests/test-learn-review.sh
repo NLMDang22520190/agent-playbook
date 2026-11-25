@@ -247,6 +247,25 @@ rF "AC17 never re-wrapped" 'never re-wrapped'
 r "AC17 rewrite drops the instruction text" 'drop.{0,60}(instruction|text)|without'
 r "AC17 flagged retire/rewrite still needs approval" '(FLAG|flagged).{0,255}approv'
 
+echo "Hardening: scope and role carry-over, duplicate check order, mutant pins"
+# (A) a REWRITE or MERGE must not reset a scoped, role-specific rule: scope and role are copied into the add
+r "HARD-A copy wording names --scope and --role" '(copy|copied|carry|carried|take|reuse|keep)[^.]{0,100}--(scope|role)[^.]{0,60}--(role|scope)'
+r "HARD-A copied from the source entry" '(source|original) entr[^.]{0,255}--(scope|role)|--(scope|role)[^.]{0,255}(source|original) entr'
+r "HARD-A MERGE copies them only if the sources agree" 'MERGE.{0,255}only if[^.]{0,40}(agree|same|match)|only if[^.]{0,40}(agree|same|match).{0,255}MERGE'
+# (B) the duplicate check runs at proposal time, before the retire, so a failed add cannot strand a retired entry
+r "HARD-B duplicate grep is before the retire" "grep $DUPFL.{0,300}(before|prior to|ahead of)[^.]{0,40}retir|(before|prior to|ahead of)[^.]{0,40}retir.{0,300}grep $DUPFL"
+# (C) mutant pins
+r "HARD-C quoting sentence: copied values in single quotes with the '\'' escape" "cop(ied|y)[^.]{0,100}single quotes[^.]{0,100}${QQ}"
+r "HARD-C flagged quote limit is 200, not 2000" '(at most|up to|max)[^.]{0,20}200[^0-9]'
+r "HARD-C MERGE source rule: user if any, else failure, else review" '--source[^.]{0,60}user[^.]{0,40}(any|if)[^.]{0,40}user[^.]{0,30}else[^.]{0,30}failure[^.]{0,30}else[^.]{0,30}review'
+r "HARD-C merged rule equals a source rule: keep that entry, no add" '(equals|equal to|same as|identical)[^.]{0,80}keep[^.]{0,120}no add'
+r "HARD-C approval sentence: per item, approve all only if said" "(do not|never) run[^.]{0,60}commands[^.]{0,40}until[^.]{0,40}approves? that item[^.]{0,20}unless[^.]{0,60}approve all"
+r "HARD-C REWRITE of a flagged entry drops the instruction text" 'REWRITE (drops?|must drop|omits?)[^.]{0,30}instruction'
+for K in MERGE REWRITE; do
+  if [ -f "$RV" ] && grep -E "^(- |\| |#+ )?\**$K" "$RV" | grep -qiE 'retire.{0,80}(then|before|first).{0,40}add'; then t_ok "HARD-C $K label line says retire, then add"
+  else t_bad "HARD-C $K label line says retire, then add" "no match in the $K label line"; fi
+done
+
 cd "$PB_ROOT" || exit 3
 
 t_summary
