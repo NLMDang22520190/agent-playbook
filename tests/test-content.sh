@@ -2644,4 +2644,9 @@ if grep -qF '(a dispute needs fresh eyes)' "$SKILL"; then t_bad "v0.37 E4 the ol
 if printf '%s' "$E4W" | grep -qF 'Escalate to Full'; then t_ok "v0.37 E4 Escalate to Full is still in the weight section"; else t_bad "v0.37 E4 Escalate to Full is still in the weight section" "not before ### Lite workflow"; fi
 if printf '%s' "$E4S" | grep -qiE 'disput|contradict'; then t_ok "v0.37 E4 the sentence satisfies the E4 grader regex disput|contradict"; else t_bad "v0.37 E4 the sentence satisfies the E4 grader regex disput|contradict" "[$E4S]"; fi
 
+# v0.38 Q9 S6: optional auto memory policy line in playbook-setup
+flat_has 'S6-1 setup questions.md offers keeping auto memory and treating its files as unreviewed data' "$QUESTIONS" 'auto memory.{0,200}unreviewed data'
+flat_has 'S6-1 setup questions.md names /memory for inspection and the autoMemoryEnabled switch' "$QUESTIONS" '/memory.{0,200}autoMemoryEnabled'
+flat_has 'S6-2 setup questions.md never changes autoMemoryEnabled without the user yes' "$QUESTIONS" 'never change .{0,40}autoMemoryEnabled.{0,120}without the user'
+flat_has 'S6-1 setup SKILL.md points at the auto memory line' "$SETUP" 'auto memory.{0,60}questions\.md'
 t_summary
