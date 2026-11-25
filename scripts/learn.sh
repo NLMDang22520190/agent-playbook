@@ -118,7 +118,7 @@ entry_validate() {
 rule_in_file() {
   local norm
   norm="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
-  grep '^- Rule: ' "$1" 2>/dev/null | sed 's/^- Rule: //' | tr '[:upper:]' '[:lower:]' | grep -qxF -- "$norm"
+  grep '^- Rule: ' "$1" 2>/dev/null | sed 's/^- Rule: //' | tr -d '\r' | tr '[:upper:]' '[:lower:]' | grep -qxF -- "$norm"
 }
 # next_id PREFIX FILE: sets NEXT_ID to PREFIX-NNNN (largest heading number + 1); 1 when that would pass 9999
 next_id() {

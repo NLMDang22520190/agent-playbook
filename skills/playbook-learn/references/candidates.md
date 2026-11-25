@@ -35,4 +35,6 @@ Never use a double quote, `$(` or a backtick around candidate text: the shell wo
 2 = validation or usage error, 3 = lock or environment problem, 4 = duplicate rule, 5 = queue full (30 pending) or ids used up.
 For `promote`: 4 = the rule duplicates an entry in LEARNINGS.md, 5 = LEARNINGS.md is at capacity; the candidate stays pending.
 If a lock stays behind and no learn.sh runs, the user removes that lock directory.
-A promote that fails leaves the candidate pending. Fix the cause (retire an entry, edit nothing by hand) or drop it.
+A promote that fails leaves the candidate pending.
+For exit 4, drop the candidate: retiring does not help, because retired rules still count as duplicates.
+For exit 5, retire or merge an entry with the user's approval, then promote again.
