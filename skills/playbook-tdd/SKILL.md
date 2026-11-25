@@ -107,22 +107,14 @@ Write `.agents/handoff/01-spec.md` from `templates/spec.md`: the source, accepta
 ids (AC1...) copied **verbatim** from the source with a source anchor each (quote + where), non-goals,
 constraints, and **slices**, each building on the previous. Nothing goes into the spec that the source did not say.
 
-**Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
-(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from the existing
-code and tests plus the earlier bug reports, not from the source. The first RED covers
-the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
+A change that replaces or rewrites existing logic also needs `## Regression corpus` in the spec (`references/full.md`).
 
 Before the ACs, write `## Understanding` (the request restated in your own words, a scan log with each
 search command, its hit count and the files read, other readings and why this one, in and out of scope) and
 `## Impact` (who calls or uses what changes: command, hits, file:line). Search for every place the request
 touches before you fix the scope.
 
-**Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
-context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
-sentence with the ACs. The orchestrator saves its report to `.agents/handoff/01b-spec-review.md` and
-runs `role-gate.sh check reviewer --base <sha before the role>`. REVISE returns to the spec (after 2
-rounds ask the user); only OK starts the first tester. Skip it for one slice whose Understanding lists no other
-reading; log it in decisions.md. Lite has no spec reviewer.
+**Spec review (Full):** a fresh spec reviewer checks the spec before the first tester (`references/full.md`); Lite has none.
 
 Gaps, by reversibility: a reading that is ambiguous and hard to reverse is asked before any
 code, in one batched message; for the rest choose a default, log it in `.agents/handoff/decisions.md` from

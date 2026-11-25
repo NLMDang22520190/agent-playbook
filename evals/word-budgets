@@ -11,4 +11,4 @@ skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
 skills/playbook-proof/SKILL.md 700   # raised 650 -> 700 by user decision 2026-10-25 (v0.25.0 writing guide pointer); 647 words at v0.24.10 (697 at v0.24.8)
 skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
-skills/playbook-tdd/SKILL.md 2250   # v0.38 T4-1: lowered 2700 -> 2250 (2248 words) because Phase 4, Slice size and the test-infrastructure paragraph moved to references/full.md
+skills/playbook-tdd/SKILL.md 2150   # v0.38 T4-2: lowered 2250 -> 2150 (2128 words) because the regression corpus and spec review blocks moved to references/full.md

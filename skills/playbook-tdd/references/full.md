@@ -51,6 +51,19 @@ Save its report to `.agents/handoff/05-review.md`. Verdict `CHANGES` sends the l
 back through a new RED (tester) or GREEN (implementer) round; findings without evidence are dropped.
 Release speed rules (review-round cap, introduced vs pre-existing findings, per-item weight, slow runs once) are in `references/release.md`.
 
+### Phase 1 addition: regression corpus and spec review (Full)
+**Regression corpus.** When a change replaces or rewrites existing logic, the spec lists the regression corpus
+(`## Regression corpus`): the old inputs and the earlier bugs, each with its expected result. The corpus comes from the existing
+code and tests plus the earlier bug reports, not from the source. The first RED covers
+the whole corpus, so a rewrite cannot quietly drop a case an earlier round fixed.
+
+**Spec review (Full).** Run the spec reviewer (`roles/spec-reviewer.md`) before the first tester: a fresh
+context gets the raw request verbatim and `01-spec.md`, re-runs your searches, and compares every request
+sentence with the ACs. The orchestrator saves its report to `.agents/handoff/01b-spec-review.md` and
+runs `role-gate.sh check reviewer --base <sha before the role>`. REVISE returns to the spec (after 2
+rounds ask the user); only OK starts the first tester. Skip it for one slice whose Understanding lists no other
+reading; log it in decisions.md. Lite has no spec reviewer.
+
 ## Slice size
 A slice is one cohesive group of behaviours, about 1 to 5 tests. Avoid one-test slices and slices
 that bundle unrelated behaviours. Split a slice when it touches more than one public surface (for example a
