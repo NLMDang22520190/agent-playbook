@@ -125,23 +125,12 @@ Oracle rule: when the request hinges on an ambiguous direction, unit, sign or co
 
 ## When the user says it is wrong
 Do not defend the result and do not patch at once; in a production incident, mitigate first (`references/incident.md`).
-1. Restate in two lines what the user expected and what was delivered.
-2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified
-   live, real bug. Give the evidence for that cause (a command and its output, or a file:line).
-3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only
-   (Exempt) misread, fix it and re-check the result against the request; no test is needed.
-4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and
-   propose a regression eval scenario in the item. If the cause is specific to this project, propose a
-   lesson with `playbook-learn` instead.
-
-**Why:** a patch without a named cause fixes one symptom and repeats the miss.
+Restate expected versus delivered, classify the cause with evidence, fix it test-first (steps: `references/wrong.md`).
 
 ## Stop and ask the user when
-- an ambiguity changes assertions and is hard to reverse (do the reversible rest first, then ask; reversible ones: log a
-  default instead);
+- an ambiguity changes assertions and is hard to reverse (do the reversible rest first, then ask; reversible: log a default);
 - a dispute is still open after 2 rounds;
 - making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;
 - baseline failures make the RED/GREEN signal unreadable.
 
-In a non-interactive run (CI, headless, or the request says nobody will answer), when a sub-agent fails, is interrupted or times out, the orchestrator never stops to ask. It continues at Lite in its own context (or finishes the current phase itself) and says so in the final report.
-
+Non-interactive (CI, headless, nobody will answer): when a sub-agent fails, is interrupted or times out, never stop to ask; continue at Lite in your own context (or finish the phase yourself) and say so in the final report.
