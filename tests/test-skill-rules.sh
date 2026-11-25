@@ -81,7 +81,8 @@ echo "v0.24.10 AC1 SKILL.md: no Quick row in Pick the weight, and the Models lin
 assert_eq "v24.10 AC1 the Pick the weight table has no Quick row" "0" "$(grep -cE '^\| \*\*Quick\*\*' "$SKILL")"
 assert_eq "v24.10 AC1 SKILL.md has no /Quick (the Models line says Lite only)" "0" "$(grep -c '/Quick' "$SKILL")"
 SKILL_ONE="$(tr '\n' ' ' < "$SKILL")"
-chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$SKILL_ONE" '\(Lite: session, one context\)'
+FULL_ONE="$(tr '\n' ' ' < "$PB_ROOT/skills/playbook-tdd/references/full.md" 2>/dev/null)"   # v0.38 T4-1: the Models line moved to references/full.md Phase 4 (read the destination, not SKILL.md)
+chk "v24.10 AC1 the Models line says (Lite: session, one context)" "$FULL_ONE" '\(Lite: session, one context\)'
 
 echo "v0.24.10 AC2 SKILL.md: the user's word quick runs Lite with its own label; a Full criterion goes through the override"
 chk "v24.10 AC2 the label Weight: Lite (user said quick)" "$WEIGHT" 'Weight: Lite \(user said quick\)'
@@ -89,8 +90,8 @@ chk "v24.10 AC2 the word quick counts as the user asking for Lite" "$WEIGHT" 'qu
 chk "v24.10 AC2 a Full criterion with quick goes through the user override" "$WEIGHT" 'quick.{0,250}Full criteri(on|a)[^.]{0,120}(user[- ]override|override (rule|label))'
 if [ "$(wc -l < "$SKILL" | tr -d ' ')" -le 296 ]; then t_ok "v24.2 AC6.2 SKILL.md stays within 296 lines"; else t_bad "v24.2 AC6.2 SKILL.md stays within 296 lines" "$(wc -l < "$SKILL") lines"; fi
 LROW="$(grep -E '^\| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1)"
-chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '≤ 3 production files'
-chk "AC1.1 regression: the Lite row keeps its 100 line limit" "$LROW" '≤ 100 changed lines'
+chk "AC1.1 regression: the Lite row keeps its 3 file limit" "$LROW" '<= 3 production files'
+chk "AC1.1 regression: the Lite row keeps its 100 line limit" "$LROW" '<= 100 changed lines'
 l_lite="$(grep -n '^| \*\*Lite\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 l_full="$(grep -n '^| \*\*Full\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
 l_exempt="$(grep -n '^| \*\*Exempt\*\*' "$SKILL" 2>/dev/null | head -n 1 | cut -d: -f1)"
