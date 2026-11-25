@@ -734,8 +734,29 @@ EOF
     t_bad "$name: candidate file is the old one or the complete new one" "lines $nl -> $al"
   fi
 }
+# sigprobe: can a background job started the way sigcase starts it receive SIGINT as a trapped signal? (a signal ignored on entry,
+# as in some macOS bash 3.2 launches, cannot be trapped by any script, so the INT cases would prove nothing about learn.sh)
+sigprobe() {
+  local pd pid i rc
+  shimdir; pd="$SD"
+  { printf '%s\n' "trap 'exit 130' INT" ": > \"$pd/marker\"" "sleep 1" "exit 0"; } > "$pd/probe.sh"
+  set -m
+  ( exec bash "$pd/probe.sh" > /dev/null 2>&1 ) &
+  pid=$!
+  set +m
+  i=0
+  while [ ! -e "$pd/marker" ] && [ "$i" -lt 100 ]; do sleep 0.1 2>/dev/null || sleep 1; i=$((i + 1)); done
+  kill -INT "$pid" 2>/dev/null
+  wait "$pid"; rc=$?
+  [ "$rc" = 130 ]
+}
+if sigprobe; then INTOK=1; else INTOK=0; fi
 for SIG in TERM INT; do
   if [ "$SIG" = TERM ]; then EX=143; else EX=130; fi
+  if [ "$SIG" = INT ] && [ "$INTOK" = 0 ]; then
+    t_skip 17 "AC23 INT cases: SKIPPED, SIGINT cannot be delivered to a background job here"
+    continue
+  fi
   fx; hdr; blk C-0001 2026-10-01 'One' pending "Sig promote awk $SIG."; blk C-0002 2026-10-01 'Two' pending "Sig drop awk $SIG."
   sigcase "AC23 promote, slow awk, $SIG" awk "$SIG" "$EX" candidate promote C-0001
   assert_eq "AC23 ... the L entry is complete or absent: check passes" "0" "$(bash "$LEARN" check >/dev/null 2>&1; echo $?)"
