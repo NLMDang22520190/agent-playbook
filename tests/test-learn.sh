@@ -639,6 +639,299 @@ run bash "$S1L" check
 assert_rc "Q9 S1 AC4 stderr hook: exit 0" 0
 assert_eq "Q9 S1 AC4 stderr hook: the warning still prints" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 2 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
 assert_not_contains "Q9 S1 AC4 stderr hook: no stray stderr text in the output" "$OUT" "STRAY-HOOK-STDERR-7731"
+# ---- v0.38 Q9 S2: `learn.sh stale [--days N] [--fail]` (AC1-AC11); expected numbers counted by hand, see comments ----
+SERRF="$(mk_tmp)/stale.err"
+srun() { SOUT="$("$@" 2>"$SERRF")"; SRC=$?; SERR="$(cat "$SERRF")"; }   # SOUT stdout, SERR stderr, SRC exit code
+SD="2026-11-17"
+sst() { PLAYBOOK_DATE="$SD" srun bash "$LEARN" stale "$@"; }
+sst_at() { local d="$1"; shift; PLAYBOOK_DATE="$d" srun bash "$LEARN" stale "$@"; }
+st_fix() { # fresh git repo in SR (cwd), scripts/a.sh tracked, learnings file with a header and no entry
+  SR="$(mk_tmp)"; mk_repo "$SR"; cd "$SR" || exit 3
+  mkdir -p scripts .agents; printf '#!/bin/sh\n' > scripts/a.sh; git add scripts/a.sh
+  printf '# Learnings\n' > "$F"
+}
+st_e() { # ID DATE TITLE SCOPE(@none: no Scope line) [STATUS] [EXTRA-LINE-AFTER-SCOPE]
+  {
+    printf '\n### %s · %s · %s\n' "$1" "$2" "$3"
+    printf -- '- Status: %s\n' "${5:-active}"
+    printf -- '- Rule: r\n- Why: w\n- Evidence: e\n- Source: user\n'
+    if [ "$4" != "@none" ]; then printf -- '- Scope: %s\n' "$4"; fi
+    if [ -n "${6:-}" ]; then printf -- '%s\n' "$6"; fi
+  } >> "$F"
+}
+NOSCOPE="scope matches no tracked file"
+
+echo "Q9 S2 AC1: age in days (320; threshold 180/181; leap years; year spans)"
+st_fix
+st_e L-0001 2026-01-01 "Old rule" project-wide
+sst
+assert_rc "Q9 S2 AC1 default run: exit 0" 0
+assert_eq "Q9 S2 AC1 2026-01-01 to 2026-11-17 is 320 days; summary names the 180-day default" "$(printf 'L-0001 · 2026-01-01 · Old rule: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+assert_eq "Q9 S2 AC1 stderr is empty" "" "$SERR"
+st_fix
+st_e L-0001 2026-05-21 "Age 180" project-wide
+st_e L-0002 2026-05-20 "Age 181" project-wide
+sst
+assert_eq "Q9 S2 AC1 exactly N days is not stale (180), N+1 is (181)" "$(printf 'L-0002 · 2026-05-20 · Age 181: 181 days old\nstale: 1 of 2 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+st_e L-0001 2024-02-28 "Leap" project-wide
+sst_at 2024-03-01 --days 1
+assert_eq "Q9 S2 AC1 2024-02-28 to 2024-03-01 is 2 days (29 Feb exists)" "$(printf 'L-0001 · 2024-02-28 · Leap: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-02-28 "No leap" project-wide
+sst_at 2026-03-01 --days 1
+assert_eq "Q9 S2 AC1 2026-02-28 to 2026-03-01 is 1 day: not older than 1" "stale: 0 of 1 active entries listed (older than 1 days)" "$SOUT"
+st_fix
+st_e L-0001 2000-02-28 "Y2000" project-wide
+st_e L-0002 1900-02-28 "Y1900" project-wide
+sst_at 2000-03-01 --days 1
+assert_eq "Q9 S2 AC1 2000 is a leap year (2 days)" "$(printf 'L-0001 · 2000-02-28 · Y2000: 2 days old\nstale: 1 of 2 active entries listed (older than 1 days)')" "$SOUT"
+sst_at 1900-03-01 --days 1
+assert_eq "Q9 S2 AC1 1900 is not a leap year (1 day)" "$(printf 'L-0002 · 1900-02-28 · Y1900: 1 days old\nstale: 1 of 2 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-01-01 "Year" project-wide
+st_e L-0002 2024-01-01 "Leap year" project-wide
+sst_at 2027-01-01 --days 364
+assert_eq "Q9 S2 AC1 a plain year is 365 days, a leap year 366 (2024-01-01 to 2027-01-01 is 1096)" "$(printf 'L-0001 · 2026-01-01 · Year: 365 days old\nL-0002 · 2024-01-01 · Leap year: 1096 days old\nstale: 2 of 2 active entries listed (older than 364 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-01-01 "Mid · dot title" project-wide
+sst
+assert_eq "Q9 S2 AC1 a title with the separator is printed as written" "$(printf 'L-0001 · 2026-01-01 · Mid · dot title: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+sst
+assert_rc "Q9 S2 AC1 no entry: exit 0" 0
+assert_eq "Q9 S2 AC1 no active entry: '0 of 0' summary only (repo: no skipped line)" "stale: 0 of 0 active entries listed (older than 180 days)" "$SOUT"
+st_fix
+st_e L-0001 2027-01-01 "Future" project-wide
+sst
+assert_eq "Q9 S2 AC1 a future date is not stale because of age" "stale: 0 of 1 active entries listed (older than 180 days)" "$SOUT"
+
+echo "Q9 S2 AC2: scope check in a git repo"
+st_fix
+st_e L-0001 "$SD" "S nope" scripts/nope.sh
+st_e L-0002 "$SD" "S glob" 'scripts/*.sh'
+st_e L-0003 "$SD" "S dir" scripts/
+st_e L-0004 "$SD" "S file" src/app.js
+st_e L-0005 "$SD" "S star2" '**'
+st_e L-0006 "$SD" "S readme" README.md
+st_e L-0007 "$SD" "S docs" 'docs/**'
+st_e L-0008 "$SD" "S dot" .
+st_e L-0009 "$SD" "S star" '*'
+st_e L-0010 2026-01-01 "Both" scripts/nope.sh
+sst
+assert_rc "Q9 S2 AC2 scope run: exit 0" 0
+assert_eq "Q9 S2 AC2 only nope.sh, docs/** (nothing tracked there) and the old+nope entry; ** . * and real paths pass" "$(printf 'L-0001 · %s · S nope: %s\nL-0007 · %s · S docs: %s\nL-0010 · 2026-01-01 · Both: 320 days old; %s\nstale: 3 of 10 active entries listed (older than 180 days)' "$SD" "$NOSCOPE" "$SD" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 AC2 stderr is empty" "" "$SERR"
+GIT_DIR=/nonexistent GIT_INDEX_FILE=/nonexistent GIT_WORK_TREE=/nonexistent sst
+assert_eq "Q9 S2 AC2 GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE of the environment do not change the result" "3" "$(printf '%s\n' "$SOUT" | grep -c "$NOSCOPE")"
+assert_not_contains "Q9 S2 AC2 ... and the repo is still recognised" "$SOUT" "scope check skipped"
+ER="$(mk_tmp)"; ( cd "$ER" && git init -q ) ; mkdir -p "$ER/.agents"
+cd "$ER" || exit 3
+printf '# Learnings\n' > "$F"
+st_e L-0001 "$SD" "Empty dot" .
+st_e L-0002 "$SD" "Empty star2" '**'
+sst
+assert_eq "Q9 S2 AC2 a repo with no tracked file: . and ** match nothing and are listed" "$(printf 'L-0001 · %s · Empty dot: %s\nL-0002 · %s · Empty star2: %s\nstale: 2 of 2 active entries listed (older than 180 days)' "$SD" "$NOSCOPE" "$SD" "$NOSCOPE")" "$SOUT"
+
+echo "Q9 S2 AC3: scopes that are never checked"
+st_fix
+st_e L-0001 "$SD" "t1" project-wide
+st_e L-0002 "$SD" "t2" "the build scripts"
+st_e L-0003 "$SD" "t3" "tests and docs"
+st_e L-0004 "$SD" "t4" v1
+st_e L-0005 "$SD" "t5" ../x
+st_e L-0006 "$SD" "t6" /abs/x
+st_e L-0007 "$SD" "t7" ':(top)x'
+st_e L-0008 "$SD" "t8" C:x
+st_e L-0009 "$SD" "t9" 'scripts\a.sh'
+st_e L-0010 "$SD" "t10" @none
+st_e L-0011 "$SD" "t11" ""
+st_e L-0012 "$SD" "t12" @none "active" "- Scope:"
+st_e L-0013 "$SD" "t13" "src/nope file.js"
+sst
+assert_rc "Q9 S2 AC3 exit 0" 0
+assert_eq "Q9 S2 AC3 none of the 13 is flagged (the whole stdout is the summary)" "stale: 0 of 13 active entries listed (older than 180 days)" "$SOUT"
+assert_eq "Q9 S2 AC3 no stderr (no git fatal leaks out)" "" "$SERR"
+
+echo "Q9 S2 AC4: which entries count"
+st_fix
+st_e L-0001 2026-01-01 "Retired old" scripts/nope.sh "retired (gone)"
+st_e L-0002 2026-01-01 "Active, later retired line" project-wide active "- Status: retired (quoted in the body)"
+st_e L-0003 "$SD" "Fresh" project-wide
+st_e L-0004 "$SD" "Prefix" project-wide activeXYZ
+st_e L-0005 2026-01-01 "Retired first" project-wide "retired (x)" "- Status: active"
+printf '\n### note without an id\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+sst
+assert_eq "Q9 S2 AC4 retired never listed or counted; first Status line decides; '### note' ignored; A = 3 (L-0002, L-0003, L-0004)" "$(printf 'L-0002 · 2026-01-01 · Active, later retired line: 320 days old\nstale: 1 of 3 active entries listed (older than 180 days)')" "$SOUT"
+
+echo "Q9 S2 AC5: not a git repository"
+NG="$(mk_tmp)"; mkdir -p "$NG/.agents"
+if [ "$(git -C "$NG" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
+  t_ok "Q9 S2 AC5 sanity: the temp dir is outside any git work tree"
+  cd "$NG" || exit 3
+  printf '# Learnings\n' > "$F"
+  st_e L-0001 2026-01-01 "Old" scripts/nope.sh
+  st_e L-0002 "$SD" "Fresh" src/nope.js
+  SKIP="scope check skipped: not a git repository"
+  sst
+  assert_rc "Q9 S2 AC5 exit 0" 0
+  assert_eq "Q9 S2 AC5 age only; one skipped line after the entry lines and before the summary" "$(printf 'L-0001 · 2026-01-01 · Old: 320 days old\n%s\nstale: 1 of 2 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  assert_eq "Q9 S2 AC5 no git fatal on stderr" "" "$SERR"
+  GIT_DIR="$SR/.git" sst
+  assert_eq "Q9 S2 AC5 GIT_DIR pointing at another repo changes nothing" "$(printf 'L-0001 · 2026-01-01 · Old: 320 days old\n%s\nstale: 1 of 2 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  printf '# Learnings\n' > "$F"
+  st_e L-0001 "$SD" "A" project-wide
+  st_e L-0002 "$SD" "B" project-wide
+  st_e L-0003 "$SD" "C" "free text"
+  sst
+  assert_eq "Q9 S2 AC5 many entries, none path-like: still exactly one skipped line" "$(printf '%s\nstale: 0 of 3 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  printf '# Learnings\n' > "$F"
+  sst
+  assert_eq "Q9 S2 AC5 no active entry: skipped line right before '0 of 0'" "$(printf '%s\nstale: 0 of 0 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+else
+  t_skip 7 "the temp dir is inside a git work tree here: non-repo rows not testable"
+fi
+
+echo "Q9 S2 AC6: exit codes and argument checks"
+st_fix
+st_e L-0001 2026-01-01 "Old" project-wide
+sst_at 2026-01-02 --fail
+assert_eq "Q9 S2 AC6 nothing listed with --fail: exit 0" "0" "$SRC"
+sst
+assert_eq "Q9 S2 AC6 listed without --fail: exit 0" "0" "$SRC"
+sst --fail
+assert_eq "Q9 S2 AC6 listed with --fail: exit 1" "1" "$SRC"
+assert_contains "Q9 S2 AC6 --fail still prints the entry line" "$SOUT" "320 days old"
+sst --fail --fail
+assert_eq "Q9 S2 AC6 --fail twice: same as once (exit 1)" "1" "$SRC"
+sst --days 999999
+assert_eq "Q9 S2 AC6 six digits are valid" "0" "$SRC"
+sst --days 1
+assert_eq "Q9 S2 AC6 --days 1 is valid" "0" "$SRC"
+assert_contains "Q9 S2 AC6 --days 1 lists the 320-day entry" "$SOUT" "older than 1 days"
+st_bad() { # NAME ARGS...: exit 2, one stderr line 'error: ...', empty stdout
+  local n="$1"; shift
+  sst "$@"
+  assert_eq "Q9 S2 AC6 $n: exit 2" "2" "$SRC"
+  assert_eq "Q9 S2 AC6 $n: stdout empty" "" "$SOUT"
+  assert_eq "Q9 S2 AC6 $n: one stderr line starting 'error: '" "1" "$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+}
+st_bad "--days 0" --days 0
+st_bad "--days 05" --days 05
+st_bad "--days +5" --days +5
+st_bad "--days abc" --days abc
+st_bad "--days 1234567" --days 1234567
+st_bad "--days=30" --days=30
+st_bad "--days without a value" --days
+st_bad "--days followed by --fail" --days --fail
+st_bad "--days empty value" --days ""
+st_bad "unknown option" --bogus
+st_bad "stray argument" extra
+st_bad "unknown option after valid ones" --days 30 --fail --bogus
+mv "$F" "$F.gone"
+sst
+assert_eq "Q9 S2 AC6 missing file: exit 2" "2" "$SRC"
+assert_contains "Q9 S2 AC6 missing file: '<REL> not found' on stderr" "$SERR" ".agents/LEARNINGS.md not found"
+assert_eq "Q9 S2 AC6 missing file: stdout empty" "" "$SOUT"
+sst --days abc
+assert_eq "Q9 S2 AC6 usage error wins over a missing file: exit 2" "2" "$SRC"
+assert_not_contains "Q9 S2 AC6 ... and does not say 'not found'" "$SERR" "not found"
+sst_at 2026-02-30
+assert_contains "Q9 S2 AC6 missing file wins over a bad PLAYBOOK_DATE" "$SERR" "not found"
+assert_not_contains "Q9 S2 AC6 ... no 'invalid PLAYBOOK_DATE' then" "$SERR" "invalid PLAYBOOK_DATE"
+mv "$F.gone" "$F"
+# conf: learn_stale_days (project conf .agents/playbook.conf)
+printf 'learn_stale_days=abc\n' > .agents/playbook.conf
+sst
+assert_eq "Q9 S2 AC6 learn_stale_days=abc without --days: exit 2" "2" "$SRC"
+assert_eq "Q9 S2 AC6 ... stdout empty" "" "$SOUT"
+assert_eq "Q9 S2 AC6 ... one stderr line" "1" "$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+sst_at 2026-02-30
+assert_eq "Q9 S2 AC6 bad conf and bad PLAYBOOK_DATE: the conf is reported first" "0" "$(printf '%s\n' "$SERR" | grep -c 'invalid PLAYBOOK_DATE')"
+assert_eq "Q9 S2 AC6 ... still exit 2" "2" "$SRC"
+sst --days 30
+assert_eq "Q9 S2 AC6 --days given: the bad conf is not read (exit 0)" "0" "$SRC"
+assert_contains "Q9 S2 AC6 ... and --days 30 is used" "$SOUT" "older than 30 days"
+sst_at 2026-02-30 --days 30
+assert_contains "Q9 S2 AC6 --days given, bad conf, bad date: the date error shows (conf not read)" "$SERR" "invalid PLAYBOOK_DATE"
+printf 'learn_stale_days=30\n' > .agents/playbook.conf
+printf '# Learnings\n' > "$F"
+st_e L-0001 2026-10-01 "Age 47" project-wide
+sst
+assert_eq "Q9 S2 AC6 learn_stale_days=30 changes the threshold (47 > 30)" "$(printf 'L-0001 · 2026-10-01 · Age 47: 47 days old\nstale: 1 of 1 active entries listed (older than 30 days)')" "$SOUT"
+sst --days 100
+assert_eq "Q9 S2 AC6 --days beats the conf" "stale: 0 of 1 active entries listed (older than 100 days)" "$SOUT"
+rm -f .agents/playbook.conf
+printf '# Learnings\n' > "$F"
+st_e L-0001 2026-11-02 "Age 15" project-wide
+sst --days 10 --days 20
+assert_eq "Q9 S2 AC6 repeated --days: the last one wins (20: age 15 not listed)" "stale: 0 of 1 active entries listed (older than 20 days)" "$SOUT"
+sst --days 20 --days 10
+assert_eq "Q9 S2 AC6 repeated --days: the last one wins (10: age 15 listed)" "$(printf 'L-0001 · 2026-11-02 · Age 15: 15 days old\nstale: 1 of 1 active entries listed (older than 10 days)')" "$SOUT"
+for BADD in 2026-02-30 abc 2026-1-1 2026-13-01 "2026-11-17x"; do
+  sst_at "$BADD"
+  assert_eq "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: exit 2" "2" "$SRC"
+  assert_contains "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: 'invalid PLAYBOOK_DATE' on stderr" "$SERR" "invalid PLAYBOOK_DATE"
+  assert_eq "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: stdout empty" "" "$SOUT"
+done
+
+echo "Q9 S2 AC7: read-only"
+st_fix
+st_e L-0001 2026-01-01 "Old" scripts/nope.sh
+st_e L-0002 "$SD" "Fresh" scripts/a.sh
+st_snap() { find . -path ./.git -prune -o -type f -print | sort | while IFS= read -r f; do cksum "$f"; done; git ls-files -s; cksum .git/index; }
+SNAP_B="$(st_snap)"
+sst --fail
+assert_eq "Q9 S2 AC7 sanity: the --fail run listed something (exit 1)" "1" "$SRC"
+SNAP_A="$(st_snap)"
+assert_eq "Q9 S2 AC7 file hashes, file list, git ls-files -s and the index are unchanged" "$SNAP_B" "$SNAP_A"
+sst
+assert_eq "Q9 S2 AC7 ... also after a plain run" "$SNAP_B" "$(st_snap)"
+
+echo "Q9 S2 AC8: dates, headings, CRLF, scope lines"
+st_fix
+st_e L-0001 2026-13-40 "Bad month" scripts/nope.sh
+st_e L-0002 2026-02-29 "Bad day" scripts/nope.sh
+st_e L-0003 2024-02-29 "Leap day" project-wide
+printf '\n### L-0004 · bad heading text\n- Status: active\n- Rule: r\n- Why: w\n- Evidence: e\n- Source: user\n- Scope: scripts/nope.sh\n' >> "$F"
+sst_at 2024-03-02 --days 1
+assert_eq "Q9 S2 AC8 bad dates: no age check, scope check still runs; 2024-02-29 is valid (2 days); raw heading text is printed" "$(printf 'L-0001 · 2026-13-40 · Bad month: %s\nL-0002 · 2026-02-29 · Bad day: %s\nL-0003 · 2024-02-29 · Leap day: 2 days old\nL-0004 · bad heading text: %s\nstale: 4 of 4 active entries listed (older than 1 days)' "$NOSCOPE" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 AC8 ... exit code 0" "0" "$SRC"
+st_fix
+st_e L-0001 2026-01-01 "Old ok" scripts/a.sh
+st_e L-0002 "$SD" "Fresh ok" scripts/a.sh
+st_e L-0003 2026-01-01 "Old bad" scripts/nope.sh
+WANT_CR="$(printf 'L-0001 · 2026-01-01 · Old ok: 320 days old\nL-0003 · 2026-01-01 · Old bad: 320 days old; %s\nstale: 2 of 3 active entries listed (older than 180 days)' "$NOSCOPE")"
+sst
+assert_eq "Q9 S2 AC8 LF baseline" "$WANT_CR" "$SOUT"
+awk '{ printf "%s\r\n", $0 }' "$F" > "$F.crlf" && mv "$F.crlf" "$F"
+sst
+assert_eq "Q9 S2 AC8 CRLF file: same result as LF (scope matches, no false flag)" "$WANT_CR" "$SOUT"
+assert_eq "Q9 S2 AC8 CRLF file: no CR in stdout" "0" "$(printf '%s' "$SOUT" | tr -cd '\r' | wc -c | tr -d ' ')"
+st_fix
+st_e L-0001 "$SD" "First wins ok" scripts/a.sh active "- Scope: scripts/nope.sh"
+st_e L-0002 "$SD" "First wins bad" scripts/nope.sh active "- Scope: scripts/a.sh"
+st_e L-0003 "$SD" "Trailing space" "scripts/a.sh "
+sst
+assert_eq "Q9 S2 AC8 two Scope lines: the first wins; a scope with a trailing space is not a path (not flagged)" "$(printf 'L-0002 · %s · First wins bad: %s\nstale: 1 of 3 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+
+echo "Q9 S2 AC9: usage line and untouched assertions"
+run bash "$LEARN" frobnicate
+assert_rc "Q9 S2 AC9 an unknown command exits 2" 2
+assert_contains "Q9 S2 AC9 the usage line names stale" "$OUT" "stale"
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  assert_eq "Q9 S2 AC9 no existing line of tests/test-learn.sh is changed or removed (diff against HEAD only adds)" "0" "$(git -C "$PB_ROOT" diff -U0 HEAD -- tests/test-learn.sh | grep -c '^-[^-]')"
+else
+  t_skip 1 "not a git checkout: diff row not testable"
+fi
+
+echo "Q9 S2 AC10: order of listed entries"
+st_fix
+st_e L-0005 2026-01-01 "Fifth first" project-wide
+st_e L-0003 "$SD" "Fresh between" project-wide
+st_e L-0001 2026-02-01 "First last" project-wide
+sst
+assert_eq "Q9 S2 AC10 file order (L-0005 before L-0001); the fresh entry in between is absent (Feb 1 to Nov 17 is 289 days)" "$(printf 'L-0005 · 2026-01-01 · Fifth first: 320 days old\nL-0001 · 2026-02-01 · First last: 289 days old\nstale: 2 of 3 active entries listed (older than 180 days)')" "$SOUT"
 cd "$PB_ROOT" || exit 3
 
 t_summary
