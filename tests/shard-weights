@@ -190,3 +190,5 @@ test-guard-restore-symlink.sh 1
 test-get-bash32.sh 0
 test-lib-tmp.sh 0
 test-learn-review.sh 10
+test-learn-candidates.sh 25
+test-learn-candidates-text.sh 2

@@ -143,6 +143,7 @@ if [ -d "$H/.claude/skills/playbook-tdd" ] && [ ! -L "$H/.claude/skills/playbook
 assert_file "copy carries a managed marker" "$H/.claude/skills/playbook-tdd/.playbook-managed"
 assert_file "v0.24.13 copy carries references/harnesses.md" "$H/.claude/skills/playbook-tdd/references/harnesses.md"
 assert_file "v0.38 Q9 S5 copy carries playbook-learn references/review.md" "$H/.claude/skills/playbook-learn/references/review.md"
+assert_file "v0.38 Q9 S4 copy carries playbook-learn references/candidates.md" "$H/.claude/skills/playbook-learn/references/candidates.md"
 assert_file "scripts copied to stable path" "$H/.agents/playbook/scripts/role-gate.sh"
 printf 'tampered\n' > "$H/.claude/skills/playbook-tdd/SKILL.md"
 run INST doctor --home "$H" --harness claude

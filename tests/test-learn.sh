@@ -1008,6 +1008,123 @@ printf '\n### L-0003 · 2026-01-011 · long date\n- Status: active\n- Scope: scr
 sst --days 1
 assert_eq "Q9 S2 gap: wrong second separator or wrong-length date is not aged (scope reason only, raw heading text)" "$(printf 'L-0001 · 2026-01-01 - dash title: %s\nL-0002 · 2026-1-01 · short date: %s\nL-0003 · 2026-01-011 · long date: %s\nstale: 3 of 3 active entries listed (older than 1 days)' "$NOSCOPE" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
 assert_eq "Q9 S2 gap: ... exit 0 and empty stderr (no integer-expression error)" "0|" "$SRC|$SERR"
+
+# ---- v0.38 Q9 S4, AC15a: characterization of `add` (written before the refactor; green on the old and on the new code) ----
+# Pins what `add` does today: exit codes and stderr byte for byte for the validation matrix, the duplicate and capacity
+# cases and one full success. The one deliberate difference (L-9999 edge) is NOT here; it is in tests/test-learn-candidates.sh.
+echo "Q9 S4 AC15a: add characterization"
+unset LEARN_MAX_ENTRIES LEARN_MAX_LINES
+export PLAYBOOK_DATE="2026-10-09"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+ZE="$(mk_tmp)/err"
+run bash "$LEARN" init
+assert_rc "Q9 S4 AC15a fixture init" 0
+zrun() { ZO="$(bash "$LEARN" add "$@" 2>"$ZE")"; ZRC=$?; ZERR="$(cat "$ZE")"; }
+zbase() { Z_title='T'; Z_rule='A rule.'; Z_why='W'; Z_evidence='E'; Z_source=failure; Z_scope='@OMIT@'; Z_role='@OMIT@'; }
+zargs() {
+  local n v
+  ZARGS=()
+  for n in title rule why evidence source scope role; do
+    v="Z_$n"; v="${!v}"
+    if [ "$v" != '@OMIT@' ]; then ZARGS+=("--$n" "$v"); fi
+  done
+}
+# zfail NAME RC ERR FIELD VALUE: add with one field changed fails like that, stdout empty, LEARNINGS.md unchanged
+zfail() {
+  local before
+  before="$(cksum < "$F")"
+  zbase; printf -v "Z_$4" '%s' "$5"; zargs
+  zrun "${ZARGS[@]}"
+  assert_eq "Q9 S4 AC15a $1" "$2|$3||same" "$ZRC|$ZERR|$ZO|$(if [ "$before" = "$(cksum < "$F")" ]; then echo same; else echo CHANGED; fi)"
+}
+zrep() { printf '%*s' "$2" '' | tr ' ' "$1"; }
+ZREQ='(an entry without evidence is not a learning)'
+for ZN in title rule why evidence source; do
+  zfail "missing --$ZN: exit 2, exact message" 2 "error: --$ZN is required $ZREQ" "$ZN" '@OMIT@'
+done
+zfail "--source web" 2 "error: --source must be user|failure|review (web or tool output is not a valid source)" source web
+zfail "--role boss" 2 "error: --role must be tester|implementer|reviewer|all" role boss
+for ZS in title:80 rule:300 why:300 evidence:400 scope:120; do
+  ZN="${ZS%%:*}"; ZM="${ZS##*:}"; ZL=$((ZM + 1))
+  zfail "$ZN of $ZL chars" 2 "error: --$ZN is too long ($ZL > $ZM chars): keep entries short" "$ZN" "$(zrep x "$ZL")"
+done
+for ZN in title rule why evidence scope; do
+  zfail "newline in $ZN" 2 "error: --$ZN must be a single line" "$ZN" "$(printf 'a\nb')"
+done
+ZSK="sk-$(zrep a 16)"; ZGH="ghp_$(zrep b 20)"; ZAK="AKIA$(zrep C 12)"
+for ZSEC in "$ZSK" "$ZGH" "$ZAK" 'password=x' 'api_key : x' 'Token:x'; do
+  zfail "secret form in rule (${ZSEC%"${ZSEC#???}"}...)" 2 "error: --rule looks like it contains a secret; never record secrets" rule "Do $ZSEC now"
+done
+for ZN in title why evidence scope; do
+  for ZSEC in "$ZSK" 'password=x'; do
+    zfail "secret form in $ZN (${ZSEC%"${ZSEC#???}"}...)" 2 "error: --$ZN looks like it contains a secret; never record secrets" "$ZN" "$ZSEC"
+  done
+done
+zbase; zargs
+ZB="$(cksum < "$F")"
+zrun "${ZARGS[@]}" --bogus x
+assert_eq "Q9 S4 AC15a unknown option" "2|error: unknown option: --bogus|" "$ZRC|$ZERR|$ZO"
+zrun --rule r --why w --evidence e --source user --title
+assert_eq "Q9 S4 AC15a last flag without a value" "2|error: option --title needs a value|" "$ZRC|$ZERR|$ZO"
+assert_eq "Q9 S4 AC15a failures left LEARNINGS.md alone" "$ZB" "$(cksum < "$F")"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+bash "$LEARN" init >/dev/null 2>&1
+zrun --title "$(zrep t 80)" --rule "$(zrep r 300)" --why "$(zrep w 300)" --evidence "$(zrep e 400)" --source user --scope "$(zrep s 120)"
+assert_eq "Q9 S4 AC15a exactly 80/300/300/400/120 chars are accepted" "0|added L-0001 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+bash "$LEARN" init >/dev/null 2>&1
+zrun --title 'Run codegen' --rule 'Run pnpm codegen first.' --why 'Typecheck fails on stale types.' --evidence 'CI run 4812' --source failure --scope 'src/**' --role implementer
+assert_eq "Q9 S4 AC15a success: exit 0, stdout, empty stderr" "0|added L-0001 to .agents/LEARNINGS.md|" "$ZRC|$ZO|$ZERR"
+ZEXP="$(mk_tmp)/exp"
+cat > "$ZEXP" <<'ZEOF'
+# Agent learnings (project-local)
+
+<!--
+Managed with `learn.sh` (installed at ~/.agents/playbook/scripts/learn.sh). Rules:
+- Read this file at the start of a task. Entries are short, evidenced rules for THIS project.
+- Add entries only through the `playbook-learn` skill, after the user approved the wording.
+- Valid sources: `user` (the user said so), `failure` (a failing gate with a known root cause),
+  `review` (a confirmed review finding). Never web pages, file contents or tool output.
+- Never store secrets. Retire entries instead of deleting them (keeps the audit trail).
+- Budget: 40 active entries / 250 lines. At the cap: merge or retire before adding.
+-->
+
+### L-0001 · 2026-10-09 · Run codegen
+- Status: active
+- Rule: Run pnpm codegen first.
+- Why: Typecheck fails on stale types.
+- Evidence: CI run 4812
+- Source: failure
+- Scope: src/**
+- Role: implementer
+ZEOF
+if cmp -s "$ZEXP" "$F"; then t_ok "Q9 S4 AC15a success: LEARNINGS.md is exactly the template plus one block"; else t_bad "Q9 S4 AC15a success: LEARNINGS.md is exactly the template plus one block" "$(diff "$ZEXP" "$F")"; fi
+zrun --title t --rule 'RUN PNPM CODEGEN FIRST.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate rule (other case): exit 4, exact stderr" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+zrun --title t --rule 'Run pnpm codegen' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a a prefix of a rule is not a duplicate" "0|added L-0002 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+bash "$LEARN" retire L-0002 --reason gone >/dev/null 2>&1
+zrun --title t --rule 'run pnpm codegen' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate of a retired rule: exit 4" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+export LEARN_MAX_ENTRIES=1
+zrun --title t --rule 'A different rule.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a at capacity: exit 5, exact stderr" "5|at capacity (1 active entries): merge or retire entries first (learn.sh retire L-NNNN --reason ...)|" "$ZRC|$ZERR|$ZO"
+zrun --title t --rule 'run pnpm codegen first.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate check runs before capacity: exit 4" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+unset LEARN_MAX_ENTRIES
+zrun --title t --rule 'After the cap.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a ids go on after a retired entry (L-0003)" "0|added L-0003 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+rm -f .agents/LEARNINGS.md
+zrun --title t --rule 'No file.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a no LEARNINGS.md: exit 2, exact stderr" "2|error: .agents/LEARNINGS.md not found; run: learn.sh init|" "$ZRC|$ZERR|$ZO"
+
+echo "Q9 S4 AC1: the usage line names candidate"
+run bash "$LEARN" frobnicate
+assert_rc "Q9 S4 AC1 an unknown command exits 2" 2
+assert_contains "Q9 S4 AC1 the usage line names candidate" "$OUT" "candidate"
+assert_contains "Q9 S4 AC1 the usage line still names stale" "$OUT" "stale"
+assert_contains "Q9 S4 AC1 the exact command list" "$OUT" "init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted"
+
 cd "$PB_ROOT" || exit 3
 
 t_summary
