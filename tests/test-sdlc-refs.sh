@@ -68,12 +68,16 @@ CL='Do not defend the result and do not patch at once; in a production incident,
 if grep -Fxq -e "$CL" "$SK"; then t_ok "AC4 SKILL.md has the incident clause verbatim"; else t_bad "AC4 SKILL.md has the incident clause verbatim" "no line [$CL]"; fi
 if grep -Fxq -e 'Do not defend the result and do not patch at once.' "$SK"; then t_bad "AC4 the old sentence is replaced" "old line still there"
 else t_ok "AC4 the old sentence is replaced"; fi
-NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$SK")"
-assert_eq "AC4 step 1 follows the clause unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
+# v0.38 T4-3 (R5c, R7): the clause stays in SKILL.md as the stub opener and also opens the moved block in references/wrong.md; the four steps are read there
+WR="$REF/wrong.md"
+if grep -Fxq -e "$CL" "$WR" 2>/dev/null; then t_ok "AC4 wrong.md has the incident clause verbatim"; else t_bad "AC4 wrong.md has the incident clause verbatim" "no line [$CL] in $WR"; fi
+NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$WR" 2>/dev/null)"
+assert_eq "AC4 step 1 follows the clause unchanged (references/wrong.md)" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
 for s in '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' \
          '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
          '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
-  if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+  if grep -Fxq -e "$s" "$WR" 2>/dev/null; then t_ok "AC4 step ${s%%.*} unchanged (references/wrong.md)"; else t_bad "AC4 step ${s%%.*} unchanged (references/wrong.md)" "no line [$s] in $WR"; fi
+  if grep -Fxq -e "$s" "$SK"; then t_bad "AC4 step ${s%%.*} is no longer in SKILL.md (a stub cannot stand in for it)" "still in SKILL.md"; else t_ok "AC4 step ${s%%.*} is no longer in SKILL.md (a stub cannot stand in for it)"; fi
 done
 
 U="$REF/upgrade.md"
@@ -158,7 +162,7 @@ w="$(env -u LC_ALL wc -w < "$SK" | tr -d ' ')"
 if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; else t_bad "AC16 SKILL.md at or under 3700 words" "$w words"; fi
 # v0.38 T4 R14: the 0927bde arithmetic (W0 - MOVED + PTR + EDITS) is replaced by a per-slice word ceiling (T4-1: 2250, T4-2: 2150, T4-3: 2000);
 # every change to references/full.md used to break the arithmetic (T13 had to bump EDITS by hand)
-if [ "$w" -le 2150 ]; then t_ok "AC16 SKILL.md at or under the per-slice ceiling of 2150 words ($w)"; else t_bad "AC16 SKILL.md at or under the per-slice ceiling of 2150 words" "$w words"; fi
+if [ "$w" -le 2000 ]; then t_ok "AC16 SKILL.md at or under the final ceiling of 2000 words ($w)"; else t_bad "AC16 SKILL.md at or under the final ceiling of 2000 words" "$w words"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"

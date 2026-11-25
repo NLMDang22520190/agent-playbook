@@ -10,6 +10,7 @@ REVIEWER="$TDD/roles/reviewer.md"
 FINAL="$TDD/templates/final-report.md"
 RPROMPT="$TDD/templates/role-prompt.md"
 HARNESSES="$TDD/references/harnesses.md"   # v0.24.13: harness and model plumbing moved here
+WRONGREF="$TDD/references/wrong.md"   # v0.38 T4-3: the four "user says it is wrong" steps move here
 FULLREF="$TDD/references/full.md"   # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming, Hand-off files moved here
 # SKILLFULL = SKILL.md + references/full.md: pins on moved text read this, pins on kept text read SKILL.md only
 SKILLFULL="$(mk_tmp)/skill-full.md"; { cat "$SKILL"; printf "\n"; cat "$FULLREF" 2>/dev/null; } > "$SKILLFULL"
@@ -748,15 +749,18 @@ sec_flat_has 'v22.1 AC3.1 Phase 2: a non-interactive run then continues' "$SKILL
 exact_heading 'v22.1 AC4.1 playbook-tdd has the exact heading ## When the user says it is wrong' "$SKILL" '## When the user says it is wrong'
 WRONG='^## When the user says it is wrong'
 sec_flat_has 'v22.1 AC4.1 wrong: restate what was expected versus what was delivered' "$SKILL" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
-sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$SKILL" "$WRONG" 'misread'
-sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$SKILL" "$WRONG" 'missed[^.]{0,30}(place|scan)'
-sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$SKILL" "$WRONG" 'wrong assumption'
-sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$SKILL" "$WRONG" 'not verified live'
-sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$SKILL" "$WRONG" 'real bug'
+sec_flat_has 'v22.1 AC4.1 wrong: cause misread request' "$WRONGREF" "$WRONG" 'misread'
+sec_flat_has 'v22.1 AC4.1 wrong: cause missed place (scan)' "$WRONGREF" "$WRONG" 'missed[^.]{0,30}(place|scan)'
+sec_flat_has 'v22.1 AC4.1 wrong: cause wrong assumption' "$WRONGREF" "$WRONG" 'wrong assumption'
+sec_flat_has 'v22.1 AC4.1 wrong: cause not verified live' "$WRONGREF" "$WRONG" 'not verified live'
+sec_flat_has 'v22.1 AC4.1 wrong: cause real bug' "$WRONGREF" "$WRONG" 'real bug'
 sec_flat_has 'v22.1 AC4.1 wrong: classify the cause with evidence' "$SKILL" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
 sec_flat_has 'v22.1 AC4.1 wrong: fix it test-first' "$SKILL" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
-sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$SKILL" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
-sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$SKILL" "$WRONG" 'regression eval'
+sec_flat_has 'v22.1 AC4.1 wrong: a playbook gap is captured with playbook-feedback' "$WRONGREF" "$WRONG" 'playbook gap[^.]{0,200}playbook-feedback|playbook-feedback[^.]{0,200}playbook gap|gap[^.]{0,120}playbook-feedback'
+sec_flat_has 'v22.1 AC4.1 wrong: the capture proposes a regression eval' "$WRONGREF" "$WRONG" 'regression eval'
+sec_flat_has 'v0.38 T4-3 wrong (references/wrong.md): restate what was expected versus what was delivered' "$WRONGREF" "$WRONG" 'restate[^.]{0,160}expected[^.]{0,120}deliver|expected[^.]{0,80}(vs\.?|versus|against)[^.]{0,80}deliver'
+sec_flat_has 'v0.38 T4-3 wrong (references/wrong.md): classify the cause with evidence' "$WRONGREF" "$WRONG" 'classif[^.]{0,160}(cause|evidence)|cause[^.]{0,120}evidence'
+sec_flat_has 'v0.38 T4-3 wrong (references/wrong.md): fix it test-first' "$WRONGREF" "$WRONG" 'test[- ]first|failing test[^.]{0,80}(first|before)|(first|before)[^.]{0,80}failing test'
 flat_has 'v22.1 AC4.1 playbook-feedback covers the case where the user says the result is wrong' "$FB" 'user (says|said|tells)[^.]{0,80}wrong|(says|said|tells)[^.]{0,60}(result|it) (is|was) wrong'
 flat_has 'v22.1 AC4.1 playbook-feedback: that capture proposes a regression eval' "$FB" 'regression eval'
 
@@ -765,11 +769,11 @@ flat_has 'v22.1 AC5.2 docs/development.md says how to install shellcheck (apt in
 
 
 # --- v0.22.1 review findings: content
-sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$SKILL" "$WRONG" 'playbook-learn'
-sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$SKILL" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
-sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$SKILL" "$WRONG" 'docs-only|exempt'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$SKILL" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
-sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$SKILL" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
+sec_flat_has 'v22.1 RV wrong: a project-specific cause goes to playbook-learn' "$WRONGREF" "$WRONG" 'playbook-learn'
+sec_flat_has 'v22.1 RV wrong: playbook-learn is for a cause that is specific to the project' "$WRONGREF" "$WRONG" 'project[^.]{0,120}playbook-learn|playbook-learn[^.]{0,120}project'
+sec_flat_has 'v22.1 RV wrong: a docs-only (Exempt) misread is named' "$WRONGREF" "$WRONG" 'docs-only|exempt'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: fix it and re-check against the request' "$WRONGREF" "$WRONG" 're-?check[^.]{0,120}request|request[^.]{0,120}re-?check'
+sec_flat_has 'v22.1 RV wrong: docs-only misread: no test is needed' "$WRONGREF" "$WRONG" 'no (failing )?test[^.]{0,20}(needed|required)|without (a )?test|needs? no test'
 sec_flat_has 'v22.1 RV Phase 4: the real-observation rule points to playbook-proof' "$FULLREF" '^### Phase 4' 'real[- ](behaviou?r|observation).{0,250}playbook-proof|playbook-proof.{0,250}real[- ](behaviou?r|observation)'
 SC_HEAD="$(awk '/^#+ /{h=$0} /apt(-get)? install[^.]*shellcheck/{print h; exit}' "$DEVDOC")"
 if printf '%s\n' "$SC_HEAD" | grep -qiE 'develop|contribut'; then t_ok 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading'; else t_bad 'v22.1 RV docs/development.md: the shellcheck install note sits under a development or contributing heading' "nearest heading above it: [$SC_HEAD]"; fi
@@ -2617,14 +2621,14 @@ if printf '%s' "$L6" | grep -qF 'references/full.md' && printf '%s' "$L6" | grep
 if printf '%s' "$L6" | grep -qE 'read `references/full\.md`'; then t_ok "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md"; else t_bad "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md" "line: [$L6]"; fi
 if [ "$(grep -c 'read `references/full\.md` first' "$SKILL")" = 1 ]; then t_ok "v0.37 S3 review: the Workflow pointer line still exists"; else t_bad "v0.37 S3 review: the Workflow pointer line still exists" "not exactly one"; fi
 # size: SKILL.md at most 2700 words (core limit of this slice) and below the 3669 it had
-if [ "$TDD_WORDS" -le 2150 ]; then t_ok "v0.38 T4-2 R14 playbook-tdd SKILL.md is at most 2150 words, the per-slice ceiling ($TDD_WORDS; T4-3 lowers it to 2000)"; else t_bad "v0.38 T4-2 R14 playbook-tdd SKILL.md is at most 2150 words, the per-slice ceiling" "$TDD_WORDS words"; fi
+if [ "$TDD_WORDS" -le 2000 ]; then t_ok "v0.38 T4-3 R14 playbook-tdd SKILL.md is at most 2000 words, the final ceiling ($TDD_WORDS; 1995 expected)"; else t_bad "v0.38 T4-3 R14 playbook-tdd SKILL.md is at most 2000 words, the final ceiling" "$TDD_WORDS words"; fi
 if [ "$TDD_WORDS" -lt 3669 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words" "$TDD_WORDS words"; fi
 FULL_WORDS="$(wc -w < "$FULLREF" 2>/dev/null | tr -d ' ')"
 if [ -n "$FULL_WORDS" ] && [ "$FULL_WORDS" -ge 900 ]; then t_ok "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text ($FULL_WORDS words, at least 900; 1034 expected)"; else t_bad "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text (at least 900 words)" "[$FULL_WORDS] words"; fi
 if [ -n "$FULL_WORDS" ] && [ $((TDD_WORDS + FULL_WORDS)) -ge 3679 ]; then t_ok "v0.37 S3 AC3 SKILL.md + full.md lose no words (sum $((TDD_WORDS + FULL_WORDS)), at least 3679 = 3669 + a pointer line of 10 words or more)"; else t_bad "v0.37 S3 AC3 SKILL.md + full.md lose no words" "sum [$((TDD_WORDS + ${FULL_WORDS:-0}))] want at least 3679"; fi
 # budgets: only down (D1: AGENTS.global.md 730 -> 710; S3: playbook-tdd 3700 -> at most 2700)
 TBN="$(budget_of skills/playbook-tdd/SKILL.md)"; ABN="$(budget_of AGENTS.global.md)"
-if [ -n "$TBN" ] && [ "$TBN" -le 2150 ]; then t_ok "v0.38 T4-2 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2150 ($TBN)"; else t_bad "v0.38 T4-2 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2150" "budget [$TBN]"; fi
+if [ -n "$TBN" ] && [ "$TBN" -le 2000 ]; then t_ok "v0.38 T4-3 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2000 ($TBN)"; else t_bad "v0.38 T4-3 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2000" "budget [$TBN]"; fi
 if [ -n "$ABN" ] && [ "$ABN" -le 710 ]; then t_ok "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710 ($ABN)"; else t_bad "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710" "budget [$ABN]"; fi
 AGW="$(wc -w < "$PB_ROOT/AGENTS.global.md" | tr -d ' ')"
 if [ "$AGW" -le 710 ]; then t_ok "v0.37 D1 AGENTS.global.md stays within 710 words ($AGW; 707 expected, unchanged in S3)"; else t_bad "v0.37 D1 AGENTS.global.md stays within 710 words" "$AGW"; fi
@@ -2686,7 +2690,7 @@ done
 # AC1 / R1 / R14: the ceiling in both locales (R13 makes them equal)
 for LCX in C C.UTF-8; do
   WLC="$(LC_ALL=$LCX wc -w < "$SKILL" | tr -d ' ')"
-  if [ "$WLC" -le 2150 ]; then t_ok "v0.38 T4-2 AC1 SKILL.md is at most 2150 words in LC_ALL=$LCX ($WLC)"; else t_bad "v0.38 T4-2 AC1 SKILL.md is at most 2150 words in LC_ALL=$LCX" "$WLC words"; fi
+  if [ "$WLC" -le 2000 ]; then t_ok "v0.38 T4-3 AC1 SKILL.md is at most 2000 words in LC_ALL=$LCX ($WLC)"; else t_bad "v0.38 T4-3 AC1 SKILL.md is at most 2000 words in LC_ALL=$LCX" "$WLC words"; fi
 done
 # AC3 extra: nothing is lost overall (SKILL.md + full.md + wrong.md, wrong.md only exists from T4-3) at least the 3744 words of base
 ALLW="$(cat "$SKILL" "$FULLREF" "$TDD/references/wrong.md" 2>/dev/null | wc -w | tr -d ' ')"
@@ -2756,6 +2760,67 @@ if [ "$B" -ge 3 ]; then t_ok "v0.38 T4-2 AC3 references/full.md [### Phase 1 add
 # AC3 (2): the Phase 1 heading that stays in SKILL.md still has real text (not just a title and two pointers)
 B1="$(section "$SKILL" '^### Phase 1' | grep -c .)"
 if [ "$B1" -ge 6 ]; then t_ok "v0.38 T4-2 AC3 SKILL.md ### Phase 1: Spec keeps a non-empty body ($B1 lines)"; else t_bad "v0.38 T4-2 AC3 SKILL.md ### Phase 1: Spec keeps a non-empty body" "$B1 non-empty lines"; fi
+
+# v0.38 T4-3 (docs/v0.38-t4-spec.md R3, R5c, R6, R7, AC1, AC3, AC4, AC5): the four "user says it is wrong" steps move to references/wrong.md, Stop and ask is rewritten
+# These pins read references/wrong.md, never SKILL.md, so the stub left in SKILL.md cannot satisfy them (D6).
+echo "v0.38 T4-3: the wrong steps move verbatim to references/wrong.md, the stub stays, Stop and ask is shorter"
+assert_file "v0.38 T4-3 R7 references/wrong.md exists" "$WRONGREF"
+if git -C "$PB_ROOT" cat-file -e "$T4BASE" 2>/dev/null; then
+  # 169,180 holds the opener (169), the four steps and the Why line; the opener also stays in SKILL.md as the stub (R5c, R7)
+  MISS="$(t4_chk 169,180 "$WRONGREF")"
+  if [ -z "$MISS" ]; then t_ok "v0.38 T4-3 AC3 base $T4BASE SKILL.md lines 169,180 are whole lines of references/wrong.md"; else t_bad "v0.38 T4-3 AC3 base $T4BASE SKILL.md lines 169,180 are whole lines of references/wrong.md" "$(printf '%s' "$MISS" | head -n 3 | tr '\n' '|')"; fi
+else
+  t_skip 1 "AC3 moved-line check (T4-3): base $T4BASE not in this clone"
+fi
+T4W1='# Handling a user correction'
+T4W2='## When the user says it is wrong'
+T4OPEN='Do not defend the result and do not patch at once; in a production incident, mitigate first (`references/incident.md`).'
+T4STUB='Restate expected versus delivered, classify the cause with evidence, fix it test-first (steps: `references/wrong.md`).'
+T4WHY='**Why:** a patch without a named cause fixes one symptom and repeats the miss.'
+assert_eq "v0.38 T4-3 R7 wrong.md first line is the title" "$T4W1" "$(sed -n 1p "$WRONGREF" 2>/dev/null)"
+assert_eq "v0.38 T4-3 R7 wrong.md has the exact ## heading once" "1" "$(grep -cFx -- "$T4W2" "$WRONGREF" 2>/dev/null)"
+assert_eq "v0.38 T4-3 R7 wrong.md carries the opener line once" "1" "$(grep -cFx -- "$T4OPEN" "$WRONGREF" 2>/dev/null)"
+assert_eq "v0.38 T4-3 R3 wrong.md carries the Why line once" "1" "$(grep -cFx -- "$T4WHY" "$WRONGREF" 2>/dev/null)"
+assert_eq "v0.38 T4-3 R3 SKILL.md no longer carries the Why line" "0" "$(grep -cF -- 'a patch without a named cause' "$SKILL")"
+for S in '1. Restate in two lines what the user expected and what was delivered.' '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
+  assert_eq "v0.38 T4-3 R3 wrong.md has step line [step ${S%%.*}] once" "1" "$(grep -cFx -- "$S" "$WRONGREF" 2>/dev/null)"
+  assert_eq "v0.38 T4-3 R3 SKILL.md no longer has step line [step ${S%%.*}]" "0" "$(grep -cFx -- "$S" "$SKILL")"
+done
+assert_eq "v0.38 T4-3 R3 wrong.md has the step 2 line once" "1" "$(grep -cFx -- '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' "$WRONGREF" 2>/dev/null)"
+assert_eq "v0.38 T4-3 R3 SKILL.md no longer has the step 2 line" "0" "$(grep -cFx -- '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' "$SKILL")"
+# R5c: the stub is exactly the heading, the opener and one pointer line (no Why line), and it is non-empty
+assert_eq "v0.38 T4-3 R5c SKILL.md has the opener line exactly once" "1" "$(grep -cFx -- "$T4OPEN" "$SKILL")"
+assert_eq "v0.38 T4-3 R5c SKILL.md has the stub pointer line exactly once" "1" "$(grep -cFx -- "$T4STUB" "$SKILL")"
+WSEC="$(section "$SKILL" '^## When the user says it is wrong' | grep .)"
+assert_eq "v0.38 T4-3 R5c the SKILL.md wrong section is the heading, the opener and the pointer line (3 non-empty lines)" "3" "$(printf '%s\n' "$WSEC" | grep -c .)"
+assert_eq "v0.38 T4-3 R5c the SKILL.md wrong section has no Why line" "0" "$(printf '%s\n' "$WSEC" | grep -c 'Why:')"
+assert_eq "v0.38 T4-3 R5c the SKILL.md wrong section is the opener then the pointer line, in order" "$T4OPEN|$T4STUB" "$(printf '%s\n' "$WSEC" | sed -n '2,3p' | tr '\n' '|' | sed 's/|$//')"
+# the wrong.md body: heading, opener, four steps, Why (non-empty)
+T4WB="$(section "$WRONGREF" '^## When the user says it is wrong' | grep -c .)"
+if [ "$T4WB" -ge 11 ]; then t_ok "v0.38 T4-3 AC3 references/wrong.md ## When the user says it is wrong has a full body ($T4WB non-empty lines)"; else t_bad "v0.38 T4-3 AC3 references/wrong.md ## When the user says it is wrong has a full body" "$T4WB non-empty lines"; fi
+# AC5: SKILL.md names both reference files; every references/*.md that SKILL.md names exists (run-checks 'referenced file missing')
+if grep -qF 'references/wrong.md' "$SKILL" && grep -qF 'references/full.md' "$SKILL"; then t_ok "v0.38 T4-3 AC5 SKILL.md names references/wrong.md and references/full.md"; else t_bad "v0.38 T4-3 AC5 SKILL.md names references/wrong.md and references/full.md" "one is not named"; fi
+T4MISSREF=""
+for RF in $(grep -oE 'references/[A-Za-z0-9_.-]+\.md' "$SKILL" | sort -u); do [ -f "$TDD/$RF" ] || T4MISSREF="$T4MISSREF $RF"; done
+assert_eq "v0.38 T4-3 AC5 every references/*.md named in SKILL.md exists" "" "${T4MISSREF# }"
+# R7: full.md is unchanged by T4-3 (nine headings, see the EXPECT_FULL_HEADS check above); wrong.md is not a second copy of full.md text
+assert_eq "v0.38 T4-3 R7 references/full.md has no wrong-section heading" "0" "$(grep -cF -- "$T4W2" "$FULLREF" 2>/dev/null)"
+# R6: Stop and ask, exact new texts, old texts gone
+T4SB='- an ambiguity changes assertions and is hard to reverse (do the reversible rest first, then ask; reversible: log a default);'
+T4SN='Non-interactive (CI, headless, nobody will answer): when a sub-agent fails, is interrupted or times out, never stop to ask; continue at Lite in your own context (or finish the phase yourself) and say so in the final report.'
+assert_eq "v0.38 T4-3 R6 Stop and ask: the first bullet is the new text, once" "1" "$(grep -cFx -- "$T4SB" "$SKILL")"
+assert_eq "v0.38 T4-3 R6 Stop and ask: the non-interactive paragraph is the new text, once" "1" "$(grep -cFx -- "$T4SN" "$SKILL")"
+assert_eq "v0.38 T4-3 R6 Stop and ask: the old bullet wording is gone" "0" "$(grep -cF -- 'reversible ones: log a' "$SKILL")"
+assert_eq "v0.38 T4-3 R6 Stop and ask: the old orchestrator wording is gone" "0" "$(grep -cF -- 'the orchestrator never stops to ask' "$SKILL")"
+SAS="$(section "$SKILL" '^## Stop and ask the user when' | grep .)"
+assert_eq "v0.38 T4-3 R6 Stop and ask keeps its heading, four bullets and the paragraph (6 non-empty lines)" "6" "$(printf '%s\n' "$SAS" | grep -c .)"
+assert_eq "v0.38 T4-3 R6 Stop and ask keeps the dispute bullet" "1" "$(grep -cFx -- '- a dispute is still open after 2 rounds;' "$SKILL")"
+assert_eq "v0.38 T4-3 R6 Stop and ask keeps the weakening bullet" "1" "$(grep -cFx -- '- making a test pass seems to need weakening it, touching unrelated code, or adding a dependency;' "$SKILL")"
+assert_eq "v0.38 T4-3 R6 Stop and ask keeps the baseline bullet" "1" "$(grep -cFx -- '- baseline failures make the RED/GREEN signal unreadable.' "$SKILL")"
+# R13/AC1: ASCII only, under 300 lines, the final budget line is exactly 2000
+assert_eq "v0.38 T4-3 R13 SKILL.md still has no non-ASCII line" "0" "$(LC_ALL=C grep -c '[^[:print:][:cntrl:]]' "$SKILL")"
+assert_eq "v0.38 T4-3 AC1 evals/word-budgets gives playbook-tdd SKILL.md exactly 2000" "2000" "$(budget_of skills/playbook-tdd/SKILL.md)"
+assert_eq "v0.38 T4-3 R2 AGENTS.global.md budget is still 710" "710" "$(budget_of AGENTS.global.md)"
 
 # v0.38 Q9 S6: optional auto memory policy line in playbook-setup
 flat_has 'S6-1 setup questions.md offers keeping auto memory and treating its files as unreviewed data' "$QUESTIONS" 'auto memory.{0,200}unreviewed data'
