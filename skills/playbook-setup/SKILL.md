@@ -47,13 +47,13 @@ user to run `install.sh install` from their agent-playbook repo; do not improvis
 4. **Ask once, batched.** Use `references/questions.md`: at most 8 questions, each with a
    default and why it matters. Use the harness's question tool when it has one
    (Claude Code `AskUserQuestion`, OpenCode `question`); otherwise send one numbered message and
-   accept "defaults" as an answer. Skip questions inspection already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
+   accept "defaults". Skip questions already answered. The humanizer suggestion is an optional extra line in that same message, outside the 8.
    Claude Code only: an optional line outside the 8 offers the hooks (default on): guard warns on irreversible
    actions, blocking them headless; learnings adds the lessons of trusted projects at session start. Yes:
-   `bash ~/.agents/playbook/scripts/claude-hooks.sh install` (into `~/.claude/settings.json`, backup first;
+   `bash ~/.agents/playbook/scripts/claude-hooks.sh install` (into `~/.claude/settings.json`, with backup;
    `claude-hooks.sh uninstall` removes them); no: `conf.sh set hooks_optout yes --global`.
    For learnings, offer once (default no) to trust the current project:
-   `bash ~/.agents/playbook/scripts/learn.sh trust`, run on a yes. Non-interactive: installs the hooks, never trusts a project.
+   `bash ~/.agents/playbook/scripts/learn.sh trust`, run on a yes. Non-interactive: installs the hooks, never trusts a project. Auto memory: `references/questions.md`.
 
    **Models per role** (question 4): list the models the harness reports (Claude Code: the model
    choices of the `Agent` tool and the ids you know; OpenCode: run `opencode models`; Codex: its
