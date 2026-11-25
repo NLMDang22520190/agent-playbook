@@ -8,8 +8,11 @@
 #                              of <home>/.agents/trusted-projects; DIR defaults to the project root; the USER runs these)
 #   learn.sh check   (problems, then a summary line ending "; entry lines: A active, R retired", then a warning line
 #                              when the hook injects only some of the active entries; the exit code ignores the warning)
-#   learn.sh checklist ROLE   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
-#                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
+#   learn.sh checklist ROLE [--dates]   (ROLE = tester|implementer|reviewer: the active entries for ROLE and for all,
+#                              as "- [ ] <rule> (L-000N, scope: <scope>)"; --dates appends ", verified D" or ", added D"
+#                              inside the parentheses; read-only)
+#   learn.sh verify L-0001   (the USER confirmed the active entry still holds: write "- Verified: <today>" after its
+#                              "- Role:" line, or replace that line; `stale` then ages the entry from that date)
 #   learn.sh stale [--days N] [--fail]   (active entries older than N days (default 180) and/or whose path-like scope
 #                              matches no tracked file, one line each, then a summary; read-only; --fail: exit 1 when any listed)
 #   learn.sh candidate add --title T --rule R --why W --evidence E --source user|failure|review [--scope S] [--role ROLE]
@@ -257,7 +260,8 @@ case "$cmd" in
       case "$sdays" in "" | *[!0-9]* | 0*) pb_die "invalid learn_stale_days: $sdays (a positive integer)" 2 ;; esac
       [ "${#sdays}" -le 6 ] || pb_die "invalid learn_stale_days: $sdays (too large)" 2
     fi
-    # one record per active entry: AGE<TAB>SCOPE<TAB>HEADING (AGE is "-" when the heading date is unusable)
+    # one record per active entry: AGE<TAB>VDATE<TAB>SCOPE<TAB>HEADING (AGE is "-" when no usable date; VDATE is the date of
+    # the FIRST "- Verified:" line when valid, else "-"; a valid Verified date, not the heading date, then sets AGE)
     srecs="$(TODAY_S="$TODAY" awk '
       function dnum(s,   y, m, d, dim, leap, era, yoe, doy) {
         if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) return -1
@@ -273,7 +277,7 @@ case "$cmd" in
         return era * 146097 + yoe * 365 + int(yoe / 4) - int(yoe / 100) + doy
       }
       function flush() {
-        if (inent && active) printf "%s\t%s\t%s\n", age, scope, rest
+        if (inent && active) printf "%s\t%s\t%s\t%s\n", age, vdate, scope, rest
         inent = 0
       }
       BEGIN {
@@ -283,7 +287,7 @@ case "$cmd" in
       }
       { sub(/\r$/, "") }
       /^### L-[0-9][0-9][0-9][0-9] / {
-        flush(); inent = 1; active = 0; seen = 0; hasscope = 0; scope = "project-wide"; age = "-"
+        flush(); inent = 1; active = 0; seen = 0; hasscope = 0; vseen = 0; vdate = "-"; scope = "project-wide"; age = "-"
         rest = substr($0, 5)
         if (substr(rest, 7, sl) == sep && substr(rest, 17 + sl, sl) == sep && length(rest) > 16 + 2 * sl) {
           n = dnum(substr(rest, 7 + sl, 10))
@@ -293,6 +297,14 @@ case "$cmd" in
       }
       /^### / { flush(); next }
       inent && !seen && /^- Status:/ { seen = 1; if ($0 ~ /^- Status: active/) active = 1; next }
+      inent && !vseen && index($0, "- Verified:") == 1 {
+        vseen = 1
+        if ($0 ~ /^- Verified: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) {
+          n = dnum(substr($0, 13))
+          if (n >= 0) { vdate = substr($0, 13); age = tdays - n }
+        }
+        next
+      }
       inent && !hasscope && /^- Scope:/ {
         hasscope = 1
         if (substr($0, 1, 9) == "- Scope: " && length($0) > 9) { scope = substr($0, 10); gsub(/\t/, " ", scope) }
@@ -304,10 +316,12 @@ case "$cmd" in
     if [ "$( (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null) )" = true ]; then srepo=1; fi
     sout=""; sk=0; sa=0
     if [ -n "$srecs" ]; then
-      while IFS="$(printf '\t')" read -r sage sscope shead; do
+      while IFS="$(printf '\t')" read -r sage svdate sscope shead; do
         sa=$((sa + 1))
         sreason=""
-        if [ "$sage" != "-" ] && [ "$sage" -gt "$sdays" ]; then sreason="$sage days old"; fi
+        if [ "$sage" != "-" ] && [ "$sage" -gt "$sdays" ]; then
+          if [ "$svdate" != "-" ]; then sreason="$sage days since verified $svdate"; else sreason="$sage days old"; fi
+        fi
         if [ "$srepo" -eq 1 ]; then
           slike=1
           case "$sscope" in
@@ -688,6 +702,19 @@ EOF
       printf 'problem: unknown Role value(s) (use tester, implementer, reviewer or all):\n%s\n' "$badrole"
       problems=$((problems + 1))
     fi
+    badver="$(awk '
+      function flush() { if (head != "" && vc > 1) print "  " head " (more than one Verified line)" }
+      /^### / { flush(); head = $0; sub(/\r$/, "", head); vc = 0; next }
+      head != "" && index($0, "- Verified:") == 1 {
+        vc++; line = $0; sub(/\r$/, "", line)
+        if (line !~ /^- Verified: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) print "  " line
+      }
+      END { flush() }
+    ' "$FILE")"
+    if [ -n "$badver" ]; then
+      printf 'problem: malformed Verified line(s) (one "- Verified: YYYY-MM-DD" per entry):\n%s\n' "$badver"
+      problems=$((problems + 1))
+    fi
     act="$(active_count)"
     ret="$(grep -c '^- Status: retired' "$FILE" || true)"
     if [ "$act" -gt "$MAX_ENTRIES" ]; then
@@ -719,25 +746,148 @@ EOF
     ;;
 
   checklist)
+    # Read-only. Rule, Scope and Role are taken from the LAST such line of an entry; the Verified date from the FIRST
+    # "- Verified:" line (as `stale` does). Order: ROLE, then the options, then the file.
     crole="${1:-}"
     case "$crole" in tester|implementer|reviewer) ;; *) pb_die "usage: learn.sh checklist tester|implementer|reviewer" 2 ;; esac
+    shift
+    cdates=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --dates) cdates=1 ;;
+        *) pb_die "unknown option: $1 (usage: learn.sh checklist ROLE [--dates])" 2 ;;
+      esac
+      shift
+    done
     [ -f "$FILE" ] || pb_die "$REL not found" 2
-    items="$(ROLE="$crole" awk '
-      function flush() {
-        if (id != "" && active && rule != "" && (role == "" || role == "all" || role == ENVIRON["ROLE"]))
-          printf "- [ ] %s (%s, scope: %s)\n", rule, id, scope
+    items="$(ROLE="$crole" DATES="$cdates" awk '
+      function flush(   sfx) {
+        if (id != "" && active && rule != "" && (role == "" || role == "all" || role == ENVIRON["ROLE"])) {
+          sfx = ""
+          if (ENVIRON["DATES"] == "1") {
+            if (vd != "") sfx = ", verified " vd
+            else if (hd != "") sfx = ", added " hd
+          }
+          printf "- [ ] %s (%s, scope: %s%s)\n", rule, id, scope, sfx
+        }
       }
-      /^### L-[0-9][0-9][0-9][0-9] / { flush(); id = $2; active = 0; rule = ""; scope = "project-wide"; role = ""; next }
+      /^### L-[0-9][0-9][0-9][0-9] / {
+        flush(); id = $2; active = 0; rule = ""; scope = "project-wide"; role = ""; vd = ""; vseen = 0; hd = ""
+        sep = " · "; sl = length(sep); rest = substr($0, 5)
+        if (substr(rest, 7, sl) == sep && substr(rest, 17 + sl, sl) == sep && length(rest) > 16 + 2 * sl) {
+          hd = substr(rest, 7 + sl, 10)
+          if (hd !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) hd = ""
+        }
+        next
+      }
       /^### / { flush(); id = ""; next }
       /^- Status: active/ { active = 1 }
       /^- Rule: / { rule = substr($0, 9) }
       /^- Scope: / { scope = substr($0, 10) }
       /^- Role: / { role = substr($0, 9) }
+      !vseen && index($0, "- Verified:") == 1 {
+        vseen = 1; vline = $0; sub(/\r$/, "", vline)
+        if (vline ~ /^- Verified: [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) vd = substr(vline, 13)
+      }
       END { flush() }
     ' "$FILE")"
     if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no learnings for $crole"; fi
     ;;
+
+# S3-BEGIN
+  verify)
+    # Writes one "- Verified: DATE" line (the USER confirmed the entry still holds). Like retire: no lock, tmp file in
+    # TMPDIR, then cat > FILE (keeps symlink, inode and mode). Entry text is data: ids and dates reach awk via ENVIRON.
+    if [ $# -ne 1 ]; then pb_die "usage: learn.sh verify L-NNNN" 2; fi
+    vid="$1"
+    case "$vid" in L-[0-9][0-9][0-9][0-9]) ;; *) pb_die "usage: learn.sh verify L-NNNN" 2 ;; esac
+    [ -f "$FILE" ] || pb_die "$REL not found" 2
+    # phase 1 (read only): "COUNT STATUS MODE LINE" for the entry headed "### ID "; exit 7 for a bad PLAYBOOK_DATE
+    vplan="$(VID="$vid" VDATE="$TODAY" awk '
+      function validdate(s,   y, m, d, dim, leap) {
+        if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) return 0
+        y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+        if (m < 1 || m > 12 || d < 1) return 0
+        leap = ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0)
+        dim = (m == 2) ? (leap ? 29 : 28) : ((m == 4 || m == 6 || m == 9 || m == 11) ? 30 : 31)
+        return (d <= dim)
+      }
+      BEGIN { id = ENVIRON["VID"]; if (!validdate(ENVIRON["VDATE"])) { bad = 1; exit 7 } }
+      { line = $0; sub(/\r$/, "", line) }
+      /^### / {
+        inb = 0
+        if (index(line, "### " id " ") == 1) {
+          n++
+          if (n == 1) { inb = 1; st = "other"; sseen = 0; vl = 0; rl = 0; cl = 0; lastnb = NR }
+        }
+        next
+      }
+      inb {
+        if (!sseen && index(line, "- Status:") == 1) {
+          sseen = 1
+          if (index(line, "- Status: active") == 1) st = "active"
+          else if (index(line, "- Status: retired") == 1) st = "retired"
+        }
+        if (!vl && index(line, "- Verified:") == 1) vl = NR
+        if (!rl && index(line, "- Role:") == 1) rl = NR
+        if (!cl && index(line, "- Scope:") == 1) cl = NR
+        if (line !~ /^[ \t]*$/) lastnb = NR
+      }
+      END {
+        if (bad) exit 7
+        if (n == 0) { print "0 other insert 0"; exit 0 }
+        if (vl) print n, st, "replace", vl
+        else if (rl) print n, st, "insert", rl
+        else if (cl) print n, st, "insert", cl
+        else print n, st, "insert", lastnb
+      }
+    ' "$FILE")"
+    vrc=$?
+    if [ "$vrc" -eq 7 ]; then pb_die "invalid PLAYBOOK_DATE: $TODAY (expected a real date, YYYY-MM-DD)" 2; fi
+    [ "$vrc" -eq 0 ] || pb_die "cannot read $REL" 3
+    read -r vcount vstat vmode vline vextra <<EOF
+$vplan
+EOF
+    case "$vcount" in "" | *[!0-9]*) pb_die "cannot read $REL" 3 ;; esac
+    case "$vline" in "" | *[!0-9]*) pb_die "cannot read $REL" 3 ;; esac
+    [ -z "$vextra" ] || pb_die "cannot read $REL" 3
+    [ "$vcount" -ne 0 ] || pb_die "no such entry: $vid" 2
+    [ "$vcount" -eq 1 ] || pb_die "ambiguous entry id: $vid appears $vcount times" 2
+    case "$vstat" in
+      active) ;;
+      retired) pb_die "$vid is retired; verify applies to active entries" 2 ;;
+      *) pb_die "$vid is not active" 2 ;;
+    esac
+    vnl=0
+    [ -z "$(tail -c1 "$FILE")" ] && vnl=1
+    vtmp="$(mktemp "${TMPDIR:-/tmp}/pblearn.XXXXXX")" || pb_die "mktemp failed" 3
+    # phase 2: copy FILE with the one line replaced or added; a file without a final newline stays without one
+    if ! { VMODE="$vmode" VLINE="$vline" VNL="$vnl" VDATE="$TODAY" awk '
+      function out(s) { if (started) printf "\n"; printf "%s", s; started = 1 }
+      BEGIN { mode = ENVIRON["VMODE"]; at = ENVIRON["VLINE"] + 0; v = "- Verified: " ENVIRON["VDATE"] }
+      {
+        cr = ($0 ~ /\r$/) ? "\r" : ""
+        if (NR == at) {
+          if (mode == "replace") out(v cr)
+          else { out($0); out(v cr) }
+        } else out($0)
+      }
+      END { if (ENVIRON["VNL"] == "1") printf "\n" }
+    ' "$FILE" > "$vtmp" && cat "$vtmp" > "$FILE"; }; then
+      rm -f "$vtmp"
+      pb_die "cannot write $REL" 3
+    fi
+    rm -f "$vtmp"
+    if [ "$vmode" = insert ]; then
+      vn="$(wc -l < "$FILE" | tr -d ' ')"
+      if [ "$vn" -gt "$MAX_LINES" ]; then
+        echo "warning: $vn lines exceeds the $MAX_LINES-line budget (merge/retire entries)" >&2
+      fi
+    fi
+    echo "verified $vid"
+    ;;
+# S3-END
   *)
-    pb_die "usage: learn.sh init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted" 2
+    pb_die "usage: learn.sh init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted|verify" 2
     ;;
 esac
