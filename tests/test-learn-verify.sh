@@ -50,6 +50,13 @@ insafter() {
   ' "${4:-$F}" > "$VS/ins" && cat "$VS/ins" > "${4:-$F}"
 }
 crlf() { awk '{ printf "%s\r\n", $0 }' "$1" > "$VS/crlf" && cat "$VS/crlf" > "$1"; }
+# CRLF_OK probe: 1 only when awk keeps CR bytes both ways (read: length of "a\r" is 2; write: crlf() gives every line a CR).
+# Git Bash awk in text mode drops them (seen on the Windows runner); the CRLF-output assertions are then skipped, see t_skip below.
+printf 'a\nb\nc\n' > "$VS/probe"; crlf "$VS/probe"
+PRD="$(printf 'a\r\n' | awk '{ printf "%d", length($0) }')"
+PRW="$(grep -c "$CR\$" "$VS/probe" || true)"
+if [ "$PRD" = 2 ] && [ "$PRW" = 3 ] && [ -z "${PB_TEST_NO_CRLF:-}" ]; then CRLF_OK=1; else CRLF_OK=0; fi
+[ "$CRLF_OK" = 1 ] || echo "  probe: awk drops CR here (read length of 'a<CR>' = $PRD, want 2; CR lines after crlf() = $PRW of 3; PB_TEST_NO_CRLF=${PB_TEST_NO_CRLF:-unset}); the t_skip lines below count the CRLF cases"
 # prevline ID: the line just before the first Verified line of block ID
 prevline() { blk "$1" "${2:-$F}" | awk '/^- Verified:/ { print prev; exit } { prev = $0 }'; }
 lastbyte() { tail -c1 "$1" | od -An -c | tr -d ' '; }
@@ -166,9 +173,11 @@ assert_eq "AC5 a file that had a final newline still has one" '\n' "$(lastbyte "
 fix1; crlf "$F"; snap
 vr 2026-11-10 verify L-0002
 assert_eq "AC5 CRLF: verify succeeds" "0|verified L-0002" "$VRC|$VO"
+if [ "$CRLF_OK" = 1 ]; then
 assert_eq "AC5 CRLF: every line still ends in CR LF (no LF-only line)" "$(nlines "$F")" "$(grep -c "$CR\$" "$F" || true)"
 assert_eq "AC5 CRLF: the new line is '- Verified: 2026-11-10' + CR" "1" "$(grep -c -x -e "- Verified: 2026-11-10$CR" "$F" || true)"
 assert_eq "AC5 CRLF: all other lines verbatim" "$(ck "$VS/before")" "$(grep -v '^- Verified:' "$F" | cksum)"
+else t_skip 3 "AC5 CRLF: awk does not keep CR bytes here"; fi
 # no final newline, anchor not last
 newrepo
 addent 2026-01-01 --title T1 --rule R1 --why w --evidence e --source user
@@ -199,7 +208,9 @@ printf '%s' "$(cat "$F")" > "$VS/crnolf" && cat "$VS/crnolf" > "$F"
 cp "$F" "$VS/before"
 vr 2026-03-01 verify L-0001
 { cat "$VS/before"; printf '\n- Verified: 2026-03-01\r'; } > "$VS/exp"
+if [ "$CRLF_OK" = 1 ]; then
 assert_eq "AC5 CRLF without final LF: old anchor ends CR LF, new line ends CR, no LF" "$(ck "$VS/exp")" "$(ck "$F")"
+else t_skip 1 "AC5 CRLF without final LF: awk does not keep CR bytes here"; fi
 newrepo
 addent 2026-01-01 --title T1 --rule R1 --why w --evidence e --source user
 crlf "$F"
@@ -207,7 +218,9 @@ printf '%s' "$(cat "$F")" > "$VS/crnolf" && cat "$VS/crnolf" > "$F"
 SZ="$(wc -c < "$F" | tr -d ' ')"; head -c "$((SZ - 1))" "$F" > "$VS/before"; cat "$VS/before" > "$F"
 vr 2026-03-01 verify L-0001
 { cat "$VS/before"; printf '\n- Verified: 2026-03-01'; } > "$VS/exp"
+if [ "$CRLF_OK" = 1 ]; then
 assert_eq "AC5 CRLF file whose last line has no CR: LF-only added line (recorded, not an error)" "$(ck "$VS/exp")" "$(ck "$F")"
+else t_skip 1 "AC5 CRLF last line without CR: awk does not keep CR bytes here"; fi
 
 echo "AC6 safe write"
 SPD="$(mk_tmp)"
@@ -372,6 +385,7 @@ assert_eq "AC9g the scope reason follows the Verified age" "$(printf 'L-0001 · 
 one1; vr 2026-03-01 verify L-0001; stl 2026-11-17; LFOUT="$SO"
 K0="$(ck "$F")"; LS0="$(git ls-files -s)"; stl 2026-11-17
 assert_eq "AC9i stale is read-only" "same|same" "$(same "$K0" "$(ck "$F")")|$(same "$LS0" "$(git ls-files -s)")"
+# without CR bytes (CRLF_OK=0) this compares LF with LF and passes vacuously; it is kept so the read path still runs
 crlf "$F"; stl 2026-11-17
 assert_eq "AC9i a CRLF file gives the same result as the LF file" "$LFOUT" "$SO"
 
@@ -410,6 +424,7 @@ insafter L-0001 '- Role:' '- Verified: 2026-11-10'
 cl tester --dates
 assert_eq "AC10d a retired entry is never listed" "$(printf -- '- [ ] R2 (L-0002, scope: project-wide, added 2026-01-01)\n- [ ] R3 (L-0003, scope: project-wide, added 2026-02-02)')" "$CO"
 fix1; crlf "$F"; vr 2026-11-12 verify L-0003
+if [ "$CRLF_OK" = 1 ]; then
 cl tester; assert_eq "AC10e CRLF default: exactly one line (L-0003)" "1" "$(printf '%s\n' "$CO" | wc -l | tr -d ' ')"
 EXP="$(printf -- '- [ ] R3\r (L-0003, scope: project-wide\r, verified 2026-11-12)')"
 cl tester --dates
@@ -418,6 +433,7 @@ cl implementer; assert_eq "AC10e CRLF implementer: exactly one line" "1" "$(prin
 grep -v '^- Verified:' "$F" > "$VS/nov" && cat "$VS/nov" > "$F"
 cl tester --dates
 assert_eq "AC10e CRLF without Verified: 'added' from the heading" "$(printf -- '- [ ] R3\r (L-0003, scope: project-wide\r, added 2026-02-02)')" "$CO"
+else t_skip 4 "AC10e CRLF checklist: awk does not keep CR bytes here"; fi
 fix1
 cl --dates tester;      assert_eq "AC10f --dates before the role: the old usage error" "2|error: usage: learn.sh checklist tester|implementer|reviewer|" "$CRC|$CE|$CO"
 for BADA in --bogus extra; do
@@ -579,8 +595,10 @@ echo "GAP gap tests from the S3 mutation run"
 one1; vr 2026-03-01 verify L-0001; crlf "$F"
 vr 2026-11-10 verify L-0001
 assert_eq "GAP-a CRLF replace: exit 0" "0|verified L-0001" "$VRC|$VO"
+if [ "$CRLF_OK" = 1 ]; then
 assert_eq "GAP-a CRLF replace: the replaced line ends with CR" "1" "$(grep -c "^- Verified: 2026-11-10${CR}\$" "$F" || true)"
 assert_eq "GAP-a CRLF replace: every line still ends with CR" "$(nlines "$F")" "$(grep -c "${CR}\$" "$F" || true)"
+else t_skip 2 "GAP-a CRLF replace: awk does not keep CR bytes here"; fi
 assert_eq "GAP-a CRLF replace: the old date is gone" "0" "$(cnt '2026-03-01' "$F")"
 # (b) L-00010 next to L-0001
 one1
