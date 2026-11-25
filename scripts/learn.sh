@@ -802,7 +802,7 @@ EOF
     vid="$1"
     case "$vid" in L-[0-9][0-9][0-9][0-9]) ;; *) pb_die "usage: learn.sh verify L-NNNN" 2 ;; esac
     [ -f "$FILE" ] || pb_die "$REL not found" 2
-    # phase 1 (read only): "COUNT STATUS MODE LINE" for the entry headed "### ID "; exit 7 for a bad PLAYBOOK_DATE
+    # phase 1 (read only): "COUNT STATUS MODE LINE KIND" (KIND = anchor line kind: verified|role|scope|last) for the entry headed "### ID "; exit 7 for a bad PLAYBOOK_DATE
     vplan="$(VID="$vid" VDATE="$TODAY" awk '
       function validdate(s,   y, m, d, dim, leap) {
         if (s !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) return 0
@@ -835,21 +835,22 @@ EOF
       }
       END {
         if (bad) exit 7
-        if (n == 0) { print "0 other insert 0"; exit 0 }
-        if (vl) print n, st, "replace", vl
-        else if (rl) print n, st, "insert", rl
-        else if (cl) print n, st, "insert", cl
-        else print n, st, "insert", lastnb
+        if (n == 0) { print "0 other insert 0 last"; exit 0 }
+        if (vl) print n, st, "replace", vl, "verified"
+        else if (rl) print n, st, "insert", rl, "role"
+        else if (cl) print n, st, "insert", cl, "scope"
+        else print n, st, "insert", lastnb, "last"
       }
     ' "$FILE")"
     vrc=$?
     if [ "$vrc" -eq 7 ]; then pb_die "invalid PLAYBOOK_DATE: $TODAY (expected a real date, YYYY-MM-DD)" 2; fi
     [ "$vrc" -eq 0 ] || pb_die "cannot read $REL" 3
-    read -r vcount vstat vmode vline vextra <<EOF
+    read -r vcount vstat vmode vline vkind vextra <<EOF
 $vplan
 EOF
     case "$vcount" in "" | *[!0-9]*) pb_die "cannot read $REL" 3 ;; esac
     case "$vline" in "" | *[!0-9]*) pb_die "cannot read $REL" 3 ;; esac
+    case "$vkind" in verified | role | scope | last) ;; *) pb_die "cannot read $REL" 3 ;; esac
     [ -z "$vextra" ] || pb_die "cannot read $REL" 3
     [ "$vcount" -ne 0 ] || pb_die "no such entry: $vid" 2
     [ "$vcount" -eq 1 ] || pb_die "ambiguous entry id: $vid appears $vcount times" 2
@@ -861,18 +862,23 @@ EOF
     vnl=0
     [ -z "$(tail -c1 "$FILE")" ] && vnl=1
     vtmp="$(mktemp "${TMPDIR:-/tmp}/pblearn.XXXXXX")" || pb_die "mktemp failed" 3
-    # phase 2: copy FILE with the one line replaced or added; a file without a final newline stays without one
-    if ! { VMODE="$vmode" VLINE="$vline" VNL="$vnl" VDATE="$TODAY" awk '
+    # phase 2: copy FILE with the one line replaced or added; a file without a final newline stays without one.
+    # Race guard: the line at VLINE must still be the anchor phase 1 saw (kind VKIND: ^- Verified: / ^- Role: / ^- Scope:,
+    # or for "last" a non-blank line); otherwise awk exits 9, the copy is not written back and FILE stays unchanged.
+    if ! { VMODE="$vmode" VLINE="$vline" VKIND="$vkind" VNL="$vnl" VDATE="$TODAY" awk '
       function out(s) { if (started) printf "\n"; printf "%s", s; started = 1 }
-      BEGIN { mode = ENVIRON["VMODE"]; at = ENVIRON["VLINE"] + 0; v = "- Verified: " ENVIRON["VDATE"] }
+      BEGIN { mode = ENVIRON["VMODE"]; at = ENVIRON["VLINE"] + 0; kind = ENVIRON["VKIND"]; v = "- Verified: " ENVIRON["VDATE"] }
       {
         cr = ($0 ~ /\r$/) ? "\r" : ""
         if (NR == at) {
+          hit = 1; ln = $0; sub(/\r$/, "", ln)
+          if ((kind == "verified" && index(ln, "- Verified:") != 1) || (kind == "role" && index(ln, "- Role:") != 1) ||
+              (kind == "scope" && index(ln, "- Scope:") != 1) || (kind == "last" && ln ~ /^[ \t]*$/)) { stale = 1; exit 9 }
           if (mode == "replace") out(v cr)
           else { out($0); out(v cr) }
         } else out($0)
       }
-      END { if (ENVIRON["VNL"] == "1") printf "\n" }
+      END { if (stale || !hit) exit 9; if (ENVIRON["VNL"] == "1") printf "\n" }
     ' "$FILE" > "$vtmp" && cat "$vtmp" > "$FILE"; }; then
       rm -f "$vtmp"
       pb_die "cannot write $REL" 3
