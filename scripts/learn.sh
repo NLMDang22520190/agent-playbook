@@ -372,7 +372,11 @@ EOF
       local i=0
       while :; do
         if mkdir "$CLOCK" 2>/dev/null; then LOCKED=1; return 0; fi
-        [ -d "$CLOCK" ] || pb_die "cannot create lock: $CAND_REL.lock" 3
+        # mkdir failed: a missing or read-only parent can never succeed (exit 3 at once); anything else is
+        # contention, retried. The lock dir itself is not tested: its holder may have just released it.
+        { [ -d "${CFILE%/*}" ] && [ -w "${CFILE%/*}" ]; } || pb_die "cannot create lock: $CAND_REL.lock" 3
+        # a lock path that exists but is not a directory can never be taken either
+        { [ ! -e "$CLOCK" ] || [ -d "$CLOCK" ]; } || pb_die "cannot create lock: $CAND_REL.lock" 3
         [ "$i" -lt "$CTRIES" ] || pb_die "candidate file is locked: $CAND_REL.lock (remove it if no learn.sh is running)" 3
         i=$((i + 1))
         sleep 0.1 2>/dev/null || sleep 1
