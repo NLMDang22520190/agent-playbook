@@ -653,8 +653,8 @@ flat_has 'v22 AC3.1 spec-reviewer gate: role-gate.sh check reviewer' "$SPEC_REV"
 flat_has 'v22 AC3.1 spec-reviewer writes only inside the repository (scratch under .agents/handoff)' "$SPEC_REV" '\.agents/handoff'
 sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer' "$SKILL" '^### Phase 1' 'spec[- ]review'
 sec_flat_has 'v22 AC3.2 Phase 1 runs the spec reviewer BEFORE the first tester' "$SKILL" '^### Phase 1' 'spec[- ]review.{0,200}before.{0,60}(first )?tester|before.{0,60}(first )?tester.{0,120}spec[- ]review|tester.{0,60}(only )?after.{0,80}spec[- ]review'
-sec_flat_has 'v22 AC3.2 Phase 1: a REVISE verdict goes back to the spec' "$SKILL" '^### Phase 1' 'REVISE.{0,160}(spec|back)'
-sec_flat_has 'v22 AC3.2 Phase 1 names the spec-reviewer role file or its report' "$SKILL" '^### Phase 1' 'roles/spec-reviewer|01b-spec-review|spec-reviewer'
+sec_flat_has 'v22 AC3.2 Phase 1: a REVISE verdict goes back to the spec' "$FULLREF" '^### Phase 1 addition' 'REVISE.{0,160}(spec|back)'
+sec_flat_has 'v22 AC3.2 Phase 1 names the spec-reviewer role file or its report' "$FULLREF" '^### Phase 1 addition' 'roles/spec-reviewer|01b-spec-review|spec-reviewer'
 
 # --- v0.22.0 AC4: request coverage before "done"
 exact_heading 'v22 AC4.1 final-report template has the exact heading ## Request coverage' "$FINAL" '## Request coverage'
@@ -672,8 +672,8 @@ if grep -qiE 'report\.js' "$SPEC_REV" 2>/dev/null; then t_bad 'RV10 spec-reviewe
 assert_file 'RV10 spec-reviewer.md still exists (the leak checks above are not vacuous)' "$SPEC_REV"
 flat_has 'RV10 spec-reviewer.md: the report is its only output' "$SPEC_REV" 'only output'
 flat_has 'RV10 spec-reviewer.md: the orchestrator saves the report to 01b-spec-review.md' "$SPEC_REV" 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|01b-spec-review.{0,160}(saved|written|stored) by the orchestrator'
-sec_flat_has 'RV10 SKILL.md Phase 1: the orchestrator saves the spec reviewer report to .agents/handoff/01b-spec-review.md' "$SKILL" '^### Phase 1' 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|(save|saves|saved|writes?|stor).{0,80}01b-spec-review.{0,120}orchestrator|01b-spec-review.{0,120}(saved|written|stored) by the orchestrator'
-sec_flat_has 'RV10 SKILL.md Phase 1: it is the reviewer report that is saved (its only output)' "$SKILL" '^### Phase 1' 'report.{0,120}01b-spec-review|01b-spec-review.{0,120}report'
+sec_flat_has 'RV10 SKILL.md Phase 1: the orchestrator saves the spec reviewer report to .agents/handoff/01b-spec-review.md' "$FULLREF" '^### Phase 1 addition' 'orchestrator.{0,160}(save|saves|saved|writes?|stor).{0,160}01b-spec-review|(save|saves|saved|writes?|stor).{0,80}01b-spec-review.{0,120}orchestrator|01b-spec-review.{0,120}(saved|written|stored) by the orchestrator'
+sec_flat_has 'RV10 SKILL.md Phase 1: it is the reviewer report that is saved (its only output)' "$FULLREF" '^### Phase 1 addition' 'report.{0,120}01b-spec-review|01b-spec-review.{0,120}report'
 flat_has 'RV10 playbook-setup: leak_literals only in the project conf are not read in linked git worktrees' "$SETUP" 'worktree.{0,250}(project|leak_literals)|leak_literals.{0,250}worktree'
 flat_has 'RV10 playbook-setup: the project conf is git-excluded' "$SETUP" 'worktree.{0,250}(exclude|ignored)|(exclude|ignored).{0,250}worktree'
 flat_has 'RV10 playbook-setup: so private literals belong in the global conf' "$SETUP" 'worktree.{0,250}global|global.{0,250}worktree'
@@ -783,8 +783,8 @@ sec_flat_has 'v22.2 AC1.1 template: the corpus lists earlier bugs' "$SPEC_T" '^#
 sec_flat_has 'v22.2 AC1.1 template: each entry has an expected result' "$SPEC_T" '^## Regression corpus' 'expected'
 sec_flat_has 'v22.2 AC1.1 Phase 1 names the regression corpus' "$SKILL" '^### Phase 1' 'regression corpus'
 sec_flat_has 'v22.2 AC1.1 Phase 1: it applies when a change replaces or rewrites existing logic' "$SKILL" '^### Phase 1' 'replac.{0,200}corpus|rewrit.{0,200}corpus|corpus.{0,200}(replac|rewrit)'
-sec_flat_has 'v22.2 AC1.1 Phase 1: the corpus holds old inputs and earlier bugs with the expected result' "$SKILL" '^### Phase 1' 'corpus.{0,250}(old inputs?|earlier bugs?)|(old inputs?|earlier bugs?).{0,250}corpus'
-sec_flat_has 'v22.2 AC1.1 Phase 1: the first RED covers the whole corpus' "$SKILL" '^### Phase 1' 'corpus.{0,250}first RED|first RED.{0,250}corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the corpus holds old inputs and earlier bugs with the expected result' "$FULLREF" '^### Phase 1 addition' 'corpus.{0,250}(old inputs?|earlier bugs?)|(old inputs?|earlier bugs?).{0,250}corpus'
+sec_flat_has 'v22.2 AC1.1 Phase 1: the first RED covers the whole corpus' "$FULLREF" '^### Phase 1 addition' 'corpus.{0,250}first RED|first RED.{0,250}corpus'
 flat_has 'v22.2 AC1.2 implementer: never hide a construct from a gate' "$IMPL" 'never hide|not hide|do not hide|don.t hide|hid(e|ing)[^.]{0,80}(from|inside)[^.]{0,40}(gate|rule|check)'
 flat_has 'v22.2 AC1.2 implementer: a flagged construct is reported (Dispute or note)' "$IMPL" '(gate|rule)[^.]{0,200}flag[^.]{0,250}report|report[^.]{0,200}(dispute|note)|(dispute|note)[^.]{0,200}report'
 flat_has 'v22.2 AC1.2 implementer: the hiding tricks are named (variable, disabling, renaming)' "$IMPL" 'variable|disabl|renam'
@@ -1121,7 +1121,7 @@ flat_has 'v22.4 AC5.2 playbook-learn says the Role line counts toward the line b
 
 # --- v0.22.4 AC6.3: wording lows
 echo "v22.4 AC6.3 SKILL.md, state.md, bsd-check"
-flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$SKILL" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
+flat_has 'v22.4 AC6.3 SKILL.md: the regression corpus comes from code and tests, not from the source' "$FULLREF" 'corpus[^.]{0,200}code and (the )?tests?[^.]{0,120}not[^.]{0,40}source'
 check 'v22.4 AC6.3 state.md: the reviewer line is "the sha it reviewed"' "$TDD/templates/state.md" 'reviewer:.*the sha it reviewed'
 sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full shows the slice' "$SKILLFULL" "$P2" 'autonomy=full[^.]{0,200}show'
 sec_flat_has 'v22.4 AC6.3 first-slice checkpoint: autonomy=full does not wait' "$SKILLFULL" "$P2" 'autonomy=full[^.]{0,200}(do not wait|does not wait|without waiting|no wait|not wait)'
@@ -1737,6 +1737,7 @@ if [ "$GOT_HEADS" = "$EXPECT_HEADS" ]; then t_ok "v24.10 R2-4 / v0.37 S3 playboo
 EXPECT_FULL_HEADS="$(cat <<'HEADS'
 ### Phase 2: Loop per slice (vertical slices, never "all tests first")
 ### Phase 3: Review (reviewer, read-only)
+### Phase 1 addition: regression corpus and spec review (Full)
 ## Slice size
 ### Phase 4: Close-out (orchestrator)
 ## Test infrastructure role (opt-in)
@@ -1746,7 +1747,7 @@ EXPECT_FULL_HEADS="$(cat <<'HEADS'
 HEADS
 )"
 GOT_FULL_HEADS="$(grep -E '^###? ' "$FULLREF" 2>/dev/null)"
-if [ "$GOT_FULL_HEADS" = "$EXPECT_FULL_HEADS" ]; then t_ok "v0.37 S3 references/full.md has the 5 moved headings, in the original order, and no other ## or ### heading"; else t_bad "v0.37 S3 references/full.md has the 5 moved headings, in the original order, and no other ## or ### heading" "got [$(printf '%s' "$GOT_FULL_HEADS" | tr '\n' '|')]"; fi
+if [ "$GOT_FULL_HEADS" = "$EXPECT_FULL_HEADS" ]; then t_ok "v0.37 S3 references/full.md has exactly the 9 headings after T4-2 (R7), in order, and no other ## or ### heading"; else t_bad "v0.37 S3 references/full.md has exactly the 9 headings after T4-2 (R7), in order, and no other ## or ### heading" "got [$(printf '%s' "$GOT_FULL_HEADS" | tr '\n' '|')]"; fi
 
 
 echo "v0.24.10 review 1: minors (quick past the size limit, Phase 1 ask-first, proof search scope, first-slice checkpoint)"
@@ -2381,7 +2382,7 @@ qchk "v0.29.0 T F3 Limits: an agent could run learn.sh trust itself" "$K1B_LIM" 
 
 echo "v0.30.0 lane c2 AC7: the Spec review (Full) paragraph skips a one-slice spec with no other reading"
 # the "**Spec review (Full).**" paragraph of playbook-tdd SKILL.md on one line (up to the next blank line)
-C2P="$(awk '/^\*\*Spec review \(Full\)\.\*\*/ { f = 1 } f && /^[[:space:]]*$/ { exit } f { print }' "$SKILL" | tr '\n' ' ' | tr -s ' ')"
+C2P="$(awk '/^\*\*Spec review \(Full\)\.\*\*/ { f = 1 } f && /^[[:space:]]*$/ { exit } f { print }' "$FULLREF" | tr '\n' ' ' | tr -s ' ')"
 c2chk() { if printf '%s' "$2" | grep -qiE -- "$3"; then t_ok "$1"; else t_bad "$1" "pattern [$3] not in [$2]"; fi; }
 c2chk "AC7 the Spec review (Full) paragraph exists" "$C2P" 'Spec review \(Full\)'
 c2chk "AC7 the paragraph says when to skip the spec reviewer: exactly one slice" "$C2P" 'skip[^.]{0,200}(exactly one|one|single|a single) slice|(exactly one|one|single|a single) slice[^.]{0,200}skip'
@@ -2594,7 +2595,7 @@ lite_has 'S2 R1 tdd Lite step 4: unit tests alone are not enough' 4 "$NOTENOUGH_
 
 echo "v0.37 S3 (AC3, AC5; D1, D2): Phase 2/3, roles, resuming and hand-off move to references/full.md"
 assert_file "v0.37 S3 AC3 references/full.md exists" "$FULLREF"
-for H in '### Phase 2: Loop per slice' '### Phase 3: Review' '## Slice size' '### Phase 4: Close-out' '## Test infrastructure role (opt-in)' '## Starting roles per harness' '## Resuming' '## Hand-off files'; do
+for H in '### Phase 2: Loop per slice' '### Phase 3: Review' '### Phase 1 addition' '## Slice size' '### Phase 4: Close-out' '## Test infrastructure role (opt-in)' '## Starting roles per harness' '## Resuming' '## Hand-off files'; do
   if grep -qF -- "$H" "$FULLREF" 2>/dev/null; then t_ok "v0.37 S3 AC3 references/full.md has the heading [$H]"; else t_bad "v0.37 S3 AC3 references/full.md has the heading [$H]" "missing in $FULLREF"; fi
   if grep -qF -- "$H" "$SKILL"; then t_bad "v0.37 S3 AC3 SKILL.md no longer has the heading [$H]" "still in $SKILL"; else t_ok "v0.37 S3 AC3 SKILL.md no longer has the heading [$H]"; fi
 done
@@ -2616,14 +2617,14 @@ if printf '%s' "$L6" | grep -qF 'references/full.md' && printf '%s' "$L6" | grep
 if printf '%s' "$L6" | grep -qE 'read `references/full\.md`'; then t_ok "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md"; else t_bad "v0.37 S3 review spot 2: Lite step 6 says to read references/full.md" "line: [$L6]"; fi
 if [ "$(grep -c 'read `references/full\.md` first' "$SKILL")" = 1 ]; then t_ok "v0.37 S3 review: the Workflow pointer line still exists"; else t_bad "v0.37 S3 review: the Workflow pointer line still exists" "not exactly one"; fi
 # size: SKILL.md at most 2700 words (core limit of this slice) and below the 3669 it had
-if [ "$TDD_WORDS" -le 2250 ]; then t_ok "v0.38 T4-1 R14 playbook-tdd SKILL.md is at most 2250 words, the per-slice ceiling ($TDD_WORDS; T4-2 lowers it to 2150, T4-3 to 2000)"; else t_bad "v0.38 T4-1 R14 playbook-tdd SKILL.md is at most 2250 words, the per-slice ceiling" "$TDD_WORDS words"; fi
+if [ "$TDD_WORDS" -le 2150 ]; then t_ok "v0.38 T4-2 R14 playbook-tdd SKILL.md is at most 2150 words, the per-slice ceiling ($TDD_WORDS; T4-3 lowers it to 2000)"; else t_bad "v0.38 T4-2 R14 playbook-tdd SKILL.md is at most 2150 words, the per-slice ceiling" "$TDD_WORDS words"; fi
 if [ "$TDD_WORDS" -lt 3669 ]; then t_ok "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words"; else t_bad "v0.37 S3 AC5 playbook-tdd SKILL.md is below its v0.36 size of 3669 words" "$TDD_WORDS words"; fi
 FULL_WORDS="$(wc -w < "$FULLREF" 2>/dev/null | tr -d ' ')"
 if [ -n "$FULL_WORDS" ] && [ "$FULL_WORDS" -ge 900 ]; then t_ok "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text ($FULL_WORDS words, at least 900; 1034 expected)"; else t_bad "v0.37 S3 AC3 nothing was dropped: references/full.md holds the moved text (at least 900 words)" "[$FULL_WORDS] words"; fi
 if [ -n "$FULL_WORDS" ] && [ $((TDD_WORDS + FULL_WORDS)) -ge 3679 ]; then t_ok "v0.37 S3 AC3 SKILL.md + full.md lose no words (sum $((TDD_WORDS + FULL_WORDS)), at least 3679 = 3669 + a pointer line of 10 words or more)"; else t_bad "v0.37 S3 AC3 SKILL.md + full.md lose no words" "sum [$((TDD_WORDS + ${FULL_WORDS:-0}))] want at least 3679"; fi
 # budgets: only down (D1: AGENTS.global.md 730 -> 710; S3: playbook-tdd 3700 -> at most 2700)
 TBN="$(budget_of skills/playbook-tdd/SKILL.md)"; ABN="$(budget_of AGENTS.global.md)"
-if [ -n "$TBN" ] && [ "$TBN" -le 2250 ]; then t_ok "v0.38 T4-1 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2250 ($TBN)"; else t_bad "v0.38 T4-1 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2250" "budget [$TBN]"; fi
+if [ -n "$TBN" ] && [ "$TBN" -le 2150 ]; then t_ok "v0.38 T4-2 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2150 ($TBN)"; else t_bad "v0.38 T4-2 AC1 evals/word-budgets: playbook-tdd SKILL.md budget is at most 2150" "budget [$TBN]"; fi
 if [ -n "$ABN" ] && [ "$ABN" -le 710 ]; then t_ok "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710 ($ABN)"; else t_bad "v0.37 D1 evals/word-budgets: AGENTS.global.md budget is at most 710" "budget [$ABN]"; fi
 AGW="$(wc -w < "$PB_ROOT/AGENTS.global.md" | tr -d ' ')"
 if [ "$AGW" -le 710 ]; then t_ok "v0.37 D1 AGENTS.global.md stays within 710 words ($AGW; 707 expected, unchanged in S3)"; else t_bad "v0.37 D1 AGENTS.global.md stays within 710 words" "$AGW"; fi
@@ -2685,7 +2686,7 @@ done
 # AC1 / R1 / R14: the ceiling in both locales (R13 makes them equal)
 for LCX in C C.UTF-8; do
   WLC="$(LC_ALL=$LCX wc -w < "$SKILL" | tr -d ' ')"
-  if [ "$WLC" -le 2250 ]; then t_ok "v0.38 T4-1 AC1 SKILL.md is at most 2250 words in LC_ALL=$LCX ($WLC)"; else t_bad "v0.38 T4-1 AC1 SKILL.md is at most 2250 words in LC_ALL=$LCX" "$WLC words"; fi
+  if [ "$WLC" -le 2150 ]; then t_ok "v0.38 T4-2 AC1 SKILL.md is at most 2150 words in LC_ALL=$LCX ($WLC)"; else t_bad "v0.38 T4-2 AC1 SKILL.md is at most 2150 words in LC_ALL=$LCX" "$WLC words"; fi
 done
 # AC3 extra: nothing is lost overall (SKILL.md + full.md + wrong.md, wrong.md only exists from T4-3) at least the 3744 words of base
 ALLW="$(cat "$SKILL" "$FULLREF" "$TDD/references/wrong.md" 2>/dev/null | wc -w | tr -d ' ')"
@@ -2713,6 +2714,48 @@ assert_eq "v0.38 T4-1 R8 SKILL.md keeps [## Understanding] exactly twice (Lite s
 assert_eq "v0.38 T4-1 R8 references/full.md has [A configured model is binding] exactly once" "1" "$(grep -cF -- 'A configured model is binding' "$FULLREF" 2>/dev/null)"
 assert_eq "v0.38 T4-1 R8 references/full.md has [**Models used:** tester=<m>] exactly once (Phase 4)" "1" "$(grep -cF -- '**Models used:** tester=<m>' "$FULLREF" 2>/dev/null)"
 assert_eq "v0.38 T4-1 R8 SKILL.md no longer carries [**Models used:** tester=<m>]" "0" "$(grep -cF -- '**Models used:** tester=<m>' "$SKILL")"
+
+# v0.38 T4-2 (docs/v0.38-t4-spec.md R3, R5b, R7, AC3, AC4, AC5): the regression corpus and the spec review move from SKILL.md Phase 1 to references/full.md
+# These pins read the destination file, never SKILL.md, so a pointer left in SKILL.md cannot satisfy them (D6).
+echo "v0.38 T4-2: regression corpus and spec review move verbatim to references/full.md (### Phase 1 addition)"
+if git -C "$PB_ROOT" cat-file -e "$T4BASE" 2>/dev/null; then
+  for R in 121,124 131,136; do
+    MISS="$(t4_chk "$R" "$FULLREF")"
+    if [ -z "$MISS" ]; then t_ok "v0.38 T4-2 AC3 base $T4BASE SKILL.md lines $R are whole lines of references/full.md"; else t_bad "v0.38 T4-2 AC3 base $T4BASE SKILL.md lines $R are whole lines of references/full.md" "$(printf '%s' "$MISS" | head -n 3 | tr '\n' '|')"; fi
+  done
+else
+  t_skip 2 "AC3 moved-line check (T4-2): base $T4BASE not in this clone"
+fi
+assert_eq "v0.38 T4-2 R3 the Regression corpus block is in references/full.md exactly once" "1" "$(grep -cF '**Regression corpus.** When a change replaces or rewrites existing logic' "$FULLREF" 2>/dev/null)"
+assert_eq "v0.38 T4-2 R3 the Regression corpus block is no longer in SKILL.md" "0" "$(grep -cF '**Regression corpus.**' "$SKILL")"
+assert_eq "v0.38 T4-2 R3 the corpus last line is in references/full.md exactly once" "1" "$(grep -cF 'a rewrite cannot quietly drop a case an earlier round fixed.' "$FULLREF" 2>/dev/null)"
+assert_eq "v0.38 T4-2 R3 the Spec review (Full) block is in references/full.md exactly once" "1" "$(grep -cF '**Spec review (Full).** Run the spec reviewer' "$FULLREF" 2>/dev/null)"
+assert_eq "v0.38 T4-2 R3 the Spec review (Full) block is no longer in SKILL.md" "0" "$(grep -cF '**Spec review (Full).**' "$SKILL")"
+assert_eq "v0.38 T4-2 R3 the spec review last sentence is in references/full.md exactly once" "1" "$(grep -cF 'Lite has no spec reviewer.' "$FULLREF" 2>/dev/null)"
+assert_eq "v0.38 T4-2 R3 the spec review last sentence is no longer in SKILL.md as the old paragraph (Lite has no spec reviewer.)" "0" "$(grep -cF 'reading; log it in decisions.md. Lite has no spec reviewer.' "$SKILL")"
+# R5b: the two pointer sentences stay in SKILL.md Phase 1, once each, on their own line
+T4P1='A change that replaces or rewrites existing logic also needs `## Regression corpus` in the spec (`references/full.md`).'
+T4P2='**Spec review (Full):** a fresh spec reviewer checks the spec before the first tester (`references/full.md`); Lite has none.'
+assert_eq "v0.38 T4-2 R5b the corpus pointer is in SKILL.md exactly once" "1" "$(grep -cFx -- "$T4P1" "$SKILL")"
+assert_eq "v0.38 T4-2 R5b the spec review pointer is in SKILL.md exactly once" "1" "$(grep -cFx -- "$T4P2" "$SKILL")"
+P1SEC="$(section "$SKILL" '^### Phase 1' | grep -cFx -e "$T4P1" -e "$T4P2")"
+assert_eq "v0.38 T4-2 R5b both pointers sit in the Phase 1 section of SKILL.md" "2" "$P1SEC"
+# R7: the Phase 1 addition heading, its place (after Phase 3, before Slice size) and its two blocks in order
+T4H='### Phase 1 addition: regression corpus and spec review (Full)'
+assert_eq "v0.38 T4-2 R7 references/full.md has the exact Phase 1 addition heading once" "1" "$(grep -cFx -- "$T4H" "$FULLREF" 2>/dev/null)"
+assert_eq "v0.38 T4-2 R7 SKILL.md has no Phase 1 addition heading" "0" "$(grep -c '^### Phase 1 addition' "$SKILL")"
+P3LN="$(grep -n '^### Phase 3: Review' "$FULLREF" 2>/dev/null | head -n 1 | cut -d: -f1)"
+P1ALN="$(grep -nFx -- "$T4H" "$FULLREF" 2>/dev/null | head -n 1 | cut -d: -f1)"
+SSLN="$(grep -n '^## Slice size' "$FULLREF" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$P3LN" ] && [ -n "$P1ALN" ] && [ -n "$SSLN" ] && [ "$P3LN" -lt "$P1ALN" ] && [ "$P1ALN" -lt "$SSLN" ]; then t_ok "v0.38 T4-2 R7 the Phase 1 addition heading sits after Phase 3 and before Slice size"; else t_bad "v0.38 T4-2 R7 the Phase 1 addition heading sits after Phase 3 and before Slice size" "Phase 3 [$P3LN] addition [$P1ALN] Slice size [$SSLN]"; fi
+CORLN="$(grep -n '^\*\*Regression corpus\.\*\*' "$FULLREF" 2>/dev/null | head -n 1 | cut -d: -f1)"
+REVLN="$(grep -n '^\*\*Spec review (Full)\.\*\*' "$FULLREF" 2>/dev/null | head -n 1 | cut -d: -f1)"
+if [ -n "$P1ALN" ] && [ -n "$CORLN" ] && [ -n "$REVLN" ] && [ "$P1ALN" -lt "$CORLN" ] && [ "$CORLN" -lt "$REVLN" ] && [ -n "$SSLN" ] && [ "$REVLN" -lt "$SSLN" ]; then t_ok "v0.38 T4-2 R7 the addition holds the corpus block, then the Spec review (Full) block, before Slice size"; else t_bad "v0.38 T4-2 R7 the addition holds the corpus block, then the Spec review (Full) block, before Slice size" "heading [$P1ALN] corpus [$CORLN] review [$REVLN] slice size [$SSLN]"; fi
+B="$(section "$FULLREF" '^### Phase 1 addition' | grep -c .)"
+if [ "$B" -ge 3 ]; then t_ok "v0.38 T4-2 AC3 references/full.md [### Phase 1 addition] has a non-empty body"; else t_bad "v0.38 T4-2 AC3 references/full.md [### Phase 1 addition] has a non-empty body" "$B non-empty lines"; fi
+# AC3 (2): the Phase 1 heading that stays in SKILL.md still has real text (not just a title and two pointers)
+B1="$(section "$SKILL" '^### Phase 1' | grep -c .)"
+if [ "$B1" -ge 6 ]; then t_ok "v0.38 T4-2 AC3 SKILL.md ### Phase 1: Spec keeps a non-empty body ($B1 lines)"; else t_bad "v0.38 T4-2 AC3 SKILL.md ### Phase 1: Spec keeps a non-empty body" "$B1 non-empty lines"; fi
 
 # v0.38 Q9 S6: optional auto memory policy line in playbook-setup
 flat_has 'S6-1 setup questions.md offers keeping auto memory and treating its files as unreviewed data' "$QUESTIONS" 'auto memory.{0,200}unreviewed data'

@@ -158,7 +158,7 @@ w="$(env -u LC_ALL wc -w < "$SK" | tr -d ' ')"
 if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; else t_bad "AC16 SKILL.md at or under 3700 words" "$w words"; fi
 # v0.38 T4 R14: the 0927bde arithmetic (W0 - MOVED + PTR + EDITS) is replaced by a per-slice word ceiling (T4-1: 2250, T4-2: 2150, T4-3: 2000);
 # every change to references/full.md used to break the arithmetic (T13 had to bump EDITS by hand)
-if [ "$w" -le 2250 ]; then t_ok "AC16 SKILL.md at or under the per-slice ceiling of 2250 words ($w)"; else t_bad "AC16 SKILL.md at or under the per-slice ceiling of 2250 words" "$w words"; fi
+if [ "$w" -le 2150 ]; then t_ok "AC16 SKILL.md at or under the per-slice ceiling of 2150 words ($w)"; else t_bad "AC16 SKILL.md at or under the per-slice ceiling of 2150 words" "$w words"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
