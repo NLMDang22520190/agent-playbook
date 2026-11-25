@@ -106,6 +106,9 @@ c "AC18 exit codes 2, 3, 4, 5 in one sentence" '2[^.]{0,40}(validation|usage)[^.
 cF "AC18 'goes straight to \`add\`'" 'goes straight to `add`'
 c "AC18 a failed promote stays pending" 'stays pending|leaves the candidate pending'
 c "AC18 non-interactive" 'non-interactive'
+cF "AC18 promote exit 4: drop the candidate, retiring does not help" 'For exit 4, drop the candidate: retiring does not help, because retired rules still count as duplicates.'
+cF "AC18 promote exit 5: retire or merge with the user's approval" "For exit 5, retire or merge an entry with the user's approval, then promote again."
+cn "AC18 no longer tells to retire an entry to fix a failed promote in general" 'Fix the cause \(retire an entry'
 cn "AC18 never says 'verify L-' (S3 does not exist)" 'verify L-'
 if [ -f "$CM" ]; then
   if grep -qF 'Verified' "$CM"; then t_bad "AC18 never says 'Verified' (case-sensitive)" "found"; else t_ok "AC18 never says 'Verified' (case-sensitive)"; fi

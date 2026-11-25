@@ -642,5 +642,160 @@ else
 fi
 chmod u+w .agents/handoff 2>/dev/null
 
+# ---- shims: a fake command first in PATH (bash 3.2 and BSD portable: plain sh scripts, no GNU flags) ----
+REALMKDIR="$(command -v mkdir)"; REALAWK="$(command -v awk)"; REALMV="$(command -v mv)"
+# shimdir: a fresh directory for one case -> SD
+shimdir() { SD="$(mk_tmp)"; }
+# shimfile NAME: the script body on stdin becomes $SD/NAME (executable)
+shimfile() { { printf '#!/bin/sh\n'; cat; } > "$SD/$1"; chmod +x "$SD/$1"; }
+
+echo "AC22 lock: release race and a lock path that is not a directory"
+fx
+shimdir
+shimfile mkdir <<'EOF'
+# fails the first SHIM_FAILS calls on the lock path while the lock dir does NOT exist (the holder just released it)
+for a in "$@"; do last="$a"; done
+case "$last" in
+  *learn-candidates.md.lock)
+    n=0; [ -f "$SHIM_COUNT" ] && n="$(cat "$SHIM_COUNT")"
+    if [ "$n" -lt "$SHIM_FAILS" ] && [ ! -e "$last" ]; then echo $((n + 1)) > "$SHIM_COUNT"; exit 1; fi ;;
+esac
+exec "$SHIM_REAL" "$@"
+EOF
+cre PATH="$SD:$PATH" SHIM_COUNT="$SD/count" SHIM_FAILS=3 SHIM_REAL="$REALMKDIR" LEARN_LOCK_TRIES=50 -- candidate add $CA --rule 'Race rule one.'
+assert_eq "AC22 add survives 3 mkdir failures with no lock dir present: exit 0, queued" "0|queued C-0001 in .agents/handoff/learn-candidates.md (1 pending)|" "$RC|$O|$E"
+assert_eq "AC22 the shim failed exactly 3 times (the race was really simulated)" "3" "$(cat "$SD/count" 2>/dev/null)"
+assert_eq "AC22 no lock or temp file left" "" "$(junk)"
+rm -f "$SD/count"
+cre PATH="$SD:$PATH" SHIM_COUNT="$SD/count" SHIM_FAILS=1000 SHIM_REAL="$REALMKDIR" LEARN_LOCK_TRIES=2 -- candidate add $CA --rule 'Race rule two.'
+assert_eq "AC22 mkdir failing for good with no lock dir: contention, exit 3 'is locked' after LEARN_LOCK_TRIES" "3|$LOCKMSG" "$RC|$E"
+assert_eq "AC22 ... and the shim was called 3 times (first try plus 2 retries)" "3" "$(cat "$SD/count" 2>/dev/null)"
+assert_eq "AC22 ... leaving no lock or temp file" "" "$(junk)"
+fx
+mkdir -p .agents/handoff
+: > .agents/handoff/learn-candidates.md.lock
+B="$(snapall)"
+T0="$(date +%s)"
+cre LEARN_LOCK_TRIES=9999 -- candidate add $CA --rule 'File lock.'
+T1="$(date +%s)"
+assert_eq "AC22 lock path is a regular file: exit 3 'cannot create lock', nothing written" "3|error: cannot create lock: .agents/handoff/learn-candidates.md.lock|same" "$RC|$E|$(chg "$(snapall)" "$B")"
+if [ $((T1 - T0)) -le 3 ]; then t_ok "AC22 ... at once, not after LEARN_LOCK_TRIES retries ($((T1 - T0)) s)"; else t_bad "AC22 ... at once" "took $((T1 - T0)) s"; fi
+assert_eq "AC22 ... the file is still there and still a regular file" "yes" "$([ -f .agents/handoff/learn-candidates.md.lock ] && echo yes || echo no)"
+fx
+mkdir -p .agents/handoff
+: > .agents/handoff/learn-candidates.md.lock
+hdr; blk C-0001 2026-10-01 'One' pending 'File lock promote.'
+B="$(snapall)"
+T0="$(date +%s)"
+cre LEARN_LOCK_TRIES=9999 -- candidate drop C-0001 --reason x
+T1="$(date +%s)"
+assert_eq "AC22 drop with a regular-file lock path: exit 3 'cannot create lock'" "3|error: cannot create lock: .agents/handoff/learn-candidates.md.lock" "$RC|$E"
+cre LEARN_LOCK_TRIES=9999 -- candidate promote C-0001
+assert_eq "AC22 promote with a regular-file lock path: exit 3 'cannot create lock', files unchanged" "3|error: cannot create lock: .agents/handoff/learn-candidates.md.lock|same" "$RC|$E|$(chg "$(snapall)" "$B")"
+if [ $((T1 - T0)) -le 3 ]; then t_ok "AC22 ... promote and drop both at once ($((T1 - T0)) s)"; else t_bad "AC22 ... promote and drop both at once" "took $((T1 - T0)) s"; fi
+
+echo "AC23 signals while holding the lock"
+# sigcase NAME KIND SIG EXIT ARGS: run learn.sh in the background with a slow awk (KIND awk: slows the status rewrite) or a slow mv
+# (KIND mv) first in PATH; the shim writes a marker, then sleeps 1 s; the test waits for the marker, sends SIG, and expects exit EXIT,
+# no lock dir, no temp file, and a candidate file that is the old one or the complete new one (never half written).
+sigcase() {
+  local name="$1" kind="$2" sig="$3" erc="$4" mk pid i rc bl al nl
+  shift 4
+  shimdir; mk="$SD/marker"
+  if [ "$kind" = awk ]; then
+    shimfile awk <<'EOF'
+if [ -n "${CNEW:-}" ]; then : > "$SHIM_MARK"; sleep 1; fi
+exec "$SHIM_REAL" "$@"
+EOF
+  else
+    shimfile mv <<'EOF'
+: > "$SHIM_MARK"; sleep 1
+exec "$SHIM_REAL" "$@"
+EOF
+  fi
+  bl="$(snapc)"; nl="$(wc -l < "$CAND" | tr -d ' ')"
+  set -m
+  ( PATH="$SD:$PATH"; export PATH; SHIM_MARK="$mk"; SHIM_REAL="$REALAWK"; [ "$kind" = mv ] && SHIM_REAL="$REALMV"; export SHIM_MARK SHIM_REAL
+    exec bash "$LEARN" "$@" > "$SD/out" 2> "$SD/err" ) &
+  pid=$!
+  set +m
+  i=0
+  while [ ! -e "$mk" ] && [ "$i" -lt 100 ]; do sleep 0.1 2>/dev/null || sleep 1; i=$((i + 1)); done
+  if [ ! -e "$mk" ]; then t_bad "$name: the shim never ran" "$(cat "$SD/err" 2>&1)"; kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; return; fi
+  kill -"$sig" "$pid" 2>/dev/null
+  wait "$pid"; rc=$?
+  sleep 1   # let the orphaned shim finish
+  assert_eq "$name: exit $erc" "$erc" "$rc"
+  assert_eq "$name: no lock dir and no temp file left" "" "$(junk)"
+  al="$(wc -l < "$CAND" | tr -d ' ')"
+  if [ "$(snapc)" = "$bl" ] || { [ "$al" = "$nl" ] && grep -Eq '^- Status: (promoted|dropped) ' "$CAND"; }; then
+    t_ok "$name: candidate file is the old one or the complete new one"
+  else
+    t_bad "$name: candidate file is the old one or the complete new one" "lines $nl -> $al"
+  fi
+}
+for SIG in TERM INT; do
+  if [ "$SIG" = TERM ]; then EX=143; else EX=130; fi
+  fx; hdr; blk C-0001 2026-10-01 'One' pending "Sig promote awk $SIG."; blk C-0002 2026-10-01 'Two' pending "Sig drop awk $SIG."
+  sigcase "AC23 promote, slow awk, $SIG" awk "$SIG" "$EX" candidate promote C-0001
+  assert_eq "AC23 ... the L entry is complete or absent: check passes" "0" "$(bash "$LEARN" check >/dev/null 2>&1; echo $?)"
+  assert_eq "AC23 ... C-0001 stays pending (the kill came before the mark)" "0" "$(grep -c '^- Status: promoted' "$CAND" | tr -d ' ')"
+  sigcase "AC23 drop, slow awk, $SIG" awk "$SIG" "$EX" candidate drop C-0002 --reason r
+  cr candidate list
+  assert_eq "AC23 ... a later command works: list exits 0" "0" "$RC"
+  fx; hdr; blk C-0001 2026-10-01 'One' pending "Sig promote mv $SIG."; blk C-0002 2026-10-01 'Two' pending "Sig drop mv $SIG."
+  sigcase "AC23 promote, slow mv, $SIG" mv "$SIG" "$EX" candidate promote C-0001
+  assert_eq "AC23 ... check passes" "0" "$(bash "$LEARN" check >/dev/null 2>&1; echo $?)"
+  sigcase "AC23 drop, slow mv, $SIG" mv "$SIG" "$EX" candidate drop C-0002 --reason r
+  cr candidate add $CA --rule "After the kill $SIG."
+  assert_eq "AC23 ... a later add works (no stale lock): exit 0" "0" "$RC"
+done
+
+echo "AC24 mark failure after promote, and a failing mv"
+fx
+must candidate add $CA --rule 'Mark fail rule.'
+B="$(snapc)"
+shimdir
+shimfile mktemp <<'EOF'
+exit 1
+EOF
+cre PATH="$SD:$PATH" -- candidate promote C-0001
+assert_eq "AC24 mktemp fails: exit 3, drop hint names the new id L-0001, stdout empty" "3|error: wrote L-0001 but could not mark C-0001 promoted; run: learn.sh candidate drop C-0001 --reason 'promoted as L-0001'|" "$RC|$E|$O"
+assert_eq "AC24 ... the candidate file is byte-identical" "$B" "$(snapc)"
+assert_eq "AC24 ... the L entry was written" "1" "$(grep -c '^- Rule: Mark fail rule\.$' "$LF")"
+assert_eq "AC24 ... no lock dir and no temp file left" "" "$(junk)"
+cr candidate promote C-0001
+assert_eq "AC24 a later promote exits 4 (the rule is now in LEARNINGS.md), nothing changes" "4|duplicate: an entry with the same rule already exists|same" "$RC|$E|$(chg "$(snapc)" "$B")"
+assert_eq "AC24 ... still no lock dir or temp file" "" "$(junk)"
+fx
+must candidate add $CA --rule 'Mv fail rule.'
+B="$(snapall)"
+shimdir
+shimfile mv <<'EOF'
+exit 1
+EOF
+cre PATH="$SD:$PATH" -- candidate drop C-0001 --reason r
+assert_eq "AC24 mv fails: drop exits 3 with the update message, files unchanged" "3|error: cannot update .agents/handoff/learn-candidates.md|same" "$RC|$E|$(chg "$(snapall)" "$B")"
+assert_eq "AC24 ... no lock dir and no temp file left" "" "$(junk)"
+cre PATH="$SD:$PATH" -- candidate promote C-0001
+assert_eq "AC24 mv fails: promote exits 3 with the drop hint, no temp file or lock dir left" "3|error: wrote L-0001 but could not mark C-0001 promoted; run: learn.sh candidate drop C-0001 --reason 'promoted as L-0001'|" "$RC|$E|$(junk)"
+
+echo "AC25 CRLF candidate file"
+fx
+must candidate add $CA --rule 'Crlf rule one.'
+must candidate add $CA --rule 'Crlf rule two.'
+awk '{ printf "%s\r\n", $0 }' "$CAND" > "$WORK/crlf" && cat "$WORK/crlf" > "$CAND"
+cr candidate promote C-0001
+assert_eq "AC25 promote on a CRLF candidate file works" "0|promoted C-0001 as L-0001 in .agents/LEARNINGS.md" "$RC|$O"
+assert_eq "AC25 ... the L entry's rule has no CR" "1" "$(grep -cx -- '- Rule: Crlf rule one\.' "$LF")"
+assert_eq "AC25 ... the candidate status line is promoted" "1" "$(tr -d '\r' < "$CAND" | grep -cx -- '- Status: promoted (L-0001; 2026-10-09)')"
+assert_eq "AC25 ... the other candidate is still pending" "1" "$(tr -d '\r' < "$CAND" | grep -c '^- Status: pending')"
+B="$(snapc)"
+cr candidate add $CA --rule 'Crlf rule two.'
+assert_eq "AC25 add of a rule equal to a CRLF candidate's rule: exit 4 duplicate" "4|duplicate: a candidate with the same rule already exists|same" "$RC|$E|$(chg "$(snapc)" "$B")"
+cr candidate add $CA --rule 'CRLF RULE TWO.'
+assert_eq "AC25 ... also case-insensitively" "4|duplicate: a candidate with the same rule already exists" "$RC|$E"
+assert_eq "AC25 ... no lock dir or temp file left" "" "$(junk)"
+
 cd "$PB_ROOT" || exit 3
 t_summary
