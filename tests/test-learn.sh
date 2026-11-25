@@ -683,11 +683,14 @@ sst_at 2026-03-01 --days 1
 assert_eq "Q9 S2 AC1 2026-02-28 to 2026-03-01 is 1 day: not older than 1" "stale: 0 of 1 active entries listed (older than 1 days)" "$SOUT"
 st_fix
 st_e L-0001 2000-02-28 "Y2000" project-wide
-st_e L-0002 1900-02-28 "Y1900" project-wide
 sst_at 2000-03-01 --days 1
-assert_eq "Q9 S2 AC1 2000 is a leap year (2 days)" "$(printf 'L-0001 · 2000-02-28 · Y2000: 2 days old\nstale: 1 of 2 active entries listed (older than 1 days)')" "$SOUT"
+assert_eq "Q9 S2 AC1 2000 is a leap year (2 days)" "$(printf 'L-0001 · 2000-02-28 · Y2000: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 1900-02-28 "Y1900" project-wide
 sst_at 1900-03-01 --days 1
-assert_eq "Q9 S2 AC1 1900 is not a leap year (1 day)" "$(printf 'L-0002 · 1900-02-28 · Y1900: 1 days old\nstale: 1 of 2 active entries listed (older than 1 days)')" "$SOUT"
+assert_eq "Q9 S2 AC1 1900 is not a leap year (1 day, not older than 1)" "stale: 0 of 1 active entries listed (older than 1 days)" "$SOUT"
+sst_at 1900-03-02 --days 1
+assert_eq "Q9 S2 AC1 1900-02-28 to 1900-03-02 is 2 days" "$(printf 'L-0001 · 1900-02-28 · Y1900: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
 st_fix
 st_e L-0001 2026-01-01 "Year" project-wide
 st_e L-0002 2024-01-01 "Leap year" project-wide
