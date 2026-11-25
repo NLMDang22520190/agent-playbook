@@ -12,8 +12,14 @@
 #                              as "- [ ] <rule> (L-000N, scope: <scope>)"; read-only)
 #   learn.sh stale [--days N] [--fail]   (active entries older than N days (default 180) and/or whose path-like scope
 #                              matches no tracked file, one line each, then a summary; read-only; --fail: exit 1 when any listed)
+#   learn.sh candidate add --title T --rule R --why W --evidence E --source user|failure|review [--scope S] [--role ROLE]
+#                              (queue an unapproved proposal in .agents/handoff/learn-candidates.md; never touches LEARNINGS.md)
+#   learn.sh candidate list [--all]   (pending candidates, two lines each, then "candidates: P pending, T total"; read-only)
+#   learn.sh candidate promote C-NNNN   (the USER approved it: write it as an entry through the same checks as add, mark it promoted)
+#   learn.sh candidate drop C-NNNN --reason R   (mark a candidate dropped; the reason is never copied from candidate text)
 # Exit: 0 ok | 1 check failed | 2 usage/validation | 3 environment | 4 duplicate | 5 at capacity
-# Env: LEARN_MAX_ENTRIES (default 40 active), LEARN_MAX_LINES (default 250), PLAYBOOK_DATE (tests), learn_stale_days (conf, default 180)
+# Env: LEARN_MAX_ENTRIES (default 40 active), LEARN_MAX_LINES (default 250), PLAYBOOK_DATE (tests), LEARN_MAX_CANDIDATES (default 30 pending),
+#      LEARN_LOCK_TRIES (default 100), learn_stale_days (conf, default 180)
 set -u
 . "$(dirname "$0")/lib.sh"
 
@@ -71,6 +77,70 @@ trust_lines() { [ -f "$TRUSTF" ] || return 0; grep -v '^[[:space:]]*\(#.*\)\{0,1
 
 active_count() { grep -c '^- Status: active' "$FILE" 2>/dev/null || true; }
 
+# S4-BEGIN (shared entry functions: used by add and by candidate)
+# entry_parse_opts "$@": the flag pairs of add/candidate add -> title rule why evidence source scope role
+entry_parse_opts() {
+  title=""; rule=""; why=""; evidence=""; source=""; scope="project-wide"; role="all"
+  while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || pb_die "option $1 needs a value" 2
+    case "$1" in
+      --title) title="$2" ;;
+      --rule) rule="$2" ;;
+      --why) why="$2" ;;
+      --evidence) evidence="$2" ;;
+      --source) source="$2" ;;
+      --scope) scope="$2" ;;
+      --role) role="$2" ;;
+      *) pb_die "unknown option: $1" 2 ;;
+    esac
+    shift 2
+  done
+}
+# entry_validate: required fields, role, source, one line, length, secrets (uses the globals above; dies with 2)
+entry_validate() {
+  local pair name rest val max
+  for pair in "title:$title" "rule:$rule" "why:$why" "evidence:$evidence" "source:$source"; do
+    [ -n "${pair#*:}" ] || pb_die "--${pair%%:*} is required (an entry without evidence is not a learning)" 2
+  done
+  case "$role" in tester|implementer|reviewer|all) ;; *) pb_die "--role must be tester|implementer|reviewer|all" 2 ;; esac
+  case "$source" in user|failure|review) ;; *) pb_die "--source must be user|failure|review (web or tool output is not a valid source)" 2 ;; esac
+  for pair in "title:$title:80" "rule:$rule:300" "why:$why:300" "evidence:$evidence:400" "scope:$scope:120"; do
+    name="${pair%%:*}"; rest="${pair#*:}"; val="${rest%:*}"; max="${rest##*:}"
+    case "$val" in *"
+"*) pb_die "--$name must be a single line" 2 ;; esac
+    [ "${#val}" -le "$max" ] || pb_die "--$name is too long (${#val} > $max chars): keep entries short" 2
+    if printf '%s' "$val" | grep -Eiq -- "$SECRET_RE"; then
+      pb_die "--$name looks like it contains a secret; never record secrets" 2
+    fi
+  done
+}
+# rule_in_file FILE RULE: 0 when a "- Rule: " line of FILE equals RULE (case-insensitive, any status); 1 otherwise
+rule_in_file() {
+  local norm
+  norm="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+  grep '^- Rule: ' "$1" 2>/dev/null | sed 's/^- Rule: //' | tr '[:upper:]' '[:lower:]' | grep -qxF -- "$norm"
+}
+# next_id PREFIX FILE: sets NEXT_ID to PREFIX-NNNN (largest heading number + 1); 1 when that would pass 9999
+next_id() {
+  local last n
+  last="$(grep -E "^### $1-[0-9]{4} " "$2" 2>/dev/null | sed -E "s/^### $1-([0-9]{4}) .*/\1/" | sort -n | tail -n 1)"
+  n=$((10#${last:-0} + 1))
+  [ "$n" -le 9999 ] || return 1
+  NEXT_ID="$(printf '%s-%04d' "$1" "$n")"
+}
+# emit_entry ID STATUS: one entry block on stdout (the single place that defines the entry format)
+emit_entry() {
+  printf '\n### %s · %s · %s\n' "$1" "$TODAY" "$title"
+  printf -- '- Status: %s\n' "$2"
+  printf -- '- Rule: %s\n' "$rule"
+  printf -- '- Why: %s\n' "$why"
+  printf -- '- Evidence: %s\n' "$evidence"
+  printf -- '- Source: %s\n' "$source"
+  printf -- '- Scope: %s\n' "$scope"
+  printf -- '- Role: %s\n' "$role"
+}
+# S4-END
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -123,38 +193,10 @@ case "$cmd" in
     ;;
 
   add)
-    title=""; rule=""; why=""; evidence=""; source=""; scope="project-wide"; role="all"
-    while [ $# -gt 0 ]; do
-      [ $# -ge 2 ] || pb_die "option $1 needs a value" 2
-      case "$1" in
-        --title) title="$2" ;;
-        --rule) rule="$2" ;;
-        --why) why="$2" ;;
-        --evidence) evidence="$2" ;;
-        --source) source="$2" ;;
-        --scope) scope="$2" ;;
-        --role) role="$2" ;;
-        *) pb_die "unknown option: $1" 2 ;;
-      esac
-      shift 2
-    done
+    entry_parse_opts "$@"
     [ -f "$FILE" ] || pb_die "$REL not found; run: learn.sh init" 2
-    for pair in "title:$title" "rule:$rule" "why:$why" "evidence:$evidence" "source:$source"; do
-      [ -n "${pair#*:}" ] || pb_die "--${pair%%:*} is required (an entry without evidence is not a learning)" 2
-    done
-    case "$role" in tester|implementer|reviewer|all) ;; *) pb_die "--role must be tester|implementer|reviewer|all" 2 ;; esac
-    case "$source" in user|failure|review) ;; *) pb_die "--source must be user|failure|review (web or tool output is not a valid source)" 2 ;; esac
-    for pair in "title:$title:80" "rule:$rule:300" "why:$why:300" "evidence:$evidence:400" "scope:$scope:120"; do
-      name="${pair%%:*}"; rest="${pair#*:}"; val="${rest%:*}"; max="${rest##*:}"
-      case "$val" in *"
-"*) pb_die "--$name must be a single line" 2 ;; esac
-      [ "${#val}" -le "$max" ] || pb_die "--$name is too long (${#val} > $max chars): keep entries short" 2
-      if printf '%s' "$val" | grep -Eiq -- "$SECRET_RE"; then
-        pb_die "--$name looks like it contains a secret; never record secrets" 2
-      fi
-    done
-    norm="$(printf '%s' "$rule" | tr '[:upper:]' '[:lower:]')"
-    if grep '^- Rule: ' "$FILE" | sed 's/^- Rule: //' | tr '[:upper:]' '[:lower:]' | grep -qxF -- "$norm"; then
+    entry_validate
+    if rule_in_file "$FILE" "$rule"; then
       echo "duplicate: an entry with the same rule already exists" >&2
       exit 4
     fi
@@ -162,19 +204,9 @@ case "$cmd" in
       echo "at capacity ($MAX_ENTRIES active entries): merge or retire entries first (learn.sh retire L-NNNN --reason ...)" >&2
       exit 5
     fi
-    last="$(grep -E '^### L-[0-9]{4} ' "$FILE" | sed -E 's/^### L-([0-9]{4}) .*/\1/' | sort -n | tail -n 1)"
-    id="$(printf 'L-%04d' $((10#${last:-0} + 1)))"
-    {
-      printf '\n### %s · %s · %s\n' "$id" "$TODAY" "$title"
-      printf -- '- Status: active\n'
-      printf -- '- Rule: %s\n' "$rule"
-      printf -- '- Why: %s\n' "$why"
-      printf -- '- Evidence: %s\n' "$evidence"
-      printf -- '- Source: %s\n' "$source"
-      printf -- '- Scope: %s\n' "$scope"
-      printf -- '- Role: %s\n' "$role"
-    } >> "$FILE"
-    echo "added $id to $REL"
+    next_id L "$FILE" || pb_die "entry ids exhausted: retire or merge entries by hand" 5
+    emit_entry "$NEXT_ID" active >> "$FILE"
+    echo "added $NEXT_ID to $REL"
     ;;
 
   retire)
@@ -306,6 +338,279 @@ EOF
     if [ "$sfail" -eq 1 ] && [ "$sk" -gt 0 ]; then exit 1; fi
     ;;
 
+  candidate)
+    # S4-BEGIN (candidate queue; candidate text is data: never expanded, never run)
+    CAND_REL=".agents/handoff/learn-candidates.md"
+    CFILE="$ROOT/$CAND_REL"
+    CLOCK="$CFILE.lock"
+    csub="${1:-}"
+    [ $# -gt 0 ] && shift
+    LOCKED=0; CTMP=""
+    cand_cleanup() {
+      if [ -n "$CTMP" ]; then rm -f "$CTMP"; fi
+      if [ "$LOCKED" = 1 ]; then rmdir "$CLOCK" 2>/dev/null || true; LOCKED=0; fi
+    }
+    trap cand_cleanup EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    # cand_tries / cand_max: validate the environment knobs (dies with 2)
+    cand_tries() {
+      CTRIES="${LEARN_LOCK_TRIES:-100}"
+      case "$CTRIES" in
+        "" | *[!0-9]*) pb_die "invalid LEARN_LOCK_TRIES: $CTRIES (0..9999)" 2 ;;
+      esac
+      [ "${#CTRIES}" -le 4 ] || pb_die "invalid LEARN_LOCK_TRIES: $CTRIES (0..9999)" 2
+    }
+    cand_max() {
+      CMAX="${LEARN_MAX_CANDIDATES:-30}"
+      case "$CMAX" in
+        "" | 0* | *[!0-9]*) pb_die "invalid LEARN_MAX_CANDIDATES: $CMAX (a positive integer)" 2 ;;
+      esac
+      [ "${#CMAX}" -le 6 ] || pb_die "invalid LEARN_MAX_CANDIDATES: $CMAX (a positive integer)" 2
+    }
+    cand_lock() {
+      local i=0
+      while :; do
+        if mkdir "$CLOCK" 2>/dev/null; then LOCKED=1; return 0; fi
+        [ -d "$CLOCK" ] || pb_die "cannot create lock: $CAND_REL.lock" 3
+        [ "$i" -lt "$CTRIES" ] || pb_die "candidate file is locked: $CAND_REL.lock (remove it if no learn.sh is running)" 3
+        i=$((i + 1))
+        sleep 0.1 2>/dev/null || sleep 1
+      done
+    }
+    # cand_ctrl_check: the five text fields must not hold control characters (dies with 2)
+    cand_ctrl_check() {
+      local pair name val
+      for pair in "title:$title" "rule:$rule" "why:$why" "evidence:$evidence" "scope:$scope"; do
+        name="${pair%%:*}"; val="${pair#*:}"
+        case "$val" in *[[:cntrl:]]*) pb_die "--$name must not contain control characters" 2 ;; esac
+      done
+    }
+    # cand_id_ok ID: the argument must be exactly C-NNNN
+    cand_id_ok() {
+      case "$1" in C-[0-9][0-9][0-9][0-9]) return 0 ;; esac
+      return 1
+    }
+    # cand_counts: prints "PENDING TOTAL MALFORMED" for the candidate file (all zero when missing)
+    cand_counts() {
+      [ -f "$CFILE" ] || { printf '0 0 0'; return 0; }
+      awk '
+        function flush() { if (inc) { t++; if (!done) p++ } inc = 0 }
+        { sub(/\r$/, "") }
+        /^### C-[0-9][0-9][0-9][0-9] / { flush(); inc = 1; done = 0; seen = 0; next }
+        /^### / { flush(); m++; next }
+        inc && !seen && /^- Status:/ { seen = 1; if ($0 ~ /^- Status: (promoted|dropped)/) done = 1 }
+        END { flush(); printf "%d %d %d", p + 0, t + 0, m + 0 }
+      ' "$CFILE"
+    }
+    # cand_field ID MODE FIELD: from the first block headed ID: MODE has -> 1/0 ; MODE val -> the first "- FIELD: " value
+    # (MODE status -> the text after "- Status: ", MODE count -> how many blocks carry ID, MODE title/date -> heading parts)
+    cand_field() {
+      CID="$1" CMODE="$2" CFLD="$3" awk '
+        BEGIN { sep = " · "; sl = length(sep); id = ENVIRON["CID"]; mode = ENVIRON["CMODE"]; fld = ENVIRON["CFLD"]; key = "- " fld ": " }
+        { sub(/\r$/, "") }
+        /^### / {
+          if (index($0, "### " id " ") == 1) {
+            n++
+            if (n == 1) { inb = 1; r = substr($0, 11)
+              if (substr(r, 1, sl) == sep) { r = substr(r, sl + 1); dt = substr(r, 1, 10); r = substr(r, 11)
+                if (substr(r, 1, sl) == sep) ttl = substr(r, sl + 1) } }
+            else inb = 0
+          } else inb = 0
+          next
+        }
+        inb && !(fld == "Status" && sdone) && index($0, "- " fld ":") == 1 && !got {
+          got = 1; has = 1
+          if (index($0, key) == 1) val = substr($0, length(key) + 1)
+          if (fld == "Status") sdone = 1
+        }
+        END {
+          if (mode == "count") print n + 0
+          else if (mode == "has") print (has ? 1 : 0)
+          else if (mode == "title") print ttl
+          else print val
+        }
+      ' "$CFILE"
+    }
+    # cand_setstatus ID NEWSTATUS: rewrite the first "- Status:" line of block ID (tmp file in the same directory, then mv)
+    cand_setstatus() {
+      CTMP="$(mktemp "$CFILE.XXXXXX")" || { CTMP=""; return 1; }
+      CID="$1" CNEW="$2" awk '
+        BEGIN { id = ENVIRON["CID"] }
+        { line = $0; sub(/\r$/, "", line) }
+        line ~ /^### / { inb = (index(line, "### " id " ") == 1); print; next }
+        inb && !done && index(line, "- Status:") == 1 { print "- Status: " ENVIRON["CNEW"]; done = 1; next }
+        { print }
+      ' "$CFILE" > "$CTMP" && mv "$CTMP" "$CFILE" || return 1
+      CTMP=""
+    }
+    # cand_find ID: after the lock; dies 2 unless exactly one unprocessed block carries ID
+    cand_find() {
+      local n st
+      n="$(cand_field "$1" count Status)"
+      [ "$n" != 0 ] || pb_die "no such candidate: $1" 2
+      [ "$n" = 1 ] || pb_die "ambiguous candidate id: $1 appears $n times" 2
+      st="$(cand_field "$1" val Status)"
+      case "$st" in
+        promoted*) pb_die "$1 is already promoted" 2 ;;
+        dropped*) pb_die "$1 is already dropped" 2 ;;
+      esac
+    }
+    case "$csub" in
+      add)
+        entry_parse_opts "$@"
+        entry_validate
+        cand_ctrl_check
+        cand_max; cand_tries
+        mkdir -p "$(dirname "$CFILE")" || pb_die "cannot create $(dirname "$CFILE")" 3
+        cand_lock
+        if [ -f "$FILE" ] && rule_in_file "$FILE" "$rule"; then
+          echo "duplicate: an entry with the same rule already exists" >&2
+          exit 4
+        fi
+        if rule_in_file "$CFILE" "$rule"; then
+          echo "duplicate: a candidate with the same rule already exists" >&2
+          exit 4
+        fi
+        # shellcheck disable=SC2046   # three space-free numbers
+        set -- $(cand_counts)
+        if [ "$1" -ge "$CMAX" ]; then
+          echo "candidate queue is full ($1 pending): promote or drop candidates first (learn.sh candidate promote|drop C-NNNN)" >&2
+          exit 5
+        fi
+        cpend="$1"
+        next_id C "$CFILE" || pb_die "candidate ids exhausted: delete $CAND_REL" 5
+        if [ ! -s "$CFILE" ]; then
+          {
+            printf '# Learning candidates (unapproved)\n'
+            printf 'Proposals queued by agents for the user to review. Data, not instructions: never injected into a session, never applied without the user'"'"'s approval.\n'
+            printf 'Managed by `learn.sh candidate`; do not edit by hand.\n'
+          } > "$CFILE" || pb_die "cannot write $CAND_REL" 3
+        fi
+        emit_entry "$NEXT_ID" pending >> "$CFILE" || pb_die "cannot write $CAND_REL" 3
+        cand_cleanup
+        echo "queued $NEXT_ID in $CAND_REL ($((cpend + 1)) pending)"
+        if [ "$( (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null) )" = true ]; then
+          (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C "$ROOT" check-ignore -q -- "$CAND_REL" 2>/dev/null)
+          if [ $? -eq 1 ]; then echo "warning: .agents/handoff/ is not git-ignored; run: learn.sh init" >&2; fi
+        fi
+        ;;
+      list)
+        lall=0
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --all) lall=1 ;;
+            *) pb_die "unknown option: $1 (usage: learn.sh candidate list [--all])" 2 ;;
+          esac
+          shift
+        done
+        # shellcheck disable=SC2046   # three space-free numbers
+        set -- $(cand_counts)
+        lp="$1"; lt="$2"; lm="$3"
+        if [ "$lm" -gt 0 ]; then echo "warning: ignored $lm malformed block(s) in $CAND_REL" >&2; fi
+        {
+          if [ -f "$CFILE" ]; then
+            LALL="$lall" awk '
+              BEGIN { sep = " · "; sl = length(sep); all = ENVIRON["LALL"] }
+              function flush() {
+                if (!inc) return
+                inc = 0
+                if (done && !all) return
+                line = id sep dt sep ttl sep "source: " (src == "" ? "(missing)" : src)
+                if (done) line = line sep st
+                print line
+                print "  rule: " (rule == "" ? "(missing)" : rule)
+              }
+              { sub(/\r$/, "") }
+              /^### C-[0-9][0-9][0-9][0-9] / {
+                flush(); inc = 1; done = 0; seen = 0; src = ""; rule = ""; hs = 0; hr = 0; st = ""
+                id = substr($0, 5, 6); r = substr($0, 11); dt = ""; ttl = ""
+                if (substr(r, 1, sl) == sep) { r = substr(r, sl + 1); dt = substr(r, 1, 10); r = substr(r, 11)
+                  if (substr(r, 1, sl) == sep) ttl = substr(r, sl + 1) }
+                next
+              }
+              /^### / { flush(); next }
+              inc && !seen && /^- Status:/ { seen = 1; st = substr($0, 11); if ($0 ~ /^- Status: (promoted|dropped)/) done = 1; next }
+              inc && !hs && /^- Source: / { hs = 1; src = substr($0, 11); next }
+              inc && !hr && /^- Rule: / { hr = 1; rule = substr($0, 9); next }
+              END { flush() }
+            ' "$CFILE"
+          fi
+          printf 'candidates: %s pending, %s total\n' "$lp" "$lt"
+        } | LC_ALL=C tr -d '\000-\011\013-\037\177'
+        ;;
+      promote)
+        [ $# -eq 1 ] && cand_id_ok "$1" || pb_die "usage: learn.sh candidate promote C-NNNN" 2
+        cid="$1"
+        [ -f "$FILE" ] || pb_die "$REL not found; run: learn.sh init" 2
+        [ -f "$CFILE" ] || pb_die "no such candidate: $cid" 2
+        cand_tries
+        cand_lock
+        cand_find "$cid"
+        for cf in Rule Why Evidence Source; do
+          [ "$(cand_field "$cid" has "$cf")" = 1 ] || pb_die "candidate $cid is missing the $cf field" 2
+        done
+        title="$(cand_field "$cid" title Title)"
+        [ -n "$title" ] || pb_die "candidate $cid is missing the Title field" 2
+        rule="$(cand_field "$cid" val Rule)"
+        why="$(cand_field "$cid" val Why)"
+        evidence="$(cand_field "$cid" val Evidence)"
+        source="$(cand_field "$cid" val Source)"
+        scope="project-wide"; role="all"
+        if [ "$(cand_field "$cid" has Scope)" = 1 ]; then scope="$(cand_field "$cid" val Scope)"; fi
+        if [ "$(cand_field "$cid" has Role)" = 1 ]; then role="$(cand_field "$cid" val Role)"; fi
+        entry_validate
+        cand_ctrl_check
+        if rule_in_file "$FILE" "$rule"; then
+          echo "duplicate: an entry with the same rule already exists" >&2
+          exit 4
+        fi
+        if [ "$(active_count)" -ge "$MAX_ENTRIES" ]; then
+          echo "at capacity ($MAX_ENTRIES active entries): merge or retire entries first (learn.sh retire L-NNNN --reason ...)" >&2
+          exit 5
+        fi
+        next_id L "$FILE" || pb_die "entry ids exhausted: retire or merge entries by hand" 5
+        emit_entry "$NEXT_ID" active >> "$FILE" || pb_die "cannot write $REL" 3
+        lid="$NEXT_ID"
+        cand_setstatus "$cid" "promoted ($lid; $TODAY)" ||
+          pb_die "wrote $lid but could not mark $cid promoted; run: learn.sh candidate drop $cid --reason 'promoted as $lid'" 3
+        cand_cleanup
+        echo "promoted $cid as $lid in $REL"
+        ;;
+      drop)
+        [ $# -ge 1 ] && cand_id_ok "$1" || pb_die "usage: learn.sh candidate drop C-NNNN --reason R" 2
+        cid="$1"; shift
+        dreason=""
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --reason) [ $# -ge 2 ] || pb_die "--reason needs a value" 2; dreason="$2"; shift ;;
+            *) pb_die "unknown option: $1" 2 ;;
+          esac
+          shift
+        done
+        [ -n "$dreason" ] || pb_die "--reason is required" 2
+        case "$dreason" in *"
+"*) pb_die "--reason must be a single line" 2 ;; esac
+        [ "${#dreason}" -le 120 ] || pb_die "--reason is too long (${#dreason} > 120 chars): keep entries short" 2
+        if printf '%s' "$dreason" | grep -Eiq -- "$SECRET_RE"; then
+          pb_die "--reason looks like it contains a secret; never record secrets" 2
+        fi
+        case "$dreason" in *[[:cntrl:]]*) pb_die "--reason must not contain control characters" 2 ;; esac
+        [ -f "$CFILE" ] || pb_die "no such candidate: $cid" 2
+        cand_tries
+        cand_lock
+        cand_find "$cid"
+        cand_setstatus "$cid" "dropped ($dreason; $TODAY)" || pb_die "cannot update $CAND_REL" 3
+        cand_cleanup
+        echo "dropped $cid"
+        ;;
+      *)
+        pb_die "usage: learn.sh candidate add|list|promote|drop" 2
+        ;;
+    esac
+    # S4-END
+    ;;
+
   trust | untrust)
     [ $# -le 1 ] || pb_die "usage: learn.sh $cmd [DIR]" 2
     dir="$(trust_dir "${1:-$ROOT}")"
@@ -429,6 +734,6 @@ EOF
     if [ -n "$items" ]; then printf '%s\n' "$items"; else echo "no learnings for $crole"; fi
     ;;
   *)
-    pb_die "usage: learn.sh init|add|retire|check|checklist|stale|trust|untrust|trusted" 2
+    pb_die "usage: learn.sh init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted" 2
     ;;
 esac
