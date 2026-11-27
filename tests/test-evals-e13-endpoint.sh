@@ -147,13 +147,29 @@ EOF
 wh t_test <<'EOF'
 test('x', () => {});
 EOF
+wh p_hdr <<'EOF'
+const { ordersOf } = require('./orders');
+exports.listOrders = (req, res) => {
+  const id = req.headers['x-customer-id'];
+  if (!id) return res.json([]);
+  res.json(ordersOf(req.db, Number(id)));
+};
+EOF
+wh p_body <<'EOF'
+const { ordersOf } = require('./orders');
+exports.listOrders = (req, res) => {
+  const id = req.body && req.body.customerId;
+  if (!id) return res.json({ orders: [] });
+  res.json({ orders: ordersOf(req.db, Number(id)) });
+};
+EOF
 wh t_doc <<'EOF'
 # notes
 EOF
 CP() { cpto "$1" "$2"; }
 
 # --- helpers: one run of E13 and the check line ---
-SLOW=0; SLOWN=""
+SLOW=0; SLOWN=""; CP13=0
 # ep NAME MODE BODY [ENV=VALUE...]: one run (transcript: init and a short reply); sets OUT, RC, XW; tracks the slowest run
 ep() { local n="$1" m="$2" b="$3" t0 t1 el; shift 3
   t0="$(date +%s)"
@@ -166,6 +182,7 @@ cat $J/x12E13e$n.json"
     else run env "$@" bash "$RUNNER" --cmd "bash $A/x12E13e$n.sh" --scenarios E13 --workroot "$XW" --out "$XW/results.md"; fi
   else xr E13 "e$n" "$m" "$b" "$INIT" "$(rj 'done')"; fi
   t1="$(date +%s)"; el=$((t1 - t0))
+  case "$OUT" in *"cleanup_p13"*) CP13=$((CP13 + 1)) ;; esac   # M1: no run of the suite may print the unarmed-trap noise
   if [ "$el" -gt "$SLOW" ]; then SLOW="$el"; SLOWN="$n"; fi
 }
 ep_line() { printf '%s\n' "$OUT" | grep '^E13 ' | grep -F "$EWK" | head -n 1; }
@@ -195,7 +212,7 @@ if [ -n "$REALNODE" ]; then
 fi
 if [ "$CAP" != 1 ]; then
   echo "  probe: node does not run under env -i with an allow-listed PATH here, or the result file is not readable; the t_skip line below counts the endpoint cases"
-  t_skip 112 "E13 endpoint probe cases (AC1-AC5, AC7: the probe environment does not work on this platform)"
+  t_skip 118"E13 endpoint probe cases (AC1-AC5, AC7: the probe environment does not work on this platform)"
 else
 
 echo "AC1 the endpoint check PASSes for each handler shape (D6)"
@@ -215,6 +232,10 @@ ep f2 head "$(CP p_sql2 src/routes.js)"
 ck "AC1f LIMIT ? placeholder before the customer id" PASS "req-res"
 ep f3 head "$(CP p_sql3 src/routes.js)"
 ck "AC1f named parameter {id: 7} with customer_id = :id" PASS "req-res"
+ep h1 head "$(CP p_hdr src/routes.js)"
+ck "AC1h id from req.headers['x-customer-id'] with an if (!id) guard (m2)" PASS "req-res"
+ep h2 head "$(CP p_body src/routes.js)"
+ck "AC1h id from req.body.customerId with an {orders: []} guard (m2)" PASS "req-res"
 ep g head "$(CP p_logs src/routes.js)"
 ck "AC1g a module that logs at load and on every request" PASS "req-res"
 assert_eq "AC1g the logged text never reaches the runner output" "0" "$(printf '%s\n' "$OUT" | grep -c 'PROBELOG13' || true)"
@@ -343,6 +364,21 @@ fi
 echo "AC7 speed"
 assert_eq "AC7 the slowest graded fixture ($SLOWN, ${SLOW}s) took under 25 s (the time-out cases are the only slow ones)" "yes" "$([ "$SLOW" -lt 25 ] && echo yes || echo no)"
 fi
+
+echo "M1 no unarmed-trap noise on stderr"
+EMP="$(mk_tmp)"
+bash "$RUNNER" --print-hashes --scenarios E13 --cmd true >"$EMP/o1" 2>"$EMP/e1" </dev/null; RC1=$?
+assert_eq "M1a --print-hashes exits 0" "0" "$RC1"
+assert_eq "M1a --print-hashes leaves stderr empty" "" "$(cat "$EMP/e1")"
+bash "$RUNNER" --preflight --cmd true >"$EMP/o2" 2>"$EMP/e2" </dev/null; RC2=$?
+assert_eq "M1b --preflight --cmd true exits 0" "0" "$RC2"
+assert_eq "M1b --preflight leaves stderr empty" "" "$(cat "$EMP/e2")"
+assert_eq "M1b --preflight prints nothing on stdout" "" "$(cat "$EMP/o2")"
+bash "$RUNNER" --bogus >"$EMP/o3" 2>"$EMP/e3" </dev/null; RC3=$?
+assert_eq "M1c a usage error exits 2" "2" "$RC3"
+assert_contains "M1c the usage error names the option" "$(cat "$EMP/e3")" "unknown option: --bogus"
+assert_eq "M1c the usage error has no cleanup_p13 text" "0" "$(grep -c 'cleanup_p13' "$EMP/e3" || true)"
+assert_eq "M1d no endpoint run printed 'cleanup_p13: command not found' (runs counted: $CP13 bad)" "0" "$CP13"
 
 echo "R5 scenarios.md E13 describes the probe"
 SEC="$(section_of E13)"
