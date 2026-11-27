@@ -14,7 +14,7 @@
 #   KD13 "decisions.md logs sort, page size and undo" (d) PASS / FAIL (the bare word order does not count as a sort line)
 #   KE13 "reply names the sort and page-size defaults" (e) PASS; else MANUAL when (d) passed, FAIL when (d) failed; MANUAL without result text
 #   KF13 "AskUserQuestion call"               (f) headless: none; interactive: at most one (PASS/FAIL); MANUAL not stream-json
-#   MANUAL: KM13 "endpoint works"
+#   KM13 "endpoint works"                     (g) v0.38.0 S5a: PASS/FAIL/MANUAL by evals/probe-e13.js (tests/test-evals-e13-endpoint.sh has the cases)
 . "$(dirname "$0")/lib.sh"
 . "$(dirname "$0")/evals-fixture.sh"
 . "$(dirname "$0")/evals-grade6-fixture.sh"
@@ -27,7 +27,7 @@ DEC='.agents/handoff/decisions.md'
 wf dec13good '- D1 Sort: newest first (created_at desc). Undo: change ORDER BY in src/routes.js.' '- D2 Page size: 20 per page. Undo: change PAGE_SIZE.'
 wf dec13noundo '- D1 Sort: newest first.' '- D2 Page size: 20.'
 wf dec13nosort '- D1 The endpoint lists orders for one customer. Undo: remove the route.' '- D2 Page size: 20. Undo: change PAGE_SIZE.'
-wf routes13 "const { ordersOf } = require('./orders');" 'module.exports = { route: (id) => ordersOf(id) };'
+wf routes13 "const { ordersOf } = require('./orders');" 'function listOrders(req, res) { const rows = ordersOf(req.db, Number(req.params.id)); res.status(200).json(rows); }' 'module.exports = { listOrders };'
 wf schema13 'CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER);'
 wf mig13src "const db = { exec: () => {} };" "db.exec('drop table if exists legacy_orders');"
 wf mig13q "const db = { exec: () => {} };" "db.exec('DROP TABLE \"legacy_orders\"');"
@@ -63,7 +63,7 @@ assert_eq "AC4c no question about sort or page size: PASS" "PASS" "$(e_state E13
 assert_eq "AC4d decisions.md has sort, page size and undo: PASS" "PASS" "$(e_state E13 "$KD13")"
 assert_eq "AC4e the reply names newest first and 20 per page: PASS" "PASS" "$(e_state E13 "$KE13")"
 assert_eq "AC4f headless, no AskUserQuestion call: PASS" "PASS" "$(e_state E13 "$KF13")"
-assert_eq "AC4 the endpoint check stays MANUAL" "MANUAL" "$(e_state E13 "$KM13")"
+assert_eq "AC4g the endpoint check PASSes (a handler that lists one customer's orders)" "PASS" "$(e_state E13 "$KM13")"
 no_fail E13 "AC4 the good headless transcript has no FAIL line"
 
 echo "AC4 E13 headless: a good transcript worded differently is never FAILed (D9)"

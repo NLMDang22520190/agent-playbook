@@ -221,7 +221,7 @@ ER="$RUNNER"
 echo "Review 2: grader_sha follows every evals file the grading and the setup use (transcript.js, facts.js, codex-jsonl.js, make-fixture.sh, codex-adapter.sh)"
 GPREV="$(rj "$RJ" E8 r.grader_sha)"
 ER="$EC/evals/run-evals.sh"
-for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do
+for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh probe-e13.js; do
   case "$gf" in *.js) printf '\n// grader mutation\n' >> "$EC/evals/$gf" ;; *) printf '\n# grader mutation\n' >> "$EC/evals/$gf" ;; esac
   er --cmd "bash $A/noop2.sh" --scenarios E8 --arm with
   GNOW="$(rj "$RJ" E8 r.grader_sha)"
@@ -326,7 +326,7 @@ if [ "$OG3" != "$OG2" ] && printf '%s' "$OG3" | grep -Eq "$HEX40"; then t_ok "R1
 echo "Review 2: run-outcome grader_sha follows the same evals files"
 OUTCOME="$EO/evals/run-outcome.sh"
 ro --cmd "bash $SA/idle.sh" --tasks t-add --arm with; OGP="$(otask_sha t-add.with.1 grader_sha)"
-for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh; do
+for gf in transcript.js facts.js codex-jsonl.js make-fixture.sh codex-adapter.sh probe-e13.js; do
   case "$gf" in *.js) printf '\n// grader mutation\n' >> "$EO/evals/$gf" ;; *) printf '\n# grader mutation\n' >> "$EO/evals/$gf" ;; esac
   ro --cmd "bash $SA/idle.sh" --tasks t-add --arm with
   OGN="$(otask_sha t-add.with.1 grader_sha)"
