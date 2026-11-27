@@ -170,6 +170,9 @@ CP() { cpto "$1" "$2"; }
 
 # --- helpers: one run of E13 and the check line ---
 SLOW=0; SLOWN=""; CP13=0
+# time bounds by platform (CI measured, 7efe4e1): Linux 48 s in all; macOS 98 s; Git Bash on Windows 617 s, its slowest fixture 31 s.
+# They are generous on purpose: they catch a hang, not a slow runner.
+case "$(uname -s 2>/dev/null)" in MINGW* | MSYS* | CYGWIN*) SLIM=90; TLIM=1500 ;; Darwin*) SLIM=40; TLIM=240 ;; *) SLIM=25; TLIM=90 ;; esac
 # ep NAME MODE BODY [ENV=VALUE...]: one run (transcript: init and a short reply); sets OUT, RC, XW; tracks the slowest run
 ep() { local n="$1" m="$2" b="$3" t0 t1 el; shift 3
   t0="$(date +%s)"
@@ -331,7 +334,7 @@ EL="$(date +%s)"
 if [ "$SHIM_OK" = 1 ]; then ep e head "$(CP p_reqres src/routes.js)" PATH="$SHIMD:$PATH"; else ep e head "$(CP p_loop src/routes.js)"; fi
 EL=$(( $(date +%s) - EL ))
 ck "AC3e a probe that never returns (infinite loop at require)" MANUAL "timed out"
-assert_eq "AC3e it ends within 25 s (took ${EL}s)" "yes" "$([ "$EL" -lt 25 ] && echo yes || echo no)"
+assert_eq "AC3e it ends within ${SLIM} s (took ${EL}s)" "yes" "$([ "$EL" -lt "$SLIM" ] && echo yes || echo no)"
 assert_eq "AC3e no pbe13.* left under TMPDIR after the time-out" "0" "$(ls "$T13" | grep -c '^pbe13[.]' || true)"
 if [ "$SHIM_OK" = 1 ] && [ "$PS_OK" = 1 ]; then
   P1="$(sed -n 1p "$PIDF" 2>/dev/null)"; P2="$(sed -n 2p "$PIDF" 2>/dev/null)"
@@ -362,7 +365,7 @@ else
 fi
 
 echo "AC7 speed"
-assert_eq "AC7 the slowest graded fixture ($SLOWN, ${SLOW}s) took under 25 s (the time-out cases are the only slow ones)" "yes" "$([ "$SLOW" -lt 25 ] && echo yes || echo no)"
+assert_eq "AC7 the slowest graded fixture ($SLOWN, ${SLOW}s) took under ${SLIM} s (the time-out cases are the only slow ones)" "yes" "$([ "$SLOW" -lt "$SLIM" ] && echo yes || echo no)"
 fi
 
 echo "M1 no unarmed-trap noise on stderr"
@@ -389,8 +392,6 @@ assert_eq "R5 the E13 section says the probe is not a sandbox" "yes" "$(has 'not
 
 echo "AC7 the whole suite is fast"
 TOTAL=$((SECONDS - SUITE_T0))
-# Git Bash on Windows spawns processes far slower: CI measured 420 s for this suite (run 46053809076), against 47 s on Linux.
-case "$(uname -s 2>/dev/null)" in MINGW* | MSYS* | CYGWIN*) TLIM=900 ;; *) TLIM=90 ;; esac
 assert_eq "AC7 the suite took under ${TLIM} s (took ${TOTAL}s; the time-out case waits for the 15 s limit)" "yes" "$([ "$TOTAL" -lt "$TLIM" ] && echo yes || echo no)"
 
 t_summary

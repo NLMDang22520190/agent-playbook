@@ -128,7 +128,7 @@ test-guard-restore-mount.sh 129
 test-tdd-step-j.sh 128
 test-ship-timing.sh 125
 test-ship-d.sh 123
-test-evals-e13-endpoint.sh 420   # measured once on a CI Windows shard (run 46053809076); Linux 47 s (L-0003)
+test-evals-e13-endpoint.sh 620   # measured on CI (Windows 617 s, macOS 100 s, Linux 48 s) (L-0003)
 test-ship-rest.sh 120
 test-evals-grade14c.sh 121
 test-role-gate-committed.sh 117
