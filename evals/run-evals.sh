@@ -171,6 +171,15 @@ stop_adapter() { if [ -n "$ADPID" ]; then pbh_kill_tree "$ADPID"; wait "$ADPID" 
 # --variant: the snapshot is put back first of all on every way out (pbh_variant_finalize); a restore that fails makes the exit code 5
 # --jobs: the running runs are stopped first, then their parent's temp dirs go (a run's own dirs are removed by the run, job_clean)
 cleanup_jobs() { pbh_jobs_kill; if [ -n "$JOBS_DIR" ]; then rm -rf "$JOBS_DIR"; JOBS_DIR=""; fi; }
+# cleanup_p13 (probe13 temp dir and process) is defined here, before the traps below can call it
+P13_TMP=""; P13_PID=""
+cleanup_p13() {
+  local d="$P13_TMP"
+  if [ -n "$P13_PID" ]; then pbh_kill_tree "$P13_PID"; P13_PID=""; fi
+  P13_TMP=""
+  case "$d" in */pbe13.*) rm -rf "$d" 2>/dev/null ;; esac
+  return 0
+}
 on_exit() { cleanup_p13; cleanup_jobs; cleanup_home; cleanup_tmp; cleanup_set; pbh_variant_finalize || exit 5; }
 on_signal() { cleanup_p13; stop_adapter; cleanup_jobs; cleanup_home; cleanup_tmp; cleanup_set; trap - EXIT; pbh_variant_finalize || exit 5; exit "$1"; }
 job_clean() { cleanup_p13; stop_adapter; cleanup_home; cleanup_tmp quiet; }   # the exit trap of one run of a --jobs fan-out
@@ -1442,14 +1451,6 @@ PAGE13='page[ _-]?size|per[[:space:]]+page|limit|paginat'
 # best-effort patch of net, child_process and process.exit inside the probe, an allow-listed environment (env -i), a result file with a nonce
 # (stdout and stderr go to /dev/null) and a watchdog (15 s, then pbh_kill_tree, KILL 3 s later; the wrapper sets "timed out"). It is not a sandbox:
 # code that works against the probe on purpose is outside the threat model (same trust level as tests_pass and probe29).
-P13_TMP=""; P13_PID=""
-cleanup_p13() {
-  local d="$P13_TMP"
-  if [ -n "$P13_PID" ]; then pbh_kill_tree "$P13_PID"; P13_PID=""; fi
-  P13_TMP=""
-  case "$d" in */pbe13.*) rm -rf "$d" 2>/dev/null ;; esac
-  return 0
-}
 cand13() { local f
   { git -C "$WD" diff --name-only "$E13_BASE" -- 2>/dev/null; git -C "$WD" ls-files --others --exclude-standard 2>/dev/null; } | LC_ALL=C sort -u |
   while IFS= read -r f; do
@@ -1464,7 +1465,7 @@ other13() { local f
   { git -C "$WD" diff --name-only "$E13_BASE" -- 2>/dev/null; git -C "$WD" ls-files --others --exclude-standard 2>/dev/null; } | LC_ALL=C sort -u |
   while IFS= read -r f; do
     case "$f" in node_modules/* | */node_modules/* | .git/* | .agents/* | tests/* | test/* | __tests__/* | */__tests__/* | docs/*) continue ;; esac
-    case "$f" in *.mjs | *.cjs.map | *.ts | *.tsx | *.mts | *.cts | *.jsx | *.py | *.rb | *.go | *.php | *.java | *.kt | *.rs) ;; *) continue ;; esac
+    case "$f" in *.mjs | *.map | *.ts | *.tsx | *.mts | *.cts | *.jsx | *.py | *.rb | *.go | *.php | *.java | *.kt | *.rs) ;; *) continue ;; esac
     [ -f "$WD/$f" ] || continue
     printf '%s\n' "$f"
   done

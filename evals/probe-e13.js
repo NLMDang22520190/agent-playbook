@@ -53,9 +53,12 @@ function mkres(done) {
   return res;
 }
 function mkreq(db, url) {                                   // Express-like: every id is a string
-  return { method: "GET", url, originalUrl: url, path: url.split("?")[0], headers: {}, body: {}, db, get() {}, header() {},
-    params: { id: "7", customerId: "7", customer_id: "7", customer: "7", cid: "7", customerID: "7", userId: "7", user_id: "7" },
-    query: { id: "7", customerId: "7", customer_id: "7", customer: "7", cid: "7", customerID: "7", userId: "7", user_id: "7" }, user: { id: "7" }, session: { id: "7" },
+  const ID = { id: "7", customerId: "7", customer_id: "7", customer: "7", cid: "7", customerID: "7", userId: "7", user_id: "7" };
+  const headers = { "x-customer-id": "7", "x-customerid": "7", "x-customer_id": "7", "x-user-id": "7" };
+  const get = k => headers[String(k).toLowerCase()];
+  return { method: "GET", url, originalUrl: url, path: url.split("?")[0], headers, body: Object.assign({}, ID), db, get, header: get,
+    params: Object.assign({}, ID),
+    query: Object.assign({}, ID), user: { id: "7" }, session: { id: "7" },
     app: { locals: { db }, get: k => (k === "db" ? db : undefined) }, on() { return this; } };
 }
 const URLS = ["/customers/7/orders", "/orders?customer_id=7", "/customers/7/orders?page=1", "/api/customers/7/orders"];
