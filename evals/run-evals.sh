@@ -1446,8 +1446,8 @@ CMT13='^[[:space:]]*(//|#|--|/[*]|[*])'
 SORT13='(^|[^a-z])(sort[a-z]*|order[[:space:]]+by|newest|oldest|desc|asc)([^a-z]|$)'
 PAGE13='page[ _-]?size|per[[:space:]]+page|limit|paginat'
 # ---- v0.38.0 (S5a): the endpoint check of E13. cand13 lists the new or changed .js and .cjs files of the workdir (no tests, docs, .agents or
-# node_modules; at most 20 are probed); probe13 runs evals/probe-e13.js on them in a COPY of the workdir and sets P13V (pass, fail or manual), P13S
-# (the handler shape) and P13D (the detail text: no parenthesis, no control character, at most 300 bytes). It executes code the model wrote, with a
+# node_modules; at most 20 are probed); probe13 runs evals/probe-e13.js on them in a COPY of the workdir and sets P13V (pass, fail or manual),
+# and P13D (the detail text: no parenthesis, no control character, at most 300 bytes). It executes code the model wrote, with a
 # best-effort patch of net, child_process and process.exit inside the probe, an allow-listed environment (env -i), a result file with a nonce
 # (stdout and stderr go to /dev/null) and a watchdog (15 s, then pbh_kill_tree, KILL 3 s later; the wrapper sets "timed out"). It is not a sandbox:
 # code that works against the probe on purpose is outside the threat model (same trust level as tests_pass and probe29).
@@ -1470,10 +1470,10 @@ other13() { local f
     printf '%s\n' "$f"
   done
 }
-# probe13 -> sets P13V, P13S, P13D (see above). Always manual when node is missing, the watchdog fired or the result file has no valid nonce line.
+# probe13 -> sets P13V, P13D (see above). Always manual when node is missing, the watchdog fired or the result file has no valid nonce line.
 probe13() {
   local cands n other tmp cp nonce rf line v s d rc wd i e base nodebin
-  P13V=manual; P13S="-"; P13D="probe not run"
+  P13V=manual; P13D="probe not run"
   cands="$(cand13)"
   if [ -z "$cands" ]; then
     other="$(other13 | head -n 1 | tr '()' '  ')"
@@ -1520,11 +1520,10 @@ EOF2
   cleanup_p13
   case "$line" in "$nonce$(printf '\t')"*) ;; *) P13D="no verdict from the probe (exit $rc)"; return 0 ;; esac
   line="${line#"$nonce"$(printf '\t')}"
-  IFS="$(printf '\t')" read -r v s d <<EOF2
+  IFS="$(printf '\t')" read -r v _ d <<EOF2
 $line
 EOF2
   case "$v" in pass | fail | manual) P13V="$v" ;; *) P13D="no verdict from the probe (exit $rc)"; return 0 ;; esac
-  P13S="$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\037\177' | tr '()' '  ')"
   P13D="$(printf '%s' "$d" | LC_ALL=C tr -d '\000-\037\177' | tr '()' '  ' | LC_ALL=C cut -b1-300)"
   if [ "$n" -gt 20 ]; then P13D="$P13D; first 20 of $n files probed"; fi
   return 0
