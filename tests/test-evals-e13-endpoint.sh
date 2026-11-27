@@ -272,7 +272,7 @@ ep d head "$(CP p_secret src/routes.js)" PB_E13_SECRET=leak13
 ck "AC4d an exported PB_E13_SECRET does not reach model code" PASS "req-res"
 ep e head "$(CP p_net src/routes.js)"
 assert_eq "AC4e require('net').connect in a handler does not make a PASS" "yes" "$([ "$(ep_state)" != PASS ] && echo yes || echo no)"
-ep f head "$(CP p_json src/routes.js) && $(CP d_json data.json)"
+ep f head "$(CP p_json src/routes.js) && $(CP d_json src/data.json)"
 ck "AC4f a new data.json read with require('./data.json') (whole work dir is copied)" PASS "req-res"
 
 echo "AC5 the check key survives names with parentheses (real pbh_check_key)"
