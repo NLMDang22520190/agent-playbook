@@ -40,7 +40,7 @@
 #                                     (heuristic in evals/tasks/README.md); "0 0 0" when FILE does not exist
 #   pbh_sha_stdin                     the git blob hash (40 hex) of stdin (git hash-object --stdin; works outside a repository)
 #   pbh_grader_sha RUNNER             the hash of the runner script RUNNER followed by evals/lib-harness.sh, transcript.js, facts.js, codex-jsonl.js,
-#                                     make-fixture.sh and codex-adapter.sh (decision D23; the "grader_sha" of every run)
+#                                     make-fixture.sh, codex-adapter.sh and probe-e13.js (decision D23; the "grader_sha" of every run)
 #   pbh_cli_version HARNESS           the first line of `HARNESS --version` (stdout and stderr, stdin closed, `timeout 3` when it exists), "" when none
 #   pbh_harness_sha LABEL CMD         the "harness_sha" of every run: the hash of "<harness> <CLI --version output>" for a preset (LABEL is
 #                                     the harness name, CMD empty) or of "cmd <CMD>" for a --cmd adapter (LABEL "custom")
@@ -796,9 +796,9 @@ pbh_kill_tree() {
 pbh_sha_stdin() { git hash-object --stdin; }
 pbh_grader_sha() {
   local dir f missing=""; dir="${BASH_SOURCE[0]%/*}"
-  # D23: the runner, this lib and the other evals files the grading and the setup use. One git call hashes every present file; a missing
+  # D23: the runner, this lib and the other evals files the grading and the setup use (v0.38.0: probe-e13.js too). One git call hashes every present file; a missing
   # file is named in the hashed text (never skipped), so adding or removing one changes the hash. 2 processes in all.
-  set -- "$1" "$dir/lib-harness.sh" "$dir/transcript.js" "$dir/facts.js" "$dir/codex-jsonl.js" "$dir/make-fixture.sh" "$dir/codex-adapter.sh"
+  set -- "$1" "$dir/lib-harness.sh" "$dir/transcript.js" "$dir/facts.js" "$dir/codex-jsonl.js" "$dir/make-fixture.sh" "$dir/codex-adapter.sh" "$dir/probe-e13.js"
   for f in "$@"; do [ -f "$f" ] || missing="$missing ${f##*/}"; done
   # the present files, in order, are the arguments of the one git call
   local n=$#; while [ "$n" -gt 0 ]; do f="$1"; shift; n=$((n - 1)); if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
