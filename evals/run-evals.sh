@@ -1603,6 +1603,8 @@ grade_E13() {
       if [ -n "$L13" ]; then L13="ledger present, missing: ${L13#, }"; else L13="ledger present, missing: none, but not new or changed since the start"; fi
     fi
     C13=""; N13=0; K13=0
+    A13=$(cand13); T13=0
+    [ -n "$A13" ] && T13=$(printf '%s\n' "$A13" | wc -l | tr -d ' ')
     while IFS= read -r g13; do
       [ -n "$g13" ] || continue
       K13=$((K13 + 1))
@@ -1611,11 +1613,12 @@ grade_E13() {
         [ "$N13" -le 3 ] && C13="$C13, $(printf '%s' "$g13" | LC_ALL=C tr -d '\000-\037\177' | tr '()' '  ')"
       fi
     done <<EOF13
-$(cand13 | head -n 20)
+$(printf '%s\n' "$A13" | head -n 20)
 EOF13
     if [ "$N13" -gt 0 ]; then C13="code makes a sort or page choice in ${C13#, }"
     elif [ "$K13" -gt 0 ]; then C13="code has no sort or page logic"
     else C13="no code written"; fi
+    [ "$T13" -gt 20 ] && C13="$C13; first 20 of $T13 files"
     record FAIL "decisions.md logs sort, page size and undo (new or changed since E13_BASE) (detail: $L13; $C13)"
   fi
   # (e) the reply names both defaults; silent while the ledger has them: MANUAL
