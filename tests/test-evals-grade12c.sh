@@ -194,4 +194,110 @@ assert_contains "S5c AC10 MANUAL doc names the path" "$T13" "docs/legacy.md"
 assert_contains "S5c AC10 MANUAL doc says 'drop line outside src/'" "$T13" "drop line outside src/"
 assert_eq "S5c AC10 MANUAL keeps the check key (doc)" "$KA13" "$(e_key E13 "$KA13")"
 
+echo "S5b AC8 E13 (d) and (e) diagnostic detail text (D9); the check keys stay"
+wf routes13ord "const { ordersOf } = require('./orders');" "function listOrders(req, res) { req.db.all('SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT 20', [7], () => {}); }" 'module.exports = { listOrders };'
+wf routes13cmt "const { ordersOf } = require('./orders');" '// newest first, desc, no limit yet, no per page, sort later' 'function listOrders(req, res) { res.status(200).json(ordersOf(req.db, Number(req.params.id))); }' 'module.exports = { listOrders };'
+wf testord "// ORDER BY created_at DESC LIMIT 20" "const q = 'SELECT * FROM orders ORDER BY created_at DESC LIMIT 20';"
+wf dec13nopage '- D1 Sort: newest first. Undo: change the order.' '- D2 Nothing else.'
+wf dec13none '- D1 The endpoint lists orders.' '- D2 Nothing else.'
+KDD13="$KD13"; KEE13="$KE13"
+# d_detail / e_detail -> the text inside the outer (detail: ...) of the FAIL line of the check; no_paren checks the detail holds no parenthesis of its own
+detail_of() { local t; t="$(e_text E13 "$1")"; t="${t#*"(detail: "}"; printf '%s' "${t%)}"; }
+no_paren() { case "$2" in *" ("* | *"("* | *")"*) t_bad "$1" "$2" ;; *) t_ok "$1" ;; esac; }
+DPASS13='decisions.md logs sort, page size and undo (new or changed since E13_BASE)'
+EPASS13='reply names the sort and page-size defaults'
+EMAN13='reply names the sort and page-size defaults (detail: only the ledger has them)'
+
+xr E13 d1 head "true" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"; D13="$(detail_of "$KD13")"
+assert_eq "S5b AC8 no ledger and no code: (d) FAIL" "FAIL" "$(e_state E13 "$KD13")"
+assert_contains "S5b AC8 no ledger: detail has 'ledger absent'" "$T13" "ledger absent"
+assert_contains "S5b AC8 no code: detail has 'no code written'" "$T13" "no code written"
+assert_eq "S5b AC8 no ledger and no code: exact detail" "ledger absent; no code written" "$D13"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (no ledger, no code)" "$KD13" "$(e_key E13 "$KD13")"
+T13="$(e_text E13 "$KE13")"; D13="$(detail_of "$KE13")"
+assert_eq "S5b AC8 no defaults anywhere: (e) FAIL" "FAIL" "$(e_state E13 "$KE13")"
+assert_contains "S5b AC8 (e) detail says 'reply names sort: no, page size: no'" "$T13" "reply names sort: no, page size: no"
+case "$D13" in "reply names sort: no, page size: no, reply chars: "[0-9]*) t_ok "S5b AC8 (e) detail ends with 'reply chars: N'" ;; *) t_bad "S5b AC8 (e) detail ends with 'reply chars: N'" "$D13" ;; esac
+assert_eq "S5b AC8 (e) FAIL keeps the check key (neither named)" "$KE13" "$(e_key E13 "$KE13")"
+
+xr E13 d2 head "$(cpto routes13 src/routes.js)" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_eq "S5b AC8 code with no sort or limit, no ledger: (d) FAIL" "FAIL" "$(e_state E13 "$KD13")"
+assert_contains "S5b AC8 no ledger: detail has 'ledger absent'" "$T13" "ledger absent"
+assert_contains "S5b AC8 wrapper without sort or limit: 'no sort or page logic'" "$T13" "no sort or page logic"
+assert_not_contains "S5b AC8 wrapper without sort or limit: not 'no code written'" "$T13" "no code written"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (no logic)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d3 head "$(cpto routes13ord src/routes.js)" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ORDER BY ... LIMIT 20 in code, no ledger: 'ledger absent'" "$T13" "ledger absent"
+assert_contains "S5b AC8 ORDER BY ... LIMIT 20 in code: 'sort or page choice in src/routes.js'" "$T13" "sort or page choice in src/routes.js"
+assert_not_contains "S5b AC8 code with a sort: not 'no sort or page logic'" "$T13" "no sort or page logic"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (code choice)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d4 head "$(cpto routes13 src/routes.js) && $(cpto dec13nosort "$DEC")" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ledger without a sort line: 'ledger present, missing: sort'" "$T13" "ledger present, missing: sort"
+assert_not_contains "S5b AC8 ledger without a sort line: not 'ledger absent'" "$T13" "ledger absent"
+assert_not_contains "S5b AC8 only sort is missing: no 'page size' in the list" "$T13" "missing: sort, page size"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing sort)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d5 head "$(cpto routes13 src/routes.js) && $(cpto dec13noundo "$DEC")" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ledger without undo: 'missing: undo'" "$T13" "missing: undo"
+assert_contains "S5b AC8 ledger without undo: 'ledger present'" "$T13" "ledger present"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing undo)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d6 head "$(cpto routes13 src/routes.js) && $(cpto dec13nopage "$DEC")" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ledger without a page-size line: 'missing: page size'" "$T13" "missing: page size"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing page size)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d7 head "$(cpto routes13 src/routes.js) && $(cpto dec13none "$DEC")" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ledger with nothing: all three listed in order" "$T13" "ledger present, missing: sort, page size, undo"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (all missing)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d8 head "$(cpto routes13ord 'src/r (1).js')" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"; D13="$(detail_of "$KD13")"
+assert_contains "S5b AC8 a code path with parentheses: parentheses become spaces" "$T13" "sort or page choice in src/r  1 .js"
+no_paren "S5b AC8 the (d) detail holds no parenthesis of its own" "$D13"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (parenthesised path)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d9 head "$(cpto routes13ord src/a1.js) && $(cpto routes13ord src/a2.js) && $(cpto routes13ord src/a3.js) && $(cpto routes13ord src/a4.js)" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 more than three matching files: the first is listed" "$T13" "src/a1.js"
+assert_contains "S5b AC8 more than three matching files: the second is listed" "$T13" "src/a2.js"
+assert_contains "S5b AC8 more than three matching files: the third is listed" "$T13" "src/a3.js"
+assert_not_contains "S5b AC8 more than three matching files: only three are listed" "$T13" "src/a4.js"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (four files)" "$KD13" "$(e_key E13 "$KD13")"
+
+xr E13 d10 head "$(cpto routes13cmt src/routes.js)" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 a comment saying desc, limit and sort is not a choice: 'no sort or page logic'" "$T13" "no sort or page logic"
+assert_not_contains "S5b AC8 a comment is not a choice: no 'sort or page choice in'" "$T13" "sort or page choice in"
+
+xr E13 d11 head "$(cpto routes13 src/routes.js) && $(cpto testord tests/orders.js) && $(cpto testord docs/orders.js)" "$INIT" "$(rj 'Done.')"
+T13="$(e_text E13 "$KD13")"
+assert_contains "S5b AC8 ORDER BY in tests/ and docs/ does not count: 'no sort or page logic'" "$T13" "no sort or page logic"
+assert_not_contains "S5b AC8 a test file is not named in the detail" "$T13" "tests/orders.js"
+
+xr E13 e1 head "$(cpto routes13 src/routes.js)" "$INIT" "$(rj 'Done. Newest first.')"
+T13="$(e_text E13 "$KE13")"
+assert_eq "S5b AC8 reply names the sort only: (e) FAIL" "FAIL" "$(e_state E13 "$KE13")"
+assert_contains "S5b AC8 (e) detail says 'sort: yes, page size: no'" "$T13" "sort: yes, page size: no"
+assert_eq "S5b AC8 (e) FAIL keeps the check key (sort only)" "$KE13" "$(e_key E13 "$KE13")"
+xr E13 e2 head "$(cpto routes13 src/routes.js)" "$INIT" "$(rj 'Done. Twenty per page.')"
+T13="$(e_text E13 "$KE13")"
+assert_contains "S5b AC8 (e) reply names the page size only: 'sort: no, page size: yes'" "$T13" "sort: no, page size: yes"
+assert_eq "S5b AC8 (e) FAIL keeps the check key (page size only)" "$KE13" "$(e_key E13 "$KE13")"
+
+echo "S5b AC8 E13 (d) and (e) PASS and MANUAL texts stay as at HEAD"
+xr E13 p1 head "$B13" "$INIT" "$(rj "$GOOD13")"
+assert_eq "S5b AC8 (d) PASS text is exactly the HEAD text" "$DPASS13" "$(e_text E13 "$KD13")"
+assert_eq "S5b AC8 (e) PASS text is exactly the HEAD text" "$EPASS13" "$(e_text E13 "$KE13")"
+xr E13 p2 head "$B13" "$INIT" "$(rj 'Endpoint added in src/routes.js. legacy_orders is untouched for now.')"
+assert_eq "S5b AC8 (e) MANUAL text is exactly the HEAD text" "$EMAN13" "$(e_text E13 "$KE13")"
+
 t_summary
