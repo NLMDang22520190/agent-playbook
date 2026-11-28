@@ -50,6 +50,6 @@ assert_eq "Q4b the last line of scenarios.md is E43's Fail-if text" "1" "$(tail 
 if [ -n "$(tail -n 1 "$SCN")" ]; then t_ok "Q4b scenarios.md has no trailing blank line"; else t_bad "Q4b scenarios.md has no trailing blank line"; fi
 
 H="$(bash "$RUNEV" --harness claude --print-hashes 2>/dev/null | grep -E '^E[0-9]+ ')"
-# Changed in v0.37.0 (owner approved): evals/run-evals.sh got the auth_marker result-line fix, so the pinned grader_sha moved from 077b26ac... to the value below. Changed again in v0.37.0 (owner approved): run-evals.sh auth_marker now also skips a task_notification line, moving it from f9ba085b... to the current value. Changed again in v0.38.0 S5a: run-evals.sh endpoint probe (cand13/probe13), lib-harness.sh pbh_grader_sha lists probe-e13.js; S5b and S5c will move it again.
-assert_eq "Q4b grader_sha is unchanged" "a49c7dccad7f7e478a5f88ac05d90e3e0d9c7d53" "$(printf '%s\n' "$H" | head -n 1 | awk '{print $3}')"
+# Changed in v0.37.0 (owner approved): evals/run-evals.sh got the auth_marker result-line fix, so the pinned grader_sha moved from 077b26ac... to the value below. Changed again in v0.37.0 (owner approved): run-evals.sh auth_marker now also skips a task_notification line, moving it from f9ba085b... to the current value. Changed again in v0.38.0 S5a: run-evals.sh endpoint probe (cand13/probe13), lib-harness.sh pbh_grader_sha lists probe-e13.js; S5c moved it again (a49c7dcc to 1b7ad299, legacy_orders detail); S5b will move it once more.
+assert_eq "Q4b grader_sha is unchanged" "1b7ad29915db3a7ee01ed333252547b496cd1c31" "$(printf '%s\n' "$H" | head -n 1 | awk '{print $3}')"
 t_summary
