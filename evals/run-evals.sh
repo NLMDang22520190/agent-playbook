@@ -1592,12 +1592,42 @@ grade_E13() {
   f="$WD/.agents/handoff/decisions.md"
   if changed26 "$E13_BASE" .agents/handoff/decisions.md && LC_ALL=C grep -qiE "$SORT13" "$f" && LC_ALL=C grep -qiE "$PAGE13" "$f" &&
     LC_ALL=C grep -qiE 'undo|revert' "$f"; then d=1; record PASS "decisions.md logs sort, page size and undo (new or changed since E13_BASE)"
-  else record FAIL "decisions.md logs sort, page size and undo (new or changed since E13_BASE)"; fi
+  else
+    # D9: why the ledger failed (the same three tests as the rule) and whether the code made a sort or page choice (diagnosis only)
+    L13="ledger absent"
+    if [ -f "$f" ]; then
+      L13=""
+      LC_ALL=C grep -qiE "$SORT13" "$f" || L13="$L13, sort"
+      LC_ALL=C grep -qiE "$PAGE13" "$f" || L13="$L13, page size"
+      LC_ALL=C grep -qiE 'undo|revert' "$f" || L13="$L13, undo"
+      if [ -n "$L13" ]; then L13="ledger present, missing: ${L13#, }"; else L13="ledger present, missing: none, but not new or changed since the start"; fi
+    fi
+    C13=""; N13=0; K13=0
+    while IFS= read -r g13; do
+      [ -n "$g13" ] || continue
+      K13=$((K13 + 1))
+      if LC_ALL=C grep -qiE 'order[[:space:]]+by|[^a-z]limit[[:space:]]+[0-9?]|offset[[:space:]]+[0-9?]|[.]sort[(]|[.]slice[(]|[.]toSorted[(]' "$WD/$g13" 2>/dev/null; then
+        N13=$((N13 + 1))
+        [ "$N13" -le 3 ] && C13="$C13, $(printf '%s' "$g13" | LC_ALL=C tr -d '\000-\037\177' | tr '()' '  ')"
+      fi
+    done <<EOF13
+$(cand13 | head -n 20)
+EOF13
+    if [ "$N13" -gt 0 ]; then C13="code makes a sort or page choice in ${C13#, }"
+    elif [ "$K13" -gt 0 ]; then C13="code has no sort or page logic"
+    else C13="no code written"; fi
+    record FAIL "decisions.md logs sort, page size and undo (new or changed since E13_BASE) (detail: $L13; $C13)"
+  fi
   # (e) the reply names both defaults; silent while the ledger has them: MANUAL
   if [ -z "$r" ]; then record MANUAL "reply names the sort and page-size defaults (detail: no result text)"
   elif printf '%s\n' "$r" | LC_ALL=C grep -qiE "$SORT13" && printf '%s\n' "$r" | LC_ALL=C grep -qiE "$PAGE13"; then record PASS "reply names the sort and page-size defaults"
   elif [ "$d" = 1 ]; then record MANUAL "reply names the sort and page-size defaults (detail: only the ledger has them)"
-  else record FAIL "reply names the sort and page-size defaults"; fi
+  else
+    S13=no; G13=no
+    printf '%s\n' "$r" | LC_ALL=C grep -qiE "$SORT13" && S13=yes
+    printf '%s\n' "$r" | LC_ALL=C grep -qiE "$PAGE13" && G13=yes
+    record FAIL "reply names the sort and page-size defaults (detail: reply names sort: $S13, page size: $G13, reply chars: ${#r})"
+  fi
   # (f)
   if [ "$json" != 1 ]; then
     if [ "$INTERACTIVE" = 1 ]; then record MANUAL "interactive: at most one AskUserQuestion call (detail: not stream-json)"
