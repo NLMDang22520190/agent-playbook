@@ -86,8 +86,10 @@ ge "" --harness claude --model m1 --dry-run
 assert_rc "AC14 --dry-run with GATE_SCENARIOS E2 E3 (AUTO E1..E5) -> exit 0" 0
 RE="$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')"
 assert_contains "AC14 --dry-run: the behaviour command carries the GATE_SCENARIOS list" "$RE" "--scenarios E2,E3"
-assert_not_contains "AC14 --dry-run: the AUTO-only scenario E1 is not in the behaviour command" "$RE" "E1"
-assert_not_contains "AC14 --dry-run: the AUTO-only scenario E5 is not in the behaviour command" "$RE" "E5"
+# only the --scenarios value is searched: the command also holds random temp paths (pbtest.XXXXXX), which can contain "E1" or "E5"
+SC="$(printf '%s\n' "$RE" | sed -n 's/.*--scenarios \([^ ]*\).*/\1/p')"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E1 is not in the behaviour command" "$SC" "E1"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E5 is not in the behaviour command" "$SC" "E5"
 ge "" --harness claude --model m1 --dry-run --json
 assert_rc "AC14 --dry-run --json -> exit 0" 0
 printf '%s\n' "$OUT" > "$W/dry3.json"
@@ -100,7 +102,8 @@ rcase ac14-real ""
 assert_rc "AC14 a real run on the default list (the fakes run E2,E3 and the tasks) -> exit 0" 0
 RE="$(grep '^run-evals.sh ' "$CALLS")"
 assert_contains "AC14 a real run: run-evals.sh gets the GATE_SCENARIOS list as --scenarios" "$RE" "--scenarios E2,E3"
-assert_not_contains "AC14 a real run: run-evals.sh does not get the AUTO-only scenario E5" "$RE" "E5"
+SC="$(printf '%s\n' "$RE" | sed -n 's/.*--scenarios \([^ ]*\).*/\1/p')"
+assert_not_contains "AC14 a real run: run-evals.sh does not get the AUTO-only scenario E5" "$SC" "E5"
 assert_eq "AC14 a real run: gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
 GR=""
 
