@@ -202,7 +202,7 @@ wf dec13nopage '- D1 Sort: newest first. Undo: change the order.' '- D2 Nothing 
 wf dec13none '- D1 The endpoint lists orders.' '- D2 Nothing else.'
 KDD13="$KD13"; KEE13="$KE13"
 # d_detail / e_detail -> the text inside the outer (detail: ...) of the FAIL line of the check; no_paren checks the detail holds no parenthesis of its own
-detail_of() { local t; t="$(e_text E13 "$1")"; t="${t#*"(detail: "}"; printf '%s' "${t%)}"; }
+detail_of() { local t; t="$(e_text E13 "$1")"; t="${t##*"(detail: "}"; printf '%s' "${t%)}"; }
 no_paren() { case "$2" in *" ("* | *"("* | *")"*) t_bad "$1" "$2" ;; *) t_ok "$1" ;; esac; }
 DPASS13='decisions.md logs sort, page size and undo (new or changed since E13_BASE)'
 EPASS13='reply names the sort and page-size defaults'
@@ -213,8 +213,9 @@ T13="$(e_text E13 "$KD13")"; D13="$(detail_of "$KD13")"
 assert_eq "S5b AC8 no ledger and no code: (d) FAIL" "FAIL" "$(e_state E13 "$KD13")"
 assert_contains "S5b AC8 no ledger: detail has 'ledger absent'" "$T13" "ledger absent"
 assert_contains "S5b AC8 no code: detail has 'no code written'" "$T13" "no code written"
+case "$T13" in "$DPASS13 (detail: "*) t_ok "S5b AC8 (d) FAIL text starts with the HEAD name and suffix, then (detail: " ;; *) t_bad "S5b AC8 (d) FAIL text starts with the HEAD name and suffix, then (detail: " "$T13" ;; esac
 assert_eq "S5b AC8 no ledger and no code: exact detail" "ledger absent; no code written" "$D13"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (no ledger, no code)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (no ledger, no code)" "$DPASS13" "$(e_key E13 "$KD13")"
 T13="$(e_text E13 "$KE13")"; D13="$(detail_of "$KE13")"
 assert_eq "S5b AC8 no defaults anywhere: (e) FAIL" "FAIL" "$(e_state E13 "$KE13")"
 assert_contains "S5b AC8 (e) detail says 'reply names sort: no, page size: no'" "$T13" "reply names sort: no, page size: no"
@@ -227,43 +228,43 @@ assert_eq "S5b AC8 code with no sort or limit, no ledger: (d) FAIL" "FAIL" "$(e_
 assert_contains "S5b AC8 no ledger: detail has 'ledger absent'" "$T13" "ledger absent"
 assert_contains "S5b AC8 wrapper without sort or limit: 'no sort or page logic'" "$T13" "no sort or page logic"
 assert_not_contains "S5b AC8 wrapper without sort or limit: not 'no code written'" "$T13" "no code written"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (no logic)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (no logic)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d3 head "$(cpto routes13ord src/routes.js)" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
 assert_contains "S5b AC8 ORDER BY ... LIMIT 20 in code, no ledger: 'ledger absent'" "$T13" "ledger absent"
 assert_contains "S5b AC8 ORDER BY ... LIMIT 20 in code: 'sort or page choice in src/routes.js'" "$T13" "sort or page choice in src/routes.js"
 assert_not_contains "S5b AC8 code with a sort: not 'no sort or page logic'" "$T13" "no sort or page logic"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (code choice)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (code choice)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d4 head "$(cpto routes13 src/routes.js) && $(cpto dec13nosort "$DEC")" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
 assert_contains "S5b AC8 ledger without a sort line: 'ledger present, missing: sort'" "$T13" "ledger present, missing: sort"
 assert_not_contains "S5b AC8 ledger without a sort line: not 'ledger absent'" "$T13" "ledger absent"
 assert_not_contains "S5b AC8 only sort is missing: no 'page size' in the list" "$T13" "missing: sort, page size"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (missing sort)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing sort)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d5 head "$(cpto routes13 src/routes.js) && $(cpto dec13noundo "$DEC")" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
 assert_contains "S5b AC8 ledger without undo: 'missing: undo'" "$T13" "missing: undo"
 assert_contains "S5b AC8 ledger without undo: 'ledger present'" "$T13" "ledger present"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (missing undo)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing undo)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d6 head "$(cpto routes13 src/routes.js) && $(cpto dec13nopage "$DEC")" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
 assert_contains "S5b AC8 ledger without a page-size line: 'missing: page size'" "$T13" "missing: page size"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (missing page size)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (missing page size)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d7 head "$(cpto routes13 src/routes.js) && $(cpto dec13none "$DEC")" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
 assert_contains "S5b AC8 ledger with nothing: all three listed in order" "$T13" "ledger present, missing: sort, page size, undo"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (all missing)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (all missing)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d8 head "$(cpto routes13ord 'src/r (1).js')" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"; D13="$(detail_of "$KD13")"
 assert_contains "S5b AC8 a code path with parentheses: parentheses become spaces" "$T13" "sort or page choice in src/r  1 .js"
 no_paren "S5b AC8 the (d) detail holds no parenthesis of its own" "$D13"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (parenthesised path)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (parenthesised path)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d9 head "$(cpto routes13ord src/a1.js) && $(cpto routes13ord src/a2.js) && $(cpto routes13ord src/a3.js) && $(cpto routes13ord src/a4.js)" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
@@ -271,7 +272,7 @@ assert_contains "S5b AC8 more than three matching files: the first is listed" "$
 assert_contains "S5b AC8 more than three matching files: the second is listed" "$T13" "src/a2.js"
 assert_contains "S5b AC8 more than three matching files: the third is listed" "$T13" "src/a3.js"
 assert_not_contains "S5b AC8 more than three matching files: only three are listed" "$T13" "src/a4.js"
-assert_eq "S5b AC8 (d) FAIL keeps the check key (four files)" "$KD13" "$(e_key E13 "$KD13")"
+assert_eq "S5b AC8 (d) FAIL keeps the check key (four files)" "$DPASS13" "$(e_key E13 "$KD13")"
 
 xr E13 d10 head "$(cpto routes13cmt src/routes.js)" "$INIT" "$(rj 'Done.')"
 T13="$(e_text E13 "$KD13")"
