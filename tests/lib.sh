@@ -12,6 +12,14 @@ if [ "${PB_LIB_ALLOW_ANYWHERE:-}" != 1 ] && [ "$PB_CALLER_DIR" != "$PB_ROOT/test
   printf 'tests/lib.sh: refusing to run: %s is not in %s/tests (a copy of a suite could change the repo it points at)\n' "${PB_CALLER:-<no sourcing script>}" "$PB_ROOT" >&2
   exit 2
 fi
+# R1/R3 (v0.38 T8): the caller's GIT_* environment must not leak into a suite (cloud sets GIT_CONFIG_COUNT/KEY_n/VALUE_n, which
+# the guard reads). Unset every variable named GIT_* except GIT_EXEC_PATH (git finds its subprograms) and GIT_TERMINAL_PROMPT
+# (no password prompt hang). ${!GIT_@} is bash 2+ (3.2, Git Bash, Linux) and lists names only, so a multi-line value cannot
+# fake one (unlike parsing `env`). lib.sh exports nothing GIT_*; a suite that sets GIT_* after sourcing is unaffected.
+for PB_GV in ${!GIT_@}; do
+  case "$PB_GV" in GIT_EXEC_PATH | GIT_TERMINAL_PROMPT) ;; *) unset "$PB_GV" 2>/dev/null || : ;; esac
+done
+unset PB_GV
 T_PASS=0
 T_FAIL=0
 T_SKIP=0

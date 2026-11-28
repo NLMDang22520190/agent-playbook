@@ -15,7 +15,7 @@ assert_file "the playbook-tdd SKILL.md exists" "$SKILL"
 assert_file "the final-report template exists" "$FINAL"
 
 LITE5="$(awk '/^5\. Final report with/ { on = 1 } on && /^### / { exit } on { print }' "$SKILL" 2>/dev/null)"
-FULL4="$(awk '/^### Phase 4/ { on = 1; next } on && /^## / { exit } on { print }' "$SKILL" 2>/dev/null)"
+FULL4="$(awk '/^### Phase 4/ { on = 1; next } on && /^## / { exit } on { print }' "$PB_ROOT/skills/playbook-tdd/references/full.md" 2>/dev/null)"
 [ -n "$LITE5" ] && t_ok "fixture: found the Lite step 5 text" || t_bad "fixture: found the Lite step 5 text" "no line starting '5. Final report with'"
 [ -n "$FULL4" ] && t_ok "fixture: found the Phase 4 text" || t_bad "fixture: found the Phase 4 text" "no '### Phase 4' section"
 

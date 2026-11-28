@@ -181,7 +181,7 @@ rgf_gh_sample_red_gate_only() {
     "124850193197|main-ci|completed|skipped" "124850191813|changes|completed|success"
   rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "2|Run actions/checkout@v5|success" "3|Versions|success" \
     "4|Release PR check (VERSION changed -> tools/check-release.sh)|success" "5|Docs-only checks|skipped" "6|Tests and static checks|success" \
-    "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|README test count (Linux only)|skipped" \
+    "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|Tests and static checks|skipped" \
     "16|Post Run actions/checkout@v5|success" "17|Complete job|success"
 }
 rgf_gh_fail() { : > "$RGF_GH/data/fail-$1"; }

@@ -8,6 +8,8 @@
 # -> main up to date -> tools/release.sh --dry-run -> ask, tools/release.sh -> wait for the tag's CI run
 # -> the GitHub Release exists -> ./install.sh update --yes.
 # Questions need a terminal on stdin; --yes answers them (use only when the user already said yes).
+# The dry run always runs, also with --yes: --yes therefore runs the release.sh checks twice (dry run, then the
+# real run) and the full suite twice when CI tree reuse (T7) does not apply.
 # Exit: 0 shipped, 1 refused or a step failed (release.sh's own status is passed on), 2 usage,
 #       3 cannot enter the repository.
 # Eval guard (advice only): when skill text changed since the previous release, ship prints
@@ -59,6 +61,29 @@ main() {
   [ -z "$gate_cache" ] || export PB_GATE_CACHE_DIR="$gate_cache"
   trap '[ -z "$gate_cache" ] || rm -rf "$gate_cache"; exec >&- 2>&-; [ -z "$tpid" ] || wait "$tpid" 2>/dev/null; true' EXIT
 
+  # repo: PB_GATE_REPO, else OWNER/REPO parsed from the origin URL (the same parsing as ci_repo in tools/release.sh; copied here
+  # because ship.sh must stay self-contained). Every gh call below goes to this repo.
+  repo="${PB_GATE_REPO:-}"
+  if [ -z "$repo" ]; then
+    url="$(git remote get-url origin 2>/dev/null)"
+    repo="$(printf '%s' "$url" | sed -n 's#^.*github\.com[:/]\([^/][^/]*/[^/][^/]*\)$#\1#p' | sed 's#\.git$##; s#/$##')"
+  fi
+  [ -n "$repo" ] || fail "cannot work out OWNER/REPO from PB_GATE_REPO or the origin URL"
+  export GH_REPO="$repo"
+  # preflight, before anything is changed: --auto needs GraphQL (a per-repo query), every run needs REST for the PR and for
+  # the Actions runs that the steps after the merge and the tag read (nothing can be undone after the merge)
+  if [ "$auto" = 1 ]; then
+    gh api graphql -f query="query{repository(owner:\"${repo%%/*}\",name:\"${repo#*/}\"){id}}" >/dev/null 2>&1 ||
+      fail "--auto needs the GitHub GraphQL API, which is not reachable here; run without --auto, or from a machine with GraphQL access"
+  fi
+  rest_fail=0; rest_err=""
+  if prjson="$(gh api "repos/$repo/pulls/$pr" 2>&1)"; then
+    rest_err="$(gh api "repos/$repo/actions/runs?per_page=1" 2>&1 >/dev/null)" || rest_fail=1
+  else
+    rest_fail=1; rest_err="$prjson"
+  fi
+  [ "$rest_fail" = 0 ] || fail "the GitHub REST API is not reachable for $repo ($(printf '%s' "${rest_err:-no detail}" | head -n 1))"
+
   # shard_hint: after a green release, say when the Windows shards of the main run were unbalanced
   # (longest > 1.5 x shortest) so tests/shard-weights gets refreshed; missing data says nothing.
   # A main push that reused a tested tree skipped its shards (fewer than 2 completed shard jobs): then
@@ -72,7 +97,7 @@ main() {
     ndone="$(printf '%s' "$hj" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { let n = 0; for (const j of JSON.parse(s).jobs || []) { if (/^windows shard \d+\/\d+$/.test(j.name || "") && j.conclusion === "success" && j.completedAt && !/^0001-/.test(j.completedAt)) n++ } console.log(n) } catch (e) {} })' 2>/dev/null)" || ndone=""
     case "$ndone" in '' | *[!0123456789]*) return 0 ;; esac
     if [ "$ndone" -lt 2 ]; then
-      ci="$(bash tools/ci-tree-tested.sh "$hs" 2>/dev/null)" || ci=""
+      ci="$(bash tools/ci-tree-tested.sh --repo "$repo" "$hs" 2>/dev/null)" || ci=""
       case "$ci" in '' | *[!0123456789]*) return 0 ;; esac
       hr="$ci"
       hj="$(gh run view "$hr" --json jobs 2>/dev/null)" || return 0
@@ -139,12 +164,11 @@ main() {
   fi
 
   # pre-merge check (OPEN PR): the head contains origin/main and the release gate passed for that exact commit
-  head=""
   pre_merge_check() {
     local gout
-    head="$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" || fail "cannot read PR #$pr head"
+    [ -n "$head" ] || fail "cannot read PR #$pr head"
     git fetch -q origin main || fail "cannot fetch origin main"
-    git fetch -q origin "refs/pull/$pr/head" 2>/dev/null || git fetch -q origin "$(gh pr view "$pr" --json headRefName --jq .headRefName)" 2>/dev/null ||
+    git fetch -q origin "refs/pull/$pr/head" 2>/dev/null || git fetch -q origin "$headref" 2>/dev/null ||
       fail "cannot fetch the head of PR #$pr"
     git merge-base --is-ancestor origin/main "$head" 2>/dev/null ||
       fail "PR is not up to date with main: update it and re-run the gate"
@@ -152,9 +176,12 @@ main() {
   }
 
   step "check PR #$pr"
-  st="$(gh pr view "$pr" --json state,mergeStateStatus,mergeCommit --jq '.state + " " + .mergeStateStatus + " " + (.mergeCommit.oid // "")')" || fail "cannot read PR #$pr"
+  # the PR JSON read by the preflight (REST): state, merge state, merge commit (only when merged), head sha and ref, head repo, base repo and ref
+  st="$(printf '%s' "$prjson" | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => { try { const p = JSON.parse(s); const v = x => (x === undefined || x === null || x === "" ? "-" : String(x)); const h = p.head || {}, b = p.base || {}; console.log([p.merged === true ? "MERGED" : p.state === "open" ? "OPEN" : "CLOSED", String(p.mergeable_state || "unknown").toUpperCase(), p.merged === true ? v(p.merge_commit_sha) : "-", v(h.sha), v(h.ref), v(h.repo && h.repo.full_name), v(b.repo && b.repo.full_name), v(b.ref)].join(" ")) } catch (e) { process.exit(1) } })')" || fail "cannot read PR #$pr"
   set -- $st
-  state="${1:-}"; mstate="${2:-}"; oid="${3:-}"
+  state="${1:-}"; mstate="${2:-}"; oid="${3:-}"; head="${4:-}"; headref="${5:-}"; headrepo="${6:-}"; baserepo="${7:-}"; baseref="${8:-}"
+  [ "$oid" != - ] || oid=""
+  [ "$head" != - ] || head=""
   merged=0
   if [ "$state" = MERGED ]; then
     # merged already (e.g. by GitHub auto-merge): release it if its merge commit is on origin/main
@@ -178,7 +205,11 @@ main() {
     pre_merge_check
     ask "merge PR #$pr?" || fail "not merged (answer was not yes)"
     step "merge PR #$pr"
-    gh pr merge "$pr" --merge --delete-branch --match-head-commit "$head" || fail "gh pr merge $pr failed"
+    gh api -X PUT "repos/$repo/pulls/$pr/merge" -f merge_method=merge -f sha="$head" >/dev/null || fail "merging PR #$pr failed (gh api PUT pulls/$pr/merge)"
+    # delete the head branch only when it lives in the target repo and is not the base branch
+    if [ "$headrepo" = "$repo" ] && [ "$baserepo" = "$repo" ] && [ "$headref" != - ] && [ "$headref" != "$baseref" ]; then
+      gh api -X DELETE "repos/$repo/git/refs/heads/$headref" >/dev/null 2>&1 || echo "warning: could not delete the branch $headref"
+    fi
   fi
 
   step "update main"
@@ -186,14 +217,10 @@ main() {
   find_eval_hint
   [ -z "$eval_hint" ] || echo "eval guard: $eval_hint"
 
-  if [ "$yes" = 1 ]; then
-    step "dry run skipped (--yes: the real release.sh runs the same checks and suite before tagging)"
-  else
-    step "release $tag (dry run)"
-    bash tools/release.sh "$tag" --dry-run; rc=$?
-    [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh --dry-run exited $rc" >&2; exit "$rc"; }
-    ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
-  fi
+  step "release $tag (dry run)"
+  bash tools/release.sh "$tag" --dry-run; rc=$?
+  [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh --dry-run exited $rc" >&2; exit "$rc"; }
+  ask "tag and push $tag?" || fail "not tagged (answer was not yes)"
   step "release $tag"
   bash tools/release.sh "$tag"; rc=$?
   [ "$rc" -eq 0 ] || { echo "ship stopped: tools/release.sh exited $rc" >&2; exit "$rc"; }

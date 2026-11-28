@@ -11,4 +11,4 @@ skills/playbook-feedback/SKILL.md 850   # 816 words at v0.24.8
 skills/playbook-learn/SKILL.md 700   # 688 words at v0.24.8
 skills/playbook-proof/SKILL.md 700   # raised 650 -> 700 by user decision 2026-10-25 (v0.25.0 writing guide pointer); 647 words at v0.24.10 (697 at v0.24.8)
 skills/playbook-setup/SKILL.md 1100   # 1081 words at v0.24.8
-skills/playbook-tdd/SKILL.md 2700   # v0.37 S3: lowered 3700 -> 2700 (2664 words) because Phase 2, Phase 3, starting roles, resuming and hand-off files moved to references/full.md; was 3700 by user decision 2026-10-23 (v0.24.29 lane O)
+skills/playbook-tdd/SKILL.md 2000   # v0.38 T4-3: lowered 2150 -> 2000 (1995 words) because the wrong-steps block moved to references/wrong.md and Stop and ask was shortened

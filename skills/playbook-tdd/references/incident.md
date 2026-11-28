@@ -23,5 +23,5 @@ Users are affected now in production: wrong results, errors, an outage, wrong ch
 ## 4. Report
 - The weight line: `Weight: <Full|Lite> (incident: mitigated by <revert sha or flag>)`.
 - A timeline: detected, mitigated, fixed, each with a time and its source.
-- The cause, classified as in "When the user says it is wrong" in SKILL.md, with its evidence.
+- The cause, classified with the steps in `references/wrong.md` ("When the user says it is wrong"), with its evidence.
 - A follow-up item for anything not done that day (the test, a root-cause fix, a monitor or alert).

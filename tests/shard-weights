@@ -3,6 +3,7 @@
 test-release-gate-reuse.sh 1065
 test-release-tool.sh 981
 test-ci-tree-tested-steps.sh 908
+test-release-gate-budget.sh 900
 test-evals-grade14.sh 880
 test-release-gate-b.sh 875
 test-guard-ps.sh 841
@@ -67,6 +68,7 @@ test-evals-grade10b.sh 321
 test-leak-check-push.sh 314
 test-tdd-step-c.sh 310
 test-guard-pre.sh 309
+test-release-gate-head.sh 300
 test-outcome-runner.sh 300
 test-tdd-step-g.sh 296
 test-ship.sh 293
@@ -126,6 +128,8 @@ test-guard-restore-mount.sh 129
 test-tdd-step-j.sh 128
 test-ship-timing.sh 125
 test-ship-d.sh 123
+test-evals-e13-endpoint.sh 620   # measured on CI (Windows 617 s, macOS 100 s, Linux 48 s) (L-0003)
+test-ship-rest.sh 120
 test-evals-grade14c.sh 121
 test-role-gate-committed.sh 117
 test-scope-classify.sh 117
@@ -155,13 +159,13 @@ test-tdd-step-z.sh 50
 test-install-hooks.sh 49
 test-conf.sh 42
 test-replay-graders.sh 40
-test-readme-count.sh 38
-test-release-stale-count.sh 37
+test-release-gate-replay.sh 40
 test-proof-run.sh 33
 test-role-gate-mode.sh 33
 test-preflight.sh 31
 test-shard-weights.sh 25
 test-skill-rules.sh 25
+test-release-pr-check-nocount.sh 24
 test-evals-lib.sh 23
 test-pr-body.sh 22
 test-diet.sh 15
@@ -186,3 +190,7 @@ test-bsd-check.sh 1
 test-guard-restore-symlink.sh 1
 test-get-bash32.sh 0
 test-lib-tmp.sh 0
+test-learn-review.sh 10
+test-learn-candidates.sh 25
+test-learn-candidates-text.sh 2
+test-learn-verify.sh 15   # estimate, not measured (L-0003)

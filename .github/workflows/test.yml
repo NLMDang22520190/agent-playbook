@@ -73,7 +73,7 @@ jobs:
         # Windows (Git Bash) is slow to start processes: it runs as ten parallel shards below; macOS runs as two.
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash   # Git Bash on Windows; never the WSL launcher
@@ -114,10 +114,6 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash tools/release-pr-check.sh --gate "$BASE_SHA"
-      - name: README test count (Linux only)
-        # A PR that adds tests updates the README count with tools/readme-count.sh; a stale count fails here.
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' && matrix.os == 'ubuntu-latest' && !(needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true') }}
-        run: bash tools/readme-count.sh --check "$RUNNER_TEMP/run-all.log"
 
   macos-shard:
     # macOS ships bash 3.2 and BSD tools: it keeps the scripts portable. It runs the same suite split in two.
@@ -129,7 +125,7 @@ jobs:
       matrix:
         shard: ['1/2', '2/2']
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -185,7 +181,7 @@ jobs:
       matrix:
         shard: ['1/10', '2/10', '3/10', '4/10', '5/10', '6/10', '7/10', '8/10', '9/10', '10/10']
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash   # Git Bash; never the WSL launcher

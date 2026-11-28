@@ -102,4 +102,37 @@ run env -u PB_LIB_ALLOW_ANYWHERE TMPDIR="$GD/tmpbase" bash "$GD/repo/tests/test-
 assert_rc "v24.22 the canonical run (suite in PB_ROOT/tests) works" 0
 assert_contains "v24.22 ... and runs the helpers" "$OUT" "test-x.sh: 1 passed, 0 failed"
 assert_file "v24.22 ... and the suite body ran" "$GD/repo/WROTE"
+
+# ---- v0.38 T8 AC1/AC2: lib.sh drops the outer GIT_* variables (except GIT_EXEC_PATH, GIT_TERMINAL_PROMPT); the suite's own survive ----
+echo "v0.38 T8 tests/lib.sh unsets outer GIT_* variables"
+T8D="$(mk_tmp)"; mkdir -p "$T8D/home"
+# t8run BODY -> sources lib.sh in a stub under an env made here (env -i), with the spec's hostile GIT_* set outside; sets OUT and RC
+t8run() {
+  local f="$T8D/t8-stub.sh"
+  printf 'PB_LIB_ALLOW_ANYWHERE=1\n. "%s/tests/lib.sh"\n%s\n' "$PB_ROOT" "$1" > "$f"
+  run env -i PATH="$PATH" HOME="$T8D/home" TMPDIR="$T8D" \
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=a.b GIT_CONFIG_VALUE_0=c GIT_DIR=/nonexistent GIT_ASKPASS=x GIT_EDITOR=y \
+    GIT_SSL_CAINFO=z GIT_EXEC_PATH=/e GIT_TERMINAL_PROMPT=0 bash "$f"
+}
+t8run "env | grep '^GIT_' | sort"
+assert_rc "T8 AC1 the stub suite runs" 0
+assert_eq "T8 AC1 only GIT_EXEC_PATH and GIT_TERMINAL_PROMPT stay after sourcing lib.sh" "GIT_EXEC_PATH=/e
+GIT_TERMINAL_PROMPT=0" "$OUT"
+assert_not_contains "T8 AC1 GIT_CONFIG_COUNT is dropped" "$OUT" "GIT_CONFIG_COUNT"
+assert_not_contains "T8 AC1 GIT_DIR is dropped" "$OUT" "GIT_DIR"
+assert_not_contains "T8 AC1 GIT_ASKPASS is dropped" "$OUT" "GIT_ASKPASS"
+assert_not_contains "T8 AC1 GIT_EDITOR is dropped" "$OUT" "GIT_EDITOR"
+assert_not_contains "T8 AC1 GIT_SSL_CAINFO is dropped" "$OUT" "GIT_SSL_CAINFO"
+# R3: lib.sh adds no GIT_CONFIG_* of its own when none came from outside
+run env -i PATH="$PATH" HOME="$T8D/home" TMPDIR="$T8D" bash -c "PB_LIB_ALLOW_ANYWHERE=1; . \"$PB_ROOT/tests/lib.sh\"; env | grep '^GIT_' | sort"
+assert_eq "T8 R3 lib.sh itself exports no GIT_* variable" "" "$OUT"
+
+t8run 'export GIT_AUTHOR_NAME=zed; bash -c "echo author=\$GIT_AUTHOR_NAME"'
+assert_contains "T8 AC2 a GIT_AUTHOR_NAME exported after sourcing reaches a child bash" "$OUT" "author=zed"
+t8run 'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=a.b GIT_CONFIG_VALUE_0=c; git config --get a.b'
+assert_eq "T8 AC2 GIT_CONFIG_COUNT set after sourcing takes effect (git config --get a.b prints c)" "c" "$OUT"
+t8run 'git config --get a.b; echo "rc=$?"'
+assert_contains "T8 AC2 control: without a post-source GIT_CONFIG_COUNT, a.b is not set (the outer one is gone)" "$OUT" "rc=1"
+assert_not_contains "T8 AC2 control: ... and the value c is not printed" "$OUT" "c
+"
 t_summary

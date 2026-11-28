@@ -3,8 +3,8 @@
 #   tools/docs-only.sh BASE HEAD     run inside the repository; prints "true" or "false", exit 0 always.
 # true only when `git diff --name-only --no-renames BASE...HEAD` lists at least one path, every path is exactly
 # README.md or CHANGELOG.md at the repo root, and the README's test-count places (badge/tests-N, **N passing**,
-# N tests, run in sandboxes) are identical at the merge base and at HEAD (a count change needs the full run,
-# because the count check runs only there). Zero paths, any git error, a rename, any other path -> false.
+# N tests, run in sandboxes) are identical at the merge base and at HEAD (a README that carries no count has none
+# on both sides). Zero paths, any git error, a rename, any other path -> false.
 # Bash 3.2 compatible.
 set -u
 

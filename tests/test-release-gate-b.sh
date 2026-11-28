@@ -37,7 +37,7 @@ assert_eq "AC7 --pool-only calls no runner, preflight included" "0" "$(wc -l < "
 
 echo "R1-3 a real run resolves the baseline before any paid run: state noqual exits 3 with the reason and starts no runner"
 R5="$W/repo5"
-git clone -q "$R" "$R5" && ( cd "$R5" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+git clone -q "$R" "$R5" && ( cd "$R5" && git remote remove origin && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   git config core.autocrlf false && mkdir -p evals/results/gate-000000000000 &&
   printf '{"schema":"pb-evals/1","playbook_commit":"0000000000000000000000000000000000000000","harness":"claude","model":"m2","runs":[],"summary":[]}\n' > evals/results/gate-000000000000/behaviour-m2.json &&
   git add -A && git commit -qm "an earlier gate for another model" && git tag v0.32.0 && printf 'more\n' > more.txt && git add -A && git commit -qm "after the tag" ) || t_bad "fixture repo 5" "clone or commit failed"
@@ -76,7 +76,7 @@ assert_eq "AC14 tools/release-gate.sh has the top-level GATE_SCENARIOS line" "1"
 
 # R3: its fake AUTO is E1..E5, its GATE_SCENARIOS is E2 E3: the default list, the AUTO check and the verdict can be told apart.
 R3="$W/repo3"
-git clone -q "$R" "$R3" && ( cd "$R3" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+git clone -q "$R" "$R3" && ( cd "$R3" && git remote remove origin && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   git config core.autocrlf false && sed 's/^AUTO="E1 E2 E3"$/AUTO="E1 E2 E3 E4 E5"/' evals/run-evals.sh > "$W/auto3.tmp" && cat "$W/auto3.tmp" > evals/run-evals.sh &&
   gate_scen tools/release-gate.sh "E2 E3" && git add -A && git commit -qm "scope: AUTO E1..E5, GATE_SCENARIOS E2 E3" ) || t_bad "fixture repo 3" "clone or commit failed"
 assert_eq "AC14 fixture: repo 3 has AUTO E1..E5 and GATE_SCENARIOS E2 E3" "1|1" \
@@ -86,8 +86,10 @@ ge "" --harness claude --model m1 --dry-run
 assert_rc "AC14 --dry-run with GATE_SCENARIOS E2 E3 (AUTO E1..E5) -> exit 0" 0
 RE="$(printf '%s\n' "$OUT" | grep 'evals/run-evals.sh')"
 assert_contains "AC14 --dry-run: the behaviour command carries the GATE_SCENARIOS list" "$RE" "--scenarios E2,E3"
-assert_not_contains "AC14 --dry-run: the AUTO-only scenario E1 is not in the behaviour command" "$RE" "E1"
-assert_not_contains "AC14 --dry-run: the AUTO-only scenario E5 is not in the behaviour command" "$RE" "E5"
+# only the --scenarios value is searched: the command also holds random temp paths (pbtest.XXXXXX), which can contain "E1" or "E5"
+SC="$(printf '%s\n' "$RE" | sed -n 's/.*--scenarios \([^ ]*\).*/\1/p')"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E1 is not in the behaviour command" "$SC" "E1"
+assert_not_contains "AC14 --dry-run: the AUTO-only scenario E5 is not in the behaviour command" "$SC" "E5"
 ge "" --harness claude --model m1 --dry-run --json
 assert_rc "AC14 --dry-run --json -> exit 0" 0
 printf '%s\n' "$OUT" > "$W/dry3.json"
@@ -100,7 +102,8 @@ rcase ac14-real ""
 assert_rc "AC14 a real run on the default list (the fakes run E2,E3 and the tasks) -> exit 0" 0
 RE="$(grep '^run-evals.sh ' "$CALLS")"
 assert_contains "AC14 a real run: run-evals.sh gets the GATE_SCENARIOS list as --scenarios" "$RE" "--scenarios E2,E3"
-assert_not_contains "AC14 a real run: run-evals.sh does not get the AUTO-only scenario E5" "$RE" "E5"
+SC="$(printf '%s\n' "$RE" | sed -n 's/.*--scenarios \([^ ]*\).*/\1/p')"
+assert_not_contains "AC14 a real run: run-evals.sh does not get the AUTO-only scenario E5" "$SC" "E5"
 assert_eq "AC14 a real run: gate.json verdict is pass" "pass" "$(gj "$GJ" j.verdict)"
 GR=""
 
@@ -125,7 +128,7 @@ GR=""
 
 echo "AC14' every id of GATE_SCENARIOS is checked against AUTO (usage error, exit 2) as --scenarios is; the gate never reads docs/delta-audit.md"
 R4="$W/repo4"
-git clone -q "$R3" "$R4" && ( cd "$R4" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+git clone -q "$R3" "$R4" && ( cd "$R4" && git remote remove origin && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   git config core.autocrlf false && gate_scen tools/release-gate.sh "E2 E9" && git add -A && git commit -qm "GATE_SCENARIOS names E9, which is not in AUTO" ) || t_bad "fixture repo 4" "clone or commit failed"
 assert_eq "AC14' fixture: repo 4 gate line names E9 (not in its AUTO E1..E5)" "1|0" "$(grep -c '^GATE_SCENARIOS="E2 E9"$' "$R4/tools/release-gate.sh")|$(grep -c 'E9' "$R4/evals/run-evals.sh")"
 assert_eq "AC14' fixture repos have no docs/delta-audit.md" "no" "$([ -e "$R4/docs/delta-audit.md" ] && echo yes || echo no)"
@@ -202,7 +205,7 @@ refused() {
 echo "G1/D3 not green -> exit 2 naming the checks, before the baseline, worktree, preflight and any runner"
 rgf_gh_sample_red_gate_only
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|failure" \
-  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|skipped" "8|README test count (Linux only)|skipped"
+  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|skipped" "8|Tests and static checks|skipped"
 rcase g1-realfail ""
 refused "G1 test (ubuntu-latest) failed in Tests and static checks" "test (ubuntu-latest)"
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|failure" \
@@ -210,9 +213,9 @@ rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6
 rcase g1-bothfail ""
 refused "D3 tests failed AND the Release gate step failed (not solely the gate)" "test (ubuntu-latest)"
 rgf_gh_job 124850217910 "test (ubuntu-latest)" failure "1|Set up job|success" "6|Tests and static checks|success" \
-  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|README test count (Linux only)|failure"
+  "7|Release gate (a PR that changes VERSION needs a committed passing gate)|failure" "8|Tests and static checks|failure"
 rcase g1-countfail ""
-refused "D3 the Release gate step and the README count step failed (a non-gate step failed too)" "test (ubuntu-latest)"
+refused "D3 the Release gate step and a second non-gate step failed (a non-gate step failed too)" "test (ubuntu-latest)"
 rgf_gh_green
 rgf_gh_runs "1|test (ubuntu-latest)|completed|success" "2|windows shard 3/8|in_progress|" "3|macos shard 1/2|queued|" "4|changes|completed|success"
 rcase g1-pending ""
@@ -250,6 +253,8 @@ assert_eq "G2 ci_check.checks has all five check runs of the three pages" "5" "$
 
 echo "D4 owner/repo: PB_GATE_REPO, else the origin URL (https and ssh forms of github.com)"
 rgf_gh_green
+# the head check of a real run (G2a) would run git ls-remote against github.com: a detached HEAD skips it, so this block stays offline
+D4BR="$(git -C "$R" symbolic-ref --short -q HEAD)"; git -C "$R" checkout -q --detach
 git -C "$R" remote add origin https://github.com/zed/gadgets.git
 oc() { # URL EXPECTED-REPO NAME: PB_GATE_REPO unset, origin = URL
   git -C "$R" remote set-url origin "$1"
@@ -264,7 +269,7 @@ oc ssh://git@github.com/zed/gadgets.git zed/gadgets ssh
 rgf_gh_green; rcase g1-env-wins ""
 assert_contains "D4 PB_GATE_REPO wins over the origin URL" "$(rgf_gh_calls)" "repos/acme/widgets/commits/$SHA/check-runs"
 assert_not_contains "D4 ... and the origin repository is not read" "$(rgf_gh_calls)" "zed/gadgets"
-git -C "$R" remote remove origin
+git -C "$R" remote remove origin; git -C "$R" checkout -q "$D4BR"
 
 echo "D4 gh missing or an API error -> exit 3, nothing started"
 NOGH="$W/nogh"; mkdir -p "$NOGH"
@@ -291,7 +296,7 @@ rc_short "D4 the job of a red check run cannot be read (API error) -> exit 3, no
 no_start "D4 job API error"
 
 echo "G1 the check comes before the baseline, worktree and preflight: a red CI wins over a missing baseline and a failing preflight"
-RB1="$W/repo-b1order"; git clone -q "$R" "$RB1" && ( cd "$RB1" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+RB1="$W/repo-b1order"; git clone -q "$R" "$RB1" && ( cd "$RB1" && git remote remove origin && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   git config tag.gpgsign false && mkdir -p evals/results/gate-aaaaaaaaaaaa && printf '{}\n' > evals/results/gate-aaaaaaaaaaaa/other.json &&
   git add -f -A && git commit -qm "an old gate dir" && git tag v0.0.1 && printf 'x\n' >> README.md && git add -A && git commit -qm "head" ) || t_bad "fixture repo 5" "clone or commit failed"
 GR="$RB1"; rgf_gh_green

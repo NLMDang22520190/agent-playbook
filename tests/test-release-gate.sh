@@ -598,7 +598,7 @@ assert_eq "AC2' b-tasks: gate.json full_set is false" "false" "$(gj "$GJ" j.full
 fail_case b-skip "FAKE_SKIP=E3" "$(idre E3)"
 fail_case b-skip-task "FAKE_SKIP=pattern-24-merge-duplicate-customers" "pattern-24-merge-duplicate-customers"
 R2="$W/repo2"
-git clone -q "$R" "$R2" && ( cd "$R2" && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
+git clone -q "$R" "$R2" && ( cd "$R2" && git remote remove origin && git config user.email t@example.invalid && git config user.name tester && git config commit.gpgsign false &&
   git config core.autocrlf false && sed 's/^GATE_SCENARIOS="E1 E2 E3"$/GATE_SCENARIOS="E1 E2 E3 E4"/' tools/release-gate.sh > "$W/auto.tmp" && cat "$W/auto.tmp" > tools/release-gate.sh &&
   git add -A && git commit -qm "GATE_SCENARIOS gains E4" ) || t_bad "fixture repo 2" "clone or commit failed"
 assert_eq "AC14'' fixture: repo 2's gate line gained E4 (AC7'': the b-auto case is now GATE_SCENARIOS, not AUTO)" "1" "$(grep -c '^GATE_SCENARIOS="E1 E2 E3 E4"$' "$R2/tools/release-gate.sh")"

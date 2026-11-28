@@ -86,7 +86,7 @@ has "AC4 development.md: the PR is opened with that body (gh pr create --body-fi
 has "AC4 development.md: ship.sh comes after the PR" "$DF" 'pr-body\.sh[^#]{0,250}tools/ship\.sh'
 has "AC4 release.md: the release PR description is the pr-body.sh output" "$RLF" 'PR description[^.]{0,80}pr-body\.sh|pr-body\.sh[^.]{0,80}PR description'
 has "AC4 release.md: a release of several items has one block per item" "$RLF" 'one block per item'
-P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$TSK" | tr '\n' ' ' | tr -s ' ')"
+P4="$(awk '/^### Phase 4/ { f = 1; next } f && /^##/ { exit } f { print }' "$PB_ROOT/skills/playbook-tdd/references/full.md" | tr '\n' ' ' | tr -s ' ')"
 has "AC4 Phase 4: the final report is the hand-off report 06-final-report.md" "$P4" 'hand-off report[^.]{0,40}06-final-report\.md|06-final-report\.md[^.]{0,40}hand-off report'
 has "AC4 Phase 4: Pre-mortem, Models used and the feedback line belong to the hand-off report only" "$P4" 'Pre-mortem[^.]{0,80}Models used[^.]{0,80}Playbook feedback line[^.]{0,60}this report only'
 has "AC4 Phase 4: they are not PR description parts" "$P4" 'not (to|in|part of) the PR description'

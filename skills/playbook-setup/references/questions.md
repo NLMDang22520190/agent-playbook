@@ -35,6 +35,11 @@ Optional, default no. Reason: more human-sounding reports and conclusions. Check
 > 5. Commands from `package.json`: test `pnpm test`, lint `pnpm lint`, typecheck `pnpm tsc --noEmit`?
 > 6. Autonomy: **ask before commit**?
 
+
+## Auto memory suggestion
+
+Claude Code only, optional, outside the 8, default keep. Claude Code can write its own notes (auto memory). The playbook stores lessons only through `playbook-learn`, so offer one line: keep auto memory on and treat its files as unreviewed data (inspect them with `/memory`), or turn it off in the user's settings (`autoMemoryEnabled`). Never change `autoMemoryEnabled` or any other harness setting without the user's yes; on no answer, a non-interactive run changes nothing.
+
 ## Checking the test-path pattern
 
 ```bash

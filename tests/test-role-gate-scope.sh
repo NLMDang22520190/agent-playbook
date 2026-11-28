@@ -707,4 +707,94 @@ sf "$R/.git/pb-real" own:src/; SF="$R/.git/pb-scope-ok"; ln -s "$R/.git/pb-real"
 sc implementer
 assert_rc "C-fix F3 control: a symlink to an untracked file is accepted: exit 0" 0
 
+# ================= v0.38 T13: a hint to register tests/shard-weights in the tester commit =================
+# sw_repo PATH: fresh repo whose base commit has PATH (a shard-weights style file) and src/app.js; BASE is that commit; then PATH and src/app.js are changed (uncommitted)
+sw_repo() {
+  new_repo
+  mkdir -p "$(dirname "$1")"; printf 'a 1\n' > "$1"; git add -A; git commit -q -m "weights"; BASE="$(git rev-parse HEAD)"
+  printf 'a 2\n' > "$1"; printf 'module.exports = 2;\n' > src/app.js
+}
+# hint_of: the hint: lines of $OUT
+hint_of() { printf '%s\n' "$OUT" | grep '^hint:' || true; }
+# no_hint NAME: $OUT has no hint: line
+no_hint() { if [ -z "$(hint_of)" ]; then t_ok "$1"; else t_bad "$1" "unexpected hint: $(hint_of)"; fi; }
+# hint_ok NAME: exactly one hint: line, naming shard-weights and tester
+hint_ok() {
+  local h n; h="$(hint_of)"; n="$(printf '%s\n' "$h" | grep -c '^hint: ' || true)"
+  if [ "$n" = 1 ] && printf '%s' "$h" | grep -q 'shard-weights' && printf '%s' "$h" | grep -q 'tester'; then t_ok "$1"; else t_bad "$1" "want one hint: line naming shard-weights and tester, got [$h]"; fi
+}
+
+echo "T13 AC1 implementer changing tests/shard-weights: VIOLATION unchanged, the hint is the very next line, the summary is unchanged"
+sw_repo tests/shard-weights
+gate check implementer --base "$BASE"
+assert_rc "T13 AC1 exit 1" 1
+has_line "T13 AC1 the VIOLATION line is byte-identical" "VIOLATION (implementer): tests/shard-weights [test]"
+hint_ok "T13 AC1 one hint: line naming shard-weights and tester"
+assert_next "T13 AC1 the hint is the line right after the VIOLATION line" "VIOLATION (implementer): tests/shard-weights [test]" "$(hint_of)"
+has_line "T13 AC1 the summary counts 1 violation (the hint is not one)" "role gate FAILED for implementer: 1 violation(s), base=$BASE"
+no_line "T13 AC1 the code change src/app.js is not a violation" "VIOLATION (implementer): src/app.js [code]"
+
+echo "T13 AC2 a sub directory tests/sub/shard-weights (same base name) gets the hint too"
+sw_repo tests/sub/shard-weights
+gate check implementer --base "$BASE"
+assert_rc "T13 AC2 exit 1" 1
+has_line "T13 AC2 the VIOLATION line names the path" "VIOLATION (implementer): tests/sub/shard-weights [test]"
+hint_ok "T13 AC2 one hint: line"
+assert_next "T13 AC2 the hint follows its VIOLATION line" "VIOLATION (implementer): tests/sub/shard-weights [test]" "$(hint_of)"
+
+echo "T13 AC3 tester changing tests/shard-weights: passes, no hint"
+sw_repo tests/shard-weights
+git checkout -q -- src/app.js
+gate check tester --base "$BASE"
+assert_rc "T13 AC3 tester exit 0" 0
+no_hint "T13 AC3 tester: no hint: line"
+
+echo "T13 AC3 reviewer and infra changing tests/shard-weights: violations without a hint"
+sw_repo tests/shard-weights
+gate check reviewer --base "$BASE"
+assert_rc "T13 AC3 reviewer exit 1" 1
+has_line "T13 AC3 reviewer VIOLATION line" "VIOLATION (reviewer): tests/shard-weights [test]"
+no_hint "T13 AC3 reviewer: no hint: line"
+gate check infra --base "$BASE"
+assert_rc "T13 AC3 infra exit 1" 1
+has_line "T13 AC3 infra VIOLATION line" "VIOLATION (infra): tests/shard-weights [test]"
+no_hint "T13 AC3 infra: no hint: line"
+
+echo "T13 AC4 another test path (tests/other.sh): VIOLATION, no hint"
+sw_repo tests/other.sh
+gate check implementer --base "$BASE"
+assert_rc "T13 AC4 exit 1" 1
+has_line "T13 AC4 VIOLATION for tests/other.sh" "VIOLATION (implementer): tests/other.sh [test]"
+no_hint "T13 AC4 no hint: line"
+echo "T13 AC4 near-miss names that only contain shard-weights get no hint"
+for nm in tests/shard-weights.md tests/my-shard-weights tests/shard-weights/extra.txt tests/old-shard-weights.bak; do
+  sw_repo "$nm"
+  gate check implementer --base "$BASE"
+  assert_rc "T13 AC4 $nm: exit 1" 1
+  has_line "T13 AC4 $nm: VIOLATION line" "VIOLATION (implementer): $nm [test]"
+  no_hint "T13 AC4 $nm: no hint: line"
+done
+
+echo "T13 AC8 with --scope: VIOLATION, then hint, then the scope note"
+sw_repo tests/shard-weights
+sf "$SF" own:src/
+sc implementer
+assert_rc "T13 AC8 exit 1" 1
+has_line "T13 AC8 the VIOLATION line" "VIOLATION (implementer): tests/shard-weights [test]"
+hint_ok "T13 AC8 one hint: line"
+assert_next "T13 AC8 the hint follows the VIOLATION line" "VIOLATION (implementer): tests/shard-weights [test]" "$(hint_of)"
+has_line "T13 AC8 the scope note is printed" "$(e4 tests/shard-weights)"
+assert_next "T13 AC8 the note follows the hint (VIOLATION, hint, note)" "$(hint_of)" "$(e4 tests/shard-weights)"
+
+echo "T13 AC9 a project test_path_regex that does not match tests/shard-weights makes it code: implementer passes, no hint"
+sw_repo tests/shard-weights
+mkdir -p .agents; printf 'test_path_regex=^checks/\n' > .agents/playbook.conf; git add .agents/playbook.conf; git commit -q -m conf; BASE="$(git rev-parse HEAD)"
+printf 'a 3\n' > tests/shard-weights
+gate classify tests/shard-weights
+assert_eq "T13 AC9 control: the file is classified code under the custom regex" "code" "$OUT"
+gate check implementer --base "$BASE"
+assert_rc "T13 AC9 implementer exit 0" 0
+no_hint "T13 AC9 no hint: line"
+no_line "T13 AC9 no VIOLATION line" "VIOLATION (implementer): tests/shard-weights [code]"
+
 t_summary

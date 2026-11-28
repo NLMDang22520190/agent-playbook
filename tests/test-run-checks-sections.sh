@@ -664,7 +664,7 @@ C="$(mk_wb_copy)"; wb_table "$C"
 checks "$C" budgets
 assert_not_contains "R1 no stale entry in a table of existing files" "$OUT" "in evals/word-budgets but missing"
 
-# ---- v0.34.0 M13: a "note: ... skipped" print in tests/*.sh is refused (the skip must be t_skip N, which the README count adds up) ----
+# ---- v0.34.0 M13: a "note: ... skipped" print in tests/*.sh is refused (the skip must be t_skip N, which the suite totals add up) ----
 # The fixture print is built from $NT so that this file itself holds no such print line. Full run (no --only): the lint's section is the
 # implementer's choice, so the cases read only the named file:line out of the output.
 NT="note:"

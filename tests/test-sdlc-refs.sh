@@ -68,12 +68,16 @@ CL='Do not defend the result and do not patch at once; in a production incident,
 if grep -Fxq -e "$CL" "$SK"; then t_ok "AC4 SKILL.md has the incident clause verbatim"; else t_bad "AC4 SKILL.md has the incident clause verbatim" "no line [$CL]"; fi
 if grep -Fxq -e 'Do not defend the result and do not patch at once.' "$SK"; then t_bad "AC4 the old sentence is replaced" "old line still there"
 else t_ok "AC4 the old sentence is replaced"; fi
-NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$SK")"
-assert_eq "AC4 step 1 follows the clause unchanged" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
+# v0.38 T4-3 (R5c, R7): the clause stays in SKILL.md as the stub opener and also opens the moved block in references/wrong.md; the four steps are read there
+WR="$REF/wrong.md"
+if grep -Fxq -e "$CL" "$WR" 2>/dev/null; then t_ok "AC4 wrong.md has the incident clause verbatim"; else t_bad "AC4 wrong.md has the incident clause verbatim" "no line [$CL] in $WR"; fi
+NEXT="$(awk -v c="$CL" 'f { print; exit } $0 == c { f = 1 }' "$WR" 2>/dev/null)"
+assert_eq "AC4 step 1 follows the clause unchanged (references/wrong.md)" "1. Restate in two lines what the user expected and what was delivered." "$NEXT"
 for s in '2. Classify the cause as one of: misread request, missed place (scan), wrong assumption, not verified' \
          '3. Fix it test-first: a failing test or eval for the miss, seen failing, then the fix. For a docs-only' \
          '4. If the cause is a playbook gap, capture it with `playbook-feedback` (kind `gap`, source `user`) and'; do
-  if grep -Fxq -e "$s" "$SK"; then t_ok "AC4 step ${s%%.*} unchanged"; else t_bad "AC4 step ${s%%.*} unchanged" "no line [$s]"; fi
+  if grep -Fxq -e "$s" "$WR" 2>/dev/null; then t_ok "AC4 step ${s%%.*} unchanged (references/wrong.md)"; else t_bad "AC4 step ${s%%.*} unchanged (references/wrong.md)" "no line [$s] in $WR"; fi
+  if grep -Fxq -e "$s" "$SK"; then t_bad "AC4 step ${s%%.*} is no longer in SKILL.md (a stub cannot stand in for it)" "still in SKILL.md"; else t_ok "AC4 step ${s%%.*} is no longer in SKILL.md (a stub cannot stand in for it)"; fi
 done
 
 U="$REF/upgrade.md"
@@ -156,33 +160,9 @@ echo "AC16 SKILL.md word budget, the two Why lines cut, one Why line left; AGENT
 # words as evals/run-checks.sh counts them (the caller's locale, not this suite's LC_ALL=C: wc -w differs on UTF-8 symbols)
 w="$(env -u LC_ALL wc -w < "$SK" | tr -d ' ')"
 if [ "$w" -le 3700 ]; then t_ok "AC16 SKILL.md at or under 3700 words ($w)"; else t_bad "AC16 SKILL.md at or under 3700 words" "$w words"; fi
-# the arithmetic of AC16 (+7 +23 -33 = -3; the pinned AC4 clause is 18 words vs 11 before) against the lane base 0927bde (feat/v0.26.1, 3700 words in a UTF-8 locale), same locale;
-# then v0.28.1 lanes t and p: -9 (Lite step 4 mutation note) +12 (Lite step 2 input-class line) = +3
-# then v0.29.0 lane a: -19 (the Phase 4 report bullet points to the template; Pre-mortem and feedback line are hand-off only)
-# and +10 (the context pack holds paths, excerpts and commands, not conclusions: scales.md item 8)
-W0="$(git -C "$PB_ROOT" show 0927bde:skills/playbook-tdd/SKILL.md 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
-if [ -n "$W0" ] && [ "$W0" -gt 0 ]; then
-  # v0.37 S2: Q1 pointer wording (-18)
-  # v0.37 S3: Phase 2, Phase 3, Starting roles, Resuming and Hand-off files move verbatim to references/full.md (-MOVED words:
-  # every word of full.md except its own "# " title line; 1025 when moved by hand) and one pointer line to it is added (+PTR words,
-  # the SKILL.md lines naming references/full.md; 24 in the reference move). Expected SKILL.md: 3669 - 1025 + 24 = 2668 words.
-  # v0.37 S3 review: three SKILL.md lines name references/full.md (the Workflow pointer, "none mode (see `references/full.md`)", Lite step 6
-  # "read `references/full.md` for Phase 3"): PTR counts only the Workflow pointer line (20 words); the other two lines were already in the 0927bde baseline, so
-  # only their added words count: EDITS = 0 (line 13: "(see below)" -> "(see `references/full.md`)", 2 words each) + 8 (step 6: "run Phase 3 on the result"
-  # -> "read `references/full.md` for Phase 3 (the review phase) and run it on the result"). Expected SKILL.md: 2664 + 8 = 2672 words.
-  FULLMD="$PB_ROOT/skills/playbook-tdd/references/full.md"
-  MOVED="$(grep -v '^# ' "$FULLMD" 2>/dev/null | env -u LC_ALL wc -w | tr -d ' ')"
-  NPTR="$(grep -c 'references/full\.md' "$SK")"
-  # v0.37 E4: the escalation clause of the weight section is reworded to restore the Dispute wording (E4 grader `disput|contradict`):
-  # "(a dispute needs fresh eyes): stop, keep the RED commit, and" (21 words from "or a test looks wrong") -> "do not edit the test, keep the RED commit and write a **Dispute**
-  # (which test, why it contradicts the spec, the evidence); a fresh tester decides, so" gives +17 words (2672 -> 2689, simulated on a copy), so EDITS = 8 + 17 = 25.
-  # Expected SKILL.md: 2672 + 17 = 2689 words, within the 2700 budget.
-  EDITS=25
-  PTR="$(grep 'read `references/full\.md` first' "$SK" | env -u LC_ALL wc -w | tr -d ' ')"
-  if [ "$NPTR" = 3 ] && [ -n "$MOVED" ] && [ "$MOVED" -gt 0 ]; then
-    assert_eq "AC16 SKILL.md is 0927bde - 3 + 3 - 19 + 10 + 6 - 18 (v0.37 S2) - MOVED (v0.37 S3: full.md without its title line) + PTR (v0.37 S3: the Workflow pointer line) + EDITS (v0.37 S3 review: 8 words added to Lite step 6; v0.37 E4: 17 words in the escalation clause) words" "$((W0 - 3 + 3 - 19 + 10 + 6 - 18 - MOVED + PTR + EDITS))" "$w"
-  else t_bad "AC16 v0.37 S3 arithmetic needs references/full.md and exactly three SKILL.md lines naming it" "pointer lines [$NPTR] moved words [$MOVED]"; fi
-else t_skip 1 "AC16 word arithmetic (no 0927bde in this clone)"; fi
+# v0.38 T4 R14: the 0927bde arithmetic (W0 - MOVED + PTR + EDITS) is replaced by a per-slice word ceiling (T4-1: 2250, T4-2: 2150, T4-3: 2000);
+# every change to references/full.md used to break the arithmetic (T13 had to bump EDITS by hand)
+if [ "$w" -le 2000 ]; then t_ok "AC16 SKILL.md at or under the final ceiling of 2000 words ($w)"; else t_bad "AC16 SKILL.md at or under the final ceiling of 2000 words" "$w words"; fi
 if grep -Fq 'three fresh contexts cost minutes and tokens per slice' "$SK"; then t_bad "AC16 the weight-section Why line is cut" "still there"
 else t_ok "AC16 the weight-section Why line is cut"; fi
 if grep -Fq 'each slice costs a tester and an implementer start' "$SK"; then t_bad "AC16 the slice-size Why line is cut" "still there"
@@ -219,5 +199,15 @@ echo "W9 incident: a revert is not called safe when the bad deploy carries a mig
 pinl W9 "$I" "one line: revert with a schema or data migration caveat" 'revert' 'migration'
 pinf W9 "$I" "points to migration.md" 'migration.md'
 pinl W9 "$I" "one line: with a migration, use the flag or a forward fix" 'migration' '(flag|forward fix)'
+
+echo "v0.38 T13 AC5 references/full.md RED (tester) step: the shard-weights registration sentence, verbatim, inside the RED step"
+T13S='Register new or changed `tests/shard-weights` entries in the tester commit, because the implementer gate treats that file as a test path; with `--paths-from`, use `--base <commit>^`.'
+FULLMD38="$PB_ROOT/skills/playbook-tdd/references/full.md"
+pinf "T13 AC5" "$FULLMD38" "has the shard-weights registration sentence verbatim" "$T13S"
+RED38="$(awk '/^1\. \*\*RED \(tester\)\.\*\*/ { on = 1 } /^2\. \*\*GREEN/ { on = 0 } on' "$FULLMD38" 2>/dev/null)"
+if printf '%s\n' "$RED38" | grep -Fq -e "$T13S"; then t_ok "T13 AC5 the sentence sits between the RED (tester) and GREEN steps"
+else t_bad "T13 AC5 the sentence sits between the RED (tester) and GREEN steps" "not in the RED step: $RED38"; fi
+if [ "$(printf '%s\n' "$T13S" | env -u LC_ALL wc -w | tr -d ' ')" = 26 ]; then t_ok "T13 AC5 the pinned sentence is 26 words (the EDITS arithmetic of AC16)"
+else t_bad "T13 AC5 the pinned sentence is 26 words (the EDITS arithmetic of AC16)" "word count differs"; fi
 
 t_summary

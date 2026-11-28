@@ -443,4 +443,709 @@ else
   t_skip 9 "case-sensitive file system without cygpath not available here: case rows not testable"
 fi
 
+# ---- v0.38 Q9 S1: budget warning and entry-line counts in `learn.sh check` (AC1-AC6) ----
+echo "Q9 S1 AC1: entry lines in the summary line (counts measured on the fixture file)"
+S1R="$(mk_tmp)"; mk_repo "$S1R"; cd "$S1R" || exit 3
+bash "$LEARN" init >/dev/null
+s1add() { bash "$LEARN" add --why w --evidence "${S1EV:-e}" --source user "$@" >/dev/null; }
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+s1add --title "S1 three" --rule "S1 rule number three."
+# independent count: lines from a '### ' heading to the line before the next heading (or EOF); first Status line decides
+s1count() { # FILE -> "A R"
+  awk '
+    function flush() { if (inent) { if (st == "retired") r += n; else a += n } }
+    /^### / { flush(); inent = 1; n = 0; st = "" }
+    { if (inent) { n++; if (st == "" && $0 ~ /^- Status: /) st = ($0 ~ /^- Status: retired/) ? "retired" : "active" } }
+    END { flush(); printf "%d %d\n", a, r }' "$1"
+}
+run bash "$LEARN" retire L-0003 --reason "s1"
+S1C="$(s1count "$F")"
+assert_eq "Q9 S1 AC1 fixture sanity: independent count is 18 active, 8 retired lines" "18 8" "$S1C"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC1 check exit 0" 0
+assert_contains "Q9 S1 AC1 old prefix of the summary line is kept" "$OUT" "learnings: 2 active, 1 retired, 38 lines (.agents/LEARNINGS.md)"
+assert_eq "Q9 S1 AC1 summary line ends with '; entry lines: 18 active, 8 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '^learnings: 2 active, 1 retired, 38 lines (\.agents/LEARNINGS\.md); entry lines: 18 active, 8 retired$')"
+# retire the middle entry instead
+S1R2="$(mk_tmp)"; mk_repo "$S1R2"; cd "$S1R2" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+s1add --title "S1 three" --rule "S1 rule number three."
+run bash "$LEARN" retire L-0002 --reason "s1"
+assert_eq "Q9 S1 AC1 fixture sanity: middle retired, independent count is 17 active, 9 retired" "17 9" "$(s1count "$F")"
+run bash "$LEARN" check
+assert_eq "Q9 S1 AC1 middle entry retired: '; entry lines: 17 active, 9 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '; entry lines: 17 active, 9 retired$')"
+assert_contains "Q9 S1 AC1 middle retired: old prefix kept" "$OUT" "learnings: 2 active, 1 retired, 38 lines (.agents/LEARNINGS.md)"
+# file without entries
+S1R3="$(mk_tmp)"; mk_repo "$S1R3"; cd "$S1R3" || exit 3
+bash "$LEARN" init >/dev/null
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC1 empty file: check exit 0" 0
+assert_eq "Q9 S1 AC1 file without entries: '; entry lines: 0 active, 0 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c '^learnings: 0 active, 0 retired, [0-9]* lines (\.agents/LEARNINGS\.md); entry lines: 0 active, 0 retired$')"
+run bash "$LEARN" checklist tester
+assert_not_contains "Q9 S1 AC6 checklist output does not carry the new summary" "$OUT" "entry lines"
+
+echo "Q9 S1 AC3: no warning on a small file, and with only an old problem"
+S1R4="$(mk_tmp)"; mk_repo "$S1R4"; cd "$S1R4" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 one" --rule "S1 rule number one."
+s1add --title "S1 two" --rule "S1 rule number two."
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC3 small file: exit 0" 0
+assert_not_contains "Q9 S1 AC3 small file: no warning line" "$OUT" "warning:"
+LEARN_MAX_LINES=5 run bash "$LEARN" check
+assert_rc "Q9 S1 AC3 over the line budget: exit 1 as before" 1
+assert_contains "Q9 S1 AC3 over the line budget: the old problem names the budget" "$OUT" "problem: "
+assert_contains "Q9 S1 AC3 over the line budget: budget text" "$OUT" "exceeds the 5-line budget"
+assert_not_contains "Q9 S1 AC3 over the line budget with no hook cut: no warning line" "$OUT" "warning:"
+
+echo "Q9 S1 AC2: hook truncates, check warns (N = M - K from the real hook)"
+S1R5="$(mk_tmp)"; mk_repo "$S1R5"; cd "$S1R5" || exit 3
+bash "$LEARN" init >/dev/null
+S1M=20
+s1big() { S1EV="$(printf 'e%.0s' $(seq 1 400))"; for i in $(seq 1 $S1M); do s1add --title "S1 big $i" --rule "S1 big rule number $i."; done; S1EV=""; }
+s1big
+S1_LINES="$(wc -l < "$F" | tr -d ' ')"; S1_BYTES="$(wc -c < "$F" | tr -d ' ')"
+S1_ACT="$(grep -c '^- Status: active' "$F")"
+assert_eq "Q9 S1 AC2 fixture sanity: $S1M active entries" "$S1M" "$S1_ACT"
+if [ "$S1_LINES" -lt 250 ]; then t_ok "Q9 S1 AC2 fixture sanity: $S1_LINES lines < 250"; else t_bad "Q9 S1 AC2 fixture sanity: lines < 250" "$S1_LINES"; fi
+if [ "$S1_BYTES" -gt 8000 ]; then t_ok "Q9 S1 AC2 fixture sanity: $S1_BYTES bytes > 8000"; else t_bad "Q9 S1 AC2 fixture sanity: bytes > 8000" "$S1_BYTES"; fi
+S1_HOUT="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$S1R5" bash "$PB_ROOT/scripts/learnings-hook.sh" --eval </dev/null 2>/dev/null)"
+S1_K="$(printf '%s\n' "$S1_HOUT" | sed -n 's/^\[\([0-9][0-9]*\) more entries not shown: read .*\]$/\1/p' | tail -n 1)"
+case "$S1_K" in
+  ''|*[!0-9]*) t_bad "Q9 S1 AC2 fixture sanity: hook reports a K" "K=[$S1_K]"; S1_K=0 ;;
+  *) if [ "$S1_K" -ge 1 ] && [ "$S1_K" -lt "$S1M" ]; then t_ok "Q9 S1 AC2 fixture sanity: hook cuts, K=$S1_K"; else t_bad "Q9 S1 AC2 fixture sanity: 1 <= K < M" "K=$S1_K"; fi ;;
+esac
+S1_N=$((S1M - S1_K))
+S1_WARN="warning: $S1_N of $S1M active entries are injected by the hook (oldest first); the rest are shown only as a count"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 within both check budgets: exit 0" 0
+assert_eq "Q9 S1 AC2 exactly one warning line with N = M - K" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1_WARN")"
+assert_eq "Q9 S1 AC2 only one 'warning:' line in total" "1" "$(printf '%s\n' "$OUT" | grep -c '^warning:')"
+assert_eq "Q9 S1 AC2 the warning is the last line (after the summary line)" "$S1_WARN" "$(printf '%s\n' "$OUT" | tail -n 1)"
+assert_contains "Q9 S1 AC2 summary line carries entry lines" "$OUT" "; entry lines: "
+# structural error (one entry loses its Why): problem first, then summary, then warning, exit 1
+awk '$0 == "- Why: w" && !d { d = 1; next } { print }' "$F" > "$F.s1" && mv "$F.s1" "$F"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 with a structural problem: exit 1" 1
+S1_P="$(printf '%s\n' "$OUT" | grep -n '^problem:' | head -n 1 | cut -d: -f1)"
+S1_S="$(printf '%s\n' "$OUT" | grep -n '^learnings: ' | head -n 1 | cut -d: -f1)"
+S1_W="$(printf '%s\n' "$OUT" | grep -n '^warning: ' | head -n 1 | cut -d: -f1)"
+if [ -n "$S1_P" ] && [ -n "$S1_S" ] && [ -n "$S1_W" ] && [ "$S1_P" -lt "$S1_S" ] && [ "$S1_S" -lt "$S1_W" ]; then t_ok "Q9 S1 AC2 order: problem, summary, warning (lines $S1_P < $S1_S < $S1_W)"; else t_bad "Q9 S1 AC2 order: problem, summary, warning" "p=[$S1_P] s=[$S1_S] w=[$S1_W]; output: $OUT"; fi
+assert_eq "Q9 S1 AC2 with a problem: exactly one warning line, N = M - K" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1_WARN")"
+
+echo "Q9 S1 AC5: check never touches the eval hook log"
+S1LOG="$(mk_tmp)/hook.log"
+PB_EVAL_HOOK_LOG="$S1LOG" run bash "$LEARN" check
+assert_no_path "Q9 S1 AC5 PB_EVAL_HOOK_LOG file is not created by check" "$S1LOG"
+printf 'sentinel line\n' > "$S1LOG"
+PB_EVAL_HOOK_LOG="$S1LOG" run bash "$LEARN" check
+assert_eq "Q9 S1 AC5 an existing PB_EVAL_HOOK_LOG file is not modified by check" "sentinel line" "$(cat "$S1LOG")"
+
+echo "Q9 S1 AC4: the hook is the only source of N (temp scripts dir with fake hooks)"
+S1SD="$(mk_tmp)"; mkdir -p "$S1SD/scripts"; cp "$PB_ROOT/scripts/learn.sh" "$PB_ROOT/scripts/lib.sh" "$S1SD/scripts/"
+S1L="$S1SD/scripts/learn.sh"
+# Case A: no learnings-hook.sh next to learn.sh, on a fresh big fixture
+S1R6="$(mk_tmp)"; mk_repo "$S1R6"; cd "$S1R6" || exit 3
+bash "$LEARN" init >/dev/null
+s1big
+run bash "$LEARN" check; S1_RC0="$RC"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 A: no hook script: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 A: no hook script: no warning" "$OUT" "warning:"
+assert_not_contains "Q9 S1 AC4 A: no error text (No such file)" "$OUT" "No such file"
+assert_not_contains "Q9 S1 AC4 A: no error text (not found)" "$OUT" "not found"
+assert_not_contains "Q9 S1 AC4 A: no error text (rror)" "$OUT" "rror"
+assert_contains "Q9 S1 AC4 A: summary line still printed" "$OUT" "learnings: $S1M active"
+# Case B: hook prints garbage / exits 7
+printf '#!/usr/bin/env bash\necho "garbage [99 more entries not shown"\necho "more garbage"\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 B: garbage hook: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 B: garbage hook: no warning" "$OUT" "warning:"
+printf '#!/usr/bin/env bash\necho "[3 more entries not shown: read X]"\necho "</project-learnings>"\nexit 7\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 B: hook exits 7: exit code as before" "$S1_RC0" "$RC"
+assert_not_contains "Q9 S1 AC4 B: hook exits 7: no warning, even with a valid-looking note" "$OUT" "warning:"
+# Case C: fake hook says K=3 on a small 5-entry file that no byte math would flag
+S1R7="$(mk_tmp)"; mk_repo "$S1R7"; cd "$S1R7" || exit 3
+bash "$LEARN" init >/dev/null
+for i in 1 2 3 4 5; do s1add --title "S1 small $i" --rule "S1 small rule number $i."; done
+s1fake() { # NOTE-LINE: hook that prints the note line then the closing tag
+  printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n%s\n</project-learnings>\nEOT\n' "$1" > "$S1SD/scripts/learnings-hook.sh"
+}
+s1fake "[3 more entries not shown: read X]"
+run bash "$S1L" check
+assert_rc "Q9 S1 AC4 C: fake hook K=3: exit 0" 0
+assert_eq "Q9 S1 AC4 C: warning 2 of 5 comes from the hook's K, not from bytes" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 2 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+s1fake "[5 more entries not shown: read X]"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 C: K = M is valid (N = 0)" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 0 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+run bash "$LEARN" check
+assert_not_contains "Q9 S1 AC4 C: real hook, small file: no warning" "$OUT" "warning:"
+# Case D: invalid K or misplaced note
+s1fake "[0 more entries not shown: read X]"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: K = 0: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: K = 0: exit 0" 0
+s1fake "[6 more entries not shown: read X]"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: K > M: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: K > M: exit 0" 0
+printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n[3 more entries not shown: read X]\nsome later line\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_not_contains "Q9 S1 AC4 D: note not directly before the closing tag: no warning" "$OUT" "warning:"
+assert_rc "Q9 S1 AC4 D: misplaced note: exit 0" 0
+printf '#!/usr/bin/env bash\ncat <<"EOT"\n<project-learnings>\n[2 more entries not shown: read X]\n[4 more entries not shown: read Y]\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_eq "Q9 S1 AC4 D: the last note line before the tag wins (K=4, N=1)" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 1 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+# ---- Q9 S1 review gaps: first Status line decides, spaced project root, hook stderr hygiene ----
+echo "Q9 S1 AC1: a later '- Status: retired' line inside an active entry does not retire it"
+S1R7="$(mk_tmp)"; mk_repo "$S1R7"; cd "$S1R7" || exit 3
+bash "$LEARN" init >/dev/null
+s1add --title "S1 g one" --rule "S1 gap rule number one."
+s1add --title "S1 g two" --rule "S1 gap rule number two."
+# hand edit: after the first entry's Scope line add a body line that starts like a Status line
+awk '/^- Scope: / && !d { print; print "- Status: retired (quoted in the body, not the entry status)"; d = 1; next } { print }' "$F" > "$F.s1" && mv "$F.s1" "$F"
+S1G="$(s1count "$F")"
+S1GA="${S1G% *}"; S1GR="${S1G#* }"
+assert_eq "Q9 S1 AC1 gap fixture sanity: first entry still starts with an active Status line" "active" "$(awk '/^### /{n++} n==1 && /^- Status: /{sub(/^- Status: /,""); print; exit}' "$F")"
+assert_eq "Q9 S1 AC1 gap fixture sanity: the body holds a later retired line" "1" "$(grep -c '^- Status: retired' "$F")"
+assert_eq "Q9 S1 AC1 gap fixture sanity: independent count has no retired lines" "0" "$S1GR"
+run bash "$LEARN" check
+assert_eq "Q9 S1 AC1 first Status line decides: '; entry lines: $S1GA active, 0 retired'" "1" "$(printf '%s\n' "$OUT" | grep -c "; entry lines: $S1GA active, 0 retired\$")"
+
+echo "Q9 S1 AC2: project root with a space gives the same warning as the hook run by hand"
+S1RS="$(mk_tmp)/proj with space"; mkdir -p "$S1RS"; mk_repo "$S1RS"; cd "$S1RS" || exit 3
+bash "$LEARN" init >/dev/null
+s1big
+S1SH="$(PB_EVAL_HOOK_LOG= CLAUDE_PROJECT_DIR="$S1RS" bash "$PB_ROOT/scripts/learnings-hook.sh" --eval </dev/null 2>/dev/null)"
+S1SK="$(printf '%s\n' "$S1SH" | sed -n 's/^\[\([0-9][0-9]*\) more entries not shown: read .*\]$/\1/p' | tail -n 1)"
+case "$S1SK" in
+  ''|*[!0-9]*) t_bad "Q9 S1 AC2 space root sanity: hook run by hand reports a K" "K=[$S1SK]"; S1SK=0 ;;
+  *) t_ok "Q9 S1 AC2 space root sanity: hook run by hand cuts, K=$S1SK" ;;
+esac
+S1SW="warning: $((S1M - S1SK)) of $S1M active entries are injected by the hook (oldest first); the rest are shown only as a count"
+run bash "$LEARN" check
+assert_rc "Q9 S1 AC2 space root: exit 0" 0
+assert_eq "Q9 S1 AC2 space root: same warning N = M - K as the hook by hand" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- "$S1SW")"
+
+echo "Q9 S1 AC4: hook stderr does not leak into check output"
+S1R8="$(mk_tmp)"; mk_repo "$S1R8"; cd "$S1R8" || exit 3
+bash "$LEARN" init >/dev/null
+for i in 1 2 3 4 5; do s1add --title "S1 e $i" --rule "S1 e rule number $i."; done
+printf '#!/usr/bin/env bash\necho "STRAY-HOOK-STDERR-7731" >&2\ncat <<"EOT"\n<project-learnings>\n[3 more entries not shown: read X]\n</project-learnings>\nEOT\n' > "$S1SD/scripts/learnings-hook.sh"
+run bash "$S1L" check
+assert_rc "Q9 S1 AC4 stderr hook: exit 0" 0
+assert_eq "Q9 S1 AC4 stderr hook: the warning still prints" "1" "$(printf '%s\n' "$OUT" | grep -cxF -- 'warning: 2 of 5 active entries are injected by the hook (oldest first); the rest are shown only as a count')"
+assert_not_contains "Q9 S1 AC4 stderr hook: no stray stderr text in the output" "$OUT" "STRAY-HOOK-STDERR-7731"
+# ---- v0.38 Q9 S2: `learn.sh stale [--days N] [--fail]` (AC1-AC11); expected numbers counted by hand, see comments ----
+SERRF="$(mk_tmp)/stale.err"
+srun() { SOUT="$("$@" 2>"$SERRF")"; SRC=$?; SERR="$(cat "$SERRF")"; }   # SOUT stdout, SERR stderr, SRC exit code
+SD="2026-11-17"
+sst() { PLAYBOOK_DATE="$SD" srun bash "$LEARN" stale "$@"; }
+sst_at() { local d="$1"; shift; PLAYBOOK_DATE="$d" srun bash "$LEARN" stale "$@"; }
+st_fix() { # fresh git repo in SR (cwd), scripts/a.sh tracked, learnings file with a header and no entry
+  SR="$(mk_tmp)"; mk_repo "$SR"; cd "$SR" || exit 3
+  mkdir -p scripts .agents; printf '#!/bin/sh\n' > scripts/a.sh; git add scripts/a.sh
+  printf '# Learnings\n' > "$F"
+}
+st_e() { # ID DATE TITLE SCOPE(@none: no Scope line) [STATUS] [EXTRA-LINE-AFTER-SCOPE]
+  {
+    printf '\n### %s · %s · %s\n' "$1" "$2" "$3"
+    printf -- '- Status: %s\n' "${5:-active}"
+    printf -- '- Rule: r\n- Why: w\n- Evidence: e\n- Source: user\n'
+    if [ "$4" != "@none" ]; then printf -- '- Scope: %s\n' "$4"; fi
+    if [ -n "${6:-}" ]; then printf -- '%s\n' "$6"; fi
+  } >> "$F"
+}
+NOSCOPE="scope matches no tracked file"
+
+echo "Q9 S2 AC1: age in days (320; threshold 180/181; leap years; year spans)"
+st_fix
+st_e L-0001 2026-01-01 "Old rule" project-wide
+sst
+assert_rc "Q9 S2 AC1 default run: exit 0" 0
+assert_eq "Q9 S2 AC1 2026-01-01 to 2026-11-17 is 320 days; summary names the 180-day default" "$(printf 'L-0001 · 2026-01-01 · Old rule: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+assert_eq "Q9 S2 AC1 stderr is empty" "" "$SERR"
+st_fix
+st_e L-0001 2026-05-21 "Age 180" project-wide
+st_e L-0002 2026-05-20 "Age 181" project-wide
+sst
+assert_eq "Q9 S2 AC1 exactly N days is not stale (180), N+1 is (181)" "$(printf 'L-0002 · 2026-05-20 · Age 181: 181 days old\nstale: 1 of 2 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+st_e L-0001 2024-02-28 "Leap" project-wide
+sst_at 2024-03-01 --days 1
+assert_eq "Q9 S2 AC1 2024-02-28 to 2024-03-01 is 2 days (29 Feb exists)" "$(printf 'L-0001 · 2024-02-28 · Leap: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-02-28 "No leap" project-wide
+sst_at 2026-03-01 --days 1
+assert_eq "Q9 S2 AC1 2026-02-28 to 2026-03-01 is 1 day: not older than 1" "stale: 0 of 1 active entries listed (older than 1 days)" "$SOUT"
+st_fix
+st_e L-0001 2000-02-28 "Y2000" project-wide
+sst_at 2000-03-01 --days 1
+assert_eq "Q9 S2 AC1 2000 is a leap year (2 days)" "$(printf 'L-0001 · 2000-02-28 · Y2000: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 1900-02-28 "Y1900" project-wide
+sst_at 1900-03-01 --days 1
+assert_eq "Q9 S2 AC1 1900 is not a leap year (1 day, not older than 1)" "stale: 0 of 1 active entries listed (older than 1 days)" "$SOUT"
+sst_at 1900-03-02 --days 1
+assert_eq "Q9 S2 AC1 1900-02-28 to 1900-03-02 is 2 days" "$(printf 'L-0001 · 1900-02-28 · Y1900: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-01-01 "Year" project-wide
+st_e L-0002 2024-01-01 "Leap year" project-wide
+sst_at 2027-01-01 --days 364
+assert_eq "Q9 S2 AC1 a plain year is 365 days, a leap year 366 (2024-01-01 to 2027-01-01 is 1096)" "$(printf 'L-0001 · 2026-01-01 · Year: 365 days old\nL-0002 · 2024-01-01 · Leap year: 1096 days old\nstale: 2 of 2 active entries listed (older than 364 days)')" "$SOUT"
+st_fix
+st_e L-0001 2026-01-01 "Mid · dot title" project-wide
+sst
+assert_eq "Q9 S2 AC1 a title with the separator is printed as written" "$(printf 'L-0001 · 2026-01-01 · Mid · dot title: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+sst
+assert_rc "Q9 S2 AC1 no entry: exit 0" 0
+assert_eq "Q9 S2 AC1 no active entry: '0 of 0' summary only (repo: no skipped line)" "stale: 0 of 0 active entries listed (older than 180 days)" "$SOUT"
+st_fix
+st_e L-0001 2027-01-01 "Future" project-wide
+sst
+assert_eq "Q9 S2 AC1 a future date is not stale because of age" "stale: 0 of 1 active entries listed (older than 180 days)" "$SOUT"
+
+echo "Q9 S2 AC2: scope check in a git repo"
+st_fix
+st_e L-0001 "$SD" "S nope" scripts/nope.sh
+st_e L-0002 "$SD" "S glob" 'scripts/*.sh'
+st_e L-0003 "$SD" "S dir" scripts/
+st_e L-0004 "$SD" "S file" src/app.js
+st_e L-0005 "$SD" "S star2" '**'
+st_e L-0006 "$SD" "S readme" README.md
+st_e L-0007 "$SD" "S docs" 'docs/**'
+st_e L-0008 "$SD" "S dot" .
+st_e L-0009 "$SD" "S star" '*'
+st_e L-0010 2026-01-01 "Both" scripts/nope.sh
+sst
+assert_rc "Q9 S2 AC2 scope run: exit 0" 0
+assert_eq "Q9 S2 AC2 only nope.sh, docs/** (nothing tracked there) and the old+nope entry; ** . * and real paths pass" "$(printf 'L-0001 · %s · S nope: %s\nL-0007 · %s · S docs: %s\nL-0010 · 2026-01-01 · Both: 320 days old; %s\nstale: 3 of 10 active entries listed (older than 180 days)' "$SD" "$NOSCOPE" "$SD" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 AC2 stderr is empty" "" "$SERR"
+GIT_DIR=/nonexistent GIT_INDEX_FILE=/nonexistent GIT_WORK_TREE=/nonexistent sst
+assert_eq "Q9 S2 AC2 GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE of the environment do not change the result" "3" "$(printf '%s\n' "$SOUT" | grep -c "$NOSCOPE")"
+assert_not_contains "Q9 S2 AC2 ... and the repo is still recognised" "$SOUT" "scope check skipped"
+ER="$(mk_tmp)"; ( cd "$ER" && git init -q ) ; mkdir -p "$ER/.agents"
+cd "$ER" || exit 3
+printf '# Learnings\n' > "$F"
+st_e L-0001 "$SD" "Empty dot" .
+st_e L-0002 "$SD" "Empty star2" '**'
+sst
+assert_eq "Q9 S2 AC2 a repo with no tracked file: . and ** match nothing and are listed" "$(printf 'L-0001 · %s · Empty dot: %s\nL-0002 · %s · Empty star2: %s\nstale: 2 of 2 active entries listed (older than 180 days)' "$SD" "$NOSCOPE" "$SD" "$NOSCOPE")" "$SOUT"
+
+echo "Q9 S2 AC3: scopes that are never checked"
+st_fix
+st_e L-0001 "$SD" "t1" project-wide
+st_e L-0002 "$SD" "t2" "the build scripts"
+st_e L-0003 "$SD" "t3" "tests and docs"
+st_e L-0004 "$SD" "t4" v1
+st_e L-0005 "$SD" "t5" ../x
+st_e L-0006 "$SD" "t6" /abs/x
+st_e L-0007 "$SD" "t7" ':(top)x'
+st_e L-0008 "$SD" "t8" C:x
+st_e L-0009 "$SD" "t9" 'scripts\a.sh'
+st_e L-0010 "$SD" "t10" @none
+st_e L-0011 "$SD" "t11" ""
+st_e L-0012 "$SD" "t12" @none "active" "- Scope:"
+st_e L-0013 "$SD" "t13" "src/nope file.js"
+sst
+assert_rc "Q9 S2 AC3 exit 0" 0
+assert_eq "Q9 S2 AC3 none of the 13 is flagged (the whole stdout is the summary)" "stale: 0 of 13 active entries listed (older than 180 days)" "$SOUT"
+assert_eq "Q9 S2 AC3 no stderr (no git fatal leaks out)" "" "$SERR"
+
+echo "Q9 S2 AC4: which entries count"
+st_fix
+st_e L-0001 2026-01-01 "Retired old" scripts/nope.sh "retired (gone)"
+st_e L-0002 2026-01-01 "Active, later retired line" project-wide active "- Status: retired (quoted in the body)"
+st_e L-0003 "$SD" "Fresh" project-wide
+st_e L-0004 "$SD" "Prefix" project-wide activeXYZ
+st_e L-0005 2026-01-01 "Retired first" project-wide "retired (x)" "- Status: active"
+printf '\n### note without an id\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+sst
+assert_eq "Q9 S2 AC4 retired never listed or counted; first Status line decides; '### note' ignored; A = 3 (L-0002, L-0003, L-0004)" "$(printf 'L-0002 · 2026-01-01 · Active, later retired line: 320 days old\nstale: 1 of 3 active entries listed (older than 180 days)')" "$SOUT"
+
+echo "Q9 S2 AC5: not a git repository"
+NG="$(mk_tmp)"; mkdir -p "$NG/.agents"
+if [ "$(git -C "$NG" rev-parse --is-inside-work-tree 2>/dev/null)" != true ]; then
+  t_ok "Q9 S2 AC5 sanity: the temp dir is outside any git work tree"
+  cd "$NG" || exit 3
+  printf '# Learnings\n' > "$F"
+  st_e L-0001 2026-01-01 "Old" scripts/nope.sh
+  st_e L-0002 "$SD" "Fresh" src/nope.js
+  SKIP="scope check skipped: not a git repository"
+  sst
+  assert_rc "Q9 S2 AC5 exit 0" 0
+  assert_eq "Q9 S2 AC5 age only; one skipped line after the entry lines and before the summary" "$(printf 'L-0001 · 2026-01-01 · Old: 320 days old\n%s\nstale: 1 of 2 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  assert_eq "Q9 S2 AC5 no git fatal on stderr" "" "$SERR"
+  GIT_DIR="$SR/.git" sst
+  assert_eq "Q9 S2 AC5 GIT_DIR pointing at another repo changes nothing" "$(printf 'L-0001 · 2026-01-01 · Old: 320 days old\n%s\nstale: 1 of 2 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  printf '# Learnings\n' > "$F"
+  st_e L-0001 "$SD" "A" project-wide
+  st_e L-0002 "$SD" "B" project-wide
+  st_e L-0003 "$SD" "C" "free text"
+  sst
+  assert_eq "Q9 S2 AC5 many entries, none path-like: still exactly one skipped line" "$(printf '%s\nstale: 0 of 3 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+  printf '# Learnings\n' > "$F"
+  sst
+  assert_eq "Q9 S2 AC5 no active entry: skipped line right before '0 of 0'" "$(printf '%s\nstale: 0 of 0 active entries listed (older than 180 days)' "$SKIP")" "$SOUT"
+else
+  t_skip 7 "the temp dir is inside a git work tree here: non-repo rows not testable"
+fi
+
+echo "Q9 S2 AC6: exit codes and argument checks"
+st_fix
+st_e L-0001 2026-01-01 "Old" project-wide
+sst_at 2026-01-02 --fail
+assert_eq "Q9 S2 AC6 nothing listed with --fail: exit 0" "0" "$SRC"
+sst
+assert_eq "Q9 S2 AC6 listed without --fail: exit 0" "0" "$SRC"
+sst --fail
+assert_eq "Q9 S2 AC6 listed with --fail: exit 1" "1" "$SRC"
+assert_contains "Q9 S2 AC6 --fail still prints the entry line" "$SOUT" "320 days old"
+sst --fail --fail
+assert_eq "Q9 S2 AC6 --fail twice: same as once (exit 1)" "1" "$SRC"
+sst --days 999999
+assert_eq "Q9 S2 AC6 six digits are valid" "0" "$SRC"
+sst --days 1
+assert_eq "Q9 S2 AC6 --days 1 is valid" "0" "$SRC"
+assert_contains "Q9 S2 AC6 --days 1 lists the 320-day entry" "$SOUT" "older than 1 days"
+st_bad() { # NAME ARGS...: exit 2, one stderr line 'error: ...', empty stdout
+  local n="$1"; shift
+  sst "$@"
+  assert_eq "Q9 S2 AC6 $n: exit 2" "2" "$SRC"
+  assert_eq "Q9 S2 AC6 $n: stdout empty" "" "$SOUT"
+  assert_eq "Q9 S2 AC6 $n: one stderr line starting 'error: '" "1" "$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+}
+st_bad "--days 0" --days 0
+st_bad "--days 05" --days 05
+st_bad "--days +5" --days +5
+st_bad "--days abc" --days abc
+st_bad "--days 1234567" --days 1234567
+st_bad "--days=30" --days=30
+st_bad "--days without a value" --days
+st_bad "--days followed by --fail" --days --fail
+st_bad "--days empty value" --days ""
+st_bad "unknown option" --bogus
+st_bad "stray argument" extra
+st_bad "unknown option after valid ones" --days 30 --fail --bogus
+mv "$F" "$F.gone"
+sst
+assert_eq "Q9 S2 AC6 missing file: exit 2" "2" "$SRC"
+assert_contains "Q9 S2 AC6 missing file: '<REL> not found' on stderr" "$SERR" ".agents/LEARNINGS.md not found"
+assert_eq "Q9 S2 AC6 missing file: stdout empty" "" "$SOUT"
+sst --days abc
+assert_eq "Q9 S2 AC6 usage error wins over a missing file: exit 2" "2" "$SRC"
+assert_not_contains "Q9 S2 AC6 ... and does not say 'not found'" "$SERR" "not found"
+sst_at 2026-02-30
+assert_contains "Q9 S2 AC6 missing file wins over a bad PLAYBOOK_DATE" "$SERR" "not found"
+assert_not_contains "Q9 S2 AC6 ... no 'invalid PLAYBOOK_DATE' then" "$SERR" "invalid PLAYBOOK_DATE"
+mv "$F.gone" "$F"
+# conf: learn_stale_days (project conf .agents/playbook.conf)
+printf 'learn_stale_days=abc\n' > .agents/playbook.conf
+sst
+assert_eq "Q9 S2 AC6 learn_stale_days=abc without --days: exit 2" "2" "$SRC"
+assert_eq "Q9 S2 AC6 ... stdout empty" "" "$SOUT"
+assert_eq "Q9 S2 AC6 ... one stderr line" "1" "$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+sst_at 2026-02-30
+assert_eq "Q9 S2 AC6 bad conf and bad PLAYBOOK_DATE: the conf is reported first" "0" "$(printf '%s\n' "$SERR" | grep -c 'invalid PLAYBOOK_DATE')"
+assert_eq "Q9 S2 AC6 ... still exit 2" "2" "$SRC"
+sst --days 30
+assert_eq "Q9 S2 AC6 --days given: the bad conf is not read (exit 0)" "0" "$SRC"
+assert_contains "Q9 S2 AC6 ... and --days 30 is used" "$SOUT" "older than 30 days"
+sst_at 2026-02-30 --days 30
+assert_contains "Q9 S2 AC6 --days given, bad conf, bad date: the date error shows (conf not read)" "$SERR" "invalid PLAYBOOK_DATE"
+printf 'learn_stale_days=30\n' > .agents/playbook.conf
+printf '# Learnings\n' > "$F"
+st_e L-0001 2026-10-01 "Age 47" project-wide
+sst
+assert_eq "Q9 S2 AC6 learn_stale_days=30 changes the threshold (47 > 30)" "$(printf 'L-0001 · 2026-10-01 · Age 47: 47 days old\nstale: 1 of 1 active entries listed (older than 30 days)')" "$SOUT"
+sst --days 100
+assert_eq "Q9 S2 AC6 --days beats the conf" "stale: 0 of 1 active entries listed (older than 100 days)" "$SOUT"
+rm -f .agents/playbook.conf
+printf '# Learnings\n' > "$F"
+st_e L-0001 2026-11-02 "Age 15" project-wide
+sst --days 10 --days 20
+assert_eq "Q9 S2 AC6 repeated --days: the last one wins (20: age 15 not listed)" "stale: 0 of 1 active entries listed (older than 20 days)" "$SOUT"
+sst --days 20 --days 10
+assert_eq "Q9 S2 AC6 repeated --days: the last one wins (10: age 15 listed)" "$(printf 'L-0001 · 2026-11-02 · Age 15: 15 days old\nstale: 1 of 1 active entries listed (older than 10 days)')" "$SOUT"
+for BADD in 2026-02-30 abc 2026-1-1 2026-13-01 "2026-11-17x"; do
+  sst_at "$BADD"
+  assert_eq "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: exit 2" "2" "$SRC"
+  assert_contains "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: 'invalid PLAYBOOK_DATE' on stderr" "$SERR" "invalid PLAYBOOK_DATE"
+  assert_eq "Q9 S2 AC6 PLAYBOOK_DATE=$BADD: stdout empty" "" "$SOUT"
+done
+
+echo "Q9 S2 AC7: read-only"
+st_fix
+st_e L-0001 2026-01-01 "Old" scripts/nope.sh
+st_e L-0002 "$SD" "Fresh" scripts/a.sh
+st_snap() { find . -path ./.git -prune -o -type f -print | sort | while IFS= read -r f; do cksum "$f"; done; git ls-files -s; cksum .git/index; }
+SNAP_B="$(st_snap)"
+sst --fail
+assert_eq "Q9 S2 AC7 sanity: the --fail run listed something (exit 1)" "1" "$SRC"
+SNAP_A="$(st_snap)"
+assert_eq "Q9 S2 AC7 file hashes, file list, git ls-files -s and the index are unchanged" "$SNAP_B" "$SNAP_A"
+sst
+assert_eq "Q9 S2 AC7 ... also after a plain run" "$SNAP_B" "$(st_snap)"
+
+echo "Q9 S2 AC8: dates, headings, CRLF, scope lines"
+st_fix
+st_e L-0001 2026-13-40 "Bad month" scripts/nope.sh
+st_e L-0002 2026-02-29 "Bad day" scripts/nope.sh
+st_e L-0003 2024-02-29 "Leap day" project-wide
+printf '\n### L-0004 · bad heading text\n- Status: active\n- Rule: r\n- Why: w\n- Evidence: e\n- Source: user\n- Scope: scripts/nope.sh\n' >> "$F"
+sst_at 2024-03-02 --days 1
+assert_eq "Q9 S2 AC8 bad dates: no age check, scope check still runs; 2024-02-29 is valid (2 days); raw heading text is printed" "$(printf 'L-0001 · 2026-13-40 · Bad month: %s\nL-0002 · 2026-02-29 · Bad day: %s\nL-0003 · 2024-02-29 · Leap day: 2 days old\nL-0004 · bad heading text: %s\nstale: 4 of 4 active entries listed (older than 1 days)' "$NOSCOPE" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 AC8 ... exit code 0" "0" "$SRC"
+st_fix
+st_e L-0001 2026-01-01 "Old ok" scripts/a.sh
+st_e L-0002 "$SD" "Fresh ok" scripts/a.sh
+st_e L-0003 2026-01-01 "Old bad" scripts/nope.sh
+WANT_CR="$(printf 'L-0001 · 2026-01-01 · Old ok: 320 days old\nL-0003 · 2026-01-01 · Old bad: 320 days old; %s\nstale: 2 of 3 active entries listed (older than 180 days)' "$NOSCOPE")"
+sst
+assert_eq "Q9 S2 AC8 LF baseline" "$WANT_CR" "$SOUT"
+awk '{ printf "%s\r\n", $0 }' "$F" > "$F.crlf" && mv "$F.crlf" "$F"
+sst
+assert_eq "Q9 S2 AC8 CRLF file: same result as LF (scope matches, no false flag)" "$WANT_CR" "$SOUT"
+assert_eq "Q9 S2 AC8 CRLF file: no CR in stdout" "0" "$(printf '%s' "$SOUT" | tr -cd '\r' | wc -c | tr -d ' ')"
+st_fix
+st_e L-0001 "$SD" "First wins ok" scripts/a.sh active "- Scope: scripts/nope.sh"
+st_e L-0002 "$SD" "First wins bad" scripts/nope.sh active "- Scope: scripts/a.sh"
+st_e L-0003 "$SD" "Trailing space" "scripts/a.sh "
+sst
+assert_eq "Q9 S2 AC8 two Scope lines: the first wins; a scope with a trailing space is not a path (not flagged)" "$(printf 'L-0002 · %s · First wins bad: %s\nstale: 1 of 3 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+
+echo "Q9 S2 AC9: usage line and untouched assertions"
+run bash "$LEARN" frobnicate
+assert_rc "Q9 S2 AC9 an unknown command exits 2" 2
+assert_contains "Q9 S2 AC9 the usage line names stale" "$OUT" "stale"
+if git -C "$PB_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  assert_eq "Q9 S2 AC9 no existing line of tests/test-learn.sh is changed or removed (diff against HEAD only adds)" "0" "$(git -C "$PB_ROOT" diff -U0 HEAD -- tests/test-learn.sh | grep -c '^-[^-]')"
+else
+  t_skip 1 "not a git checkout: diff row not testable"
+fi
+
+echo "Q9 S2 AC10: order of listed entries"
+st_fix
+st_e L-0005 2026-01-01 "Fifth first" project-wide
+st_e L-0003 "$SD" "Fresh between" project-wide
+st_e L-0001 2026-02-01 "First last" project-wide
+sst
+assert_eq "Q9 S2 AC10 file order (L-0005 before L-0001); the fresh entry in between is absent (Feb 1 to Nov 17 is 289 days)" "$(printf 'L-0005 · 2026-01-01 · Fifth first: 320 days old\nL-0001 · 2026-02-01 · First last: 289 days old\nstale: 2 of 3 active entries listed (older than 180 days)')" "$SOUT"
+echo "Q9 S2 review gaps: leap rule on entry dates"
+st_fix
+st_e L-0001 2000-02-29 "Leap 2000" project-wide
+sst_at 2000-03-02 --days 1
+assert_eq "Q9 S2 gap: entry 2000-02-29 is a valid date and ages (2000-02-29 to 2000-03-02 is 2 days)" "$(printf 'L-0001 · 2000-02-29 · Leap 2000: 2 days old\nstale: 1 of 1 active entries listed (older than 1 days)')" "$SOUT"
+st_fix
+st_e L-0001 1900-02-29 "Not leap 1900" scripts/nope.sh
+sst_at 1900-03-02 --days 1
+assert_eq "Q9 S2 gap: entry 1900-02-29 is invalid: not aged, still scope-checked and listed" "$(printf 'L-0001 · 1900-02-29 · Not leap 1900: %s\nstale: 1 of 1 active entries listed (older than 1 days)' "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr" "0|" "$SRC|$SERR"
+
+echo "Q9 S2 review gaps: path-like scopes that are excluded from the check"
+st_fix
+st_e L-0001 "$SD" "x1" ':(top)scripts/nope.sh'
+st_e L-0002 "$SD" "x2" ../scripts/nope.sh
+st_e L-0003 "$SD" "x3" /abs/x.sh
+st_e L-0004 "$SD" "x4" C:x/y.sh
+st_e L-0005 "$SD" "x5" a/../nope.sh
+st_e L-0006 "$SD" "x6" ..
+st_e L-0007 "$SD" "x7" "$(printf 'tab\tinside scripts/nope.sh')"
+st_e L-0008 "$SD" "x8" "scripts/nope.sh "
+sst
+assert_eq "Q9 S2 gap: magic pathspec, .., absolute, drive, a/../, '..', tab and trailing space are never flagged (8 entries)" "stale: 0 of 8 active entries listed (older than 180 days)" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr" "0|" "$SRC|$SERR"
+
+echo "Q9 S2 review gaps: scope starting with a dash"
+st_fix
+st_e L-0001 "$SD" "Dash" -x/y.sh
+sst
+assert_eq "Q9 S2 gap: scope -x/y.sh is checked (not taken as an option) and matches no tracked file" "$(printf 'L-0001 · %s · Dash: %s\nstale: 1 of 1 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... empty stderr" "" "$SERR"
+
+echo "Q9 S2 review gaps: future date with a small threshold"
+st_fix
+st_e L-0001 2027-01-01 "Future" project-wide
+sst --days 10
+assert_eq "Q9 S2 gap: negative age is not listed even with --days 10" "stale: 0 of 1 active entries listed (older than 10 days)" "$SOUT"
+
+echo "Q9 S2 review gaps: conf values, Scope without a space, ### note after an entry"
+st_fix
+st_e L-0001 2026-01-01 "Old" project-wide
+for BADC in 05 1234567; do
+  printf 'learn_stale_days=%s\n' "$BADC" > .agents/playbook.conf
+  sst
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: exit 2" "2" "$SRC"
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: stdout empty" "" "$SOUT"
+  assert_eq "Q9 S2 gap: learn_stale_days=$BADC: exactly one stderr line, an 'error: ' line" "1|1" "$(printf '%s\n' "$SERR" | grep -c '')|$(printf '%s\n' "$SERR" | grep -c '^error: ')"
+done
+rm -f .agents/playbook.conf
+st_fix
+st_e L-0001 2026-01-01 "No space" @none active "- Scope:nope/x.sh"
+sst
+assert_eq "Q9 S2 gap: '- Scope:nope/x.sh' (no space) is project-wide: age only, no scope flag" "$(printf 'L-0001 · 2026-01-01 · No space: 320 days old\nstale: 1 of 1 active entries listed (older than 180 days)')" "$SOUT"
+st_fix
+st_e L-0001 "$SD" "Before note" scripts/nope.sh
+printf '\n### note\n- Rule: r\n- Why: w\n' >> "$F"
+sst
+assert_eq "Q9 S2 gap: a '### note' block without Status/Scope after an active entry changes nothing (A = 1, entry still flagged)" "$(printf 'L-0001 · %s · Before note: %s\nstale: 1 of 1 active entries listed (older than 180 days)' "$SD" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... empty stderr" "" "$SERR"
+
+echo "Q9 S2 review gaps: bad dates and malformed headings leave stderr empty"
+st_fix
+st_e L-0001 2026-13-40 "Bad month" scripts/nope.sh
+st_e L-0002 2026-02-29 "Bad day" scripts/nope.sh
+sst_at 2024-03-02 --days 1
+assert_eq "Q9 S2 gap AC8 bad dates: stderr empty" "" "$SERR"
+st_fix
+printf '\n### L-0001 · 2026-01-01 - dash title\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+printf '\n### L-0002 · 2026-1-01 · short date\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+printf '\n### L-0003 · 2026-01-011 · long date\n- Status: active\n- Scope: scripts/nope.sh\n' >> "$F"
+sst --days 1
+assert_eq "Q9 S2 gap: wrong second separator or wrong-length date is not aged (scope reason only, raw heading text)" "$(printf 'L-0001 · 2026-01-01 - dash title: %s\nL-0002 · 2026-1-01 · short date: %s\nL-0003 · 2026-01-011 · long date: %s\nstale: 3 of 3 active entries listed (older than 1 days)' "$NOSCOPE" "$NOSCOPE" "$NOSCOPE")" "$SOUT"
+assert_eq "Q9 S2 gap: ... exit 0 and empty stderr (no integer-expression error)" "0|" "$SRC|$SERR"
+
+# ---- v0.38 Q9 S4, AC15a: characterization of `add` (written before the refactor; green on the old and on the new code) ----
+# Pins what `add` does today: exit codes and stderr byte for byte for the validation matrix, the duplicate and capacity
+# cases and one full success. The one deliberate difference (L-9999 edge) is NOT here; it is in tests/test-learn-candidates.sh.
+echo "Q9 S4 AC15a: add characterization"
+unset LEARN_MAX_ENTRIES LEARN_MAX_LINES
+export PLAYBOOK_DATE="2026-10-09"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+ZE="$(mk_tmp)/err"
+run bash "$LEARN" init
+assert_rc "Q9 S4 AC15a fixture init" 0
+zrun() { ZO="$(bash "$LEARN" add "$@" 2>"$ZE")"; ZRC=$?; ZERR="$(cat "$ZE")"; }
+zbase() { Z_title='T'; Z_rule='A rule.'; Z_why='W'; Z_evidence='E'; Z_source=failure; Z_scope='@OMIT@'; Z_role='@OMIT@'; }
+zargs() {
+  local n v
+  ZARGS=()
+  for n in title rule why evidence source scope role; do
+    v="Z_$n"; v="${!v}"
+    if [ "$v" != '@OMIT@' ]; then ZARGS+=("--$n" "$v"); fi
+  done
+}
+# zfail NAME RC ERR FIELD VALUE: add with one field changed fails like that, stdout empty, LEARNINGS.md unchanged
+zfail() {
+  local before
+  before="$(cksum < "$F")"
+  zbase; printf -v "Z_$4" '%s' "$5"; zargs
+  zrun "${ZARGS[@]}"
+  assert_eq "Q9 S4 AC15a $1" "$2|$3||same" "$ZRC|$ZERR|$ZO|$(if [ "$before" = "$(cksum < "$F")" ]; then echo same; else echo CHANGED; fi)"
+}
+zrep() { printf '%*s' "$2" '' | tr ' ' "$1"; }
+ZREQ='(an entry without evidence is not a learning)'
+for ZN in title rule why evidence source; do
+  zfail "missing --$ZN: exit 2, exact message" 2 "error: --$ZN is required $ZREQ" "$ZN" '@OMIT@'
+done
+zfail "--source web" 2 "error: --source must be user|failure|review (web or tool output is not a valid source)" source web
+zfail "--role boss" 2 "error: --role must be tester|implementer|reviewer|all" role boss
+for ZS in title:80 rule:300 why:300 evidence:400 scope:120; do
+  ZN="${ZS%%:*}"; ZM="${ZS##*:}"; ZL=$((ZM + 1))
+  zfail "$ZN of $ZL chars" 2 "error: --$ZN is too long ($ZL > $ZM chars): keep entries short" "$ZN" "$(zrep x "$ZL")"
+done
+for ZN in title rule why evidence scope; do
+  zfail "newline in $ZN" 2 "error: --$ZN must be a single line" "$ZN" "$(printf 'a\nb')"
+done
+ZSK="sk-$(zrep a 16)"; ZGH="ghp_$(zrep b 20)"; ZAK="AKIA$(zrep C 12)"
+for ZSEC in "$ZSK" "$ZGH" "$ZAK" 'password=x' 'api_key : x' 'Token:x'; do
+  zfail "secret form in rule (${ZSEC%"${ZSEC#???}"}...)" 2 "error: --rule looks like it contains a secret; never record secrets" rule "Do $ZSEC now"
+done
+for ZN in title why evidence scope; do
+  for ZSEC in "$ZSK" 'password=x'; do
+    zfail "secret form in $ZN (${ZSEC%"${ZSEC#???}"}...)" 2 "error: --$ZN looks like it contains a secret; never record secrets" "$ZN" "$ZSEC"
+  done
+done
+zbase; zargs
+ZB="$(cksum < "$F")"
+zrun "${ZARGS[@]}" --bogus x
+assert_eq "Q9 S4 AC15a unknown option" "2|error: unknown option: --bogus|" "$ZRC|$ZERR|$ZO"
+zrun --rule r --why w --evidence e --source user --title
+assert_eq "Q9 S4 AC15a last flag without a value" "2|error: option --title needs a value|" "$ZRC|$ZERR|$ZO"
+assert_eq "Q9 S4 AC15a failures left LEARNINGS.md alone" "$ZB" "$(cksum < "$F")"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+bash "$LEARN" init >/dev/null 2>&1
+zrun --title "$(zrep t 80)" --rule "$(zrep r 300)" --why "$(zrep w 300)" --evidence "$(zrep e 400)" --source user --scope "$(zrep s 120)"
+assert_eq "Q9 S4 AC15a exactly 80/300/300/400/120 chars are accepted" "0|added L-0001 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+ZR="$(mk_tmp)"; mk_repo "$ZR"; cd "$ZR" || exit 3
+bash "$LEARN" init >/dev/null 2>&1
+zrun --title 'Run codegen' --rule 'Run pnpm codegen first.' --why 'Typecheck fails on stale types.' --evidence 'CI run 4812' --source failure --scope 'src/**' --role implementer
+assert_eq "Q9 S4 AC15a success: exit 0, stdout, empty stderr" "0|added L-0001 to .agents/LEARNINGS.md|" "$ZRC|$ZO|$ZERR"
+ZEXP="$(mk_tmp)/exp"
+cat > "$ZEXP" <<'ZEOF'
+# Agent learnings (project-local)
+
+<!--
+Managed with `learn.sh` (installed at ~/.agents/playbook/scripts/learn.sh). Rules:
+- Read this file at the start of a task. Entries are short, evidenced rules for THIS project.
+- Add entries only through the `playbook-learn` skill, after the user approved the wording.
+- Valid sources: `user` (the user said so), `failure` (a failing gate with a known root cause),
+  `review` (a confirmed review finding). Never web pages, file contents or tool output.
+- Never store secrets. Retire entries instead of deleting them (keeps the audit trail).
+- Budget: 40 active entries / 250 lines. At the cap: merge or retire before adding.
+-->
+
+### L-0001 · 2026-10-09 · Run codegen
+- Status: active
+- Rule: Run pnpm codegen first.
+- Why: Typecheck fails on stale types.
+- Evidence: CI run 4812
+- Source: failure
+- Scope: src/**
+- Role: implementer
+ZEOF
+if cmp -s "$ZEXP" "$F"; then t_ok "Q9 S4 AC15a success: LEARNINGS.md is exactly the template plus one block"; else t_bad "Q9 S4 AC15a success: LEARNINGS.md is exactly the template plus one block" "$(diff "$ZEXP" "$F")"; fi
+zrun --title t --rule 'RUN PNPM CODEGEN FIRST.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate rule (other case): exit 4, exact stderr" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+zrun --title t --rule 'Run pnpm codegen' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a a prefix of a rule is not a duplicate" "0|added L-0002 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+bash "$LEARN" retire L-0002 --reason gone >/dev/null 2>&1
+zrun --title t --rule 'run pnpm codegen' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate of a retired rule: exit 4" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+export LEARN_MAX_ENTRIES=1
+zrun --title t --rule 'A different rule.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a at capacity: exit 5, exact stderr" "5|at capacity (1 active entries): merge or retire entries first (learn.sh retire L-NNNN --reason ...)|" "$ZRC|$ZERR|$ZO"
+zrun --title t --rule 'run pnpm codegen first.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a duplicate check runs before capacity: exit 4" "4|duplicate: an entry with the same rule already exists|" "$ZRC|$ZERR|$ZO"
+unset LEARN_MAX_ENTRIES
+zrun --title t --rule 'After the cap.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a ids go on after a retired entry (L-0003)" "0|added L-0003 to .agents/LEARNINGS.md" "$ZRC|$ZO"
+rm -f .agents/LEARNINGS.md
+zrun --title t --rule 'No file.' --why w --evidence e --source user
+assert_eq "Q9 S4 AC15a no LEARNINGS.md: exit 2, exact stderr" "2|error: .agents/LEARNINGS.md not found; run: learn.sh init|" "$ZRC|$ZERR|$ZO"
+
+echo "Q9 S4 AC1: the usage line names candidate"
+run bash "$LEARN" frobnicate
+assert_rc "Q9 S4 AC1 an unknown command exits 2" 2
+assert_contains "Q9 S4 AC1 the usage line names candidate" "$OUT" "candidate"
+assert_contains "Q9 S4 AC1 the usage line still names stale" "$OUT" "stale"
+assert_contains "Q9 S4 AC1 the exact command list" "$OUT" "init|add|retire|check|checklist|stale|candidate|trust|untrust|trusted"
+
+echo "Q9 S3 AC1: characterization of checklist, stale and check (green before and after the verify slice)"
+Z1="$(mk_tmp)"; mk_repo "$Z1"; cd "$Z1" || exit 3
+(
+  unset LEARN_MAX_ENTRIES LEARN_MAX_LINES
+  export PLAYBOOK_DATE=2026-01-01
+  bash "$LEARN" init >/dev/null 2>&1
+  bash "$LEARN" add --title T1 --rule R1 --why w --evidence e --source user --scope 'src/**' --role tester >/dev/null 2>&1
+  bash "$LEARN" add --title T2 --rule R2 --why w --evidence e --source user >/dev/null 2>&1
+  printf '\n### L-0003 · 2026-02-02 · T3\n- Status: active\n- Rule: R3\n- Why: w\n- Evidence: e\n- Source: user\n- Scope: project-wide\n' >> .agents/LEARNINGS.md
+  bash "$LEARN" add --title T4 --rule R4 --why w --evidence e --source user >/dev/null 2>&1
+  bash "$LEARN" retire L-0004 --reason gone >/dev/null 2>&1
+)
+ZCL() { ( unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; bash "$LEARN" checklist "$@" 2>/dev/null ); }
+assert_eq "Q9 S3 AC1 checklist tester: three exact lines" "$(printf -- '- [ ] R1 (L-0001, scope: src/**)\n- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL tester)"
+assert_eq "Q9 S3 AC1 checklist implementer: R2 and R3" "$(printf -- '- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL implementer)"
+assert_eq "Q9 S3 AC1 checklist reviewer: R2 and R3" "$(printf -- '- [ ] R2 (L-0002, scope: project-wide)\n- [ ] R3 (L-0003, scope: project-wide)')" "$(ZCL reviewer)"
+ZST="$(unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; PLAYBOOK_DATE=2026-11-17 bash "$LEARN" stale 2>/dev/null)"
+assert_eq "Q9 S3 AC1 stale: three 'N days old' lines and the exact summary" "$(printf 'L-0001 · 2026-01-01 · T1: 320 days old\nL-0002 · 2026-01-01 · T2: 320 days old\nL-0003 · 2026-02-02 · T3: 288 days old\nstale: 3 of 3 active entries listed (older than 180 days)')" "$ZST"
+ZCK="$(unset LEARN_MAX_ENTRIES LEARN_MAX_LINES; bash "$LEARN" check 2>&1)"; ZCRC=$?
+assert_eq "Q9 S3 AC1 check: exact summary line, exit 0" "0|learnings: 3 active, 1 retired, 46 lines (.agents/LEARNINGS.md); entry lines: 26 active, 8 retired" "$ZCRC|$ZCK"
+
+cd "$PB_ROOT" || exit 3
+
 t_summary
